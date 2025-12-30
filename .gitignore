@@ -1,3 +1,28 @@
+# SattLine files
+*.k
+*.q
+*.x
+*.y
+*.z
+*.g
+*.l
+*.s
+*.p
+*.k#*
+*.q#*
+*.x#*
+*.y#*
+*.z#*
+*.g#*
+*.l#*
+*.s#*
+*.p#*
+
+# Output files
+.docx
+.xlsx
+.txt
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
