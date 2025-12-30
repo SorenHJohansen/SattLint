@@ -1,0 +1,397 @@
+%import common.WS
+
+// ============================================================================
+// START RULE
+// ============================================================================
+
+?start: header_lines base_picture_module
+
+// ============================================================================
+// HEADER SECTION
+// ============================================================================
+
+syntax_version_line:        STRING
+original_file_date_line:    STRING
+program_date_line:          STRING
+header_lines:               syntax_version_line original_file_date_line program_date_line
+
+// ============================================================================
+// MODULE STRUCTURE
+// ============================================================================
+
+// Invocation types
+module_header:              NAME INVOCATION "(" invoke_coord arguments* ")"
+argument:                   ZOOMABLE | IGNOREMAXMODULE | LAYERMODULE | layer_info | enable | zoomlimits | interact_assign_variable | "SymbolModule" | "Non_Zoomable"
+arguments:                  argument (argument)*
+
+base_picture_module:        module_header ":" MODULEDEFINITION sl_datecode frame_module? scan_group? base_module_body ENDDEF_KW
+base_module_body:           datatype_typedefinitions? moduletype_definitions? module_body
+
+module_body:                moduleparameters? localvariables? submodules? moduledef modulecode?
+invocation_new_module:      module_header ":" MODULEDEFINITION sl_datecode frame_module? scan_group? module_body ENDDEF_KW invocation_tail?
+invocation_module_type:     module_header ":" NAME invocation_tail?
+?invocation_tail:            ("(" moduletype_par_list ")")? ";"   
+moduletype_par_list:        moduletype_par_transfer ("," moduletype_par_transfer)*
+moduletype_par_transfer:    variable_name "=>" GLOBAL_KW? DURATION_VALUE? (value | variable_name)
+frame_module:               "(" FRAME_MODULE ")"
+scan_group:                 "(" GROUPCONN "=" GLOBAL_KW? variable_name ")"
+invoke_coord:               REAL coord_tail* "," REAL coord_tail* "," REAL coord_tail* "," REAL coord_tail* "," REAL coord_tail*
+sl_datecode:                DATECODE_PREFIX SL_DATECODE
+
+// ============================================================================
+// TYPE DEFINITIONS - DATA TYPES (RECORDS)
+// ============================================================================
+datatype_typedefinitions:   TYPEDEFINITIONS record+
+record:                     NAME STRING? "=" RECORD_KW sl_datecode variable_list? ENDDEF_KW 
+
+// ============================================================================
+// VARIABLES (AND PARAMETERS)
+// ============================================================================
+variable_item:              NAME (STRING | STRING_CRLF)? //unfortunately SattLine can have unterminated strings in the variable descriptions
+variable_group:             variable_item ("," variable_item)* ":" GLOBAL_KW? NAME (CONST_KW | STATE_KW | OPSAVE_KW | SECURE_KW)* opt_var_init? ";"
+variable_list:              variable_group+
+opt_var_init:               ASSIGN_INIT_VALUE DURATION_VALUE? (value | DEFAULT)
+value:                      BOOL | REAL | STRING | SIGNED_INT
+
+// ============================================================================
+// TYPE DEFINITIONS - MODULE TYPES
+// ============================================================================
+moduletype_definitions:     TYPEDEFINITIONS moduletype_definition+
+moduleparameters:           MODULEPARAMETERS variable_list
+localvariables:             LOCALVARIABLES variable_list
+moduletype_definition:      NAME "=" "PRIVATE_"? MODULEDEFINITION sl_datecode scan_group? module_body ENDDEF_KW
+
+// ============================================================================
+// SUBMODULES
+// ============================================================================
+submodules:                 SUBMODULES (invocation_new_module | invocation_module_type)+
+
+// ============================================================================
+// MODULE CODE
+// ============================================================================
+modulecode:                 MODULECODE (sequence | equationblock)+
+
+// --- Expression Rules (operator precedence from lowest to highest) ---
+?expression:                or_expression 
+?or_expression:             and_expression (OR and_expression)*
+?and_expression:            not_expression (AND not_expression)*
+?not_expression:            NOT not_expression
+                            | comparison_expression
+
+?comparison_expression:     additive_expression ((LT | GT | EQ | NE | LE | GE) additive_expression)? -> compare
+
+?additive_expression:       multiplicative_expression ((PLUS | MINUS) multiplicative_expression)*
+?multiplicative_expression: unary_expression ((MULTIPLY | DIVIDE) unary_expression)*
+?unary_expression:          PLUS unary_expression
+                            | MINUS unary_expression
+                            | term
+
+ternary_if:                 IF expression THEN expression (ELSIF expression THEN expression)* ELSE expression ENDIF
+function_call:              NAME "(" argument_list? ")"
+argument_list:              expression ("," expression)*
+
+?term:                      function_call
+                            | "(" expression ")"
+                            | ternary_if
+                            | variable_name
+                            | value       
+
+statement:                  assignment_statement ";" | function_call ";" | if_statement ";"
+assignment_statement:       variable_name "=" expression
+if_statement:               IF expression THEN statement* (ELSIF expression THEN statement*)* (ELSE statement*)? ENDIF
+
+//Sequences
+sequence:                   (SEQUENCE | OPENSEQUENCE) NAME seq_control_opt? codeblock_coord objsizedef layer_info? sequence_body (ENDSEQUENCE | ENDOPENSEQUENCE)
+sequence_body:              (seq_element | seqparallel | seqalternative)*
+
+seq_element:                seqinitstep
+                            | seqstep
+                            | seqtransition
+                            | seqtransitionsub
+                            | seqsub
+                            | seqfork
+                            | seqbreak
+
+seq_control_opt:            "(" SEQCONTROL? ","? SEQTIMER? ")"
+codeblock_coord:            COORD_KW REAL "," REAL
+objsizedef:                 OBJSIZE REAL "," REAL
+
+// SEQUENCE ELEMENTS
+seqinitstep:                SEQINITSTEP NAME code_blocks
+seqstep:                    SEQSTEP NAME code_blocks
+seqtransition:              SEQTRANSITION NAME? WAIT_FOR expression
+seqtransitionsub:           SUBSEQTRANSITION NAME sequence_body ENDSUBSEQTRANSITION
+seqalternative:             ALTERNATIVESEQ sequence_body (ALTERNATIVEBRANCH sequence_body)+ ENDALTERNATIVE
+seqparallel:                PARALLELSEQ sequence_body (PARALLELBRANCH sequence_body)+ ENDPARALLEL
+seqsub:                     SUBSEQUENCE NAME sequence_body ENDSUBSEQUENCE
+seqfork:                    SEQFORK NAME
+seqbreak:                   SEQBREAK
+
+code_blocks:                entercode? activecode? exitcode?
+entercode:                  ENTERCODE statement* 
+activecode:                 ACTIVECODE statement* 
+exitcode:                   EXITCODE statement* 
+
+
+equationblock:              EQUATIONBLOCK NAME codeblock_coord objsizedef layer_info? ":" statement*
+
+// ============================================================================
+// MODULE DEFINITION
+// ============================================================================
+moduledef:                  MODULEDEF clippingbounds moduledef_opts graph_objects? interact_objects?
+clippingbounds:             CLIPPINGBOUNDS "=" origo_size_pair
+origo_size_pair:            coordinates coordinates
+coordinates:                "(" REAL coord_tail* "," REAL coord_tail* ")"
+?coord_tail:                coord_invar_tail | coord_clippingbounds
+coord_invar_tail:           ":" (INVAR_PREFIX | OUTVAR_PREFIX) connected_variable
+coord_clippingbounds:       (CLIPPINGBOUNDS | "ClippingBounds") "=" clip_values
+clip_values:                clip_value+
+clip_value:                 REAL coord_invar_tail?
+
+
+//Module options
+moduledef_opts:             moduledef_option*
+moduledef_option:           two_layers | zoomlimits | ZOOMABLE | grid
+two_layers:                 TWO_LAYERS LAYERLIMIT "=" REAL
+zoomlimits:                 ZOOMLIMITS "=" REAL REAL
+grid:                       GRID "=" REAL
+
+//Graph objects
+graph_objects:              GRAPHOBJECTS ":" graph_object+
+graph_object:               text_object | rectangle_object | line_object | oval_object | polygon_object | segment_object | composite_object
+
+//Common properties
+common_properties:          layer_info? enable? color_properties*
+layer_info:                 LAYER_PREFIX "=" SIGNED_INT
+enable:                     ENABLE_PREFIX "=" BOOL (invar | enable_expression)
+enable_expression:          ":" "(" expression ")"
+invar:                      ":" INVAR_PREFIX connected_variable
+variable_name:              NAME (DOT NAME)* (":" (NEW | OLD))?
+format_string:              "Format_String_" "=" value (invar_tail | enable_expression)?
+connected_variable:         value | variable_name
+value_fraction:             VALUEFRACTION "=" SIGNED_INT invar?
+connection_node:            CONNECTIONNODE "(" REAL "," REAL ")"
+alignment:                  LEFTALIGNED | RIGHTALIGNED
+
+//Color handling
+color_properties:           outline_colour | fill_colour
+outline_colour:             OUTLINECOLOUR ":" width? colour_assignments? colour_style?
+fill_colour:                FILLCOLOUR ":" colour_assignments? colour_style?
+assign_colour:              (COLOUR0 | COLOUR1) "=" SIGNED_INT invar?
+colour_assignments:         assign_colour+
+colour_style: COLOURSTYLE "=" (REAL | BOOL) (invar | enable_expression)?
+width:                      WIDTH_KEY "=" SIGNED_INT invar?
+
+//Object types
+text_object:                TEXTOBJECT origo_size_pair (text_content | VARNAME | value_fraction| alignment | connection_node | width | format_string)+ common_properties
+text_content:               STRING_CRLF | STRING
+
+rectangle_object:           RECTANGLEOBJECT origo_size_pair common_properties
+line_object:                LINEOBJECT origo_size_pair common_properties
+oval_object:                OVALOBJECT origo_size_pair common_properties
+polygon_object:             POLYGONOBJECT polygon_type? coordinates+ common_properties
+polygon_type:               (POLYLINE | SPLINE | CONNECTION)+
+segment_object:             SEGMENTOBJECT origo_size_pair coordinates common_properties
+composite_object:           COMPOSITEOBJECT common_properties
+
+
+
+// Interaction objects
+interact_objects: INTERACTOBJECTS ":" interact_item+
+
+// Dedicated item for ComButProc_ to make the procedure call unambiguous
+interact_item: combutproc_item | interact_simple_item
+
+combutproc_item: COMBUTPROC origo_size_pair+ procedure_call combutproc_tail*
+
+procedure_call:             NAME procedure_args?
+procedure_args:             proc_atom+
+proc_atom:                  value | invar_tail | enable_expression
+
+combutproc_tail: layer_info
+| interact_assign_variable
+| interact_flag
+| enable
+| outline_colour
+| fill_colour
+
+// All other interactors (ComBut_, OptBut_, ProcedureInteract, and any free-form NAME types)
+interact_simple_item: interact_type_simple origo_size_pair+ interact_body_seq
+interact_type_simple: COMBUT | OPTBUT | PROCEDUREINTERACT | CHECKBOX | TEXTBOX | MENUINTERACT | SIMPLEINTERACT
+interact_body_seq: interact_body+
+
+// Body lines common to all non-procedural interactors
+interact_body: layer_info
+| outline_colour
+| fill_colour
+| enable
+| interact_assign_variable
+| interact_flag
+| interact_value_line
+| alignment
+| format_string
+
+
+interact_value_line: value_or_invar+
+value_or_invar: value | invar_tail
+
+invar_tail: ":" (INVAR_PREFIX | OUTVAR_PREFIX) (connected_variable | NAME value+)
+
+// A “flag” is a bare NAME, optionally with a small, non-overlapping tail.
+// Keep it narrow so it doesn’t look like “NAME value value …”
+interact_flag: NAME (STRING | SIGNED_INT)? invar_tail?
+
+// Explicit "="ment lines (unambiguous: NAME "=" …)
+interact_assign_variable: (NAME | TEXTOBJECT | GLOBAL_KW) "=" value (invar_tail | enable_expression)?
+
+// ============================================================================
+// TERMINALS
+// ============================================================================
+
+// Keywords
+ASSIGN_INIT_VALUE:          "{GRAMMAR_VALUE_ASSIGN_INIT_VALUE}"
+CLIPPINGBOUNDS:             "{GRAMMAR_VALUE_CLIPPINGBOUNDS}"
+MODULEDEF:                  "{GRAMMAR_VALUE_MODULEDEF}"
+MODULECODE:                 "{GRAMMAR_VALUE_MODULECODE}"
+SUBMODULES:                 "{GRAMMAR_VALUE_SUBMODULES}"
+SEQUENCE:                   "{GRAMMAR_VALUE_SEQUENCE}"
+DOT:                        "."
+// Control Flow
+IF:                         "{GRAMMAR_VALUE_IF}"
+THEN:                       "{GRAMMAR_VALUE_THEN}"
+ELSE:                       "{GRAMMAR_VALUE_ELSE}"
+ELSIF:                      "{GRAMMAR_VALUE_ELSIF}"
+ENDIF:                      "{GRAMMAR_VALUE_ENDIF}"
+// Logical Operators
+OR:                         "{GRAMMAR_VALUE_OR}"
+AND:                        "{GRAMMAR_VALUE_AND}"
+NOT:                        "{GRAMMAR_VALUE_NOT}"
+// Comparison Operators
+LT:                         "{GRAMMAR_VALUE_LT}"
+GT:                         "{GRAMMAR_VALUE_GT}"
+EQ:                         "{GRAMMAR_VALUE_EQ}"
+NE:                         "{GRAMMAR_VALUE_NE}"
+LE:                         "{GRAMMAR_VALUE_LE}"
+GE:                         "{GRAMMAR_VALUE_GE}"
+//Math Operators
+PLUS:                       "{GRAMMAR_VALUE_PLUS}"
+MINUS:                      "{GRAMMAR_VALUE_MINUS}"
+MULTIPLY:                   "{GRAMMAR_VALUE_MULTIPLY}"
+DIVIDE:                     "{GRAMMAR_VALUE_DIVIDE}"
+// Literals
+SIGNED_INT:                 {GRAMMAR_REGEX_SIGNED_INT}
+REAL:                       {GRAMMAR_REGEX_REAL}
+BOOL:                       "{GRAMMAR_VALUE_BOOL_TRUE}" | "{GRAMMAR_VALUE_BOOL_FALSE}"
+STRING:                     {GRAMMAR_REGEX_STRING}
+// Top-level/module structure
+TYPEDEFINITIONS:            "{GRAMMAR_VALUE_TYPEDEFINITIONS}"
+RECORD_KW:                  "{GRAMMAR_VALUE_RECORD_KW}"
+ENDDEF_KW:                  "{GRAMMAR_VALUE_ENDDEF_KW}"
+MODULEDEFINITION:           "{GRAMMAR_VALUE_MODULEDEFINITION}"
+INVOCATION:                 "{GRAMMAR_VALUE_INVOCATION}"
+FRAME_MODULE:               "{GRAMMAR_VALUE_FRAME_MODULE}"
+MODULEPARAMETERS:           "{GRAMMAR_VALUE_MODULEPARAMETERS}"
+LOCALVARIABLES:             "{GRAMMAR_VALUE_LOCALVARIABLES}"
+GRAPHOBJECTS:               "{GRAMMAR_VALUE_GRAPHOBJECTS}"
+INTERACTOBJECTS:            "{GRAMMAR_VALUE_INTERACTOBJECTS}"
+DATECODE_PREFIX:            "{GRAMMAR_VALUE_DATECODE_PREFIX}"
+GROUPCONN:                  "{GRAMMAR_VALUE_GROUPCONN}"
+// Sequence and code blocks
+SEQCONTROL:                 "{GRAMMAR_VALUE_SEQCONTROL}"
+SEQTIMER:                   "{GRAMMAR_VALUE_SEQTIMER}"
+COORD_KW:                   "{GRAMMAR_VALUE_COORD_KW}"
+OBJSIZE:                    "{GRAMMAR_VALUE_OBJSIZE}"
+SEQINITSTEP:                "{GRAMMAR_VALUE_SEQINITSTEP}"
+SEQSTEP:                    "{GRAMMAR_VALUE_SEQSTEP}"
+SEQTRANSITION:              "{GRAMMAR_VALUE_SEQTRANSITION}"
+WAIT_FOR:                   "{GRAMMAR_VALUE_WAIT_FOR}"
+ENTERCODE:                  "{GRAMMAR_VALUE_ENTERCODE}"
+ACTIVECODE:                 "{GRAMMAR_VALUE_ACTIVECODE}"
+EXITCODE:                   "{GRAMMAR_VALUE_EXITCODE}"
+EQUATIONBLOCK:              "{GRAMMAR_VALUE_EQUATIONBLOCK}"
+ENDSEQUENCE:                "{GRAMMAR_VALUE_ENDSEQUENCE}"
+ALTERNATIVESEQ:             "{GRAMMAR_VALUE_ALTERNATIVESEQ}"
+ALTERNATIVEBRANCH:          "{GRAMMAR_VALUE_ALTERNATIVEBRANCH}"
+ENDALTERNATIVE:             "{GRAMMAR_VALUE_ENDALTERNATIVE}"
+PARALLELBRANCH:             "{GRAMMAR_VALUE_PARALLELBRANCH}"
+PARALLELSEQ:                "{GRAMMAR_VALUE_PARALLELSEQ}"
+ENDPARALLEL:                "{GRAMMAR_VALUE_ENDPARALLEL}"
+SEQBREAK:                   "{GRAMMAR_VALUE_SEQBREAK}"
+SEQFORK:                    "{GRAMMAR_VALUE_SEQFORK}"
+SUBSEQTRANSITION:           "{GRAMMAR_VALUE_SUBSEQTRANSITION}"
+ENDSUBSEQTRANSITION:        "{GRAMMAR_VALUE_ENDSUBSEQTRANSITION}"
+SUBSEQUENCE:                "{GRAMMAR_VALUE_SUBSEQUENCE}"
+ENDSUBSEQUENCE:             "{GRAMMAR_VALUE_ENDSUBSEQUENCE}"
+OPENSEQUENCE:               "{GRAMMAR_VALUE_OPENSEQUENCE}"
+ENDOPENSEQUENCE:            "{GRAMMAR_VALUE_ENDOPENSEQUENCE}"
+// Zoom, layers, grid
+TWO_LAYERS:                 "{GRAMMAR_VALUE_TWO_LAYERS}"
+LAYERLIMIT:                 "{GRAMMAR_VALUE_LAYERLIMIT}"
+LAYER_PREFIX:               "{GRAMMAR_VALUE_LAYER_PREFIX}"
+ZOOMLIMITS:                 "{GRAMMAR_VALUE_ZOOMLIMITS}"
+ZOOMABLE:                   "{GRAMMAR_VALUE_ZOOMABLE}"
+GRID:                       "{GRAMMAR_VALUE_GRID}"
+IGNOREMAXMODULE:            "{GRAMMAR_VALUE_IGNOREMAXMODULE}"
+LAYERMODULE:                "{GRAMMAR_VALUE_LAYERMODULE}"
+// Alignment
+LEFTALIGNED:                "{GRAMMAR_VALUE_LEFTALIGNED}"
+RIGHTALIGNED:               "{GRAMMAR_VALUE_RIGHTALIGNED}"
+// Graph objects and related
+TEXTOBJECT:                 "{GRAMMAR_VALUE_TEXTOBJECT}"
+RECTANGLEOBJECT:            "{GRAMMAR_VALUE_RECTANGLEOBJECT}"
+LINEOBJECT:                 "{GRAMMAR_VALUE_LINEOBJECT}"
+OVALOBJECT:                 "{GRAMMAR_VALUE_OVALOBJECT}"
+POLYGONOBJECT:              "{GRAMMAR_VALUE_POLYGONOBJECT}"
+SPLINE:                     "{GRAMMAR_VALUE_SPLINE}"
+POLYLINE:                   "{GRAMMAR_VALUE_POLYLINE}"
+CONNECTION:                 "{GRAMMAR_VALUE_CONNECTION}"
+SEGMENTOBJECT:              "{GRAMMAR_VALUE_SEGMENTOBJECT}"
+COMPOSITEOBJECT:            "{GRAMMAR_VALUE_COMPOSITEOBJECT}"
+CONNECTIONNODE:             "{GRAMMAR_VALUE_CONNECTIONNODE}"
+ENABLE_PREFIX:              "{GRAMMAR_VALUE_ENABLE_PREFIX}"
+VARNAME:                    "{GRAMMAR_VALUE_VARNAME}"
+VALUEFRACTION:              "{GRAMMAR_VALUE_VALUEFRACTION}"
+COLOUR0:                    "{GRAMMAR_VALUE_COLOUR0}"
+COLOUR1:                    "{GRAMMAR_VALUE_COLOUR1}"
+// Colour and property keys
+OUTLINECOLOUR:              "{GRAMMAR_VALUE_OUTLINECOLOUR}"
+FILLCOLOUR:                 "{GRAMMAR_VALUE_FILLCOLOUR}"
+WIDTH_KEY:                  "{GRAMMAR_VALUE_WIDTH_KEY}"
+COLOUR:                     "{GRAMMAR_VALUE_COLOUR}"
+COLOURSTYLE:                "{GRAMMAR_VALUE_COLOURSTYLE}"
+// InVar tail
+INVAR_PREFIX:               "{GRAMMAR_VALUE_INVAR_PREFIX}"
+// Interaction objects and actions
+COMBUT:                     "{GRAMMAR_VALUE_COMBUT}"
+OPTBUT:                     "{GRAMMAR_VALUE_OPTBUT}"
+PROCEDUREINTERACT:          "{GRAMMAR_VALUE_PROCEDUREINTERACT}"
+COMBUTPROC:                 "{GRAMMAR_VALUE_COMBUTPROC}"
+NEWWINDOW:                  "{GRAMMAR_VALUE_NEWWINDOW}"
+OUTVAR_PREFIX:              "{GRAMMAR_VALUE_OUTVAR_PREFIX}"
+CHECKBOX: "CheckBox_"
+TEXTBOX: "TextBox_"
+MENUINTERACT: "MenuInteract"
+SIMPLEINTERACT: "SimpleInteract"
+
+// Variable/type modifiers
+GLOBAL_KW:                  "{GRAMMAR_VALUE_GLOBAL_KW}"
+CONST_KW:                   "{GRAMMAR_VALUE_CONST_KW}"
+STATE_KW:                   "{GRAMMAR_VALUE_STATE_KW}"
+OPSAVE_KW:                  "{GRAMMAR_VALUE_OPSAVE_KW}"
+SECURE_KW:                  "{GRAMMAR_VALUE_SECURE_KW}"
+DURATION_VALUE:             "{GRAMMAR_VALUE_DURATION_VALUE}"
+DEFAULT:                    "{GRAMMAR_VALUE_DEFAULT}"
+NEW:                        "{GRAMMAR_VALUE_NEW}"
+OLD:                        "{GRAMMAR_VALUE_OLD}"
+// Special Formats
+//COMMENT:                    {GRAMMAR_REGEX_COMMENT}
+// Variable names and identifiers
+SL_DATECODE:                {GRAMMAR_REGEX_SL_DATECODE}
+NAME:                       {GRAMMAR_REGEX_NAME}
+STRING_CRLF:                {GRAMMAR_REGEX_STRING_CRLF}
+
+// ============================================================================
+// IGNORE RULES
+// ============================================================================
+//%ignore COMMENT
+%ignore WS

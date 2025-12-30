@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sattline-tool"
+version = "0.1.0"
+description = "SattLine project analyzer and doc generator"
+readme = "README.md"
+authors = [{name="Your Name", email="you@example.com"}]
+requires-python = ">=3.10"
+dependencies = [
+  "lark-parser>=0.11.0",
+  "python-docx>=0.8.11"  # only if your docgenerator uses python-docx; remove if not needed
+]
+
+[project.scripts]
+sattline = "cli:main"
