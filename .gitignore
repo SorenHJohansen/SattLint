@@ -19,11 +19,12 @@
 *.p#*
 
 # Output files
-.docx
-.xlsx
-.txt
+*.docx
+*.xlsx
+*.txt
 
-# mise setup
+# personal config files
+#config.toml
 mise.toml
 
 # Byte-compiled / optimized / DLL files
