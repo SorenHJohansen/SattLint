@@ -2,19 +2,22 @@
 # General project configuration
 # ----------------------------
 
-root = "KaGCK7SlutLib"         # Default root program name
-mode = "official"              # "official" or "draft"
-ignore_vendor = false          # Same as --vendor-ignore
+root = "KaGCK7SlutLib" # Default root program name
+mode = "official"      # "official" or "draft"
+ignore_vendor = false  # Same as --vendor-ignore
+scan_root_only = false
+debug = false
 
 # ----------------------------
 # Paths
 # ----------------------------
 
+vendor_libs_dir = "/mnt/vendor_dir"
 programs_dir = "/mnt/projects/sattline/unitlib"
 
 # List of library directories (strings)
 libs_dirs = [
     "/mnt/projects/sattline/commonlib",
     "/mnt/projects/sattline/pplibs",
-    "/mnt/projects/sattline/externallibs"
+    "/mnt/projects/sattline/externallibs",
 ]
