@@ -24,7 +24,7 @@
 *.txt
 
 # personal config files
-#config.toml
+config.toml
 mise.toml
 
 # Byte-compiled / optimized / DLL files
