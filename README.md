@@ -11,19 +11,20 @@ It parses SattLine source files, resolves dependencies across libraries, builds 
 2. [Quick Start](#quick-start)  
    - [Prerequisites](#prerequisites)  
    - [Installation](#installation)  
-   - [Running the CLI](#running-the-cli)
+   - [How to run](#how-to-run)
+   - [Interactive usage](#interactive-usage)
 3. [Project Layout](#project-layout)
 4. [Core Components](#core-components)
 5. [Configuration](#configuration)
-6. [Typical Workflows](#typical-workflows)
-7. [Extending the Tool](#extending-the-tool)
-8. [Testing & Debugging](#testing--debugging)
-9. [License & Contributing](#license--contributing)
+6. [Extending the Tool](#extending-the-tool)
+7. [Testing & Debugging](#testing--debugging)
+8. [License & Contributing](#license--contributing)
 
 ---
 
 ## Features
 
+- **Interactive menu-driven application**.
 - **Full SattLine parsing** using a Lark grammar (`grammar/sattline.lark`).  
 - **Recursive dependency resolution** across a configurable set of library directories, with optional vendor-library exclusion.  
 - **Variable-usage analysis** reports:  
@@ -41,7 +42,7 @@ It parses SattLine source files, resolves dependencies across libraries, builds 
 
 ### Prerequisites
 
-- Python 3.10 or newer  
+- Python 3.11 or newer  
 - Git (optional, for cloning)  
 - A working SattLine codebase (expects a root program and its dependent libraries)  
 
@@ -63,64 +64,46 @@ lark-parser>=0.11.0
 python-docx>=0.8.11  # Only needed if generating .docx files
 ```
 
-### Running the CLI
+### How to Run
 
-The command-line entry point is installed as `sattline`. Example invocation:
+From the project directory:
 
-```bash
-sattline \
-    --programs-dir /path/to/unitlib \
-    --libs-dirs /path/to/commonlib,/path/to/pplibs,/path/to/externallibs \
-    --mode official \
-    --docx output/project_spec.docx \
-    KaGCK7SlutLib
+```python
+python app.py
 ```
 
-#### Key Options
+This starts the interactive SattLint application.
 
-| Flag | Description |
-|------|-------------|
-| `--programs-dir`, `-p` | Directory holding root program files (`*.x` for official, `*.s` for draft) |
-| `--libs-dirs`, `-l` | Comma-separated list of additional library directories |
-| `--mode`, `-m` | "official" (default) or "draft" – selects file extensions used |
-| `--scan-root-only` | Parse only the root file, ignoring dependencies |
-| `--strict` | Fail on missing files or parse errors |
-| `--no-debug` | Disable verbose debug prints |
-| `--vendor-ignore` | Exclude the vendor library (SL_Library) from the search path |
-| `--docx`, `-d` | Path to write generated Word document |
-| `--show-missing` | Print summary of missing files or parse failures |
-| `--verbose`, `-v` | Increase logging verbosity (INFO level) |
-| `--dry-run` | Resolve dependency graph only; no parsing or analysis |
-| `--dump-parse-tree` | Write raw Lark parse tree to a file |
-| `--dump-ast` | Serialize the final AST to a file |
+### Interactive Usage
 
-**Example – variable-usage report only:**
+When started, SattLint presents a menu similar to:
+=== SattLint ===
+How to use SattLint
+------------------
 
-```bash
-sattline KaGCK7SlutLib --show-missing
-```
+• Navigate using the number keys shown in each menu
+• Press Enter to confirm a selection
+• Changes are NOT saved until you choose "Save config"
+• Use "Configuration" to change settings
+• Use "Run analysis" to analyze the configured root program
+• Use "Dump outputs" to inspect parse trees, ASTs, etc.
+• Press 'q' at any time in the main menu to quit
 
-Output:
-
-```
-Variable issues in KaGCK7SlutLib:
-  - Unused variables:
-      * [BasePicture] localvariable 'temp_counter' (INTEGER)
-  - Read-only but not Const variables:
-      * [BasePicture] localvariable 'max_speed' (REAL)
-  - Written but never read variables:
-      * [BasePicture] localvariable 'debug_flag' (BOOL)
-```
-
----
+1) Show config
+2) Configuration
+3) Run analysis
+4) Dump outputs
+5) Save config
+6) Self-check diagnostics
+q) Quit
 
 ## Project Layout
 
 ```
 sattline-tool/
 │
-├─ main.py                 # Loader, parser creation, orchestration
-├─ cli.py                  # CLI arguments and logging
+├─ app.py                  # Interactive application entry point
+├─ engine.py               # Loader, parser creation, orchestration
 ├─ sl_transformer.py       # Lark Transformer → AST
 ├─ variables.py            # Variable usage analyzer
 ├─ constants.py            # Grammar constants & regexes
@@ -157,24 +140,31 @@ sattline-tool/
 
 ## Configuration
 
+All settings are stored in config.toml, which is the single source of truth.
+
 `config.toml` example:
 
 ```toml
+# ----------------------------
+# General project configuration
+# ----------------------------
 root = "KaGCK7SlutLib"
-mode = "official"
+mode = "official"          # "official" or "draft"
 ignore_vendor = false
+scan_root_only = false
+debug = false
 
+# ----------------------------
+# Paths
+# ----------------------------
+vendor_libs_dir = "/mnt/vendor_dir"
 programs_dir = "/mnt/projects/sattline/unitlib"
+
 libs_dirs = [
-    "/mnt/projects/sattline/commonlib",
-    "/mnt/projects/sattline/pplibs",
-    "/mnt/projects/sattline/externallibs"
-]
-```
-
-Load it in Python:
-
-```python
+  "/mnt/projects/sattline/commonlib",
+  "/mnt/projects/sattline/pplibs",
+  "/mnt/projects/sattline/externallibs",
+]```python
 import tomllib
 from pathlib import Path
 import main as main_mod
@@ -187,43 +177,6 @@ loader = main_mod.SattLineProjectLoader(
     scan_root_only=False,
 )
 graph = loader.resolve(cfg["root"])
-```
-
----
-
-## Typical Workflows
-
-- **Static analysis only** – quickly verify variable usage:
-
-```bash
-sattline MyRootProgram --show-missing
-```
-
-- **Generate full spec document**:
-
-```bash
-sattline MyRootProgram -d ./specs/MyProjectSpec.docx
-```
-
-- **CI integration** – enforce strict parsing:
-
-```yaml
-# .github/workflows/ci.yml
-- name: Run SattLine analysis
-  run: |
-    sattline MyRootProgram --strict --show-missing
-```
-
-- **Debug parse failures**:
-
-```bash
-sattline MyRootProgram --dump-parse-tree parse.txt
-```
-
-- **Dependency-only check**:
-
-```bash
-sattline MyRootProgram --dry-run
 ```
 
 ---
