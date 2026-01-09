@@ -3,14 +3,13 @@
 # ----------------------------
 root = "FileName"
 mode = "official"
-ignore_vendor = false
+ignore_abb_lib = false
 scan_root_only = false
 debug = false
 
 # ----------------------------
 # Paths
 # ----------------------------
-vendor_libs_dir = "${HOME}/Workspace/Libs/SL_Library/"
-programs_dir = "${HOME}/Workspace/Libs/Programs"
-
-libs_dirs = ["${HOME}/Workspace/Libs/1/", "${HOME}/Workspace/Libs/2/"]
+abb_lib_dir = "${HOME}/Workspace/Libs/SL_Library/"
+program_dir = "${HOME}/Workspace/Libs/Programs"
+other_lib_dirs = ["${HOME}/Workspace/Libs/1/", "${HOME}/Workspace/Libs/2/"]
