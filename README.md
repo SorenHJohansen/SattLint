@@ -16,9 +16,7 @@ It parses SattLine source files, resolves dependencies across libraries, builds 
 3. [Project Layout](#project-layout)
 4. [Core Components](#core-components)
 5. [Configuration](#configuration)
-6. [Extending the Tool](#extending-the-tool)
-7. [Testing & Debugging](#testing--debugging)
-8. [License & Contributing](#license--contributing)
+6. [License & Contributing](#license--contributing)
 
 ---
 
@@ -77,6 +75,7 @@ This starts the interactive SattLint application.
 ### Interactive Usage
 
 When started, SattLint presents a menu similar to:
+
 === SattLint ===
 How to use SattLint
 ------------------
@@ -128,8 +127,8 @@ sattline-tool/
 
 ## Core Components
 
-- **main.py** – Workspace setup, parser creation, project loading, merging BasePicture  
-- **cli.py** – CLI argument parsing, logging, DOCX generation, debug/dump options  
+- **app.py** – Main entry point  
+- **engine.py** – Workspace setup, parser creation, project loading, merging BasePicture  
 - **sl_transformer.py** – Lark Transformer → concrete AST objects, handles all language constructs  
 - **variables.py** – VariablesAnalyzer walks AST, records usage, generates reports  
 - **docgenerator/** – `generate_docx(project_bp, out_path)` renders a structured Word document  
@@ -148,60 +147,21 @@ All settings are stored in config.toml, which is the single source of truth.
 # ----------------------------
 # General project configuration
 # ----------------------------
-root = "KaGCK7SlutLib"
+root = "ProgramName"
 mode = "official"          # "official" or "draft"
-ignore_vendor = false
+ignore_abb_lib = false
 scan_root_only = false
 debug = false
 
 # ----------------------------
 # Paths
 # ----------------------------
-vendor_libs_dir = "/mnt/vendor_dir"
-programs_dir = "/mnt/projects/sattline/unitlib"
-
-libs_dirs = [
+ABB_lib_dir = "/mnt/vendor_dir"
+program_dir = "/mnt/projects/sattline/unitlib"
+other_lib_dirs = [
   "/mnt/projects/sattline/commonlib",
-  "/mnt/projects/sattline/pplibs",
   "/mnt/projects/sattline/externallibs",
-]```python
-import tomllib
-from pathlib import Path
-import main as main_mod
-
-cfg = tomllib.loads(Path("config.toml").read_text())
-loader = main_mod.SattLineProjectLoader(
-    Path(cfg["programs_dir"]),
-    [Path(p) for p in cfg["libs_dirs"]],
-    main_mod.CodeMode.OFFICIAL if cfg["mode"] == "official" else main_mod.CodeMode.DRAFT,
-    scan_root_only=False,
-)
-graph = loader.resolve(cfg["root"])
-```
-
----
-
-## Extending the Tool
-
-- Add new analyses under `analyzers/`, register in `main.py` or expose via CLI  
-- Support additional output formats by plugging in renderers in `docgenerator/`  
-- Extend grammar (`grammar/sattline.lark`) and update `constants.py`  
-- Customize vendor-library handling with `IGNORE_VENDOR_LIB` or `_is_ignored_base`  
-
----
-
-## Testing & Debugging
-
-- **Unit tests** – place under `tests/` and run with `pytest`  
-- **Logging** – respects `--verbose` and `--debug`; set `DEBUG=True` in `main.py` for step-by-step prints  
-- **Interactive exploration**:
-
-```python
-from main import SattLineProjectLoader, CodeMode
-
-loader = SattLineProjectLoader(Path("unitlib"), [Path("commonlib")], CodeMode.OFFICIAL)
-graph = loader.resolve("MyRoot")
-graph.ast_by_name["MyRoot"].modulecode.sequences[0].code
+]
 ```
 
 ---
