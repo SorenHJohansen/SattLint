@@ -43,12 +43,12 @@ def self_check(cfg: dict) -> bool:
     required_keys = [
         "root",
         "mode",
-        "ignore_vendor",
+        "ignore_ABB_lib",
         "scan_root_only",
         "debug",
-        "programs_dir",
-        "vendor_libs_dir",
-        "libs_dirs",
+        "program_dir",
+        "ABB_lib_dir",
+        "other_lib_dirs",
     ]
     for k in required_keys:
         if k not in cfg:
@@ -56,7 +56,7 @@ def self_check(cfg: dict) -> bool:
             ok = False
 
     # Directories
-    for name in ("programs_dir", "vendor_libs_dir"):
+    for name in ("program_dir", "ABB_lib_dir"):
         p = Path(cfg.get(name, ""))
         if not p.exists():
             print(f"❌ {name} does not exist: {p}")
@@ -67,19 +67,19 @@ def self_check(cfg: dict) -> bool:
         else:
             print(f"✔ {name}: {p}")
 
-    # libs_dirs
-    for p in cfg.get("libs_dirs", []):
+    # other_lib_dirs
+    for p in cfg.get("other_lib_dirs", []):
         path = Path(p)
         if not path.exists():
-            print(f"⚠ libs_dirs entry missing: {path}")
+            print(f"⚠ other_lib_dirs entry missing: {path}")
         else:
-            print(f"✔ libs_dirs: {path}")
+            print(f"✔ other_lib_dirs: {path}")
 
     # Root existence
     if root_exists(cfg.get("root", ""), cfg):
-        print(f"✔ Root program found: {cfg['root']}")
+        print(f"✔ Root program/library found: {cfg['root']}")
     else:
-        print(f"❌ Root program not found: {cfg.get('root')}")
+        print(f"❌ Root program/library not found: {cfg.get('root')}")
         ok = False
 
     print("------------------------------\n")
@@ -98,16 +98,11 @@ def prompt(msg: str, default: str | None = None) -> str:
 
 def load_config(path: Path) -> dict:
     if not path.exists():
-        return {
-            "root": engine_module.DEFAULT_ROOT_PROGRAM,
-            "mode": engine_module.DEFAULT_SELECTED_MODE.value,
-            "ignore_vendor": False,
-            "scan_root_only": False,
-            "debug": False,
-            "vendor_libs_dir": str(engine_module.DEFAULT_VENDOR_DIR),
-            "programs_dir": str(engine_module.DEFAULT_PROGRAMS_DIR),
-            "libs_dirs": [str(p) for p in engine_module.DEFAULT_LIBS_DIRS],
-        }
+        raise FileNotFoundError(
+            f"Config file not found: {path}\n"
+            "Create config.toml before running SattLint."
+        )
+
     with path.open("rb") as f:
         return tomllib.load(f)
 
@@ -126,17 +121,17 @@ def save_config(path: Path, cfg: dict) -> None:
 # ----------------------------
 root = {w(cfg["root"])}
 mode = {w(cfg["mode"])}
-ignore_vendor = {w(cfg["ignore_vendor"])}
+ignore_ABB_lib = {w(cfg["ignore_ABB_lib"])}
 scan_root_only = {w(cfg["scan_root_only"])}
 debug = {w(cfg["debug"])}
 
 # ----------------------------
 # Paths
 # ----------------------------
-vendor_libs_dir = {w(cfg["vendor_libs_dir"])}
-programs_dir = {w(cfg["programs_dir"])}
+ABB_lib_dir = {w(cfg["ABB_lib_dir"])}
+program_dir = {w(cfg["program_dir"])}
 
-libs_dirs = {w(cfg["libs_dirs"])}
+other_lib_dirs = {w(cfg["other_lib_dirs"])}
 """.lstrip()
 
     path.write_text(text, encoding="utf-8")
@@ -144,13 +139,17 @@ libs_dirs = {w(cfg["libs_dirs"])}
 
 
 def root_exists(root: str, cfg: dict) -> bool:
-    dirs = [Path(cfg["programs_dir"])] + [Path(p) for p in cfg["libs_dirs"]]
+    dirs = [Path(cfg["program_dir"])] + [Path(p) for p in cfg["other_lib_dirs"]]
+    ext = ""
     for d in dirs:
         if not d.exists():
             continue
-        for ext in ("", ".txt", ".st"):
-            if (d / f"{root}{ext}").exists():
-                return True
+        if cfg["mode"] == "official":
+            ext = ".x"
+        elif cfg["mode"] == "draft":
+            ext = ".s"
+        if (d / f"{root}{ext}").exists():
+            return True
     return False
 
 
@@ -168,15 +167,15 @@ def show_config(cfg: dict):
     for k in (
         "root",
         "mode",
-        "ignore_vendor",
+        "ignore_ABB_lib",
         "scan_root_only",
         "debug",
-        "programs_dir",
-        "vendor_libs_dir",
+        "program_dir",
+        "ABB_lib_dir",
     ):
         print(f"{k:16}: {cfg[k]}")
-    print("libs_dirs:")
-    for i, p in enumerate(cfg["libs_dirs"], 1):
+    print("other_lib_dirs:")
+    for i, p in enumerate(cfg["other_lib_dirs"], 1):
         print(f"  {i}. {p}")
     print("-----------------------------\n")
 
@@ -187,34 +186,35 @@ def show_config(cfg: dict):
 
 
 def load_project(cfg: dict):
-    apply_debug(cfg)
-
-    engine_module.DEFAULT_IGNORE_VENDOR_LIB = cfg["ignore_vendor"]
-
-    mode = (
-        engine_module.CodeMode.OFFICIAL
-        if cfg["mode"] == "official"
-        else engine_module.CodeMode.DRAFT
-    )
-
     loader = engine_module.SattLineProjectLoader(
-        Path(cfg["programs_dir"]),
-        [Path(p) for p in cfg["libs_dirs"]],
-        mode,
+        program_dir=Path(cfg["program_dir"]),
+        other_lib_dirs=[Path(p) for p in cfg["other_lib_dirs"]],
+        abb_lib_dir=Path(cfg["ABB_lib_dir"]),
+        mode=engine_module.CodeMode(cfg["mode"]),
         scan_root_only=cfg["scan_root_only"],
+        ignore_abb_lib=cfg["ignore_ABB_lib"],
+        debug=cfg["debug"],
     )
 
     graph = loader.resolve(cfg["root"], strict=False)
+
     root_bp = graph.ast_by_name.get(cfg["root"])
     if not root_bp:
-        raise RuntimeError("Root program not parsed")
-    return engine_module.merge_project_basepicture(root_bp, graph)
+        raise RuntimeError(
+            f"Root program '{cfg['root']}' not parsed.\n"
+            f"Resolved: {list(graph.ast_by_name.keys())}\n"
+            f"Missing: {graph.missing}"
+        )
+
+    project_bp = engine_module.merge_project_basepicture(root_bp, graph)
+    return project_bp, graph
 
 
-def run_analysis(cfg: dict):
-    project = load_project(cfg)
-    report = engine_module.analyze_variables(project)
+def run_variable_analysis(cfg: dict):
+    project_bp, _ = load_project(cfg)
+    report = engine_module.analyze_variables(project_bp)
     print(report.summary())
+    pause()
 
 
 def dump_menu(cfg: dict):
@@ -257,14 +257,14 @@ def config_menu(cfg: dict) -> bool:
         clear_screen()
         print("""
 --- Configuration ---
-1) Root program
+1) Root program/library
 2) Mode
-3) Toggle ignore_vendor
+3) Toggle ignore_ABB_lib
 4) Toggle scan_root_only
 5) Toggle debug
 6) Programs dir
 7) Vendor libs dir
-8) Edit libs_dirs
+8) Edit other_lib_dirs
 b) Back
 """)
         c = input("> ").strip().lower()
@@ -273,9 +273,10 @@ b) Back
             return dirty
 
         elif c == "1":
-            new = prompt("Root program", cfg["root"])
+            new = prompt("Root program/library", cfg["root"])
             if not root_exists(new, cfg):
                 print("❌ Root not found in configured directories")
+                pause()
             elif confirm(f"Change root to '{new}'?"):
                 cfg["root"] = new
                 dirty = True
@@ -287,8 +288,8 @@ b) Back
                 dirty = True
 
         elif c == "3":
-            if confirm("Toggle ignore_vendor?"):
-                cfg["ignore_vendor"] = not cfg["ignore_vendor"]
+            if confirm("Toggle ignore_ABB_lib?"):
+                cfg["ignore_ABB_lib"] = not cfg["ignore_ABB_lib"]
                 dirty = True
 
         elif c == "4":
@@ -302,20 +303,20 @@ b) Back
                 dirty = True
 
         elif c == "6":
-            new = prompt("Programs dir", cfg["programs_dir"])
-            if confirm("Change programs_dir?"):
-                cfg["programs_dir"] = new
+            new = prompt("Programs dir", cfg["program_dir"])
+            if confirm("Change program_dir?"):
+                cfg["program_dir"] = new
                 dirty = True
 
         elif c == "7":
-            new = prompt("Vendor libs dir", cfg["vendor_libs_dir"])
-            if confirm("Change vendor_libs_dir?"):
-                cfg["vendor_libs_dir"] = new
+            new = prompt("ABB lib dir", cfg["ABB_lib_dir"])
+            if confirm("Change ABB_lib_dir?"):
+                cfg["ABB_lib_dir"] = new
                 dirty = True
 
         elif c == "8":
-            libs = cfg["libs_dirs"]
-            print("\nCurrent libs_dirs:")
+            libs = cfg["other_lib_dirs"]
+            print("\nCurrent other_lib_dirs:")
             for i, p in enumerate(libs, 1):
                 print(f"{i}. {p}")
             if confirm("Add new entry?"):
@@ -378,7 +379,7 @@ q) Quit
 
         elif c == "3":
             if confirm("Run analysis?"):
-                run_analysis(cfg)
+                run_variable_analysis(cfg)
 
         elif c == "4":
             dump_menu(cfg)

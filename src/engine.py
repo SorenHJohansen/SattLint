@@ -2,7 +2,6 @@
 from pathlib import Path
 from lark import Lark
 import constants
-import sys
 from transformer.sl_transformer import SLTransformer
 from models.ast_model import BasePicture, DataType, ModuleTypeDef
 from analyzers.variables import analyze_variables, VariablesReport, debug_variable_usage
@@ -13,23 +12,20 @@ from enum import Enum
 from models.project_graph import ProjectGraph
 import logging
 
-# ---------------- Toggles ----------------
-DEFAULT_STRICT_FAIL_ON_MISSING: bool = False  # toggle: True -> raise on missing/parse errors
-DEFAULT_IGNORE_VENDOR_LIB: bool = True
-DEFAULT_DEBUG: bool = True
-DEFAULT_SCAN_ROOT_ONLY: bool = True  # set False to include dependencies
 
 # Create a module-level logger consistent with cli.py
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(message)s',  # Just the message, no prefixes
-    force=True
+    format="%(message)s",  # Just the message, no prefixes
+    force=True,
 )
 log = logging.getLogger("SattLint")
+
 
 class CodeMode(Enum):
     OFFICIAL = "official"  # .x code, .z deps
     DRAFT = "draft"  # .s code, .l deps
+
 
 def code_ext(mode: CodeMode) -> str:
     return ".x" if mode is CodeMode.OFFICIAL else ".s"
@@ -38,21 +34,17 @@ def code_ext(mode: CodeMode) -> str:
 def deps_ext(mode: CodeMode) -> str:
     return ".z" if mode is CodeMode.OFFICIAL else ".l"
 
-DEFAULT_SELECTED_MODE: CodeMode = CodeMode.OFFICIAL  # or CodeMode.DRAFT
-DEFAULT_PROGRAMS_ROOT = Path(r"C:\Users\SQHJ\OneDrive - Novo Nordisk\Workspace\Libs\HC")
-DEFAULT_PROGRAMS_DIR = DEFAULT_PROGRAMS_ROOT / "unitlib"
-DEFAULT_LIBS_DIRS = [DEFAULT_PROGRAMS_ROOT / "nnelib", DEFAULT_PROGRAMS_ROOT / "projectlib", ]
-DEFAULT_ROOT_PROGRAM = "KaHCBOpsamLib"
-DEFAULT_CODE_MODE = CodeMode.OFFICIAL
-DEFAULT_VENDOR_DIR: Path = DEFAULT_PROGRAMS_ROOT / "SL_Library"
-
 
 BASE_DIR = Path(__file__).resolve().parent
 GRAMMAR_PATH = BASE_DIR / "grammar" / "sattline.lark"
 
-def dbg(msg: str) -> None:
-    if DEFAULT_DEBUG:
-        log.debug(f"[DEBUG] {msg}")
+
+class DebugMixin:
+    debug: bool = False
+
+    def dbg(self, msg: str) -> None:
+        if self.debug:
+            log.debug(f"[DEBUG] {msg}")
 
 
 def strip_sl_comments(text: str) -> str:
@@ -181,32 +173,39 @@ def create_sl_parser() -> Lark:
         formatted_grammar, start="start", parser="lalr", propagate_positions=True
     )
 
+
 # ---------- Loader with recursive resolution ----------
-class SattLineProjectLoader:
+class SattLineProjectLoader(DebugMixin):
     def __init__(
         self,
-        programs_dir: Path,
-        libs_dirs: Iterable[Path],
+        program_dir: Path,
+        other_lib_dirs: Iterable[Path],
+        abb_lib_dir: Path,
         mode: CodeMode,
-        scan_root_only: bool = False,
+        scan_root_only: bool,
+        ignore_abb_lib: bool,
+        debug: bool,
     ):
-        self.programs_dir = programs_dir
-        self.libs_dirs = list(libs_dirs)
+        self.program_dir = program_dir
+        self.other_lib_dirs = list(other_lib_dirs)
+        self.abb_lib_dir = abb_lib_dir
         self.mode = mode
         self.scan_root_only = scan_root_only
-        dbg(
-            f"Selected mode={mode.value}, code_ext={code_ext(mode)}, deps_ext={deps_ext(mode)}"
-        )
-        dbg(f"Programs dir: {self.programs_dir}")
-        for i, ld in enumerate(self.libs_dirs, start=1):
-            dbg(f"Lib {i}: {ld}")
+        self.ignore_abb_lib = ignore_abb_lib
+        self.debug = debug
         self.parser = create_sl_parser()  # reuse your grammar setup
         self.transformer = SLTransformer()  # reuse your transformer
         self._visited: set[str] = set()
         self._stack: set[str] = set()  # cycle protection
         self._ignored_dirs: set[Path] = (
-            {DEFAULT_VENDOR_DIR.resolve()} if DEFAULT_IGNORE_VENDOR_LIB else set()
+            {self.abb_lib_dir} if self.ignore_abb_lib else set()
         )
+        self.dbg(
+            f"Selected mode={mode.value}, code_ext={code_ext(mode)}, deps_ext={deps_ext(mode)}"
+        )
+        self.dbg(f"Programs dir: {self.program_dir}")
+        for i, ld in enumerate(self.other_lib_dirs, start=1):
+            self.dbg(f"Lib {i}: {ld}")
 
     def _is_ignored_base(self, base: Path) -> bool:
         try:
@@ -218,39 +217,39 @@ class SattLineProjectLoader:
     def _find_code(self, name: str) -> Path | None:
         ext = code_ext(self.mode)
         found: Path | None = None
-        for base in [self.programs_dir, *self.libs_dirs]:
+        for base in [self.program_dir, *self.other_lib_dirs]:
             if self._is_ignored_base(base):
                 # Skip vendor dir entirely
                 continue
             p = base / f"{name}{ext}"
-            dbg(f"Checking code file: {p} (exists={p.exists()})")
+            self.dbg(f"Checking code file: {p} (exists={p.exists()})")
             if p.exists():
                 found = p
                 break
 
         if not found:
-            dbg(f"No code file found for '{name}' with ext={ext}")
+            self.dbg(f"No code file found for '{name}' with ext={ext}")
             return None
         else:
-            dbg(f"Using code file: {found}")
+            self.dbg(f"Using code file: {found}")
             return found
 
     def _find_deps(self, name: str) -> Path | None:
         ext = deps_ext(self.mode)
         found: Path | None = None
-        for base in [self.programs_dir, *self.libs_dirs]:
+        for base in [self.program_dir, *self.other_lib_dirs]:
             if self._is_ignored_base(base):
                 # Skip vendor dir entirely
                 continue
             p = base / f"{name}{ext}"
-            dbg(f"Checking deps file: {p} (exists={p.exists()})")
+            self.dbg(f"Checking deps file: {p} (exists={p.exists()})")
             if p.exists():
                 found = p
                 break
         if not found:
-            dbg(f"No deps file found for '{name}' with ext={ext}")
+            self.dbg(f"No deps file found for '{name}' with ext={ext}")
         else:
-            dbg(f"Using deps file: {found}")
+            self.dbg(f"Using deps file: {found}")
         return found
 
     def _find_vendor_code(self, name: str) -> Path | None:
@@ -275,10 +274,10 @@ class SattLineProjectLoader:
             text = deps_path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             text = deps_path.read_text(encoding="cp1252")
-        
+
         lines = text.splitlines()
         names = [ln.strip() for ln in lines if ln.strip()]
-        dbg(f"Deps from {deps_path.name}: {names}")
+        self.dbg(f"Deps from {deps_path.name}: {names}")
         return names
 
     def _read_text_simple(self, path: Path) -> str:
@@ -295,12 +294,12 @@ class SattLineProjectLoader:
         """
         rp = code_path.resolve()
         try:
-            pr = self.programs_dir.resolve()
+            pr = self.program_dir.resolve()
         except Exception:
-            pr = self.programs_dir
+            pr = self.program_dir
         if rp.is_relative_to(pr):
             return pr.name
-        for ld in self.libs_dirs:
+        for ld in self.other_lib_dirs:
             try:
                 lr = ld.resolve()
             except Exception:
@@ -311,21 +310,23 @@ class SattLineProjectLoader:
         return rp.parent.name
 
     def _parse_one(self, code_path: Path) -> BasePicture:
-        dbg(f"Parsing file: {code_path}")
+        self.dbg(f"Parsing file: {code_path}")
         src = self._read_text_simple(code_path)
         cleaned = strip_sl_comments(src)
         tree = self.parser.parse(cleaned)  # may raise LarkError
-        dbg("Parse OK, transforming with SLTransformer")
+        self.dbg("Parse OK, transforming with SLTransformer")
         basepic = self.transformer.transform(tree)
         # Attach raw parse tree for later dumping in CLI
         try:
             setattr(basepic, "parse_tree", tree)  # <-- add this
         except Exception:
             # If BasePicture uses __slots__, skip attaching
-            dbg("BasePicture does not allow dynamic attributes; parse tree not attached")
-        dbg(f"Transform result type: {type(basepic).__name__}")
+            self.dbg(
+                "BasePicture does not allow dynamic attributes; parse tree not attached"
+            )
+        self.dbg(f"Transform result type: {type(basepic).__name__}")
         if not isinstance(basepic, BasePicture):
-            dbg(
+            self.dbg(
                 "Warning: transform result is not BasePicture; check transformer.start()"
             )
         return basepic
@@ -333,12 +334,12 @@ class SattLineProjectLoader:
     def resolve(self, root_name: str, strict: bool = False) -> ProjectGraph:
         if self.scan_root_only:
             return self._resolve_root_only(root_name, strict)
-        dbg(f"Resolving root: {root_name}")
+        self.dbg(f"Resolving root: {root_name}")
         graph = ProjectGraph()
         self._visit(root_name, graph, strict)
-        dbg(f"Resolved ASTs: {list(graph.ast_by_name.keys())}")
+        self.dbg(f"Resolved ASTs: {list(graph.ast_by_name.keys())}")
         if graph.missing:
-            dbg(f"Missing/failed: {graph.missing}")
+            self.dbg(f"Missing/failed: {graph.missing}")
         return graph
 
     def _resolve_root_only(self, root_name: str, strict: bool) -> ProjectGraph:
@@ -443,51 +444,3 @@ def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> Base
         origin_file=root_bp.origin_file,
         origin_lib=root_bp.origin_lib,
     )
-
-
-if __name__ == "__main__":
-    loader = SattLineProjectLoader(
-        DEFAULT_PROGRAMS_DIR, DEFAULT_LIBS_DIRS, DEFAULT_SELECTED_MODE, scan_root_only=DEFAULT_SCAN_ROOT_ONLY
-    )
-    graph = loader.resolve(DEFAULT_ROOT_PROGRAM, strict=DEFAULT_STRICT_FAIL_ON_MISSING)
-
-    # Build a synthetic project-wide BasePicture with merged defs
-    root_bp = graph.ast_by_name.get(DEFAULT_ROOT_PROGRAM)
-    if not root_bp:
-        # Helpful summary before raising
-        print("\n--- Debug summary ---")
-        print(f"Mode: {DEFAULT_SELECTED_MODE.value}")
-        print(f"Programs dir: {DEFAULT_PROGRAMS_DIR}")
-        print(f"Libs dirs: {DEFAULT_LIBS_DIRS}")
-        print(f"Resolved ASTs: {list(graph.ast_by_name.keys())}")
-        if graph.missing:
-            print("Missing/failed:")
-            for m in graph.missing:
-                print(f"  - {m}")
-        # The same RuntimeError as before, but now with context printed
-        raise RuntimeError(
-            f"Root program '{DEFAULT_ROOT_PROGRAM}' not parsed. Missing or error?"
-        )
-
-    project_bp = merge_project_basepicture(root_bp, graph)
-    
-    # result = debug_variable_usage(project_bp, "AgitVariAtribut")
-    # print(result)
-    print(project_bp)
-    report: VariablesReport = analyze_variables(project_bp)
-    print(report.summary())
-
-    #debug_module_structure(root_bp)
-
-    # # Analyze specific module
-    # result = analyze_module_duplicates(root_bp, "UnitControl", debug=False)
-    # print("\n" + result.summary())
-
-    # # Access detailed information
-    # if result.unique_variants > 1:
-    #     print("\nDetailed variant analysis:")
-    #     for i, fp in enumerate(result.fingerprints, 1):
-    #         print(f"\n=== Variant {i} ===")
-    #         print(f"DateCode: {fp.datecode}")
-    #         print(f"Module Parameters: {[v.name for v in fp.module.moduleparameters]}")
-    #         print(f"Local Variables: {[v.name for v in fp.module.localvariables]}")
