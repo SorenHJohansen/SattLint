@@ -75,18 +75,17 @@ This starts the interactive SattLint application.
 ### Interactive Usage
 
 When started, SattLint presents a menu similar to:
-
+```
 === SattLint ===
 How to use SattLint
 ------------------
-
-• Navigate using the number keys shown in each menu
-• Press Enter to confirm a selection
-• Changes are NOT saved until you choose "Save config"
-• Use "Configuration" to change settings
-• Use "Run analysis" to analyze the configured root program
-• Use "Dump outputs" to inspect parse trees, ASTs, etc.
-• Press 'q' at any time in the main menu to quit
+- Navigate using the number keys shown in each menu
+- Press Enter to confirm a selection
+- Changes are NOT saved until you choose "Save config"
+- Use "Configuration" to change settings
+- Use "Run analysis" to analyze the configured root program
+- Use "Dump outputs" to inspect parse trees, ASTs, etc.
+- Press 'q' at any time in the main menu to quit
 
 1) Show config
 2) Configuration
@@ -95,6 +94,7 @@ How to use SattLint
 5) Save config
 6) Self-check diagnostics
 q) Quit
+```
 
 ## Project Layout
 
