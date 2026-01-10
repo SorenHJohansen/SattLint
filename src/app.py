@@ -256,16 +256,18 @@ def config_menu(cfg: dict) -> bool:
     while True:
         clear_screen()
         print("""
---- Configuration ---
-1) Root program/library
-2) Mode
-3) Toggle ignore_ABB_lib
-4) Toggle scan_root_only
-5) Toggle debug
-6) Programs dir
-7) Vendor libs dir
-8) Edit other_lib_dirs
-b) Back
+--- Edit Configuration ---
+1)  Change Root program/library to analyze
+2)  Toggle Mode (official/draft)
+3)  Toggle ignore_ABB_lib
+4)  Toggle scan_root_only
+5)  Toggle debug
+6)  Change Program_dir
+7)  Change ABB_lib_dir
+8)  Add/remove other_lib_dirs
+9)  Save config
+10) Show config
+b)  Back
 """)
         c = input("> ").strip().lower()
 
@@ -273,7 +275,7 @@ b) Back
             return dirty
 
         elif c == "1":
-            new = prompt("Root program/library", cfg["root"])
+            new = prompt("New root program/library", cfg["root"])
             if not root_exists(new, cfg):
                 print("❌ Root not found in configured directories")
                 pause()
@@ -303,13 +305,13 @@ b) Back
                 dirty = True
 
         elif c == "6":
-            new = prompt("Programs dir", cfg["program_dir"])
+            new = prompt("New program_dir", cfg["program_dir"])
             if confirm("Change program_dir?"):
                 cfg["program_dir"] = new
                 dirty = True
 
         elif c == "7":
-            new = prompt("ABB lib dir", cfg["ABB_lib_dir"])
+            new = prompt("New ABB_lib_dir", cfg["ABB_lib_dir"])
             if confirm("Change ABB_lib_dir?"):
                 cfg["ABB_lib_dir"] = new
                 dirty = True
@@ -327,7 +329,14 @@ b) Back
                 if 0 <= idx < len(libs):
                     libs.pop(idx)
                     dirty = True
-
+        elif c == "9":
+            if confirm("Save config to disk?"):
+                save_config(CONFIG_PATH, cfg)
+                dirty = False
+        elif c == "10":
+            clear_screen()
+            show_config(cfg)
+            pause()
         else:
             print("Invalid choice.")
 
@@ -353,48 +362,38 @@ How to use SattLint
 • Navigate using the number keys shown in each menu
 • Press Enter to confirm a selection
 • Changes are NOT saved until you choose "Save config"
-• Use "Configuration" to change settings
 • Use "Run analysis" to analyze the configured root program
 • Use "Dump outputs" to inspect parse trees, ASTs, etc.
+• Use "Edit config" to change settings
+• Use "Self-check" to check if the config is OK
 • Press 'q' at any time in the main menu to quit
 
 === SattLint ===
-1) Show config
-2) Configuration
-3) Run analysis
-4) Dump outputs
-5) Save config
-6) Self-check diagnostics
+1) Run analysis
+2) Dump outputs
+3) Edit config
+4) Self-check diagnostics
 q) Quit
 """)
         c = input("> ").strip().lower()
 
         if c == "1":
-            clear_screen()
-            show_config(cfg)
-            pause()
-
-        elif c == "2":
-            dirty |= config_menu(cfg)
-
-        elif c == "3":
             if confirm("Run analysis?"):
                 run_variable_analysis(cfg)
 
-        elif c == "4":
+        elif c == "2":
             dump_menu(cfg)
 
-        elif c == "5":
-            if confirm("Save config to disk?"):
-                save_config(CONFIG_PATH, cfg)
-                dirty = False
-        elif c == "6":
+        elif c == "3":
+            dirty |= config_menu(cfg)
+
+        elif c == "4":
             clear_screen()
             self_check(cfg)
             pause()
 
         elif c == "q":
-            if dirty and confirm("Unsaved changes. Save before quitting?"):
+            if dirty and confirm("Unsaved config changes. Save before quitting?"):
                 save_config(CONFIG_PATH, cfg)
             print("Bye.")
             return
