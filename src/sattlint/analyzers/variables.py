@@ -5,11 +5,10 @@ import re
 from typing import Any, Union
 from enum import Enum
 from pathlib import Path
-from analyzers.sattline_builtins import get_function_signature
+from .sattline_builtins import get_function_signature
 import logging
-
-import constants as const
-from models.ast_model import (
+from .. import constants as const
+from ..models.ast_model import (
     BasePicture,
     SingleModule,
     FrameModule,
@@ -37,13 +36,14 @@ log = logging.getLogger("SattLint")
 # Public API
 # -----------------------------------------------------------------------------
 
+
 class IssueKind(Enum):
     UNUSED = "unused"
     READ_ONLY_NON_CONST = "read_only_non_const"
     NEVER_READ = "never_read"
     STRING_MAPPING_MISMATCH = "string_mapping_mismatch"
     DATATYPE_DUPLICATION = "datatype_duplication"
-    
+
 
 @dataclass
 class VariableIssue:
@@ -78,15 +78,15 @@ class VariablesReport:
     @property
     def read_only_non_const(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.READ_ONLY_NON_CONST]
-    
+
     @property
     def never_read(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.NEVER_READ]
-    
+
     @property
     def string_mapping_mismatch(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.STRING_MAPPING_MISMATCH]
-    
+
     @property
     def datatype_duplication(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.DATATYPE_DUPLICATION]
@@ -111,23 +111,33 @@ class VariablesReport:
         if self.string_mapping_mismatch:
             lines.append("  - String mapping type mismatches:")
             lines.append("")
-            
+
             # Calculate column widths
-            location_w = max(len(".".join(m.module_path)) for m in self.string_mapping_mismatch)
-            src_name_w = max(len(m.source_variable.name) if m.source_variable else 0 
-                            for m in self.string_mapping_mismatch)
-            src_type_w = max(len(m.source_variable.datatype_text) if m.source_variable else 0 
-                            for m in self.string_mapping_mismatch)
+            location_w = max(
+                len(".".join(m.module_path)) for m in self.string_mapping_mismatch
+            )
+            src_name_w = max(
+                len(m.source_variable.name) if m.source_variable else 0
+                for m in self.string_mapping_mismatch
+            )
+            src_type_w = max(
+                len(m.source_variable.datatype_text) if m.source_variable else 0
+                for m in self.string_mapping_mismatch
+            )
             tgt_name_w = max(len(m.variable.name) for m in self.string_mapping_mismatch)
-            tgt_type_w = max(len(m.variable.datatype_text) for m in self.string_mapping_mismatch)
-            
+            tgt_type_w = max(
+                len(m.variable.datatype_text) for m in self.string_mapping_mismatch
+            )
+
             # Header
-            header = (f"      {'Location':<{location_w}}  "
-                    f"{'Source Var':<{src_name_w}}  {'Type':<{src_type_w}}  =>  "
-                    f"{'Target Var':<{tgt_name_w}}  {'Type':<{tgt_type_w}}")
+            header = (
+                f"      {'Location':<{location_w}}  "
+                f"{'Source Var':<{src_name_w}}  {'Type':<{src_type_w}}  =>  "
+                f"{'Target Var':<{tgt_name_w}}  {'Type':<{tgt_type_w}}"
+            )
             lines.append(header)
             lines.append("      " + "-" * len(header.strip()))
-            
+
             # Data rows
             for m in self.string_mapping_mismatch:
                 location = ".".join(m.module_path)
@@ -135,37 +145,43 @@ class VariablesReport:
                 src_type = m.source_variable.datatype_text if m.source_variable else "?"
                 tgt_name = m.variable.name
                 tgt_type = m.variable.datatype_text
-                
-                row = (f"      {location:<{location_w}}  "
+
+                row = (
+                    f"      {location:<{location_w}}  "
                     f"{src_name:<{src_name_w}}  {src_type:<{src_type_w}}  =>  "
-                    f"{tgt_name:<{tgt_name_w}}  {tgt_type:<{tgt_type_w}}")
+                    f"{tgt_name:<{tgt_name_w}}  {tgt_type:<{tgt_type_w}}"
+                )
                 lines.append(row)
-            
+
             lines.append("")
 
         if self.datatype_duplication:
             lines.append("  - Duplicated complex datatypes (should be RECORD):")
             lines.append("")
-            
+
             # Group by datatype name
             by_dtype: dict[str, list[VariableIssue]] = {}
             for issue in self.datatype_duplication:
                 dt_name = issue.variable.datatype_text
                 by_dtype.setdefault(dt_name, []).append(issue)
-            
+
             for dt_name, issues in sorted(by_dtype.items()):
                 total_count = sum(i.duplicate_count or 0 for i in issues)
-                lines.append(f"      Datatype '{dt_name}' declared {total_count} times:")
-                
+                lines.append(
+                    f"      Datatype '{dt_name}' declared {total_count} times:"
+                )
+
                 for issue in issues:
                     loc = ".".join(issue.module_path)
-                    lines.append(f"        - {loc}: {issue.variable.name} ({issue.role})")
-                    
+                    lines.append(
+                        f"        - {loc}: {issue.variable.name} ({issue.role})"
+                    )
+
                     if issue.duplicate_locations:
                         for dup_path, dup_role in issue.duplicate_locations:
                             dup_loc = ".".join(dup_path)
                             lines.append(f"          + {dup_loc} ({dup_role})")
-            
+
             lines.append("")
         return "\n".join(lines)
 
@@ -183,6 +199,7 @@ def analyze_variables(base_picture: BasePicture) -> VariablesReport:
     issues = analyzer.run()
     return VariablesReport(basepicture_name=base_picture.header.name, issues=issues)
 
+
 def debug_variable_usage(base_picture: BasePicture, var_name: str) -> str:
     """
     Run the analyzer and return a human-readable report for all variables
@@ -196,14 +213,18 @@ def debug_variable_usage(base_picture: BasePicture, var_name: str) -> str:
         return f"No variables named {var_name!r} found."
 
     lines: list[str] = []
-    lines.append(f"Usage report for variable name {var_name!r} ({len(matches)} declaration(s)):")
+    lines.append(
+        f"Usage report for variable name {var_name!r} ({len(matches)} declaration(s)):"
+    )
 
     for idx, v in enumerate(matches, start=1):
         if hasattr(v.datatype, "value"):
-            dt = v.datatype.value 
+            dt = v.datatype.value
         else:
-            dt =  str(v.datatype)
-        lines.append(f"- [{idx}] Decl: type={dt}, const={bool(v.const)}, state={bool(v.state)}")
+            dt = str(v.datatype)
+        lines.append(
+            f"- [{idx}] Decl: type={dt}, const={bool(v.const)}, state={bool(v.state)}"
+        )
         lines.append(f"    Summary: read={bool(v.read)}, written={bool(v.written)}")
         if not v.usage_locations:
             lines.append("    No recorded usage locations.")
@@ -216,9 +237,11 @@ def debug_variable_usage(base_picture: BasePicture, var_name: str) -> str:
 
     return "\n".join(lines)
 
+
 # -----------------------------------------------------------------------------
 # Analyzer
 # -----------------------------------------------------------------------------
+
 
 class VariablesAnalyzer:
     """
@@ -230,14 +253,20 @@ class VariablesAnalyzer:
 
     def __init__(self, base_picture: BasePicture):
         self.bp = base_picture
-        self.typedef_index = {mt.name.lower(): mt for mt in (self.bp.moduletype_defs or [])}
+        self.typedef_index = {
+            mt.name.lower(): mt for mt in (self.bp.moduletype_defs or [])
+        }
         self.used_params_by_typedef: dict[str, set[str]] = {}
         self.param_reads_by_typedef: dict[str, set[str]] = {}
         self.param_writes_by_typedef: dict[str, set[str]] = {}
-        self._alias_links: list[tuple[Variable, Variable]] = []  # (parent_var, child_param_var)
+        self._alias_links: list[
+            tuple[Variable, Variable]
+        ] = []  # (parent_var, child_param_var)
 
         # Index BasePicture/global variables (localvariables)
-        self._root_env: dict[str, Variable] = {v.name.lower(): v for v in (self.bp.localvariables or [])}
+        self._root_env: dict[str, Variable] = {
+            v.name.lower(): v for v in (self.bp.localvariables or [])
+        }
 
         # Fallback index across the whole AST (by name) to be robust
         self._any_var_index: dict[str, list[Variable]] = {}
@@ -258,11 +287,13 @@ class VariablesAnalyzer:
     @property
     def issues(self) -> list[VariableIssue]:
         return self._issues
-    
+
     def _is_string_simple_type(self, dt: Simple_DataType | str | None) -> bool:
         return isinstance(dt, Simple_DataType) and dt in self._STRING_TYPES
 
-    def _string_limit_for_datatype(self, dt: Simple_DataType | str | None) -> int | None:
+    def _string_limit_for_datatype(
+        self, dt: Simple_DataType | str | None
+    ) -> int | None:
         if isinstance(dt, Simple_DataType):
             return self._STRING_LIMITS.get(dt)
         return None
@@ -272,13 +303,15 @@ class VariablesAnalyzer:
             return dt.value
         return str(dt) if dt is not None else "None"
 
-    def _record_mapping_mismatch_issue(self, tgt: Variable, src: Variable, path: list[str]) -> None:
+    def _record_mapping_mismatch_issue(
+        self, tgt: Variable, src: Variable, path: list[str]
+    ) -> None:
         issue = VariableIssue(
             kind=IssueKind.STRING_MAPPING_MISMATCH,
             module_path=path.copy(),
             variable=tgt,
             role="parameter mapping type mismatch",
-            source_variable=src
+            source_variable=src,
         )
         self._issues.append(issue)
 
@@ -289,10 +322,9 @@ class VariablesAnalyzer:
         parent_env: dict[str, Variable],
         parent_path: list[str],
     ) -> None:
-        
         params_by_name = {v.name: v for v in (mod.moduleparameters or [])}
 
-        for pm in (mod.parametermappings or []):
+        for pm in mod.parametermappings or []:
             tgt_name = self._varname_base(pm.target)
             tgt_var = params_by_name.get(tgt_name) if tgt_name else None
             self._check_param_mapping(pm, tgt_var, parent_env, parent_path)
@@ -308,7 +340,7 @@ class VariablesAnalyzer:
             return
         # Only parameters are valid mapping targets [2]
         params_by_name = {v.name: v for v in (mt.moduleparameters or [])}
-        for pm in (inst.parametermappings or []):
+        for pm in inst.parametermappings or []:
             tgt_name = self._varname_base(pm.target)
             tgt_var = params_by_name.get(tgt_name) if tgt_name else None
             self._check_param_mapping(pm, tgt_var, parent_env, parent_path)
@@ -338,8 +370,12 @@ class VariablesAnalyzer:
             return  # cannot validate
 
         # Only check when both are built-in string types
-        if self._is_string_simple_type(tgt_var.datatype) and self._is_string_simple_type(src_var.datatype):
-            log.debug(f"DEBUG: Checking mapping at {path}: {src_var.name}:{src_var.datatype} -> {tgt_var.name}:{tgt_var.datatype}")
+        if self._is_string_simple_type(
+            tgt_var.datatype
+        ) and self._is_string_simple_type(src_var.datatype):
+            log.debug(
+                f"DEBUG: Checking mapping at {path}: {src_var.name}:{src_var.datatype} -> {tgt_var.name}:{tgt_var.datatype}"
+            )
             if tgt_var.datatype is not src_var.datatype:
                 self._record_mapping_mismatch_issue(tgt_var, src_var, path)
 
@@ -348,16 +384,16 @@ class VariablesAnalyzer:
             self._any_var_index.setdefault(v.name.lower(), []).append(v)
 
         # BasePicture locals
-        for v in (self.bp.localvariables or []):
+        for v in self.bp.localvariables or []:
             _add(v)
 
         # Descendants
         def _walk(mods):
             for m in mods or []:
                 if isinstance(m, SingleModule):
-                    for v in (m.moduleparameters or []):
+                    for v in m.moduleparameters or []:
                         _add(v)
-                    for v in (m.localvariables or []):
+                    for v in m.localvariables or []:
                         _add(v)
                     _walk(m.submodules or [])
                 elif isinstance(m, FrameModule):
@@ -367,17 +403,19 @@ class VariablesAnalyzer:
         _walk(self.bp.submodules or [])
 
         # TypeDefs declared in this file
-        for mt in (self.bp.moduletype_defs or []):
-            for v in (mt.moduleparameters or []):
+        for mt in self.bp.moduletype_defs or []:
+            for v in mt.moduleparameters or []:
                 _add(v)
-            for v in (mt.localvariables or []):
+            for v in mt.localvariables or []:
                 _add(v)
 
     def _is_const_candidate(self, v: Variable) -> bool:
         # Built-ins are normalized to Simple_DataType in Variable.__post_init__ [1]
         return isinstance(v.datatype, Simple_DataType)
-    
-    def _handle_function_call(self, fn_name: str | None, args: list, env: dict[str, Variable], path: list[str]) -> None:
+
+    def _handle_function_call(
+        self, fn_name: str | None, args: list, env: dict[str, Variable], path: list[str]
+    ) -> None:
         if not fn_name:
             # Defensive: walk arguments generically
             for a in args or []:
@@ -395,7 +433,9 @@ class VariablesAnalyzer:
             # Default to 'in' if more args are supplied than we have parameters
             direction = "in"
             if idx < len(sig.parameters):
-                direction = sig.parameters[idx].direction  # "in", "in var", "out", "inout" [1]
+                direction = sig.parameters[
+                    idx
+                ].direction  # "in", "in var", "out", "inout" [1]
 
             # If the argument is a plain variable reference dict, handle directly by direction
             if isinstance(arg, dict) and const.KEY_VAR_NAME in arg:
@@ -426,7 +466,7 @@ class VariablesAnalyzer:
             return var
         lst = self._any_var_index.get(normalized)
         return lst[0] if lst else None
-    
+
     def _is_from_root_origin(self, origin_file: str | None) -> bool:
         if not origin_file:
             # If origin wasn't stamped (e.g., SCAN_ROOT_ONLY), treat as root.
@@ -440,13 +480,16 @@ class VariablesAnalyzer:
         try:
             return Path(origin_file).stem.lower() == Path(root_origin).stem.lower()
         except Exception:
-            return origin_file.rsplit(".", 1)[0].lower() == root_origin.rsplit(".", 1)[0].lower()
+            return (
+                origin_file.rsplit(".", 1)[0].lower()
+                == root_origin.rsplit(".", 1)[0].lower()
+            )
 
     # ------------ Entry point ------------
 
     def run(self) -> list[VariableIssue]:
         # Pre-analyze ModuleTypeDefs to know which of their parameters are used internally
-        self._issues = []           
+        self._issues = []
 
         # Analyze BasePicture module body
         env = self._build_env_for_basepicture(self.bp)
@@ -456,18 +499,25 @@ class VariablesAnalyzer:
         self._walk_header_groupconn(self.bp.header, env, path=[self.bp.header.name])
 
         # Walk submodules; propagate usage
-        self._walk_submodules(self.bp.submodules or [], parent_env=env, parent_path=[self.bp.header.name])
+        self._walk_submodules(
+            self.bp.submodules or [], parent_env=env, parent_path=[self.bp.header.name]
+        )
         self._apply_alias_back_propagation()
         self._detect_datatype_duplications()
 
         # Collect issues across this file
         bp_path = [self.bp.header.name]
 
-        for v in (self.bp.localvariables or []):
-            role="localvariable"
+        for v in self.bp.localvariables or []:
+            role = "localvariable"
             if not (v.read or v.written):
                 self._add_issue(IssueKind.UNUSED, bp_path, v, role=role)
-            elif bool(v.read) and not bool(v.written) and not bool(v.const) and self._is_const_candidate(v):
+            elif (
+                bool(v.read)
+                and not bool(v.written)
+                and not bool(v.const)
+                and self._is_const_candidate(v)
+            ):
                 self._add_issue(IssueKind.READ_ONLY_NON_CONST, bp_path, v, role=role)
             elif v.written and not v.read:
                 self._add_issue(IssueKind.NEVER_READ, bp_path, v, role=role)
@@ -475,7 +525,7 @@ class VariablesAnalyzer:
         for mod in self.bp.submodules or []:
             self._collect_issues_from_module(mod, path=bp_path)
 
-        for mt in (self.bp.moduletype_defs or []):
+        for mt in self.bp.moduletype_defs or []:
             if not self._is_from_root_origin(getattr(mt, "origin_file", None)):
                 continue
             td_path = [self.bp.header.name, f"TypeDef:{mt.name}"]
@@ -483,17 +533,24 @@ class VariablesAnalyzer:
             self._analyze_typedef(mt, path=[self.bp.header.name, f"TypeDef:{mt.name}"])
 
             # moduleparameters: UNUSED only
-            for v in (mt.moduleparameters or []):
+            for v in mt.moduleparameters or []:
                 role = "moduleparameter"
                 if not (v.read or v.written):
                     self._add_issue(IssueKind.UNUSED, td_path, v, role=role)
             # localvariables: UNUSED / READ_ONLY_NON_CONST / NEVER_READ
-            for v in (mt.localvariables or []):
+            for v in mt.localvariables or []:
                 role = "localvariable"
                 if not (v.read or v.written):
                     self._add_issue(IssueKind.UNUSED, td_path, v, role=role)
-                elif bool(v.read) and not bool(v.written) and not bool(v.const) and self._is_const_candidate(v):
-                    self._add_issue(IssueKind.READ_ONLY_NON_CONST, td_path, v, role=role)
+                elif (
+                    bool(v.read)
+                    and not bool(v.written)
+                    and not bool(v.const)
+                    and self._is_const_candidate(v)
+                ):
+                    self._add_issue(
+                        IssueKind.READ_ONLY_NON_CONST, td_path, v, role=role
+                    )
                 elif v.written and not v.read:
                     self._add_issue(IssueKind.NEVER_READ, td_path, v, role=role)
 
@@ -501,8 +558,14 @@ class VariablesAnalyzer:
 
     # ------------ Traversal helpers ------------
 
-    def _add_issue(self, kind: IssueKind, path: list[str], variable: Variable, role: str) -> None:
-        self._issues.append(VariableIssue(kind=kind, module_path=path.copy(), variable=variable, role=role))
+    def _add_issue(
+        self, kind: IssueKind, path: list[str], variable: Variable, role: str
+    ) -> None:
+        self._issues.append(
+            VariableIssue(
+                kind=kind, module_path=path.copy(), variable=variable, role=role
+            )
+        )
 
     def _collect_issues_from_module(
         self,
@@ -512,15 +575,24 @@ class VariablesAnalyzer:
         if isinstance(mod, SingleModule):
             my_path = path + [mod.header.name]
             # Moduleparameters: only classify UNUSED (const does not apply to params)
-            for v in (mod.moduleparameters or []):
+            for v in mod.moduleparameters or []:
                 if not (v.read or v.written):
-                    self._add_issue(IssueKind.UNUSED, my_path, v, role="moduleparameter")
+                    self._add_issue(
+                        IssueKind.UNUSED, my_path, v, role="moduleparameter"
+                    )
             # Localvariables: both UNUSED and READ_ONLY_NON_CONST apply
-            for v in (mod.localvariables or []):
+            for v in mod.localvariables or []:
                 if not (v.read or v.written):
                     self._add_issue(IssueKind.UNUSED, my_path, v, role="localvariable")
-                elif bool(v.read) and not bool(v.written) and not bool(v.const) and self._is_const_candidate(v):
-                    self._add_issue(IssueKind.READ_ONLY_NON_CONST, my_path, v, role="localvariable")
+                elif (
+                    bool(v.read)
+                    and not bool(v.written)
+                    and not bool(v.const)
+                    and self._is_const_candidate(v)
+                ):
+                    self._add_issue(
+                        IssueKind.READ_ONLY_NON_CONST, my_path, v, role="localvariable"
+                    )
             for ch in mod.submodules or []:
                 self._collect_issues_from_module(ch, my_path)
 
@@ -542,12 +614,20 @@ class VariablesAnalyzer:
     ) -> None:
         if isinstance(mod, SingleModule):
             my_path = path + [mod.header.name]
-            for v in (mod.moduleparameters or []):
+            for v in mod.moduleparameters or []:
                 if not (v.read or v.written):
-                    out.append(VariableIssue(kind=IssueKind.UNUSED, module_path=my_path, variable=v))
-            for v in (mod.localvariables or []):
+                    out.append(
+                        VariableIssue(
+                            kind=IssueKind.UNUSED, module_path=my_path, variable=v
+                        )
+                    )
+            for v in mod.localvariables or []:
                 if not (v.read or v.written):
-                    out.append(VariableIssue(kind=IssueKind.UNUSED, module_path=my_path, variable=v))
+                    out.append(
+                        VariableIssue(
+                            kind=IssueKind.UNUSED, module_path=my_path, variable=v
+                        )
+                    )
             for ch in mod.submodules or []:
                 self._collect_unused_from_module(ch, my_path, out)
 
@@ -561,30 +641,30 @@ class VariablesAnalyzer:
 
     def _build_env_for_basepicture(self, bp: BasePicture) -> dict[str, Variable]:
         env: dict[str, Variable] = {}
-        for v in (bp.localvariables or []):
+        for v in bp.localvariables or []:
             env[v.name.lower()] = v  # normalize to lowercase
         return env
 
     def _build_env_for_single(self, mod: SingleModule) -> dict[str, Variable]:
         env: dict[str, Variable] = {}
-        for v in (mod.moduleparameters or []):
+        for v in mod.moduleparameters or []:
             env[v.name.lower()] = v
-        for v in (mod.localvariables or []):
+        for v in mod.localvariables or []:
             env[v.name.lower()] = v
         return env
 
     def _build_env_for_typedef(self, mt: ModuleTypeDef) -> dict[str, Variable]:
         env: dict[str, Variable] = {}
-        for v in (mt.moduleparameters or []):
+        for v in mt.moduleparameters or []:
             env[v.name.lower()] = v
-        for v in (mt.localvariables or []):
+        for v in mt.localvariables or []:
             env[v.name.lower()] = v
         return env
 
     def _is_external_typename(self, typename: str) -> bool:
         # Type is external to this file if not present in BasePicture.moduletype_defs [3]
         return typename.lower() not in self.typedef_index
-    
+
     def _collect_read_only_non_const_from_module(
         self,
         mod: Union[SingleModule, FrameModule, ModuleTypeInstance],
@@ -593,12 +673,24 @@ class VariablesAnalyzer:
     ) -> None:
         if isinstance(mod, SingleModule):
             my_path = path + [mod.header.name]
-            for v in (mod.moduleparameters or []):
+            for v in mod.moduleparameters or []:
                 if bool(v.read) and not bool(v.written) and not bool(v.const):
-                    out.append(VariableIssue(kind=IssueKind.READ_ONLY_NON_CONST, module_path=my_path, variable=v))
-            for v in (mod.localvariables or []):
+                    out.append(
+                        VariableIssue(
+                            kind=IssueKind.READ_ONLY_NON_CONST,
+                            module_path=my_path,
+                            variable=v,
+                        )
+                    )
+            for v in mod.localvariables or []:
                 if bool(v.read) and not bool(v.written) and not bool(v.const):
-                    out.append(VariableIssue(kind=IssueKind.READ_ONLY_NON_CONST, module_path=my_path, variable=v))
+                    out.append(
+                        VariableIssue(
+                            kind=IssueKind.READ_ONLY_NON_CONST,
+                            module_path=my_path,
+                            variable=v,
+                        )
+                    )
             for ch in mod.submodules or []:
                 self._collect_read_only_non_const_from_module(ch, my_path, out)
 
@@ -621,8 +713,12 @@ class VariablesAnalyzer:
         self._walk_typedef_groupconn(mt, env, path)
 
         # Track per-parameter read/write usage
-        used_reads: set[str] = set(v.name.lower() for v in (mt.moduleparameters or []) if v.read)
-        used_writes: set[str] = set(v.name.lower() for v in (mt.moduleparameters or []) if v.written)
+        used_reads: set[str] = set(
+            v.name.lower() for v in (mt.moduleparameters or []) if v.read
+        )
+        used_writes: set[str] = set(
+            v.name.lower() for v in (mt.moduleparameters or []) if v.written
+        )
 
         # Preserve existing "used" union for any other consumers
         used_params: set[str] = used_reads | used_writes
@@ -632,7 +728,7 @@ class VariablesAnalyzer:
         self.param_reads_by_typedef[mt.name.lower()] = used_reads
         self.param_writes_by_typedef[mt.name.lower()] = used_writes
 
-        for pm in (mt.parametermappings or []):
+        for pm in mt.parametermappings or []:
             tgt_name = self._varname_base(pm.target)
             tgt_var = env.get(tgt_name) if tgt_name else None
             self._check_param_mapping(pm, tgt_var, env, path)
@@ -645,7 +741,7 @@ class VariablesAnalyzer:
         """
         for parent_var, child_var in self._alias_links:
             # replicate reads
-            for path, kind in (parent_var.usage_locations or []):
+            for path, kind in parent_var.usage_locations or []:
                 if kind == "read":
                     child_var.mark_read(path)
                 elif kind == "write":
@@ -658,23 +754,32 @@ class VariablesAnalyzer:
         parent_path: list[str],
     ) -> None:
         for child in children:
-
-            self._walk_header_enable(child.header, parent_env, path=parent_path + [child.header.name])
-            self._walk_header_groupconn(child.header, parent_env, path=parent_path + [child.header.name])
+            self._walk_header_enable(
+                child.header, parent_env, path=parent_path + [child.header.name]
+            )
+            self._walk_header_groupconn(
+                child.header, parent_env, path=parent_path + [child.header.name]
+            )
 
             if isinstance(child, SingleModule):
                 # build child env to resolve its parameter Variable objects
                 child_env = self._build_env_for_single(child)
 
                 # analyze the child (unchanged)
-                used_reads, used_writes = self._analyze_single_module(child, parent_path + [child.header.name])
+                used_reads, used_writes = self._analyze_single_module(
+                    child, parent_path + [child.header.name]
+                )
 
                 # record alias links for SingleModule parameters
-                for pm in (child.parametermappings or []):
+                for pm in child.parametermappings or []:
                     # parent-side variable
-                    src_var = self._lookup_env_var_from_varname_dict(pm.source, parent_env)
+                    src_var = self._lookup_env_var_from_varname_dict(
+                        pm.source, parent_env
+                    )
                     if src_var is None:
-                        src_var = self._lookup_global_variable(self._varname_base(pm.source))
+                        src_var = self._lookup_global_variable(
+                            self._varname_base(pm.source)
+                        )
 
                     # child-side parameter
                     tgt_name = self._varname_base(pm.target)
@@ -683,9 +788,8 @@ class VariablesAnalyzer:
                     if src_var is not None and tgt_var is not None:
                         self._alias_links.append((src_var, tgt_var))
 
-        
                 # existing propagation to parent
-                for pm in (child.parametermappings or []):
+                for pm in child.parametermappings or []:
                     self._propagate_mapping_to_parent(
                         pm,
                         child_used_reads=used_reads,
@@ -702,27 +806,45 @@ class VariablesAnalyzer:
                 )
 
             elif isinstance(child, FrameModule):
-                self._walk_moduledef(child.moduledef, parent_env, parent_path + [child.header.name])
-                self._walk_module_code(child.modulecode, parent_env, parent_path + [child.header.name])
-                self._walk_submodules(child.submodules or [], parent_env, parent_path + [child.header.name])
+                self._walk_moduledef(
+                    child.moduledef, parent_env, parent_path + [child.header.name]
+                )
+                self._walk_module_code(
+                    child.modulecode, parent_env, parent_path + [child.header.name]
+                )
+                self._walk_submodules(
+                    child.submodules or [],
+                    parent_env,
+                    parent_path + [child.header.name],
+                )
 
             elif isinstance(child, ModuleTypeInstance):
                 external = self._is_external_typename(child.moduletype_name)
                 if external:
                     reads, writes = None, None
                 else:
-                    reads = self.param_reads_by_typedef.get(child.moduletype_name.lower())
-                    writes = self.param_writes_by_typedef.get(child.moduletype_name.lower())
+                    reads = self.param_reads_by_typedef.get(
+                        child.moduletype_name.lower()
+                    )
+                    writes = self.param_writes_by_typedef.get(
+                        child.moduletype_name.lower()
+                    )
                     if reads is None or writes is None:
                         mt = self.typedef_index.get(child.moduletype_name.lower())
                         if mt:
-                            self._analyze_typedef(mt, path=parent_path + [f"TypeDef:{mt.name}"])
-                            reads = self.param_reads_by_typedef.get(child.moduletype_name.lower(), set())
-                            writes = self.param_writes_by_typedef.get(child.moduletype_name.lower(), set())
+                            self._analyze_typedef(
+                                mt, path=parent_path + [f"TypeDef:{mt.name}"]
+                            )
+                            reads = self.param_reads_by_typedef.get(
+                                child.moduletype_name.lower(), set()
+                            )
+                            writes = self.param_writes_by_typedef.get(
+                                child.moduletype_name.lower(), set()
+                            )
                         else:
                             reads, writes = set(), set()
 
-                for pm in (child.parametermappings or []):
+                for pm in child.parametermappings or []:
                     self._propagate_mapping_to_parent(
                         pm,
                         child_used_reads=reads,
@@ -738,7 +860,9 @@ class VariablesAnalyzer:
                         parent_path=parent_path + [child.header.name],
                     )
 
-    def _analyze_single_module(self, mod: SingleModule, path: list[str]) -> tuple[set[str], set[str]]:
+    def _analyze_single_module(
+        self, mod: SingleModule, path: list[str]
+    ) -> tuple[set[str], set[str]]:
         env = self._build_env_for_single(mod)
         log.debug(f"DEBUG: _analyze_single_module for {mod.header.name}")
         log.debug(f"  env contains: {list(env.keys())}")
@@ -747,8 +871,12 @@ class VariablesAnalyzer:
         self._walk_module_code(mod.modulecode, env, path)
         log.debug(f"  Recursing into submodules with env: {list(env.keys())}")
         self._walk_submodules(mod.submodules or [], parent_env=env, parent_path=path)
-        used_reads: set[str] = set(v.name.lower() for v in (mod.moduleparameters or []) if v.read)
-        used_writes: set[str] = set(v.name.lower() for v in (mod.moduleparameters or []) if v.written)
+        used_reads: set[str] = set(
+            v.name.lower() for v in (mod.moduleparameters or []) if v.read
+        )
+        used_writes: set[str] = set(
+            v.name.lower() for v in (mod.moduleparameters or []) if v.written
+        )
         return used_reads, used_writes
 
     # ---------------- ModuleDef walkers ----------------
@@ -797,7 +925,9 @@ class VariablesAnalyzer:
         if var is not None:
             var.mark_read(path)
 
-    def _walk_moduledef(self, mdef: ModuleDef | None, env: dict[str, Variable], path: list[str]) -> None:
+    def _walk_moduledef(
+        self, mdef: ModuleDef | None, env: dict[str, Variable], path: list[str]
+    ) -> None:
         if mdef is None:
             return
         # Graph objects (now carry tails in properties)
@@ -833,7 +963,9 @@ class VariablesAnalyzer:
             args = call.get(const.KEY_ARGS) or []
             self._handle_function_call(fn_name, args, env, path)
 
-    def _scan_for_varrefs(self, obj: Any, env: dict[str, Variable], path: list[str]) -> None:
+    def _scan_for_varrefs(
+        self, obj: Any, env: dict[str, Variable], path: list[str]
+    ) -> None:
         # Generic recursive scan used for interact object bodies and nested dict/tree structures
         if obj is None:
             return
@@ -857,7 +989,11 @@ class VariablesAnalyzer:
         # Trees: enable_expression, InVar_, invar_tail
         if hasattr(obj, "data"):
             data = getattr(obj, "data")
-            if data in (const.KEY_ENABLE_EXPRESSION, const.GRAMMAR_VALUE_INVAR_PREFIX, "invar_tail"):
+            if data in (
+                const.KEY_ENABLE_EXPRESSION,
+                const.GRAMMAR_VALUE_INVAR_PREFIX,
+                "invar_tail",
+            ):
                 self._walk_tail(obj, env, path)
                 return
             # descend into children
@@ -872,27 +1008,31 @@ class VariablesAnalyzer:
         log.debug(f"  type: {type(tail).__name__}")
         if tail is None:
             return
-        
+
         # Expression tuple (from enable_expression)
         if isinstance(tail, tuple):
             self._walk_stmt_or_expr(tail, env, path)
             return
-        
+
         # InVar string result: "Allow.ProgramDebug"
         if isinstance(tail, str):
             base = tail.split(".", 1)[0].lower()
             self._mark_var_by_basename(base, env, path)
             return
-        
+
         # InVar variable_name dict result
         if isinstance(tail, dict) and const.KEY_VAR_NAME in tail:
             base = self._varname_base(tail)
             self._mark_var_by_basename(base, env, path)
             return
-        
-        raise ValueError(f"_walk_tail: unexpected tail type {type(tail).__name__}: {tail}")
 
-    def _extract_var_basenames_from_tree(self, node, allow_single_ident: bool = False) -> set[str]:
+        raise ValueError(
+            f"_walk_tail: unexpected tail type {type(tail).__name__}: {tail}"
+        )
+
+    def _extract_var_basenames_from_tree(
+        self, node, allow_single_ident: bool = False
+    ) -> set[str]:
         names: set[str] = set()
 
         def looks_like_varpath(s: str) -> bool:
@@ -929,13 +1069,17 @@ class VariablesAnalyzer:
         visit(node)
         return names
 
-    _VARPATH_RE = re.compile(r"^[A-Za-zÆØÅæøå][A-Za-zÆØÅæøå0-9_']*(\.[A-Za-zÆØÅæøå][A-Za-zÆØÅæøå0-9_']*)+$")
+    _VARPATH_RE = re.compile(
+        r"^[A-Za-zÆØÅæøå][A-Za-zÆØÅæøå0-9_']*(\.[A-Za-zÆØÅæøå][A-Za-zÆØÅæøå0-9_']*)+$"
+    )
 
     def _looks_like_varpath(self, s: str) -> bool:
         # connected_variable may be a STRING containing e.g. Colours.Text (from GraphObjects in SattLine) [4]
         return bool(self._VARPATH_RE.match(s))
 
-    def _mark_var_by_basename(self, base_name: str | None, env: dict[str, Variable], path: list[str]) -> None:
+    def _mark_var_by_basename(
+        self, base_name: str | None, env: dict[str, Variable], path: list[str]
+    ) -> None:
         log.debug(f"DEBUG: _mark_var_by_basename called")
         log.debug(f"  base_name: {base_name}")
         log.debug(f"  looking in env: {list(env.keys())}")
@@ -970,11 +1114,14 @@ class VariablesAnalyzer:
             log.debug(f"  mapping: {src_base} => {target_name}")
             log.debug(f"  child_used_reads: {child_used_reads}")
             log.debug(f"  child_used_writes: {child_used_writes}")
-            log.debug(f"  target in reads: {target_name in child_used_reads if child_used_reads else 'N/A'}")
-            log.debug(f"  target in writes: {target_name in child_used_writes if child_used_writes else 'N/A'}")
+            log.debug(
+                f"  target in reads: {target_name in child_used_reads if child_used_reads else 'N/A'}"
+            )
+            log.debug(
+                f"  target in writes: {target_name in child_used_writes if child_used_writes else 'N/A'}"
+            )
             log.debug(f"  is_global: {pm.is_source_global}")
             log.debug(f"  external_typename: {external_typename}")
-
 
         # GLOBAL means "used" at the global scope (conservatively mark read)
         if pm.is_source_global:
@@ -1002,7 +1149,6 @@ class VariablesAnalyzer:
             if child_used_writes is not None and target_name in child_used_writes:
                 src_var.mark_written(parent_path)
 
-
     # ------------ ModuleCode walkers ------------
 
     def _walk_module_code(
@@ -1021,7 +1167,9 @@ class VariablesAnalyzer:
             for stmt in eq.code or []:
                 self._walk_stmt_or_expr(stmt, env, path)
 
-    def _walk_sequence(self, seq: Sequence, env: dict[str, Variable], path: list[str]) -> None:
+    def _walk_sequence(
+        self, seq: Sequence, env: dict[str, Variable], path: list[str]
+    ) -> None:
         for node in seq.code or []:
             if isinstance(node, SFCStep):
                 # Enter/Active/Exit blocks contain statements
@@ -1054,7 +1202,9 @@ class VariablesAnalyzer:
                 # no variable usage in headers
                 continue
 
-    def _walk_seq_nodes(self, nodes: list[Any], env: dict[str, Variable], path: list[str]) -> None:
+    def _walk_seq_nodes(
+        self, nodes: list[Any], env: dict[str, Variable], path: list[str]
+    ) -> None:
         for nd in nodes:
             if isinstance(nd, SFCStep):
                 for stmt in nd.code.enter or []:
@@ -1078,7 +1228,9 @@ class VariablesAnalyzer:
 
     # ------------ Statement/expression walkers ------------
 
-    def _walk_stmt_or_expr(self, obj: Any, env: dict[str, Variable], path: list[str]) -> None:
+    def _walk_stmt_or_expr(
+        self, obj: Any, env: dict[str, Variable], path: list[str]
+    ) -> None:
         # Tree wrapping for statements is present in transformer [5]; unwrap
         if hasattr(obj, "data") and getattr(obj, "data") == const.KEY_STATEMENT:
             for ch in getattr(obj, "children", []):
@@ -1101,7 +1253,7 @@ class VariablesAnalyzer:
                 self._walk_stmt_or_expr(cond, env, path)
                 for st in stmts or []:
                     self._walk_stmt_or_expr(st, env, path)
-            for st in (else_block or []):
+            for st in else_block or []:
                 self._walk_stmt_or_expr(st, env, path)
             return
 
@@ -1117,13 +1269,19 @@ class VariablesAnalyzer:
 
         # Function call: (FunctionCall, name, [args...]) [5]
         if isinstance(obj, tuple) and obj and obj[0] == const.KEY_FUNCTION_CALL:
-            _, fn_name, args = obj  # transformer emits (FunctionCall, name, [args...]) [3]
+            _, fn_name, args = (
+                obj  # transformer emits (FunctionCall, name, [args...]) [3]
+            )
             self._handle_function_call(fn_name, args or [], env, path)
             return
 
         # Boolean OR/AND [5]
-        if isinstance(obj, tuple) and obj and obj[0] in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND):
-            for sub in (obj[1] or []):
+        if (
+            isinstance(obj, tuple)
+            and obj
+            and obj[0] in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND)
+        ):
+            for sub in obj[1] or []:
                 self._walk_stmt_or_expr(sub, env, path)
             return
 
@@ -1136,7 +1294,7 @@ class VariablesAnalyzer:
         if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_COMPARE, "compare"):
             _, left, pairs = obj
             self._walk_stmt_or_expr(left, env, path)
-            for _sym, rhs in (pairs or []):
+            for _sym, rhs in pairs or []:
                 self._walk_stmt_or_expr(rhs, env, path)
             return
 
@@ -1149,7 +1307,11 @@ class VariablesAnalyzer:
             return
 
         # Unary [+/- term] [5]
-        if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_PLUS, const.KEY_MINUS):
+        if (
+            isinstance(obj, tuple)
+            and obj
+            and obj[0] in (const.KEY_PLUS, const.KEY_MINUS)
+        ):
             _, inner = obj
             self._walk_stmt_or_expr(inner, env, path)
             return
@@ -1189,12 +1351,15 @@ class VariablesAnalyzer:
         self,
         var_dict_or_other: Any,
         env: dict[str, Variable],
-    ) -> Variable  | None:
+    ) -> Variable | None:
         """
         var_dict_or_other is either a {var_name: "..."} dict (from transformer.variable_name) [5],
         or something else (literal, None, etc.).
         """
-        if isinstance(var_dict_or_other, dict) and const.KEY_VAR_NAME in var_dict_or_other:
+        if (
+            isinstance(var_dict_or_other, dict)
+            and const.KEY_VAR_NAME in var_dict_or_other
+        ):
             base = self._varname_base(var_dict_or_other)
             if base is not None:
                 return env.get(base)
@@ -1209,7 +1374,7 @@ class VariablesAnalyzer:
             return None
         base = full.split(".", 1)[0] if full else None
         return base.lower() if base else None  # normalize to lowercase
-    
+
     def _detect_datatype_duplications(self) -> None:
         """
         Find complex (record) datatypes that are declared multiple times
@@ -1218,16 +1383,15 @@ class VariablesAnalyzer:
         """
         # Collect all variables with their locations
         var_locations: list[tuple[Variable, list[str], str]] = []
-        
+
         # BasePicture locals
         bp_path = [self.bp.header.name]
         for v in self.bp.localvariables or []:
             var_locations.append((v, bp_path.copy(), "localvariable"))
-        
+
         # Recursively collect from modules
         def _collect_from_module(
-            mod: Union[SingleModule, FrameModule, ModuleTypeInstance],
-            path: list[str]
+            mod: Union[SingleModule, FrameModule, ModuleTypeInstance], path: list[str]
         ):
             if isinstance(mod, SingleModule):
                 my_path = path + [mod.header.name]
@@ -1241,10 +1405,10 @@ class VariablesAnalyzer:
                 my_path = path + [mod.header.name]
                 for ch in mod.submodules or []:
                     _collect_from_module(ch, my_path)
-        
+
         for mod in self.bp.submodules or []:
             _collect_from_module(mod, bp_path)
-        
+
         # Include TypeDef variables (only from root origin)
         for mt in self.bp.moduletype_defs or []:
             if not self._is_from_root_origin(getattr(mt, "origin_file", None)):
@@ -1254,39 +1418,42 @@ class VariablesAnalyzer:
                 var_locations.append((v, td_path.copy(), "moduleparameter"))
             for v in mt.localvariables or []:
                 var_locations.append((v, td_path.copy(), "localvariable"))
-        
+
         # Only check non-built-in types (complex/record types)
         complex_vars = [
-            (v, path, role) 
-            for v, path, role in var_locations 
+            (v, path, role)
+            for v, path, role in var_locations
             if not isinstance(v.datatype, Simple_DataType)
         ]
-        
+
         # Group by datatype name (case-insensitive)
         by_datatype: dict[str, list[tuple[Variable, list[str], str]]] = {}
         for v, path, role in complex_vars:
             dt_key = v.datatype_text.lower()
             by_datatype.setdefault(dt_key, []).append((v, path, role))
-        
+
         # Report duplicates (2+ occurrences)
         for dt_name, occurrences in by_datatype.items():
             if len(occurrences) < 2:
                 continue
-            
+
             # Check if this is actually a defined RECORD type
             if dt_name in (d.name.lower() for d in self.bp.datatype_defs or []):
                 # It's a legitimate record type being used multiple times - not a duplication issue
                 continue
-            
+
             # Create an issue for the first occurrence, listing all others
             first_var, first_path, first_role = occurrences[0]
             duplicate_locs = [(path, role) for _, path, role in occurrences[1:]]
-            
-            self._issues.append(VariableIssue(
-                kind=IssueKind.DATATYPE_DUPLICATION,
-                module_path=first_path,
-                variable=first_var,
-                role=first_role,
-                duplicate_count=len(occurrences),
-                duplicate_locations=duplicate_locs,
-            ))
+
+            self._issues.append(
+                VariableIssue(
+                    kind=IssueKind.DATATYPE_DUPLICATION,
+                    module_path=first_path,
+                    variable=first_var,
+                    role=first_role,
+                    duplicate_count=len(occurrences),
+                    duplicate_locations=duplicate_locs,
+                )
+            )
+

@@ -7,7 +7,7 @@ import tomllib
 import os
 import sys
 
-import engine as engine_module
+from . import engine as engine_module
 
 CONFIG_PATH = Path("config.toml")
 
@@ -29,8 +29,6 @@ log = logging.getLogger("sattlint")
 # ----------------------------
 # Helpers
 # ----------------------------
-
-
 def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 

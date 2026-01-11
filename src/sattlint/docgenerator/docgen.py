@@ -6,7 +6,7 @@ Generate a Word‑document design description from a Sattline AST.
 Typical usage
 --------
     from docgen import generate_docx
-    from transformer.sl_transformer import SLTransformer
+    from ..transformer.sl_transformer import SLTransformer
     from lark import Lark
 
     parser = Lark.open("my_grammar.lark", start="start")
@@ -37,7 +37,7 @@ from docx.shared import Inches
 # Import the AST model classes you already have.
 # Adjust the import path if the modules live elsewhere.
 # ----------------------------------------------------------------------
-from models.ast_model import (
+from ..models.ast_model import (
     BasePicture,
     FrameModule,
     SingleModule,
@@ -393,7 +393,7 @@ def generate_docx(root: BasePicture, out_path: Union[str, pathlib.Path]) -> None
 # ----------------------------------------------------------------------
 if __name__ == "__main__":
     import sys
-    from transformer.sl_transformer import SLTransformer
+    from ..transformer.sl_transformer import SLTransformer
     from lark import Lark
 
     if len(sys.argv) != 3:
