@@ -1,8 +1,8 @@
 # sl_transformer.py
 from lark import Transformer, Token, Tree
 from typing import Any, Literal, cast
-import constants as const
-from models.ast_model import (
+from .. import constants as const
+from ..models.ast_model import (
     BasePicture,
     DataType,
     ModuleTypeDef,
@@ -55,8 +55,10 @@ def _flatten_items(items):
         else:
             yield it
 
+
 def _is_tree(node: Any) -> bool:
     return hasattr(node, "data") and hasattr(node, "children")
+
 
 def _iter_tree_children(node: Any):
     if _is_tree(node):
@@ -113,7 +115,7 @@ class SLTransformer(Transformer):
     def base_module_body(self, items):
         # Keep structure; collectors will unwrap via _flatten_items
         return Tree("base_module_body", items)
-    
+
     def IGNOREMAXMODULE(self, _):
         return const.GRAMMAR_VALUE_IGNOREMAXMODULE
 
@@ -130,7 +132,9 @@ class SLTransformer(Transformer):
 
     def arguments(self, items):
         # Keep the tag, drop raw tokens.
-        return Tree(const.TREE_TAG_ARGUMENTS, [it for it in items if not isinstance(it, Token)])
+        return Tree(
+            const.TREE_TAG_ARGUMENTS, [it for it in items if not isinstance(it, Token)]
+        )
 
     def module_header(self, items) -> ModuleHeader:
         name = None
@@ -145,8 +149,18 @@ class SLTransformer(Transformer):
         for it in items:
             if isinstance(it, str) and name is None:
                 name = it
-            elif isinstance(it, tuple) and len(it) >= 5 and all(isinstance(x, (int, float)) for x in it):
-                coords5 = (float(it[0]), float(it[1]), float(it[2]), float(it[3]), float(it[4]))
+            elif (
+                isinstance(it, tuple)
+                and len(it) >= 5
+                and all(isinstance(x, (int, float)) for x in it)
+            ):
+                coords5 = (
+                    float(it[0]),
+                    float(it[1]),
+                    float(it[2]),
+                    float(it[3]),
+                    float(it[4]),
+                )
             elif isinstance(it, Tree) and it.data == const.TREE_TAG_ARGUMENTS:
                 args_trees.append(it)
 
@@ -211,7 +225,7 @@ class SLTransformer(Transformer):
                 moduledef = it
             elif isinstance(it, ModuleCode):
                 modulecode = it
-            elif isinstance(it, dict) and "groupconn" in it:  
+            elif isinstance(it, dict) and "groupconn" in it:
                 scan_group_info = it
             elif isinstance(it, Tree):
                 # Handle your tagged Trees
@@ -324,7 +338,7 @@ class SLTransformer(Transformer):
 
         if not header:
             raise ValueError("Missing module header")
-        
+
         if scan_group_info:
             header.groupconn = scan_group_info.get("groupconn")
             header.groupconn_global = bool(scan_group_info.get("global", False))
@@ -432,7 +446,7 @@ class SLTransformer(Transformer):
                 moduledef = it
             elif isinstance(it, ModuleCode):
                 modulecode = it
-            elif isinstance(it, dict) and "groupconn" in it:  
+            elif isinstance(it, dict) and "groupconn" in it:
                 scan_group_info = it
             elif isinstance(it, Tree):
                 if it.data == const.GRAMMAR_VALUE_MODULEPARAMETERS:
@@ -463,7 +477,7 @@ class SLTransformer(Transformer):
 
         if name is None:
             raise Exception("Name cannont be none")
-         
+
         mtd = ModuleTypeDef(
             name=name,
             datecode=datecode,
@@ -491,7 +505,7 @@ class SLTransformer(Transformer):
         return Tree(const.TREE_TAG_MODULETYPE_LIST, out)
 
     def moduletype_par_transfer(self, items) -> ParameterMapping:
-         # variable_name "=>" GLOBAL_KW? DURATION_VALUE? (value | variable_name)
+        # variable_name "=>" GLOBAL_KW? DURATION_VALUE? (value | variable_name)
         if not items:
             raise ValueError("moduletype_par_transfer received empty items")
 
@@ -703,13 +717,17 @@ class SLTransformer(Transformer):
         if len(nums) < 2:
             raise ValueError(f"coordinates missing REAL values (got {len(nums)})")
         return (nums[0], nums[1])
-    
+
     def origo_size_pair(self, items):
         # coordinates coordinates
         coords = []
         for it in items:
             # Already-transformed coordinates -> plain (x, y) tuple
-            if isinstance(it, tuple) and len(it) == 2 and all(isinstance(x, (int, float)) for x in it):
+            if (
+                isinstance(it, tuple)
+                and len(it) == 2
+                and all(isinstance(x, (int, float)) for x in it)
+            ):
                 coords.append((float(it[0]), float(it[1])))
             # Fallback: if for some reason coordinates wasn't transformed
             elif isinstance(it, Tree) and it.data == "coordinates":
@@ -717,9 +735,11 @@ class SLTransformer(Transformer):
                 if len(nums) >= 2:
                     coords.append((nums[0], nums[1]))
         if len(coords) != 2:
-            raise ValueError(f"origo_size_pair expected 2 coordinate pairs, found {len(coords)}")
+            raise ValueError(
+                f"origo_size_pair expected 2 coordinate pairs, found {len(coords)}"
+            )
         return (coords[0], coords[1])
-    
+
     def invoke_coord(self, items):
         """
         Grammar: REAL coord_tail* ',' REAL coord_tail* ',' ... (5 times)
@@ -764,7 +784,9 @@ class SLTransformer(Transformer):
             try:
                 nums.append(float(v))
             except (TypeError, ValueError) as exc:
-                raise ValueError(f"grid expected a numeric value; got {type(v).__name__}: {v!r}") from exc
+                raise ValueError(
+                    f"grid expected a numeric value; got {type(v).__name__}: {v!r}"
+                ) from exc
 
         if not nums:
             types = ", ".join(type(x).__name__ for x in items)
@@ -820,7 +842,11 @@ class SLTransformer(Transformer):
                 return
             # enable() returns a dict with TREE_TAG_ENABLE + KEY_TAIL
             if isinstance(x, dict):
-                if const.TREE_TAG_ENABLE in x and const.KEY_TAIL in x and x[const.KEY_TAIL] is not None:
+                if (
+                    const.TREE_TAG_ENABLE in x
+                    and const.KEY_TAIL in x
+                    and x[const.KEY_TAIL] is not None
+                ):
                     tails.append(x[const.KEY_TAIL])
                 # Also descend into any dict values to be safe
                 for v in x.values():
@@ -829,7 +855,11 @@ class SLTransformer(Transformer):
             # Trees: InVar_ tails and enable_expression trees are directly useful
             if _is_tree(x):
                 data = getattr(x, "data", None)
-                if data in (const.GRAMMAR_VALUE_INVAR_PREFIX, const.KEY_ENABLE_EXPRESSION, "invar_tail"):
+                if data in (
+                    const.GRAMMAR_VALUE_INVAR_PREFIX,
+                    const.KEY_ENABLE_EXPRESSION,
+                    "invar_tail",
+                ):
                     tails.append(x)
                 # Recurse into children
                 for ch in getattr(x, "children", []):
@@ -851,7 +881,11 @@ class SLTransformer(Transformer):
 
         # Coordinates ((x,y),(w,h))
         for it in items:
-            if isinstance(it, tuple) and len(it) == 2 and all(isinstance(t, tuple) for t in it):
+            if (
+                isinstance(it, tuple)
+                and len(it) == 2
+                and all(isinstance(t, tuple) for t in it)
+            ):
                 go.properties[const.KEY_COORDS] = it
                 break
 
@@ -902,7 +936,11 @@ class SLTransformer(Transformer):
     def rectangle_object(self, items) -> GraphObject:
         go = GraphObject(const.GRAMMAR_VALUE_RECTANGLEOBJECT)
         for it in items:
-            if isinstance(it, tuple) and len(it) == 2 and all(isinstance(t, tuple) for t in it):
+            if (
+                isinstance(it, tuple)
+                and len(it) == 2
+                and all(isinstance(t, tuple) for t in it)
+            ):
                 go.properties[const.KEY_COORDS] = it
                 break
         tails = self._collect_invar_enable_tails(items)
@@ -913,7 +951,11 @@ class SLTransformer(Transformer):
     def line_object(self, items) -> GraphObject:
         go = GraphObject(const.GRAMMAR_VALUE_LINEOBJECT)
         for it in items:
-            if isinstance(it, tuple) and len(it) == 2 and all(isinstance(t, tuple) for t in it):
+            if (
+                isinstance(it, tuple)
+                and len(it) == 2
+                and all(isinstance(t, tuple) for t in it)
+            ):
                 go.properties[const.KEY_COORDS] = it
                 break
         tails = self._collect_invar_enable_tails(items)
@@ -924,7 +966,11 @@ class SLTransformer(Transformer):
     def oval_object(self, items) -> GraphObject:
         go = GraphObject(const.GRAMMAR_VALUE_OVALOBJECT)
         for it in items:
-            if isinstance(it, tuple) and len(it) == 2 and all(isinstance(t, tuple) for t in it):
+            if (
+                isinstance(it, tuple)
+                and len(it) == 2
+                and all(isinstance(t, tuple) for t in it)
+            ):
                 go.properties[const.KEY_COORDS] = it
                 break
         tails = self._collect_invar_enable_tails(items)
@@ -943,7 +989,11 @@ class SLTransformer(Transformer):
     def segment_object(self, items) -> GraphObject:
         go = GraphObject(const.GRAMMAR_VALUE_SEGMENTOBJECT)
         for it in items:
-            if isinstance(it, tuple) and len(it) == 2 and all(isinstance(t, tuple) for t in it):
+            if (
+                isinstance(it, tuple)
+                and len(it) == 2
+                and all(isinstance(t, tuple) for t in it)
+            ):
                 go.properties[const.KEY_COORDS] = it
                 break
         tails = self._collect_invar_enable_tails(items)
@@ -969,7 +1019,9 @@ class SLTransformer(Transformer):
 
         if obj is None:
             types = ", ".join(type(x).__name__ for x in items)
-            raise ValueError(f"graph_object expected a GraphObject in items; got: {types}")
+            raise ValueError(
+                f"graph_object expected a GraphObject in items; got: {types}"
+            )
 
         if layer is not None:
             obj.properties["layer"] = layer
@@ -979,7 +1031,9 @@ class SLTransformer(Transformer):
     def graph_objects(self, items) -> list[GraphObject]:
         return [it for it in items if isinstance(it, GraphObject)]
 
-    def submodules(self, items) -> Tree[list[SingleModule | FrameModule | ModuleTypeInstance]]:
+    def submodules(
+        self, items
+    ) -> Tree[list[SingleModule | FrameModule | ModuleTypeInstance]]:
         submods = []
         for it in items:
             if isinstance(it, (SingleModule, FrameModule, ModuleTypeInstance)):
@@ -1138,7 +1192,7 @@ class SLTransformer(Transformer):
     def sequence(self, items) -> Sequence:
         name: str | None = None
         position: tuple[float, float] | None = None
-        size: tuple[float, float] | None = None  
+        size: tuple[float, float] | None = None
         seqcontrol = False
         seqtimer = False
         code = []
@@ -1178,7 +1232,7 @@ class SLTransformer(Transformer):
 
         if position is None:
             raise ValueError("Position can't be None")
-        
+
         if size is None:
             raise ValueError("Size can't be None")
 
@@ -1222,10 +1276,10 @@ class SLTransformer(Transformer):
 
         if position is None:
             raise ValueError("Position can't be None")
-        
+
         if size is None:
             raise ValueError("Size can't be None")
-        
+
         return Equation(name=name, position=position, size=size, code=code)
 
     def interact_objects(self, items):
@@ -1298,7 +1352,9 @@ class SLTransformer(Transformer):
         for it in items:
             if not isinstance(it, Token):
                 return it
-        raise ValueError(f"enable_expression expected an expression child; got: {items}")
+        raise ValueError(
+            f"enable_expression expected an expression child; got: {items}"
+        )
 
     def interact_simple_item(self, items) -> InteractObject:
         itype = None
@@ -1347,7 +1403,10 @@ class SLTransformer(Transformer):
         for it in items:
             if isinstance(it, Token) and it.type == const.KEY_NAME and name is None:
                 name = it.value
-            elif isinstance(it, Token) and it.type in (const.KEY_STRING, const.KEY_SIGNED_INT):
+            elif isinstance(it, Token) and it.type in (
+                const.KEY_STRING,
+                const.KEY_SIGNED_INT,
+            ):
                 extra = it.value
             elif not isinstance(it, Token):
                 # tail is now already unwrapped (string or dict)
@@ -1389,7 +1448,6 @@ class SLTransformer(Transformer):
         types = ", ".join(type(x).__name__ for x in items)
         raise ValueError(f"text_content expected a str; got: {types}")
 
-
     def seq_control_opt(self, items) -> Tree[Token]:
         # "(" SEQCONTROL? ","? SEQTIMER? ")"
         return Tree(
@@ -1399,7 +1457,7 @@ class SLTransformer(Transformer):
     def codeblock_coord(self, items) -> tuple[float, float]:
         nums = [float(v) for v in items if not isinstance(v, Token)]
         return (nums[0], nums[1])
-    
+
     def objsizedef(self, items) -> tuple[float, float]:
         nums = [float(v) for v in items if not isinstance(v, Token)]
         return (nums[0], nums[1])
@@ -1418,7 +1476,8 @@ class SLTransformer(Transformer):
 
         if val is None:
             types = ", ".join(
-                f"{type(x).__name__}" + (f"[{getattr(x, 'type', '')}]" if isinstance(x, Token) else "")
+                f"{type(x).__name__}"
+                + (f"[{getattr(x, 'type', '')}]" if isinstance(x, Token) else "")
                 for x in items
             )
             raise ValueError(f"two_layers expected a numeric REAL value; got: {types}")
@@ -1618,20 +1677,24 @@ class SLTransformer(Transformer):
     def value(self, items) -> Any:
         # items is a list of one child: BOOL | REAL | STRING | SIGNED_INT
         if not items:
-            raise ValueError("value expected one item (BOOL|REAL|STRING|SIGNED_INT); got empty list")
+            raise ValueError(
+                "value expected one item (BOOL|REAL|STRING|SIGNED_INT); got empty list"
+            )
         if len(items) != 1:
-            raise ValueError(f"value expected exactly one item; got {len(items)}: {items!r}")
+            raise ValueError(
+                f"value expected exactly one item; got {len(items)}: {items!r}"
+            )
         v = items[0]
         if v is None:
             raise ValueError("value item is None")
         return v
-    
+
     def connected_variable(self, items):
         for it in items:
             if not isinstance(it, Token):
                 return it
         raise ValueError(f"connected_variable expected a non-Token child; got: {items}")
-    
+
     def invar_tail(self, items):
         for it in items:
             if not isinstance(it, Token):
@@ -1662,17 +1725,17 @@ class SLTransformer(Transformer):
     def GLOBAL_KW(self, _) -> Literal[True]:  # "GLOBAL"
         return True
 
-    def CONST_KW(self, _) -> Literal['Const']:  # const.GRAMMAR_VALUE_CONST_KW
+    def CONST_KW(self, _) -> Literal["Const"]:  # const.GRAMMAR_VALUE_CONST_KW
         return const.GRAMMAR_VALUE_CONST_KW
 
-    def STATE_KW(self, _) -> Literal['State']:  # const.GRAMMAR_VALUE_STATE_KW
+    def STATE_KW(self, _) -> Literal["State"]:  # const.GRAMMAR_VALUE_STATE_KW
         return const.GRAMMAR_VALUE_STATE_KW
 
     # We’ll ignore these (no fields in your model). Keep them if you add fields later.
-    def OPSAVE_KW(self, _) -> Literal['OpSave']:
+    def OPSAVE_KW(self, _) -> Literal["OpSave"]:
         return const.GRAMMAR_VALUE_OPSAVE_KW
 
-    def SECURE_KW(self, _) -> Literal['Secure']:
+    def SECURE_KW(self, _) -> Literal["Secure"]:
         return const.GRAMMAR_VALUE_SECURE_KW
 
     # DEFAULT in init
@@ -1702,7 +1765,9 @@ class SLTransformer(Transformer):
                 try:
                     return int(it.value)
                 except (TypeError, ValueError) as exc:
-                    raise ValueError(f"Invalid {const.KEY_SL_DATECODE} value: {it.value!r}") from exc
+                    raise ValueError(
+                        f"Invalid {const.KEY_SL_DATECODE} value: {it.value!r}"
+                    ) from exc
             if isinstance(it, int):
                 return it
 

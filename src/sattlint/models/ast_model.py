@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 from enum import Enum
-import constants as const
+from .. import constants as const
 import textwrap
 
 
@@ -572,8 +572,8 @@ class SingleModule:
             f"Moduleparameters: {format_list(self.moduleparameters)}",
             f"Localvariables  : {format_list(self.localvariables)}",
             f"Submodules      : {format_list(self.submodules)}",
-            #f"ModuleDef       : {format_optional(self.moduledef)}",
-            #f"ModuleCode      : {format_optional(self.modulecode)}",
+            # f"ModuleDef       : {format_optional(self.moduledef)}",
+            # f"ModuleCode      : {format_optional(self.modulecode)}",
             f"ParameterMappings: {format_list(self.parametermappings)}",
         ]
         return "SingleModule{\n" + textwrap.indent("\n".join(lines), "    ") + "}"
@@ -596,8 +596,8 @@ class FrameModule:
             f"Invoke_coord : {self.header.invoke_coord!r}",
             f"Datecode     : {self.datecode!r}",
             f"Submodules   : {format_list(self.submodules)}",
-            #f"ModuleDef    : {format_optional(self.moduledef)}",
-            #f"ModuleCode   : {format_optional(self.modulecode)}",
+            # f"ModuleDef    : {format_optional(self.moduledef)}",
+            # f"ModuleCode   : {format_optional(self.modulecode)}",
         ]
         return "FrameModule{\n" + textwrap.indent("\n".join(lines), "    ") + "}"
 
@@ -738,4 +738,3 @@ class SFCFork:
 @dataclass
 class SFCBreak:
     pass
-
