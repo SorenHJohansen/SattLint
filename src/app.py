@@ -11,6 +11,17 @@ import engine as engine_module
 
 CONFIG_PATH = Path("config.toml")
 
+DEFAULT_CONFIG = {
+    "root": "",
+    "mode": "official",
+    "ignore_ABB_lib": False,
+    "scan_root_only": False,
+    "debug": False,
+    "program_dir": "",
+    "ABB_lib_dir": "",
+    "other_lib_dirs": [],
+}
+
 logging.basicConfig(format="%(message)s")
 log = logging.getLogger("sattlint")
 
@@ -96,15 +107,15 @@ def prompt(msg: str, default: str | None = None) -> str:
     return input(f"{msg}: ").strip()
 
 
-def load_config(path: Path) -> dict:
+def load_config(path: Path) -> tuple[dict, bool]:
     if not path.exists():
-        raise FileNotFoundError(
-            f"Config file not found: {path}\n"
-            "Create config.toml before running SattLint."
-        )
+        print(f"⚠ No config found, creating default: {path}")
+        cfg = DEFAULT_CONFIG.copy()
+        save_config(path, cfg)
+        return cfg, True
 
     with path.open("rb") as f:
-        return tomllib.load(f)
+        return tomllib.load(f), False
 
 
 def save_config(path: Path, cfg: dict) -> None:
@@ -255,19 +266,19 @@ def config_menu(cfg: dict) -> bool:
     dirty = False
     while True:
         clear_screen()
+        show_config(cfg)
         print("""
 --- Edit Configuration ---
-1)  Change Root program/library to analyze
-2)  Toggle Mode (official/draft)
-3)  Toggle ignore_ABB_lib
-4)  Toggle scan_root_only
-5)  Toggle debug
-6)  Change Program_dir
-7)  Change ABB_lib_dir
-8)  Add/remove other_lib_dirs
-9)  Save config
-10) Show config
-b)  Back
+1) Change Root program/library to analyze
+2) Toggle Mode (official/draft)
+3) Toggle ignore_ABB_lib
+4) Toggle scan_root_only
+5) Toggle debug
+6) Change Program_dir
+7) Change ABB_lib_dir
+8) Add/remove other_lib_dirs
+9) Save config
+b) Back
 """)
         c = input("> ").strip().lower()
 
@@ -333,10 +344,6 @@ b)  Back
             if confirm("Save config to disk?"):
                 save_config(CONFIG_PATH, cfg)
                 dirty = False
-        elif c == "10":
-            clear_screen()
-            show_config(cfg)
-            pause()
         else:
             print("Invalid choice.")
 
@@ -347,10 +354,14 @@ b)  Back
 
 
 def main():
-    cfg = load_config(CONFIG_PATH)
-
-    if not self_check(cfg):
-        if not confirm("Self-check failed. Continue anyway?"):
+    cfg, default_used = load_config(CONFIG_PATH)
+    if default_used:
+        print(
+            "⚠ Default config created. Please edit configuration before running analysis."
+        )
+        pause()
+    elif not self_check(cfg):
+        if not confirm("Self-check failed. Continue?"):
             return
     dirty = False
 
