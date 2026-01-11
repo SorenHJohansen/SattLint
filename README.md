@@ -13,10 +13,9 @@ It parses SattLine source files, resolves dependencies across libraries, builds 
    - [Installation](#installation)  
    - [How to run](#how-to-run)
    - [Interactive usage](#interactive-usage)
-3. [Project Layout](#project-layout)
-4. [Core Components](#core-components)
-5. [Configuration](#configuration)
-6. [License & Contributing](#license--contributing)
+3. [Core Components](#core-components)
+4. [Configuration](#configuration)
+5. [License & Contributing](#license--contributing)
 
 ---
 
@@ -49,25 +48,25 @@ It parses SattLine source files, resolves dependencies across libraries, builds 
 ```bash
 # Clone the repository
 git clone <repo-url>
-cd sattline-tool
+cd SattLint
 
 # Install the package in editable mode
 pip install -e .
 ```
 
-Dependencies are declared in `pyproject.toml`:
+Dependencies are declared in `pyproject.toml` like:
 
 ```toml
 lark-parser>=0.11.0
-python-docx>=0.8.11  # Only needed if generating .docx files
+python-docx>=0.8.11
 ```
 
 ### How to Run
 
-From the project directory:
+In the terminal just type:
 
-```python
-python app.py
+```bash
+sattlint
 ```
 
 This starts the interactive SattLint application.
@@ -75,7 +74,7 @@ This starts the interactive SattLint application.
 ### Interactive Usage
 
 When started, SattLint presents a menu similar to:
-```
+```bash
 === SattLint ===
 How to use SattLint
 ------------------
@@ -95,34 +94,6 @@ How to use SattLint
 6) Self-check diagnostics
 q) Quit
 ```
-
-## Project Layout
-
-```
-sattline-tool/
-│
-├─ app.py                  # Interactive application entry point
-├─ engine.py               # Loader, parser creation, orchestration
-├─ sl_transformer.py       # Lark Transformer → AST
-├─ variables.py            # Variable usage analyzer
-├─ constants.py            # Grammar constants & regexes
-├─ config.toml             # Example configuration file
-├─ pyproject.toml          # Dependencies & build metadata
-│
-├─ models/                 # Dataclasses defining AST nodes
-│   ├─ ast_model.py
-│   └─ project_graph.py
-│
-├─ analyzers/              # Additional static analyses
-│   └─ sattline_builtins.py
-│
-├─ docgenerator/           # Optional DOCX generator
-│   └─ docgen.py
-│
-└─ grammar/
-    └─ sattline.lark       # Lark grammar file (required at runtime)
-```
-
 ---
 
 ## Core Components
