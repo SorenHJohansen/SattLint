@@ -40,7 +40,8 @@ It parses SattLine source files, resolves dependencies across libraries, builds 
 ### Prerequisites
 
 - Python 3.11 or newer  
-- Git (optional, for cloning)  
+- Git (optional, for cloning)
+- pipx
 - A working SattLine codebase (expects a root program and its dependent libraries)  
 
 ### Installation
@@ -49,9 +50,17 @@ It parses SattLine source files, resolves dependencies across libraries, builds 
 # Clone the repository
 git clone <repo-url>
 cd SattLint
+```
 
-# Install the package in editable mode
-pip install -e .
+Install pipx:
+
+```bash
+python3 -m pip install --user pipx
+```
+
+```bash
+# Install the package
+pipx install sattlint
 ```
 
 Dependencies are declared in `pyproject.toml` like:
@@ -74,6 +83,7 @@ This starts the interactive SattLint application.
 ### Interactive Usage
 
 When started, SattLint presents a menu similar to:
+
 ```bash
 === SattLint ===
 How to use SattLint
@@ -94,6 +104,7 @@ How to use SattLint
 6) Self-check diagnostics
 q) Quit
 ```
+
 ---
 
 ## Core Components
