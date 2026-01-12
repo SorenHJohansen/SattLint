@@ -9,8 +9,6 @@ import sys
 
 from . import engine as engine_module
 
-CONFIG_PATH = Path("config.toml")
-
 DEFAULT_CONFIG = {
     "root": "",
     "mode": "official",
@@ -21,6 +19,20 @@ DEFAULT_CONFIG = {
     "ABB_lib_dir": "",
     "other_lib_dirs": [],
 }
+
+
+def get_config_path() -> Path:
+    if os.name == "nt":
+        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+
+    cfg_dir = base / "sattlint"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    return cfg_dir / "config.toml"
+
+
+CONFIG_PATH = get_config_path()
 
 logging.basicConfig(format="%(message)s")
 log = logging.getLogger("sattlint")
@@ -349,8 +361,6 @@ b) Back
 # ----------------------------
 # Main loop
 # ----------------------------
-
-
 def main():
     cfg, default_used = load_config(CONFIG_PATH)
     if default_used:
