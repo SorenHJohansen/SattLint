@@ -4,13 +4,6 @@ from lark import Lark
 from . import constants
 from .transformer.sl_transformer import SLTransformer
 from .models.ast_model import BasePicture, DataType, ModuleTypeDef
-from .analyzers.variables import (
-    analyze_variables,
-    VariablesReport,
-    debug_variable_usage,
-)
-from .analyzers.modules import analyze_module_duplicates, debug_module_structure
-from .docgenerator.docgen import generate_docx
 from collections.abc import Iterable
 from enum import Enum
 from .models.project_graph import ProjectGraph
