@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-import tomllib, tomli_w
+import tomllib
+import tomli_w
 import os
 import sys
-
 from . import engine as engine_module
+from .analyzers.variables import IssueKind, filter_variable_report, analyze_variables
 
 DEFAULT_CONFIG = {
     "root": "",
@@ -18,6 +19,16 @@ DEFAULT_CONFIG = {
     "program_dir": "",
     "ABB_lib_dir": "",
     "other_lib_dirs": [],
+}
+
+
+VARIABLE_ANALYSES = {
+    "1": ("All variable analyses", None),
+    "2": ("Unused variables", {IssueKind.UNUSED}),
+    "3": ("Read-only but not CONST", {IssueKind.READ_ONLY_NON_CONST}),
+    "4": ("Written but never read", {IssueKind.NEVER_READ}),
+    "5": ("String mapping type mismatches", {IssueKind.STRING_MAPPING_MISMATCH}),
+    "6": ("Duplicated complex datatypes", {IssueKind.DATATYPE_DUPLICATION}),
 }
 
 
@@ -137,12 +148,15 @@ def save_config(path: Path, cfg: dict) -> None:
         if isinstance(v, dict):
             return {k: normalize(x) for k, x in v.items()}
         if v is None:
-            raise ValueError("Cannot serialize None to TOML. Provide a default value or omit the key.")
+            raise ValueError(
+                "Cannot serialize None to TOML. Provide a default value or omit the key."
+            )
         return v
 
     data = {k: normalize(v) for k, v in cfg.items()}
     path.write_text(tomli_w.dumps(data), encoding="utf-8")
     print(f"✔ Config saved to {path}")
+
 
 def root_exists(root: str, cfg: dict) -> bool:
     dirs = [Path(cfg["program_dir"])] + [Path(p) for p in cfg["other_lib_dirs"]]
@@ -216,11 +230,37 @@ def load_project(cfg: dict):
     return project_bp, graph
 
 
-def run_variable_analysis(cfg: dict):
+def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
     project_bp, _ = load_project(cfg)
-    report = engine_module.analyze_variables(project_bp)
+
+    report = analyze_variables(project_bp)
+
+    if kinds is not None:
+        report = filter_variable_report(report, kinds)
+
     print(report.summary())
     pause()
+
+
+def variable_analysis_menu(cfg: dict):
+    while True:
+        clear_screen()
+        print("\n--- Variable analyses ---")
+        for k, (name, _) in VARIABLE_ANALYSES.items():
+            print(f"{k}) {name}")
+        print("b) Back")
+
+        c = input("> ").strip().lower()
+        if c == "b":
+            return
+
+        if c in VARIABLE_ANALYSES:
+            name, kinds = VARIABLE_ANALYSES[c]
+            if confirm(f"Run '{name}'?"):
+                run_variable_analysis(cfg, kinds)
+        else:
+            print("Invalid choice.")
+            pause()
 
 
 def dump_menu(cfg: dict):
@@ -382,8 +422,7 @@ q) Quit
         c = input("> ").strip().lower()
 
         if c == "1":
-            if confirm("Run analysis?"):
-                run_variable_analysis(cfg)
+            variable_analysis_menu(cfg)
 
         elif c == "2":
             dump_menu(cfg)

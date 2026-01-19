@@ -200,6 +200,21 @@ def analyze_variables(base_picture: BasePicture) -> VariablesReport:
     return VariablesReport(basepicture_name=base_picture.header.name, issues=issues)
 
 
+def filter_variable_report(
+    report: VariablesReport,
+    kinds: set[IssueKind],
+) -> VariablesReport:
+    if not kinds:
+        return report
+
+    filtered = [i for i in report.issues if i.kind in kinds]
+
+    return VariablesReport(
+        basepicture_name=report.basepicture_name,
+        issues=filtered,
+    )
+
+
 def debug_variable_usage(base_picture: BasePicture, var_name: str) -> str:
     """
     Run the analyzer and return a human-readable report for all variables
@@ -237,43 +252,48 @@ def debug_variable_usage(base_picture: BasePicture, var_name: str) -> str:
 
     return "\n".join(lines)
 
+
 def analyze_datatype_usage(base_picture: BasePicture, var_name: str) -> str:
     """
     Analyze field-level usage for a specific variable across modules.
     """
     analyzer = VariablesAnalyzer(base_picture)
     _ = analyzer.run()
-    
+
     matches = analyzer._any_var_index.get(var_name.lower(), [])
     if not matches:
         return f"Variable {var_name!r} not found."
-    
+
     lines = [f"Field usage analysis for variable {var_name!r}:"]
-    
+
     for idx, var in enumerate(matches, 1):
         lines.append(f"\n[{idx}] Declaration: {var.datatype_text}")
-        lines.append(f"    Location: {' -> '.join(var.usage_locations[0][0]) if var.usage_locations else 'Unknown'}")
-        
+        lines.append(
+            f"    Location: {' -> '.join(var.usage_locations[0][0]) if var.usage_locations else 'Unknown'}"
+        )
+
         if var.field_reads or var.field_writes:
             # Combine all fields
             all_fields = set(var.field_reads.keys()) | set(var.field_writes.keys())
-            
+
             lines.append(f"    Fields accessed: {len(all_fields)}")
             for field in sorted(all_fields):
                 read_count = len(var.field_reads.get(field, []))
                 write_count = len(var.field_writes.get(field, []))
-                
+
                 if read_count and write_count:
                     access = "READ+WRITE"
                 elif read_count:
                     access = "READ"
                 else:
                     access = "WRITE"
-                
-                lines.append(f"      • {field}: {access} (R:{read_count}, W:{write_count})")
+
+                lines.append(
+                    f"      • {field}: {access} (R:{read_count}, W:{write_count})"
+                )
         else:
             lines.append("    No field-level accesses tracked")
-    
+
     return "\n".join(lines)
 
 
@@ -479,7 +499,7 @@ class VariablesAnalyzer:
             if isinstance(arg, dict) and const.KEY_VAR_NAME in arg:
                 base, field_path = self._extract_field_path(arg)
                 var = env.get(base) or self._lookup_global_variable(base)
-                
+
                 if var is not None and field_path:
                     if direction == "out":
                         var.mark_field_written(field_path, path)
@@ -536,7 +556,7 @@ class VariablesAnalyzer:
                 origin_file.rsplit(".", 1)[0].lower()
                 == root_origin.rsplit(".", 1)[0].lower()
             )
-    
+
     def _extract_field_path(self, var_dict: dict) -> tuple[str | None, str | None]:
         """
         Extract base variable name and field path from variable reference.
@@ -545,15 +565,15 @@ class VariablesAnalyzer:
         """
         if not isinstance(var_dict, dict) or const.KEY_VAR_NAME not in var_dict:
             return None, None
-        
+
         full_name = var_dict[const.KEY_VAR_NAME]
         if not full_name or "." not in full_name:
             return full_name.lower() if full_name else None, None
-        
+
         parts = full_name.split(".", 1)
         base = parts[0].lower()
         field_path = parts[1] if len(parts) > 1 else None
-        
+
         return base, field_path
 
     # ------------ Entry point ------------
@@ -1419,7 +1439,7 @@ class VariablesAnalyzer:
         if isinstance(obj, dict) and const.KEY_VAR_NAME in obj:
             base, field_path = self._extract_field_path(obj)
             var = env.get(base) if base else None
-            
+
             if var is not None:
                 if field_path:
                     # Track field-level read
@@ -1428,19 +1448,19 @@ class VariablesAnalyzer:
                     # Whole variable read
                     var.mark_read(path)
             return
-        
+
         if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
             _, target, expr = obj
-            
+
             base, field_path = self._extract_field_path(target)
             tgt_var = env.get(base) if base else None
-            
+
             if tgt_var is not None:
                 if field_path:
                     tgt_var.mark_field_written(field_path, path)
                 else:
                     tgt_var.mark_written(path)
-            
+
             self._walk_stmt_or_expr(expr, env, path)
             return
 
@@ -1555,4 +1575,3 @@ class VariablesAnalyzer:
                     duplicate_locations=duplicate_locs,
                 )
             )
-
