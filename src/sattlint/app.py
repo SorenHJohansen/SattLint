@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-import tomllib
+import tomllib, tomli_w
 import os
 import sys
 
@@ -129,35 +129,20 @@ def load_config(path: Path) -> tuple[dict, bool]:
 
 
 def save_config(path: Path, cfg: dict) -> None:
-    def w(val):
-        if isinstance(val, bool):
-            return "true" if val else "false"
-        if isinstance(val, list):
-            return "[\n" + "\n".join(f'  "{v}",' for v in val) + "\n]"
-        return f'"{val}"'
+    def normalize(v):
+        if isinstance(v, Path):
+            return str(v)
+        if isinstance(v, (list, tuple)):
+            return [normalize(x) for x in v]
+        if isinstance(v, dict):
+            return {k: normalize(x) for k, x in v.items()}
+        if v is None:
+            raise ValueError("Cannot serialize None to TOML. Provide a default value or omit the key.")
+        return v
 
-    text = f"""
-# ----------------------------
-# General project configuration
-# ----------------------------
-root = {w(cfg["root"])}
-mode = {w(cfg["mode"])}
-ignore_ABB_lib = {w(cfg["ignore_ABB_lib"])}
-scan_root_only = {w(cfg["scan_root_only"])}
-debug = {w(cfg["debug"])}
-
-# ----------------------------
-# Paths
-# ----------------------------
-ABB_lib_dir = {w(cfg["ABB_lib_dir"])}
-program_dir = {w(cfg["program_dir"])}
-
-other_lib_dirs = {w(cfg["other_lib_dirs"])}
-""".lstrip()
-
-    path.write_text(text, encoding="utf-8")
+    data = {k: normalize(v) for k, v in cfg.items()}
+    path.write_text(tomli_w.dumps(data), encoding="utf-8")
     print(f"✔ Config saved to {path}")
-
 
 def root_exists(root: str, cfg: dict) -> bool:
     dirs = [Path(cfg["program_dir"])] + [Path(p) for p in cfg["other_lib_dirs"]]

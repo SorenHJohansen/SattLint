@@ -1,4 +1,5 @@
 # sl_transformer.py
+from __future__ import annotations
 from lark import Transformer, Token, Tree
 from typing import Any, Literal, cast
 from .. import constants as const
