@@ -279,23 +279,6 @@ class Simple_DataType(Enum):
 
 @dataclass
 class Variable:
-    @property
-    def is_unused(self) -> bool:
-        return not (bool(self.read) or bool(self.written))
-
-    @property
-    def is_read_only(self) -> bool:
-        return bool(self.read) and not bool(self.written)
-
-    @property
-    def datatype_text(self) -> str:
-        # Always return a string representation
-        return (
-            self.datatype.value
-            if isinstance(self.datatype, Simple_DataType)
-            else str(self.datatype)
-        )
-
     name: str
     datatype: Simple_DataType | str  # accept either at init; we'll normalize
     global_var: bool | None = False
@@ -308,7 +291,27 @@ class Variable:
     read: bool | None = False
     written: bool | None = False
     usage_locations: list[tuple] = field(default_factory=list)
-
+    field_reads: dict[str, list[list[str]]] = field(default_factory=dict)
+    field_writes: dict[str, list[list[str]]] = field(default_factory=dict)
+    
+    # Computed properties (read-only)
+    @property
+    def is_unused(self) -> bool:
+        return not (bool(self.read) or bool(self.written))
+    
+    @property
+    def is_read_only(self) -> bool:
+        return bool(self.read) and not bool(self.written)
+    
+    @property
+    def datatype_text(self) -> str:
+        # Always return a string representation
+        return (
+            self.datatype.value
+            if isinstance(self.datatype, Simple_DataType)
+            else str(self.datatype)
+        )
+    
     def __post_init__(self):
         # Accept DataType or any-case string
         try:
@@ -319,15 +322,25 @@ class Variable:
                 self.datatype = self.datatype
             else:
                 raise
-
+    
     def mark_read(self, module_path):
         self.read = True
         self.usage_locations.append((module_path.copy(), "read"))
-
+    
+    def mark_field_read(self, field_path: str, location: list[str]) -> None:
+        """Mark a specific field (or nested field) as read."""
+        self.field_reads.setdefault(field_path, []).append(location)
+        self.read = True  # also mark the variable itself as used
+    
     def mark_written(self, module_path):
         self.written = True
         self.usage_locations.append((module_path.copy(), "write"))
-
+    
+    def mark_field_written(self, field_path: str, location: list[str]) -> None:
+        """Mark a specific field (or nested field) as written."""
+        self.field_writes.setdefault(field_path, []).append(location)
+        self.written = True
+    
     def __str__(self) -> str:
         return f"Name: {self.name!r}, Datatype: {self.datatype!r}, Global: {self.global_var}, Const: {self.const}, State: {self.state}, Init_value : {self.init_value!r}, Description: {self.description!r}"
 
