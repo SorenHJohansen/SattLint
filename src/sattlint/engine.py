@@ -212,57 +212,69 @@ class SattLineProjectLoader(DebugMixin):
         return any(base_r == ign for ign in self._ignored_dirs)
 
     def _find_code(self, name: str) -> Path | None:
-        ext = code_ext(self.mode)
-        found: Path | None = None
+        """
+        Find code file with fallback support.
+        In draft mode: try .s first, fallback to .x
+        In official mode: only use .x
+        """
+        extensions = [".s", ".x"] if self.mode == CodeMode.DRAFT else [".x"]
+        
         for base in [self.program_dir, *self.other_lib_dirs]:
             if self._is_ignored_base(base):
-                # Skip vendor dir entirely
                 continue
-            p = base / f"{name}{ext}"
-            self.dbg(f"Checking code file: {p} (exists={p.exists()})")
-            if p.exists():
-                found = p
-                break
-
-        if not found:
-            self.dbg(f"No code file found for '{name}' with ext={ext}")
-            return None
-        else:
-            self.dbg(f"Using code file: {found}")
-            return found
+            
+            for ext in extensions:
+                p = base / f"{name}{ext}"
+                self.dbg(f"Checking code file: {p} (exists={p.exists()})")
+                if p.exists():
+                    self.dbg(f"Using code file: {p}")
+                    return p
+        
+        self.dbg(f"No code file found for '{name}' in mode={self.mode.value}")
+        return None
 
     def _find_deps(self, name: str) -> Path | None:
-        ext = deps_ext(self.mode)
-        found: Path | None = None
+        """
+        Find deps file with fallback support.
+        In draft mode: try .l first, fallback to .z
+        In official mode: only use .z
+        """
+        extensions = [".l", ".z"] if self.mode == CodeMode.DRAFT else [".z"]
+        
         for base in [self.program_dir, *self.other_lib_dirs]:
             if self._is_ignored_base(base):
-                # Skip vendor dir entirely
                 continue
-            p = base / f"{name}{ext}"
-            self.dbg(f"Checking deps file: {p} (exists={p.exists()})")
-            if p.exists():
-                found = p
-                break
-        if not found:
-            self.dbg(f"No deps file found for '{name}' with ext={ext}")
-        else:
-            self.dbg(f"Using deps file: {found}")
-        return found
+            
+            for ext in extensions:
+                p = base / f"{name}{ext}"
+                self.dbg(f"Checking deps file: {p} (exists={p.exists()})")
+                if p.exists():
+                    self.dbg(f"Using deps file: {p}")
+                    return p
+        
+        self.dbg(f"No deps file found for '{name}' in mode={self.mode.value}")
+        return None
 
     def _find_vendor_code(self, name: str) -> Path | None:
-        ext = code_ext(self.mode)
+        """Find code file in vendor directories with fallback."""
+        extensions = [".s", ".x"] if self.mode == CodeMode.DRAFT else [".x"]
+        
         for ign in self._ignored_dirs:
-            p = ign / f"{name}{ext}"
-            if p.exists():
-                return p
+            for ext in extensions:
+                p = ign / f"{name}{ext}"
+                if p.exists():
+                    return p
         return None
 
     def _find_vendor_deps(self, name: str) -> Path | None:
-        ext = deps_ext(self.mode)
+        """Find deps file in vendor directories with fallback."""
+        extensions = [".l", ".z"] if self.mode == CodeMode.DRAFT else [".z"]
+        
         for ign in self._ignored_dirs:
-            p = ign / f"{name}{ext}"
-            if p.exists():
-                return p
+            for ext in extensions:
+                p = ign / f"{name}{ext}"
+                if p.exists():
+                    return p
         return None
 
     def _read_deps(self, deps_path: Path) -> list[str]:
