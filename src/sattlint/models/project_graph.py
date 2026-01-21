@@ -10,6 +10,7 @@ class ProjectGraph:
     datatype_defs: dict[str, DataType] = field(default_factory=dict)
     missing: list[str] = field(default_factory=list)
     ignored_vendor: list[str] = field(default_factory=list)
+    source_files: set[Path] = field(default_factory=set)
 
     def index_from_basepic(
         self,
@@ -36,4 +37,3 @@ class ProjectGraph:
             if library_name and not d.origin_lib:
                 d.origin_lib = library_name
             self.datatype_defs[d.name] = d
-
