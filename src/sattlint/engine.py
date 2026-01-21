@@ -9,7 +9,6 @@ from enum import Enum
 from .models.project_graph import ProjectGraph
 import logging
 
-
 # Create a module-level logger consistent with cli.py
 logging.basicConfig(
     level=logging.DEBUG,
@@ -33,7 +32,10 @@ def deps_ext(mode: CodeMode) -> str:
 
 
 BASE_DIR = Path(__file__).resolve().parent
-GRAMMAR_PATH = BASE_DIR / "grammar" / "sattline.lark"
+GRAMMAR_PATH = Path(__file__).resolve().parent / "grammar" / "sattline.lark"
+
+if not GRAMMAR_PATH.exists():
+    raise RuntimeError(f"Grammar file missing: {GRAMMAR_PATH}")
 
 
 class DebugMixin:
@@ -218,18 +220,18 @@ class SattLineProjectLoader(DebugMixin):
         In official mode: only use .x
         """
         extensions = [".s", ".x"] if self.mode == CodeMode.DRAFT else [".x"]
-        
+
         for base in [self.program_dir, *self.other_lib_dirs]:
             if self._is_ignored_base(base):
                 continue
-            
+
             for ext in extensions:
                 p = base / f"{name}{ext}"
                 self.dbg(f"Checking code file: {p} (exists={p.exists()})")
                 if p.exists():
                     self.dbg(f"Using code file: {p}")
                     return p
-        
+
         self.dbg(f"No code file found for '{name}' in mode={self.mode.value}")
         return None
 
@@ -240,25 +242,25 @@ class SattLineProjectLoader(DebugMixin):
         In official mode: only use .z
         """
         extensions = [".l", ".z"] if self.mode == CodeMode.DRAFT else [".z"]
-        
+
         for base in [self.program_dir, *self.other_lib_dirs]:
             if self._is_ignored_base(base):
                 continue
-            
+
             for ext in extensions:
                 p = base / f"{name}{ext}"
                 self.dbg(f"Checking deps file: {p} (exists={p.exists()})")
                 if p.exists():
                     self.dbg(f"Using deps file: {p}")
                     return p
-        
+
         self.dbg(f"No deps file found for '{name}' in mode={self.mode.value}")
         return None
 
     def _find_vendor_code(self, name: str) -> Path | None:
         """Find code file in vendor directories with fallback."""
         extensions = [".s", ".x"] if self.mode == CodeMode.DRAFT else [".x"]
-        
+
         for ign in self._ignored_dirs:
             for ext in extensions:
                 p = ign / f"{name}{ext}"
@@ -269,7 +271,7 @@ class SattLineProjectLoader(DebugMixin):
     def _find_vendor_deps(self, name: str) -> Path | None:
         """Find deps file in vendor directories with fallback."""
         extensions = [".l", ".z"] if self.mode == CodeMode.DRAFT else [".z"]
-        
+
         for ign in self._ignored_dirs:
             for ext in extensions:
                 p = ign / f"{name}{ext}"
