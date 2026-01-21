@@ -8,7 +8,7 @@ import tomli_w
 import os
 import sys
 from . import engine as engine_module
-from .analyzers.variables import IssueKind, filter_variable_report, analyze_variables
+from .analyzers.variables import IssueKind, filter_variable_report, analyze_variables, analyze_datatype_usage, debug_variable_usage
 
 DEFAULT_CONFIG = {
     "root": "",
@@ -29,6 +29,9 @@ VARIABLE_ANALYSES = {
     "4": ("Written but never read", {IssueKind.NEVER_READ}),
     "5": ("String mapping type mismatches", {IssueKind.STRING_MAPPING_MISMATCH}),
     "6": ("Duplicated complex datatypes", {IssueKind.DATATYPE_DUPLICATION}),
+    "7": ("Datatype field usage analysis", "datatype_usage"),
+    "8": ("Debug variable usage", "debug_usage"),
+    "9": ("Module local variable field analysis", "module_localvar"),
 }
 
 
@@ -160,16 +163,19 @@ def save_config(path: Path, cfg: dict) -> None:
 
 def root_exists(root: str, cfg: dict) -> bool:
     dirs = [Path(cfg["program_dir"])] + [Path(p) for p in cfg["other_lib_dirs"]]
-    ext = ""
+    
+    if cfg["mode"] == "draft":
+        extensions = [".s", ".x"]  # Try draft first, fallback to official
+    else:
+        extensions = [".x"]  # Official only
+    
     for d in dirs:
         if not d.exists():
             continue
-        if cfg["mode"] == "official":
-            ext = ".x"
-        elif cfg["mode"] == "draft":
-            ext = ".s"
-        if (d / f"{root}{ext}").exists():
-            return True
+        for ext in extensions:
+            if (d / f"{root}{ext}").exists():
+                return True
+    
     return False
 
 
@@ -241,6 +247,30 @@ def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
     print(report.summary())
     pause()
 
+def run_datatype_usage_analysis(cfg: dict):
+    """Interactive datatype usage analysis with name selection."""
+    project_bp, _ = load_project(cfg)
+    
+    print("\n--- Datatype Field Usage Analysis ---")
+    print("Enter the variable name to analyze:")
+    var_name = input("> ").strip()
+    
+    if not var_name:
+        print("❌ No variable name provided")
+        pause()
+        return
+    
+    # Import the analysis function
+    from .analyzers.variables import analyze_datatype_usage
+    
+    try:
+        report = analyze_datatype_usage(project_bp, var_name)
+        print("\n" + report)
+    except Exception as e:
+        print(f"❌ Error during analysis: {e}")
+    
+    pause()
+
 
 def variable_analysis_menu(cfg: dict):
     while True:
@@ -256,12 +286,125 @@ def variable_analysis_menu(cfg: dict):
 
         if c in VARIABLE_ANALYSES:
             name, kinds = VARIABLE_ANALYSES[c]
-            if confirm(f"Run '{name}'?"):
+            
+            # Special handling for datatype usage analysis
+            if kinds == "datatype_usage":
+                if confirm(f"Run '{name}'?"):
+                    run_datatype_usage_analysis(cfg)
+            # Special handling for debug usage
+            elif kinds == "debug_usage":
+                if confirm(f"Run '{name}'?"):
+                    run_debug_variable_usage(cfg)
+            # NEW: Special handling for module interface analysis
+            elif kinds == "module_localvar":
+                if confirm(f"Run '{name}'?"):
+                    run_module_localvar_analysis(cfg)
+            # Standard issue-based analyses
+            elif confirm(f"Run '{name}'?"):
                 run_variable_analysis(cfg, kinds)
         else:
             print("Invalid choice.")
             pause()
 
+
+def run_module_localvar_analysis(cfg: dict):
+    """Interactive module local variable analysis."""
+    project_bp, _ = load_project(cfg)
+    
+    print("\n--- Module Local Variable Analysis ---")
+    print("Enter the module name (e.g., ApplTank):")
+    module_name = input("> ").strip()
+    
+    if not module_name:
+        print("❌ No module name provided")
+        pause()
+        return
+    
+    print("Enter the local variable name (e.g., Dv):")
+    var_name = input("> ").strip()
+    
+    if not var_name:
+        print("❌ No variable name provided")
+        pause()
+        return
+    
+    try:
+        from .analyzers.variables import analyze_module_localvar_fields
+        report = analyze_module_localvar_fields(project_bp, module_name, var_name)
+        print("\n" + report)
+    except Exception as e:
+        print(f"❌ Error during analysis: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    pause()
+
+def run_debug_variable_usage(cfg: dict):
+    """Interactive debug for specific variable usage."""
+    project_bp, _ = load_project(cfg)
+    
+    print("\n--- Debug Variable Usage ---")
+    print("Enter the variable name to debug:")
+    var_name = input("> ").strip()
+    
+    if not var_name:
+        print("❌ No variable name provided")
+        pause()
+        return
+    
+    try:
+        report = debug_variable_usage(project_bp, var_name)
+        print("\n" + report)
+    except Exception as e:
+        print(f"❌ Error during debug: {e}")
+    
+    pause()
+
+def run_advanced_datatype_analysis(cfg: dict):
+    """Enhanced datatype analysis with filtering options."""
+    project_bp, graph = load_project(cfg)
+    
+    print("\n--- Advanced Datatype Analysis ---")
+    print("1) Analyze variable by name (field-level usage)")
+    print("2) Compare module variants by name")
+    print("3) Debug specific variable usage")
+    print("b) Back")
+    
+    choice = input("> ").strip()
+    
+    if choice == "1":
+        var_name = input("Enter variable name: ").strip()
+        if var_name:
+            from .analyzers.variables import analyze_datatype_usage
+            report = analyze_datatype_usage(project_bp, var_name)
+            print("\n" + report)
+    
+    elif choice == "2":
+        module_name = input("Enter module name to compare: ").strip()
+        if module_name:
+            from .analyzers.module_comparison import (
+                analyze_module_duplicates,
+                debug_module_structure
+            )
+            # Optionally show structure first
+            if confirm("Show module structure first?"):
+                debug_module_structure(project_bp, max_depth=10)
+            
+            result = analyze_module_duplicates(
+                project_bp, 
+                module_name, 
+                debug=cfg.get("debug", False)
+            )
+            print("\n" + result.summary())
+    
+    elif choice == "3":
+        var_name = input("Enter variable name to debug: ").strip()
+        if var_name:
+            from .analyzers.variables import debug_variable_usage
+            report = debug_variable_usage(project_bp, var_name)
+            print("\n" + report)
+    
+    pause()
 
 def dump_menu(cfg: dict):
     while True:
