@@ -1,7 +1,7 @@
 # analyzers/module_comparison.py
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 from ..models.ast_model import (
     BasePicture,
     SingleModule,
@@ -376,6 +376,7 @@ def _compare_variable_lists(fingerprints: list[ModuleFingerprint]) -> VariableDi
         variant_names.append(names)
 
     # Find common (intersection of all)
+    common_normalized: set[str] = set()
     if variant_names:
         common_normalized = set(variant_names[0].keys())
         for names in variant_names[1:]:
@@ -401,6 +402,7 @@ def _compare_localvars(fingerprints: list[ModuleFingerprint]) -> VariableDiff:
         names = {_normalize_name(v.name): v.name for v in fp.localvariables}
         variant_names.append(names)
 
+    common_normalized: set[str] = set()
     if variant_names:
         common_normalized = set(variant_names[0].keys())
         for names in variant_names[1:]:
@@ -428,6 +430,7 @@ def _compare_submodules(fingerprints: list[ModuleFingerprint]) -> SubmoduleDiff:
         variant_structures.append(structure)
 
     # Find common elements (intersection of all variant structures)
+    common_set: set[tuple[int, str, str]] = set()
     if variant_structures:
         common_set = variant_structures[0].copy()
         for structure in variant_structures[1:]:
@@ -457,6 +460,7 @@ def _compare_code(fingerprints: list[ModuleFingerprint]) -> CodeDiff:
         variant_eqs.append(eqs)
 
     # Sequences
+    common_seq_normalized: set[str] = set()
     if variant_seqs:
         common_seq_normalized = set(variant_seqs[0].keys())
         for seqs in variant_seqs[1:]:
@@ -472,6 +476,7 @@ def _compare_code(fingerprints: list[ModuleFingerprint]) -> CodeDiff:
         only_seqs[i] = [seqs[n] for n in sorted(unique)]
 
     # Equations
+    common_eq_normalized: set[str] = set()
     if variant_eqs:
         common_eq_normalized = set(variant_eqs[0].keys())
         for eqs in variant_eqs[1:]:
@@ -518,12 +523,12 @@ def _hash_parameter_mappings(mappings: list[ParameterMapping]) -> int:
     parts = []
     for pm in mappings:
         target_str = (
-            pm.target.get("var_name") if isinstance(pm.target, dict) else str(pm.target)
+            cast(str, pm.target.get("var_name", "")) if isinstance(pm.target, dict) else str(pm.target)
         )
         source_str = None
         if pm.source:
             source_str = (
-                pm.source.get("var_name")
+                cast(str, pm.source.get("var_name", ""))
                 if isinstance(pm.source, dict)
                 else str(pm.source)
             )

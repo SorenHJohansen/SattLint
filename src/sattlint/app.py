@@ -56,7 +56,10 @@ def get_config_path() -> Path:
 
 CONFIG_PATH = get_config_path()
 
-logging.basicConfig(format="%(message)s")
+# Configure root logger so all debug messages are shown
+logging.basicConfig(format="%(message)s", level=logging.DEBUG)
+logging.getLogger().setLevel(logging.DEBUG)
+
 log = logging.getLogger("sattlint")
 
 
@@ -266,7 +269,7 @@ def load_project(cfg: dict):
 def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
     project_bp, _ = load_project(cfg)
 
-    report = analyze_variables(project_bp)
+    report = analyze_variables(project_bp, debug=cfg.get("debug", False))
 
     if kinds is not None:
         report = filter_variable_report(report, kinds)
@@ -292,7 +295,7 @@ def run_datatype_usage_analysis(cfg: dict):
     from .analyzers.variables import analyze_datatype_usage
 
     try:
-        report = analyze_datatype_usage(project_bp, var_name)
+        report = analyze_datatype_usage(project_bp, var_name, debug=cfg.get("debug", False))
         print("\n" + report)
     except Exception as e:
         print(f"❌ Error during analysis: {e}")
@@ -329,7 +332,8 @@ def variable_analysis_menu(cfg: dict):
                     run_module_localvar_analysis(cfg)
             # Standard issue-based analyses
             elif confirm(f"Run '{name}'?"):
-                run_variable_analysis(cfg, kinds)
+                # kinds is either a set[IssueKind] or None at this point
+                run_variable_analysis(cfg, kinds if isinstance(kinds, (set, type(None))) else None)
         else:
             print("Invalid choice.")
             pause()
@@ -359,7 +363,7 @@ def run_module_localvar_analysis(cfg: dict):
     try:
         from .analyzers.variables import analyze_module_localvar_fields
 
-        report = analyze_module_localvar_fields(project_bp, module_name, var_name)
+        report = analyze_module_localvar_fields(project_bp, module_name, var_name, debug=cfg.get("debug", False))
         print("\n" + report)
     except Exception as e:
         print(f"❌ Error during analysis: {e}")
@@ -384,7 +388,7 @@ def run_debug_variable_usage(cfg: dict):
         return
 
     try:
-        report = debug_variable_usage(project_bp, var_name)
+        report = debug_variable_usage(project_bp, var_name, debug=cfg.get("debug", False))
         print("\n" + report)
     except Exception as e:
         print(f"❌ Error during debug: {e}")
@@ -409,32 +413,20 @@ def run_advanced_datatype_analysis(cfg: dict):
         if var_name:
             from .analyzers.variables import analyze_datatype_usage
 
-            report = analyze_datatype_usage(project_bp, var_name)
+            report = analyze_datatype_usage(project_bp, var_name, debug=cfg.get("debug", False))
             print("\n" + report)
 
     elif choice == "2":
         module_name = input("Enter module name to compare: ").strip()
         if module_name:
-            from .analyzers.module_comparison import (
-                analyze_module_duplicates,
-                debug_module_structure,
-            )
-
-            # Optionally show structure first
-            if confirm("Show module structure first?"):
-                debug_module_structure(project_bp, max_depth=10)
-
-            result = analyze_module_duplicates(
-                project_bp, module_name, debug=cfg.get("debug", False)
-            )
-            print("\n" + result.summary())
+            print("⚠ Module comparison analysis not yet implemented")
 
     elif choice == "3":
         var_name = input("Enter variable name to debug: ").strip()
         if var_name:
             from .analyzers.variables import debug_variable_usage
 
-            report = debug_variable_usage(project_bp, var_name)
+            report = debug_variable_usage(project_bp, var_name, debug=cfg.get("debug", False))
             print("\n" + report)
 
     pause()
@@ -455,7 +447,8 @@ b) Back
         if c == "b":
             return
 
-        project = load_project(cfg)
+        project_bp, graph = load_project(cfg)
+        project = (project_bp, graph)
 
         if c == "1" and confirm("Dump parse tree?"):
             engine_module.dump_parse_tree(project)
@@ -464,7 +457,7 @@ b) Back
         elif c == "3" and confirm("Dump dependency graph?"):
             engine_module.dump_dependency_graph(project)
         elif c == "4" and confirm("Dump variable report?"):
-            print(engine_module.analyze_variables(project))
+            print(analyze_variables(project_bp, debug=cfg.get("debug", False)).summary())
         else:
             print("Invalid choice.")
 

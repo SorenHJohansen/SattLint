@@ -52,7 +52,8 @@ def _flatten_items(items):
         if isinstance(it, list):
             yield from _flatten_items(it)
         elif isinstance(it, Tree) and it.data in ("base_module_body", "module_body"):
-            yield from _flatten_items(it.children)
+            tree = cast(Tree, it)
+            yield from _flatten_items(tree.children)
         else:
             yield it
 
@@ -90,7 +91,8 @@ class SLTransformer(Transformer):
             elif isinstance(it, int):
                 datecode = it
             elif isinstance(it, Tree) and it.data == const.TREE_TAG_VAR_LIST:
-                var_list = [v for v in it.children if isinstance(v, Variable)]
+                tree = cast(Tree, it)
+                var_list = cast(list[Variable], [v for v in tree.children if isinstance(v, Variable)])
         return DataType(
             name=name or "",
             description=description,
@@ -163,7 +165,7 @@ class SLTransformer(Transformer):
                     float(it[4]),
                 )
             elif isinstance(it, Tree) and it.data == const.TREE_TAG_ARGUMENTS:
-                args_trees.append(it)
+                args_trees.append(cast(Tree, it))
 
         if coords5 is None:
             raise ValueError("module_header missing invoke_coord")
@@ -175,13 +177,14 @@ class SLTransformer(Transformer):
                 if isinstance(ch, int) and layer is None:
                     layer = ch
                 elif isinstance(ch, dict):
-                    if const.TREE_TAG_ENABLE in ch:
-                        enable_val = ch[const.TREE_TAG_ENABLE]
-                        if const.KEY_TAIL in ch and ch[const.KEY_TAIL] is not None:
-                            enable_tail = ch[const.KEY_TAIL]
-                    elif const.GRAMMAR_VALUE_ZOOMLIMITS in ch:
-                        zoom_limits = ch[const.GRAMMAR_VALUE_ZOOMLIMITS]
-                    elif const.GRAMMAR_VALUE_ZOOMABLE in ch:
+                    d = cast(dict, ch)
+                    if const.TREE_TAG_ENABLE in d:
+                        enable_val = cast(bool, d[const.TREE_TAG_ENABLE])
+                        if const.KEY_TAIL in d and d[const.KEY_TAIL] is not None:
+                            enable_tail = d[const.KEY_TAIL]
+                    elif const.GRAMMAR_VALUE_ZOOMLIMITS in d:
+                        zoom_limits = cast(tuple[float, float], d[const.GRAMMAR_VALUE_ZOOMLIMITS])
+                    elif const.GRAMMAR_VALUE_ZOOMABLE in d:
                         zoomable = True
                 elif isinstance(ch, str):
                     header_arg_strings.append(ch)
@@ -230,21 +233,22 @@ class SLTransformer(Transformer):
                 scan_group_info = it
             elif isinstance(it, Tree):
                 # Handle your tagged Trees
-                if it.data == const.TREE_TAG_DATATYPE_LIST:
+                tree = cast(Tree, it)
+                if tree.data == const.TREE_TAG_DATATYPE_LIST:
                     datatype_defs.extend(
-                        [x for x in it.children if isinstance(x, DataType)]
+                        [x for x in tree.children if isinstance(x, DataType)]
                     )
-                elif it.data == const.TREE_TAG_MODULETYPE_LIST:
+                elif tree.data == const.TREE_TAG_MODULETYPE_LIST:
                     moduletype_defs.extend(
-                        [x for x in it.children if isinstance(x, ModuleTypeDef)]
+                        [x for x in tree.children if isinstance(x, ModuleTypeDef)]
                     )
-                elif it.data == const.GRAMMAR_VALUE_LOCALVARIABLES:
+                elif tree.data == const.GRAMMAR_VALUE_LOCALVARIABLES:
                     localvariables.extend(
-                        [x for x in it.children if isinstance(x, Variable)]
+                        [x for x in tree.children if isinstance(x, Variable)]
                     )
-                elif it.data == const.GRAMMAR_VALUE_SUBMODULES:
+                elif tree.data == const.GRAMMAR_VALUE_SUBMODULES:
                     # Children contains a single list of module instances
-                    for ch in it.children:
+                    for ch in tree.children:
                         if isinstance(ch, list):
                             submodules.extend(
                                 [
@@ -307,16 +311,17 @@ class SLTransformer(Transformer):
             elif isinstance(item, dict) and "groupconn" in item:
                 scan_group_info = item
             elif isinstance(item, Tree):
-                if item.data == const.GRAMMAR_VALUE_MODULEPARAMETERS:
+                tree = cast(Tree, item)
+                if tree.data == const.GRAMMAR_VALUE_MODULEPARAMETERS:
                     moduleparameters.extend(
-                        [x for x in item.children if isinstance(x, Variable)]
+                        [x for x in tree.children if isinstance(x, Variable)]
                     )
-                elif item.data == const.GRAMMAR_VALUE_LOCALVARIABLES:
+                elif tree.data == const.GRAMMAR_VALUE_LOCALVARIABLES:
                     localvariables.extend(
-                        [x for x in item.children if isinstance(x, Variable)]
+                        [x for x in tree.children if isinstance(x, Variable)]
                     )
-                elif item.data == const.GRAMMAR_VALUE_SUBMODULES:
-                    for ch in item.children:
+                elif tree.data == const.GRAMMAR_VALUE_SUBMODULES:
+                    for ch in tree.children:
                         if isinstance(ch, list):
                             submodules.extend(
                                 [
@@ -332,9 +337,9 @@ class SLTransformer(Transformer):
                             ch, (SingleModule, FrameModule, ModuleTypeInstance)
                         ):
                             submodules.append(ch)
-                elif item.data == const.TREE_TAG_MODULETYPE_PAR_LIST:
+                elif tree.data == const.TREE_TAG_MODULETYPE_PAR_LIST:
                     param_mappings.extend(
-                        [x for x in item.children if isinstance(x, ParameterMapping)]
+                        [x for x in tree.children if isinstance(x, ParameterMapping)]
                     )
 
         if not header:
@@ -386,8 +391,9 @@ class SLTransformer(Transformer):
                 isinstance(item, Tree)
                 and item.data == const.TREE_TAG_MODULETYPE_PAR_LIST
             ):
+                tree = cast(Tree, item)
                 param_mappings.extend(
-                    [x for x in item.children if isinstance(x, ParameterMapping)]
+                    [x for x in tree.children if isinstance(x, ParameterMapping)]
                 )
 
         if not header:
@@ -403,7 +409,10 @@ class SLTransformer(Transformer):
         return module
 
     def variable_name(self, children):
-        # NAME (DOT NAME)* ":"? (NEW | OLD)?
+        """
+        Build a proper variable reference dict that preserves the full dotted path.
+        E.g., "Dv.V111.c" should remain intact, not split prematurely.
+        """
         parts: list[str] = []
         state: str | None = None
 
@@ -423,9 +432,13 @@ class SLTransformer(Transformer):
                 elif ch not in (":",):
                     parts.append(ch)
 
-        # Join into a single dotted var_name; you can also preserve parts and state separately if needed
-        var_name = "".join(parts)
-        return {const.KEY_VAR_NAME: var_name, "state": state}
+        # Join into full dotted name WITHOUT splitting base/field here
+        full_name = "".join(parts)
+        
+        return {
+            const.KEY_VAR_NAME: full_name,
+            "state": state
+        }
 
     def moduletype_definition(self, items) -> ModuleTypeDef:
         # NAME "=" MODULEDEFINITION sl_datecode scan_group? module_body ENDDEF_KW
@@ -493,14 +506,15 @@ class SLTransformer(Transformer):
             mtd.groupconn_global = bool(scan_group_info.get("global", False))
         return mtd
 
-    def moduletype_definitions(self, items) -> Tree[Any]:
+    def moduletype_definitions(self, items) -> Tree:
         out = []
         for it in items:
             if isinstance(it, ModuleTypeDef):
                 out.append(it)
             elif isinstance(it, Tree) and it.data == "moduletype_definition":
                 # Defensive in case Lark passes Trees; they will be transformed via moduletype_definition
-                for ch in it.children:
+                tree = cast(Tree, it)
+                for ch in tree.children:
                     if isinstance(ch, ModuleTypeDef):
                         out.append(ch)
         return Tree(const.TREE_TAG_MODULETYPE_LIST, out)
@@ -566,19 +580,20 @@ class SLTransformer(Transformer):
             source_literal=source_literal,
         )
 
-    def moduletype_par_list(self, items) -> Tree[ParameterMapping]:
+    def moduletype_par_list(self, items) -> Tree:
         # Return a Tree tagged with moduletype parameter list
         return Tree(
             const.TREE_TAG_MODULETYPE_PAR_LIST,
-            [x for x in items if isinstance(x, ParameterMapping)],
+            cast(list, [x for x in items if isinstance(x, ParameterMapping)]),
         )
 
-    def invocation_tail(self, items) -> Tree[Any] | None:
+    def invocation_tail(self, items) -> Tree | None:
         # ("(" moduletype_par_list ")")? ";"
         # Extract the parameter list if present
         for it in items:
             if isinstance(it, Tree) and it.data == const.TREE_TAG_MODULETYPE_PAR_LIST:
-                return it
+                tree = cast(Tree, it)
+                return tree
         return None
 
     def scan_group(self, items):
@@ -692,14 +707,16 @@ class SLTransformer(Transformer):
         parameters = []
         for it in items:
             if isinstance(it, Tree) and it.data == const.TREE_TAG_VAR_LIST:
-                parameters = it.children
+                tree = cast(Tree, it)
+                parameters = tree.children
         return Tree(const.GRAMMAR_VALUE_MODULEPARAMETERS, parameters)
 
     def localvariables(self, items):
         variables = []
         for it in items:
             if isinstance(it, Tree) and it.data == const.TREE_TAG_VAR_LIST:
-                variables = it.children
+                tree = cast(Tree, it)
+                variables = tree.children
         return Tree(const.GRAMMAR_VALUE_LOCALVARIABLES, variables)
 
     # ---- MODULEDEF ----
@@ -732,7 +749,8 @@ class SLTransformer(Transformer):
                 coords.append((float(it[0]), float(it[1])))
             # Fallback: if for some reason coordinates wasn't transformed
             elif isinstance(it, Tree) and it.data == "coordinates":
-                nums = [float(x) for x in it.children if isinstance(x, (int, float))]
+                tree = cast(Tree, it)
+                nums = [float(x) for x in tree.children if isinstance(x, (int, float))]
                 if len(nums) >= 2:
                     coords.append((nums[0], nums[1]))
         if len(coords) != 2:
@@ -795,13 +813,13 @@ class SLTransformer(Transformer):
 
         return nums[-1]
 
-    def moduledef_opts_seq(self, items) -> Tree[dict[str, Any]]:
+    def moduledef_opts_seq(self, items) -> Tree:
         # items is a list of 0..4 dicts; merge them
         merged: dict[str, Any] = {}
         for d in items:
             merged.update(d)
         # Return a Tree with a custom tag
-        return Tree(const.TREE_TAG_MODULEDEF_OPTS_SEQ, [merged])
+        return Tree(const.TREE_TAG_MODULEDEF_OPTS_SEQ, cast(list, [merged]))
 
     def moduledef(self, items) -> ModuleDef:
         m = ModuleDef()
@@ -1034,7 +1052,7 @@ class SLTransformer(Transformer):
 
     def submodules(
         self, items
-    ) -> Tree[list[SingleModule | FrameModule | ModuleTypeInstance]]:
+    ) -> Tree:
         submods = []
         for it in items:
             if isinstance(it, (SingleModule, FrameModule, ModuleTypeInstance)):
@@ -1043,7 +1061,7 @@ class SLTransformer(Transformer):
                 for ch in it.children:
                     if isinstance(ch, (SingleModule, FrameModule, ModuleTypeInstance)):
                         submods.append(ch)
-        return Tree(const.GRAMMAR_VALUE_SUBMODULES, [submods])
+        return Tree(const.GRAMMAR_VALUE_SUBMODULES, cast(list, [submods]))
 
     # ---- ModuleCode ----
     def modulecode(self, items) -> ModuleCode:
@@ -1064,7 +1082,8 @@ class SLTransformer(Transformer):
         stmts = []
         for it in items:
             if isinstance(it, Tree) and it.data == const.KEY_STATEMENT:
-                stmts.extend(it.children)
+                tree = cast(Tree, it)
+                stmts.extend(tree.children)
         return {"enter": stmts}
 
     def activecode(self, items) -> dict[str, list[Any]]:
@@ -1072,7 +1091,8 @@ class SLTransformer(Transformer):
         stmts = []
         for it in items:
             if isinstance(it, Tree) and it.data == const.KEY_STATEMENT:
-                stmts.extend(it.children)
+                tree = cast(Tree, it)
+                stmts.extend(tree.children)
         return {"active": stmts}
 
     def exitcode(self, items) -> dict[str, list[Any]]:
@@ -1080,7 +1100,8 @@ class SLTransformer(Transformer):
         stmts = []
         for it in items:
             if isinstance(it, Tree) and it.data == const.KEY_STATEMENT:
-                stmts.extend(it.children)
+                tree = cast(Tree, it)
+                stmts.extend(tree.children)
         return {"exit": stmts}
 
     def code_blocks(self, items) -> SFCCodeBlocks:
@@ -1139,7 +1160,8 @@ class SLTransformer(Transformer):
             if isinstance(it, str) and name is None:
                 name = it
             elif isinstance(it, Tree) and it.data == const.KEY_SEQUENCE_BODY:
-                body_nodes = it.children
+                tree = cast(Tree, it)
+                body_nodes = tree.children
         return SFCTransitionSub(name=name or "", body=body_nodes)
 
     def seqsub(self, items) -> SFCSubsequence:
@@ -1150,7 +1172,8 @@ class SLTransformer(Transformer):
             if isinstance(it, str) and name is None:
                 name = it
             elif isinstance(it, Tree) and it.data == const.KEY_SEQUENCE_BODY:
-                body_nodes = it.children
+                tree = cast(Tree, it)
+                body_nodes = tree.children
         return SFCSubsequence(name=name or "", body=body_nodes)
 
     def seqalternative(self, items) -> SFCAlternative:
@@ -1158,7 +1181,8 @@ class SLTransformer(Transformer):
         branches = []
         for it in items:
             if isinstance(it, Tree) and it.data == const.KEY_SEQUENCE_BODY:
-                branches.append(it.children)
+                tree = cast(Tree, it)
+                branches.append(tree.children)
         return SFCAlternative(branches=branches)
 
     def seqparallel(self, items) -> SFCParallel:
@@ -1166,7 +1190,8 @@ class SLTransformer(Transformer):
         branches = []
         for it in items:
             if isinstance(it, Tree) and it.data == const.KEY_SEQUENCE_BODY:
-                branches.append(it.children)
+                tree = cast(Tree, it)
+                branches.append(tree.children)
         return SFCParallel(branches=branches)
 
     def seqfork(self, items) -> SFCFork:
@@ -1218,7 +1243,8 @@ class SLTransformer(Transformer):
                 elif size is None:
                     size = (float(item[0]), float(item[1]))
             elif isinstance(item, Tree) and item.data == const.KEY_SEQ_CONTROL_OPS:
-                for child in item.children:
+                tree = cast(Tree, item)
+                for child in tree.children:
                     if isinstance(child, Token):
                         if child.type == const.GRAMMAR_VALUE_SEQCONTROL:
                             seqcontrol = True
@@ -1226,7 +1252,8 @@ class SLTransformer(Transformer):
                             seqtimer = True
             elif isinstance(item, Tree) and item.data == const.KEY_SEQUENCE_BODY:
                 # children are already typed SFC nodes
-                code.extend(item.children)
+                tree = cast(Tree, item)
+                code.extend(tree.children)
 
         if name is None:
             raise ValueError("Name can't be None")
@@ -1270,7 +1297,8 @@ class SLTransformer(Transformer):
             ):
                 size = (float(item[0]), float(item[1]))
             elif isinstance(item, Tree) and item.data == const.KEY_STATEMENT:
-                code.extend(item.children)
+                tree = cast(Tree, item)
+                code.extend(tree.children)
 
         if name is None:
             raise ValueError("Name can't be None")
@@ -1369,7 +1397,8 @@ class SLTransformer(Transformer):
             elif isinstance(it, tuple):
                 coords.append(it)
             elif isinstance(it, Tree) and it.data == const.TREE_TAG_INTERACT_BODY_SEQ:
-                for child in it.children:
+                tree = cast(Tree, it)
+                for child in tree.children:
                     body.append(child)
             elif isinstance(it, list):
                 for child in it:
@@ -1385,7 +1414,8 @@ class SLTransformer(Transformer):
             if isinstance(it, Token) and it.type == const.KEY_NAME and name is None:
                 name = it.value
             elif isinstance(it, Tree) and it.data == const.KEY_ENABLE_EXPRESSION:
-                tail = it
+                tree = cast(Tree, it)
+                tail = tree
             elif not isinstance(it, Token):
                 # the 'value' subtree or other processed value
                 val = it
@@ -1449,7 +1479,7 @@ class SLTransformer(Transformer):
         types = ", ".join(type(x).__name__ for x in items)
         raise ValueError(f"text_content expected a str; got: {types}")
 
-    def seq_control_opt(self, items) -> Tree[Token]:
+    def seq_control_opt(self, items) -> Tree:
         # "(" SEQCONTROL? ","? SEQTIMER? ")"
         return Tree(
             const.KEY_SEQ_CONTROL_OPS, [tok for tok in items if isinstance(tok, Token)]

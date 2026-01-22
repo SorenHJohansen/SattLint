@@ -455,3 +455,95 @@ def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> Base
         origin_file=root_bp.origin_file,
         origin_lib=root_bp.origin_lib,
     )
+
+
+# ---------- Dump functions ----------
+def _get_dump_dir() -> Path:
+    """Get or create the dump directory."""
+    from datetime import datetime
+    dump_dir = Path.home() / ".sattlint" / "dumps"
+    dump_dir.mkdir(parents=True, exist_ok=True)
+    return dump_dir
+
+
+def dump_parse_tree(project: tuple[BasePicture, ProjectGraph]) -> None:
+    """Save the parse tree from the root BasePicture to a file."""
+    from datetime import datetime
+    project_bp, graph = project
+    
+    if project_bp.parse_tree is None:
+        print("❌ No parse tree available for the root program.")
+        return
+    
+    dump_dir = _get_dump_dir()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = dump_dir / f"parse_tree_{project_bp.name}_{timestamp}.txt"
+    
+    output = project_bp.parse_tree.pretty()
+    filename.write_text(output, encoding="utf-8")
+    
+    print(f"\n✔ Parse tree saved to: {filename}")
+    print()
+
+
+def dump_ast(project: tuple[BasePicture, ProjectGraph]) -> None:
+    """Save the AST (BasePicture) structure to a file."""
+    from datetime import datetime
+    project_bp, graph = project
+    
+    dump_dir = _get_dump_dir()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = dump_dir / f"ast_{project_bp.name}_{timestamp}.txt"
+    
+    output = str(project_bp)
+    filename.write_text(output, encoding="utf-8")
+    
+    print(f"\n✔ AST saved to: {filename}")
+    print()
+
+
+def dump_dependency_graph(project: tuple[BasePicture, ProjectGraph]) -> None:
+    """Save the dependency graph to a file."""
+    from datetime import datetime
+    project_bp, graph = project
+    
+    dump_dir = _get_dump_dir()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = dump_dir / f"dependency_graph_{project_bp.name}_{timestamp}.txt"
+    
+    lines = ["--- Dependency Graph ---"]
+    lines.append(f"Programs/Libraries parsed: {len(graph.ast_by_name)}")
+    for name in sorted(graph.ast_by_name.keys()):
+        bp = graph.ast_by_name[name]
+        origin_info = f" (from {bp.origin_lib}/{bp.origin_file})" if bp.origin_lib or bp.origin_file else ""
+        lines.append(f"  • {name}{origin_info}")
+    
+    if graph.datatype_defs:
+        lines.append(f"\nDataType Definitions: {len(graph.datatype_defs)}")
+        for name in sorted(graph.datatype_defs.keys()):
+            dt = graph.datatype_defs[name]
+            origin_info = f" (from {dt.origin_lib}/{dt.origin_file})" if dt.origin_lib or dt.origin_file else ""
+            lines.append(f"  • {name}{origin_info}")
+    
+    if graph.moduletype_defs:
+        lines.append(f"\nModuleType Definitions: {len(graph.moduletype_defs)}")
+        for name in sorted(graph.moduletype_defs.keys()):
+            mt = graph.moduletype_defs[name]
+            origin_info = f" (from {mt.origin_lib}/{mt.origin_file})" if mt.origin_lib or mt.origin_file else ""
+            lines.append(f"  • {name}{origin_info}")
+    
+    if graph.missing:
+        lines.append(f"\nMissing/Unresolved: {len(graph.missing)}")
+        for msg in graph.missing:
+            lines.append(f"  ⚠ {msg}")
+    
+    if graph.ignored_vendor:
+        lines.append(f"\nIgnored Vendor: {len(graph.ignored_vendor)}")
+        for msg in graph.ignored_vendor:
+            lines.append(f"  ⓘ {msg}")
+    
+    output = "\n".join(lines)
+    filename.write_text(output, encoding="utf-8")
+    
+    print(f"\n✔ Dependency graph saved to: {filename}")
+    print()
