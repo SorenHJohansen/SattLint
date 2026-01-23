@@ -7,7 +7,7 @@ name = "sattlint"
 version = "0.1.1"
 description = "SattLine project analyzer and doc generator"
 readme = "README.md"
-authors = [{ name = "Your Name", email = "you@example.com" }]
+authors = [{ name = "Søren Høyer Johansen", email = "sorenhj@pm.me" }]
 requires-python = ">=3.11"
 dependencies = ["lark-parser>=0.11.0", "python-docx>=0.8.11", "tomli_w>=1.2.0"]
 

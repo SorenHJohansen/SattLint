@@ -295,7 +295,9 @@ def run_datatype_usage_analysis(cfg: dict):
     from .analyzers.variables import analyze_datatype_usage
 
     try:
-        report = analyze_datatype_usage(project_bp, var_name, debug=cfg.get("debug", False))
+        report = analyze_datatype_usage(
+            project_bp, var_name, debug=cfg.get("debug", False)
+        )
         print("\n" + report)
     except Exception as e:
         print(f"❌ Error during analysis: {e}")
@@ -333,7 +335,9 @@ def variable_analysis_menu(cfg: dict):
             # Standard issue-based analyses
             elif confirm(f"Run '{name}'?"):
                 # kinds is either a set[IssueKind] or None at this point
-                run_variable_analysis(cfg, kinds if isinstance(kinds, (set, type(None))) else None)
+                run_variable_analysis(
+                    cfg, kinds if isinstance(kinds, (set, type(None))) else None
+                )
         else:
             print("Invalid choice.")
             pause()
@@ -363,7 +367,9 @@ def run_module_localvar_analysis(cfg: dict):
     try:
         from .analyzers.variables import analyze_module_localvar_fields
 
-        report = analyze_module_localvar_fields(project_bp, module_name, var_name, debug=cfg.get("debug", False))
+        report = analyze_module_localvar_fields(
+            project_bp, module_name, var_name, debug=cfg.get("debug", False)
+        )
         print("\n" + report)
     except Exception as e:
         print(f"❌ Error during analysis: {e}")
@@ -388,7 +394,9 @@ def run_debug_variable_usage(cfg: dict):
         return
 
     try:
-        report = debug_variable_usage(project_bp, var_name, debug=cfg.get("debug", False))
+        report = debug_variable_usage(
+            project_bp, var_name, debug=cfg.get("debug", False)
+        )
         print("\n" + report)
     except Exception as e:
         print(f"❌ Error during debug: {e}")
@@ -413,7 +421,9 @@ def run_advanced_datatype_analysis(cfg: dict):
         if var_name:
             from .analyzers.variables import analyze_datatype_usage
 
-            report = analyze_datatype_usage(project_bp, var_name, debug=cfg.get("debug", False))
+            report = analyze_datatype_usage(
+                project_bp, var_name, debug=cfg.get("debug", False)
+            )
             print("\n" + report)
 
     elif choice == "2":
@@ -426,7 +436,9 @@ def run_advanced_datatype_analysis(cfg: dict):
         if var_name:
             from .analyzers.variables import debug_variable_usage
 
-            report = debug_variable_usage(project_bp, var_name, debug=cfg.get("debug", False))
+            report = debug_variable_usage(
+                project_bp, var_name, debug=cfg.get("debug", False)
+            )
             print("\n" + report)
 
     pause()
@@ -457,7 +469,9 @@ b) Back
         elif c == "3" and confirm("Dump dependency graph?"):
             engine_module.dump_dependency_graph(project)
         elif c == "4" and confirm("Dump variable report?"):
-            print(analyze_variables(project_bp, debug=cfg.get("debug", False)).summary())
+            print(
+                analyze_variables(project_bp, debug=cfg.get("debug", False)).summary()
+            )
         else:
             print("Invalid choice.")
 
