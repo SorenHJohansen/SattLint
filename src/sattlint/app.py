@@ -220,16 +220,21 @@ def show_config(cfg: dict):
 # ----------------------------
 # Analysis & dumps
 # ----------------------------
-def load_project(cfg: dict):
+def load_project(cfg: dict, force_regenerate: bool = False):
     cache_dir = CONFIG_PATH.parent / "cache"
     cache = ASTCache(cache_dir)
 
     key = compute_cache_key(cfg)  # now only hashes config, not files
     cached = cache.load(key)
 
-    if cached and cache.validate(cached):
+    if not force_regenerate and cached and cache.validate(cached):
         log.debug("✔ Using cached AST")
         return cached["project"]
+
+    if force_regenerate:
+        log.debug("🔄 Force regenerating AST")
+    else:
+        log.debug("⚠ Cache miss/invalid - regenerating")
 
     loader = engine_module.SattLineProjectLoader(
         program_dir=Path(cfg["program_dir"]),
@@ -295,7 +300,9 @@ def run_datatype_usage_analysis(cfg: dict):
     from .analyzers.variables import analyze_datatype_usage
 
     try:
-        report = analyze_datatype_usage(project_bp, var_name, debug=cfg.get("debug", False))
+        report = analyze_datatype_usage(
+            project_bp, var_name, debug=cfg.get("debug", False)
+        )
         print("\n" + report)
     except Exception as e:
         print(f"❌ Error during analysis: {e}")
@@ -309,11 +316,23 @@ def variable_analysis_menu(cfg: dict):
         print("\n--- Variable analyses ---")
         for k, (name, _) in VARIABLE_ANALYSES.items():
             print(f"{k}) {name}")
+        print("f) Force AST regeneration (current session only)")
         print("b) Back")
 
         c = input("> ").strip().lower()
         if c == "b":
             return
+
+        if c == "f":
+            if confirm("Force AST regeneration for current session?"):
+                print("🔄 AST will be regenerated on next analysis...")
+                # Force regenerate by calling load_project with force_regenerate=True
+                try:
+                    load_project(cfg, force_regenerate=True)
+                    print("✅ AST regeneration completed")
+                except Exception as e:
+                    print(f"❌ Error during AST regeneration: {e}")
+                pause()
 
         if c in VARIABLE_ANALYSES:
             name, kinds = VARIABLE_ANALYSES[c]
@@ -333,7 +352,9 @@ def variable_analysis_menu(cfg: dict):
             # Standard issue-based analyses
             elif confirm(f"Run '{name}'?"):
                 # kinds is either a set[IssueKind] or None at this point
-                run_variable_analysis(cfg, kinds if isinstance(kinds, (set, type(None))) else None)
+                run_variable_analysis(
+                    cfg, kinds if isinstance(kinds, (set, type(None))) else None
+                )
         else:
             print("Invalid choice.")
             pause()
@@ -395,7 +416,9 @@ def run_debug_variable_usage(cfg: dict):
         return
 
     try:
-        report = debug_variable_usage(project_bp, var_name, debug=cfg.get("debug", False))
+        report = debug_variable_usage(
+            project_bp, var_name, debug=cfg.get("debug", False)
+        )
         print("\n" + report)
     except Exception as e:
         print(f"❌ Error during debug: {e}")
@@ -420,7 +443,9 @@ def run_advanced_datatype_analysis(cfg: dict):
         if var_name:
             from .analyzers.variables import analyze_datatype_usage
 
-            report = analyze_datatype_usage(project_bp, var_name, debug=cfg.get("debug", False))
+            report = analyze_datatype_usage(
+                project_bp, var_name, debug=cfg.get("debug", False)
+            )
             print("\n" + report)
 
     elif choice == "2":
@@ -433,7 +458,9 @@ def run_advanced_datatype_analysis(cfg: dict):
         if var_name:
             from .analyzers.variables import debug_variable_usage
 
-            report = debug_variable_usage(project_bp, var_name, debug=cfg.get("debug", False))
+            report = debug_variable_usage(
+                project_bp, var_name, debug=cfg.get("debug", False)
+            )
             print("\n" + report)
 
     pause()
@@ -443,16 +470,28 @@ def dump_menu(cfg: dict):
     while True:
         clear_screen()
         print("""
---- Dump outputs ---
+ --- Dump outputs ---
 1) Dump parse tree
 2) Dump AST
 3) Dump dependency graph
 4) Dump variable report
+f) Force AST regeneration (current session only)
 b) Back
 """)
         c = input("> ").strip().lower()
         if c == "b":
             return
+
+        if c == "f":
+            if confirm("Force AST regeneration for current session?"):
+                print("🔄 AST will be regenerated...")
+                try:
+                    load_project(cfg, force_regenerate=True)
+                    print("✅ AST regeneration completed")
+                except Exception as e:
+                    print(f"❌ Error during AST regeneration: {e}")
+                pause()
+            continue
 
         project_bp, graph = load_project(cfg)
         project = (project_bp, graph)
@@ -464,7 +503,9 @@ b) Back
         elif c == "3" and confirm("Dump dependency graph?"):
             engine_module.dump_dependency_graph(project)
         elif c == "4" and confirm("Dump variable report?"):
-            print(analyze_variables(project_bp, debug=cfg.get("debug", False)).summary())
+            print(
+                analyze_variables(project_bp, debug=cfg.get("debug", False)).summary()
+            )
         else:
             print("Invalid choice.")
 
