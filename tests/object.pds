@@ -1,0 +1,52 @@
+table Object
+  columns
+    columnname System
+    columnname ProgramUnit
+    columnname Path
+    columnname ScanGroup
+    columnname Module type
+    columnname Object
+    columnname Parameter
+    columnname Value
+    columnname Data type
+    columnname Connected variable
+    columnname IO component
+    columnname IO address
+    columnname IO tag
+    columnname IO type
+    columnname IO direction
+    columnname Component
+    columnname Read/Write
+    columnname Cref component
+    columnname Cref path
+    columnname Cref type
+  end columns
+  module type=Motor?W??,Valve?W??
+    parameters
+      system
+      program
+      path length=4
+      scangroup
+      moduletype
+      parvalue:Identity
+      parname
+      parvalue
+      partype
+      paractualvar length = 4
+      iosearch name=IO
+        ioname
+        ioaddress
+        iotag
+        iotype
+        iodirection
+      end iosearch
+      crossref name=SO
+        crefmyname
+        crefreadwrite
+        crefname
+        crefequa length=4
+        creftype
+      end crossref
+    end parameters
+  end module
+end table

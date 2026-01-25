@@ -1,0 +1,55 @@
+table Object
+  columns
+    columnname System
+    columnname ProgramUnit
+    columnname Path
+    columnname ScanGroup
+    columnname Module type
+    columnname Par/Var
+    columnname Data type
+    columnname Default
+    columnname Description
+    columnname Value
+    columnname IO address
+    columnname IO tag
+    columnname Owner
+    columnname Connected variable
+    columnname Actual variable
+  end columns
+  module type = *
+    parameters
+      system
+      program
+      path length = 4
+      scangroup
+      moduletype
+      parname
+      partype
+      pardefault
+      pardescription
+      parvalue
+      parioaddress
+      partag
+      parowner
+      parconnected
+      paractualvar length = 4
+    end parameters
+    variables
+      system
+      program
+      path length = 4
+      scangroup
+      moduletype
+      varname
+      vartype
+      vardefault
+      vardescription
+      varvalue
+      varioaddress
+      vartag
+      varowner
+      text
+      text
+    end variables
+  end module
+end table

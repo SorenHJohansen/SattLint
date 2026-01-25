@@ -434,7 +434,7 @@ class SLTransformer(Transformer):
 
         # Join into full dotted name WITHOUT splitting base/field here
         full_name = "".join(parts)
-        
+
         return {
             const.KEY_VAR_NAME: full_name,
             "state": state
@@ -1120,71 +1120,70 @@ class SLTransformer(Transformer):
 
     def seqinitstep(self, items) -> SFCStep:
         # SEQINITSTEP NAME code_blocks [2]
-        name = None
-        blocks = SFCCodeBlocks()
-        for it in items:
-            if isinstance(it, Token) and it.type == "NAME" and name is None:
-                name = str(it)
-            elif isinstance(it, str) and not isinstance(it, Token) and name is None:
-                name = it
-            elif isinstance(it, SFCCodeBlocks):
-                blocks = it
-        return SFCStep(kind="init", name=name or "", code=blocks)
+        # Strict: grammar guarantees this shape.
+        # Items should be: [SEQINITSTEP, <name:str>, <code:SFCCodeBlocks>]
+        if (
+            len(items) != 3
+            or not isinstance(items[1], str)
+            or not isinstance(items[2], SFCCodeBlocks)
+        ):
+            raise ValueError(f"seqinitstep expected (SEQINITSTEP, NAME, code_blocks); got: {items!r}")
+        return SFCStep(kind="init", name=items[1], code=items[2])
 
     def seqstep(self, items) -> SFCStep:
         # SEQSTEP NAME code_blocks [2]
-        name = None
-        blocks = SFCCodeBlocks()
-        for it in items:
-            if isinstance(it, Token) and it.type == "NAME" and name is None:
-                name = str(it)
-            elif isinstance(it, str) and not isinstance(it, Token) and name is None:
-                name = it
-            elif isinstance(it, SFCCodeBlocks):
-                blocks = it
-        return SFCStep(kind="step", name=name or "", code=blocks)
+        # Strict: grammar guarantees this shape.
+        # Items should be: [SEQSTEP, <name:str>, <code:SFCCodeBlocks>]
+        if (
+            len(items) != 3
+            or not isinstance(items[1], str)
+            or not isinstance(items[2], SFCCodeBlocks)
+        ):
+            raise ValueError(f"seqstep expected (SEQSTEP, NAME, code_blocks); got: {items!r}")
+        return SFCStep(kind="step", name=items[1], code=items[2])
 
     def seqtransition(self, items) -> SFCTransition:
         # SEQTRANSITION NAME? WAIT_FOR expression [2]
-        name = None
-        condition = None
-        for it in items:
-            if isinstance(it, Token) and it.type == "NAME" and name is None:
-                name = str(it)
-            elif isinstance(it, str) and not isinstance(it, Token) and name is None:
-                name = it
-            elif not isinstance(it, Token):
-                # The expression child
-                condition = it
-        return SFCTransition(name=name, condition=condition)
+        # Strict shapes:
+        # - [SEQTRANSITION, <name:str>, WAIT_FOR, <expr>]
+        # - [SEQTRANSITION, WAIT_FOR, <expr>]
+        if len(items) == 4 and isinstance(items[1], str) and isinstance(items[2], Token):
+            if items[2].type != "WAIT_FOR":
+                raise ValueError(f"seqtransition expected WAIT_FOR; got token {items[2]!r}")
+            return SFCTransition(name=items[1], condition=items[3])
+
+        if len(items) == 3 and isinstance(items[1], Token):
+            if items[1].type != "WAIT_FOR":
+                raise ValueError(f"seqtransition expected WAIT_FOR; got token {items[1]!r}")
+            return SFCTransition(name=None, condition=items[2])
+
+        raise ValueError(f"seqtransition expected (SEQTRANSITION, NAME?, WAIT_FOR, expr); got: {items!r}")
 
     def seqtransitionsub(self, items) -> SFCTransitionSub:
         # SUBSEQTRANSITION NAME sequence_body ENDSUBSEQTRANSITION [2]
-        name = None
-        body_nodes = []
-        for it in items:
-            if isinstance(it, Token) and it.type == "NAME" and name is None:
-                name = str(it)
-            elif isinstance(it, str) and not isinstance(it, Token) and name is None:
-                name = it
-            elif isinstance(it, Tree) and it.data == const.KEY_SEQUENCE_BODY:
-                tree = cast(Tree, it)
-                body_nodes = tree.children
-        return SFCTransitionSub(name=name or "", body=body_nodes)
+        if (
+            len(items) != 4
+            or not isinstance(items[1], str)
+            or not (isinstance(items[2], Tree) and items[2].data == const.KEY_SEQUENCE_BODY)
+        ):
+            raise ValueError(
+                f"seqtransitionsub expected (SUBSEQTRANSITION, NAME, sequence_body, ENDSUBSEQTRANSITION); got: {items!r}"
+            )
+        tree = cast(Tree, items[2])
+        return SFCTransitionSub(name=items[1], body=tree.children)
 
     def seqsub(self, items) -> SFCSubsequence:
         # SUBSEQUENCE NAME sequence_body ENDSUBSEQUENCE [2]
-        name = None
-        body_nodes = []
-        for it in items:
-            if isinstance(it, Token) and it.type == "NAME" and name is None:
-                name = str(it)
-            elif isinstance(it, str) and not isinstance(it, Token) and name is None:
-                name = it
-            elif isinstance(it, Tree) and it.data == const.KEY_SEQUENCE_BODY:
-                tree = cast(Tree, it)
-                body_nodes = tree.children
-        return SFCSubsequence(name=name or "", body=body_nodes)
+        if (
+            len(items) != 4
+            or not isinstance(items[1], str)
+            or not (isinstance(items[2], Tree) and items[2].data == const.KEY_SEQUENCE_BODY)
+        ):
+            raise ValueError(
+                f"seqsub expected (SUBSEQUENCE, NAME, sequence_body, ENDSUBSEQUENCE); got: {items!r}"
+            )
+        tree = cast(Tree, items[2])
+        return SFCSubsequence(name=items[1], body=tree.children)
 
     def seqalternative(self, items) -> SFCAlternative:
         # ALTERNATIVESEQ sequence_body (ALTERNATIVEBRANCH sequence_body)+ ENDALTERNATIVE [2]
@@ -1206,13 +1205,9 @@ class SLTransformer(Transformer):
 
     def seqfork(self, items) -> SFCFork:
         # SEQFORK NAME [2]
-        target = None
-        for it in items:
-            if isinstance(it, Token) and it.type == "NAME" and target is None:
-                target = str(it)
-            elif isinstance(it, str) and not isinstance(it, Token) and target is None:
-                target = it
-        return SFCFork(target=target or "")
+        if len(items) != 2 or not isinstance(items[1], str):
+            raise ValueError(f"seqfork expected (SEQFORK, NAME); got: {items!r}")
+        return SFCFork(target=items[1])
 
     def seqbreak(self, _items) -> SFCBreak:
         # SEQBREAK [2]

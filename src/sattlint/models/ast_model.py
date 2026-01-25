@@ -293,16 +293,16 @@ class Variable:
     usage_locations: list[tuple] = field(default_factory=list)
     field_reads: dict[str, list[list[str]]] = field(default_factory=dict)
     field_writes: dict[str, list[list[str]]] = field(default_factory=dict)
-    
+
     # Computed properties (read-only)
     @property
     def is_unused(self) -> bool:
         return not (bool(self.read) or bool(self.written))
-    
+
     @property
     def is_read_only(self) -> bool:
         return bool(self.read) and not bool(self.written)
-    
+
     @property
     def datatype_text(self) -> str:
         # Always return a string representation
@@ -311,7 +311,7 @@ class Variable:
             if isinstance(self.datatype, Simple_DataType)
             else str(self.datatype)
         )
-    
+
     def __post_init__(self):
         # Accept DataType or any-case string
         try:
@@ -322,25 +322,25 @@ class Variable:
                 self.datatype = self.datatype
             else:
                 raise
-    
+
     def mark_read(self, module_path):
         self.read = True
         self.usage_locations.append((module_path.copy(), "read"))
-    
+
     def mark_field_read(self, field_path: str, location: list[str]) -> None:
         """Mark a specific field (or nested field) as read."""
         self.field_reads.setdefault(field_path, []).append(location)
         self.read = True  # also mark the variable itself as used
-    
+
     def mark_written(self, module_path):
         self.written = True
         self.usage_locations.append((module_path.copy(), "write"))
-    
+
     def mark_field_written(self, field_path: str, location: list[str]) -> None:
         """Mark a specific field (or nested field) as written."""
         self.field_writes.setdefault(field_path, []).append(location)
         self.written = True
-    
+
     def __str__(self) -> str:
         return f"Name: {self.name!r}, Datatype: {self.datatype!r}, Global: {self.global_var}, Const: {self.const}, State: {self.state}, Init_value : {self.init_value!r}, Description: {self.description!r}"
 
@@ -585,8 +585,8 @@ class SingleModule:
             f"Moduleparameters: {format_list(self.moduleparameters)}",
             f"Localvariables  : {format_list(self.localvariables)}",
             f"Submodules      : {format_list(self.submodules)}",
-            # f"ModuleDef       : {format_optional(self.moduledef)}",
-            # f"ModuleCode      : {format_optional(self.modulecode)}",
+            f"ModuleDef       : {format_optional(self.moduledef)}",
+            f"ModuleCode      : {format_optional(self.modulecode)}",
             f"ParameterMappings: {format_list(self.parametermappings)}",
         ]
         return "SingleModule{\n" + textwrap.indent("\n".join(lines), "    ") + "}"
@@ -609,8 +609,8 @@ class FrameModule:
             f"Invoke_coord : {self.header.invoke_coord!r}",
             f"Datecode     : {self.datecode!r}",
             f"Submodules   : {format_list(self.submodules)}",
-            # f"ModuleDef    : {format_optional(self.moduledef)}",
-            # f"ModuleCode   : {format_optional(self.modulecode)}",
+            f"ModuleDef    : {format_optional(self.moduledef)}",
+            f"ModuleCode   : {format_optional(self.modulecode)}",
         ]
         return "FrameModule{\n" + textwrap.indent("\n".join(lines), "    ") + "}"
 
@@ -685,6 +685,8 @@ class BasePicture:
     modulecode: ModuleCode | None = None
     origin_file: str | None = None
     origin_lib: str | None = None
+    # library_name.casefold() -> list of dependency library names (casefolded)
+    library_dependencies: dict[str, list[str]] = field(default_factory=dict)
     parse_tree: Any | None = None
 
     def __str__(self) -> str:
@@ -696,7 +698,7 @@ class BasePicture:
             f"Localvariables: {format_list(self.localvariables)}\n\n"
             f"Submodules: {format_list(self.submodules)}\n\n"
             f"ModuleDef: {self.moduledef}\n\n"
-            f"ModuleCode: {self.modulecode!r}\n\n"
+            f"ModuleCode: {self.modulecode}\n\n"
         ]
         return "BasePicture{\n" + textwrap.indent("\n  ".join(lines), "    ") + "}"
 

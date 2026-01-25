@@ -1,0 +1,11 @@
+# SattLine files are allowed for testing purposes
+!*.k
+!*.q
+!*.x
+!*.y
+!*.z
+!*.g
+!*.l
+!*.s
+!*.p
+!*.txt

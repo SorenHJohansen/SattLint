@@ -397,6 +397,16 @@ class SattLineProjectLoader(DebugMixin):
         for dep in dep_names:
             self._visit(dep, graph, strict)
 
+        dep_libs: list[str] = []
+        for dep in dep_names:
+            dep_bp = graph.ast_by_name.get(dep)
+            if dep_bp and getattr(dep_bp, "origin_lib", None):
+                dep_libs.append(dep_bp.origin_lib)
+                continue
+            dep_code = self._find_code(dep)
+            if dep_code is not None:
+                dep_libs.append(self._library_name_for_path(dep_code))
+
         # Determine code path
         code_path = self._find_code(name)
         if code_path is not None:
@@ -405,6 +415,7 @@ class SattLineProjectLoader(DebugMixin):
                 if bp is not None:
                     graph.ast_by_name[name] = bp
                     lib_name = self._library_name_for_path(code_path)
+                    graph.add_library_dependencies(lib_name, dep_libs)
                     graph.index_from_basepic(
                         bp, source_path=code_path, library_name=lib_name
                     )  # aggregate defs for global analysis [2]
@@ -438,9 +449,15 @@ def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> Base
     definitions from the root and its dependencies, so analyzers can resolve
     types across files without changing SLTransformer.
     """
-    # Deduplicate by name and keep last definition seen (adjust strategy if needed)
+    # Moduletype defs are keyed by (library, name) so same-name types from different
+    # libraries are preserved in the merged BasePicture.
     merged_datatypes: list[DataType] = list(graph.datatype_defs.values())
     merged_modtypes: list[ModuleTypeDef] = list(graph.moduletype_defs.values())
+
+    lib_deps = {
+        lib: sorted(deps)
+        for lib, deps in (graph.library_dependencies or {}).items()
+    }
 
     return BasePicture(
         header=root_bp.header,
@@ -454,6 +471,7 @@ def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> Base
         modulecode=root_bp.modulecode,
         origin_file=root_bp.origin_file,
         origin_lib=root_bp.origin_lib,
+        library_dependencies=lib_deps,
     )
 
 
@@ -470,18 +488,18 @@ def dump_parse_tree(project: tuple[BasePicture, ProjectGraph]) -> None:
     """Save the parse tree from the root BasePicture to a file."""
     from datetime import datetime
     project_bp, graph = project
-    
+
     if project_bp.parse_tree is None:
         print("❌ No parse tree available for the root program.")
         return
-    
+
     dump_dir = _get_dump_dir()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = dump_dir / f"parse_tree_{project_bp.header.name}_{timestamp}.txt"
-    
+
     output = project_bp.parse_tree.pretty()
     filename.write_text(output, encoding="utf-8")
-    
+
     print(f"\n✔ Parse tree saved to: {filename}")
     print()
 
@@ -490,14 +508,14 @@ def dump_ast(project: tuple[BasePicture, ProjectGraph]) -> None:
     """Save the AST (BasePicture) structure to a file."""
     from datetime import datetime
     project_bp, graph = project
-    
+
     dump_dir = _get_dump_dir()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = dump_dir / f"ast_{project_bp.header.name}_{timestamp}.txt"
-    
+
     output = str(project_bp)
     filename.write_text(output, encoding="utf-8")
-    
+
     print(f"\n✔ AST saved to: {filename}")
     print()
 
@@ -506,44 +524,50 @@ def dump_dependency_graph(project: tuple[BasePicture, ProjectGraph]) -> None:
     """Save the dependency graph to a file."""
     from datetime import datetime
     project_bp, graph = project
-    
+
     dump_dir = _get_dump_dir()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = dump_dir / f"dependency_graph_{project_bp.header.name}_{timestamp}.txt"
-    
+
     lines = ["--- Dependency Graph ---"]
     lines.append(f"Programs/Libraries parsed: {len(graph.ast_by_name)}")
     for name in sorted(graph.ast_by_name.keys()):
         bp = graph.ast_by_name[name]
         origin_info = f" (from {bp.origin_lib}/{bp.origin_file})" if bp.origin_lib or bp.origin_file else ""
         lines.append(f"  • {name}{origin_info}")
-    
+
     if graph.datatype_defs:
         lines.append(f"\nDataType Definitions: {len(graph.datatype_defs)}")
         for name in sorted(graph.datatype_defs.keys()):
             dt = graph.datatype_defs[name]
             origin_info = f" (from {dt.origin_lib}/{dt.origin_file})" if dt.origin_lib or dt.origin_file else ""
             lines.append(f"  • {name}{origin_info}")
-    
+
     if graph.moduletype_defs:
         lines.append(f"\nModuleType Definitions: {len(graph.moduletype_defs)}")
-        for name in sorted(graph.moduletype_defs.keys()):
-            mt = graph.moduletype_defs[name]
+        for (lib_key, name_key), mt in sorted(graph.moduletype_defs.items()):
+            display = f"{mt.origin_lib}:{mt.name}" if mt.origin_lib else mt.name
             origin_info = f" (from {mt.origin_lib}/{mt.origin_file})" if mt.origin_lib or mt.origin_file else ""
-            lines.append(f"  • {name}{origin_info}")
-    
+            lines.append(f"  • {display}{origin_info}")
+
+    if graph.library_dependencies:
+        lines.append("\nLibrary dependencies:")
+        for lib, deps in sorted(graph.library_dependencies.items()):
+            dep_list = ", ".join(sorted(deps)) if deps else "<none>"
+            lines.append(f"  • {lib} -> {dep_list}")
+
     if graph.missing:
         lines.append(f"\nMissing/Unresolved: {len(graph.missing)}")
         for msg in graph.missing:
             lines.append(f"  ⚠ {msg}")
-    
+
     if graph.ignored_vendor:
         lines.append(f"\nIgnored Vendor: {len(graph.ignored_vendor)}")
         for msg in graph.ignored_vendor:
             lines.append(f"  ⓘ {msg}")
-    
+
     output = "\n".join(lines)
     filename.write_text(output, encoding="utf-8")
-    
+
     print(f"\n✔ Dependency graph saved to: {filename}")
     print()
