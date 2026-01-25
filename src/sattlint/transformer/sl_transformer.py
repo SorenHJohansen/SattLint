@@ -1123,7 +1123,9 @@ class SLTransformer(Transformer):
         name = None
         blocks = SFCCodeBlocks()
         for it in items:
-            if isinstance(it, str) and name is None:
+            if isinstance(it, Token) and it.type == "NAME" and name is None:
+                name = str(it)
+            elif isinstance(it, str) and not isinstance(it, Token) and name is None:
                 name = it
             elif isinstance(it, SFCCodeBlocks):
                 blocks = it
@@ -1134,7 +1136,9 @@ class SLTransformer(Transformer):
         name = None
         blocks = SFCCodeBlocks()
         for it in items:
-            if isinstance(it, str) and name is None:
+            if isinstance(it, Token) and it.type == "NAME" and name is None:
+                name = str(it)
+            elif isinstance(it, str) and not isinstance(it, Token) and name is None:
                 name = it
             elif isinstance(it, SFCCodeBlocks):
                 blocks = it
@@ -1145,7 +1149,9 @@ class SLTransformer(Transformer):
         name = None
         condition = None
         for it in items:
-            if isinstance(it, str) and name is None:
+            if isinstance(it, Token) and it.type == "NAME" and name is None:
+                name = str(it)
+            elif isinstance(it, str) and not isinstance(it, Token) and name is None:
                 name = it
             elif not isinstance(it, Token):
                 # The expression child
@@ -1157,7 +1163,9 @@ class SLTransformer(Transformer):
         name = None
         body_nodes = []
         for it in items:
-            if isinstance(it, str) and name is None:
+            if isinstance(it, Token) and it.type == "NAME" and name is None:
+                name = str(it)
+            elif isinstance(it, str) and not isinstance(it, Token) and name is None:
                 name = it
             elif isinstance(it, Tree) and it.data == const.KEY_SEQUENCE_BODY:
                 tree = cast(Tree, it)
@@ -1169,7 +1177,9 @@ class SLTransformer(Transformer):
         name = None
         body_nodes = []
         for it in items:
-            if isinstance(it, str) and name is None:
+            if isinstance(it, Token) and it.type == "NAME" and name is None:
+                name = str(it)
+            elif isinstance(it, str) and not isinstance(it, Token) and name is None:
                 name = it
             elif isinstance(it, Tree) and it.data == const.KEY_SEQUENCE_BODY:
                 tree = cast(Tree, it)
@@ -1198,7 +1208,9 @@ class SLTransformer(Transformer):
         # SEQFORK NAME [2]
         target = None
         for it in items:
-            if isinstance(it, str) and target is None:
+            if isinstance(it, Token) and it.type == "NAME" and target is None:
+                target = str(it)
+            elif isinstance(it, str) and not isinstance(it, Token) and target is None:
                 target = it
         return SFCFork(target=target or "")
 

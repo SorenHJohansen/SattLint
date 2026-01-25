@@ -115,7 +115,7 @@ def _format_coord(coord: tuple[float, ...] | None) -> str:
 def _render_basepicture(doc: DocClass, bp: BasePicture) -> None:
     _heading(doc, "BasePicture", level=1)
 
-    _paragraph(doc, f"Name       : {bp.name}")
+    _paragraph(doc, f"Name       : {bp.header.name}")
     _paragraph(doc, f"Position   : {_format_coord(bp.position)}")
     doc.add_paragraph("")  # blank line
 

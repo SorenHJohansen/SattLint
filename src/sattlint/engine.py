@@ -477,7 +477,7 @@ def dump_parse_tree(project: tuple[BasePicture, ProjectGraph]) -> None:
     
     dump_dir = _get_dump_dir()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = dump_dir / f"parse_tree_{project_bp.name}_{timestamp}.txt"
+    filename = dump_dir / f"parse_tree_{project_bp.header.name}_{timestamp}.txt"
     
     output = project_bp.parse_tree.pretty()
     filename.write_text(output, encoding="utf-8")
@@ -493,7 +493,7 @@ def dump_ast(project: tuple[BasePicture, ProjectGraph]) -> None:
     
     dump_dir = _get_dump_dir()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = dump_dir / f"ast_{project_bp.name}_{timestamp}.txt"
+    filename = dump_dir / f"ast_{project_bp.header.name}_{timestamp}.txt"
     
     output = str(project_bp)
     filename.write_text(output, encoding="utf-8")
@@ -509,7 +509,7 @@ def dump_dependency_graph(project: tuple[BasePicture, ProjectGraph]) -> None:
     
     dump_dir = _get_dump_dir()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = dump_dir / f"dependency_graph_{project_bp.name}_{timestamp}.txt"
+    filename = dump_dir / f"dependency_graph_{project_bp.header.name}_{timestamp}.txt"
     
     lines = ["--- Dependency Graph ---"]
     lines.append(f"Programs/Libraries parsed: {len(graph.ast_by_name)}")

@@ -344,11 +344,12 @@ def run_module_localvar_analysis(cfg: dict):
     project_bp, _ = load_project(cfg)
 
     print("\n--- Module Local Variable Analysis ---")
-    print("Enter the module name (e.g., ApplTank):")
-    module_name = input("> ").strip()
+    print("Enter the module path (strict) relative to BasePicture.")
+    print("Example: StartMaster.KaHA251A")
+    module_path = input(f"{project_bp.header.name}.").strip()
 
-    if not module_name:
-        print("❌ No module name provided")
+    if not module_path:
+        print("❌ No module path provided")
         pause()
         return
 
@@ -363,7 +364,13 @@ def run_module_localvar_analysis(cfg: dict):
     try:
         from .analyzers.variables import analyze_module_localvar_fields
 
-        report = analyze_module_localvar_fields(project_bp, module_name, var_name, debug=cfg.get("debug", False))
+        report = analyze_module_localvar_fields(
+            project_bp,
+            module_path,
+            var_name,
+            debug=cfg.get("debug", False),
+            fail_loudly=False,
+        )
         print("\n" + report)
     except Exception as e:
         print(f"❌ Error during analysis: {e}")

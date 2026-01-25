@@ -1,10 +1,19 @@
 # tests/conftest.py
-import pytest
+import sys
 from pathlib import Path
+
+import pytest
 from lark import Lark
-from src.engine import SattLineProjectLoader, create_sl_parser
-from src.transformer.sl_transformer import SLTransformer
-from src.models.ast_model import BasePicture
+
+# Ensure `src/` is on sys.path so `import sattlint` works in dev/test runs.
+_ROOT = Path(__file__).resolve().parents[1]
+_SRC = _ROOT / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
+from sattlint.engine import SattLineProjectLoader, create_sl_parser
+from sattlint.transformer.sl_transformer import SLTransformer
+from sattlint.models.ast_model import BasePicture
 
 
 @pytest.fixture

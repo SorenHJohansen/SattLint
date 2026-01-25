@@ -1,6 +1,7 @@
 # variables.py
 from __future__ import annotations
 from dataclasses import dataclass
+import difflib
 import re
 from typing import Any, Union, cast
 from enum import Enum
@@ -8,6 +9,16 @@ from pathlib import Path
 from .sattline_builtins import get_function_signature
 import logging
 from .. import constants as const
+from ..resolution import (
+    AccessEvent,
+    AccessGraph,
+    AccessKind,
+    CanonicalPath,
+    CanonicalSymbolTable,
+    SymbolKind,
+    TypeGraph,
+    decorate_segment,
+)
 from ..models.ast_model import (
     BasePicture,
     SingleModule,
@@ -40,10 +51,13 @@ log = logging.getLogger("SattLint")
 class ScopeContext:
     """Tracks variable environment with field-aware parameter mappings."""
     env: dict[str, Variable]  # Direct variable declarations
-    param_mappings: dict[str, tuple[Variable, str]]  # param_name -> (source_var, field_prefix)
+    # param_name -> (source_var, field_prefix, source_decl_module_path, source_decl_display_path)
+    param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]]
+    module_path: list[str]
+    display_module_path: list[str]
     parent_context: ScopeContext | None = None
     
-    def resolve_variable(self, var_ref: str) -> tuple[Variable | None, str]:
+    def resolve_variable(self, var_ref: str) -> tuple[Variable | None, str, list[str], list[str]]:
         """
         Resolve a variable reference, reconstructing the full field path.
         
@@ -58,7 +72,7 @@ class ScopeContext:
         
         # Check if this base is a mapped parameter
         if base in self.param_mappings:
-            source_var, prefix = self.param_mappings[base]
+            source_var, prefix, source_decl_path, source_decl_display_path = self.param_mappings[base]
             # Reconstruct full path: prefix + field_path
             if prefix and field_path:
                 full_field_path = f"{prefix}.{field_path}"
@@ -66,18 +80,18 @@ class ScopeContext:
                 full_field_path = prefix
             else:
                 full_field_path = field_path
-            return source_var, full_field_path
+            return source_var, full_field_path, source_decl_path, source_decl_display_path
         
         # Check local environment
         var = self.env.get(base)
         if var:
-            return var, field_path
+            return var, field_path, self.module_path, self.display_module_path
         
         # Try parent context
         if self.parent_context:
             return self.parent_context.resolve_variable(var_ref)
         
-        return None, field_path
+        return None, field_path, self.module_path, self.display_module_path
 
 
 class IssueKind(Enum):
@@ -86,6 +100,7 @@ class IssueKind(Enum):
     NEVER_READ = "never_read"
     STRING_MAPPING_MISMATCH = "string_mapping_mismatch"
     DATATYPE_DUPLICATION = "datatype_duplication"
+    NAME_COLLISION = "name_collision"
 
 
 @dataclass
@@ -383,46 +398,71 @@ def analyze_datatype_usage(base_picture: BasePicture, var_name: str, debug: bool
 
 def analyze_module_localvar_fields(
     base_picture: BasePicture,
-    module_name: str,
+    module_path: str,
     var_name: str,
-    debug: bool = False
+    debug: bool = False,
+    fail_loudly: bool = True,
 ) -> str:
     """
     Analyze field-level usage of a local variable within a module and its submodules.
     ONLY follows actual parameter mapping aliases, not all variables with the same name.
     """
-    # Run analyzer WITHOUT back-propagation to build alias links
-    analyzer = VariablesAnalyzer(base_picture, debug=debug)
-    
-    # Call the public run method to populate the tracker
+    # Resolve the target module strictly by BasePicture-relative dotted path.
+    # This avoids ambiguity between module instances and typedef names.
+    resolved = _resolve_module_by_strict_path(base_picture, module_path)
+    module_def = resolved.node
+
+    # Run analyzer WITHOUT back-propagation to build alias links.
+    # IMPORTANT: limit traversal to the selected module subtree (plus its ancestor chain)
+    # so unrelated modules aren't analyzed.
+    analyzer = VariablesAnalyzer(base_picture, debug=debug, fail_loudly=fail_loudly)
+
     if debug:
-        log.debug("Starting analysis (without back-propagation)")
-    analyzer.run()
-    
+        log.debug("Starting analysis (without alias back-propagation)")
+    analyzer.run(
+        apply_alias_back_propagation=False,
+        limit_to_module_path=resolved.path,
+    )
+
     if debug:
         log.debug(f"Analysis complete. Found {len(analyzer._alias_links)} alias links")
+        if getattr(analyzer, "_mapping_warnings", None):
+            log.debug(
+                f"Analysis saw {len(analyzer._mapping_warnings)} parameter-mapping warning(s) "
+                "(skipped alias creation for those mappings)."
+            )
     
-    # Find the module definition
-    module_def = _find_module_by_name(base_picture, module_name)
-    if module_def is None:
-        return f"Module '{module_name}' not found."
-    
-    # Find the SPECIFIC local variable instance
-    if isinstance(module_def, (SingleModule, ModuleTypeDef)):
+    # Find the SPECIFIC local variable instance.
+    # - SingleModule: variable lives on the module node.
+    # - ModuleTypeInstance: variable lives on the referenced ModuleTypeDef.
+    var_name_key = var_name.casefold()
+    module_type_info: str | None = None
+
+    if isinstance(module_def, SingleModule):
         local_var = next(
-            (v for v in (module_def.localvariables or [])
-             if v.name.lower() == var_name.lower()),
-            None
+            (v for v in (module_def.localvariables or []) if v.name.casefold() == var_name_key),
+            None,
+        )
+    elif isinstance(module_def, ModuleTypeInstance):
+        mt = _resolve_moduletype_def_strict(base_picture, module_def.moduletype_name)
+        module_type_info = _format_moduletype_label(mt)
+        local_var = next(
+            (v for v in (mt.localvariables or []) if v.name.casefold() == var_name_key),
+            None,
         )
     else:
-        return f"Module '{module_name}' is not a SingleModule or TypeDef."
+        raise ValueError(
+            "Selected module path does not point to a SingleModule or ModuleTypeInstance. "
+            f"Got: {type(module_def).__name__}"
+        )
     
     if local_var is None:
-        return f"Local variable '{var_name}' not found in module '{module_name}'."
+        raise ValueError(
+            f"Local variable {var_name!r} not found in selected module scope {resolved.display_path_str!r}."
+        )
     
-    # Get the module's path in the tree
-    module_path = _get_module_path(base_picture, module_def)
-    module_path_str = " -> ".join(module_path)
+    module_path_list = resolved.path
+    module_path_str = " -> ".join(module_path_list)
     
     if debug:
         log.debug(f"Target variable object id: {id(local_var)}")
@@ -430,6 +470,8 @@ def analyze_module_localvar_fields(
     
     # Find ONLY the Variable objects that are connected through alias links with field paths
     aliased_vars_with_paths = _find_all_aliases(local_var, analyzer._alias_links, debug=debug)
+    # Include the local variable itself (direct field/whole-variable accesses).
+    aliased_vars_with_paths.insert(0, (local_var, ""))
     
     # Print all MessageSetup instances found with their prefixes
     messagesetup_instances = [(var, prefix) for var, prefix in aliased_vars_with_paths if var.name.lower() == "messagesetup"]
@@ -439,16 +481,35 @@ def analyze_module_localvar_fields(
             log.debug(f"       id={id(var)}, prefix='{prefix}'")
     
     # Build report
+    header = f"Field usage analysis for local variable {var_name!r}"
+    header += f" in module path {resolved.display_path_str!r}"
     lines = [
-        f"Field usage analysis for local variable '{var_name}' in module '{module_name}'",
+        header,
         f"Variable location: {module_path_str}",
         f"Variable datatype: {local_var.datatype_text}",
         f"Variable object ID: {id(local_var)}",
+    ]
+    if module_type_info is not None:
+        lines.append(f"Module type: {module_type_info}")
+    lines += [
         f"Found {len(aliased_vars_with_paths)} aliased variable instance(s) through parameter mappings",
+        (
+            f"Warnings during analysis: {len(analyzer.analysis_warnings)} (continued despite errors)"
+            if analyzer.analysis_warnings
+            else "Warnings during analysis: 0"
+        ),
         "",
         "=" * 80,
-        ""
+        "",
     ]
+
+    if analyzer.analysis_warnings:
+        lines.append("Warnings:")
+        for w in analyzer.analysis_warnings[:50]:
+            lines.append(f"  - {w}")
+        if len(analyzer.analysis_warnings) > 50:
+            lines.append(f"  - ... ({len(analyzer.analysis_warnings) - 50} more)")
+        lines += ["", "=" * 80, ""]
     
     # Aggregate ONLY from the connected aliases
     all_field_reads = {}
@@ -459,16 +520,17 @@ def analyze_module_localvar_fields(
     if debug:
         log.debug("Aggregating usages from connected aliases only")
     for var, field_prefix in aliased_vars_with_paths:
-        # All prefixes should now be non-empty (mapping_name is the parameter name)
-        # Skip if somehow we get an empty prefix (should never happen)
+        # field_prefix may be empty for the root variable itself.
         
         # Merge field reads - reconstruct full field path (case-insensitive)
         for field_path, locations in (var.field_reads or {}).items():
-            # Combine the field prefix from the mapping with the field accessed on the parameter
-            if field_path:
+            # Combine the field prefix from mappings with the field accessed on the variable.
+            if field_prefix and field_path:
                 full_field_path = f"{field_prefix}.{field_path}"
-            else:
+            elif field_prefix:
                 full_field_path = field_prefix
+            else:
+                full_field_path = field_path
             
             if debug and full_field_path.lower() == "acktext":
                 log.debug(f"DEBUG: Found field read 'acktext' - field_prefix='{field_prefix}', field_path={field_path}, var={var.name}(id={id(var)})")
@@ -479,11 +541,13 @@ def analyze_module_localvar_fields(
         
         # Merge field writes - reconstruct full field path (case-insensitive)
         for field_path, locations in (var.field_writes or {}).items():
-            # Combine the field prefix from the mapping with the field accessed on the parameter
-            if field_path:
+            # Combine the field prefix from mappings with the field accessed on the variable.
+            if field_prefix and field_path:
                 full_field_path = f"{field_prefix}.{field_path}"
-            else:
+            elif field_prefix:
                 full_field_path = field_prefix
+            else:
+                full_field_path = field_path
             
             if debug and full_field_path.lower() == "acktext":
                 log.debug(f"DEBUG: Found field write 'acktext' - field_prefix='{field_prefix}', field_path={field_path}, var={var.name}(id={id(var)})")
@@ -501,10 +565,8 @@ def analyze_module_localvar_fields(
     
     # Filter to only show accesses from within this module tree
     def is_within_module(location: list[str]) -> bool:
-        """Check if location is within the target module or its submodules."""
-        # For TypeDef modules, check if TypeDef:ModuleName appears in path
-        typedef_segment = f"TypeDef:{module_name}"
-        return typedef_segment in location
+        """Check if location is within the selected module path (or its submodules)."""
+        return _path_startswith_casefold(location, module_path_list)
     
     # Field-level accesses
     internal_field_reads = {}
@@ -828,6 +890,138 @@ def _varname_base(var_dict_or_str: Any) -> str | None:
     base = full.split(".", 1)[0] if full else None
     return base.lower() if base else None
 
+
+@dataclass(frozen=True)
+class ResolvedModulePath:
+    node: Any
+    path: list[str]
+    display_path_str: str
+
+
+def _path_startswith_casefold(location: list[str], prefix: list[str]) -> bool:
+    if len(location) < len(prefix):
+        return False
+    for i, seg in enumerate(prefix):
+        if location[i].casefold() != seg.casefold():
+            return False
+    return True
+
+
+def _format_moduletype_label(mt: ModuleTypeDef) -> str:
+    if mt.origin_lib:
+        return f"{mt.origin_lib}:{mt.name}"
+    return mt.name
+
+
+def _resolve_moduletype_def_strict(bp: BasePicture, moduletype_name: str) -> ModuleTypeDef:
+    key = moduletype_name.casefold()
+    matches = [mt for mt in (bp.moduletype_defs or []) if mt.name.casefold() == key]
+    if not matches:
+        available = sorted({mt.name for mt in (bp.moduletype_defs or [])})
+        raise ValueError(
+            f"Unknown moduletype {moduletype_name!r}. Available moduletype defs: {available[:50]}"
+        )
+    if len(matches) > 1:
+        labels = sorted(_format_moduletype_label(mt) for mt in matches)
+        raise ValueError(
+            f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}"
+        )
+    return matches[0]
+
+
+def _resolve_module_by_strict_path(bp: BasePicture, module_path: str) -> ResolvedModulePath:
+    """Resolve a strict dotted module path relative to the BasePicture.
+
+    - Input is case-insensitive.
+    - No fallback/heuristics.
+    - Any missing segment fails with a loud error.
+    - Any ambiguous segment fails with a loud error.
+
+    ModuleTypeInstance nodes have no `submodules`; if the path continues past a
+    ModuleTypeInstance, subsequent segments are resolved within its referenced
+    ModuleTypeDef's `submodules`.
+    """
+    raw = (module_path or "").strip()
+    if not raw:
+        raise ValueError("Empty module path")
+
+    # Accept optional leading "<BasePictureName>." for convenience.
+    bp_prefix = f"{bp.header.name}."
+    if raw.casefold().startswith(bp_prefix.casefold()):
+        raw = raw[len(bp_prefix) :].strip()
+    if not raw:
+        raise ValueError("Module path cannot point to BasePicture itself")
+
+    if raw.startswith(".") or raw.endswith(".") or ".." in raw:
+        raise ValueError(f"Invalid module path syntax: {module_path!r}")
+
+    segments = raw.split(".")
+    if any(not s.strip() for s in segments):
+        raise ValueError(f"Invalid module path syntax: {module_path!r}")
+
+    current: Any = bp
+    resolved_path: list[str] = [bp.header.name]
+
+    def children_of(node: Any) -> list[Any]:
+        if isinstance(node, BasePicture):
+            return list(node.submodules or [])
+        if isinstance(node, (SingleModule, FrameModule, ModuleTypeDef)):
+            return list(node.submodules or [])
+        if isinstance(node, ModuleTypeInstance):
+            mt = _resolve_moduletype_def_strict(bp, node.moduletype_name)
+            return list(mt.submodules or [])
+        return []
+
+    for seg in segments:
+        wanted = seg.strip()
+        candidates = children_of(current)
+        if not candidates:
+            raise ValueError(
+                f"Module path {module_path!r} cannot continue past {resolved_path[-1]!r} "
+                f"(node type: {type(current).__name__})."
+            )
+
+        matches: list[Any] = [
+            m for m in candidates if hasattr(m, "header") and m.header.name.casefold() == wanted.casefold()
+        ]
+
+        if not matches:
+            names = [m.header.name for m in candidates if hasattr(m, "header")]
+            close = difflib.get_close_matches(wanted, names, n=5, cutoff=0.6)
+
+            details: list[str] = []
+            for m in candidates:
+                if not hasattr(m, "header"):
+                    continue
+                if isinstance(m, ModuleTypeInstance):
+                    try:
+                        mt = _resolve_moduletype_def_strict(bp, m.moduletype_name)
+                        details.append(f"{m.header.name} ({_format_moduletype_label(mt)})")
+                    except Exception:
+                        details.append(f"{m.header.name} ({m.moduletype_name})")
+                else:
+                    details.append(m.header.name)
+
+            msg = (
+                f"Unknown module path segment {wanted!r} under {'.'.join(resolved_path)!r}. "
+                f"Valid next segments: {details[:50]}"
+            )
+            if close:
+                msg += f". Close matches: {close}"
+            raise ValueError(msg)
+
+        if len(matches) > 1:
+            raise ValueError(
+                f"Ambiguous module path segment {wanted!r} under {'.'.join(resolved_path)!r}. "
+                f"Matches: {[m.header.name for m in matches]}"
+            )
+
+        current = matches[0]
+        resolved_path.append(matches[0].header.name)
+
+    display_path = ".".join(resolved_path)
+    return ResolvedModulePath(node=current, path=resolved_path, display_path_str=display_path)
+
 def _find_module_by_name(bp: BasePicture, name: str):
     """Recursively find a module by name in the AST."""
     name_lower = name.lower()
@@ -917,9 +1111,24 @@ class VariablesAnalyzer:
     External ModuleTypeInstance mappings are considered used.
     """
 
-    def __init__(self, base_picture: BasePicture, debug: bool = False):
+    def __init__(
+        self,
+        base_picture: BasePicture,
+        debug: bool = False,
+        fail_loudly: bool = True,
+    ):
         self.bp = base_picture
         self.debug = debug
+        self.fail_loudly = fail_loudly
+
+        # Traversal context for better error messages (equation/sequence/step/etc.)
+        self._site_stack: list[str] = []
+
+        # Resolution layers
+        self.type_graph = TypeGraph.from_basepicture(self.bp)
+        self.symbol_table = CanonicalSymbolTable()
+        self.access_graph = AccessGraph()
+
         self.typedef_index = {
             mt.name.lower(): mt for mt in (self.bp.moduletype_defs or [])
         }
@@ -943,6 +1152,9 @@ class VariablesAnalyzer:
         # Unified collection of issues
         self._issues: list[VariableIssue] = []
 
+        # Non-fatal analysis warnings (used when fail_loudly=False)
+        self._analysis_warnings: list[str] = []
+
         self._STRING_LIMITS: dict[Simple_DataType, int] = {
             Simple_DataType.IDENTSTRING: 15,
             Simple_DataType.TAGSTRING: 30,
@@ -955,6 +1167,14 @@ class VariablesAnalyzer:
     @property
     def issues(self) -> list[VariableIssue]:
         return self._issues
+
+    @property
+    def analysis_warnings(self) -> list[str]:
+        return self._analysis_warnings
+
+    def _warn(self, message: str) -> None:
+        self._analysis_warnings.append(message)
+        log.warning(message)
     
     def _is_string_simple_type(self, dt: Simple_DataType | str | None) -> bool:
         return isinstance(dt, Simple_DataType) and dt in self._STRING_TYPES
@@ -1082,6 +1302,254 @@ class VariablesAnalyzer:
         # Built-ins are normalized to Simple_DataType in Variable.__post_init__ [1]
         return isinstance(v.datatype, Simple_DataType)
 
+    def _canonical_path(
+        self,
+        decl_module_path: list[str],
+        var: Variable,
+        field_path: str,
+    ) -> CanonicalPath:
+        segs: list[str] = list(decl_module_path) + [var.name]
+        if field_path:
+            segs.extend([p for p in field_path.split(".") if p])
+        return CanonicalPath(tuple(segs))
+
+    def _record_access(
+        self,
+        kind: AccessKind,
+        canonical_path: CanonicalPath,
+        context: ScopeContext,
+        syntactic_ref: str,
+    ) -> None:
+        self.access_graph.add(
+            AccessEvent(
+                kind=kind,
+                canonical_path=canonical_path,
+                use_module_path=tuple(context.module_path),
+                use_display_path=tuple(context.display_module_path),
+                syntactic_ref=syntactic_ref,
+            )
+        )
+
+    def _mark_ref_access(
+        self,
+        full_ref: str,
+        context: ScopeContext,
+        path: list[str],
+        kind: AccessKind,
+    ) -> None:
+        var, field_path, decl_module_path, _decl_display = context.resolve_variable(full_ref)
+        if var is None:
+            return
+
+        if kind is AccessKind.READ:
+            if field_path:
+                var.mark_field_read(field_path, path)
+            else:
+                var.mark_read(path)
+        else:
+            if field_path:
+                var.mark_field_written(field_path, path)
+            else:
+                var.mark_written(path)
+
+        self._record_access(
+            kind=kind,
+            canonical_path=self._canonical_path(decl_module_path, var, field_path),
+            context=context,
+            syntactic_ref=full_ref,
+        )
+
+    def _site_str(self) -> str:
+        if not self._site_stack:
+            return ""
+        return " > ".join(self._site_stack)
+
+    def _push_site(self, label: str) -> None:
+        if label:
+            self._site_stack.append(label)
+
+    def _pop_site(self) -> None:
+        if self._site_stack:
+            self._site_stack.pop()
+
+    def _strict_datatype_at_field_prefix(
+        self,
+        root_type: Simple_DataType | str,
+        field_prefix: str,
+        *,
+        fn_name: str,
+        syntactic_ref: str,
+        resolved_var_name: str,
+        use_path: list[str],
+    ) -> Simple_DataType | str:
+        """Resolve the datatype at a dotted field-prefix (strict).
+
+        Used only for record-wide builtin semantics.
+
+        Raises ValueError if:
+        - a referenced record type is unknown
+        - a referenced field segment doesn't exist
+        - the prefix continues into a scalar type
+        """
+        segments = [s for s in (field_prefix or "").split(".") if s]
+        current: Simple_DataType | str = root_type
+
+        for seg in segments:
+            if isinstance(current, Simple_DataType):
+                site = self._site_str()
+                raise ValueError(
+                    f"{fn_name}: at {' -> '.join(use_path)}"
+                    f"{(' [' + site + ']') if site else ''}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
+                    f"cannot access field {seg!r} on scalar datatype {current.value!r}."
+                )
+
+            rec = self.type_graph.record(str(current))
+            if rec is None:
+                site = self._site_str()
+                raise ValueError(
+                    f"{fn_name}: at {' -> '.join(use_path)}"
+                    f"{(' [' + site + ']') if site else ''}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
+                    f"uses unknown record datatype {str(current)!r}."
+                )
+
+            f = rec.fields_by_key.get(seg.casefold())
+            if f is None:
+                available = sorted({fd.name for fd in rec.fields_by_key.values()})
+                close = difflib.get_close_matches(seg, available, n=5, cutoff=0.6)
+                site = self._site_str()
+                raise ValueError(
+                    f"{fn_name}: at {' -> '.join(use_path)}"
+                    f"{(' [' + site + ']') if site else ''}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
+                    f"uses unknown field {seg!r} in record datatype {rec.name!r}. "
+                    f"Available fields: {available[:50]}"
+                    + (f". Close matches: {close}" if close else "")
+                )
+
+            current = f.datatype
+
+        return current
+
+    def _iter_leaf_field_paths_strict(
+        self,
+        root_type: Simple_DataType | str,
+        *,
+        fn_name: str,
+        syntactic_ref: str,
+        resolved_var_name: str,
+    ) -> list[tuple[str, ...]]:
+        """Expand all leaf field paths for a datatype (strict).
+
+        Returns tuples relative to the datatype root.
+        Raises ValueError on unknown record types or cycles.
+        """
+        if isinstance(root_type, Simple_DataType):
+            return [()]
+
+        # Builtin pseudo-type: cannot be expanded, treat as leaf.
+        if isinstance(root_type, str) and root_type.casefold() == "anytype":
+            return [()]
+
+        start = str(root_type)
+        results: list[tuple[str, ...]] = []
+        stack: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = [(start, (), ())]
+
+        while stack:
+            type_name, prefix, chain = stack.pop()
+            key = type_name.casefold()
+
+            if key in {c.casefold() for c in chain}:
+                raise ValueError(
+                    f"{fn_name}: datatype cycle detected while expanding {resolved_var_name!r} "
+                    f"(ref {syntactic_ref!r}) at record datatype {type_name!r}."
+                )
+
+            rec = self.type_graph.record(type_name)
+            if rec is None:
+                # Unknown external type: record-wide expansion can't proceed.
+                # Fail loudly for real record types, but allow the builtin pseudo-type.
+                if type_name.casefold() == "anytype":
+                    results.append(prefix)
+                    continue
+                raise ValueError(
+                    f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
+                    f"uses unknown record datatype {type_name!r}."
+                )
+
+            next_chain = chain + (type_name,)
+            for field in rec.fields_by_key.values():
+                new_prefix = prefix + (field.name,)
+                if isinstance(field.datatype, Simple_DataType):
+                    results.append(new_prefix)
+                else:
+                    stack.append((str(field.datatype), new_prefix, next_chain))
+
+        return results
+
+    def _mark_record_wide_builtin_access(
+        self,
+        syntactic_ref: str,
+        *,
+        kind: AccessKind,
+        fn_name: str,
+        context: ScopeContext,
+        path: list[str],
+    ) -> None:
+        """Mark read/write for every leaf field under the resolved datatype.
+
+        The `syntactic_ref` is what appears in code (e.g. "Dv.Y_Søjle" or "control").
+        Resolution (param mappings) is applied via ScopeContext.resolve_variable().
+        """
+        resolved_var, resolved_field_prefix, _decl_path, _decl_display = context.resolve_variable(
+            syntactic_ref
+        )
+        if resolved_var is None:
+            site = self._site_str()
+            raise ValueError(
+                f"{fn_name}: at {' -> '.join(path)}"
+                f"{(' [' + site + ']') if site else ''}: cannot resolve variable reference {syntactic_ref!r} for record-wide access."
+            )
+
+        dtype_at_prefix = self._strict_datatype_at_field_prefix(
+            resolved_var.datatype,
+            resolved_field_prefix,
+            fn_name=fn_name,
+            syntactic_ref=syntactic_ref,
+            resolved_var_name=resolved_var.name,
+            use_path=path,
+        )
+
+        leaf_paths = self._iter_leaf_field_paths_strict(
+            dtype_at_prefix,
+            fn_name=fn_name,
+            syntactic_ref=syntactic_ref,
+            resolved_var_name=resolved_var.name,
+        )
+
+        for leaf in leaf_paths:
+            if not leaf:
+                self._mark_ref_access(syntactic_ref, context, path, kind)
+            else:
+                self._mark_ref_access(
+                    f"{syntactic_ref}.{'.'.join(leaf)}",
+                    context,
+                    path,
+                    kind,
+                )
+
+    def _repath_context(
+        self,
+        context: ScopeContext,
+        module_path: list[str],
+        display_module_path: list[str],
+    ) -> ScopeContext:
+        return ScopeContext(
+            env=context.env,
+            param_mappings=context.param_mappings,
+            module_path=module_path,
+            display_module_path=display_module_path,
+            parent_context=context.parent_context,
+        )
+
     def _handle_function_call(
         self, 
         fn_name: str | None, 
@@ -1093,6 +1561,87 @@ class VariablesAnalyzer:
         if not fn_name:
             for a in args or []:
                 self._walk_stmt_or_expr(a, context, path)
+            return
+
+        fn_key = fn_name.casefold()
+        if fn_key in ("copyvariable", "copyvarnosort"):
+            # Semantics: reads every field of Source, writes every field of Destination.
+            if len(args or []) < 2:
+                raise ValueError(f"{fn_name}: expected at least 2 arguments (Source, Destination)")
+
+            src = args[0]
+            dst = args[1]
+            if not (isinstance(src, dict) and const.KEY_VAR_NAME in src):
+                raise ValueError(f"{fn_name}: Source must be a variable reference")
+            if not (isinstance(dst, dict) and const.KEY_VAR_NAME in dst):
+                raise ValueError(f"{fn_name}: Destination must be a variable reference")
+
+            try:
+                self._mark_record_wide_builtin_access(
+                    src[const.KEY_VAR_NAME],
+                    kind=AccessKind.READ,
+                    fn_name=fn_name,
+                    context=context,
+                    path=path,
+                )
+                self._mark_record_wide_builtin_access(
+                    dst[const.KEY_VAR_NAME],
+                    kind=AccessKind.WRITE,
+                    fn_name=fn_name,
+                    context=context,
+                    path=path,
+                )
+            except ValueError as e:
+                if self.fail_loudly:
+                    raise
+                self._warn(str(e))
+
+            # Status is the 3rd arg (out) if present.
+            if len(args) >= 3:
+                status = args[2]
+                if isinstance(status, dict) and const.KEY_VAR_NAME in status:
+                    self._mark_ref_access(status[const.KEY_VAR_NAME], context, path, AccessKind.WRITE)
+                else:
+                    self._walk_stmt_or_expr(status, context, path)
+
+            # Walk any extra args conservatively
+            for extra in (args[3:] if len(args) > 3 else []):
+                self._walk_stmt_or_expr(extra, context, path)
+            return
+
+        if fn_key == "initvariable":
+            # Semantics (per user): writes defaults into every field of Rec; reads NOTHING.
+            if len(args or []) < 1:
+                raise ValueError(f"{fn_name}: expected at least 1 argument (Rec)")
+
+            rec = args[0]
+            if not (isinstance(rec, dict) and const.KEY_VAR_NAME in rec):
+                raise ValueError(f"{fn_name}: Rec must be a variable reference")
+
+            try:
+                self._mark_record_wide_builtin_access(
+                    rec[const.KEY_VAR_NAME],
+                    kind=AccessKind.WRITE,
+                    fn_name=fn_name,
+                    context=context,
+                    path=path,
+                )
+            except ValueError as e:
+                if self.fail_loudly:
+                    raise
+                self._warn(str(e))
+
+            # Skip InitRec entirely (args[1]) to avoid counting reads.
+            # Status is args[2] (out) if present.
+            if len(args) >= 3:
+                status = args[2]
+                if isinstance(status, dict) and const.KEY_VAR_NAME in status:
+                    self._mark_ref_access(status[const.KEY_VAR_NAME], context, path, AccessKind.WRITE)
+                else:
+                    self._walk_stmt_or_expr(status, context, path)
+
+            for extra in (args[3:] if len(args) > 3 else []):
+                self._walk_stmt_or_expr(extra, context, path)
             return
         
         sig = get_function_signature(fn_name)
@@ -1108,25 +1657,13 @@ class VariablesAnalyzer:
             
             if isinstance(arg, dict) and const.KEY_VAR_NAME in arg:
                 full_name = arg[const.KEY_VAR_NAME]
-                var, field_path = context.resolve_variable(full_name)
-                
-                if var is not None:
-                    if field_path:
-                        if direction == "out":
-                            var.mark_field_written(field_path, path)
-                        elif direction == "inout":
-                            var.mark_field_read(field_path, path)
-                            var.mark_field_written(field_path, path)
-                        else:  # "in"
-                            var.mark_field_read(field_path, path)
-                    else:
-                        if direction == "out":
-                            var.mark_written(path)
-                        elif direction == "inout":
-                            var.mark_read(path)
-                            var.mark_written(path)
-                        else:
-                            var.mark_read(path)
+                if direction == "out":
+                    self._mark_ref_access(full_name, context, path, AccessKind.WRITE)
+                elif direction == "inout":
+                    self._mark_ref_access(full_name, context, path, AccessKind.READ)
+                    self._mark_ref_access(full_name, context, path, AccessKind.WRITE)
+                else:
+                    self._mark_ref_access(full_name, context, path, AccessKind.READ)
                 continue
             
             self._walk_stmt_or_expr(arg, context, path)
@@ -1180,9 +1717,19 @@ class VariablesAnalyzer:
 
     # ------------ Entry point ------------
 
-    def run(self) -> list[VariableIssue]:
-        # Pre-analyze ModuleTypeDefs to know which of their parameters are used internally
+    def run(
+        self,
+        apply_alias_back_propagation: bool = True,
+        limit_to_module_path: list[str] | None = None,
+    ) -> list[VariableIssue]:
+        # NOTE: When `limit_to_module_path` is set (used by option 9), we must NOT
+        # analyze every ModuleTypeDef in the project. That would pull in unrelated
+        # code and can legitimately fail loudly (e.g., record-wide builtins) outside
+        # the selected subtree.
         self._issues = []
+        self._mapping_warnings: list[str] = []
+        self._analysis_warnings = []
+        self._limit_to_module_path: list[str] | None = limit_to_module_path
         
         # Always log this to verify the analyzer is running
         log.debug(f"DEBUG: VariablesAnalyzer.run() called with debug={self.debug}")
@@ -1209,9 +1756,10 @@ class VariablesAnalyzer:
             parent_path=[self.bp.header.name]
         )
         
-        if self.debug:
-            log.debug(f"DEBUG: Applying alias back-propagation")
-        self._apply_alias_back_propagation()
+        if apply_alias_back_propagation:
+            if self.debug:
+                log.debug("DEBUG: Applying alias back-propagation")
+            self._apply_alias_back_propagation()
         
         if self.debug:
             log.debug(f"DEBUG: Detecting datatype duplications")
@@ -1237,34 +1785,35 @@ class VariablesAnalyzer:
         for mod in self.bp.submodules or []:
             self._collect_issues_from_module(mod, path=bp_path)
 
-        for mt in self.bp.moduletype_defs or []:
-            if not self._is_from_root_origin(getattr(mt, "origin_file", None)):
-                continue
-            td_path = [self.bp.header.name, f"TypeDef:{mt.name}"]
+        if self._limit_to_module_path is None:
+            for mt in self.bp.moduletype_defs or []:
+                if not self._is_from_root_origin(getattr(mt, "origin_file", None)):
+                    continue
+                td_path = [self.bp.header.name, f"TypeDef:{mt.name}"]
 
-            self._analyze_typedef(mt, path=[self.bp.header.name, f"TypeDef:{mt.name}"])
+                self._analyze_typedef(mt, path=[self.bp.header.name, f"TypeDef:{mt.name}"])
 
-            # moduleparameters: UNUSED only
-            for v in mt.moduleparameters or []:
-                role = "moduleparameter"
-                if not (v.read or v.written):
-                    self._add_issue(IssueKind.UNUSED, td_path, v, role=role)
-            # localvariables: UNUSED / READ_ONLY_NON_CONST / NEVER_READ
-            for v in mt.localvariables or []:
-                role = "localvariable"
-                if not (v.read or v.written):
-                    self._add_issue(IssueKind.UNUSED, td_path, v, role=role)
-                elif (
-                    bool(v.read)
-                    and not bool(v.written)
-                    and not bool(v.const)
-                    and self._is_const_candidate(v)
-                ):
-                    self._add_issue(
-                        IssueKind.READ_ONLY_NON_CONST, td_path, v, role=role
-                    )
-                elif v.written and not v.read:
-                    self._add_issue(IssueKind.NEVER_READ, td_path, v, role=role)
+                # moduleparameters: UNUSED only
+                for v in mt.moduleparameters or []:
+                    role = "moduleparameter"
+                    if not (v.read or v.written):
+                        self._add_issue(IssueKind.UNUSED, td_path, v, role=role)
+                # localvariables: UNUSED / READ_ONLY_NON_CONST / NEVER_READ
+                for v in mt.localvariables or []:
+                    role = "localvariable"
+                    if not (v.read or v.written):
+                        self._add_issue(IssueKind.UNUSED, td_path, v, role=role)
+                    elif (
+                        bool(v.read)
+                        and not bool(v.written)
+                        and not bool(v.const)
+                        and self._is_const_candidate(v)
+                    ):
+                        self._add_issue(
+                            IssueKind.READ_ONLY_NON_CONST, td_path, v, role=role
+                        )
+                    elif v.written and not v.read:
+                        self._add_issue(IssueKind.NEVER_READ, td_path, v, role=role)
         
         if self.debug:
             log.debug(f"DEBUG: Analysis complete. Found {len(self._issues)} issues")
@@ -1359,29 +1908,74 @@ class VariablesAnalyzer:
         env: dict[str, Variable] = {}
         for v in self.bp.localvariables or []:
             env[v.name.lower()] = v
+
+        module_path = [self.bp.header.name]
+        display_path = [decorate_segment(self.bp.header.name, "BP")]
+
+        for v in self.bp.localvariables or []:
+            self.symbol_table.add_variable_root(
+                module_path=module_path,
+                var=v,
+                kind=SymbolKind.LOCAL,
+                type_graph=self.type_graph,
+            )
         
         return ScopeContext(
             env=env,
             param_mappings={},
+            module_path=module_path,
+            display_module_path=display_path,
             parent_context=None
         )
 
     def _build_scope_context_for_single(
         self, 
         mod: SingleModule,
-        parent_context: ScopeContext
+        parent_context: ScopeContext,
+        module_path: list[str],
+        display_module_path: list[str],
     ) -> ScopeContext:
         """Build scope context with parameter mapping resolution."""
         env: dict[str, Variable] = {}
         
         # Add module parameters and locals
-        for v in mod.moduleparameters or []:
+        params = list(mod.moduleparameters or [])
+        locals_ = list(mod.localvariables or [])
+
+        param_keys = {v.name.casefold(): v for v in params}
+        local_keys = {v.name.casefold(): v for v in locals_}
+        for k in (set(param_keys.keys()) & set(local_keys.keys())):
+            p = param_keys[k]
+            lv = local_keys[k]
+            self._issues.append(
+                VariableIssue(
+                    kind=IssueKind.NAME_COLLISION,
+                    module_path=module_path.copy(),
+                    variable=lv,
+                    role=f"name collision with parameter {p.name!r}",
+                    source_variable=p,
+                )
+            )
+
+        for v in params:
             env[v.name.lower()] = v
-        for v in mod.localvariables or []:
+            self.symbol_table.add_variable_root(
+                module_path=module_path,
+                var=v,
+                kind=SymbolKind.PARAMETER,
+                type_graph=self.type_graph,
+            )
+        for v in locals_:
             env[v.name.lower()] = v
+            self.symbol_table.add_variable_root(
+                module_path=module_path,
+                var=v,
+                kind=SymbolKind.LOCAL,
+                type_graph=self.type_graph,
+            )
         
         # Build parameter mappings with field prefixes
-        param_mappings: dict[str, tuple[Variable, str]] = {}
+        param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]] = {}
         
         for pm in mod.parametermappings or []:
             target_name = self._varname_base(pm.target)
@@ -1397,15 +1991,22 @@ class VariablesAnalyzer:
                 continue
             
             # Resolve source variable from parent context
-            source_var, source_field_prefix = parent_context.resolve_variable(full_source)
+            source_var, source_field_prefix, source_decl_path, source_decl_display_path = parent_context.resolve_variable(full_source)
             
             if source_var:
                 # Store mapping: parameter name -> (actual variable, field prefix)
-                param_mappings[target_name.lower()] = (source_var, source_field_prefix)
+                param_mappings[target_name.lower()] = (
+                    source_var,
+                    source_field_prefix,
+                    source_decl_path,
+                    source_decl_display_path,
+                )
         
         return ScopeContext(
             env=env,
             param_mappings=param_mappings,
+            module_path=module_path,
+            display_module_path=display_module_path,
             parent_context=parent_context
         )
 
@@ -1413,34 +2014,83 @@ class VariablesAnalyzer:
         self,
         mt: ModuleTypeDef,
         instance: ModuleTypeInstance,
-        parent_context: ScopeContext | None = None
+        parent_context: ScopeContext | None = None,
+        module_path: list[str] | None = None,
+        display_module_path: list[str] | None = None,
     ) -> ScopeContext:
         """Build scope context for a typedef instance with parameter mappings."""
         env: dict[str, Variable] = {}
+
+        module_path = module_path or []
+        display_module_path = display_module_path or []
         
         # Add typedef's parameters and locals
-        for v in mt.moduleparameters or []:
+        params = list(mt.moduleparameters or [])
+        locals_ = list(mt.localvariables or [])
+
+        param_keys = {v.name.casefold(): v for v in params}
+        local_keys = {v.name.casefold(): v for v in locals_}
+        for k in (set(param_keys.keys()) & set(local_keys.keys())):
+            p = param_keys[k]
+            lv = local_keys[k]
+            self._issues.append(
+                VariableIssue(
+                    kind=IssueKind.NAME_COLLISION,
+                    module_path=module_path.copy(),
+                    variable=lv,
+                    role=f"name collision with parameter {p.name!r}",
+                    source_variable=p,
+                )
+            )
+
+        for v in params:
             env[v.name.lower()] = v
-        for v in mt.localvariables or []:
+            self.symbol_table.add_variable_root(
+                module_path=module_path,
+                var=v,
+                kind=SymbolKind.PARAMETER,
+                type_graph=self.type_graph,
+            )
+        for v in locals_:
             env[v.name.lower()] = v
+            self.symbol_table.add_variable_root(
+                module_path=module_path,
+                var=v,
+                kind=SymbolKind.LOCAL,
+                type_graph=self.type_graph,
+            )
         
         # Map instance parameters to parent variables
-        param_mappings: dict[str, tuple[Variable, str]] = {}
+        param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]] = {}
         for pm in instance.parametermappings or []:
             target_name = self._varname_base(pm.target)
             if not target_name or pm.is_source_global:
                 continue
             
             if parent_context:
-                source_name = self._varname_base(pm.source)
-                if source_name:
-                    source_var, _ = parent_context.resolve_variable(source_name)
+                # Allow full dotted source mapping for partial transfers
+                if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
+                    full_source = pm.source[const.KEY_VAR_NAME]
+                elif isinstance(pm.source, str):
+                    full_source = pm.source
+                else:
+                    full_source = None
+
+                if full_source:
+                    source_var, source_field_prefix, source_decl_path, source_decl_display_path = parent_context.resolve_variable(full_source)
                     if source_var:
-                        param_mappings[target_name.lower()] = (source_var, "")
+                        param_mappings[target_name.lower()] = (
+                            source_var,
+                            source_field_prefix,
+                            source_decl_path,
+                            source_decl_display_path,
+                        )
         
         return ScopeContext(
             env=env,
             param_mappings=param_mappings,
+            module_path=module_path,
+            display_module_path=display_module_path,
             parent_context=parent_context
         )
 
@@ -1496,15 +2146,47 @@ class VariablesAnalyzer:
         self._analyzing_typedefs.add(mt_key)
         
         try:
-            # Build environment from typedef's local variables
-            env: dict[str, Variable] = {
-                v.name.lower(): v for v in (mt.localvariables or [])
-            }
+            params = list(mt.moduleparameters or [])
+            locals_ = list(mt.localvariables or [])
+
+            # Enforce: cannot have both a parameter and local with same name
+            param_keys = {v.name.casefold(): v for v in params}
+            local_keys = {v.name.casefold(): v for v in locals_}
+            for k in (set(param_keys.keys()) & set(local_keys.keys())):
+                p = param_keys[k]
+                lv = local_keys[k]
+                self._issues.append(
+                    VariableIssue(
+                        kind=IssueKind.NAME_COLLISION,
+                        module_path=path.copy(),
+                        variable=lv,
+                        role=f"name collision with parameter {p.name!r}",
+                        source_variable=p,
+                    )
+                )
+
+            # Build environment from typedef's parameters + locals
+            env: dict[str, Variable] = {}
+            for v in params:
+                env[v.name.lower()] = v
+            for v in locals_:
+                env[v.name.lower()] = v
+
+            display_path: list[str] = []
+            if path:
+                display_path.append(decorate_segment(path[0], "BP"))
+                for seg in path[1:]:
+                    if seg.startswith("TypeDef:"):
+                        display_path.append(decorate_segment(seg, "TD"))
+                    else:
+                        display_path.append(seg)
             
             # Create scope context
             context = ScopeContext(
                 env=env,
                 param_mappings={},
+                module_path=path.copy(),
+                display_module_path=display_path,
                 parent_context=None
             )
             
@@ -1606,32 +2288,69 @@ class VariablesAnalyzer:
         
         for child in children:
             child_name = child.header.name
+            child_path = parent_path + [child_name]
+
+            if self._limit_to_module_path is not None:
+                # Only traverse:
+                #  - nodes along the path to the selected module, and
+                #  - nodes within the selected module subtree.
+                if not (
+                    _path_startswith_casefold(self._limit_to_module_path, child_path)
+                    or _path_startswith_casefold(child_path, self._limit_to_module_path)
+                ):
+                    continue
+
+            if isinstance(child, SingleModule):
+                child_display_path = parent_context.display_module_path + [
+                    decorate_segment(child_name, "SM")
+                ]
+            elif isinstance(child, FrameModule):
+                child_display_path = parent_context.display_module_path + [
+                    decorate_segment(child_name, "FM")
+                ]
+            elif isinstance(child, ModuleTypeInstance):
+                child_display_path = parent_context.display_module_path + [
+                    decorate_segment(child_name, "MT", moduletype_name=child.moduletype_name)
+                ]
+            else:
+                child_display_path = parent_context.display_module_path + [child_name]
+
+            inst_context = self._repath_context(
+                parent_context,
+                module_path=child_path,
+                display_module_path=child_display_path,
+            )
             
             # Handle header-level enable and groupconn
             self._walk_header_enable(
-                child.header, parent_context, path=parent_path + [child_name]
+                child.header, inst_context, path=child_path
             )
             self._walk_header_groupconn(
-                child.header, parent_context, path=parent_path + [child_name]
+                child.header, inst_context, path=child_path
             )
 
             if isinstance(child, SingleModule):
                 # **CHANGED**: Build scope context with parameter mappings
-                child_context = self._build_scope_context_for_single(child, parent_context)
+                child_context = self._build_scope_context_for_single(
+                    child,
+                    parent_context,
+                    module_path=child_path,
+                    display_module_path=child_display_path,
+                )
                 
                 # **CHANGED**: Use child_context instead of building env dict
                 self._walk_moduledef(
-                    child.moduledef, child_context, parent_path + [child_name]
+                    child.moduledef, child_context, child_path
                 )
                 self._walk_module_code(
-                    child.modulecode, child_context, parent_path + [child_name]
+                    child.modulecode, child_context, child_path
                 )
                 
                 # Recursively walk submodules with child context
                 self._walk_submodules(
                     child.submodules or [],
                     child_context,  # **CHANGED**: Pass child context, not parent
-                    parent_path + [child_name],
+                    child_path,
                 )
                 
                 # Track parameter usage for propagation (unchanged logic)
@@ -1657,16 +2376,25 @@ class VariablesAnalyzer:
                             continue
                         
                         # **CHANGED**: Resolve with field path
-                        source_var, source_field_prefix = parent_context.resolve_variable(full_source_name)
-                        target_var = child_context.env.get(target_name)
+                        source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(full_source_name)
+                        target_key = target_name.casefold()
+                        target_var = child_context.env.get(target_key)
+
+                        if source_var and not target_var:
+                            # Don't crash the full run for unrelated/broken mappings.
+                            # We avoid fallbacks/heuristics and simply skip alias creation.
+                            self._mapping_warnings.append(
+                                f"Parameter mapping refers to unknown target parameter {target_name!r} "
+                                f"in module {child_name!r}: {pm}"
+                            )
                         
                         if source_var and target_var:
-                            # Store the mapping name (target parameter name) as the prefix, combined with any source field path
-                            # mapping_name should never be empty - it identifies which parameter was mapped
-                            if source_field_prefix:
-                                mapping_name = f"{target_name}.{source_field_prefix}"
-                            else:
-                                mapping_name = target_name
+                            # Store only the source field prefix (relative to the source variable).
+                            # This must NOT include the target parameter name.
+                            # Examples:
+                            #   control => Dv        => mapping_name == ""         (Dv.cmd)
+                            #   control => Dv.empty  => mapping_name == "empty"    (Dv.empty.cmd)
+                            mapping_name = source_field_prefix or ""
                             
                             if self.debug:
                                 # Only log MessageSetup mappings to reduce noise
@@ -1690,22 +2418,27 @@ class VariablesAnalyzer:
                     child,
                     child_env=child_context.env,
                     parent_env=parent_context.env,
-                    parent_path=parent_path + [child_name],
+                    parent_path=child_path,
                 )
 
             elif isinstance(child, FrameModule):
-                # FrameModule: walk with parent context (no new scope)
+                # FrameModule: no new scope, but access locations should be attributed to the frame's instance path.
+                frame_context = self._repath_context(
+                    parent_context,
+                    module_path=child_path,
+                    display_module_path=child_display_path,
+                )
                 self._walk_moduledef(
-                    child.moduledef, parent_context, parent_path + [child_name]
+                    child.moduledef, frame_context, child_path
                 )
                 self._walk_module_code(
-                    child.modulecode, parent_context, parent_path + [child_name]
+                    child.modulecode, frame_context, child_path
                 )
                 
                 self._walk_submodules(
                     child.submodules or [],
-                    parent_context,  # Same context
-                    parent_path + [child_name],
+                    frame_context,
+                    child_path,
                 )
 
             elif isinstance(child, ModuleTypeInstance):
@@ -1719,14 +2452,18 @@ class VariablesAnalyzer:
                     
                     # **CHANGED**: Build typedef scope context with mappings
                     typedef_context = self._build_scope_context_for_typedef(
-                        mt, child, parent_context
+                        mt,
+                        child,
+                        parent_context,
+                        module_path=child_path,
+                        display_module_path=child_display_path,
                     )
                     
                     # Analyze typedef if not already done
                     if mt_key not in self.param_reads_by_typedef and mt_key not in self._analyzing_typedefs:
                         # **CHANGED**: Use context-aware analysis
                         self._analyze_typedef_with_context(
-                            mt, typedef_context, path=parent_path + [f"TypeDef:{mt.name}"]
+                            mt, typedef_context, path=child_path
                         )
                     
                     # **CHANGED**: Create alias links with field path information
@@ -1743,16 +2480,22 @@ class VariablesAnalyzer:
                                 continue
                             
                             # **CHANGED**: Resolve with field path
-                            source_var, source_field_prefix = parent_context.resolve_variable(full_source_name)
-                            target_var = typedef_context.env.get(target_name)
+                            source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(full_source_name)
+                            target_key = target_name.casefold()
+                            target_var = typedef_context.env.get(target_key)
+
+                            if source_var and not target_var:
+                                # Don't crash the full run for unrelated/broken mappings.
+                                # We avoid fallbacks/heuristics and simply skip alias creation.
+                                self._mapping_warnings.append(
+                                    f"Parameter mapping refers to unknown target parameter {target_name!r} "
+                                    f"in typedef instance {child_name!r}: {pm}"
+                                )
                             
                             if source_var and target_var:
-                                # Store the mapping name (target parameter name) as the prefix, combined with any source field path
-                                # mapping_name should never be empty - it identifies which parameter was mapped
-                                if source_field_prefix:
-                                    mapping_name = f"{target_name}.{source_field_prefix}"
-                                else:
-                                    mapping_name = target_name
+                                # Store only the source field prefix (relative to the source variable).
+                                # Do not include the target parameter name.
+                                mapping_name = source_field_prefix or ""
                                 
                                 if self.debug:
                                     # Only log MessageSetup mappings to reduce noise
@@ -2078,12 +2821,32 @@ class VariablesAnalyzer:
 
         # External types: conservatively treat mapping as read+written
         if external_typename is not None:
+            display_path: list[str] = []
+            if parent_path:
+                display_path.append(decorate_segment(parent_path[0], "BP"))
+                display_path.extend(parent_path[1:])
+            use_context = ScopeContext(
+                env=parent_env,
+                param_mappings={},
+                module_path=parent_path.copy(),
+                display_module_path=display_path,
+                parent_context=None,
+            )
+
             if source_field_path:
                 src_var.mark_field_read(source_field_path, parent_path)
                 src_var.mark_field_written(source_field_path, parent_path)
+
+                cp = self._canonical_path(parent_path, src_var, source_field_path)
+                self._record_access(AccessKind.READ, cp, use_context, full_source)
+                self._record_access(AccessKind.WRITE, cp, use_context, full_source)
             else:
                 src_var.mark_read(parent_path)
                 src_var.mark_written(parent_path)
+
+                cp = self._canonical_path(parent_path, src_var, "")
+                self._record_access(AccessKind.READ, cp, use_context, full_source)
+                self._record_access(AccessKind.WRITE, cp, use_context, full_source)
             return
 
         # **CHANGED**: Internal types with field-aware propagation
@@ -2115,11 +2878,21 @@ class VariablesAnalyzer:
             return
         
         for seq in mc.sequences or []:
-            self._walk_sequence(seq, context, path)
+            label = f"SEQ:{getattr(seq, 'name', '<unnamed>')}"
+            self._push_site(label)
+            try:
+                self._walk_sequence(seq, context, path)
+            finally:
+                self._pop_site()
         
         for eq in mc.equations or []:
-            for stmt in eq.code or []:
-                self._walk_stmt_or_expr(stmt, context, path)
+            label = f"EQ:{getattr(eq, 'name', '<unnamed>')}"
+            self._push_site(label)
+            try:
+                for stmt in eq.code or []:
+                    self._walk_stmt_or_expr(stmt, context, path)
+            finally:
+                self._pop_site()
 
     def _walk_sequence(
         self, seq: Sequence, context: ScopeContext, path: list[str]
@@ -2127,29 +2900,65 @@ class VariablesAnalyzer:
         """Walk Sequence with scope context."""
         for node in seq.code or []:
             if isinstance(node, SFCStep):
-                for stmt in node.code.enter or []:
-                    self._walk_stmt_or_expr(stmt, context, path)
-                for stmt in node.code.active or []:
-                    self._walk_stmt_or_expr(stmt, context, path)
-                for stmt in node.code.exit or []:
-                    self._walk_stmt_or_expr(stmt, context, path)
+                base = f"STEP:{node.name}"
+                self._push_site(f"{base}:ENTER")
+                try:
+                    for stmt in node.code.enter or []:
+                        self._walk_stmt_or_expr(stmt, context, path)
+                finally:
+                    self._pop_site()
+
+                self._push_site(f"{base}:ACTIVE")
+                try:
+                    for stmt in node.code.active or []:
+                        self._walk_stmt_or_expr(stmt, context, path)
+                finally:
+                    self._pop_site()
+
+                self._push_site(f"{base}:EXIT")
+                try:
+                    for stmt in node.code.exit or []:
+                        self._walk_stmt_or_expr(stmt, context, path)
+                finally:
+                    self._pop_site()
             
             elif isinstance(node, SFCTransition):
-                self._walk_stmt_or_expr(node.condition, context, path)
+                label = f"TRANS:{node.name or '<unnamed>'}"
+                self._push_site(label)
+                try:
+                    self._walk_stmt_or_expr(node.condition, context, path)
+                finally:
+                    self._pop_site()
             
             elif isinstance(node, SFCAlternative):
-                for branch in node.branches:
-                    self._walk_seq_nodes(branch, context.env, path)
+                for i, branch in enumerate(node.branches or []):
+                    self._push_site(f"ALT:BRANCH:{i}")
+                    try:
+                        self._walk_seq_nodes(branch, context.env, path)
+                    finally:
+                        self._pop_site()
             
             elif isinstance(node, SFCParallel):
-                for branch in node.branches:
-                    self._walk_seq_nodes(branch, context.env, path)
+                for i, branch in enumerate(node.branches or []):
+                    self._push_site(f"PAR:BRANCH:{i}")
+                    try:
+                        self._walk_seq_nodes(branch, context.env, path)
+                    finally:
+                        self._pop_site()
             
             elif isinstance(node, SFCSubsequence):
-                self._walk_seq_nodes(node.body, context.env, path)
+                self._push_site(f"SUBSEQ:{getattr(node, 'name', '<unnamed>')}")
+                try:
+                    self._walk_seq_nodes(node.body, context.env, path)
+                finally:
+                    self._pop_site()
             
             elif isinstance(node, SFCTransitionSub):
-                self._walk_seq_nodes(node.body, context.env, path)
+                self._push_site(f"TRANS-SUB:{getattr(node, 'name', '<unnamed>')}")
+                try:
+                    self._walk_seq_nodes(node.body, context.env, path)
+                finally:
+                    self._pop_site()
 
             elif isinstance(node, (SFCFork, SFCBreak)):
                 # no variable usage in headers
@@ -2159,9 +2968,15 @@ class VariablesAnalyzer:
         self, nodes: list[Any], env: dict[str, Variable], path: list[str]
     ) -> None:
         # Create a scope context from the environment
+        display_path: list[str] = []
+        if path:
+            display_path.append(decorate_segment(path[0], "BP"))
+            display_path.extend(path[1:])
         context = ScopeContext(
             env=env,
             param_mappings={},
+            module_path=path.copy(),
+            display_module_path=display_path,
             parent_context=None
         )
         for nd in nodes:
@@ -2293,13 +3108,7 @@ class VariablesAnalyzer:
         # **CHANGED**: Variable reference with scope-aware resolution
         if isinstance(obj, dict) and const.KEY_VAR_NAME in obj:
             full_name = obj[const.KEY_VAR_NAME]
-            var, field_path = context.resolve_variable(full_name)
-
-            if var is not None:
-                if field_path:
-                    var.mark_field_read(field_path, path)
-                else:
-                    var.mark_read(path)
+            self._mark_ref_access(full_name, context, path, AccessKind.READ)
             return
 
         # **CHANGED**: Assignment with scope-aware resolution
@@ -2308,13 +3117,7 @@ class VariablesAnalyzer:
             
             if isinstance(target, dict) and const.KEY_VAR_NAME in target:
                 full_name = target[const.KEY_VAR_NAME]
-                var, field_path = context.resolve_variable(full_name)
-                
-                if var is not None:
-                    if field_path:
-                        var.mark_field_written(field_path, path)
-                    else:
-                        var.mark_written(path)
+                self._mark_ref_access(full_name, context, path, AccessKind.WRITE)
             
             self._walk_stmt_or_expr(expr, context, path)
             return
@@ -2422,13 +3225,7 @@ class VariablesAnalyzer:
                 obj_dict: dict[str, Any] = cast(dict[str, Any], obj)
                 full_name = obj_dict.get(const.KEY_VAR_NAME)
                 if full_name is not None:
-                    var, field_path = context.resolve_variable(full_name)
-
-                    if var is not None:
-                        if field_path:
-                            var.mark_field_read(field_path, path)
-                        else:
-                            var.mark_read(path)
+                    self._mark_ref_access(full_name, context, path, AccessKind.READ)
                 return
 
             if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
@@ -2436,13 +3233,7 @@ class VariablesAnalyzer:
                 
                 if isinstance(target, dict) and const.KEY_VAR_NAME in target:
                     full_name = target[const.KEY_VAR_NAME]
-                    var, field_path = context.resolve_variable(full_name)
-                    
-                    if var is not None:
-                        if field_path:
-                            var.mark_field_written(field_path, path)
-                        else:
-                            var.mark_written(path)
+                    self._mark_ref_access(full_name, context, path, AccessKind.WRITE)
                 
                 self._walk_stmt_or_expr(expr, context, path)
                 return
