@@ -20,7 +20,7 @@ def debug_module_structure(base_picture: BasePicture, max_depth: int = 10) -> No
     """Detailed debugging: show EVERYTHING about the structure."""
     print(f"\n=== DEBUGGING MODULE STRUCTURE ===")
     print(f"BasePicture type: {type(base_picture)}")
-    print(f"BasePicture name: {base_picture.name!r}")
+    print(f"BasePicture name: {base_picture.header.name!r}")
     print(f"BasePicture has {len(base_picture.submodules)} submodules")
     print(f"BasePicture has {len(base_picture.moduletype_defs)} moduletype_defs")
 
@@ -656,7 +656,7 @@ def _walk_modules(
         if debug:
             print(f"  → ModuleTypeDef: {node_name!r}")
             print(f"  → Has {len(node.submodules)} submodules")
-        path_with_current = current_path + [f"ModuleTypeDef:{node_name}"]
+        path_with_current = current_path + [f"TypeDef:{node_name}"]
 
         for i, sub in enumerate(node.submodules):
             if debug:
@@ -696,7 +696,7 @@ def find_modules_by_name(
         print(f"\n=== SEARCHING FOR '{target_name}' ===")
 
     results: list[tuple[list[str], SingleModule]] = []
-    _walk_modules(base_picture, target_name, [base_picture.name], results, debug)
+    _walk_modules(base_picture, target_name, [base_picture.header.name], results, debug)
 
     if debug:
         print(f"=== SEARCH COMPLETE: Found {len(results)} matches ===\n")
