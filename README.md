@@ -119,6 +119,57 @@ q) Quit
 
 ---
 
+## Cross-Platform Development
+
+SattLint supports development on both Linux and Windows platforms:
+
+### Development Environments
+- **Linux**: Recommended with Neovim + LSP (pyright/ruff)
+- **Windows**: Recommended with Visual Studio Code + Python extension
+
+### Quick Setup
+
+#### Linux (Neovim)
+```bash
+# Install Python version manager
+mise install python@3.13
+
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install in development mode
+pip install -e .[dev]
+
+# Install development tools (already in pyproject.toml)
+```
+
+#### Windows (VS Code)
+```powershell
+# Create and activate virtual environment
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# Install in development mode
+pip install -e .[dev]
+
+# VS Code will prompt to install Python extension and use .vscode/settings.json
+```
+
+### Code Quality Tools
+- **Formatting**: Black (configured in pyproject.toml)
+- **Linting**: Ruff (configured in pyproject.toml)
+- **Type Checking**: MyPy (configured in pyproject.toml)
+- **Testing**: Pytest (configured in pyproject.toml)
+
+### Git Workflow
+The repository is configured for seamless development across platforms:
+- `.editorconfig` ensures consistent formatting across editors
+- `.vscode/settings.json` provides VS Code workspace configuration
+- All settings are committed to git for consistency between machines
+
+---
+
 ## Configuration
 
 All settings are stored in config.toml, which is the single source of truth.
