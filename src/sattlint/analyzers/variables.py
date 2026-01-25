@@ -50,30 +50,72 @@ log = logging.getLogger("SattLint")
 @dataclass
 class ScopeContext:
     """Tracks variable environment with field-aware parameter mappings."""
-    env: dict[str, Variable]  # Direct variable declarations
+    # Union of directly declared variables in this scope.
+    # If both a parameter and a localvariable share the same name, the localvariable
+    # wins in this mapping.
+    env: dict[str, Variable]
+    # Direct declarations split by kind, used for correct shadowing/mapping behavior.
+    params: dict[str, Variable]
+    locals: dict[str, Variable]
     # param_name -> (source_var, field_prefix, source_decl_module_path, source_decl_display_path)
     param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]]
     module_path: list[str]
     display_module_path: list[str]
+    # casefolded library name for resolution (may be None)
+    library: str | None = None
     parent_context: ScopeContext | None = None
-    
+
+    @staticmethod
+    def _lookup_name(mapping: dict[str, Variable], name: str) -> Variable | None:
+        # Prefer exact match; fall back to case-insensitive match only when unique.
+        direct = mapping.get(name)
+        if direct is not None:
+            return direct
+        name_cf = name.casefold()
+        matches = [v for k, v in mapping.items() if k.casefold() == name_cf]
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
+    @staticmethod
+    def _lookup_mapping(
+        mapping: dict[str, tuple[Variable, str, list[str], list[str]]],
+        name: str,
+    ) -> tuple[Variable, str, list[str], list[str]] | None:
+        direct = mapping.get(name)
+        if direct is not None:
+            return direct
+        name_cf = name.casefold()
+        matches = [v for k, v in mapping.items() if k.casefold() == name_cf]
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
     def resolve_variable(self, var_ref: str) -> tuple[Variable | None, str, list[str], list[str]]:
         """
         Resolve a variable reference, reconstructing the full field path.
-        
+
         Examples:
         - "signal.Comp_signal.value" with mapping (signal -> Dv.I.WT001)
           returns (Dv_variable, "I.WT001.Comp_signal.value")
         - "Dv.I.WT001.Comp_signal.value" in parent scope
           returns (Dv_variable, "I.WT001.Comp_signal.value")
         """
-        base = var_ref.split(".", 1)[0].lower()
+        base = var_ref.split(".", 1)[0]
         field_path = var_ref.split(".", 1)[1] if "." in var_ref else ""
-        
-        # Check if this base is a mapped parameter
-        if base in self.param_mappings:
-            source_var, prefix, source_decl_path, source_decl_display_path = self.param_mappings[base]
-            # Reconstruct full path: prefix + field_path
+
+        # Locals shadow everything in the current scope (including parameters and
+        # mapped parameters).
+        local_var = self._lookup_name(self.locals, base)
+        if local_var:
+            return local_var, field_path, self.module_path, self.display_module_path
+
+        # Apply parameter mappings only when the name is actually a parameter in
+        # this scope.
+        mapping = self._lookup_mapping(self.param_mappings, base)
+        param_decl = self._lookup_name(self.params, base)
+        if mapping is not None and param_decl is not None:
+            source_var, prefix, source_decl_path, source_decl_display_path = mapping
             if prefix and field_path:
                 full_field_path = f"{prefix}.{field_path}"
             elif prefix:
@@ -81,16 +123,16 @@ class ScopeContext:
             else:
                 full_field_path = field_path
             return source_var, full_field_path, source_decl_path, source_decl_display_path
-        
-        # Check local environment
-        var = self.env.get(base)
+
+        # Fall back to direct declarations.
+        var = self._lookup_name(self.env, base)
         if var:
             return var, field_path, self.module_path, self.display_module_path
-        
+
         # Try parent context
         if self.parent_context:
             return self.parent_context.resolve_variable(var_ref)
-        
+
         return None, field_path, self.module_path, self.display_module_path
 
 
@@ -295,7 +337,7 @@ def debug_variable_usage(base_picture: BasePicture, var_name: str, debug: bool =
         lines.append(
             f"[{idx}] {dt} | R:{bool(v.read)} W:{bool(v.written)}"
         )
-        
+
         # Show field-level reads (deduplicated)
         if v.field_reads:
             lines.append("  Field reads:")
@@ -305,12 +347,12 @@ def debug_variable_usage(base_picture: BasePicture, var_name: str, debug: bool =
                 for loc in locations:
                     where = " -> ".join(loc)
                     unique_paths[where] = unique_paths.get(where, 0) + 1
-                
+
                 lines.append(f"    • {var_name}.{field_path}")
                 for path, count in sorted(unique_paths.items()):
                     count_str = f" ({count}x)" if count > 1 else ""
                     lines.append(f"      {path}{count_str}")
-        
+
         # Show field-level writes (deduplicated)
         if v.field_writes:
             lines.append("  Field writes:")
@@ -319,12 +361,12 @@ def debug_variable_usage(base_picture: BasePicture, var_name: str, debug: bool =
                 for loc in locations:
                     where = " -> ".join(loc)
                     unique_paths[where] = unique_paths.get(where, 0) + 1
-                
+
                 lines.append(f"    • {var_name}.{field_path}")
                 for path, count in sorted(unique_paths.items()):
                     count_str = f" ({count}x)" if count > 1 else ""
                     lines.append(f"      {path}{count_str}")
-        
+
         # Show whole-variable accesses (deduplicated by path and kind)
         whole_var_locs = [
             (path, kind) for path, kind in v.usage_locations
@@ -339,7 +381,7 @@ def debug_variable_usage(base_picture: BasePicture, var_name: str, debug: bool =
                 if where not in path_kinds:
                     path_kinds[where] = {"read": 0, "write": 0}
                 path_kinds[where][kind] += 1
-            
+
             for path, kinds in sorted(path_kinds.items()):
                 r_count = kinds["read"]
                 w_count = kinds["write"]
@@ -431,55 +473,73 @@ def analyze_module_localvar_fields(
                 f"Analysis saw {len(analyzer._mapping_warnings)} parameter-mapping warning(s) "
                 "(skipped alias creation for those mappings)."
             )
-    
+
     # Find the SPECIFIC local variable instance.
     # - SingleModule: variable lives on the module node.
     # - ModuleTypeInstance: variable lives on the referenced ModuleTypeDef.
-    var_name_key = var_name.casefold()
+    def _pick_local_var(vars_: list[Variable]) -> Variable | None:
+        # Prefer exact-case match; then case-insensitive match only if unique.
+        exact = next((v for v in vars_ if v.name == var_name), None)
+        if exact is not None:
+            return exact
+        matches = [v for v in vars_ if v.name.casefold() == var_name.casefold()]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            opts = ", ".join(sorted({v.name for v in matches}))
+            raise ValueError(
+                f"Local variable name {var_name!r} is ambiguous in selected module scope {resolved.display_path_str!r}. "
+                f"Matches: {opts}. Use exact casing."
+            )
+        return None
     module_type_info: str | None = None
 
     if isinstance(module_def, SingleModule):
-        local_var = next(
-            (v for v in (module_def.localvariables or []) if v.name.casefold() == var_name_key),
-            None,
-        )
+        local_var = _pick_local_var(list(module_def.localvariables or []))
     elif isinstance(module_def, ModuleTypeInstance):
-        mt = _resolve_moduletype_def_strict(base_picture, module_def.moduletype_name)
-        module_type_info = _format_moduletype_label(mt)
-        local_var = next(
-            (v for v in (mt.localvariables or []) if v.name.casefold() == var_name_key),
-            None,
+        mt = _resolve_moduletype_def_strict(
+            base_picture,
+            module_def.moduletype_name,
+            current_library=getattr(base_picture, "origin_lib", None),
         )
+        module_type_info = _format_moduletype_label(mt)
+        local_var = _pick_local_var(list(mt.localvariables or []))
     else:
         raise ValueError(
             "Selected module path does not point to a SingleModule or ModuleTypeInstance. "
             f"Got: {type(module_def).__name__}"
         )
-    
+
     if local_var is None:
         raise ValueError(
             f"Local variable {var_name!r} not found in selected module scope {resolved.display_path_str!r}."
         )
-    
+
     module_path_list = resolved.path
     module_path_str = " -> ".join(module_path_list)
-    
+
     if debug:
         log.debug(f"Target variable object id: {id(local_var)}")
+        log.debug(f"Target variable datatype: {local_var.datatype_text}")
         log.debug(f"Finding aliases using graph traversal")
-    
+
     # Find ONLY the Variable objects that are connected through alias links with field paths
     aliased_vars_with_paths = _find_all_aliases(local_var, analyzer._alias_links, debug=debug)
     # Include the local variable itself (direct field/whole-variable accesses).
     aliased_vars_with_paths.insert(0, (local_var, ""))
-    
+
+    if debug:
+        log.debug(f"DEBUG: Found {len(aliased_vars_with_paths)} aliased variable instance(s):")
+        for var, prefix in aliased_vars_with_paths:
+            log.debug(f"  - {var.name} (id={id(var)}), prefix='{prefix}'")
+
     # Print all MessageSetup instances found with their prefixes
     messagesetup_instances = [(var, prefix) for var, prefix in aliased_vars_with_paths if var.name.lower() == "messagesetup"]
     if debug and messagesetup_instances:
         log.debug(f"DEBUG: Found {len(messagesetup_instances)} MessageSetup instance(s):")
         for var, prefix in messagesetup_instances:
             log.debug(f"       id={id(var)}, prefix='{prefix}'")
-    
+
     # Build report
     header = f"Field usage analysis for local variable {var_name!r}"
     header += f" in module path {resolved.display_path_str!r}"
@@ -510,18 +570,18 @@ def analyze_module_localvar_fields(
         if len(analyzer.analysis_warnings) > 50:
             lines.append(f"  - ... ({len(analyzer.analysis_warnings) - 50} more)")
         lines += ["", "=" * 80, ""]
-    
+
     # Aggregate ONLY from the connected aliases
     all_field_reads = {}
     all_field_writes = {}
     whole_var_reads = []
     whole_var_writes = []
-    
+
     if debug:
         log.debug("Aggregating usages from connected aliases only")
     for var, field_prefix in aliased_vars_with_paths:
         # field_prefix may be empty for the root variable itself.
-        
+
         # Merge field reads - reconstruct full field path (case-insensitive)
         for field_path, locations in (var.field_reads or {}).items():
             # Combine the field prefix from mappings with the field accessed on the variable.
@@ -531,14 +591,14 @@ def analyze_module_localvar_fields(
                 full_field_path = field_prefix
             else:
                 full_field_path = field_path
-            
+
             if debug and full_field_path.lower() == "acktext":
                 log.debug(f"DEBUG: Found field read 'acktext' - field_prefix='{field_prefix}', field_path={field_path}, var={var.name}(id={id(var)})")
-            
+
             # Normalize to lowercase for case-insensitive comparison
             full_field_path_lower = full_field_path.lower()
             all_field_reads.setdefault(full_field_path_lower, []).extend(locations)
-        
+
         # Merge field writes - reconstruct full field path (case-insensitive)
         for field_path, locations in (var.field_writes or {}).items():
             # Combine the field prefix from mappings with the field accessed on the variable.
@@ -548,80 +608,80 @@ def analyze_module_localvar_fields(
                 full_field_path = field_prefix
             else:
                 full_field_path = field_path
-            
+
             if debug and full_field_path.lower() == "acktext":
                 log.debug(f"DEBUG: Found field write 'acktext' - field_prefix='{field_prefix}', field_path={field_path}, var={var.name}(id={id(var)})")
-            
+
             # Normalize to lowercase for case-insensitive comparison
             full_field_path_lower = full_field_path.lower()
             all_field_writes.setdefault(full_field_path_lower, []).extend(locations)
-        
+
         # Merge whole variable accesses
         for loc, kind in (var.usage_locations or []):
             if kind == "read":
                 whole_var_reads.append(loc)
             elif kind == "write":
                 whole_var_writes.append(loc)
-    
+
     # Filter to only show accesses from within this module tree
     def is_within_module(location: list[str]) -> bool:
         """Check if location is within the selected module path (or its submodules)."""
         return _path_startswith_casefold(location, module_path_list)
-    
+
     # Field-level accesses
     internal_field_reads = {}
     internal_field_writes = {}
-    
+
     for field_path, locations in all_field_reads.items():
         filtered = [loc for loc in locations if is_within_module(loc)]
         if filtered:
             internal_field_reads[field_path] = filtered
-    
+
     for field_path, locations in all_field_writes.items():
         filtered = [loc for loc in locations if is_within_module(loc)]
         if filtered:
             internal_field_writes[field_path] = filtered
-    
+
     # Whole variable accesses
     internal_whole_reads = [loc for loc in whole_var_reads if is_within_module(loc)]
     internal_whole_writes = [loc for loc in whole_var_writes if is_within_module(loc)]
-    
+
     # Report field accesses
     all_fields = set(internal_field_reads.keys()) | set(internal_field_writes.keys())
-    
+
     if all_fields:
         lines.append("FIELD-LEVEL ACCESSES:")
         lines.append("-" * 80)
-        
+
         for field in sorted(all_fields):
             reads = internal_field_reads.get(field, [])
             writes = internal_field_writes.get(field, [])
-            
+
             # Deduplicate locations
             unique_read_locs = {}
             for loc in reads:
                 loc_str = " -> ".join(loc)
                 unique_read_locs[loc_str] = unique_read_locs.get(loc_str, 0) + 1
-            
+
             unique_write_locs = {}
             for loc in writes:
                 loc_str = " -> ".join(loc)
                 unique_write_locs[loc_str] = unique_write_locs.get(loc_str, 0) + 1
-            
+
             access_type = []
             if reads:
                 access_type.append("READ")
             if writes:
                 access_type.append("WRITE")
-            
+
             lines.append(f"\n  • {var_name}.{field} [{'/'.join(access_type)}]")
-            
+
             if unique_read_locs:
                 lines.append(f"    Reads ({sum(unique_read_locs.values())} total, {len(unique_read_locs)} unique location(s)):")
                 for loc_str, count in sorted(unique_read_locs.items()):
                     count_str = f" ({count}x)" if count > 1 else ""
                     lines.append(f"      - {loc_str}{count_str}")
-            
+
             if unique_write_locs:
                 lines.append(f"    Writes ({sum(unique_write_locs.values())} total, {len(unique_write_locs)} unique location(s)):")
                 for loc_str, count in sorted(unique_write_locs.items()):
@@ -629,7 +689,7 @@ def analyze_module_localvar_fields(
                     lines.append(f"      - {loc_str}{count_str}")
     else:
         lines.append("No field-level accesses found within this module.")
-    
+
     # Report whole variable accesses
     if internal_whole_reads or internal_whole_writes:
         lines.append("")
@@ -637,29 +697,29 @@ def analyze_module_localvar_fields(
         lines.append("")
         lines.append("WHOLE VARIABLE ACCESSES:")
         lines.append("-" * 80)
-        
+
         if internal_whole_reads:
             unique_reads = {}
             for loc in internal_whole_reads:
                 loc_str = " -> ".join(loc)
                 unique_reads[loc_str] = unique_reads.get(loc_str, 0) + 1
-            
+
             lines.append(f"\n  Reads ({sum(unique_reads.values())} total, {len(unique_reads)} unique location(s)):")
             for loc_str, count in sorted(unique_reads.items()):
                 count_str = f" ({count}x)" if count > 1 else ""
                 lines.append(f"    - {loc_str}{count_str}")
-        
+
         if internal_whole_writes:
             unique_writes = {}
             for loc in internal_whole_writes:
                 loc_str = " -> ".join(loc)
                 unique_writes[loc_str] = unique_writes.get(loc_str, 0) + 1
-            
+
             lines.append(f"\n  Writes ({sum(unique_writes.values())} total, {len(unique_writes)} unique location(s)):")
             for loc_str, count in sorted(unique_writes.items()):
                 count_str = f" ({count}x)" if count > 1 else ""
                 lines.append(f"    - {loc_str}{count_str}")
-    
+
     # Summary
     lines.append("")
     lines.append("=" * 80)
@@ -671,7 +731,7 @@ def analyze_module_localvar_fields(
     lines.append(f"  Total field writes: {sum(len(v) for v in internal_field_writes.values())}")
     lines.append(f"  Whole variable reads: {len(internal_whole_reads)}")
     lines.append(f"  Whole variable writes: {len(internal_whole_writes)}")
-    
+
     return "\n".join(lines)
 
 
@@ -688,17 +748,17 @@ def _find_all_aliases(target_var: Variable, alias_links: list[tuple[Variable, Va
     aliases = []
     to_visit = [(target_var, "")]  # (variable, field_prefix_to_prepend_to_fields)
     visited = []
-    
+
     while to_visit:
         current, current_prefix = to_visit.pop()
-        
+
         # Check if already visited using identity
         if any(current is v for v, _ in visited):
             continue
-        
+
         visited.append((current, current_prefix))
         aliases.append((current, current_prefix))
-        
+
         # Find all variables linked FROM current (only parent->child direction)
         for parent, child, mapping_name in alias_links:
             if parent is current and not any(child is v for v, _ in visited):
@@ -714,7 +774,7 @@ def _find_all_aliases(target_var: Variable, alias_links: list[tuple[Variable, Va
                 if debug and child.name.lower() == "messagesetup" and not mapping_name:
                     log.debug(f"DEBUG: MessageSetup alias with EMPTY mapping_name from {parent.name}(id={id(parent)})")
                 to_visit.append((child, new_prefix))
-    
+
     # Remove the original (we'll add it back in the caller)
     aliases = [(v, p) for v, p in aliases if v is not target_var]
     return aliases
@@ -724,19 +784,19 @@ def _find_module_instances(bp: BasePicture, typedef_name: str):
     """
     Find all instances of a module (by name) in the project.
     This handles both direct ModuleTypeInstances and modules defined within typedefs.
-    
+
     Returns list of (module, full_path) tuples.
     """
     typedef_name_lower = typedef_name.lower()
     results = []
-    
+
     # Helper: find where a typedef is used within another typedef's structure
     def find_in_typedef_tree(typedef: ModuleTypeDef, path: list[str]):
         """Search within a typedef's submodules for our target."""
         def search_subs(modules, current_path):
             for mod in modules or []:
                 mod_path = current_path + [mod.header.name]
-                
+
                 # Check if this matches our target
                 if isinstance(mod, ModuleTypeInstance):
                     if mod.moduletype_name.lower() == typedef_name_lower:
@@ -744,43 +804,43 @@ def _find_module_instances(bp: BasePicture, typedef_name: str):
                 elif isinstance(mod, (SingleModule, FrameModule)):
                     if mod.header.name.lower() == typedef_name_lower:
                         results.append((mod, mod_path, typedef.name))
-                
+
                 # Recurse
                 if isinstance(mod, (SingleModule, FrameModule)):
                     search_subs(mod.submodules or [], mod_path)
-        
+
         search_subs(typedef.submodules or [], path)
-    
+
     # First pass: find the module in all typedef definitions
     typedef_occurrences = []  # (module, path_within_typedef, parent_typedef_name)
     for mt in bp.moduletype_defs or []:
         find_in_typedef_tree(mt, [f"TypeDef:{mt.name}"])
-    
+
     # results now contains (module, path_within_typedef, parent_typedef_name)
     # We need to find instances of the parent typedef and build full paths
-    
+
     # Second pass: find direct instances in the project tree
     direct_instances = []
-    
+
     def search_project_tree(modules, path):
         for mod in modules or []:
             current_path = path + [mod.header.name]
-            
+
             if isinstance(mod, ModuleTypeInstance):
                 if mod.moduletype_name.lower() == typedef_name_lower:
                     direct_instances.append((mod, current_path))
-            
+
             if isinstance(mod, (SingleModule, FrameModule)):
                 search_project_tree(mod.submodules or [], current_path)
-    
+
     search_project_tree(bp.submodules, [bp.header.name])
-    
+
     # Third pass: for each occurrence in a typedef, find instances of that parent typedef
     final_results = []
     for mod, typedef_path, parent_typedef_name in results:
         # Find instances of the parent typedef
         parent_instances = []
-        
+
         def find_parent_instances(modules, path):
             for m in modules or []:
                 p = path + [m.header.name]
@@ -789,15 +849,15 @@ def _find_module_instances(bp: BasePicture, typedef_name: str):
                         parent_instances.append(p)
                 if isinstance(m, (SingleModule, FrameModule)):
                     find_parent_instances(m.submodules or [], p)
-        
+
         find_parent_instances(bp.submodules, [bp.header.name])
-        
+
         # Build full paths
         relative_path = typedef_path[1:]  # Remove "TypeDef:X" prefix
         for parent_path in parent_instances:
             full_path = parent_path + relative_path
             final_results.append((mod, full_path))
-    
+
     # Combine direct instances and typedef-based instances
     return direct_instances + final_results
 
@@ -808,14 +868,14 @@ def _find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str)
     Searches from the instance location upwards through parent modules.
     """
     var_name_lower = var_name.lower()
-    
+
     # Start from the parent of the instance (exclude the instance itself)
     parent_path = instance_path[:-1]
-    
+
     # Search from the parent path upwards
     for i in range(len(parent_path), 0, -1):
         search_path = parent_path[:i]
-        
+
         # Navigate to the module at this path
         if len(search_path) == 1:
             # At BasePicture level
@@ -823,7 +883,7 @@ def _find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str)
                 if v.name.lower() == var_name_lower:
                     return v
             continue
-        
+
         # Navigate through the path
         current = None
         for j, segment in enumerate(search_path[1:], 1):  # Skip "BasePicture"
@@ -832,7 +892,7 @@ def _find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str)
                 if segment.startswith("TypeDef:"):
                     typedef_name = segment.split(":", 1)[1]
                     current = next(
-                        (mt for mt in bp.moduletype_defs or [] 
+                        (mt for mt in bp.moduletype_defs or []
                          if mt.name == typedef_name),
                         None
                     )
@@ -846,7 +906,7 @@ def _find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str)
                 # Navigate deeper
                 if current is None:
                     break
-                    
+
                 if segment.startswith("TypeDef:"):
                     # We're at a typedef in the path - this shouldn't happen in normal navigation
                     # but let's handle it
@@ -860,10 +920,10 @@ def _find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str)
                         )
                     else:
                         break
-        
+
         if current is None:
             continue
-        
+
         # Check variables at this level
         if isinstance(current, (SingleModule, ModuleTypeDef)):
             # Check localvariables
@@ -874,7 +934,7 @@ def _find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str)
             for v in current.moduleparameters or []:
                 if v.name.lower() == var_name_lower:
                     return v
-    
+
     # Not found anywhere in the hierarchy
     return None
 
@@ -907,13 +967,19 @@ def _path_startswith_casefold(location: list[str], prefix: list[str]) -> bool:
     return True
 
 
+def _lib_key(lib: str | None) -> str | None:
+    return lib.casefold() if isinstance(lib, str) else None
+
+
 def _format_moduletype_label(mt: ModuleTypeDef) -> str:
     if mt.origin_lib:
         return f"{mt.origin_lib}:{mt.name}"
     return mt.name
 
 
-def _resolve_moduletype_def_strict(bp: BasePicture, moduletype_name: str) -> ModuleTypeDef:
+def _resolve_moduletype_def_strict(
+    bp: BasePicture, moduletype_name: str, current_library: str | None = None
+) -> ModuleTypeDef:
     key = moduletype_name.casefold()
     matches = [mt for mt in (bp.moduletype_defs or []) if mt.name.casefold() == key]
     if not matches:
@@ -921,12 +987,44 @@ def _resolve_moduletype_def_strict(bp: BasePicture, moduletype_name: str) -> Mod
         raise ValueError(
             f"Unknown moduletype {moduletype_name!r}. Available moduletype defs: {available[:50]}"
         )
-    if len(matches) > 1:
-        labels = sorted(_format_moduletype_label(mt) for mt in matches)
-        raise ValueError(
-            f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}"
-        )
-    return matches[0]
+
+    deps_raw = getattr(bp, "library_dependencies", {}) or {}
+    deps_map = {
+        _lib_key(lib): [_lib_key(dep) for dep in deps or []]
+        for lib, deps in deps_raw.items()
+    }
+
+    def _mt_lib(mt: ModuleTypeDef) -> str | None:
+        return _lib_key(getattr(mt, "origin_lib", None))
+
+    lib_cf = _lib_key(current_library)
+    if lib_cf:
+        same_lib = [mt for mt in matches if _mt_lib(mt) == lib_cf]
+        if len(same_lib) == 1:
+            return same_lib[0]
+        if len(same_lib) > 1:
+            labels = sorted(_format_moduletype_label(mt) for mt in same_lib)
+            raise ValueError(
+                f"Ambiguous moduletype {moduletype_name!r} in library {current_library!r}: {labels}"
+            )
+
+        dep_libs = deps_map.get(lib_cf, [])
+        dep_matches = [mt for mt in matches if _mt_lib(mt) in dep_libs]
+        if len(dep_matches) == 1:
+            return dep_matches[0]
+        if len(dep_matches) > 1:
+            labels = sorted(_format_moduletype_label(mt) for mt in dep_matches)
+            raise ValueError(
+                f"Ambiguous moduletype {moduletype_name!r} found in dependency libraries of {current_library!r}: {labels}"
+            )
+
+    if len(matches) == 1:
+        return matches[0]
+
+    labels = sorted(_format_moduletype_label(mt) for mt in matches)
+    raise ValueError(
+        f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}"
+    )
 
 
 def _resolve_module_by_strict_path(bp: BasePicture, module_path: str) -> ResolvedModulePath:
@@ -968,7 +1066,11 @@ def _resolve_module_by_strict_path(bp: BasePicture, module_path: str) -> Resolve
         if isinstance(node, (SingleModule, FrameModule, ModuleTypeDef)):
             return list(node.submodules or [])
         if isinstance(node, ModuleTypeInstance):
-            mt = _resolve_moduletype_def_strict(bp, node.moduletype_name)
+            mt = _resolve_moduletype_def_strict(
+                bp,
+                node.moduletype_name,
+                current_library=getattr(bp, "origin_lib", None),
+            )
             return list(mt.submodules or [])
         return []
 
@@ -995,7 +1097,11 @@ def _resolve_module_by_strict_path(bp: BasePicture, module_path: str) -> Resolve
                     continue
                 if isinstance(m, ModuleTypeInstance):
                     try:
-                        mt = _resolve_moduletype_def_strict(bp, m.moduletype_name)
+                        mt = _resolve_moduletype_def_strict(
+                            bp,
+                            m.moduletype_name,
+                            current_library=getattr(bp, "origin_lib", None),
+                        )
                         details.append(f"{m.header.name} ({_format_moduletype_label(mt)})")
                     except Exception:
                         details.append(f"{m.header.name} ({m.moduletype_name})")
@@ -1025,12 +1131,12 @@ def _resolve_module_by_strict_path(bp: BasePicture, module_path: str) -> Resolve
 def _find_module_by_name(bp: BasePicture, name: str):
     """Recursively find a module by name in the AST."""
     name_lower = name.lower()
-    
+
     # First check if it's a ModuleTypeDef
     for mt in bp.moduletype_defs or []:
         if mt.name.lower() == name_lower:
             return mt
-    
+
     # Then search in submodules (instances)
     def search(modules):
         for mod in modules or []:
@@ -1041,17 +1147,17 @@ def _find_module_by_name(bp: BasePicture, name: str):
                 if result:
                     return result
         return None
-    
+
     return search(bp.submodules)
 
 
 def _get_module_path(bp: BasePicture, target_module) -> list[str]:
     """Get the full path to a module."""
-    
+
     # Check if it's a ModuleTypeDef
     if isinstance(target_module, ModuleTypeDef):
         return [bp.header.name, f"TypeDef:{target_module.name}"]
-    
+
     # Otherwise search in submodules
     def search(modules, path):
         for mod in modules or []:
@@ -1063,7 +1169,7 @@ def _get_module_path(bp: BasePicture, target_module) -> list[str]:
                 if result:
                     return result
         return None
-    
+
     result = search(bp.submodules, [bp.header.name])
     return result or []
 
@@ -1071,11 +1177,11 @@ def _get_module_path(bp: BasePicture, target_module) -> list[str]:
 def _is_external_to_module(location_path: list[str], module_path: list[str]) -> bool:
     """
     Check if a location is external to the module.
-    
+
     For ModuleTypeDef (e.g., "TypeDef:Applik"):
     - External: location does NOT contain "TypeDef:Applik" in its path
     - Internal: location contains "TypeDef:Applik" in its path
-    
+
     For regular modules:
     - External: location path doesn't start with the module's path
     - Internal: location path starts with the module's path
@@ -1085,16 +1191,16 @@ def _is_external_to_module(location_path: list[str], module_path: list[str]) -> 
         typedef_segment = module_path[-1]
         # Internal if the typedef segment appears anywhere in the location path
         return typedef_segment not in location_path
-    
+
     # For regular module instances, check if location starts with module_path
     if len(location_path) < len(module_path):
         return True
-    
+
     # Check if location_path starts with module_path
     for i, segment in enumerate(module_path):
         if i >= len(location_path) or location_path[i] != segment:
             return True
-    
+
     return False
 
 
@@ -1129,25 +1235,31 @@ class VariablesAnalyzer:
         self.symbol_table = CanonicalSymbolTable()
         self.access_graph = AccessGraph()
 
-        self.typedef_index = {
-            mt.name.lower(): mt for mt in (self.bp.moduletype_defs or [])
+        self._bp_library: str | None = _lib_key(getattr(self.bp, "origin_lib", None))
+        raw_deps = getattr(self.bp, "library_dependencies", {}) or {}
+        self._library_deps: dict[str, list[str]] = {
+            _lib_key(lib): [dep for dep in (deps or [])]
+            for lib, deps in raw_deps.items()
         }
-        self.used_params_by_typedef: dict[str, set[str]] = {}
-        self.param_reads_by_typedef: dict[str, set[str]] = {}
-        self.param_writes_by_typedef: dict[str, set[str]] = {}
+
+        self.typedef_index: dict[str, list[ModuleTypeDef]] = {}
+        for mt in (self.bp.moduletype_defs or []):
+            self.typedef_index.setdefault(mt.name.lower(), []).append(mt)
+
+        self.used_params_by_typedef: dict[tuple[str, str], set[str]] = {}
+        self.param_reads_by_typedef: dict[tuple[str, str], set[str]] = {}
+        self.param_writes_by_typedef: dict[tuple[str, str], set[str]] = {}
         self._alias_links: list[
             tuple[Variable, Variable, str]
         ] = []  # (parent_var, child_param_var, field_path_in_parent)
 
         # Index BasePicture/global variables (localvariables)
-        self._root_env: dict[str, Variable] = {
-            v.name.lower(): v for v in (self.bp.localvariables or [])
-        }
+        self._root_env: dict[str, Variable] = {v.name: v for v in (self.bp.localvariables or [])}
 
         # Fallback index across the whole AST (by name) to be robust
         self._any_var_index: dict[str, list[Variable]] = {}
         self._index_all_variables()
-        self._analyzing_typedefs: set[str] = set()
+        self._analyzing_typedefs: set[tuple[str, str]] = set()
 
         # Unified collection of issues
         self._issues: list[VariableIssue] = []
@@ -1175,7 +1287,7 @@ class VariablesAnalyzer:
     def _warn(self, message: str) -> None:
         self._analysis_warnings.append(message)
         log.warning(message)
-    
+
     def _is_string_simple_type(self, dt: Simple_DataType | str | None) -> bool:
         return isinstance(dt, Simple_DataType) and dt in self._STRING_TYPES
 
@@ -1190,6 +1302,9 @@ class VariablesAnalyzer:
         if isinstance(dt, Simple_DataType):
             return dt.value
         return str(dt) if dt is not None else "None"
+
+    def _typedef_key_of(self, mt: ModuleTypeDef) -> tuple[str, str]:
+        return (mt.name.lower(), _lib_key(getattr(mt, "origin_lib", None)) or "")
 
     def _record_mapping_mismatch_issue(
         self, tgt: Variable, src: Variable, path: list[str]
@@ -1222,8 +1337,11 @@ class VariablesAnalyzer:
         inst,  # ModuleTypeInstance
         parent_env: dict[str, Variable],
         parent_path: list[str],
+        current_library: str | None,
     ) -> None:
-        mt = self.typedef_index.get(inst.moduletype_name.lower())
+        mt = self._resolve_moduletype_for_context(
+            inst.moduletype_name, current_library=current_library
+        )
         if not mt:
             return
         # Only parameters are valid mapping targets [2]
@@ -1341,6 +1459,9 @@ class VariablesAnalyzer:
         if var is None:
             return
 
+        # Store the usage location (where the code is), not the declaration location.
+        # This allows filtering by module subtree to work correctly, especially with
+        # Frame Modules that use enclosing scope and deep module hierarchies.
         if kind is AccessKind.READ:
             if field_path:
                 var.mark_field_read(field_path, path)
@@ -1544,17 +1665,20 @@ class VariablesAnalyzer:
     ) -> ScopeContext:
         return ScopeContext(
             env=context.env,
+            params=context.params,
+            locals=context.locals,
             param_mappings=context.param_mappings,
             module_path=module_path,
             display_module_path=display_module_path,
+            library=context.library,
             parent_context=context.parent_context,
         )
 
     def _handle_function_call(
-        self, 
-        fn_name: str | None, 
-        args: list, 
-        context: ScopeContext, 
+        self,
+        fn_name: str | None,
+        args: list,
+        context: ScopeContext,
         path: list[str]
     ) -> None:
         """Handle function calls with proper parameter direction tracking."""
@@ -1643,18 +1767,18 @@ class VariablesAnalyzer:
             for extra in (args[3:] if len(args) > 3 else []):
                 self._walk_stmt_or_expr(extra, context, path)
             return
-        
+
         sig = get_function_signature(fn_name)
         if sig is None:
             for a in args or []:
                 self._walk_stmt_or_expr(a, context, path)
             return
-        
+
         for idx, arg in enumerate(args or []):
             direction = "in"
             if idx < len(sig.parameters):
                 direction = sig.parameters[idx].direction
-            
+
             if isinstance(arg, dict) and const.KEY_VAR_NAME in arg:
                 full_name = arg[const.KEY_VAR_NAME]
                 if direction == "out":
@@ -1665,17 +1789,16 @@ class VariablesAnalyzer:
                 else:
                     self._mark_ref_access(full_name, context, path, AccessKind.READ)
                 continue
-            
+
             self._walk_stmt_or_expr(arg, context, path)
 
     def _lookup_global_variable(self, base_name: str | None) -> Variable | None:
         if not base_name:
             return None
-        normalized = base_name.lower()
-        var = self._root_env.get(normalized)
+        var = ScopeContext._lookup_name(self._root_env, base_name)
         if var:
             return var
-        lst = self._any_var_index.get(normalized)
+        lst = self._any_var_index.get(base_name.lower())
         return lst[0] if lst else None
 
     def _is_from_root_origin(self, origin_file: str | None) -> bool:
@@ -1707,10 +1830,10 @@ class VariablesAnalyzer:
 
         full_name = var_dict[const.KEY_VAR_NAME]
         if not full_name or "." not in full_name:
-            return full_name.lower() if full_name else None, None
+            return full_name if full_name else None, None
 
         parts = full_name.split(".", 1)
-        base = parts[0].lower()
+        base = parts[0]
         field_path = parts[1] if len(parts) > 1 else None
 
         return base, field_path
@@ -1730,10 +1853,10 @@ class VariablesAnalyzer:
         self._mapping_warnings: list[str] = []
         self._analysis_warnings = []
         self._limit_to_module_path: list[str] | None = limit_to_module_path
-        
+
         # Always log this to verify the analyzer is running
         log.debug(f"DEBUG: VariablesAnalyzer.run() called with debug={self.debug}")
-        
+
         if self.debug:
             log.debug(f"DEBUG: Starting analysis run for {self.bp.header.name}")
             log.debug(f"  BasePicture localvariables: {len(self.bp.localvariables or [])}")
@@ -1748,19 +1871,19 @@ class VariablesAnalyzer:
         self._walk_moduledef(self.bp.moduledef, root_context, path=[self.bp.header.name])
         self._walk_header_enable(self.bp.header, root_context, path=[self.bp.header.name])
         self._walk_header_groupconn(self.bp.header, root_context, path=[self.bp.header.name])
-        
+
         # Walk submodules with scope propagation
         self._walk_submodules(
             self.bp.submodules or [],
             parent_context=root_context,
             parent_path=[self.bp.header.name]
         )
-        
+
         if apply_alias_back_propagation:
             if self.debug:
                 log.debug("DEBUG: Applying alias back-propagation")
             self._apply_alias_back_propagation()
-        
+
         if self.debug:
             log.debug(f"DEBUG: Detecting datatype duplications")
         self._detect_datatype_duplications()
@@ -1814,7 +1937,7 @@ class VariablesAnalyzer:
                         )
                     elif v.written and not v.read:
                         self._add_issue(IssueKind.NEVER_READ, td_path, v, role=role)
-        
+
         if self.debug:
             log.debug(f"DEBUG: Analysis complete. Found {len(self._issues)} issues")
 
@@ -1906,8 +2029,12 @@ class VariablesAnalyzer:
     def _build_scope_context_for_basepicture(self) -> ScopeContext:
         """Build root scope context for BasePicture."""
         env: dict[str, Variable] = {}
+        params: dict[str, Variable] = {}
+        locals_: dict[str, Variable] = {}
         for v in self.bp.localvariables or []:
-            env[v.name.lower()] = v
+            key = v.name
+            env[key] = v
+            locals_[key] = v
 
         module_path = [self.bp.header.name]
         display_path = [decorate_segment(self.bp.header.name, "BP")]
@@ -1919,17 +2046,20 @@ class VariablesAnalyzer:
                 kind=SymbolKind.LOCAL,
                 type_graph=self.type_graph,
             )
-        
+
         return ScopeContext(
             env=env,
+            params=params,
+            locals=locals_,
             param_mappings={},
             module_path=module_path,
             display_module_path=display_path,
+            library=self._bp_library,
             parent_context=None
         )
 
     def _build_scope_context_for_single(
-        self, 
+        self,
         mod: SingleModule,
         parent_context: ScopeContext,
         module_path: list[str],
@@ -1937,11 +2067,16 @@ class VariablesAnalyzer:
     ) -> ScopeContext:
         """Build scope context with parameter mapping resolution."""
         env: dict[str, Variable] = {}
-        
+        params_env: dict[str, Variable] = {}
+        locals_env: dict[str, Variable] = {}
+
         # Add module parameters and locals
         params = list(mod.moduleparameters or [])
         locals_ = list(mod.localvariables or [])
 
+        # Detect collisions ignoring case (e.g., X vs x). We still keep variables
+        # distinct by case in the environment to avoid mis-resolution when both
+        # exist in real projects.
         param_keys = {v.name.casefold(): v for v in params}
         local_keys = {v.name.casefold(): v for v in locals_}
         for k in (set(param_keys.keys()) & set(local_keys.keys())):
@@ -1958,7 +2093,9 @@ class VariablesAnalyzer:
             )
 
         for v in params:
-            env[v.name.lower()] = v
+            key = v.name
+            env[key] = v
+            params_env[key] = v
             self.symbol_table.add_variable_root(
                 module_path=module_path,
                 var=v,
@@ -1966,22 +2103,24 @@ class VariablesAnalyzer:
                 type_graph=self.type_graph,
             )
         for v in locals_:
-            env[v.name.lower()] = v
+            key = v.name
+            env[key] = v
+            locals_env[key] = v
             self.symbol_table.add_variable_root(
                 module_path=module_path,
                 var=v,
                 kind=SymbolKind.LOCAL,
                 type_graph=self.type_graph,
             )
-        
+
         # Build parameter mappings with field prefixes
         param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]] = {}
-        
+
         for pm in mod.parametermappings or []:
             target_name = self._varname_base(pm.target)
             if not target_name or pm.is_source_global:
                 continue
-            
+
             # Extract full source reference (e.g., "Dv.I.WT001")
             if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
                 full_source = pm.source[const.KEY_VAR_NAME]
@@ -1989,24 +2128,27 @@ class VariablesAnalyzer:
                 full_source = pm.source
             else:
                 continue
-            
+
             # Resolve source variable from parent context
             source_var, source_field_prefix, source_decl_path, source_decl_display_path = parent_context.resolve_variable(full_source)
-            
+
             if source_var:
                 # Store mapping: parameter name -> (actual variable, field prefix)
-                param_mappings[target_name.lower()] = (
+                param_mappings[target_name] = (
                     source_var,
                     source_field_prefix,
                     source_decl_path,
                     source_decl_display_path,
                 )
-        
+
         return ScopeContext(
             env=env,
+            params=params_env,
+            locals=locals_env,
             param_mappings=param_mappings,
             module_path=module_path,
             display_module_path=display_module_path,
+            library=parent_context.library,
             parent_context=parent_context
         )
 
@@ -2020,10 +2162,12 @@ class VariablesAnalyzer:
     ) -> ScopeContext:
         """Build scope context for a typedef instance with parameter mappings."""
         env: dict[str, Variable] = {}
+        params_env: dict[str, Variable] = {}
+        locals_env: dict[str, Variable] = {}
 
         module_path = module_path or []
         display_module_path = display_module_path or []
-        
+
         # Add typedef's parameters and locals
         params = list(mt.moduleparameters or [])
         locals_ = list(mt.localvariables or [])
@@ -2044,7 +2188,9 @@ class VariablesAnalyzer:
             )
 
         for v in params:
-            env[v.name.lower()] = v
+            key = v.name
+            env[key] = v
+            params_env[key] = v
             self.symbol_table.add_variable_root(
                 module_path=module_path,
                 var=v,
@@ -2052,21 +2198,23 @@ class VariablesAnalyzer:
                 type_graph=self.type_graph,
             )
         for v in locals_:
-            env[v.name.lower()] = v
+            key = v.name
+            env[key] = v
+            locals_env[key] = v
             self.symbol_table.add_variable_root(
                 module_path=module_path,
                 var=v,
                 kind=SymbolKind.LOCAL,
                 type_graph=self.type_graph,
             )
-        
+
         # Map instance parameters to parent variables
         param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]] = {}
         for pm in instance.parametermappings or []:
             target_name = self._varname_base(pm.target)
             if not target_name or pm.is_source_global:
                 continue
-            
+
             if parent_context:
                 # Allow full dotted source mapping for partial transfers
                 if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
@@ -2079,24 +2227,40 @@ class VariablesAnalyzer:
                 if full_source:
                     source_var, source_field_prefix, source_decl_path, source_decl_display_path = parent_context.resolve_variable(full_source)
                     if source_var:
-                        param_mappings[target_name.lower()] = (
+                        param_mappings[target_name] = (
                             source_var,
                             source_field_prefix,
                             source_decl_path,
                             source_decl_display_path,
                         )
-        
+
         return ScopeContext(
             env=env,
+            params=params_env,
+            locals=locals_env,
             param_mappings=param_mappings,
             module_path=module_path,
             display_module_path=display_module_path,
+            library=_lib_key(mt.origin_lib) or (parent_context.library if parent_context else self._bp_library),
             parent_context=parent_context
         )
 
     def _is_external_typename(self, typename: str) -> bool:
         # Type is external to this file if not present in BasePicture.moduletype_defs [3]
         return typename.lower() not in self.typedef_index
+
+    def _resolve_moduletype_for_context(
+        self, name: str, current_library: str | None
+    ) -> ModuleTypeDef | None:
+        try:
+            return _resolve_moduletype_def_strict(
+                self.bp, name, current_library=current_library
+            )
+        except ValueError as exc:
+            if self.fail_loudly:
+                raise
+            self._analysis_warnings.append(str(exc))
+            return None
 
     def _collect_read_only_non_const_from_module(
         self,
@@ -2139,12 +2303,12 @@ class VariablesAnalyzer:
 
     def _analyze_typedef(self, mt: ModuleTypeDef, path: list[str]) -> None:
         # Prevent infinite recursion
-        mt_key = mt.name.lower()
+        mt_key = self._typedef_key_of(mt)
         if mt_key in self._analyzing_typedefs:
             return
-        
+
         self._analyzing_typedefs.add(mt_key)
-        
+
         try:
             params = list(mt.moduleparameters or [])
             locals_ = list(mt.localvariables or [])
@@ -2180,20 +2344,23 @@ class VariablesAnalyzer:
                         display_path.append(decorate_segment(seg, "TD"))
                     else:
                         display_path.append(seg)
-            
+
             # Create scope context
             context = ScopeContext(
                 env=env,
+                params={v.name.lower(): v for v in (mt.moduleparameters or [])},
+                locals={v.name.lower(): v for v in (mt.localvariables or [])},
                 param_mappings={},
                 module_path=path.copy(),
                 display_module_path=display_path,
+                library=_lib_key(mt.origin_lib) or self._bp_library,
                 parent_context=None
             )
-            
+
             if self.debug:
                 log.debug(f"DEBUG: _analyze_typedef for {mt.name}")
                 log.debug(f"  env contains: {list(env.keys())}")
-            
+
             # Scan typedef ModuleDef first (graph/interact), then ModuleCode
             self._walk_moduledef(mt.moduledef, context, path)
             self._walk_module_code(mt.modulecode, context, path)
@@ -2210,11 +2377,11 @@ class VariablesAnalyzer:
 
             # Preserve existing "used" union for any other consumers
             used_params: set[str] = used_reads | used_writes
-            self.used_params_by_typedef[mt.name] = used_params
+            self.used_params_by_typedef[mt_key] = used_params
 
             # Store separate read/write sets
-            self.param_reads_by_typedef[mt.name.lower()] = used_reads
-            self.param_writes_by_typedef[mt.name.lower()] = used_writes
+            self.param_reads_by_typedef[mt_key] = used_reads
+            self.param_writes_by_typedef[mt_key] = used_writes
 
             for pm in mt.parametermappings or []:
                 tgt_name = self._varname_base(pm.target)
@@ -2227,12 +2394,12 @@ class VariablesAnalyzer:
         """
         For every alias (parent_var -> child_param_var, field_prefix), replicate usage
         from the child parameter back to the parent variable WITH the field prefix.
-        
+
         Example:
         parent_var = Dv
         child_var = OpMessage (parameter in child module)
         field_prefix = "OpMessage1"
-        
+
         If OpMessage.AckText is accessed in child:
             -> Mark Dv field "OpMessage1.AckText" as accessed
         """
@@ -2246,10 +2413,10 @@ class VariablesAnalyzer:
                     full_field_path = field_prefix
                 else:
                     full_field_path = field_path
-                
+
                 for loc in locations:
                     parent_var.mark_field_read(full_field_path, loc)
-            
+
             for field_path, locations in (child_var.field_writes or {}).items():
                 # Reconstruct full field path
                 if field_prefix and field_path:
@@ -2258,10 +2425,10 @@ class VariablesAnalyzer:
                     full_field_path = field_prefix
                 else:
                     full_field_path = field_path
-                
+
                 for loc in locations:
                     parent_var.mark_field_written(full_field_path, loc)
-            
+
             # **CHANGED**: Replicate whole-variable accesses as field accesses
             # (accessing the parameter as a whole = accessing that field of parent)
             for loc, kind in (child_var.usage_locations or []):
@@ -2285,7 +2452,7 @@ class VariablesAnalyzer:
         parent_path: list[str],
     ) -> None:
         """Walk submodules with proper scope context propagation."""
-        
+
         for child in children:
             child_name = child.header.name
             child_path = parent_path + [child_name]
@@ -2294,11 +2461,16 @@ class VariablesAnalyzer:
                 # Only traverse:
                 #  - nodes along the path to the selected module, and
                 #  - nodes within the selected module subtree.
-                if not (
+                should_traverse = (
                     _path_startswith_casefold(self._limit_to_module_path, child_path)
                     or _path_startswith_casefold(child_path, self._limit_to_module_path)
-                ):
+                )
+                if not should_traverse:
+                    if self.debug:
+                        log.debug(f"DEBUG: Skipping module {' -> '.join(child_path)} (outside limit {' -> '.join(self._limit_to_module_path)})")
                     continue
+                elif self.debug:
+                    log.debug(f"DEBUG: Traversing module {' -> '.join(child_path)} (within limit {' -> '.join(self._limit_to_module_path)})")
 
             if isinstance(child, SingleModule):
                 child_display_path = parent_context.display_module_path + [
@@ -2320,7 +2492,7 @@ class VariablesAnalyzer:
                 module_path=child_path,
                 display_module_path=child_display_path,
             )
-            
+
             # Handle header-level enable and groupconn
             self._walk_header_enable(
                 child.header, inst_context, path=child_path
@@ -2337,7 +2509,7 @@ class VariablesAnalyzer:
                     module_path=child_path,
                     display_module_path=child_display_path,
                 )
-                
+
                 # **CHANGED**: Use child_context instead of building env dict
                 self._walk_moduledef(
                     child.moduledef, child_context, child_path
@@ -2345,14 +2517,14 @@ class VariablesAnalyzer:
                 self._walk_module_code(
                     child.modulecode, child_context, child_path
                 )
-                
+
                 # Recursively walk submodules with child context
                 self._walk_submodules(
                     child.submodules or [],
                     child_context,  # **CHANGED**: Pass child context, not parent
                     child_path,
                 )
-                
+
                 # Track parameter usage for propagation (unchanged logic)
                 used_reads: set[str] = set(
                     v.name.lower() for v in (child.moduleparameters or []) if v.read
@@ -2360,12 +2532,12 @@ class VariablesAnalyzer:
                 used_writes: set[str] = set(
                     v.name.lower() for v in (child.moduleparameters or []) if v.written
                 )
-                
+
                 # **CHANGED**: Create alias links with field path information
                 for pm in child.parametermappings or []:
                     source_name = self._varname_base(pm.source)
                     target_name = self._varname_base(pm.target)
-                    
+
                     if source_name and target_name and not pm.is_source_global:
                         # **CHANGED**: Extract field prefix from mapping
                         if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
@@ -2374,11 +2546,10 @@ class VariablesAnalyzer:
                             full_source_name = pm.source
                         else:
                             continue
-                        
+
                         # **CHANGED**: Resolve with field path
                         source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(full_source_name)
-                        target_key = target_name.casefold()
-                        target_var = child_context.env.get(target_key)
+                        target_var = ScopeContext._lookup_name(child_context.params, target_name)
 
                         if source_var and not target_var:
                             # Don't crash the full run for unrelated/broken mappings.
@@ -2387,7 +2558,7 @@ class VariablesAnalyzer:
                                 f"Parameter mapping refers to unknown target parameter {target_name!r} "
                                 f"in module {child_name!r}: {pm}"
                             )
-                        
+
                         if source_var and target_var:
                             # Store only the source field prefix (relative to the source variable).
                             # This must NOT include the target parameter name.
@@ -2395,13 +2566,13 @@ class VariablesAnalyzer:
                             #   control => Dv        => mapping_name == ""         (Dv.cmd)
                             #   control => Dv.empty  => mapping_name == "empty"    (Dv.empty.cmd)
                             mapping_name = source_field_prefix or ""
-                            
+
                             if self.debug:
                                 # Only log MessageSetup mappings to reduce noise
                                 if target_var.name.lower() == "messagesetup" or source_var.name.lower() == "messagesetup":
                                     log.debug(f"DEBUG: Creating alias link: {source_var.name} (mapping='{mapping_name}') -> {target_var.name} at module {child_name}")
                             self._alias_links.append((source_var, target_var, mapping_name))
-                
+
                 # Propagate usage (unchanged)
                 for pm in child.parametermappings or []:
                     self._propagate_mapping_to_parent(
@@ -2412,7 +2583,7 @@ class VariablesAnalyzer:
                         parent_path=parent_path,
                         external_typename=None,
                     )
-                
+
                 # Check string type mismatches (unchanged)
                 self._check_param_mappings_for_single(
                     child,
@@ -2434,7 +2605,7 @@ class VariablesAnalyzer:
                 self._walk_module_code(
                     child.modulecode, frame_context, child_path
                 )
-                
+
                 self._walk_submodules(
                     child.submodules or [],
                     frame_context,
@@ -2442,14 +2613,17 @@ class VariablesAnalyzer:
                 )
 
             elif isinstance(child, ModuleTypeInstance):
-                external = self._is_external_typename(child.moduletype_name)
-                mt = self.typedef_index.get(child.moduletype_name.lower())
-                
+                current_lib = parent_context.library
+                mt = self._resolve_moduletype_for_context(
+                    child.moduletype_name, current_library=current_lib
+                )
+                external = mt is None
+
                 reads, writes = None, None  # Initialize to None
-                
+
                 if not external and mt:
-                    mt_key = child.moduletype_name.lower()
-                    
+                    mt_key = self._typedef_key_of(mt)
+
                     # **CHANGED**: Build typedef scope context with mappings
                     typedef_context = self._build_scope_context_for_typedef(
                         mt,
@@ -2458,19 +2632,19 @@ class VariablesAnalyzer:
                         module_path=child_path,
                         display_module_path=child_display_path,
                     )
-                    
+
                     # Analyze typedef if not already done
                     if mt_key not in self.param_reads_by_typedef and mt_key not in self._analyzing_typedefs:
                         # **CHANGED**: Use context-aware analysis
                         self._analyze_typedef_with_context(
                             mt, typedef_context, path=child_path
                         )
-                    
+
                     # **CHANGED**: Create alias links with field path information
                     for pm in child.parametermappings or []:
                         source_name = self._varname_base(pm.source)
                         target_name = self._varname_base(pm.target)
-                        
+
                         if source_name and target_name and not pm.is_source_global:
                             if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
                                 full_source_name = pm.source[const.KEY_VAR_NAME]
@@ -2478,11 +2652,11 @@ class VariablesAnalyzer:
                                 full_source_name = pm.source
                             else:
                                 continue
-                            
+
                             # **CHANGED**: Resolve with field path
                             source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(full_source_name)
                             target_key = target_name.casefold()
-                            target_var = typedef_context.env.get(target_key)
+                            target_var = ScopeContext._lookup_name(typedef_context.params, target_name)
 
                             if source_var and not target_var:
                                 # Don't crash the full run for unrelated/broken mappings.
@@ -2491,21 +2665,21 @@ class VariablesAnalyzer:
                                     f"Parameter mapping refers to unknown target parameter {target_name!r} "
                                     f"in typedef instance {child_name!r}: {pm}"
                                 )
-                            
+
                             if source_var and target_var:
                                 # Store only the source field prefix (relative to the source variable).
                                 # Do not include the target parameter name.
                                 mapping_name = source_field_prefix or ""
-                                
+
                                 if self.debug:
                                     # Only log MessageSetup mappings to reduce noise
                                     if target_var.name.lower() == "messagesetup" or source_var.name.lower() == "messagesetup":
                                         log.debug(f"DEBUG: Creating typedef alias link: {source_var.name} (mapping='{mapping_name}') -> {target_var.name} at typedef instance {child_name}")
                                 self._alias_links.append((source_var, target_var, mapping_name))
-                    
+
                     reads = self.param_reads_by_typedef.get(mt_key, set())
                     writes = self.param_writes_by_typedef.get(mt_key, set())
-                
+
                 # Propagate usage (unchanged)
                 for pm in child.parametermappings or []:
                     self._propagate_mapping_to_parent(
@@ -2516,12 +2690,13 @@ class VariablesAnalyzer:
                         parent_path=parent_path,
                         external_typename=(child.moduletype_name if external else None),
                     )
-                
+
                 if not external:
                     self._check_param_mappings_for_type_instance(
                         child,
                         parent_env=parent_context.env,
                         parent_path=parent_path + [child_name],
+                        current_library=current_lib,
                     )
 
 
@@ -2532,7 +2707,7 @@ class VariablesAnalyzer:
         self._walk_moduledef(mod.moduledef, context, path)
         self._walk_module_code(mod.modulecode, context, path)
         self._walk_submodules(mod.submodules or [], parent_context=context, parent_path=path)
-        
+
         used_reads: set[str] = set(
             v.name.lower() for v in (mod.moduleparameters or []) if v.read
         )
@@ -2545,12 +2720,12 @@ class VariablesAnalyzer:
         self, mt: ModuleTypeDef, context: ScopeContext, path: list[str]
     ) -> None:
         """Analyze a ModuleTypeDef with scope context."""
-        mt_key = mt.name.lower()
+        mt_key = self._typedef_key_of(mt)
         if mt_key in self._analyzing_typedefs:
             return
-        
+
         self._analyzing_typedefs.add(mt_key)
-        
+
         try:
             self._walk_moduledef(mt.moduledef, context, path)
             self._walk_module_code(mt.modulecode, context, path)
@@ -2564,7 +2739,7 @@ class VariablesAnalyzer:
                 v.name.lower() for v in (mt.moduleparameters or []) if v.written
             )
 
-            self.used_params_by_typedef[mt.name] = used_reads | used_writes
+            self.used_params_by_typedef[mt_key] = used_reads | used_writes
             self.param_reads_by_typedef[mt_key] = used_reads
             self.param_writes_by_typedef[mt_key] = used_writes
         finally:
@@ -2595,7 +2770,7 @@ class VariablesAnalyzer:
         if is_global:
             var = self._lookup_global_variable(base)
         else:
-            var = context.env.get(base)
+            var = ScopeContext._lookup_name(context.env, base)
 
         if var is not None:
             var.mark_read(path)
@@ -2608,7 +2783,7 @@ class VariablesAnalyzer:
         if not base:
             return
         is_global = bool(getattr(mt, "groupconn_global", False))
-        var = self._lookup_global_variable(base) if is_global else context.env.get(base)
+        var = self._lookup_global_variable(base) if is_global else ScopeContext._lookup_name(context.env, base)
         if var is not None:
             var.mark_read(path)
 
@@ -2618,13 +2793,13 @@ class VariablesAnalyzer:
         """Walk ModuleDef with scope context."""
         if mdef is None:
             return
-        
+
         for go in mdef.graph_objects or []:
             self._walk_graph_object(go, context, path)
-        
+
         for io in mdef.interact_objects or []:
             self._walk_interact_object(io, context, path)
-        
+
         props = getattr(mdef, "properties", {}) or {}
         for t in props.get(const.KEY_TAILS, []) or []:
             self._walk_tail(t, context, path)
@@ -2768,7 +2943,7 @@ class VariablesAnalyzer:
     ) -> None:
         if not base_name:
             return
-        var = env.get(base_name)
+        var = ScopeContext._lookup_name(env, base_name)
         if var is None:
             var = self._lookup_global_variable(base_name)
         if var is not None:
@@ -2790,7 +2965,7 @@ class VariablesAnalyzer:
     ) -> None:
         src_base = self._varname_base(pm.source)
         target_name = self._varname_base(pm.target)
-        
+
         # GLOBAL means "used" at the global scope
         if pm.is_source_global:
             var = self._lookup_global_variable(src_base)
@@ -2805,17 +2980,17 @@ class VariablesAnalyzer:
             full_source = pm.source
         else:
             return
-        
+
         # **CHANGED**: Parse the source to get base and field path
         source_parts = full_source.split(".", 1)
-        source_base = source_parts[0].lower()
+        source_base = source_parts[0]
         source_field_path = source_parts[1] if len(source_parts) > 1 else ""
-        
+
         # Resolve the actual source variable
-        src_var = parent_env.get(source_base)
+        src_var = ScopeContext._lookup_name(parent_env, source_base)
         if src_var is None:
             src_var = self._lookup_global_variable(source_base)
-        
+
         if src_var is None:
             return
 
@@ -2827,6 +3002,8 @@ class VariablesAnalyzer:
                 display_path.extend(parent_path[1:])
             use_context = ScopeContext(
                 env=parent_env,
+                params={},
+                locals={},
                 param_mappings={},
                 module_path=parent_path.copy(),
                 display_module_path=display_path,
@@ -2857,7 +3034,7 @@ class VariablesAnalyzer:
                     src_var.mark_field_read(source_field_path, parent_path)
                 else:
                     src_var.mark_read(parent_path)
-            
+
             # If the child used the parameter for writing
             if child_used_writes is not None and target_name in child_used_writes:
                 if source_field_path:
@@ -2876,7 +3053,7 @@ class VariablesAnalyzer:
         """Walk ModuleCode with scope context."""
         if mc is None:
             return
-        
+
         for seq in mc.sequences or []:
             label = f"SEQ:{getattr(seq, 'name', '<unnamed>')}"
             self._push_site(label)
@@ -2884,7 +3061,7 @@ class VariablesAnalyzer:
                 self._walk_sequence(seq, context, path)
             finally:
                 self._pop_site()
-        
+
         for eq in mc.equations or []:
             label = f"EQ:{getattr(eq, 'name', '<unnamed>')}"
             self._push_site(label)
@@ -2921,7 +3098,7 @@ class VariablesAnalyzer:
                         self._walk_stmt_or_expr(stmt, context, path)
                 finally:
                     self._pop_site()
-            
+
             elif isinstance(node, SFCTransition):
                 label = f"TRANS:{node.name or '<unnamed>'}"
                 self._push_site(label)
@@ -2929,7 +3106,7 @@ class VariablesAnalyzer:
                     self._walk_stmt_or_expr(node.condition, context, path)
                 finally:
                     self._pop_site()
-            
+
             elif isinstance(node, SFCAlternative):
                 for i, branch in enumerate(node.branches or []):
                     self._push_site(f"ALT:BRANCH:{i}")
@@ -2937,7 +3114,7 @@ class VariablesAnalyzer:
                         self._walk_seq_nodes(branch, context.env, path)
                     finally:
                         self._pop_site()
-            
+
             elif isinstance(node, SFCParallel):
                 for i, branch in enumerate(node.branches or []):
                     self._push_site(f"PAR:BRANCH:{i}")
@@ -2945,14 +3122,14 @@ class VariablesAnalyzer:
                         self._walk_seq_nodes(branch, context.env, path)
                     finally:
                         self._pop_site()
-            
+
             elif isinstance(node, SFCSubsequence):
                 self._push_site(f"SUBSEQ:{getattr(node, 'name', '<unnamed>')}")
                 try:
                     self._walk_seq_nodes(node.body, context.env, path)
                 finally:
                     self._pop_site()
-            
+
             elif isinstance(node, SFCTransitionSub):
                 self._push_site(f"TRANS-SUB:{getattr(node, 'name', '<unnamed>')}")
                 try:
@@ -2974,6 +3151,8 @@ class VariablesAnalyzer:
             display_path.extend(path[1:])
         context = ScopeContext(
             env=env,
+            params={},
+            locals={},
             param_mappings={},
             module_path=path.copy(),
             display_module_path=display_path,
@@ -3003,9 +3182,9 @@ class VariablesAnalyzer:
     # ------------ Statement/expression walkers ------------
 
     def _walk_stmt_or_expr(
-        self, 
-        obj: Any, 
-        context: ScopeContext, 
+        self,
+        obj: Any,
+        context: ScopeContext,
         path: list[str]
     ) -> None:
         # Tree wrapping for statements is present in transformer [5]; unwrap
@@ -3114,11 +3293,11 @@ class VariablesAnalyzer:
         # **CHANGED**: Assignment with scope-aware resolution
         if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
             _, target, expr = obj
-            
+
             if isinstance(target, dict) and const.KEY_VAR_NAME in target:
                 full_name = target[const.KEY_VAR_NAME]
                 self._mark_ref_access(full_name, context, path, AccessKind.WRITE)
-            
+
             self._walk_stmt_or_expr(expr, context, path)
             return
 
@@ -3230,11 +3409,11 @@ class VariablesAnalyzer:
 
             if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
                 _, target, expr = obj
-                
+
                 if isinstance(target, dict) and const.KEY_VAR_NAME in target:
                     full_name = target[const.KEY_VAR_NAME]
                     self._mark_ref_access(full_name, context, path, AccessKind.WRITE)
-                
+
                 self._walk_stmt_or_expr(expr, context, path)
                 return
 
@@ -3255,7 +3434,7 @@ class VariablesAnalyzer:
         ):
             base = self._varname_base(var_dict_or_other)
             if base is not None:
-                return env.get(base)
+                return ScopeContext._lookup_name(env, base)
         return None
 
     def _varname_base(self, var_dict_or_str: Any) -> str | None:
@@ -3266,7 +3445,7 @@ class VariablesAnalyzer:
         else:
             return None
         base = full.split(".", 1)[0] if full else None
-        return base.lower() if base else None  # normalize to lowercase
+        return base if base else None
 
     def _detect_datatype_duplications(self) -> None:
         """

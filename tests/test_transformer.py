@@ -48,7 +48,12 @@ def test_seqtransition_uses_optional_name_token(transformer):
 def test_seqsub_uses_name_token(transformer):
 	body = Tree(const.KEY_SEQUENCE_BODY, [])
 	sub = transformer.seqsub(
-		[_tok("SUBSEQUENCE", "SUBSEQUENCE"), _tok("NAME", "MySub"), body]
+		[
+			_tok("SUBSEQUENCE", "SUBSEQUENCE"),
+			_tok("NAME", "MySub"),
+			body,
+			_tok("ENDSUBSEQUENCE", "ENDSUBSEQUENCE"),
+		]
 	)
 	assert sub.name == "MySub"
 

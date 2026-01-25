@@ -1,0 +1,33 @@
+table mmsvar
+  columns
+    columnname System
+    columnname ProgramUnit
+    columnname Path
+    columnname ScanGroup
+    columnname Module Type
+    columnname GlobalVarName
+    columnname RemoteVarName
+    columnname RemSys
+    columnname LocalVariable
+    columnname VarGroupRef
+    columnname CycleTime
+    columnname Error
+  end columns
+  module type=MMSVar*,
+              MMSWriteVar,MMSWriteVarAsArray,
+              MMSReadVar,MMSReadGroup,MMSReadGroupCyc
+    system
+    program
+    path         length=4
+    scangroup
+    moduletype
+    varvalue    :GlobalVarName
+    parvalue    :RemoteVarName
+    parvalue    :RemSys
+    paractualvar:LocalVariable length=4
+    paractualvar:VarGroupRef   length=4
+    parvalue    :CycleTime
+    varvalue    :Error
+  end module
+end table
+

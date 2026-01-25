@@ -1,0 +1,41 @@
+table event
+  columns
+    columnname System
+    columnname ProgramUnit
+    columnname Path
+    columnname ScanGroup
+    columnname Module Type
+    columnname Condition
+    columnname EventConnection
+    columnname Tag
+    columnname EventText
+    columnname Severity
+    columnname Class
+    columnname TypeOfEvent
+    columnname TimeFilter
+    columnname StatusTextGroup
+    columnname Ack Privilege
+    columnname Inhibit Privilege
+    columnname Error
+  end columns
+  module type=Event?,EventDetector?
+    system
+    program
+    path         length=4
+    scangroup
+    moduletype
+    paractualvar:Condition       length=4
+    paractualvar:EventConnection length=4
+    varvalue    :Tag
+    parvalue    :EventText
+    parvalue    :Severity
+    parvalue    :Class
+    parvalue    :TypeOfEvent
+    parvalue    :TimeFilter
+    parvalue    :StatusTextGroup
+    paractualvar:EnableAck       length=4
+    paractualvar:EnableInhibit   length=4
+    varvalue    :Error
+  end module
+end table
+

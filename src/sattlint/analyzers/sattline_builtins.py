@@ -1533,6 +1533,16 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         ],
         precision_scangroup=False
     ),
+    "SetBooleanValue": BuiltinFunction(
+        name="SetBooleanValue",
+        type="Procedure",
+        return_type=None,
+        parameters=[
+            Parameter(name="Variable", datatype="Boolean", direction="out", sorting="WS", ownership="WO"),
+            Parameter(name="Value", datatype="Boolean", direction="in", sorting="RS", ownership="RO")
+        ],
+        precision_scangroup=False
+    ),
     "setseed": BuiltinFunction(
         name="setseed",
         type="Procedure",

@@ -30,7 +30,7 @@ base_module_body:           datatype_typedefinitions? moduletype_definitions? mo
 module_body:                moduleparameters? localvariables? submodules? moduledef modulecode?
 invocation_new_module:      module_header ":" MODULEDEFINITION sl_datecode frame_module? scan_group? module_body ENDDEF_KW invocation_tail?
 invocation_module_type:     module_header ":" NAME invocation_tail?
-?invocation_tail:            ("(" moduletype_par_list ")")? ";"   
+?invocation_tail:            ("(" moduletype_par_list ")")? ";"
 moduletype_par_list:        moduletype_par_transfer ("," moduletype_par_transfer)*
 moduletype_par_transfer:    variable_name "=>" GLOBAL_KW? DURATION_VALUE? (value | variable_name)
 frame_module:               "(" FRAME_MODULE ")"
@@ -42,7 +42,7 @@ sl_datecode:                DATECODE_PREFIX SL_DATECODE
 // TYPE DEFINITIONS - DATA TYPES (RECORDS)
 // ============================================================================
 datatype_typedefinitions:   TYPEDEFINITIONS record+
-record:                     NAME STRING? "=" RECORD_KW sl_datecode variable_list? ENDDEF_KW 
+record:                     NAME STRING? "=" RECORD_KW sl_datecode variable_list? ENDDEF_KW
 
 // ============================================================================
 // VARIABLES (AND PARAMETERS)
@@ -72,7 +72,7 @@ submodules:                 SUBMODULES (invocation_new_module | invocation_modul
 modulecode:                 MODULECODE (sequence | equationblock)+
 
 // --- Expression Rules (operator precedence from lowest to highest) ---
-?expression:                or_expression 
+?expression:                or_expression
 ?or_expression:             and_expression (OR and_expression)*
 ?and_expression:            not_expression (AND not_expression)*
 ?not_expression:            NOT not_expression
@@ -94,7 +94,7 @@ argument_list:              expression ("," expression)*
                             | "(" expression ")"
                             | ternary_if
                             | variable_name
-                            | value       
+                            | value
 
 statement:                  assignment_statement ";" | function_call ";" | if_statement ";"
 assignment_statement:       variable_name "=" expression
@@ -128,9 +128,9 @@ seqfork:                    SEQFORK NAME
 seqbreak:                   SEQBREAK
 
 code_blocks:                entercode? activecode? exitcode?
-entercode:                  ENTERCODE statement* 
-activecode:                 ACTIVECODE statement* 
-exitcode:                   EXITCODE statement* 
+entercode:                  ENTERCODE statement*
+activecode:                 ACTIVECODE statement*
+exitcode:                   EXITCODE statement*
 
 
 equationblock:              EQUATIONBLOCK NAME codeblock_coord objsizedef layer_info? ":" statement*
@@ -250,11 +250,11 @@ interact_assign_variable: (NAME | TEXTOBJECT | GLOBAL_KW) "=" value (invar_tail 
 
 // Keywords
 ASSIGN_INIT_VALUE:          "{GRAMMAR_VALUE_ASSIGN_INIT_VALUE}"
-CLIPPINGBOUNDS:             "{GRAMMAR_VALUE_CLIPPINGBOUNDS}"
-MODULEDEF:                  "{GRAMMAR_VALUE_MODULEDEF}"
-MODULECODE:                 "{GRAMMAR_VALUE_MODULECODE}"
-SUBMODULES:                 "{GRAMMAR_VALUE_SUBMODULES}"
-SEQUENCE:                   "{GRAMMAR_VALUE_SEQUENCE}"
+CLIPPINGBOUNDS.10:          "{GRAMMAR_VALUE_CLIPPINGBOUNDS}"
+MODULEDEF.10:               "{GRAMMAR_VALUE_MODULEDEF}"
+MODULECODE.10:              "{GRAMMAR_VALUE_MODULECODE}"
+SUBMODULES.10:              "{GRAMMAR_VALUE_SUBMODULES}"
+SEQUENCE.10:                "{GRAMMAR_VALUE_SEQUENCE}"
 DOT:                        "."
 // Control Flow
 IF:                         "{GRAMMAR_VALUE_IF}"
@@ -284,110 +284,110 @@ REAL:                       {GRAMMAR_REGEX_REAL}
 BOOL:                       "{GRAMMAR_VALUE_BOOL_TRUE}" | "{GRAMMAR_VALUE_BOOL_FALSE}"
 STRING:                     {GRAMMAR_REGEX_STRING}
 // Top-level/module structure
-TYPEDEFINITIONS:            "{GRAMMAR_VALUE_TYPEDEFINITIONS}"
-RECORD_KW:                  "{GRAMMAR_VALUE_RECORD_KW}"
-ENDDEF_KW:                  "{GRAMMAR_VALUE_ENDDEF_KW}"
-MODULEDEFINITION:           "{GRAMMAR_VALUE_MODULEDEFINITION}"
-INVOCATION:                 "{GRAMMAR_VALUE_INVOCATION}"
-FRAME_MODULE:               "{GRAMMAR_VALUE_FRAME_MODULE}"
-MODULEPARAMETERS:           "{GRAMMAR_VALUE_MODULEPARAMETERS}"
-LOCALVARIABLES:             "{GRAMMAR_VALUE_LOCALVARIABLES}"
-GRAPHOBJECTS:               "{GRAMMAR_VALUE_GRAPHOBJECTS}"
-INTERACTOBJECTS:            "{GRAMMAR_VALUE_INTERACTOBJECTS}"
-DATECODE_PREFIX:            "{GRAMMAR_VALUE_DATECODE_PREFIX}"
-GROUPCONN:                  "{GRAMMAR_VALUE_GROUPCONN}"
+TYPEDEFINITIONS.10:         "{GRAMMAR_VALUE_TYPEDEFINITIONS}"
+RECORD_KW.10:               "{GRAMMAR_VALUE_RECORD_KW}"
+ENDDEF_KW.10:               "{GRAMMAR_VALUE_ENDDEF_KW}"
+MODULEDEFINITION.10:        "{GRAMMAR_VALUE_MODULEDEFINITION}"
+INVOCATION.10:              "{GRAMMAR_VALUE_INVOCATION}"
+FRAME_MODULE.10:            "{GRAMMAR_VALUE_FRAME_MODULE}"
+MODULEPARAMETERS.10:        "{GRAMMAR_VALUE_MODULEPARAMETERS}"
+LOCALVARIABLES.10:          "{GRAMMAR_VALUE_LOCALVARIABLES}"
+GRAPHOBJECTS.10:            "{GRAMMAR_VALUE_GRAPHOBJECTS}"
+INTERACTOBJECTS.10:         "{GRAMMAR_VALUE_INTERACTOBJECTS}"
+DATECODE_PREFIX.10:         "{GRAMMAR_VALUE_DATECODE_PREFIX}"
+GROUPCONN.10:               "{GRAMMAR_VALUE_GROUPCONN}"
 // Sequence and code blocks
-SEQCONTROL:                 "{GRAMMAR_VALUE_SEQCONTROL}"
-SEQTIMER:                   "{GRAMMAR_VALUE_SEQTIMER}"
-COORD_KW:                   "{GRAMMAR_VALUE_COORD_KW}"
-OBJSIZE:                    "{GRAMMAR_VALUE_OBJSIZE}"
-SEQINITSTEP:                "{GRAMMAR_VALUE_SEQINITSTEP}"
-SEQSTEP:                    "{GRAMMAR_VALUE_SEQSTEP}"
-SEQTRANSITION:              "{GRAMMAR_VALUE_SEQTRANSITION}"
-WAIT_FOR:                   "{GRAMMAR_VALUE_WAIT_FOR}"
-ENTERCODE:                  "{GRAMMAR_VALUE_ENTERCODE}"
-ACTIVECODE:                 "{GRAMMAR_VALUE_ACTIVECODE}"
-EXITCODE:                   "{GRAMMAR_VALUE_EXITCODE}"
-EQUATIONBLOCK:              "{GRAMMAR_VALUE_EQUATIONBLOCK}"
-ENDSEQUENCE:                "{GRAMMAR_VALUE_ENDSEQUENCE}"
-ALTERNATIVESEQ:             "{GRAMMAR_VALUE_ALTERNATIVESEQ}"
-ALTERNATIVEBRANCH:          "{GRAMMAR_VALUE_ALTERNATIVEBRANCH}"
-ENDALTERNATIVE:             "{GRAMMAR_VALUE_ENDALTERNATIVE}"
-PARALLELBRANCH:             "{GRAMMAR_VALUE_PARALLELBRANCH}"
-PARALLELSEQ:                "{GRAMMAR_VALUE_PARALLELSEQ}"
-ENDPARALLEL:                "{GRAMMAR_VALUE_ENDPARALLEL}"
-SEQBREAK:                   "{GRAMMAR_VALUE_SEQBREAK}"
-SEQFORK:                    "{GRAMMAR_VALUE_SEQFORK}"
-SUBSEQTRANSITION:           "{GRAMMAR_VALUE_SUBSEQTRANSITION}"
-ENDSUBSEQTRANSITION:        "{GRAMMAR_VALUE_ENDSUBSEQTRANSITION}"
-SUBSEQUENCE:                "{GRAMMAR_VALUE_SUBSEQUENCE}"
-ENDSUBSEQUENCE:             "{GRAMMAR_VALUE_ENDSUBSEQUENCE}"
-OPENSEQUENCE:               "{GRAMMAR_VALUE_OPENSEQUENCE}"
-ENDOPENSEQUENCE:            "{GRAMMAR_VALUE_ENDOPENSEQUENCE}"
+SEQCONTROL.10:               "{GRAMMAR_VALUE_SEQCONTROL}"
+SEQTIMER.10:                 "{GRAMMAR_VALUE_SEQTIMER}"
+COORD_KW.10:                 "{GRAMMAR_VALUE_COORD_KW}"
+OBJSIZE.10:                  "{GRAMMAR_VALUE_OBJSIZE}"
+SEQINITSTEP.10:              "{GRAMMAR_VALUE_SEQINITSTEP}"
+SEQSTEP.10:                  "{GRAMMAR_VALUE_SEQSTEP}"
+SEQTRANSITION.10:            "{GRAMMAR_VALUE_SEQTRANSITION}"
+WAIT_FOR.10:                 "{GRAMMAR_VALUE_WAIT_FOR}"
+ENTERCODE.10:                "{GRAMMAR_VALUE_ENTERCODE}"
+ACTIVECODE.10:               "{GRAMMAR_VALUE_ACTIVECODE}"
+EXITCODE.10:                 "{GRAMMAR_VALUE_EXITCODE}"
+EQUATIONBLOCK.10:            "{GRAMMAR_VALUE_EQUATIONBLOCK}"
+ENDSEQUENCE.10:              "{GRAMMAR_VALUE_ENDSEQUENCE}"
+ALTERNATIVESEQ.10:           "{GRAMMAR_VALUE_ALTERNATIVESEQ}"
+ALTERNATIVEBRANCH.10:        "{GRAMMAR_VALUE_ALTERNATIVEBRANCH}"
+ENDALTERNATIVE.10:           "{GRAMMAR_VALUE_ENDALTERNATIVE}"
+PARALLELBRANCH.10:           "{GRAMMAR_VALUE_PARALLELBRANCH}"
+PARALLELSEQ.10:              "{GRAMMAR_VALUE_PARALLELSEQ}"
+ENDPARALLEL.10:              "{GRAMMAR_VALUE_ENDPARALLEL}"
+SEQBREAK.10:                 "{GRAMMAR_VALUE_SEQBREAK}"
+SEQFORK.10:                  "{GRAMMAR_VALUE_SEQFORK}"
+SUBSEQTRANSITION.10:         "{GRAMMAR_VALUE_SUBSEQTRANSITION}"
+ENDSUBSEQTRANSITION.10:      "{GRAMMAR_VALUE_ENDSUBSEQTRANSITION}"
+SUBSEQUENCE.10:              "{GRAMMAR_VALUE_SUBSEQUENCE}"
+ENDSUBSEQUENCE.10:           "{GRAMMAR_VALUE_ENDSUBSEQUENCE}"
+OPENSEQUENCE.10:             "{GRAMMAR_VALUE_OPENSEQUENCE}"
+ENDOPENSEQUENCE.10:          "{GRAMMAR_VALUE_ENDOPENSEQUENCE}"
 // Zoom, layers, grid
-TWO_LAYERS:                 "{GRAMMAR_VALUE_TWO_LAYERS}"
-LAYERLIMIT:                 "{GRAMMAR_VALUE_LAYERLIMIT}"
-LAYER_PREFIX:               "{GRAMMAR_VALUE_LAYER_PREFIX}"
-ZOOMLIMITS:                 "{GRAMMAR_VALUE_ZOOMLIMITS}"
-ZOOMABLE:                   "{GRAMMAR_VALUE_ZOOMABLE}"
-GRID:                       "{GRAMMAR_VALUE_GRID}"
-IGNOREMAXMODULE:            "{GRAMMAR_VALUE_IGNOREMAXMODULE}"
-LAYERMODULE:                "{GRAMMAR_VALUE_LAYERMODULE}"
+TWO_LAYERS.10:              "{GRAMMAR_VALUE_TWO_LAYERS}"
+LAYERLIMIT.10:              "{GRAMMAR_VALUE_LAYERLIMIT}"
+LAYER_PREFIX.10:            "{GRAMMAR_VALUE_LAYER_PREFIX}"
+ZOOMLIMITS.10:              "{GRAMMAR_VALUE_ZOOMLIMITS}"
+ZOOMABLE.10:                "{GRAMMAR_VALUE_ZOOMABLE}"
+GRID.10:                    "{GRAMMAR_VALUE_GRID}"
+IGNOREMAXMODULE.10:         "{GRAMMAR_VALUE_IGNOREMAXMODULE}"
+LAYERMODULE.10:             "{GRAMMAR_VALUE_LAYERMODULE}"
 // Alignment
-LEFTALIGNED:                "{GRAMMAR_VALUE_LEFTALIGNED}"
-RIGHTALIGNED:               "{GRAMMAR_VALUE_RIGHTALIGNED}"
+LEFTALIGNED.10:             "{GRAMMAR_VALUE_LEFTALIGNED}"
+RIGHTALIGNED.10:            "{GRAMMAR_VALUE_RIGHTALIGNED}"
 // Graph objects and related
-TEXTOBJECT:                 "{GRAMMAR_VALUE_TEXTOBJECT}"
-RECTANGLEOBJECT:            "{GRAMMAR_VALUE_RECTANGLEOBJECT}"
-LINEOBJECT:                 "{GRAMMAR_VALUE_LINEOBJECT}"
-OVALOBJECT:                 "{GRAMMAR_VALUE_OVALOBJECT}"
-POLYGONOBJECT:              "{GRAMMAR_VALUE_POLYGONOBJECT}"
-SPLINE:                     "{GRAMMAR_VALUE_SPLINE}"
-POLYLINE:                   "{GRAMMAR_VALUE_POLYLINE}"
-CONNECTION:                 "{GRAMMAR_VALUE_CONNECTION}"
-SEGMENTOBJECT:              "{GRAMMAR_VALUE_SEGMENTOBJECT}"
-COMPOSITEOBJECT:            "{GRAMMAR_VALUE_COMPOSITEOBJECT}"
-CONNECTIONNODE:             "{GRAMMAR_VALUE_CONNECTIONNODE}"
-ENABLE_PREFIX:              "{GRAMMAR_VALUE_ENABLE_PREFIX}"
-VARNAME:                    "{GRAMMAR_VALUE_VARNAME}"
-VALUEFRACTION:              "{GRAMMAR_VALUE_VALUEFRACTION}"
-COLOUR0:                    "{GRAMMAR_VALUE_COLOUR0}"
-COLOUR1:                    "{GRAMMAR_VALUE_COLOUR1}"
+TEXTOBJECT.10:              "{GRAMMAR_VALUE_TEXTOBJECT}"
+RECTANGLEOBJECT.10:         "{GRAMMAR_VALUE_RECTANGLEOBJECT}"
+LINEOBJECT.10:              "{GRAMMAR_VALUE_LINEOBJECT}"
+OVALOBJECT.10:              "{GRAMMAR_VALUE_OVALOBJECT}"
+POLYGONOBJECT.10:           "{GRAMMAR_VALUE_POLYGONOBJECT}"
+SPLINE.10:                  "{GRAMMAR_VALUE_SPLINE}"
+POLYLINE.10:                "{GRAMMAR_VALUE_POLYLINE}"
+CONNECTION.10:              "{GRAMMAR_VALUE_CONNECTION}"
+SEGMENTOBJECT.10:           "{GRAMMAR_VALUE_SEGMENTOBJECT}"
+COMPOSITEOBJECT.10:         "{GRAMMAR_VALUE_COMPOSITEOBJECT}"
+CONNECTIONNODE.10:          "{GRAMMAR_VALUE_CONNECTIONNODE}"
+ENABLE_PREFIX.10:           "{GRAMMAR_VALUE_ENABLE_PREFIX}"
+VARNAME.10:                 "{GRAMMAR_VALUE_VARNAME}"
+VALUEFRACTION.10:           "{GRAMMAR_VALUE_VALUEFRACTION}"
+COLOUR0.10:                 "{GRAMMAR_VALUE_COLOUR0}"
+COLOUR1.10:                 "{GRAMMAR_VALUE_COLOUR1}"
 // Colour and property keys
-OUTLINECOLOUR:              "{GRAMMAR_VALUE_OUTLINECOLOUR}"
-FILLCOLOUR:                 "{GRAMMAR_VALUE_FILLCOLOUR}"
-WIDTH_KEY:                  "{GRAMMAR_VALUE_WIDTH_KEY}"
-COLOUR:                     "{GRAMMAR_VALUE_COLOUR}"
-COLOURSTYLE:                "{GRAMMAR_VALUE_COLOURSTYLE}"
+OUTLINECOLOUR.10:           "{GRAMMAR_VALUE_OUTLINECOLOUR}"
+FILLCOLOUR.10:              "{GRAMMAR_VALUE_FILLCOLOUR}"
+WIDTH_KEY.10:               "{GRAMMAR_VALUE_WIDTH_KEY}"
+COLOUR.10:                  "{GRAMMAR_VALUE_COLOUR}"
+COLOURSTYLE.10:             "{GRAMMAR_VALUE_COLOURSTYLE}"
 // InVar tail
-INVAR_PREFIX:               "{GRAMMAR_VALUE_INVAR_PREFIX}"
+INVAR_PREFIX.10:            "{GRAMMAR_VALUE_INVAR_PREFIX}"
 // Interaction objects and actions
-COMBUT:                     "{GRAMMAR_VALUE_COMBUT}"
-OPTBUT:                     "{GRAMMAR_VALUE_OPTBUT}"
-PROCEDUREINTERACT:          "{GRAMMAR_VALUE_PROCEDUREINTERACT}"
-COMBUTPROC:                 "{GRAMMAR_VALUE_COMBUTPROC}"
-NEWWINDOW:                  "{GRAMMAR_VALUE_NEWWINDOW}"
-OUTVAR_PREFIX:              "{GRAMMAR_VALUE_OUTVAR_PREFIX}"
+COMBUT.10:                  "{GRAMMAR_VALUE_COMBUT}"
+OPTBUT.10:                  "{GRAMMAR_VALUE_OPTBUT}"
+PROCEDUREINTERACT.10:       "{GRAMMAR_VALUE_PROCEDUREINTERACT}"
+COMBUTPROC.10:              "{GRAMMAR_VALUE_COMBUTPROC}"
+NEWWINDOW.10:               "{GRAMMAR_VALUE_NEWWINDOW}"
+OUTVAR_PREFIX.10:           "{GRAMMAR_VALUE_OUTVAR_PREFIX}"
 CHECKBOX: "CheckBox_"
 TEXTBOX: "TextBox_"
 MENUINTERACT: "MenuInteract"
 SIMPLEINTERACT: "SimpleInteract"
 
 // Variable/type modifiers
-GLOBAL_KW:                  "{GRAMMAR_VALUE_GLOBAL_KW}"
-CONST_KW:                   "{GRAMMAR_VALUE_CONST_KW}"
-STATE_KW:                   "{GRAMMAR_VALUE_STATE_KW}"
-OPSAVE_KW:                  "{GRAMMAR_VALUE_OPSAVE_KW}"
-SECURE_KW:                  "{GRAMMAR_VALUE_SECURE_KW}"
-DURATION_VALUE:             "{GRAMMAR_VALUE_DURATION_VALUE}"
-DEFAULT:                    "{GRAMMAR_VALUE_DEFAULT}"
-NEW:                        "{GRAMMAR_VALUE_NEW}"
-OLD:                        "{GRAMMAR_VALUE_OLD}"
+GLOBAL_KW.10:               "{GRAMMAR_VALUE_GLOBAL_KW}"
+CONST_KW.10:                "{GRAMMAR_VALUE_CONST_KW}"
+STATE_KW.10:                "{GRAMMAR_VALUE_STATE_KW}"
+OPSAVE_KW.10:               "{GRAMMAR_VALUE_OPSAVE_KW}"
+SECURE_KW.10:               "{GRAMMAR_VALUE_SECURE_KW}"
+DURATION_VALUE.10:          "{GRAMMAR_VALUE_DURATION_VALUE}"
+DEFAULT.10:                 "{GRAMMAR_VALUE_DEFAULT}"
+NEW.10:                     "{GRAMMAR_VALUE_NEW}"
+OLD.10:                     "{GRAMMAR_VALUE_OLD}"
 // Special Formats
 //COMMENT:                    {GRAMMAR_REGEX_COMMENT}
 // Variable names and identifiers
 SL_DATECODE:                {GRAMMAR_REGEX_SL_DATECODE}
-NAME:                       {GRAMMAR_REGEX_NAME}
+NAME.-1:                    {GRAMMAR_REGEX_NAME}
 STRING_CRLF:                {GRAMMAR_REGEX_STRING_CRLF}
 
 // ============================================================================
