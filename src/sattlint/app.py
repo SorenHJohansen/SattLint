@@ -225,15 +225,19 @@ def load_project(cfg: dict, force_regenerate: bool = False):
     cache = ASTCache(cache_dir)
 
     key = compute_cache_key(cfg)  # now only hashes config, not files
-    cached = cache.load(key)
+
+    if force_regenerate:
+        log.debug("🔄 Force regenerating AST - clearing cache")
+        cache.clear(key)
+        cached = None
+    else:
+        cached = cache.load(key)
 
     if not force_regenerate and cached and cache.validate(cached):
         log.debug("✔ Using cached AST")
         return cached["project"]
 
-    if force_regenerate:
-        log.debug("🔄 Force regenerating AST")
-    else:
+    if not force_regenerate:
         log.debug("⚠ Cache miss/invalid - regenerating")
 
     loader = engine_module.SattLineProjectLoader(
@@ -316,7 +320,7 @@ def variable_analysis_menu(cfg: dict):
         print("\n--- Variable analyses ---")
         for k, (name, _) in VARIABLE_ANALYSES.items():
             print(f"{k}) {name}")
-        print("f) Force AST regeneration (current session only)")
+        print("f) Force AST regeneration (clears cache)")
         print("b) Back")
 
         c = input("> ").strip().lower()
@@ -324,12 +328,12 @@ def variable_analysis_menu(cfg: dict):
             return
 
         if c == "f":
-            if confirm("Force AST regeneration for current session?"):
-                print("🔄 AST will be regenerated on next analysis...")
+            if confirm("Force AST regeneration and clear cache?"):
+                print("🔄 Clearing cache and regenerating AST...")
                 # Force regenerate by calling load_project with force_regenerate=True
                 try:
                     load_project(cfg, force_regenerate=True)
-                    print("✅ AST regeneration completed")
+                    print("✅ AST cache cleared and regenerated")
                 except Exception as e:
                     print(f"❌ Error during AST regeneration: {e}")
                 pause()
@@ -475,7 +479,7 @@ def dump_menu(cfg: dict):
 2) Dump AST
 3) Dump dependency graph
 4) Dump variable report
-f) Force AST regeneration (current session only)
+f) Force AST regeneration (clears cache)
 b) Back
 """)
         c = input("> ").strip().lower()
@@ -483,11 +487,11 @@ b) Back
             return
 
         if c == "f":
-            if confirm("Force AST regeneration for current session?"):
-                print("🔄 AST will be regenerated...")
+            if confirm("Force AST regeneration and clear cache?"):
+                print("🔄 Clearing cache and regenerating AST...")
                 try:
                     load_project(cfg, force_regenerate=True)
-                    print("✅ AST regeneration completed")
+                    print("✅ AST cache cleared and regenerated")
                 except Exception as e:
                     print(f"❌ Error during AST regeneration: {e}")
                 pause()
