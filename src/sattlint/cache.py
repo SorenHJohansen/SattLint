@@ -75,3 +75,9 @@ class ASTCache:
                 return False
 
         return True
+
+    def clear(self, key: str) -> None:
+        """Remove cache file for the given key."""
+        p = self._path(key)
+        if p.exists():
+            p.unlink()
