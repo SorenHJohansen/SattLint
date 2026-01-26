@@ -21,7 +21,6 @@ from .engine import GRAMMAR_PATH
 DEFAULT_CONFIG = {
     "root": "",
     "mode": "official",
-    "ignore_ABB_lib": False,
     "scan_root_only": False,
     "debug": False,
     "program_dir": "",
@@ -89,7 +88,6 @@ def self_check(cfg: dict) -> bool:
     required_keys = [
         "root",
         "mode",
-        "ignore_ABB_lib",
         "scan_root_only",
         "debug",
         "program_dir",
@@ -173,7 +171,11 @@ def save_config(path: Path, cfg: dict) -> None:
 
 
 def root_exists(root: str, cfg: dict) -> bool:
-    dirs = [Path(cfg["program_dir"])] + [Path(p) for p in cfg["other_lib_dirs"]]
+    dirs = (
+        [Path(cfg["program_dir"])]
+        + [Path(p) for p in cfg["other_lib_dirs"]]
+        + [Path(cfg["ABB_lib_dir"])]
+    )
 
     if cfg["mode"] == "draft":
         extensions = [".s", ".x"]  # Try draft first, fallback to official
@@ -204,7 +206,6 @@ def show_config(cfg: dict):
     for k in (
         "root",
         "mode",
-        "ignore_ABB_lib",
         "scan_root_only",
         "debug",
         "program_dir",
@@ -246,7 +247,6 @@ def load_project(cfg: dict, force_regenerate: bool = False):
         abb_lib_dir=Path(cfg["ABB_lib_dir"]),
         mode=engine_module.CodeMode(cfg["mode"]),
         scan_root_only=cfg["scan_root_only"],
-        ignore_abb_lib=cfg["ignore_ABB_lib"],
         debug=cfg["debug"],
     )
 
@@ -528,13 +528,12 @@ def config_menu(cfg: dict) -> bool:
 --- Edit Configuration ---
 1) Change Root program/library to analyze
 2) Toggle Mode (official/draft)
-3) Toggle ignore_ABB_lib
-4) Toggle scan_root_only
-5) Toggle debug
-6) Change Program_dir
-7) Change ABB_lib_dir
-8) Add/remove other_lib_dirs
-9) Save config
+3) Toggle scan_root_only
+4) Toggle debug
+5) Change Program_dir
+6) Change ABB_lib_dir
+7) Add/remove other_lib_dirs
+8) Save config
 b) Back
 """)
         c = input("> ").strip().lower()
@@ -558,33 +557,28 @@ b) Back
                 dirty = True
 
         elif c == "3":
-            if confirm("Toggle ignore_ABB_lib?"):
-                cfg["ignore_ABB_lib"] = not cfg["ignore_ABB_lib"]
-                dirty = True
-
-        elif c == "4":
             if confirm("Toggle scan_root_only?"):
                 cfg["scan_root_only"] = not cfg["scan_root_only"]
                 dirty = True
 
-        elif c == "5":
+        elif c == "4":
             if confirm("Toggle debug?"):
                 cfg["debug"] = not cfg["debug"]
                 dirty = True
 
-        elif c == "6":
+        elif c == "5":
             new = prompt("New program_dir", cfg["program_dir"])
             if confirm("Change program_dir?"):
                 cfg["program_dir"] = new
                 dirty = True
 
-        elif c == "7":
+        elif c == "6":
             new = prompt("New ABB_lib_dir", cfg["ABB_lib_dir"])
             if confirm("Change ABB_lib_dir?"):
                 cfg["ABB_lib_dir"] = new
                 dirty = True
 
-        elif c == "8":
+        elif c == "7":
             libs = cfg["other_lib_dirs"]
             print("\nCurrent other_lib_dirs:")
             for i, p in enumerate(libs, 1):
@@ -597,7 +591,7 @@ b) Back
                 if 0 <= idx < len(libs):
                     libs.pop(idx)
                     dirty = True
-        elif c == "9":
+        elif c == "8":
             if confirm("Save config to disk?"):
                 save_config(CONFIG_PATH, cfg)
                 dirty = False

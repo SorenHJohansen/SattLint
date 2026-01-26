@@ -1533,7 +1533,7 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         ],
         precision_scangroup=False
     ),
-    "SetBooleanValue": BuiltinFunction(
+    "setbooleanvalue": BuiltinFunction(
         name="SetBooleanValue",
         type="Procedure",
         return_type=None,
