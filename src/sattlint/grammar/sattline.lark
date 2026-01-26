@@ -32,7 +32,7 @@ invocation_new_module:      module_header ":" MODULEDEFINITION sl_datecode frame
 invocation_module_type:     module_header ":" NAME invocation_tail?
 ?invocation_tail:            ("(" moduletype_par_list ")")? ";"
 moduletype_par_list:        moduletype_par_transfer ("," moduletype_par_transfer)*
-moduletype_par_transfer:    variable_name "=>" GLOBAL_KW? DURATION_VALUE? (value | variable_name)
+moduletype_par_transfer:    variable_name "=>" GLOBAL_KW? DURATION_VALUE? (value | variable_name | time_value)
 frame_module:               "(" FRAME_MODULE ")"
 scan_group:                 "(" GROUPCONN "=" GLOBAL_KW? variable_name ")"
 invoke_coord:               REAL coord_tail* "," REAL coord_tail* "," REAL coord_tail* "," REAL coord_tail* "," REAL coord_tail*
@@ -50,7 +50,8 @@ record:                     NAME STRING? "=" RECORD_KW sl_datecode variable_list
 variable_item:              NAME (STRING | STRING_CRLF)? //unfortunately SattLine can have unterminated strings in the variable descriptions
 variable_group:             variable_item ("," variable_item)* ":" GLOBAL_KW? NAME (CONST_KW | STATE_KW | OPSAVE_KW | SECURE_KW)* opt_var_init? ";"
 variable_list:              variable_group+
-opt_var_init:               ASSIGN_INIT_VALUE DURATION_VALUE? (value | DEFAULT)
+opt_var_init:               ASSIGN_INIT_VALUE DURATION_VALUE? (value | DEFAULT | time_value)
+time_value:                 TIME_VALUE STRING?
 value:                      BOOL | REAL | STRING | SIGNED_INT
 
 // ============================================================================
@@ -143,7 +144,7 @@ clippingbounds:             CLIPPINGBOUNDS "=" origo_size_pair
 origo_size_pair:            coordinates coordinates
 coordinates:                "(" REAL coord_tail* "," REAL coord_tail* ")"
 ?coord_tail:                coord_invar_tail | coord_clippingbounds
-coord_invar_tail:           ":" (INVAR_PREFIX | OUTVAR_PREFIX) connected_variable
+coord_invar_tail:           ":" ((INVAR_PREFIX | OUTVAR_PREFIX) connected_variable | expression)
 coord_clippingbounds:       (CLIPPINGBOUNDS | "ClippingBounds") "=" clip_values
 clip_values:                clip_value+
 clip_value:                 REAL coord_invar_tail?
@@ -281,7 +282,7 @@ DIVIDE:                     "{GRAMMAR_VALUE_DIVIDE}"
 // Literals
 SIGNED_INT:                 {GRAMMAR_REGEX_SIGNED_INT}
 REAL:                       {GRAMMAR_REGEX_REAL}
-BOOL:                       "{GRAMMAR_VALUE_BOOL_TRUE}" | "{GRAMMAR_VALUE_BOOL_FALSE}"
+BOOL:                       {GRAMMAR_REGEX_BOOL}
 STRING:                     {GRAMMAR_REGEX_STRING}
 // Top-level/module structure
 TYPEDEFINITIONS.10:         "{GRAMMAR_VALUE_TYPEDEFINITIONS}"
@@ -348,7 +349,7 @@ CONNECTION.10:              "{GRAMMAR_VALUE_CONNECTION}"
 SEGMENTOBJECT.10:           "{GRAMMAR_VALUE_SEGMENTOBJECT}"
 COMPOSITEOBJECT.10:         "{GRAMMAR_VALUE_COMPOSITEOBJECT}"
 CONNECTIONNODE.10:          "{GRAMMAR_VALUE_CONNECTIONNODE}"
-ENABLE_PREFIX.10:           "{GRAMMAR_VALUE_ENABLE_PREFIX}"
+ENABLE_PREFIX.10:           {GRAMMAR_REGEX_ENABLE_PREFIX}
 VARNAME.10:                 "{GRAMMAR_VALUE_VARNAME}"
 VALUEFRACTION.10:           "{GRAMMAR_VALUE_VALUEFRACTION}"
 COLOUR0.10:                 "{GRAMMAR_VALUE_COLOUR0}"
@@ -380,6 +381,7 @@ STATE_KW.10:                "{GRAMMAR_VALUE_STATE_KW}"
 OPSAVE_KW.10:               "{GRAMMAR_VALUE_OPSAVE_KW}"
 SECURE_KW.10:               "{GRAMMAR_VALUE_SECURE_KW}"
 DURATION_VALUE.10:          "{GRAMMAR_VALUE_DURATION_VALUE}"
+TIME_VALUE.10:              "{GRAMMAR_VALUE_TIME_VALUE}"
 DEFAULT.10:                 "{GRAMMAR_VALUE_DEFAULT}"
 NEW.10:                     "{GRAMMAR_VALUE_NEW}"
 OLD.10:                     "{GRAMMAR_VALUE_OLD}"

@@ -18,7 +18,6 @@ def compute_cache_key(cfg: dict) -> str:
         "root",
         "mode",
         "scan_root_only",
-        "ignore_ABB_lib",
         "program_dir",
         "ABB_lib_dir",
         "other_lib_dirs",

@@ -3,6 +3,7 @@ from pathlib import Path
 from lark import Lark
 from . import constants
 from .transformer.sl_transformer import SLTransformer
+from .grammar.parser_decode import is_compressed, preprocess_sl_text
 from .models.ast_model import BasePicture, DataType, ModuleTypeDef
 from collections.abc import Iterable
 from enum import Enum
@@ -182,7 +183,6 @@ class SattLineProjectLoader(DebugMixin):
         abb_lib_dir: Path,
         mode: CodeMode,
         scan_root_only: bool,
-        ignore_abb_lib: bool,
         debug: bool,
     ):
         self.program_dir = program_dir
@@ -190,21 +190,19 @@ class SattLineProjectLoader(DebugMixin):
         self.abb_lib_dir = abb_lib_dir
         self.mode = mode
         self.scan_root_only = scan_root_only
-        self.ignore_abb_lib = ignore_abb_lib
         self.debug = debug
         self.parser = create_sl_parser()  # reuse your grammar setup
         self.transformer = SLTransformer()  # reuse your transformer
         self._visited: set[str] = set()
         self._stack: set[str] = set()  # cycle protection
-        self._ignored_dirs: set[Path] = (
-            {self.abb_lib_dir} if self.ignore_abb_lib else set()
-        )
+        self._ignored_dirs: set[Path] = set()
         self.dbg(
             f"Selected mode={mode.value}, code_ext={code_ext(mode)}, deps_ext={deps_ext(mode)}"
         )
         self.dbg(f"Programs dir: {self.program_dir}")
         for i, ld in enumerate(self.other_lib_dirs, start=1):
             self.dbg(f"Lib {i}: {ld}")
+        self.dbg(f"ABB lib dir: {self.abb_lib_dir}")
 
     def _is_ignored_base(self, base: Path) -> bool:
         try:
@@ -221,7 +219,7 @@ class SattLineProjectLoader(DebugMixin):
         """
         extensions = [".s", ".x"] if self.mode == CodeMode.DRAFT else [".x"]
 
-        for base in [self.program_dir, *self.other_lib_dirs]:
+        for base in [self.program_dir, *self.other_lib_dirs, self.abb_lib_dir]:
             if self._is_ignored_base(base):
                 continue
 
@@ -243,7 +241,7 @@ class SattLineProjectLoader(DebugMixin):
         """
         extensions = [".l", ".z"] if self.mode == CodeMode.DRAFT else [".z"]
 
-        for base in [self.program_dir, *self.other_lib_dirs]:
+        for base in [self.program_dir, *self.other_lib_dirs, self.abb_lib_dir]:
             if self._is_ignored_base(base):
                 continue
 
@@ -317,12 +315,21 @@ class SattLineProjectLoader(DebugMixin):
                 lr = ld
             if rp.is_relative_to(lr):
                 return lr.name
+        try:
+            ar = self.abb_lib_dir.resolve()
+        except Exception:
+            ar = self.abb_lib_dir
+        if rp.is_relative_to(ar):
+            return ar.name
         # Fallback: parent directory name
         return rp.parent.name
 
     def _parse_one(self, code_path: Path) -> BasePicture:
         self.dbg(f"Parsing file: {code_path}")
         src = self._read_text_simple(code_path)
+        if is_compressed(src):
+            self.dbg("Compressed format detected; decoding before parsing")
+            src, _ = preprocess_sl_text(src)
         cleaned = strip_sl_comments(src)
         tree = self.parser.parse(cleaned)  # may raise LarkError
         self.dbg("Parse OK, transforming with SLTransformer")
