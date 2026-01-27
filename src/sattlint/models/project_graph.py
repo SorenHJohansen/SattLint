@@ -6,9 +6,9 @@ from pathlib import Path
 @dataclass
 class ProjectGraph:
     ast_by_name: dict[str, BasePicture] = field(default_factory=dict)
-    # Keyed by (origin_lib.casefold(), moduletype_name.casefold()) so same-name types
-    # from different libraries are preserved.
-    moduletype_defs: dict[tuple[str, str], ModuleTypeDef] = field(default_factory=dict)
+    # Keyed by (origin_lib.casefold(), moduletype_name.casefold(), origin_file.casefold())
+    # so same-name types from the same library but different files are preserved.
+    moduletype_defs: dict[tuple[str, str, str], ModuleTypeDef] = field(default_factory=dict)
     datatype_defs: dict[str, DataType] = field(default_factory=dict)
     # library_name.casefold() -> set of dependency library names (casefolded)
     library_dependencies: dict[str, set[str]] = field(default_factory=dict)
@@ -45,7 +45,8 @@ class ProjectGraph:
                 m.origin_lib = library_name
             lib_key = (m.origin_lib or "").casefold()
             name_key = m.name.casefold()
-            self.moduletype_defs[(lib_key, name_key)] = m
+            file_key = (m.origin_file or "").casefold()
+            self.moduletype_defs[(lib_key, name_key, file_key)] = m
         for d in bp.datatype_defs:
             if source_path and not d.origin_file:
                 d.origin_file = source_path.name

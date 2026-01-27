@@ -2,32 +2,84 @@
 import re
 
 # Seed mappings from your samples (robust and visible in both forms)
-
 SEED_MAPPING: dict[str, str] = {
-    # --- Core / control ---
+    "#6?": "Invocation",
+    "#6=": "IgnoreMaxModule",
+    "#8=": ":",
+    "#71": "MODULEDEFINITION",
+    "#81": "DateCode_",
+    "#78": "TYPEDEFINITIONS",
+    "#72": "RECORD",
+    "#85": "ENDDEF",
+    "#7:": "OpSave",
+    "#7:;": "OpSave;",
+    "#7;;": ";",
     "#01": "(",
-    "#04": "<",
-    "#05": ">",
-    "#06": "<=",
-    "#07": ">=",
-    "#08": "==",
-    "#09": "<>",
-    "#0?": "IF",
-    "#10": "THEN",
-    "#11": "ELSIF",
-    "#12": "ELSE",
-    "#13": "ENDIF",
-    "#14": "AND",
-    "#15": "OR",
-    "#16": "NOT",
-    # --- Booleans  ---
+    "#8?": "=",
+    "#8:": "=>",
+    "#8;": ":=",
     "#1<": "False",
+    "#1<;": "False;",
     "#1>": "False",
+    "#1>;": "False;",
     "#1=": "True",
-    # --- Sequences ---
+    "#1=;": "True;",
+    "#1;;": "True;",
+    "#1;": "True",
+    "#79": "SUBMODULES",
+    "#73": "MODULEPARAMETERS",
+    "#7<": "LOCALVARIABLES",
+        "#74": "GLOBAL",
+    "#80": ";",
+    "#80;": ";",
+    "#17": "Old",
+    "#17;": "Old;",
+        "#18": "Old",
+    "#18;": "Old;",
+    "#87": "Frame_Module",
+    "#6<": "LayerModule",
+    "#6>": "ModuleDef",
+    "#65": "ClippingBounds",
+    "#66": "Dim_",
+    "#40": "InteractObjects",
+    "#41": "SimpleInteract",
+    "#42": "MenuInteract",
+    "#::": "TextBox_",
+    "#4?": "GraphObjects",
+    "#56": "TextObject",
+    "#70": "",
+    "#52": "RectangleObject",
+    "#50": "LineObject",
+    "#51": "OvalObject",
+    "#53": "SegmentObject",
+    "#54": "PolygonObject",
+    "#55": "Spline",
+    "#57": "Polyline",
+    "#58": "LeftAligned",
+    "#5<": "OutlineColour",
+    "#5;": "FillColour",
+    "#5:": "RightAligned",
+    "#59": "CenterAligned",
+    "#5=": "ColourStyle",
+    "#5?": "VarName",
+    "#5>": "Width_",
+    "#95": "ProcedureInteract",
+    "#61": "Colour0",
+    "#62": "Colour1",
+    "#63": "ZoomLimits",
+    "#6:": "Zoomable",
+    "#68": "Connection",
+    "#69": "ConnectionNode",
+    "#43": "SelectVariable",
+    "#84": "ModuleCode",
+    "#86": "GroupConn",
+    "#77": "Secure",
+    "#77;": "Secure;",
     "#20": "EQUATIONBLOCK",
     "#22": "SEQUENCE",
     "#23": "ENDSEQUENCE",
+    "#88": "COORD",
+    "#89": "OBJSIZE",
     "#26": "SEQINITSTEP",
     "#27": "SEQSTEP",
     "#28": "ENTERCODE",
@@ -37,100 +89,69 @@ SEED_MAPPING: dict[str, str] = {
     "#34": "ALTERNATIVESEQ",
     "#35": "ALTERNATIVEBRANCH",
     "#36": "ENDALTERNATIVE",
-    "#3<": "SEQFORK",
-    "#3=": "SEQBREAK",
     "#2:": "EXITCODE",
-    # --- Variables ---
+    "#94;": "Default;",
+    "#94": "Default",
+    "#7;": "Const",
+    "#;5": "Layer_",
+    "#;7": "Int_Value",
+    "#;6": "Bool_Value",
+    "#64": "Enable_",
     "#3>": "InVar_",
     "#3?": "OutVar_",
+    "#3<": "SEQFORK",
+    "#3=": "SEQBREAK",
     "#47": "Variable",
+    "#48": "OpMin",
+    "#49": "OpMax",
+    "#4:": "OpStep",
+    "#4=": "ToggleAction",
+    "#4;": "SetAction",
+    "#4<": "ResetAction",
     "#60": "ValueFraction",
-    # --- Module structure ---
-    "#6>": "ModuleDef",
-    "#6?": "Invocation",
-    "#6=": "IgnoreMaxModule",
-    "#6<": "LayerModule",
-    "#65": "ClippingBounds",
-    "#66": "Dim_",
-    "#71": "MODULEDEFINITION",
-    "#72": "RECORD",
-    "#73": "MODULEPARAMETERS",
-    "#74": "GLOBAL",
-    "#78": "TYPEDEFINITIONS",
-    "#79": "SUBMODULES",
-    "#80": ";",
-    "#81": "DateCode_",
-    "#84": "ModuleCode",
-    "#85": "ENDDEF",
-    "#86": "GroupConn",
-    "#87": "Frame_Module",
-    # --- Graph / UI ---
-    "#4?": "GraphObjects",
-    "#40": "InteractObjects",
-    "#41": "SimpleInteract",
-    "#42": "MenuInteract",
-    "#50": "LineObject",
-    "#51": "OvalObject",
-    "#52": "RectangleObject",
-    "#53": "SegmentObject",
-    "#54": "PolygonObject",
-    "#55": "Spline",
-    "#56": "TextObject",
-    "#57": "Polyline",
-    "#58": "LeftAligned",
-    "#59": "CenterAligned",
-    "#5:": "RightAligned",
-    "#5<": "OutlineColour",
-    "#5;": "FillColour",
-    "#5=": "ColourStyle",
-    "#5>": "Width_",
-    "#61": "Colour0",
-    "#62": "Colour1",
-    "#63": "ZoomLimits",
-    "#6:": "Zoomable",
-    "#68": "Connection",
-    "#69": "ConnectionNode",
-    # --- Interactions ---
-    "#95": "ProcedureInteract",
-    "#96": "LitString",
-    # --- Keywords / flags ---
-    "#7;": "Const",
-    "#7<": "LOCALVARIABLES",
-    "#7:": "OpSave",
-    "#77": "Secure",
-    "#17": "Old",
-    "#18": "Old",
-    "#94": "Default",
-    # --- Enable / layers ---
-    "#64": "Enable_",
-    "#;4": "Two_Layers_",
-    "#;?": "LayerLimit_",
-    "#;5": "Layer_",
-    # --- Events ---
-    "#9<": "Enable_",
     "#9>": "Event_Text_",
     "#9?": "Event_Tag_",
     "#9=": "Value_Changed",
+    "#9<": "Enable_",
+    "#96": "LitString",
     "#:0": "Event_Severity_",
     "#:1": "Event_Class_",
-    "#:4": "Grid",
-    "#:5": "Key_",
     "#:6": "ComBut_",
     "#:7": "ComButProc_",
     "#:8": "OptBut_",
-    "#:9": "CheckBox_",
-    # --- Misc UI ---
-    "#:<": "Abs_",
     "#:>": "Value_",
+    "#:9": "CheckBox_",
+    "#:3": "Format_String_",
+    "#:5": "Key_",
+    "#:4": "Grid",
     "#:?": "Decimal_",
     "#:;": "Visible_",
+    "#:<": "Abs_",
     "#;0": "Digits_",
     "#;1": "NoOf_",
     "#;3": "SetApp_",
+    "#;4": "Two_Layers_",
+    "#;?": "LayerLimit_",
+    "#;:": "Alt_Text",
     "#;9": "String_Value",
+    "#;=": "Cancel_Variable",
     "#;;": "Enable_Delay",
     "#;<": "OK_Variable",
-    # --- Signatures ---
+    "#16": "NOT",
+    "#14": "AND",
+    "#0?": "IF",
+    "#11": "ELSIF",
+    "#10": "THEN",
+    "#15": "OR",
+    "#12": "ELSE",
+    "#13;": "ENDIF;",
+    "#13": "ENDIF",
+    "#05": ">",
+    "#04": "<",
+    "#07": ">=",
+    "#06": "<=",
+    "#08": "==",
+    "#09": "<>",
     "#<0": "SnglSgn",
     "#<1": "SnglSgnEna",
     "#<2": "Purpose_",
@@ -146,6 +167,11 @@ SEED_MAPPING: dict[str, str] = {
     "#<=": "Signer2_",
     "#<>": "Signer2Name_",
 }
+
+# You can optionally seed more when you see stable pairs in other files.
+# For example, many compressed samples also use:
+# "#01" often appears at the start of tuples like "( 0.0 , 0.0 , ...", but since "(" remains visible,
+# we avoid guessing punctuation for "#01" until learned via an aligned pair.
 
 _MARKER_RE = re.compile(r"#[0-9A-Za-z;:=><?]+")
 
@@ -177,7 +203,6 @@ def is_compressed(text: str) -> bool:
 
 def decode_compressed(text: str, mapping: dict[str, str]) -> str:
     """Replace #markers using the mapping. Leaves unknown markers as-is."""
-
     def _subst(m: re.Match) -> str:
         tok = m.group(0)
         if tok.startswith("#01") and len(tok) > 3:
@@ -195,9 +220,7 @@ def decode_compressed(text: str, mapping: dict[str, str]) -> str:
     decoded = re.sub(r"ENDIF;\s*,", "ENDIF,", decoded)
     decoded = re.sub(r"ENDIF;\s*\)", "ENDIF)", decoded)
     decoded = re.sub(r":=\s*;", ":= Default;", decoded)
-    decoded = re.sub(
-        r"\bGraphObjects\b\s*:\s*InteractObjects\b", "InteractObjects", decoded
-    )
+    decoded = re.sub(r"\bGraphObjects\b\s*:\s*InteractObjects\b", "InteractObjects", decoded)
     decoded = re.sub(
         r"(ExecuteLocalOld\s*=\s*ExecuteLocal:Old)\s+ENDDEF",
         r"\1; ENDDEF",
@@ -231,7 +254,6 @@ def decode_compressed(text: str, mapping: dict[str, str]) -> str:
     )
     # Avoid BOOL tokenizing identifiers like TrueVar
     decoded = re.sub(r"\bTrueVar\b", "TTrueVar", decoded)
-
     # Inject missing ModuleCode before EQUATIONBLOCK when none exists in the same module
     def _ensure_modulecode(m: re.Match) -> str:
         last_enddef = decoded.rfind("ENDDEF", 0, m.start())
@@ -248,8 +270,6 @@ def decode_compressed(text: str, mapping: dict[str, str]) -> str:
         decoded,
     )
     return decoded
-
-
 def preprocess_sl_text(text: str) -> tuple[str, dict[str, str]]:
     """Decode compressed text using the seed mapping (no file output)."""
     mapping = dict(SEED_MAPPING)

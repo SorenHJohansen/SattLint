@@ -2,7 +2,7 @@
 from __future__ import annotations
 from lark import Transformer, Token, Tree
 from typing import Any, Literal, cast
-from .. import constants as const
+from ..grammar import constants as const
 from ..models.ast_model import (
     BasePicture,
     DataType,
@@ -520,7 +520,7 @@ class SLTransformer(Transformer):
         return Tree(const.TREE_TAG_MODULETYPE_LIST, out)
 
     def moduletype_par_transfer(self, items) -> ParameterMapping:
-        # variable_name "=>" GLOBAL_KW? DURATION_VALUE? (value | variable_name)
+        # variable_name "=>" GLOBAL_KW? DURATION_VALUE? (value | variable_name | time_value)
         if not items:
             raise ValueError("moduletype_par_transfer received empty items")
 
@@ -553,7 +553,7 @@ class SLTransformer(Transformer):
             is_duration = True
             idx += 1
 
-        # 4) Source: value (int/float/str/bool) or variable_name dict
+        # 4) Source: value (int/float/str/bool), time_value dict, or variable_name dict
         source_literal: Any | None = None
         source_var: dict | None = None
         source_type: str = const.KEY_VALUE  # default; overwritten below
@@ -561,6 +561,9 @@ class SLTransformer(Transformer):
         if idx < len(items):
             src = items[idx]
             if isinstance(src, (int, float, str, bool)):
+                source_literal = src
+                source_type = const.KEY_VALUE
+            elif isinstance(src, dict) and const.GRAMMAR_VALUE_TIME_VALUE in src:
                 source_literal = src
                 source_type = const.KEY_VALUE
             elif isinstance(src, dict):
@@ -618,6 +621,13 @@ class SLTransformer(Transformer):
         if not items:
             return None
         return items[-1]  # could be bool/int/float/str or DEFAULT_INIT
+
+    def time_value(self, items):
+        time_string = None
+        for it in items:
+            if isinstance(it, str):
+                time_string = it
+        return {const.GRAMMAR_VALUE_TIME_VALUE: time_string}
 
     def variable_group(self, items):
         # Remove Nones from punctuation we dropped

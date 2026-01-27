@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from .sattline_builtins import get_function_signature
 import logging
-from .. import constants as const
+from ..grammar import constants as const
 from ..resolution import (
     AccessEvent,
     AccessGraph,
@@ -443,7 +443,7 @@ def analyze_module_localvar_fields(
     module_path: str,
     var_name: str,
     debug: bool = False,
-    fail_loudly: bool = True,
+    fail_loudly: bool = False,
 ) -> str:
     """
     Analyze field-level usage of a local variable within a module and its submodules.
@@ -747,13 +747,13 @@ def _find_all_aliases(target_var: Variable, alias_links: list[tuple[Variable, Va
     """
     aliases = []
     to_visit = [(target_var, "")]  # (variable, field_prefix_to_prepend_to_fields)
-    visited = []
+    visited: list[tuple[Variable, str]] = []
 
     while to_visit:
         current, current_prefix = to_visit.pop()
 
-        # Check if already visited using identity
-        if any(current is v for v, _ in visited):
+        # Check if already visited using identity + prefix
+        if any(current is v and current_prefix == p for v, p in visited):
             continue
 
         visited.append((current, current_prefix))
@@ -761,7 +761,7 @@ def _find_all_aliases(target_var: Variable, alias_links: list[tuple[Variable, Va
 
         # Find all variables linked FROM current (only parent->child direction)
         for parent, child, mapping_name in alias_links:
-            if parent is current and not any(child is v for v, _ in visited):
+            if parent is current:
                 # When following parent->child link, accumulate the prefix
                 # e.g., if current_prefix is "OpMessage1" and mapping_name is "AckText"
                 # then the new prefix is "OpMessage1.AckText"
@@ -771,6 +771,8 @@ def _find_all_aliases(target_var: Variable, alias_links: list[tuple[Variable, Va
                     new_prefix = current_prefix
                 else:
                     new_prefix = mapping_name
+                if any(child is v and new_prefix == p for v, p in visited):
+                    continue
                 if debug and child.name.lower() == "messagesetup" and not mapping_name:
                     log.debug(f"DEBUG: MessageSetup alias with EMPTY mapping_name from {parent.name}(id={id(parent)})")
                 to_visit.append((child, new_prefix))
@@ -1516,6 +1518,12 @@ class VariablesAnalyzer:
         current: Simple_DataType | str = root_type
 
         for seg in segments:
+            if isinstance(current, str):
+                try:
+                    current = Simple_DataType.from_any(current)
+                except (ValueError, TypeError):
+                    pass
+
             if isinstance(current, Simple_DataType):
                 site = self._site_str()
                 raise ValueError(
@@ -1566,6 +1574,13 @@ class VariablesAnalyzer:
         if isinstance(root_type, Simple_DataType):
             return [()]
 
+        if isinstance(root_type, str):
+            try:
+                if isinstance(Simple_DataType.from_any(root_type), Simple_DataType):
+                    return [()]
+            except (ValueError, TypeError):
+                pass
+
         # Builtin pseudo-type: cannot be expanded, treat as leaf.
         if isinstance(root_type, str) and root_type.casefold() == "anytype":
             return [()]
@@ -1591,6 +1606,12 @@ class VariablesAnalyzer:
                 if type_name.casefold() == "anytype":
                     results.append(prefix)
                     continue
+                try:
+                    if isinstance(Simple_DataType.from_any(type_name), Simple_DataType):
+                        results.append(prefix)
+                        continue
+                except (ValueError, TypeError):
+                    pass
                 raise ValueError(
                     f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
                     f"uses unknown record datatype {type_name!r}."

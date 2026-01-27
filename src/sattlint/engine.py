@@ -1,7 +1,7 @@
 # main.py
 from pathlib import Path
 from lark import Lark
-from . import constants
+from .grammar import constants
 from .transformer.sl_transformer import SLTransformer
 from .grammar.parser_decode import is_compressed, preprocess_sl_text
 from .models.ast_model import BasePicture, DataType, ModuleTypeDef
@@ -294,7 +294,10 @@ class SattLineProjectLoader(DebugMixin):
         try:
             return path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            return path.read_text(encoding="cp1252")
+            try:
+                return path.read_text(encoding="cp1252")
+            except UnicodeDecodeError:
+                return path.read_text(encoding="latin-1")
 
     def _library_name_for_path(self, code_path: Path) -> str:
         """
@@ -552,7 +555,7 @@ def dump_dependency_graph(project: tuple[BasePicture, ProjectGraph]) -> None:
 
     if graph.moduletype_defs:
         lines.append(f"\nModuleType Definitions: {len(graph.moduletype_defs)}")
-        for (lib_key, name_key), mt in sorted(graph.moduletype_defs.items()):
+        for (_lib_key, _name_key, _file_key), mt in sorted(graph.moduletype_defs.items()):
             display = f"{mt.origin_lib}:{mt.name}" if mt.origin_lib else mt.name
             origin_info = f" (from {mt.origin_lib}/{mt.origin_file})" if mt.origin_lib or mt.origin_file else ""
             lines.append(f"  • {display}{origin_info}")
