@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 from enum import Enum
-from .. import constants as const
+from ..grammar import constants as const
 import textwrap
 
 
@@ -260,6 +260,7 @@ class Simple_DataType(Enum):
     INTEGER = "integer"
     IDENTSTRING = "identstring"
     TAGSTRING = "tagstring"
+    TIME = "time"
     DURATION = "duration"
     LINESTRING = "linestring"
     MAXSTRING = "maxstring"
