@@ -1,7 +1,5 @@
-# sattline_builtins.py
-from dataclasses import dataclass
-from typing import Literal
-"""
+"""SattLine builtin function signatures and metadata.
+
 Abbreviations in this list
 
 PS       allowed in precision scangroup
@@ -24,6 +22,9 @@ WO       labelled for writing and ownership
 RO/WO    labelled for reading, writing and ownership
 NoO      labelled as no ownership
 """
+
+from dataclasses import dataclass
+from typing import Literal
 @dataclass
 class Parameter:
     name: str

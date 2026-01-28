@@ -1,3 +1,5 @@
+"""Batch-parse compressed ABB library files and summarize errors."""
+
 import pathlib
 import sys
 

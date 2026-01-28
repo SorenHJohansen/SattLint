@@ -1,3 +1,5 @@
+"""Transformer unit tests for SFC parsing behavior."""
+
 from lark.lexer import Token
 from lark.tree import Tree
 from typing import Any, cast
@@ -7,8 +9,8 @@ from sattlint.models.ast_model import SFCCodeBlocks
 
 
 def _tok(token_type: str, value: str) -> Token:
-	# Pyright/Pylance has a known bad signature for lark's Token (it treats it like bytes).
-	# Runtime construction is correct; we cast to Any to avoid false-positive type errors.
+	# Pyright/Pylance has a known signature issue for lark's Token (typed like bytes).
+	# Runtime construction is correct; cast to Any to avoid false-positive type errors.
 	return cast(Any, Token)(token_type, value)
 
 

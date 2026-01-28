@@ -1,3 +1,5 @@
+"""Quick parse validation for ABB library samples."""
+
 import pathlib
 import sys
 import signal

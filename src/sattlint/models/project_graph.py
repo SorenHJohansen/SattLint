@@ -1,3 +1,5 @@
+"""Project graph and indexing helpers for SattLine projects."""
+
 from .ast_model import BasePicture, DataType, ModuleTypeDef
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,6 +16,8 @@ class ProjectGraph:
     library_dependencies: dict[str, set[str]] = field(default_factory=dict)
     missing: list[str] = field(default_factory=list)
     ignored_vendor: list[str] = field(default_factory=list)
+    # Track libraries that couldn't be loaded (e.g., proprietary ABB libraries)
+    unavailable_libraries: set[str] = field(default_factory=set)
     source_files: set[Path] = field(default_factory=set)
 
     def add_library_dependencies(self, library_name: str | None, dep_libs: list[str]) -> None:

@@ -1,4 +1,4 @@
-# ast_model.py
+"""AST model definitions and formatting helpers."""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
@@ -15,7 +15,7 @@ def format_list(
 ) -> str:
     if not items:
         return "[]"
-    # Special aligned rendering for Variable lists
+    # Aligned rendering for Variable lists.
     if align_variables and all(isinstance(x, Variable) for x in items):
         # Compute column widths across the list
         name_w = max(len(repr(v.name)) for v in items)
@@ -38,7 +38,7 @@ def format_list(
                 f"Description: {repr(v.description):<{desc_w}}"
             )
         return "[\n" + "\n".join(lines) + "]"
-    # Generic rendering for any other items
+    # Generic rendering for any other items.
     strs = [str(obj) for obj in items]
     if inline_if_singleline and all("\n" not in s for s in strs):
         return "[" + ", ".join(strs) + "]"

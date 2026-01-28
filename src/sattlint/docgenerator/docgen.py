@@ -19,7 +19,7 @@ Typical usage
 from __future__ import annotations
 
 import pathlib
-from typing import Union
+import typing as t
 
 # --------------------------------------------------------------
 # python‑docx imports
@@ -53,7 +53,7 @@ from ..models.ast_model import (
 )
 
 # --------------------------------------------------------------
-# Helper utilities – formatting -----------------------------------------
+# Helper utilities for formatting
 # ----------------------------------------------------------------------
 
 
@@ -71,7 +71,7 @@ def _paragraph(doc: DocClass, text: str, bold: bool = False) -> None:
 def _table(
     doc: DocClass,
     headers: list[str],
-    rows: list[list[Union[str, int, float]]],
+    rows: t.Sequence[t.Sequence[object]],
     col_widths: tuple[int, ...] = (),
 ) -> None:
     """
@@ -360,7 +360,7 @@ def _render_equation(doc: DocClass, eq: Equation, prefix: str = "") -> None:
 # ----------------------------------------------------------------------
 
 
-def generate_docx(root: BasePicture, out_path: Union[str, pathlib.Path]) -> None:
+def generate_docx(root: BasePicture, out_path: str | pathlib.Path) -> None:
     """
     Create a Word document from the given AST root (BasePicture).
 

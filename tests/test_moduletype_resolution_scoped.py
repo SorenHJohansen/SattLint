@@ -1,3 +1,5 @@
+"""Tests for moduletype resolution within library scopes."""
+
 import pytest
 
 from sattlint.analyzers.variables import _resolve_moduletype_def_strict

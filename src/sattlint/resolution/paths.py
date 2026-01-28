@@ -1,3 +1,4 @@
+"""Canonical path and module-segment helpers."""
 from __future__ import annotations
 
 from dataclasses import dataclass

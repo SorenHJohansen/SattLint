@@ -1,10 +1,11 @@
+"""Cache helpers for parsed ASTs and file manifests."""
 from __future__ import annotations
 import hashlib
 import pickle
 from pathlib import Path
 from typing import Iterable
 
-CACHE_VERSION = 2  # bump because format changed
+CACHE_VERSION = 2  # Bump when the cache payload format changes.
 
 
 def compute_cache_key(cfg: dict) -> str:
@@ -18,6 +19,7 @@ def compute_cache_key(cfg: dict) -> str:
         "root",
         "mode",
         "scan_root_only",
+        "fast_cache_validation",
         "program_dir",
         "ABB_lib_dir",
         "other_lib_dirs",
@@ -60,11 +62,14 @@ class ASTCache:
         with self._path(key).open("wb") as f:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-    def validate(self, payload) -> bool:
+    def validate(self, payload, *, fast: bool = False) -> bool:
         if payload.get("version") != CACHE_VERSION:
             return False
 
-        for path_str, (mtime, size) in payload["files"].items():
+        if fast:
+            return "project" in payload
+
+        for path_str, (mtime, size) in payload.get("files", {}).items():
             p = Path(path_str)
             if not p.exists():
                 return False

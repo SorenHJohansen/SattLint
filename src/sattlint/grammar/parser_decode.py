@@ -1,7 +1,7 @@
-# parser_decode.py
+"""Helpers for decoding compressed SattLine text."""
 import re
 
-# Seed mappings from your samples (robust and visible in both forms)
+# Seed mappings from sample files (kept explicit for traceability).
 SEED_MAPPING: dict[str, str] = {
     "#6?": "Invocation",
     "#6=": "IgnoreMaxModule",

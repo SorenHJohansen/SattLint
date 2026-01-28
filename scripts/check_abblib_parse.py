@@ -1,3 +1,5 @@
+"""Parse ABB library files and report failures."""
+
 import pathlib
 import sys
 

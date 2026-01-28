@@ -1,3 +1,5 @@
+"""Grammar and AST key constants used across the parser/transformer."""
+
 DEFAULT_INIT = object()
 
 MODULE_TYPE_SINGLE_MODULE = "SingleModule"

@@ -1,3 +1,5 @@
+"""Tests for canonical path resolution across parameter mappings."""
+
 import pytest
 
 from sattlint import constants as const
