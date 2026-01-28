@@ -1,3 +1,5 @@
+"""Tests for builtin record read/write semantics."""
+
 import pytest
 
 from sattlint import constants as const

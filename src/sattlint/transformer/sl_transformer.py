@@ -1,4 +1,4 @@
-# sl_transformer.py
+"""Lark transformer that builds the SattLine AST."""
 from __future__ import annotations
 from lark import Transformer, Token, Tree
 from typing import Any, Literal, cast

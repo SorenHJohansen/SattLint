@@ -1,3 +1,4 @@
+"""Type graph for record/datatype field resolution."""
 from __future__ import annotations
 
 from dataclasses import dataclass

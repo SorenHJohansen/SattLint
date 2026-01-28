@@ -1,64 +1,50 @@
-#!/usr/bin/env python3
-"""
-Simple test to verify the field validation fix.
-"""
-import sys
-from pathlib import Path
+"""Ad-hoc validation for the field validation fix."""
 
-# Test that the module loads without syntax errors
-try:
-    from src.sattlint.analyzers.variables import analyze_module_localvar_fields
-    print("✓ Module loaded successfully")
-except Exception as e:
-    print(f"✗ Module load failed: {e}")
-    sys.exit(1)
+from sattlint.analyzers.variables import VariablesAnalyzer
+from sattlint.models.ast_model import BasePicture, DataType, ModuleHeader, Variable, Simple_DataType
 
-# Test the field_exists_in_datatype helper
-print("\nTesting field_exists_in_datatype helper...")
 
-# Create a mock BasePicture with datatypes
-from src.sattlint.models.ast_model import BasePicture, DataType, Variable, Simple_DataType
+def _bp_with_datatypes() -> BasePicture:
+    appl_dv_type = DataType(
+        name="ApplDvType",
+        description="Application Dv Type",
+        datecode=None,
+        var_list=[
+            Variable(name="SomeField", datatype=Simple_DataType.REAL),
+            Variable(name="OtherField", datatype=Simple_DataType.INTEGER),
+        ],
+    )
 
-# Create ApplDvType (should NOT have APPL field)
-appl_dv_type = DataType(
-    name="ApplDvType",
-    description="Application Dv Type",
-    datecode=None,
-    var_list=[
-        Variable(name="SomeField", datatype=Simple_DataType.REAL),
-        Variable(name="OtherField", datatype=Simple_DataType.INTEGER),
-    ]
-)
+    mes_batch_type = DataType(
+        name="MESBatchCtrlType",
+        description="MES Batch Control Type",
+        datecode=None,
+        var_list=[
+            Variable(name="APPL", datatype="ApplType"),
+            Variable(name="BatchID", datatype=Simple_DataType.INTEGER),
+        ],
+    )
 
-# Create MESBatchCtrlType (DOES have APPL field)
-mes_batch_type = DataType(
-    name="MESBatchCtrlType",
-    description="MES Batch Control Type",
-    datecode=None,
-    var_list=[
-        Variable(name="APPL", datatype="ApplType"),
-        Variable(name="BatchID", datatype=Simple_DataType.INTEGER),
-    ]
-)
+    appl_type = DataType(
+        name="ApplType",
+        description="Application Type",
+        datecode=None,
+        var_list=[
+            Variable(name="Abort", datatype=Simple_DataType.BOOLEAN),
+        ],
+    )
 
-# Create ApplType (has Abort field)
-appl_type = DataType(
-    name="ApplType",
-    description="Application Type",
-    datecode=None,
-    var_list=[
-        Variable(name="Abort", datatype=Simple_DataType.BOOLEAN),
-    ]
-)
+    return BasePicture(
+        header=ModuleHeader(name="BasePicture", invoke_coord=(0, 0, 0, 0, 0)),
+        datatype_defs=[appl_dv_type, mes_batch_type, appl_type],
+    )
 
-bp = BasePicture(
-    header=None,
-    datatype_defs=[appl_dv_type, mes_batch_type, appl_type],
-)
 
-# Now test: APPL should NOT exist in ApplDvType
-print(f"  ApplDvType has APPL field? Expected: False")
-print(f"  (This is what was causing the bug)")
+def test_type_graph_does_not_invent_fields():
+    bp = _bp_with_datatypes()
+    analyzer = VariablesAnalyzer(bp, debug=False, fail_loudly=False)
+    tg = analyzer.type_graph
 
-print("\n✓ All imports and setup successful!")
-print("\nTo fully test, run the analyze_module_localvar_fields function with your actual project data.")
+    assert tg.has_record("ApplDvType")
+    assert tg.field("ApplDvType", "APPL") is None
+    assert tg.field("MESBatchCtrlType", "APPL") is not None

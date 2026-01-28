@@ -1,0 +1,12 @@
+{
+    "include": [
+        "src"
+    ],
+    "exclude": [
+        "**/build",
+        "**/htmlcov",
+        "**/dumps",
+        "**/.venv",
+        "**/__pycache__"
+    ]
+}

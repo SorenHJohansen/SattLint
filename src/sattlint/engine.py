@@ -1,4 +1,4 @@
-# main.py
+"""Parsing and project-loading engine for SattLine sources."""
 from pathlib import Path
 from lark import Lark
 from .grammar import constants
@@ -10,7 +10,7 @@ from enum import Enum
 from .models.project_graph import ProjectGraph
 import logging
 
-# Create a module-level logger consistent with cli.py
+# Create a module-level logger consistent with the CLI output.
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(message)s",  # Just the message, no prefixes
@@ -410,9 +410,11 @@ class SattLineProjectLoader(DebugMixin):
         dep_libs: list[str] = []
         for dep in dep_names:
             dep_bp = graph.ast_by_name.get(dep)
-            if dep_bp and getattr(dep_bp, "origin_lib", None):
-                dep_libs.append(dep_bp.origin_lib)
-                continue
+            if dep_bp:
+                origin_lib = getattr(dep_bp, "origin_lib", None)
+                if origin_lib:
+                    dep_libs.append(origin_lib)
+                    continue
             dep_code = self._find_code(dep)
             if dep_code is not None:
                 dep_libs.append(self._library_name_for_path(dep_code))
@@ -442,11 +444,15 @@ class SattLineProjectLoader(DebugMixin):
             v_deps = self._find_vendor_deps(name)
             if v_code or v_deps:
                 graph.ignored_vendor.append(f"{name} (vendor: {v_code or v_deps})")
+                # Track as unavailable library for better error messages
+                graph.unavailable_libraries.add(name.lower())
             else:
                 msg = f"Missing code file for '{name}' ({self.mode.value})"
                 if strict:
                     raise FileNotFoundError(msg)
                 graph.missing.append(msg)
+                # Track as unavailable library
+                graph.unavailable_libraries.add(name.lower())
 
         self._stack.remove(key)
         self._visited.add(key)

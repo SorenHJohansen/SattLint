@@ -1,4 +1,4 @@
-# analyzers/module_comparison.py
+"""Module comparison and debug helpers for analyzer workflows."""
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, cast

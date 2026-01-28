@@ -1,3 +1,5 @@
+"""Tests for strict module-path local variable analysis."""
+
 import pytest
 
 from sattlint import constants as const

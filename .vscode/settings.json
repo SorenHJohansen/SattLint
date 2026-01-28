@@ -2,14 +2,22 @@
     "chat.tools.terminal.autoApprove": {
         "&": true
     },
-    "python.defaultInterpreterPath": "./.venv/bin/python",
+    "python.defaultInterpreterPath": "./.venv/Scripts/python.exe",
     "python.terminal.activateEnvironment": true,
+    "python.analysis.exclude": [
+        "**/build",
+        "**/htmlcov",
+        "**/dumps",
+        "**/__pycache__"
+    ],
     "python.linting.enabled": true,
     "python.linting.ruffEnabled": true,
     "python.linting.mypyEnabled": true,
     "python.formatting.provider": "black",
     "python.testing.pytestEnabled": true,
-    "python.testing.pytestArgs": ["tests"],
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
     "python.testing.autoTestDiscoverOnSaveEnabled": true,
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,

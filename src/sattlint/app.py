@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""CLI entry points and interactive helpers for SattLint."""
 from __future__ import annotations
 
 import logging
@@ -22,6 +23,7 @@ DEFAULT_CONFIG = {
     "root": "",
     "mode": "official",
     "scan_root_only": False,
+    "fast_cache_validation": True,
     "debug": False,
     "program_dir": "",
     "ABB_lib_dir": "",
@@ -89,6 +91,7 @@ def self_check(cfg: dict) -> bool:
         "root",
         "mode",
         "scan_root_only",
+        "fast_cache_validation",
         "debug",
         "program_dir",
         "ABB_lib_dir",
@@ -208,6 +211,7 @@ def show_config(cfg: dict):
         "root",
         "mode",
         "scan_root_only",
+        "fast_cache_validation",
         "debug",
         "program_dir",
         "ABB_lib_dir",
@@ -229,7 +233,7 @@ def load_project(cfg: dict):
     key = compute_cache_key(cfg)  # now only hashes config, not files
     cached = cache.load(key)
 
-    if cached and cache.validate(cached):
+    if cached and cache.validate(cached, fast=cfg.get("fast_cache_validation", False)):
         log.debug("✔ Using cached AST")
         return cached["project"]
 
@@ -278,9 +282,10 @@ def force_refresh_ast(cfg: dict):
 
 
 def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
-    project_bp, _ = load_project(cfg)
+    project_bp, graph = load_project(cfg)
 
-    report = analyze_variables(project_bp, debug=cfg.get("debug", False))
+    report = analyze_variables(project_bp, debug=cfg.get("debug", False),
+                               unavailable_libraries=getattr(graph, 'unavailable_libraries', set()))
 
     if kinds is not None:
         report = filter_variable_report(report, kinds)
@@ -482,7 +487,8 @@ b) Back
         elif c == "3" and confirm("Dump dependency graph?"):
             engine_module.dump_dependency_graph(project)
         elif c == "4" and confirm("Dump variable report?"):
-            print(analyze_variables(project_bp, debug=cfg.get("debug", False)).summary())
+            print(analyze_variables(project_bp, debug=cfg.get("debug", False),
+                                    unavailable_libraries=getattr(graph, 'unavailable_libraries', set())).summary())
         else:
             print("Invalid choice.")
 
@@ -502,11 +508,12 @@ def config_menu(cfg: dict) -> bool:
 1) Change Root program/library to analyze
 2) Toggle Mode (official/draft)
 3) Toggle scan_root_only
-4) Toggle debug
-5) Change Program_dir
-6) Change ABB_lib_dir
-7) Add/remove other_lib_dirs
-8) Save config
+4) Toggle fast_cache_validation
+5) Toggle debug
+6) Change Program_dir
+7) Change ABB_lib_dir
+8) Add/remove other_lib_dirs
+9) Save config
 b) Back
 """)
         c = input("> ").strip().lower()
@@ -535,23 +542,28 @@ b) Back
                 dirty = True
 
         elif c == "4":
+            if confirm("Toggle fast_cache_validation?"):
+                cfg["fast_cache_validation"] = not cfg["fast_cache_validation"]
+                dirty = True
+
+        elif c == "5":
             if confirm("Toggle debug?"):
                 cfg["debug"] = not cfg["debug"]
                 dirty = True
 
-        elif c == "5":
+        elif c == "6":
             new = prompt("New program_dir", cfg["program_dir"])
             if confirm("Change program_dir?"):
                 cfg["program_dir"] = new
                 dirty = True
 
-        elif c == "6":
+        elif c == "7":
             new = prompt("New ABB_lib_dir", cfg["ABB_lib_dir"])
             if confirm("Change ABB_lib_dir?"):
                 cfg["ABB_lib_dir"] = new
                 dirty = True
 
-        elif c == "7":
+        elif c == "8":
             libs = cfg["other_lib_dirs"]
             print("\nCurrent other_lib_dirs:")
             for i, p in enumerate(libs, 1):
@@ -564,7 +576,7 @@ b) Back
                 if 0 <= idx < len(libs):
                     libs.pop(idx)
                     dirty = True
-        elif c == "8":
+        elif c == "9":
             if confirm("Save config to disk?"):
                 save_config(CONFIG_PATH, cfg)
                 dirty = False

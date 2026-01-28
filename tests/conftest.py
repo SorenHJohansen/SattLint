@@ -1,4 +1,4 @@
-# tests/conftest.py
+"""Shared pytest fixtures and test utilities."""
 import sys
 from pathlib import Path
 
@@ -22,13 +22,13 @@ def sample_sattline_dir():
     return Path(__file__).parent / "fixtures" / "sample_sattline"
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def parser():
     """Configured Lark parser for SattLine"""
     return create_sl_parser()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def transformer():
     """SLTransformer instance"""
     return SLTransformer()
