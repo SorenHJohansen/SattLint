@@ -13,8 +13,13 @@ from .analyzers.variables import (
     IssueKind,
     filter_variable_report,
     analyze_variables,
-    analyze_datatype_usage,
     debug_variable_usage,
+)
+from .analyzers.modules import (
+    debug_module_structure,
+    analyze_module_duplicates,
+    find_modules_by_name,
+    compare_modules,
 )
 from .cache import ASTCache, compute_cache_key
 from .engine import GRAMMAR_PATH
@@ -38,9 +43,8 @@ VARIABLE_ANALYSES = {
     "4": ("Written but never read", {IssueKind.NEVER_READ}),
     "5": ("String mapping type mismatches", {IssueKind.STRING_MAPPING_MISMATCH}),
     "6": ("Duplicated complex datatypes", {IssueKind.DATATYPE_DUPLICATION}),
-    "7": ("Datatype field usage analysis", "datatype_usage"),
-    "8": ("Debug variable usage", "debug_usage"),
-    "9": ("Module local variable field analysis", "module_localvar"),
+    "7": ("Variable usage (fields + locations)", "variable_usage"),
+    "8": ("Module local variable field analysis", "module_localvar"),
 }
 
 
@@ -226,15 +230,15 @@ def show_config(cfg: dict):
 # ----------------------------
 # Analysis & dumps
 # ----------------------------
-def load_project(cfg: dict):
+def load_project(cfg: dict, *, use_cache: bool = True):
     cache_dir = CONFIG_PATH.parent / "cache"
     cache = ASTCache(cache_dir)
 
     key = compute_cache_key(cfg)  # now only hashes config, not files
-    cached = cache.load(key)
+    cached = cache.load(key) if use_cache else None
 
-    if cached and cache.validate(cached, fast=cfg.get("fast_cache_validation", False)):
-        log.debug("✔ Using cached AST")
+    if cached:
+        log.debug("✔ Using cached AST (not revalidated)")
         return cached["project"]
 
     loader = engine_module.SattLineProjectLoader(
@@ -278,7 +282,34 @@ def force_refresh_ast(cfg: dict):
     key = compute_cache_key(cfg)
     cache.clear(key)
     log.debug("✔ AST cache cleared")
-    return load_project(cfg)
+    return load_project(cfg, use_cache=False)
+
+
+def ensure_ast_cache(cfg: dict) -> bool:
+    """Check AST cache validity and rebuild if needed with user feedback."""
+    print("\n⏳ Checking AST cache...")
+    cache_dir = CONFIG_PATH.parent / "cache"
+    cache = ASTCache(cache_dir)
+    key = compute_cache_key(cfg)
+    cached = cache.load(key)
+
+    fast = cfg.get("fast_cache_validation", False)
+    if cached and cache.validate(cached, fast=fast):
+        print("✔ AST cache OK")
+        return True
+
+    if cached:
+        print("⚠ AST cache stale; rebuilding (this may take a while)...")
+    else:
+        print("⚠ AST cache missing; building (this may take a while)...")
+
+    try:
+        load_project(cfg, use_cache=False)
+        print("✔ AST cache updated")
+        return True
+    except Exception as exc:
+        print(f"❌ Failed to build AST cache: {exc}")
+        return False
 
 
 def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
@@ -294,60 +325,26 @@ def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
     pause()
 
 
-def run_datatype_usage_analysis(cfg: dict):
-    """Interactive datatype usage analysis with name selection."""
-    project_bp, _ = load_project(cfg)
-
-    print("\n--- Datatype Field Usage Analysis ---")
-    print("Enter the variable name to analyze:")
-    var_name = input("> ").strip()
-
-    if not var_name:
-        print("❌ No variable name provided")
-        pause()
-        return
-
-    # Import the analysis function
-    from .analyzers.variables import analyze_datatype_usage
-
-    try:
-        report = analyze_datatype_usage(project_bp, var_name, debug=cfg.get("debug", False))
-        print("\n" + report)
-    except Exception as e:
-        print(f"❌ Error during analysis: {e}")
-
-    pause()
-
-
 def variable_analysis_menu(cfg: dict):
     while True:
         clear_screen()
         print("\n--- Variable analyses ---")
         for k, (name, _) in VARIABLE_ANALYSES.items():
             print(f"{k}) {name}")
-        print("f) Force refresh cached AST")
         print("b) Back")
+        print("q) Quit")
 
         c = input("> ").strip().lower()
         if c == "b":
             return
-
-        if c == "f":
-            if confirm("Force refresh cached AST?"):
-                force_refresh_ast(cfg)
-                print("✔ AST cache refreshed")
-                pause()
-            continue
+        if c == "q":
+            sys.exit(0)
 
         if c in VARIABLE_ANALYSES:
             name, kinds = VARIABLE_ANALYSES[c]
 
-            # Special handling for datatype usage analysis
-            if kinds == "datatype_usage":
-                if confirm(f"Run '{name}'?"):
-                    run_datatype_usage_analysis(cfg)
-            # Special handling for debug usage
-            elif kinds == "debug_usage":
+            # Special handling for variable usage analysis
+            if kinds == "variable_usage":
                 if confirm(f"Run '{name}'?"):
                     run_debug_variable_usage(cfg)
             # NEW: Special handling for module interface analysis
@@ -358,6 +355,188 @@ def variable_analysis_menu(cfg: dict):
             elif confirm(f"Run '{name}'?"):
                 # kinds is either a set[IssueKind] or None at this point
                 run_variable_analysis(cfg, kinds if isinstance(kinds, (set, type(None))) else None)
+        else:
+            print("Invalid choice.")
+            pause()
+
+
+def module_analysis_menu(cfg: dict):
+    while True:
+        clear_screen()
+        print("\n--- Module analyses ---")
+        print("1) Compare module variants by name")
+        print("2) List module instances by name")
+        print("3) Debug module tree structure")
+        print("b) Back")
+        print("q) Quit")
+
+        c = input("> ").strip().lower()
+        if c == "b":
+            return
+        if c == "q":
+            sys.exit(0)
+
+        if c == "1":
+            if confirm("Compare module variants by name?"):
+                run_module_duplicates_analysis(cfg)
+        elif c == "2":
+            if confirm("List module instances by name?"):
+                run_module_find_by_name(cfg)
+        elif c == "3":
+            if confirm("Debug module tree structure?"):
+                run_module_tree_debug(cfg)
+        else:
+            print("Invalid choice.")
+            pause()
+
+
+def run_module_duplicates_analysis(cfg: dict):
+    project_bp, _ = load_project(cfg)
+
+    print("\n--- Compare Module Variants ---")
+    print("Enter module name(s) to compare (comma-separated):")
+    raw_names = input("> ").strip()
+    module_names = [name.strip() for name in raw_names.split(",") if name.strip()]
+
+    if not module_names:
+        print("❌ No module name provided")
+        pause()
+        return
+
+    for module_name in module_names:
+        try:
+            matches = find_modules_by_name(
+                project_bp, module_name, debug=cfg.get("debug", False)
+            )
+            if not matches:
+                print(f"\n⚠ No modules found with name {module_name!r}.")
+                continue
+
+            print(f"\nFound {len(matches)} instance(s) for {module_name!r}:")
+            for idx, (path, module) in enumerate(matches, 1):
+                datecode = getattr(module, "datecode", None)
+                datecode_txt = f" (DateCode: {datecode})" if datecode else ""
+                print(f"  {idx}) {' -> '.join(path)}{datecode_txt}")
+
+            print("\nSelect instances to compare (e.g., 6,7).")
+            print("Press Enter to compare all instances.")
+            selection = input("> ").strip()
+
+            if selection:
+                indices = _parse_index_selection(selection, len(matches))
+                if len(indices) < 2:
+                    print("⚠ Need at least two instances to compare; skipping.")
+                    continue
+                selected = [matches[i - 1] for i in indices]
+                result = compare_modules(selected)
+            else:
+                result = analyze_module_duplicates(
+                    project_bp, module_name, debug=cfg.get("debug", False)
+                )
+
+            print("\n" + result.summary())
+        except Exception as e:
+            print(f"❌ Error during analysis for {module_name!r}: {e}")
+
+    pause()
+
+
+def run_module_find_by_name(cfg: dict):
+    project_bp, _ = load_project(cfg)
+
+    print("\n--- Find Module Instances ---")
+    print("Enter module name(s) to search for (comma-separated):")
+    raw_names = input("> ").strip()
+    module_names = [name.strip() for name in raw_names.split(",") if name.strip()]
+
+    if not module_names:
+        print("❌ No module name provided")
+        pause()
+        return
+
+    try:
+        for module_name in module_names:
+            matches = find_modules_by_name(
+                project_bp, module_name, debug=cfg.get("debug", False)
+            )
+            if not matches:
+                print(f"\nNo modules found with name {module_name!r}.")
+                continue
+            print(f"\nFound {len(matches)} module instance(s) for {module_name!r}:")
+            for path, module in matches:
+                datecode = getattr(module, "datecode", None)
+                datecode_txt = f" (DateCode: {datecode})" if datecode else ""
+                print(f"  - {' -> '.join(path)}{datecode_txt}")
+    except Exception as e:
+        print(f"❌ Error during search: {e}")
+
+    pause()
+
+
+def _parse_index_selection(selection: str, max_index: int) -> list[int]:
+    """Parse a comma/whitespace-separated selection of indices and ranges."""
+    tokens = [t.strip() for t in selection.replace(" ", ",").split(",") if t.strip()]
+    indices: set[int] = set()
+
+    for token in tokens:
+        if "-" in token:
+            parts = [p.strip() for p in token.split("-", 1)]
+            if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+                continue
+            start = int(parts[0])
+            end = int(parts[1])
+            if start > end:
+                start, end = end, start
+            for i in range(start, end + 1):
+                if 1 <= i <= max_index:
+                    indices.add(i)
+        else:
+            if token.isdigit():
+                idx = int(token)
+                if 1 <= idx <= max_index:
+                    indices.add(idx)
+
+    return sorted(indices)
+
+
+def run_module_tree_debug(cfg: dict):
+    project_bp, _ = load_project(cfg)
+
+    print("\n--- Debug Module Tree Structure ---")
+    max_depth_txt = prompt("Max depth", "10")
+    try:
+        max_depth = int(max_depth_txt)
+    except ValueError:
+        print("❌ Invalid depth; using default 10")
+        max_depth = 10
+
+    try:
+        debug_module_structure(project_bp, max_depth=max_depth)
+    except Exception as e:
+        print(f"❌ Error during debug: {e}")
+
+    pause()
+
+
+def run_analysis_menu(cfg: dict):
+    while True:
+        clear_screen()
+        print("\n--- Run analysis ---")
+        print("1) Variable analyses")
+        print("2) Module analyses")
+        print("b) Back")
+        print("q) Quit")
+
+        c = input("> ").strip().lower()
+        if c == "b":
+            return
+        if c == "q":
+            sys.exit(0)
+
+        if c == "1":
+            variable_analysis_menu(cfg)
+        elif c == "2":
+            module_analysis_menu(cfg)
         else:
             print("Invalid choice.")
             pause()
@@ -408,8 +587,8 @@ def run_debug_variable_usage(cfg: dict):
     """Interactive debug for specific variable usage."""
     project_bp, _ = load_project(cfg)
 
-    print("\n--- Debug Variable Usage ---")
-    print("Enter the variable name to debug:")
+    print("\n--- Variable Usage (Fields + Locations) ---")
+    print("Enter the variable name to analyze:")
     var_name = input("> ").strip()
 
     if not var_name:
@@ -441,9 +620,7 @@ def run_advanced_datatype_analysis(cfg: dict):
     if choice == "1":
         var_name = input("Enter variable name: ").strip()
         if var_name:
-            from .analyzers.variables import analyze_datatype_usage
-
-            report = analyze_datatype_usage(project_bp, var_name, debug=cfg.get("debug", False))
+            report = debug_variable_usage(project_bp, var_name, debug=cfg.get("debug", False))
             print("\n" + report)
 
     elif choice == "2":
@@ -472,10 +649,13 @@ def dump_menu(cfg: dict):
 3) Dump dependency graph
 4) Dump variable report
 b) Back
+q) Quit
 """)
         c = input("> ").strip().lower()
         if c == "b":
             return
+        if c == "q":
+            sys.exit(0)
 
         project_bp, graph = load_project(cfg)
         project = (project_bp, graph)
@@ -515,11 +695,17 @@ def config_menu(cfg: dict) -> bool:
 8) Add/remove other_lib_dirs
 9) Save config
 b) Back
+q) Quit
 """)
         c = input("> ").strip().lower()
 
         if c == "b":
             return dirty
+        if c == "q":
+            if dirty and confirm("Unsaved config changes. Save before quitting?"):
+                save_config(CONFIG_PATH, cfg)
+            print("Bye.")
+            sys.exit(0)
 
         elif c == "1":
             new = prompt("New root program/library", cfg["root"])
@@ -594,9 +780,11 @@ def main():
             "⚠ Default config created. Please edit configuration before running analysis."
         )
         pause()
-    elif not self_check(cfg):
-        if not confirm("Self-check failed. Continue?"):
-            return
+    else:
+        if not self_check(cfg):
+            if not confirm("Self-check failed. Continue?"):
+                return
+        ensure_ast_cache(cfg)
     dirty = False
 
     while True:
@@ -618,12 +806,13 @@ How to use SattLint
 2) Dump outputs
 3) Edit config
 4) Self-check diagnostics
+5) Force refresh cached AST
 q) Quit
 """)
         c = input("> ").strip().lower()
 
         if c == "1":
-            variable_analysis_menu(cfg)
+            run_analysis_menu(cfg)
 
         elif c == "2":
             dump_menu(cfg)
@@ -635,6 +824,12 @@ q) Quit
             clear_screen()
             self_check(cfg)
             pause()
+
+        elif c == "5":
+            if confirm("Force refresh cached AST?"):
+                force_refresh_ast(cfg)
+                print("✔ AST cache refreshed")
+                pause()
 
         elif c == "q":
             if dirty and confirm("Unsaved config changes. Save before quitting?"):
