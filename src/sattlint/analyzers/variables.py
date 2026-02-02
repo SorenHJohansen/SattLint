@@ -93,6 +93,25 @@ class ScopeContext:
 
         return None, field_path, self.module_path, self.display_module_path
 
+    def resolve_global_name(self, base_name: str) -> tuple[Variable | None, list[str], list[str]]:
+        """Resolve a GLOBAL-mapped name by walking up scopes (env only).
+
+        GLOBAL lookup ignores parameter mappings and searches localvariables
+        and moduleparameters from the current scope up to BasePicture.
+        """
+        if not base_name:
+            return None, self.module_path, self.display_module_path
+
+        key = base_name.lower()
+        var = self.env.get(key)
+        if var is not None:
+            return var, self.module_path, self.display_module_path
+
+        if self.parent_context:
+            return self.parent_context.resolve_global_name(base_name)
+
+        return None, self.module_path, self.display_module_path
+
 
 class IssueKind(Enum):
     UNUSED = "unused"
@@ -1141,7 +1160,8 @@ class VariablesAnalyzer:
     """
     Walks the AST and marks Variable.read / Variable.written via Variable.mark_read/mark_written [1][3].
     Propagates usage through ParameterMappings into child modules.
-    GLOBAL mapping always counts the mapped source variable as used.
+    GLOBAL mapping resolves by walking up the scope chain and only counts
+    as used when the mapped parameter is read/written in the child.
     External ModuleTypeInstance mappings are considered used.
     """
 
@@ -2473,6 +2493,7 @@ class VariablesAnalyzer:
                         parent_env=parent_context.env,
                         parent_path=parent_path,
                         external_typename=None,
+                        parent_context=parent_context,
                     )
 
                 # Check string type mismatches (unchanged)
@@ -2577,6 +2598,7 @@ class VariablesAnalyzer:
                         parent_env=parent_context.env,
                         parent_path=parent_path,
                         external_typename=(child.moduletype_name if external else None),
+                        parent_context=parent_context,
                     )
 
                 if not external:
@@ -2849,16 +2871,80 @@ class VariablesAnalyzer:
         parent_env: dict[str, Variable],
         parent_path: list[str],
         external_typename: str | None,
+        parent_context: ScopeContext | None = None,
     ) -> None:
-        src_base = self._varname_base(pm.source)
         target_name = self._varname_base(pm.target)
 
-        # GLOBAL means "used" at the global scope
+        # GLOBAL: resolve by walking up scopes, and only mark if parameter is used
         if pm.is_source_global:
-            var = self._lookup_global_variable(src_base)
-            if var is not None:
-                var.mark_read(parent_path)
+            full_source = None
+            if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
+                full_source = pm.source[const.KEY_VAR_NAME]
+            elif isinstance(pm.source, str):
+                full_source = pm.source
+
+            if not full_source:
+                return
+
+            source_parts = full_source.split(".", 1)
+            source_base = source_parts[0]
+            source_field_path = source_parts[1] if len(source_parts) > 1 else ""
+
+            if parent_context is not None:
+                src_var, _decl_path, _decl_display = parent_context.resolve_global_name(source_base)
+            else:
+                src_var = parent_env.get(source_base.lower())
+                if src_var is None:
+                    src_var = self._lookup_global_variable(source_base)
+
+            if src_var is None:
+                return
+
+            # External types: conservatively treat mapping as read+written
+            if external_typename is not None:
+                display_path: list[str] = []
+                if parent_path:
+                    display_path.append(decorate_segment(parent_path[0], "BP"))
+                    display_path.extend(parent_path[1:])
+                use_context = ScopeContext(
+                    env=parent_env,
+                    param_mappings={},
+                    module_path=parent_path.copy(),
+                    display_module_path=display_path,
+                    parent_context=None,
+                )
+
+                if source_field_path:
+                    src_var.mark_field_read(source_field_path, parent_path)
+                    src_var.mark_field_written(source_field_path, parent_path)
+
+                    cp = self._canonical_path(parent_path, src_var, source_field_path)
+                    self._record_access(AccessKind.READ, cp, use_context, full_source)
+                    self._record_access(AccessKind.WRITE, cp, use_context, full_source)
+                else:
+                    src_var.mark_read(parent_path)
+                    src_var.mark_written(parent_path)
+
+                    cp = self._canonical_path(parent_path, src_var, "")
+                    self._record_access(AccessKind.READ, cp, use_context, full_source)
+                    self._record_access(AccessKind.WRITE, cp, use_context, full_source)
+                return
+
+            if target_name is not None:
+                if child_used_reads is not None and target_name in child_used_reads:
+                    if source_field_path:
+                        src_var.mark_field_read(source_field_path, parent_path)
+                    else:
+                        src_var.mark_read(parent_path)
+
+                if child_used_writes is not None and target_name in child_used_writes:
+                    if source_field_path:
+                        src_var.mark_field_written(source_field_path, parent_path)
+                    else:
+                        src_var.mark_written(parent_path)
             return
+
+        src_base = self._varname_base(pm.source)
 
         # **CHANGED**: Extract full source path with fields
         if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
