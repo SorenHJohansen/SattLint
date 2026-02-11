@@ -263,6 +263,95 @@ class VariablesReport:
         return "\n".join(lines)
 
 
+@dataclass(frozen=True)
+class MMSInterfaceHit:
+    module_path: list[str]
+    moduletype_name: str
+    parameter_name: str
+    source_variable: str
+
+
+@dataclass
+class MMSInterfaceReport:
+    basepicture_name: str
+    hits: list[MMSInterfaceHit]
+
+    @property
+    def unique_variables(self) -> set[str]:
+        return {h.source_variable.casefold() for h in self.hits}
+
+    def summary(self) -> str:
+        if not self.hits:
+            return (
+                f"No MMSWriteVar/MMSReadVar interface mappings found in {self.basepicture_name}"
+            )
+
+        lines = [
+            f"MMS interface mappings in {self.basepicture_name}:",
+            f"Total mappings: {len(self.hits)}",
+            f"Unique variables: {len(self.unique_variables)}",
+            "",
+        ]
+
+        for hit in sorted(self.hits, key=lambda h: (".".join(h.module_path), h.parameter_name.casefold(), h.source_variable.casefold())):
+            location = " -> ".join(hit.module_path)
+            lines.append(
+                f"  - {location} | {hit.moduletype_name}.{hit.parameter_name} => {hit.source_variable}"
+            )
+
+        return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class ICFEntry:
+    file_path: Path
+    line_no: int
+    section: str | None
+    key: str
+    value: str
+
+
+@dataclass(frozen=True)
+class ICFValidationIssue:
+    entry: ICFEntry
+    reason: str
+    detail: str | None = None
+
+
+@dataclass
+class ICFValidationReport:
+    icf_file: Path
+    program_name: str
+    total_entries: int
+    validated_entries: int
+    valid_entries: int
+    skipped_entries: int
+    issues: list[ICFValidationIssue]
+
+    def summary(self) -> str:
+        lines = [
+            f"ICF validation for {self.icf_file.name} (program {self.program_name}):",
+            f"  Entries: {self.total_entries}",
+            f"  Validated: {self.validated_entries}",
+            f"  Valid: {self.valid_entries}",
+            f"  Skipped: {self.skipped_entries}",
+            f"  Invalid: {len(self.issues)}",
+        ]
+
+        if self.issues:
+            lines.append("")
+            lines.append("Invalid entries:")
+            for issue in self.issues:
+                location = f"{issue.entry.file_path.name}:{issue.entry.line_no}"
+                section = f" [{issue.entry.section}]" if issue.entry.section else ""
+                detail = f" ({issue.detail})" if issue.detail else ""
+                lines.append(
+                    f"  - {location}{section} {issue.entry.key} => {issue.entry.value}: {issue.reason}{detail}"
+                )
+
+        return "\n".join(lines)
+
+
 def analyze_variables(
     base_picture: BasePicture,
     debug: bool = False,
@@ -284,6 +373,327 @@ def analyze_variables(
     )
     issues = analyzer.run()
     return VariablesReport(basepicture_name=base_picture.header.name, issues=issues)
+
+
+def analyze_mms_interface_variables(
+    base_picture: BasePicture,
+    debug: bool = False,
+) -> MMSInterfaceReport:
+    """
+    Find variables mapped into MMSWriteVar.WriteData or MMSReadVar.Outputvariable.
+
+    This scans module instances and collects the source variables used in the
+    parameter mapping for those module types.
+    """
+    target_types = {
+        "mmswritevar": {"writedata"},
+        "mmsreadvar": {"outputvariable"},
+    }
+
+    hits: list[MMSInterfaceHit] = []
+
+    def _walk_modules(
+        modules: list[SingleModule | FrameModule | ModuleTypeInstance] | None,
+        path: list[str],
+    ) -> None:
+        for mod in modules or []:
+            if isinstance(mod, SingleModule):
+                next_path = path + [mod.header.name]
+                _walk_modules(mod.submodules, next_path)
+            elif isinstance(mod, FrameModule):
+                next_path = path + [mod.header.name]
+                _walk_modules(mod.submodules, next_path)
+            elif isinstance(mod, ModuleTypeInstance):
+                next_path = path + [mod.header.name]
+                mt_name = mod.moduletype_name or ""
+                mt_key = mt_name.casefold()
+
+                if mt_key in target_types:
+                    param_targets = target_types[mt_key]
+                    for pm in mod.parametermappings or []:
+                        target_name = _varname_base(pm.target)
+                        if not target_name or target_name not in param_targets:
+                            continue
+
+                        if pm.is_source_global:
+                            if debug:
+                                log.debug(
+                                    "Skipping GLOBAL mapping for %s.%s at %s",
+                                    mt_name,
+                                    target_name,
+                                    " -> ".join(next_path),
+                                )
+                            continue
+
+                        source_full = _varname_full(pm.source)
+                        if not source_full:
+                            if debug and pm.source_literal is not None:
+                                log.debug(
+                                    "Skipping literal mapping for %s.%s at %s: %r",
+                                    mt_name,
+                                    target_name,
+                                    " -> ".join(next_path),
+                                    pm.source_literal,
+                                )
+                            continue
+
+                        hits.append(
+                            MMSInterfaceHit(
+                                module_path=next_path,
+                                moduletype_name=mt_name,
+                                parameter_name=target_name,
+                                source_variable=source_full,
+                            )
+                        )
+
+    _walk_modules(base_picture.submodules, [base_picture.header.name])
+
+    return MMSInterfaceReport(basepicture_name=base_picture.header.name, hits=hits)
+
+
+_ICF_REF_RE = re.compile(r"(?:^|.*?)(?:[A-Za-z]::)?(?P<program>[^:]+):(?P<path>.+)$")
+
+
+def parse_icf_file(file_path: Path) -> list[ICFEntry]:
+    """Parse a .icf file into key/value entries with section and line number info."""
+    entries: list[ICFEntry] = []
+    section: str | None = None
+
+    raw_bytes = file_path.read_bytes()
+    try:
+        text = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            text = raw_bytes.decode("cp1252")
+        except UnicodeDecodeError:
+            text = raw_bytes.decode("latin-1", errors="replace")
+
+    for idx, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith(";") or line.startswith("#"):
+            continue
+
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip() or None
+            continue
+
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        entries.append(
+            ICFEntry(
+                file_path=file_path,
+                line_no=idx,
+                section=section,
+                key=key.strip(),
+                value=value.strip(),
+            )
+        )
+
+    return entries
+
+
+def _extract_icf_sattline_ref(value: str) -> tuple[str | None, str | None]:
+    """Extract (program, path) from an ICF value string."""
+    match = _ICF_REF_RE.match(value.strip())
+    if not match:
+        return None, None
+    program = match.group("program").strip()
+    path = match.group("path").strip()
+    if not program or not path:
+        return None, None
+    return program, path
+
+
+def _find_variable_in_module_scope(
+    module_def: Any,
+    base_picture: BasePicture,
+    var_name: str,
+    moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+) -> Variable | None:
+    var_key = var_name.casefold()
+
+    if isinstance(module_def, SingleModule):
+        for v in module_def.localvariables or []:
+            if v.name.casefold() == var_key:
+                return v
+        for v in module_def.moduleparameters or []:
+            if v.name.casefold() == var_key:
+                return v
+        return None
+
+    if isinstance(module_def, ModuleTypeInstance):
+        mt: ModuleTypeDef | None = None
+        if moduletype_index is not None:
+            matches = moduletype_index.get(module_def.moduletype_name.casefold(), [])
+            if len(matches) == 1:
+                mt = matches[0]
+        if mt is None:
+            try:
+                mt = _resolve_moduletype_def_strict(base_picture, module_def.moduletype_name)
+            except ValueError:
+                return None
+        for v in mt.localvariables or []:
+            if v.name.casefold() == var_key:
+                return v
+        for v in mt.moduleparameters or []:
+            if v.name.casefold() == var_key:
+                return v
+        return None
+
+    if isinstance(module_def, ModuleTypeDef):
+        for v in module_def.localvariables or []:
+            if v.name.casefold() == var_key:
+                return v
+        for v in module_def.moduleparameters or []:
+            if v.name.casefold() == var_key:
+                return v
+        return None
+
+    return None
+
+
+def _resolve_icf_path(
+    base_picture: BasePicture,
+    path: str,
+    moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+) -> tuple[ResolvedModulePath | None, Variable | None, list[str]]:
+    segments = [s for s in path.split(".") if s]
+    if not segments:
+        return None, None, []
+
+    for i in range(len(segments), 0, -1):
+        module_path = ".".join(segments[:i])
+        try:
+            resolved = _resolve_module_by_strict_path(
+                base_picture,
+                module_path,
+                moduletype_index=moduletype_index,
+            )
+        except Exception:
+            continue
+
+        if i >= len(segments):
+            continue
+
+        var_name = segments[i]
+        field_segments = segments[i + 1 :]
+        var = _find_variable_in_module_scope(
+            resolved.node,
+            base_picture,
+            var_name,
+            moduletype_index=moduletype_index,
+        )
+        if var is not None:
+            return resolved, var, field_segments
+
+    return None, None, []
+
+
+def _validate_field_path(
+    type_graph: TypeGraph,
+    root_var: Variable,
+    field_segments: list[str],
+) -> tuple[bool, str | None]:
+    if not field_segments:
+        if isinstance(root_var.datatype, Simple_DataType):
+            return True, None
+        return (
+            False,
+            f"non-simple datatype {root_var.datatype} referenced without field path",
+        )
+
+    current_type: Simple_DataType | str | None = root_var.datatype
+    for field in field_segments:
+        if isinstance(current_type, Simple_DataType):
+            return False, f"datatype {current_type.value} has no field {field!r}"
+
+        if current_type is None:
+            return False, f"unknown datatype for field {field!r}"
+
+        field_def = type_graph.field(str(current_type), field)
+        if field_def is None:
+            return False, f"field {field!r} not found in datatype {current_type}"
+
+        current_type = field_def.datatype
+
+    if isinstance(current_type, Simple_DataType):
+        return True, None
+    return (
+        False,
+        f"non-simple datatype {current_type} referenced without field path",
+    )
+
+
+def validate_icf_entries_against_program(
+    base_picture: BasePicture,
+    entries: list[ICFEntry],
+    expected_program: str,
+    debug: bool = False,
+    moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+) -> ICFValidationReport:
+    type_graph = TypeGraph.from_basepicture(base_picture)
+    issues: list[ICFValidationIssue] = []
+    validated = 0
+    valid = 0
+    skipped = 0
+
+    for entry in entries:
+        program, path = _extract_icf_sattline_ref(entry.value)
+        if program is None or path is None:
+            skipped += 1
+            continue
+
+        if program.casefold() != expected_program.casefold():
+            issues.append(
+                ICFValidationIssue(
+                    entry=entry,
+                    reason="program mismatch",
+                    detail=f"expected {expected_program}",
+                )
+            )
+            continue
+
+        validated += 1
+
+        resolved, var, field_segments = _resolve_icf_path(
+            base_picture,
+            path,
+            moduletype_index=moduletype_index,
+        )
+        if resolved is None or var is None:
+            issues.append(
+                ICFValidationIssue(
+                    entry=entry,
+                    reason="unresolved path",
+                    detail=path,
+                )
+            )
+            continue
+
+        ok, detail = _validate_field_path(type_graph, var, field_segments)
+        if not ok:
+            issues.append(
+                ICFValidationIssue(
+                    entry=entry,
+                    reason="invalid field path",
+                    detail=detail,
+                )
+            )
+            continue
+
+        valid += 1
+
+    return ICFValidationReport(
+        icf_file=entries[0].file_path if entries else Path(""),
+        program_name=expected_program,
+        total_entries=len(entries),
+        validated_entries=validated,
+        valid_entries=valid,
+        skipped_entries=skipped,
+        issues=issues,
+    )
 
 
 def filter_variable_report(
@@ -932,6 +1342,15 @@ def _varname_base(var_dict_or_str: Any) -> str | None:
     return base.lower() if base else None
 
 
+def _varname_full(var_dict_or_str: Any) -> str | None:
+    """Extract full variable name from a variable_name dict or string."""
+    if isinstance(var_dict_or_str, dict) and const.KEY_VAR_NAME in var_dict_or_str:
+        return var_dict_or_str[const.KEY_VAR_NAME]
+    if isinstance(var_dict_or_str, str):
+        return var_dict_or_str
+    return None
+
+
 @dataclass(frozen=True)
 class ResolvedModulePath:
     node: Any
@@ -954,6 +1373,15 @@ def _format_moduletype_label(mt: ModuleTypeDef) -> str:
     return mt.name
 
 
+def _dedupe_moduletype_defs(matches: list[ModuleTypeDef]) -> list[ModuleTypeDef]:
+    unique: dict[tuple[str, str], ModuleTypeDef] = {}
+    for mt in matches:
+        key = (mt.name.casefold(), (mt.origin_lib or "").casefold())
+        if key not in unique:
+            unique[key] = mt
+    return list(unique.values())
+
+
 def _resolve_moduletype_def_strict(
     bp: BasePicture,
     moduletype_name: str,
@@ -973,16 +1401,59 @@ def _resolve_moduletype_def_strict(
         raise ValueError(
             f"Unknown moduletype {moduletype_name!r}.{note} Available moduletype defs: {available[:50]}"
         )
+    matches = _dedupe_moduletype_defs(matches)
     if len(matches) > 1:
+        if current_library is None and bp.origin_lib:
+            current_library = bp.origin_lib
+
+        if current_library:
+            current_lib_cf = current_library.casefold()
+            local_matches = [
+                mt for mt in matches if (mt.origin_lib or "").casefold() == current_lib_cf
+            ]
+            if len(local_matches) == 1:
+                return local_matches[0]
+            if len(local_matches) > 1:
+                labels = sorted(_format_moduletype_label(mt) for mt in local_matches)
+                raise ValueError(
+                    f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}"
+                )
+
+            deps = (bp.library_dependencies or {}).get(current_lib_cf, [])
+            dep_candidates: list[ModuleTypeDef] = []
+            for dep in deps:
+                dep_cf = dep.casefold()
+                dep_matches = [
+                    mt for mt in matches if (mt.origin_lib or "").casefold() == dep_cf
+                ]
+                if len(dep_matches) > 1:
+                    labels = sorted(_format_moduletype_label(mt) for mt in dep_matches)
+                    raise ValueError(
+                        f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}"
+                    )
+                if len(dep_matches) == 1:
+                    dep_candidates.append(dep_matches[0])
+
+            if len(dep_candidates) == 1:
+                return dep_candidates[0]
+            if len(dep_candidates) > 1:
+                labels = sorted(_format_moduletype_label(mt) for mt in dep_candidates)
+                raise ValueError(
+                    f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}"
+                )
+
         labels = sorted(_format_moduletype_label(mt) for mt in matches)
         raise ValueError(
             f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}"
         )
-    _ = current_library
     return matches[0]
 
 
-def _resolve_module_by_strict_path(bp: BasePicture, module_path: str) -> ResolvedModulePath:
+def _resolve_module_by_strict_path(
+    bp: BasePicture,
+    module_path: str,
+    moduletype_index: dict[str, list[ModuleTypeDef]] | None = None,
+) -> ResolvedModulePath:
     """Resolve a strict dotted module path relative to the BasePicture.
 
     - Input is case-insensitive.
@@ -1015,13 +1486,27 @@ def _resolve_module_by_strict_path(bp: BasePicture, module_path: str) -> Resolve
     current: Any = bp
     resolved_path: list[str] = [bp.header.name]
 
+    def resolve_moduletype(node: ModuleTypeInstance) -> ModuleTypeDef:
+        if moduletype_index is not None:
+            matches = moduletype_index.get(node.moduletype_name.casefold(), [])
+            if len(matches) > 1:
+                matches = _dedupe_moduletype_defs(matches)
+            if len(matches) == 1:
+                return matches[0]
+            if len(matches) > 1:
+                labels = sorted(_format_moduletype_label(mt) for mt in matches)
+                raise ValueError(
+                    f"Ambiguous moduletype {node.moduletype_name!r} (multiple definitions): {labels}"
+                )
+        return _resolve_moduletype_def_strict(bp, node.moduletype_name)
+
     def children_of(node: Any) -> list[Any]:
         if isinstance(node, BasePicture):
             return list(node.submodules or [])
         if isinstance(node, (SingleModule, FrameModule, ModuleTypeDef)):
             return list(node.submodules or [])
         if isinstance(node, ModuleTypeInstance):
-            mt = _resolve_moduletype_def_strict(bp, node.moduletype_name)
+            mt = resolve_moduletype(node)
             return list(mt.submodules or [])
         return []
 
@@ -1048,7 +1533,7 @@ def _resolve_module_by_strict_path(bp: BasePicture, module_path: str) -> Resolve
                     continue
                 if isinstance(m, ModuleTypeInstance):
                     try:
-                        mt = _resolve_moduletype_def_strict(bp, m.moduletype_name)
+                        mt = resolve_moduletype(m)
                         details.append(f"{m.header.name} ({_format_moduletype_label(mt)})")
                     except Exception:
                         details.append(f"{m.header.name} ({m.moduletype_name})")

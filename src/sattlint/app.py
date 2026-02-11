@@ -14,7 +14,12 @@ from .analyzers.variables import (
     filter_variable_report,
     analyze_variables,
     debug_variable_usage,
+    analyze_datatype_usage,
+    analyze_mms_interface_variables,
+    parse_icf_file,
+    validate_icf_entries_against_program,
 )
+from .analyzers import variables as variables_module
 from .analyzers.modules import (
     debug_module_structure,
     analyze_module_duplicates,
@@ -32,6 +37,7 @@ DEFAULT_CONFIG = {
     "debug": False,
     "program_dir": "",
     "ABB_lib_dir": "",
+    "icf_dir": "",
     "other_lib_dirs": [],
 }
 
@@ -43,8 +49,6 @@ VARIABLE_ANALYSES = {
     "4": ("Written but never read", {IssueKind.NEVER_READ}),
     "5": ("String mapping type mismatches", {IssueKind.STRING_MAPPING_MISMATCH}),
     "6": ("Duplicated complex datatypes", {IssueKind.DATATYPE_DUPLICATION}),
-    "7": ("Variable usage (fields + locations)", "variable_usage"),
-    "8": ("Module local variable field analysis", "module_localvar"),
 }
 
 
@@ -99,6 +103,7 @@ def self_check(cfg: dict) -> bool:
         "debug",
         "program_dir",
         "ABB_lib_dir",
+        "icf_dir",
         "other_lib_dirs",
     ]
     for k in required_keys:
@@ -107,8 +112,12 @@ def self_check(cfg: dict) -> bool:
             ok = False
 
     # Directories
-    for name in ("program_dir", "ABB_lib_dir"):
-        p = Path(cfg.get(name, ""))
+    for name in ("program_dir", "ABB_lib_dir", "icf_dir"):
+        raw = cfg.get(name, "")
+        if not raw:
+            print(f"⚠ {name} not set")
+            continue
+        p = Path(raw)
         if not p.exists():
             print(f"❌ {name} does not exist: {p}")
             ok = False
@@ -219,6 +228,7 @@ def show_config(cfg: dict):
         "debug",
         "program_dir",
         "ABB_lib_dir",
+        "icf_dir",
     ):
         print(f"{k:16}: {cfg[k]}")
     print("other_lib_dirs:")
@@ -275,6 +285,27 @@ def load_project(cfg: dict, *, use_cache: bool = True):
     return project_bp, graph
 
 
+def load_program_ast(cfg: dict, program_name: str):
+    """Load a single program AST without merging across libraries."""
+    loader = engine_module.SattLineProjectLoader(
+        program_dir=Path(cfg["program_dir"]),
+        other_lib_dirs=[Path(p) for p in cfg["other_lib_dirs"]],
+        abb_lib_dir=Path(cfg["ABB_lib_dir"]),
+        mode=engine_module.CodeMode(cfg["mode"]),
+        scan_root_only=cfg["scan_root_only"],
+        debug=cfg["debug"],
+    )
+
+    graph = loader.resolve(program_name, strict=False)
+    root_bp = graph.ast_by_name.get(program_name)
+    if not root_bp:
+        raise RuntimeError(
+            f"Program '{program_name}' not parsed. Resolved: {list(graph.ast_by_name.keys())}"
+        )
+
+    return root_bp, graph
+
+
 def force_refresh_ast(cfg: dict):
     """Clear cached AST for current config and rebuild it."""
     cache_dir = CONFIG_PATH.parent / "cache"
@@ -325,12 +356,45 @@ def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
     pause()
 
 
+def run_datatype_usage_analysis(cfg: dict):
+    """Interactive datatype usage analysis (field-level usage by variable name)."""
+    project_bp, graph = load_project(cfg)
+
+    print("\n--- Datatype Usage Analysis ---")
+    print("Enter the variable name to analyze:")
+    var_name = input("> ").strip()
+
+    if not var_name:
+        print("❌ No variable name provided")
+        pause()
+        return
+
+    try:
+        report = variables_module.analyze_datatype_usage(
+            project_bp,
+            var_name,
+            debug=cfg.get("debug", False),
+            unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+        )
+        print("\n" + report)
+    except Exception as e:
+        print(f"❌ Error during analysis: {e}")
+
+    pause()
+
+
 def variable_analysis_menu(cfg: dict):
     while True:
         clear_screen()
         print("\n--- Variable analyses ---")
         for k, (name, _) in VARIABLE_ANALYSES.items():
             print(f"{k}) {name}")
+        print("7) Datatype usage analysis (by variable name)")
+        print("8) Variable usage (fields + locations)")
+        print("9) Module local variable field analysis")
+        print("m) MMS interface variables (WriteData/Outputvariable)")
+        print("i) Validate ICF paths (per program)")
+        print("f) Force refresh cached AST")
         print("b) Back")
         print("q) Quit")
 
@@ -340,19 +404,28 @@ def variable_analysis_menu(cfg: dict):
         if c == "q":
             sys.exit(0)
 
-        if c in VARIABLE_ANALYSES:
+        if c == "7":
+            if confirm("Run 'Datatype usage analysis'? "):
+                run_datatype_usage_analysis(cfg)
+        elif c == "8":
+            if confirm("Run 'Variable usage (fields + locations)'?"):
+                run_debug_variable_usage(cfg)
+        elif c == "9":
+            if confirm("Run 'Module local variable field analysis'?"):
+                run_module_localvar_analysis(cfg)
+        elif c == "m":
+            if confirm("Run 'MMS interface variables (WriteData/Outputvariable)'?"):
+                run_mms_interface_analysis(cfg)
+        elif c == "i":
+            if confirm("Run 'Validate ICF paths (per program)'?"):
+                run_icf_validation(cfg)
+        elif c == "f":
+            if confirm("Force refresh cached AST?"):
+                force_refresh_ast(cfg)
+        elif c in VARIABLE_ANALYSES:
             name, kinds = VARIABLE_ANALYSES[c]
 
-            # Special handling for variable usage analysis
-            if kinds == "variable_usage":
-                if confirm(f"Run '{name}'?"):
-                    run_debug_variable_usage(cfg)
-            # NEW: Special handling for module interface analysis
-            elif kinds == "module_localvar":
-                if confirm(f"Run '{name}'?"):
-                    run_module_localvar_analysis(cfg)
-            # Standard issue-based analyses
-            elif confirm(f"Run '{name}'?"):
+            if confirm(f"Run '{name}'?"):
                 # kinds is either a set[IssueKind] or None at this point
                 run_variable_analysis(cfg, kinds if isinstance(kinds, (set, type(None))) else None)
         else:
@@ -535,11 +608,13 @@ def run_analysis_menu(cfg: dict):
 
         if c == "1":
             variable_analysis_menu(cfg)
-        elif c == "2":
+            return
+        if c == "2":
             module_analysis_menu(cfg)
-        else:
-            print("Invalid choice.")
-            pause()
+            return
+
+        print("Invalid choice.")
+        pause()
 
 
 def run_module_localvar_analysis(cfg: dict):
@@ -583,6 +658,104 @@ def run_module_localvar_analysis(cfg: dict):
     pause()
 
 
+def run_mms_interface_analysis(cfg: dict):
+    """List variables mapped into MMSWriteVar/MMSReadVar interface modules."""
+    project_bp, _ = load_project(cfg)
+
+    print("\n--- MMS Interface Variables ---")
+
+    try:
+        report = analyze_mms_interface_variables(
+            project_bp,
+            debug=cfg.get("debug", False),
+        )
+        print("\n" + report.summary())
+    except Exception as e:
+        print(f"❌ Error during analysis: {e}")
+        import traceback
+
+        traceback.print_exc()
+
+    pause()
+
+
+def run_icf_validation(cfg: dict):
+    """Validate ICF paths against per-program ASTs (non-recursive, report-only)."""
+    icf_dir_raw = cfg.get("icf_dir", "")
+    if not icf_dir_raw:
+        print("❌ icf_dir is not set in the config. Set it before running ICF validation.")
+        pause()
+        return
+
+    icf_dir = Path(icf_dir_raw)
+    if not icf_dir.exists() or not icf_dir.is_dir():
+        print(f"❌ icf_dir does not exist or is not a directory: {icf_dir}")
+        pause()
+        return
+
+    icf_files = sorted(
+        p for p in icf_dir.iterdir() if p.is_file() and p.suffix.lower() == ".icf"
+    )
+    if not icf_files:
+        print(f"⚠ No .icf files found in {icf_dir}")
+        pause()
+        return
+
+    total_entries = 0
+    total_valid = 0
+    total_invalid = 0
+    total_skipped = 0
+    files_failed = 0
+
+    print("\n--- ICF Validation (per program) ---")
+
+    for icf_file in icf_files:
+        program_name = icf_file.stem
+        entries = parse_icf_file(icf_file)
+        if not entries:
+            print(f"⚠ {icf_file.name}: no entries found")
+            continue
+
+        try:
+            program_bp, graph = load_program_ast(cfg, program_name)
+            program_bp = engine_module.merge_project_basepicture(program_bp, graph)
+        except Exception as e:
+            print(f"❌ {icf_file.name}: failed to load program {program_name!r}: {e}")
+            files_failed += 1
+            continue
+
+        moduletype_index: dict[str, list[engine_module.ModuleTypeDef]] = {}
+        for bp in graph.ast_by_name.values():
+            for mt in bp.moduletype_defs or []:
+                key = mt.name.casefold()
+                moduletype_index.setdefault(key, []).append(mt)
+
+        report = validate_icf_entries_against_program(
+            program_bp,
+            entries,
+            expected_program=program_name,
+            debug=cfg.get("debug", False),
+            moduletype_index=moduletype_index,
+        )
+        print(report.summary())
+        print("")
+
+        total_entries += report.total_entries
+        total_valid += report.valid_entries
+        total_invalid += len(report.issues)
+        total_skipped += report.skipped_entries
+
+    print("Summary:")
+    print(f"  Files processed: {len(icf_files)}")
+    print(f"  Files failed: {files_failed}")
+    print(f"  Entries: {total_entries}")
+    print(f"  Valid: {total_valid}")
+    print(f"  Invalid: {total_invalid}")
+    print(f"  Skipped: {total_skipped}")
+
+    pause()
+
+
 def run_debug_variable_usage(cfg: dict):
     """Interactive debug for specific variable usage."""
     project_bp, _ = load_project(cfg)
@@ -620,7 +793,12 @@ def run_advanced_datatype_analysis(cfg: dict):
     if choice == "1":
         var_name = input("Enter variable name: ").strip()
         if var_name:
-            report = debug_variable_usage(project_bp, var_name, debug=cfg.get("debug", False))
+            report = variables_module.analyze_datatype_usage(
+                project_bp,
+                var_name,
+                debug=cfg.get("debug", False),
+                unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+            )
             print("\n" + report)
 
     elif choice == "2":
@@ -631,9 +809,11 @@ def run_advanced_datatype_analysis(cfg: dict):
     elif choice == "3":
         var_name = input("Enter variable name to debug: ").strip()
         if var_name:
-            from .analyzers.variables import debug_variable_usage
-
-            report = debug_variable_usage(project_bp, var_name, debug=cfg.get("debug", False))
+            report = variables_module.debug_variable_usage(
+                project_bp,
+                var_name,
+                debug=cfg.get("debug", False),
+            )
             print("\n" + report)
 
     pause()
@@ -689,11 +869,12 @@ def config_menu(cfg: dict) -> bool:
 2) Toggle Mode (official/draft)
 3) Toggle scan_root_only
 4) Toggle fast_cache_validation
-5) Toggle debug
-6) Change Program_dir
-7) Change ABB_lib_dir
-8) Add/remove other_lib_dirs
-9) Save config
+5) Change Program_dir
+6) Change ABB_lib_dir
+7) Add/remove other_lib_dirs
+8) Save config
+9) Change ICF_dir
+10) Toggle debug
 b) Back
 q) Quit
 """)
@@ -733,23 +914,18 @@ q) Quit
                 dirty = True
 
         elif c == "5":
-            if confirm("Toggle debug?"):
-                cfg["debug"] = not cfg["debug"]
-                dirty = True
-
-        elif c == "6":
             new = prompt("New program_dir", cfg["program_dir"])
             if confirm("Change program_dir?"):
                 cfg["program_dir"] = new
                 dirty = True
 
-        elif c == "7":
+        elif c == "6":
             new = prompt("New ABB_lib_dir", cfg["ABB_lib_dir"])
             if confirm("Change ABB_lib_dir?"):
                 cfg["ABB_lib_dir"] = new
                 dirty = True
 
-        elif c == "8":
+        elif c == "7":
             libs = cfg["other_lib_dirs"]
             print("\nCurrent other_lib_dirs:")
             for i, p in enumerate(libs, 1):
@@ -762,10 +938,19 @@ q) Quit
                 if 0 <= idx < len(libs):
                     libs.pop(idx)
                     dirty = True
-        elif c == "9":
+        elif c == "8":
             if confirm("Save config to disk?"):
                 save_config(CONFIG_PATH, cfg)
                 dirty = False
+        elif c == "9":
+            new = prompt("New ICF_dir", cfg["icf_dir"])
+            if confirm("Change ICF_dir?"):
+                cfg["icf_dir"] = new
+                dirty = True
+        elif c == "10":
+            if confirm("Toggle debug?"):
+                cfg["debug"] = not cfg["debug"]
+                dirty = True
         else:
             print("Invalid choice.")
 
@@ -802,17 +987,18 @@ How to use SattLint
 • Press 'q' at any time in the main menu to quit
 
 === SattLint ===
-1) Run analysis
+1) Variable analyses
 2) Dump outputs
 3) Edit config
 4) Self-check diagnostics
 5) Force refresh cached AST
+6) Module analyses
 q) Quit
 """)
         c = input("> ").strip().lower()
 
         if c == "1":
-            run_analysis_menu(cfg)
+            variable_analysis_menu(cfg)
 
         elif c == "2":
             dump_menu(cfg)
@@ -830,6 +1016,9 @@ q) Quit
                 force_refresh_ast(cfg)
                 print("✔ AST cache refreshed")
                 pause()
+
+        elif c == "6":
+            module_analysis_menu(cfg)
 
         elif c == "q":
             if dirty and confirm("Unsaved config changes. Save before quitting?"):
