@@ -22,6 +22,7 @@ def compute_cache_key(cfg: dict) -> str:
         "fast_cache_validation",
         "program_dir",
         "ABB_lib_dir",
+        "icf_dir",
         "other_lib_dirs",
     ):
         h.update(repr(cfg.get(k)).encode())
