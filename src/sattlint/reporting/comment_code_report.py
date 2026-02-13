@@ -50,8 +50,10 @@ class CommentCodeReport:
         if self.hits:
             lines.append("")
             lines.append("Findings:")
-            for hit in self.hits[:20]:
-                indicator_txt = ", ".join(hit.indicators) if hit.indicators else "unknown"
+            for hit in self.hits:
+                indicator_txt = (
+                    ", ".join(hit.indicators) if hit.indicators else "unknown"
+                )
                 if hit.start_line == hit.end_line:
                     location = f"{hit.file_path.name}:{hit.start_line}"
                 else:
@@ -59,13 +61,14 @@ class CommentCodeReport:
                 preview = hit.preview or "<empty>"
                 lines.append(f"  - {location} [{indicator_txt}] {preview}")
 
-            if len(self.hits) > 20:
-                lines.append(f"  ... and {len(self.hits) - 20} more")
-
-        if self.issues:
+        # Only show actual read errors (not duplicate comment code entries)
+        read_errors = [
+            issue for issue in self.issues if issue.kind == "comment_code_read_error"
+        ]
+        if read_errors:
             lines.append("")
             lines.append("Read errors:")
-            for issue in self.issues:
+            for issue in read_errors:
                 lines.append(f"  - {issue.message}")
 
         return "\n".join(lines)
