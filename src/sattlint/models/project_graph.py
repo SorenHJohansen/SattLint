@@ -41,6 +41,8 @@ class ProjectGraph:
             bp.origin_file = source_path.name
         if library_name and not bp.origin_lib:
             bp.origin_lib = library_name
+        if source_path:
+            self.source_files.add(source_path)
 
         for m in bp.moduletype_defs:
             if source_path and not m.origin_file:

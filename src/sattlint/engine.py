@@ -8,6 +8,7 @@ from .models.ast_model import BasePicture, DataType, ModuleTypeDef
 from collections.abc import Iterable
 from enum import Enum
 from .models.project_graph import ProjectGraph
+from .cache import FileLookupCache, FileASTCache, get_cache_dir
 import logging
 
 # Create a module-level logger consistent with the CLI output.
@@ -196,6 +197,10 @@ class SattLineProjectLoader(DebugMixin):
         self._visited: set[str] = set()
         self._stack: set[str] = set()  # cycle protection
         self._ignored_dirs: set[Path] = set()
+        self._lookup_cache = FileLookupCache(get_cache_dir())
+        self._ast_cache = FileASTCache(get_cache_dir())
+        self._base_indexes: dict[Path, dict[str, dict[str, Path]]] = {}
+        self._lib_by_name: dict[str, str] = {}
         self.dbg(
             f"Selected mode={mode.value}, code_ext={code_ext(mode)}, deps_ext={deps_ext(mode)}"
         )
@@ -211,6 +216,76 @@ class SattLineProjectLoader(DebugMixin):
             base_r = base
         return any(base_r == ign for ign in self._ignored_dirs)
 
+    def _get_base_index(self, base: Path) -> dict[str, dict[str, Path]]:
+        if base in self._base_indexes:
+            return self._base_indexes[base]
+        index: dict[str, dict[str, Path]] = {}
+        if not base.exists() or not base.is_dir():
+            self._base_indexes[base] = index
+            return index
+
+        for entry in base.iterdir():
+            if not entry.is_file():
+                continue
+            ext = entry.suffix.lower()
+            if ext not in {".s", ".x", ".l", ".z"}:
+                continue
+            stem = entry.stem.casefold()
+            index.setdefault(stem, {})[ext] = entry
+
+        self._base_indexes[base] = index
+        return index
+
+    def _find_in_index(
+        self,
+        *,
+        base: Path,
+        name: str,
+        extensions: list[str],
+    ) -> Path | None:
+        index = self._get_base_index(base)
+        entries = index.get(name.casefold())
+        if not entries:
+            return None
+        for ext in extensions:
+            p = entries.get(ext)
+            if p is not None:
+                return p
+        return None
+
+    def _add_to_index(self, base: Path, name: str, path: Path) -> None:
+        index = self._get_base_index(base)
+        index.setdefault(name.casefold(), {})[path.suffix.lower()] = path
+
+    def _find_in_cached_base(
+        self,
+        *,
+        kind: str,
+        name: str,
+        extensions: list[str],
+    ) -> Path | None:
+        cached = self._lookup_cache.get(kind, name, self.mode.value)
+        if not cached:
+            return None
+
+        base = Path(cached.get("base_dir", ""))
+        if not base or self._is_ignored_base(base):
+            return None
+
+        cached_ext = cached.get("ext")
+        ordered_exts = [cached_ext] if cached_ext in extensions else []
+        ordered_exts.extend(ext for ext in extensions if ext != cached_ext)
+
+        for ext in ordered_exts:
+            p = base / f"{name}{ext}"
+            self.dbg(f"Checking cached {kind} file: {p} (exists={p.exists()})")
+            if p.exists():
+                self.dbg(f"Using cached {kind} file: {p}")
+                return p
+
+        self._lookup_cache.forget(kind, name, self.mode.value)
+        return None
+
     def _find_code(self, name: str) -> Path | None:
         """
         Find code file with fallback support.
@@ -219,15 +294,37 @@ class SattLineProjectLoader(DebugMixin):
         """
         extensions = [".s", ".x"] if self.mode == CodeMode.DRAFT else [".x"]
 
+        cached = self._find_in_cached_base(
+            kind="code",
+            name=name,
+            extensions=extensions,
+        )
+        if cached is not None:
+            return cached
+
         for base in [self.program_dir, *self.other_lib_dirs, self.abb_lib_dir]:
             if self._is_ignored_base(base):
                 continue
+
+            indexed = self._find_in_index(
+                base=base,
+                name=name,
+                extensions=extensions,
+            )
+            if indexed is not None:
+                self.dbg(f"Using code file: {indexed}")
+                self._lookup_cache.set(
+                    "code", name, self.mode.value, base, indexed.suffix.lower()
+                )
+                return indexed
 
             for ext in extensions:
                 p = base / f"{name}{ext}"
                 self.dbg(f"Checking code file: {p} (exists={p.exists()})")
                 if p.exists():
                     self.dbg(f"Using code file: {p}")
+                    self._lookup_cache.set("code", name, self.mode.value, base, ext)
+                    self._add_to_index(base, name, p)
                     return p
 
         self.dbg(f"No code file found for '{name}' in mode={self.mode.value}")
@@ -241,15 +338,37 @@ class SattLineProjectLoader(DebugMixin):
         """
         extensions = [".l", ".z"] if self.mode == CodeMode.DRAFT else [".z"]
 
+        cached = self._find_in_cached_base(
+            kind="deps",
+            name=name,
+            extensions=extensions,
+        )
+        if cached is not None:
+            return cached
+
         for base in [self.program_dir, *self.other_lib_dirs, self.abb_lib_dir]:
             if self._is_ignored_base(base):
                 continue
+
+            indexed = self._find_in_index(
+                base=base,
+                name=name,
+                extensions=extensions,
+            )
+            if indexed is not None:
+                self.dbg(f"Using deps file: {indexed}")
+                self._lookup_cache.set(
+                    "deps", name, self.mode.value, base, indexed.suffix.lower()
+                )
+                return indexed
 
             for ext in extensions:
                 p = base / f"{name}{ext}"
                 self.dbg(f"Checking deps file: {p} (exists={p.exists()})")
                 if p.exists():
                     self.dbg(f"Using deps file: {p}")
+                    self._lookup_cache.set("deps", name, self.mode.value, base, ext)
+                    self._add_to_index(base, name, p)
                     return p
 
         self.dbg(f"No deps file found for '{name}' in mode={self.mode.value}")
@@ -327,6 +446,11 @@ class SattLineProjectLoader(DebugMixin):
         # Fallback: parent directory name
         return rp.parent.name
 
+    def _record_library_name(self, name: str, code_path: Path) -> str:
+        lib_name = self._library_name_for_path(code_path)
+        self._lib_by_name[name.casefold()] = lib_name
+        return lib_name
+
     def _parse_one(self, code_path: Path) -> BasePicture:
         self.dbg(f"Parsing file: {code_path}")
         src = self._read_text_simple(code_path)
@@ -352,6 +476,16 @@ class SattLineProjectLoader(DebugMixin):
             )
         return basepic
 
+    def _load_or_parse(self, code_path: Path) -> BasePicture:
+        cached = self._ast_cache.load(code_path, self.mode.value)
+        if cached is not None:
+            self.dbg(f"Using cached AST for: {code_path}")
+            return cached
+
+        bp = self._parse_one(code_path)
+        self._ast_cache.save(code_path, self.mode.value, bp)
+        return bp
+
     def resolve(self, root_name: str, strict: bool = False) -> ProjectGraph:
         if self.scan_root_only:
             return self._resolve_root_only(root_name, strict)
@@ -374,7 +508,7 @@ class SattLineProjectLoader(DebugMixin):
             return graph
 
         try:
-            bp = self._parse_one(code_path)
+            bp = self._load_or_parse(code_path)
             if bp is None:
                 msg = f"{root_name} transformed to no BasePicture (parse/transform issue?)"
                 if strict:
@@ -415,18 +549,18 @@ class SattLineProjectLoader(DebugMixin):
                 if origin_lib:
                     dep_libs.append(origin_lib)
                     continue
-            dep_code = self._find_code(dep)
-            if dep_code is not None:
-                dep_libs.append(self._library_name_for_path(dep_code))
+            cached_lib = self._lib_by_name.get(dep.casefold())
+            if cached_lib:
+                dep_libs.append(cached_lib)
 
         # Determine code path
         code_path = self._find_code(name)
         if code_path is not None:
             try:
-                bp = self._parse_one(code_path)
+                bp = self._load_or_parse(code_path)
                 if bp is not None:
                     graph.ast_by_name[name] = bp
-                    lib_name = self._library_name_for_path(code_path)
+                    lib_name = self._record_library_name(name, code_path)
                     graph.add_library_dependencies(lib_name, dep_libs)
                     graph.index_from_basepic(
                         bp, source_path=code_path, library_name=lib_name

@@ -73,7 +73,8 @@ submodules:                 SUBMODULES (invocation_new_module | invocation_modul
 modulecode:                 MODULECODE (sequence | equationblock)+
 
 // --- Expression Rules (operator precedence from lowest to highest) ---
-?expression:                or_expression
+?expression:                ternary_if
+                            | or_expression
 ?or_expression:             and_expression (OR and_expression)*
 ?and_expression:            not_expression (AND not_expression)*
 ?not_expression:            NOT not_expression
@@ -93,7 +94,6 @@ argument_list:              expression ("," expression)*
 
 ?term:                      function_call
                             | "(" expression ")"
-                            | ternary_if
                             | variable_name
                             | value
 

@@ -14,6 +14,7 @@ from ..models.ast_model import (
     Sequence,
     Equation,
 )
+from .framework import format_report_header
 
 
 def debug_module_structure(base_picture: BasePicture, max_depth: int = 10) -> None:
@@ -203,12 +204,15 @@ class ComparisonResult:
     code_diff: CodeDiff | None = None
 
     def summary(self) -> str:
-        lines = [
-            f"Module Name: {self.module_name!r}",
-            f"Total Instances Found: {self.total_found}",
-            f"Unique Variants: {self.unique_variants}",
-            "",
-        ]
+        status = "ok" if self.unique_variants <= 1 else "issues"
+        lines = format_report_header("Module comparison", self.module_name, status=status)
+        lines.extend(
+            [
+                f"Total Instances Found: {self.total_found}",
+                f"Unique Variants: {self.unique_variants}",
+                "",
+            ]
+        )
 
         if self.total_found == 0:
             lines.append("⚠ No modules found with this name")

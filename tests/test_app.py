@@ -330,7 +330,7 @@ def test_main_menu_all_options(noop_screen, monkeypatch, real_context):
     monkeypatch.setattr(app, "config_menu", lambda *_: True)
     monkeypatch.setattr(app, "save_config", lambda *_: calls.append("save"))
 
-    inputs = ["1", "2", "3", "4", "q", "y"]
+    inputs = ["2", "3", "4", "5", "q", "y"]
     monkeypatch.setattr(builtins, "input", make_input(inputs))
 
     app.main()

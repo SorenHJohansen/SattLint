@@ -28,6 +28,8 @@ It parses SattLine source files, resolves dependencies across libraries, builds 
   - Unused variables
   - Read-only variables not declared `CONST`
   - Variables that are written but never read
+  - Min/Max mapping name mismatches
+- **SFC analysis** reports parallel-branch write races.
 - **Merge-project capability** – creates a synthetic `BasePicture` that aggregates all datatype and module-type definitions, allowing analysis across file boundaries.
 - **DOCX documentation generation** (`generate_docx`) produces a human-readable specification of the project.
 - **Debug mode** (`--debug` / `DEBUG`) prints detailed tracing of file discovery, parsing, and analysis steps.
