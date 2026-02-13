@@ -4,24 +4,26 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-import tomllib
-import tomli_w
 import os
 import sys
 from . import engine as engine_module
+from . import config as config_module
 from .analyzers.variables import (
     IssueKind,
     filter_variable_report,
     analyze_variables,
+)
+from .analyzers.variable_usage_reporting import (
     debug_variable_usage,
     analyze_datatype_usage,
-    analyze_mms_interface_variables,
-    parse_icf_file,
-    validate_icf_entries_against_program,
 )
+from .analyzers.mms import analyze_mms_interface_variables
+from .analyzers.icf import parse_icf_file, validate_icf_entries_against_program
 from .analyzers.framework import AnalysisContext
 from .analyzers.registry import get_default_analyzers
 from .analyzers import variables as variables_module
+from .analyzers import variable_usage_reporting as variables_reporting_module
+from .analyzers.comment_code import analyze_comment_code_files
 from .analyzers.modules import (
     debug_module_structure,
     analyze_module_duplicates,
@@ -30,19 +32,6 @@ from .analyzers.modules import (
 )
 from .cache import ASTCache, compute_cache_key
 from .engine import GRAMMAR_PATH
-
-DEFAULT_CONFIG = {
-    "root": "",
-    "mode": "official",
-    "scan_root_only": False,
-    "fast_cache_validation": True,
-    "debug": False,
-    "program_dir": "",
-    "ABB_lib_dir": "",
-    "icf_dir": "",
-    "other_lib_dirs": [],
-}
-
 
 VARIABLE_ANALYSES = {
     "1": ("All variable analyses", None),
@@ -55,18 +44,21 @@ VARIABLE_ANALYSES = {
 }
 
 
-def get_config_path() -> Path:
-    if os.name == "nt":
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    else:
-        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-
-    cfg_dir = base / "sattlint"
-    cfg_dir.mkdir(parents=True, exist_ok=True)
-    return cfg_dir / "config.toml"
+CONFIG_PATH = config_module.get_config_path()
+DEFAULT_CONFIG = config_module.DEFAULT_CONFIG
 
 
-CONFIG_PATH = get_config_path()
+def load_config(path: Path):
+    return config_module.load_config(path)
+
+
+def save_config(path: Path, cfg: dict) -> None:
+    config_module.save_config(path, cfg)
+    print("Config saved")
+
+
+def self_check(cfg: dict) -> bool:
+    return config_module.self_check(cfg)
 
 # Configure root logger so all debug messages are shown
 logging.basicConfig(format="%(message)s", level=logging.DEBUG)
@@ -95,69 +87,6 @@ def quit_app() -> None:
     raise QuitApp()
 
 
-def self_check(cfg: dict) -> bool:
-    print("\n--- Self-check diagnostics ---")
-    ok = True
-
-    # Python version
-    if sys.version_info < (3, 11):
-        print("❌ Python 3.11+ required")
-        ok = False
-    else:
-        print(f"✔ Python {sys.version.split()[0]}")
-
-    # Required keys
-    required_keys = [
-        "root",
-        "mode",
-        "scan_root_only",
-        "fast_cache_validation",
-        "debug",
-        "program_dir",
-        "ABB_lib_dir",
-        "icf_dir",
-        "other_lib_dirs",
-    ]
-    for k in required_keys:
-        if k not in cfg:
-            print(f"❌ Missing config key: {k}")
-            ok = False
-
-    # Directories
-    for name in ("program_dir", "ABB_lib_dir", "icf_dir"):
-        raw = cfg.get(name, "")
-        if not raw:
-            print(f"⚠ {name} not set")
-            continue
-        p = Path(raw)
-        if not p.exists():
-            print(f"❌ {name} does not exist: {p}")
-            ok = False
-        elif not os.access(p, os.R_OK):
-            print(f"❌ {name} not readable: {p}")
-            ok = False
-        else:
-            print(f"✔ {name}: {p}")
-
-    # other_lib_dirs
-    for p in cfg.get("other_lib_dirs", []):
-        path = Path(p)
-        if not path.exists():
-            print(f"⚠ other_lib_dirs entry missing: {path}")
-        else:
-            print(f"✔ other_lib_dirs: {path}")
-
-    # Root existence
-    if root_exists(cfg.get("root", ""), cfg):
-        print(f"✔ Root program/library found: {cfg['root']}")
-    else:
-        print(f"❌ Root program/library not found: {cfg.get('root')}")
-        ok = False
-
-    print("------------------------------\n")
-    return ok
-
-
 def confirm(msg: str) -> bool:
     return input(f"{msg} [y/N]: ").strip().lower() in ("y", "yes")
 
@@ -168,57 +97,8 @@ def prompt(msg: str, default: str | None = None) -> str:
     return input(f"{msg}: ").strip()
 
 
-def load_config(path: Path) -> tuple[dict, bool]:
-    if not path.exists():
-        print(f"⚠ No config found, creating default: {path}")
-        cfg = DEFAULT_CONFIG.copy()
-        save_config(path, cfg)
-        return cfg, True
-
-    with path.open("rb") as f:
-        cfg = tomllib.load(f)
-
-    merged = DEFAULT_CONFIG.copy()
-    merged.update(cfg)
-    merged.pop("ignore_ABB_lib", None)
-    return merged, False
-
-
-def save_config(path: Path, cfg: dict) -> None:
-    def normalize(v):
-        if isinstance(v, Path):
-            return str(v)
-        if isinstance(v, (list, tuple)):
-            return [normalize(x) for x in v]
-        if isinstance(v, dict):
-            return {k: normalize(x) for k, x in v.items()}
-        if v is None:
-            raise ValueError(
-                "Cannot serialize None to TOML. Provide a default value or omit the key."
-            )
-        return v
-
-    data = {k: normalize(v) for k, v in cfg.items()}
-    path.write_text(tomli_w.dumps(data), encoding="utf-8")
-    print(f"✔ Config saved to {path}")
-
-
 def root_exists(root: str, cfg: dict) -> bool:
-    dirs = [Path(cfg["program_dir"])] + [Path(p) for p in cfg["other_lib_dirs"]]
-
-    if cfg["mode"] == "draft":
-        extensions = [".s", ".x"]  # Try draft first, fallback to official
-    else:
-        extensions = [".x"]  # Official only
-
-    for d in dirs:
-        if not d.exists():
-            continue
-        for ext in extensions:
-            if (d / f"{root}{ext}").exists():
-                return True
-
-    return False
+    return config_module.root_exists(root, cfg)
 
 
 def apply_debug(cfg: dict):
@@ -366,8 +246,11 @@ def ensure_ast_cache(cfg: dict) -> bool:
 def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
     project_bp, graph = load_project(cfg)
 
-    report = analyze_variables(project_bp, debug=cfg.get("debug", False),
-                               unavailable_libraries=getattr(graph, 'unavailable_libraries', set()))
+    report = analyze_variables(
+        project_bp,
+        debug=cfg.get("debug", False),
+        unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+    )
 
     if kinds is not None:
         report = filter_variable_report(report, kinds)
@@ -390,7 +273,7 @@ def run_datatype_usage_analysis(cfg: dict):
         return
 
     try:
-        report = variables_module.analyze_datatype_usage(
+        report = variables_reporting_module.analyze_datatype_usage(
             project_bp,
             var_name,
             debug=cfg.get("debug", False),
@@ -403,17 +286,23 @@ def run_datatype_usage_analysis(cfg: dict):
     pause()
 
 
-def variable_analysis_menu(cfg: dict):
+def analysis_menu(cfg: dict):
     while True:
         clear_screen()
-        print("\n--- Variable analyses ---")
+        print("\n--- Analyses ---")
+        print("Variable analyses:")
         for k, (name, _) in VARIABLE_ANALYSES.items():
             print(f"{k}) {name}")
-        print("7) Datatype usage analysis (by variable name)")
-        print("8) Variable usage (fields + locations)")
-        print("9) Module local variable field analysis")
-        print("m) MMS interface variables (WriteData/Outputvariable)")
-        print("i) Validate ICF paths (per program)")
+        print("8) Datatype usage analysis (by variable name)")
+        print("9) Variable usage (fields + locations)")
+        print("10) Module local variable field analysis")
+        print("11) MMS interface variables (WriteData/Outputvariable)")
+        print("12) Validate ICF paths (per program)")
+        print("Module analyses:")
+        print("13) Compare module variants by name")
+        print("14) List module instances by name")
+        print("15) Debug module tree structure")
+        print("16) Commented-out code in comments")
         print("f) Force refresh cached AST")
         print("b) Back")
         print("q) Quit")
@@ -424,60 +313,31 @@ def variable_analysis_menu(cfg: dict):
         if c == "q":
             quit_app()
 
-        if c == "7":
-            if confirm("Run 'Datatype usage analysis'? "):
-                run_datatype_usage_analysis(cfg)
-        elif c == "8":
-            if confirm("Run 'Variable usage (fields + locations)'?"):
-                run_debug_variable_usage(cfg)
+        if c == "8":
+            run_datatype_usage_analysis(cfg)
         elif c == "9":
-            if confirm("Run 'Module local variable field analysis'?"):
-                run_module_localvar_analysis(cfg)
-        elif c == "m":
-            if confirm("Run 'MMS interface variables (WriteData/Outputvariable)'?"):
-                run_mms_interface_analysis(cfg)
-        elif c == "i":
-            if confirm("Run 'Validate ICF paths (per program)'?"):
-                run_icf_validation(cfg)
+            run_debug_variable_usage(cfg)
+        elif c == "10":
+            run_module_localvar_analysis(cfg)
+        elif c == "11":
+            run_mms_interface_analysis(cfg)
+        elif c == "12":
+            run_icf_validation(cfg)
+        elif c == "13":
+            run_module_duplicates_analysis(cfg)
+        elif c == "14":
+            run_module_find_by_name(cfg)
+        elif c == "15":
+            run_module_tree_debug(cfg)
+        elif c == "16":
+            run_comment_code_analysis(cfg)
         elif c == "f":
             if confirm("Force refresh cached AST?"):
                 force_refresh_ast(cfg)
         elif c in VARIABLE_ANALYSES:
             name, kinds = VARIABLE_ANALYSES[c]
-
-            if confirm(f"Run '{name}'?"):
-                # kinds is either a set[IssueKind] or None at this point
-                run_variable_analysis(cfg, kinds if isinstance(kinds, (set, type(None))) else None)
-        else:
-            print("Invalid choice.")
-            pause()
-
-
-def module_analysis_menu(cfg: dict):
-    while True:
-        clear_screen()
-        print("\n--- Module analyses ---")
-        print("1) Compare module variants by name")
-        print("2) List module instances by name")
-        print("3) Debug module tree structure")
-        print("b) Back")
-        print("q) Quit")
-
-        c = input("> ").strip().lower()
-        if c == "b":
-            return
-        if c == "q":
-            quit_app()
-
-        if c == "1":
-            if confirm("Compare module variants by name?"):
-                run_module_duplicates_analysis(cfg)
-        elif c == "2":
-            if confirm("List module instances by name?"):
-                run_module_find_by_name(cfg)
-        elif c == "3":
-            if confirm("Debug module tree structure?"):
-                run_module_tree_debug(cfg)
+            # kinds is either a set[IssueKind] or None at this point
+            run_variable_analysis(cfg, kinds if isinstance(kinds, (set, type(None))) else None)
         else:
             print("Invalid choice.")
             pause()
@@ -612,33 +472,11 @@ def run_module_tree_debug(cfg: dict):
 
 
 def run_analysis_menu(cfg: dict):
-    while True:
-        clear_screen()
-        print("\n--- Run analysis ---")
-        print("1) Run checks")
-        print("2) Variable analyses")
-        print("3) Module analyses")
-        print("b) Back")
-        print("q) Quit")
+    analysis_menu(cfg)
 
-        c = input("> ").strip().lower()
-        if c == "b":
-            return
-        if c == "q":
-            quit_app()
 
-        if c == "1":
-            run_checks_menu(cfg)
-            return
-        if c == "2":
-            variable_analysis_menu(cfg)
-            return
-        if c == "3":
-            module_analysis_menu(cfg)
-            return
-
-        print("Invalid choice.")
-        pause()
+def variable_analysis_menu(cfg: dict):
+    analysis_menu(cfg)
 
 
 def run_module_localvar_analysis(cfg: dict):
@@ -664,7 +502,7 @@ def run_module_localvar_analysis(cfg: dict):
         return
 
     try:
-        from .analyzers.variables import analyze_module_localvar_fields
+        from .analyzers.variable_usage_reporting import analyze_module_localvar_fields
 
         report = analyze_module_localvar_fields(
             project_bp,
@@ -684,13 +522,6 @@ def run_module_localvar_analysis(cfg: dict):
 
 def _get_enabled_analyzers():
     return [spec for spec in get_default_analyzers() if spec.enabled]
-
-
-def _print_available_checks():
-    print("\n--- Available checks ---")
-    for spec in _get_enabled_analyzers():
-        print(f"- {spec.key}: {spec.name}")
-        print(f"  {spec.description}")
 
 
 def _run_checks(cfg: dict, selected_keys: list[str] | None) -> None:
@@ -721,33 +552,7 @@ def _run_checks(cfg: dict, selected_keys: list[str] | None) -> None:
 
 
 def run_checks_menu(cfg: dict):
-    while True:
-        clear_screen()
-        print("\n--- Run checks ---")
-        print("1) Run all checks")
-        print("2) Run selected checks")
-        print("3) List available checks")
-        print("b) Back")
-        print("q) Quit")
-
-        c = input("> ").strip().lower()
-        if c == "b":
-            return
-        if c == "q":
-            quit_app()
-
-        if c == "1":
-            _run_checks(cfg, None)
-        elif c == "2":
-            raw = input("Enter check keys (comma-separated): ").strip()
-            keys = [key.strip() for key in raw.split(",") if key.strip()]
-            _run_checks(cfg, keys)
-        elif c == "3":
-            _print_available_checks()
-            pause()
-        else:
-            print("Invalid choice.")
-            pause()
+    _run_checks(cfg, None)
 
 
 def run_mms_interface_analysis(cfg: dict):
@@ -870,6 +675,17 @@ def run_debug_variable_usage(cfg: dict):
     pause()
 
 
+def run_comment_code_analysis(cfg: dict):
+    """Scan raw source files for code-like content inside comments."""
+    project_bp, graph = load_project(cfg)
+
+    print("\n--- Commented-out Code ---")
+    paths = getattr(graph, "source_files", set())
+    report = analyze_comment_code_files(paths, project_bp.header.name)
+    print("\n" + report.summary())
+    pause()
+
+
 def run_advanced_datatype_analysis(cfg: dict):
     """Enhanced datatype analysis with filtering options."""
     project_bp, graph = load_project(cfg)
@@ -885,7 +701,7 @@ def run_advanced_datatype_analysis(cfg: dict):
     if choice == "1":
         var_name = input("Enter variable name: ").strip()
         if var_name:
-            report = variables_module.analyze_datatype_usage(
+            report = variables_reporting_module.analyze_datatype_usage(
                 project_bp,
                 var_name,
                 debug=cfg.get("debug", False),
@@ -901,7 +717,7 @@ def run_advanced_datatype_analysis(cfg: dict):
     elif choice == "3":
         var_name = input("Enter variable name to debug: ").strip()
         if var_name:
-            report = variables_module.debug_variable_usage(
+            report = variables_reporting_module.debug_variable_usage(
                 project_bp,
                 var_name,
                 debug=cfg.get("debug", False),
@@ -956,7 +772,6 @@ def config_menu(cfg: dict) -> bool:
         clear_screen()
         show_config(cfg)
         print("""
---- Edit Configuration ---
 1) Change Root program/library to analyze
 2) Toggle Mode (official/draft)
 3) Toggle scan_root_only
@@ -1073,49 +888,41 @@ How to use SattLint
 • Navigate using the number keys shown in each menu
 • Press Enter to confirm a selection
 • Changes are NOT saved until you choose "Save config"
-• Use "Run checks" to analyze the configured root program
+• Use "Analyses" to analyze the configured root program
 • Use "Dump outputs" to inspect parse trees, ASTs, etc.
 • Use "Edit config" to change settings
 • Use "Self-check" to check if the config is OK
 • Press 'q' at any time in the main menu to quit
 
 === SattLint ===
-1) Run checks
-2) Variable analyses
-3) Dump outputs
-4) Edit config
-5) Self-check diagnostics
-6) Force refresh cached AST
-7) Module analyses
+1) Analyses
+2) Dump outputs
+3) Edit config
+4) Self-check diagnostics
+5) Force refresh cached AST
 q) Quit
 """)
             c = input("> ").strip().lower()
 
             if c == "1":
-                run_checks_menu(cfg)
+                analysis_menu(cfg)
 
             elif c == "2":
-                variable_analysis_menu(cfg)
-
-            elif c == "3":
                 dump_menu(cfg)
 
-            elif c == "4":
+            elif c == "3":
                 dirty |= config_menu(cfg)
 
-            elif c == "5":
+            elif c == "4":
                 clear_screen()
                 self_check(cfg)
                 pause()
 
-            elif c == "6":
+            elif c == "5":
                 if confirm("Force refresh cached AST?"):
                     force_refresh_ast(cfg)
                     print("✔ AST cache refreshed")
                     pause()
-
-            elif c == "7":
-                module_analysis_menu(cfg)
 
             elif c == "q":
                 if dirty and confirm("Unsaved config changes. Save before quitting?"):

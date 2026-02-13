@@ -3,7 +3,7 @@
 import pytest
 
 from sattlint import constants as const
-from sattlint.analyzers.variables import analyze_module_localvar_fields
+from sattlint.analyzers.variable_usage_reporting import analyze_module_localvar_fields
 from sattlint.models.ast_model import (
     BasePicture,
     DataType,

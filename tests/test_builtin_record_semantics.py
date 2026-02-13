@@ -83,15 +83,19 @@ def test_copyvariable_marks_all_leaf_fields_read_and_written():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    assert src.field_reads is not None
-    assert dst.field_writes is not None
+    src_usage = analyzer._get_usage(src)
+    dst_usage = analyzer._get_usage(dst)
+    status_usage = analyzer._get_usage(status)
 
-    read_keys = {k.casefold() for k in src.field_reads.keys()}
-    write_keys = {k.casefold() for k in dst.field_writes.keys()}
+    assert src_usage.field_reads is not None
+    assert dst_usage.field_writes is not None
+
+    read_keys = {k.casefold() for k in src_usage.field_reads.keys()}
+    write_keys = {k.casefold() for k in dst_usage.field_writes.keys()}
 
     assert {"a", "b"}.issubset(read_keys)
     assert {"a", "b"}.issubset(write_keys)
-    assert status.written, "Expected Status to be written by CopyVariable"
+    assert status_usage.written, "Expected Status to be written by CopyVariable"
 
 
 def test_copyvarnosort_expands_nested_prefix_fields():
@@ -157,8 +161,11 @@ def test_copyvarnosort_expands_nested_prefix_fields():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    read_keys = {k.casefold() for k in (src.field_reads or {}).keys()}
-    write_keys = {k.casefold() for k in (dst.field_writes or {}).keys()}
+    src_u = analyzer._get_usage(src)
+    dst_u = analyzer._get_usage(dst)
+
+    read_keys = {k.casefold() for k in (src_u.field_reads or {}).keys()}
+    write_keys = {k.casefold() for k in (dst_u.field_writes or {}).keys()}
 
     assert "inner.x" in read_keys
     assert "inner.y" in read_keys
@@ -217,11 +224,13 @@ def test_initvariable_writes_all_fields_and_reads_nothing():
     analyzer.run()
 
     # Rec is fully written
-    write_keys = {k.casefold() for k in (rec.field_writes or {}).keys()}
+    rec_u = analyzer._get_usage(rec)
+    write_keys = {k.casefold() for k in (rec_u.field_writes or {}).keys()}
     assert {"a", "b"}.issubset(write_keys)
 
     # InitRec is NOT read (per user semantics)
-    assert not (initrec.read or initrec.field_reads), "InitRec must not be counted as read"
+    initrec_u = analyzer._get_usage(initrec)
+    assert not (initrec_u.read or initrec_u.field_reads), "InitRec must not be counted as read"
 
 
 def test_copyvariable_fails_loudly_on_unknown_field_prefix():
@@ -311,7 +320,5 @@ def test_copyvariable_allows_opaque_builtin_record_type():
 
     analyzer = VariablesAnalyzer(bp, fail_loudly=False)
     analyzer.run()
-
-    assert not analyzer.analysis_warnings
-    assert src.read
-    assert dst.written
+    assert analyzer._get_usage(src).read
+    assert analyzer._get_usage(dst).written

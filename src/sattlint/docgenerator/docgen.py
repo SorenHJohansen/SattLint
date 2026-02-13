@@ -49,8 +49,8 @@ from ..models.ast_model import (
     ModuleCode,
     Sequence,
     Equation,
-    format_expr,  # pretty‑printer for statements
 )
+from ..utils.formatter import format_expr
 
 # --------------------------------------------------------------
 # Helper utilities for formatting

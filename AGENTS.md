@@ -3,6 +3,10 @@
 > This file provides context for AI assistants working with the SattLint codebase.
 > SattLint is a Python-based static analyzer and documentation generator for SattLine,
 > a proprietary PLC programming language developed by ABB for industrial automation.
+>
+> **IMPORTANT:** This file (`AGENTS.md`) is the source of truth for AI context.
+> If you make structural changes, refactor code, or add new features, **YOU MUST UPDATE THIS FILE**.
+> Keep the file lists, architectural descriptions, and code examples current.
 
 ---
 
@@ -298,7 +302,7 @@ class BasePicture:
 ```
 
 #### Variable
-Central to analysis, tracks usage:
+Represents a variable declaration in the AST. Immutable during analysis.
 
 ```python
 @dataclass
@@ -312,7 +316,15 @@ class Variable:
     secure: bool = False
     init_value: Any = None
     description: str = None
-    # Usage tracking (populated during analysis)
+```
+
+#### VariableUsage
+Tracks mutable analysis state (detached from the AST):
+
+```python
+# Defined in src/sattlint/models/usage.py
+@dataclass
+class VariableUsage:
     read: bool = False
     written: bool = False
     usage_locations: list[tuple[list[str], str]]  # [(path, kind), ...]
@@ -712,6 +724,12 @@ pytest -v --tb=short
 pytest tests/test_analyzers.py::test_variable_usage -v
 ```
 
+**Note on test runners:** If an IDE test runner reports 0 tests collected, run pytest directly via the repo venv instead:
+
+```bash
+& ".venv/Scripts/python.exe" -m pytest
+```
+
 ### Debug Mode
 
 Enable debug logging to see detailed trace:
@@ -752,7 +770,7 @@ Debug output includes:
 ### Useful Debug Functions
 
 ```python
-from sattlint.analyzers.variables import (
+from sattlint.analyzers.variable_usage_reporting import (
     debug_variable_usage,
     analyze_datatype_usage,
     analyze_module_localvar_fields
@@ -784,6 +802,8 @@ print(analyze_module_localvar_fields(bp, "BasePicture.Module1", "LocalVar"))
 | `src/sattlint/transformer/sl_transformer.py` | Lark Transformer → AST objects |
 | `src/sattlint/models/ast_model.py` | AST node dataclasses |
 | `src/sattlint/models/project_graph.py` | Project dependency graph |
+| `src/sattlint/utils/text_processing.py` | Text utilities (comment stripping, comment code detection) |
+| `src/sattlint/utils/formatter.py` | AST node pretty-printing and formatting |
 
 ### Analysis
 
@@ -792,12 +812,22 @@ print(analyze_module_localvar_fields(bp, "BasePicture.Module1", "LocalVar"))
 | `src/sattlint/analyzers/framework.py` | Analysis framework primitives and report formatting helpers |
 | `src/sattlint/analyzers/registry.py` | Registry of CLI-exposed analyzers |
 | `src/sattlint/analyzers/variables.py` | Variable usage analyzer (main analysis) |
+| `src/sattlint/analyzers/validators.py` | Dedicated validators (min/max naming, string types) |
 | `src/sattlint/analyzers/modules.py` | Module structure analyzer |
+| `src/sattlint/analyzers/mms.py` | MMS interface analysis |
+| `src/sattlint/analyzers/icf.py` | ICF file parsing and validation |
+| `src/sattlint/analyzers/comment_code.py` | Commented-out code detection (raw source scan) |
 | `src/sattlint/analyzers/sfc.py` | SFC analysis placeholder (future checks) |
 | `src/sattlint/analyzers/sattline_builtins.py` | Built-in function signatures |
 | `src/sattlint/resolution/symbol_table.py` | Symbol table management |
 | `src/sattlint/resolution/type_graph.py` | Type dependency tracking |
 | `src/sattlint/resolution/access_graph.py` | Variable access tracking |
+| `src/sattlint/resolution/scope.py` | Scope and variable resolution context |
+| `src/sattlint/resolution/common.py` | Shared resolution utilities (paths, moduletypes) |
+| `src/sattlint/reporting/variables_report.py` | Variables analyzer reporting classes |
+| `src/sattlint/reporting/mms_report.py` | MMS analysis reporting |
+| `src/sattlint/reporting/icf_report.py` | ICF analysis reporting |
+| `src/sattlint/reporting/comment_code_report.py` | Commented-out code reporting |
 
 ### Documentation Generation
 
@@ -873,7 +903,7 @@ print(report.summary())
 ### Find all MMS interface mappings
 
 ```python
-from sattlint.analyzers.variables import analyze_mms_interface_variables
+from sattlint.analyzers.mms import analyze_mms_interface_variables
 
 mms_report = analyze_mms_interface_variables(bp)
 print(mms_report.summary())
@@ -914,8 +944,9 @@ walk_modules(bp.submodules, [bp.header.name])
 6. **Understand the scope hierarchy** - Variables can be accessed from parent scopes unless shadowed
 7. **Use the framework/registry** - Follow `analyzers/framework.py` + `analyzers/registry.py` patterns for new checks
 8. **Test with the fixtures** - The test files in `tests/fixtures/` cover most language features
-9. **Parser header lines** - The grammar start rule requires three header `STRING` lines before `BasePicture`, so parser tests should include them
-10. **Strict mode only** - Prefer strict validation and fail loudly on any ambiguity or missing data; do not add fallback behavior
+9. **Keep menu tests in sync** - If you change CLI menu layouts or numbering, update `tests/test_app.py` inputs accordingly
+10. **Parser header lines** - The grammar start rule requires three header `STRING` lines before `BasePicture`, so parser tests should include them
+11. **Strict mode only** - Prefer strict validation and fail loudly on any ambiguity or missing data; do not add fallback behavior
 
 ---
 
