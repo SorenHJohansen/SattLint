@@ -18,6 +18,8 @@
     "python.testing.pytestArgs": [
         "tests"
     ],
+    "python.testing.cwd": "${workspaceFolder}",
+    "python.testing.unittestEnabled": false,
     "python.testing.autoTestDiscoverOnSaveEnabled": true,
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,

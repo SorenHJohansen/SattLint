@@ -1,4 +1,5 @@
 """Module comparison and debug helpers for analyzer workflows."""
+import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, cast
@@ -16,26 +17,33 @@ from ..models.ast_model import (
 )
 from .framework import format_report_header
 
+log = logging.getLogger("SattLint")
+
 
 def debug_module_structure(base_picture: BasePicture, max_depth: int = 10) -> None:
     """Detailed debugging: show EVERYTHING about the structure."""
-    print(f"\n=== DEBUGGING MODULE STRUCTURE ===")
-    print(f"BasePicture type: {type(base_picture)}")
-    print(f"BasePicture name: {base_picture.header.name!r}")
-    print(f"BasePicture has {len(base_picture.submodules)} submodules")
-    print(f"BasePicture has {len(base_picture.moduletype_defs)} moduletype_defs")
+    log.debug("=== DEBUGGING MODULE STRUCTURE ===")
+    log.debug("BasePicture type: %s", type(base_picture))
+    log.debug("BasePicture name: %r", base_picture.header.name)
+    log.debug("BasePicture has %d submodules", len(base_picture.submodules))
+    log.debug("BasePicture has %d moduletype_defs", len(base_picture.moduletype_defs))
 
     # Show moduletype_defs
-    print(f"\n--- ModuleTypeDefs ---")
+    log.debug("--- ModuleTypeDefs ---")
     for mtd in base_picture.moduletype_defs:
-        print(f"  ModuleTypeDef: {mtd.name!r}")
-        print(f"    - has {len(mtd.submodules)} submodules")
+        log.debug("  ModuleTypeDef: %r", mtd.name)
+        log.debug("    - has %d submodules", len(mtd.submodules))
         for i, sub in enumerate(mtd.submodules):
-            print(f"    - submodule[{i}]: {type(sub).__name__} - {sub.header.name!r}")
+            log.debug(
+                "    - submodule[%d]: %s - %r",
+                i,
+                type(sub).__name__,
+                sub.header.name,
+            )
 
     def _walk(node: Any, depth: int = 0, parent_name: str = "") -> None:
         if depth > max_depth:
-            print(f"{'  ' * depth}[MAX DEPTH REACHED]")
+            log.debug("%s[MAX DEPTH REACHED]", "  " * depth)
             return
 
         indent = "  " * depth
@@ -43,42 +51,69 @@ def debug_module_structure(base_picture: BasePicture, max_depth: int = 10) -> No
 
         if isinstance(node, SingleModule):
             name = node.header.name
-            print(
-                f"{indent}✓ SingleModule: name={name!r}, datecode={node.datecode}, parent={parent_name!r}"
+            log.debug(
+                "%sSingleModule: name=%r, datecode=%s, parent=%r",
+                indent,
+                name,
+                node.datecode,
+                parent_name,
             )
-            print(f"{indent}  - has {len(node.submodules)} submodules")
+            log.debug("%s  - has %d submodules", indent, len(node.submodules))
             for i, sub in enumerate(node.submodules):
-                print(f"{indent}  - submodule[{i}] type: {type(sub).__name__}")
+                log.debug(
+                    "%s  - submodule[%d] type: %s",
+                    indent,
+                    i,
+                    type(sub).__name__,
+                )
                 _walk(sub, depth + 1, name)
 
         elif isinstance(node, FrameModule):
             name = node.header.name
-            print(
-                f"{indent}○ FrameModule: name={name!r}, datecode={node.datecode}, parent={parent_name!r}"
+            log.debug(
+                "%sFrameModule: name=%r, datecode=%s, parent=%r",
+                indent,
+                name,
+                node.datecode,
+                parent_name,
             )
-            print(f"{indent}  - has {len(node.submodules)} submodules")
+            log.debug("%s  - has %d submodules", indent, len(node.submodules))
             for i, sub in enumerate(node.submodules):
-                print(f"{indent}  - submodule[{i}] type: {type(sub).__name__}")
+                log.debug(
+                    "%s  - submodule[%d] type: %s",
+                    indent,
+                    i,
+                    type(sub).__name__,
+                )
                 _walk(sub, depth + 1, name)
 
         elif isinstance(node, ModuleTypeInstance):
             name = node.header.name
-            print(
-                f"{indent}△ ModuleTypeInstance: name={name!r}, type={node.moduletype_name!r}, parent={parent_name!r}"
+            log.debug(
+                "%sModuleTypeInstance: name=%r, type=%r, parent=%r",
+                indent,
+                name,
+                node.moduletype_name,
+                parent_name,
             )
 
         elif isinstance(node, BasePicture):
-            print(f"{indent}▣ BasePicture: name={node.name!r}")
-            print(f"{indent}  - has {len(node.submodules)} submodules")
+            log.debug("%sBasePicture: name=%r", indent, node.name)
+            log.debug("%s  - has %d submodules", indent, len(node.submodules))
             for i, sub in enumerate(node.submodules):
-                print(f"{indent}  - submodule[{i}] type: {type(sub).__name__}")
+                log.debug(
+                    "%s  - submodule[%d] type: %s",
+                    indent,
+                    i,
+                    type(sub).__name__,
+                )
                 _walk(sub, depth + 1, node.name)
         else:
-            print(f"{indent}? Unknown type: {node_type}")
+            log.debug("%sUnknown type: %s", indent, node_type)
 
-    print(f"\n--- Submodules Tree ---")
+    log.debug("--- Submodules Tree ---")
     _walk(base_picture)
-    print(f"=== END DEBUGGING ===\n")
+    log.debug("=== END DEBUGGING ===")
 
 
 @dataclass
@@ -613,8 +648,10 @@ def _walk_modules(
     target_name_lower = target_name.lower()
 
     if debug:
-        print(
-            f"_walk_modules: checking node type={type(node).__name__}, path={current_path}"
+        log.debug(
+            "_walk_modules: checking node type=%s, path=%s",
+            type(node).__name__,
+            current_path,
         )
 
     if isinstance(node, SingleModule):
@@ -622,49 +659,58 @@ def _walk_modules(
         node_name_lower = node_name.lower()
 
         if debug:
-            print(
-                f"  → SingleModule found: {node_name!r}, comparing with target={target_name!r}, match={node_name_lower == target_name_lower}"
+            log.debug(
+                "  SingleModule found: %r, comparing with target=%r, match=%s",
+                node_name,
+                target_name,
+                node_name_lower == target_name_lower,
             )
 
         path_with_current = current_path + [node_name]
 
         if node_name_lower == target_name_lower:
             if debug:
-                print(f"  ✓ MATCH! Adding to results")
+                log.debug("  MATCH: adding to results")
             results.append((path_with_current, node))
 
         if debug:
-            print(f"  → Checking {len(node.submodules)} submodules of {node_name!r}")
+            log.debug(
+                "  Checking %d submodules of %r",
+                len(node.submodules),
+                node_name,
+            )
         for i, sub in enumerate(node.submodules):
             if debug:
-                print(f"  → Submodule[{i}]: {type(sub).__name__}")
+                log.debug("  Submodule[%d]: %s", i, type(sub).__name__)
             _walk_modules(sub, target_name, path_with_current, results, debug)
 
     elif isinstance(node, FrameModule):
         node_name = node.header.name
         if debug:
-            print(f"  → FrameModule: {node_name!r}")
+            log.debug("  FrameModule: %r", node_name)
         path_with_current = current_path + [node_name]
 
         if debug:
-            print(
-                f"  → Checking {len(node.submodules)} submodules of FrameModule {node_name!r}"
+            log.debug(
+                "  Checking %d submodules of FrameModule %r",
+                len(node.submodules),
+                node_name,
             )
         for i, sub in enumerate(node.submodules):
             if debug:
-                print(f"  → Submodule[{i}]: {type(sub).__name__}")
+                log.debug("  Submodule[%d]: %s", i, type(sub).__name__)
             _walk_modules(sub, target_name, path_with_current, results, debug)
 
     elif isinstance(node, ModuleTypeDef):
         node_name = node.name
         if debug:
-            print(f"  → ModuleTypeDef: {node_name!r}")
-            print(f"  → Has {len(node.submodules)} submodules")
+            log.debug("  ModuleTypeDef: %r", node_name)
+            log.debug("  Has %d submodules", len(node.submodules))
         path_with_current = current_path + [f"TypeDef:{node_name}"]
 
         for i, sub in enumerate(node.submodules):
             if debug:
-                print(f"  → Submodule[{i}]: {type(sub).__name__}")
+                log.debug("  Submodule[%d]: %s", i, type(sub).__name__)
             _walk_modules(sub, target_name, path_with_current, results, debug)
 
     elif isinstance(node, BasePicture):

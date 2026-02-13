@@ -10,6 +10,7 @@ import pytest
 
 from sattlint import app
 from sattlint.analyzers import variables as variables_module
+from sattlint.analyzers import variable_usage_reporting as variables_reporting_module
 from sattlint.models.ast_model import FrameModule, ModuleTypeInstance, SingleModule
 
 
@@ -171,33 +172,26 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
         cfg = real_context["cfg"].copy()
         inputs = [
             "1",
-            "y",
             "2",
-            "y",
             "3",
-            "y",
             "4",
-            "y",
             "5",
-            "y",
             "6",
-            "y",
             "7",
-            "y",
-            real_context["var_name"],
             "8",
-            "y",
             real_context["var_name"],
             "9",
-            "y",
+            real_context["var_name"],
+            "10",
             real_context["module_path"],
             real_context["module_var"],
+            "16",
             "f",
             "y",
             "b",
         ]
         monkeypatch.setattr(builtins, "input", make_input(inputs))
-        app.variable_analysis_menu(cfg)
+        app.analysis_menu(cfg)
         return
 
     calls = []
@@ -209,39 +203,34 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
     monkeypatch.setattr(app, "run_datatype_usage_analysis", lambda *_: record("datatype"))
     monkeypatch.setattr(app, "run_debug_variable_usage", lambda *_: record("debug"))
     monkeypatch.setattr(app, "run_module_localvar_analysis", lambda *_: record("module"))
+    monkeypatch.setattr(app, "run_comment_code_analysis", lambda *_: record("comment"))
     monkeypatch.setattr(app, "force_refresh_ast", lambda *_: record("refresh"))
 
     inputs = [
         "1",
-        "y",
         "2",
-        "y",
         "3",
-        "y",
         "4",
-        "y",
         "5",
-        "y",
         "6",
-        "y",
         "7",
-        "y",
         "8",
-        "y",
         "9",
-        "y",
+        "10",
+        "16",
         "f",
         "y",
         "b",
     ]
     monkeypatch.setattr(builtins, "input", make_input(inputs))
 
-    app.variable_analysis_menu(app.DEFAULT_CONFIG.copy())
+    app.analysis_menu(app.DEFAULT_CONFIG.copy())
 
-    assert calls.count("variable") == 6
+    assert calls.count("variable") == 7
     assert "datatype" in calls
     assert "debug" in calls
     assert "module" in calls
+    assert "comment" in calls
     assert "refresh" in calls
 
 
@@ -325,12 +314,13 @@ def test_main_menu_all_options(noop_screen, monkeypatch, real_context):
 
     calls = []
 
-    monkeypatch.setattr(app, "variable_analysis_menu", lambda *_: calls.append("analysis"))
+    monkeypatch.setattr(app, "analysis_menu", lambda *_: calls.append("analysis"))
     monkeypatch.setattr(app, "dump_menu", lambda *_: calls.append("dump"))
     monkeypatch.setattr(app, "config_menu", lambda *_: True)
     monkeypatch.setattr(app, "save_config", lambda *_: calls.append("save"))
+    monkeypatch.setattr(app, "force_refresh_ast", lambda *_: None)
 
-    inputs = ["2", "3", "4", "5", "q", "y"]
+    inputs = ["1", "2", "3", "4", "5", "y", "q", "y"]
     monkeypatch.setattr(builtins, "input", make_input(inputs))
 
     app.main()
@@ -365,8 +355,8 @@ def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_conte
         return
 
     monkeypatch.setattr(app, "load_project", lambda *_: ("project", "graph"))
-    monkeypatch.setattr(variables_module, "analyze_datatype_usage", lambda *_ , **__: "report")
-    monkeypatch.setattr(variables_module, "debug_variable_usage", lambda *_ , **__: "report")
+    monkeypatch.setattr(variables_reporting_module, "analyze_datatype_usage", lambda *_ , **__: "report")
+    monkeypatch.setattr(variables_reporting_module, "debug_variable_usage", lambda *_ , **__: "report")
 
     monkeypatch.setattr(builtins, "input", make_input(["1", "VarName"]))
     app.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())

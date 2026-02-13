@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from .framework import AnalysisContext, AnalyzerSpec
 from .sfc import analyze_sfc
-from .variables import analyze_mms_interface_variables, analyze_variables
+from .variables import analyze_variables
+from .comment_code import analyze_comment_code
+from .mms import analyze_mms_interface_variables
 
 
 def get_default_analyzers() -> list[AnalyzerSpec]:
@@ -23,6 +25,9 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
     def _run_sfc_checks(context: AnalysisContext):
         return analyze_sfc(context.base_picture)
 
+    def _run_comment_code(context: AnalysisContext):
+        return analyze_comment_code(context)
+
     return [
         AnalyzerSpec(
             key="variables",
@@ -41,6 +46,13 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
             name="SFC checks",
             description="Parallel-branch write race detection",
             run=_run_sfc_checks,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="comment-code",
+            name="Commented-out code",
+            description="Code-like content inside comments",
+            run=_run_comment_code,
             enabled=True,
         ),
     ]
