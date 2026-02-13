@@ -172,6 +172,7 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
         cfg = real_context["cfg"].copy()
         inputs = [
             "1",
+            "1",
             "2",
             "3",
             "4",
@@ -179,13 +180,12 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
             "6",
             "7",
             "8",
-            real_context["var_name"],
             "9",
-            real_context["var_name"],
             "10",
-            real_context["module_path"],
-            real_context["module_var"],
-            "16",
+            "b",
+            "4",
+            "1",
+            "b",
             "f",
             "y",
             "b",
@@ -200,13 +200,18 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
         calls.append(name)
 
     monkeypatch.setattr(app, "run_variable_analysis", lambda *_: record("variable"))
-    monkeypatch.setattr(app, "run_datatype_usage_analysis", lambda *_: record("datatype"))
+    monkeypatch.setattr(
+        app, "run_datatype_usage_analysis", lambda *_: record("datatype")
+    )
     monkeypatch.setattr(app, "run_debug_variable_usage", lambda *_: record("debug"))
-    monkeypatch.setattr(app, "run_module_localvar_analysis", lambda *_: record("module"))
+    monkeypatch.setattr(
+        app, "run_module_localvar_analysis", lambda *_: record("module")
+    )
     monkeypatch.setattr(app, "run_comment_code_analysis", lambda *_: record("comment"))
     monkeypatch.setattr(app, "force_refresh_ast", lambda *_: record("refresh"))
 
     inputs = [
+        "1",
         "1",
         "2",
         "3",
@@ -217,7 +222,10 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
         "8",
         "9",
         "10",
-        "16",
+        "b",
+        "4",
+        "1",
+        "b",
         "f",
         "y",
         "b",
@@ -249,10 +257,14 @@ def test_dump_menu_all_options(noop_screen, monkeypatch, real_context):
     def record(name):
         dump_calls.append(name)
 
-    monkeypatch.setattr(app.engine_module, "dump_parse_tree", lambda *_: record("parse"))
+    monkeypatch.setattr(
+        app.engine_module, "dump_parse_tree", lambda *_: record("parse")
+    )
     monkeypatch.setattr(app.engine_module, "dump_ast", lambda *_: record("ast"))
-    monkeypatch.setattr(app.engine_module, "dump_dependency_graph", lambda *_: record("deps"))
-    monkeypatch.setattr(app, "analyze_variables", lambda *_ , **__: DummyReport())
+    monkeypatch.setattr(
+        app.engine_module, "dump_dependency_graph", lambda *_: record("deps")
+    )
+    monkeypatch.setattr(app, "analyze_variables", lambda *_, **__: DummyReport())
 
     inputs = ["1", "y", "2", "y", "3", "y", "4", "y", "b"]
     monkeypatch.setattr(builtins, "input", make_input(inputs))
@@ -307,7 +319,7 @@ def test_config_menu_all_options(noop_screen, monkeypatch, tmp_path):
 
 
 def test_main_menu_all_options(noop_screen, monkeypatch, real_context):
-    cfg = (real_context["cfg"].copy() if real_context else app.DEFAULT_CONFIG.copy())
+    cfg = real_context["cfg"].copy() if real_context else app.DEFAULT_CONFIG.copy()
 
     monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))
     monkeypatch.setattr(app, "self_check", lambda *_: True)
@@ -355,8 +367,12 @@ def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_conte
         return
 
     monkeypatch.setattr(app, "load_project", lambda *_: ("project", "graph"))
-    monkeypatch.setattr(variables_reporting_module, "analyze_datatype_usage", lambda *_ , **__: "report")
-    monkeypatch.setattr(variables_reporting_module, "debug_variable_usage", lambda *_ , **__: "report")
+    monkeypatch.setattr(
+        variables_reporting_module, "analyze_datatype_usage", lambda *_, **__: "report"
+    )
+    monkeypatch.setattr(
+        variables_reporting_module, "debug_variable_usage", lambda *_, **__: "report"
+    )
 
     monkeypatch.setattr(builtins, "input", make_input(["1", "VarName"]))
     app.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())
