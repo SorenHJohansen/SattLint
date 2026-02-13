@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """CLI entry points and interactive helpers for SattLint."""
+
 from __future__ import annotations
 
 import logging
@@ -59,6 +60,7 @@ def save_config(path: Path, cfg: dict) -> None:
 
 def self_check(cfg: dict) -> bool:
     return config_module.self_check(cfg)
+
 
 # Configure root logger so all debug messages are shown
 logging.basicConfig(format="%(message)s", level=logging.DEBUG)
@@ -230,7 +232,9 @@ def ensure_ast_cache(cfg: dict) -> bool:
         if has_manifest:
             print("⚠ AST cache stale; rebuilding (this may take a while)...")
         else:
-            print("⚠ AST cache missing file manifest; rebuilding (this may take a while)...")
+            print(
+                "⚠ AST cache missing file manifest; rebuilding (this may take a while)..."
+            )
     else:
         print("⚠ AST cache missing; building (this may take a while)...")
 
@@ -286,24 +290,18 @@ def run_datatype_usage_analysis(cfg: dict):
     pause()
 
 
-def analysis_menu(cfg: dict):
+def variable_usage_submenu(cfg: dict):
+    """Variable usage analysis submenu."""
     while True:
         clear_screen()
-        print("\n--- Analyses ---")
-        print("Variable analyses:")
+        print("\n--- Variable Usage Analysis ---")
+        print("Quick reports:")
         for k, (name, _) in VARIABLE_ANALYSES.items():
             print(f"{k}) {name}")
+        print("\nDetailed analysis:")
         print("8) Datatype usage analysis (by variable name)")
         print("9) Variable usage (fields + locations)")
         print("10) Module local variable field analysis")
-        print("11) MMS interface variables (WriteData/Outputvariable)")
-        print("12) Validate ICF paths (per program)")
-        print("Module analyses:")
-        print("13) Compare module variants by name")
-        print("14) List module instances by name")
-        print("15) Debug module tree structure")
-        print("16) Commented-out code in comments")
-        print("f) Force refresh cached AST")
         print("b) Back")
         print("q) Quit")
 
@@ -319,25 +317,121 @@ def analysis_menu(cfg: dict):
             run_debug_variable_usage(cfg)
         elif c == "10":
             run_module_localvar_analysis(cfg)
-        elif c == "11":
-            run_mms_interface_analysis(cfg)
-        elif c == "12":
-            run_icf_validation(cfg)
-        elif c == "13":
-            run_module_duplicates_analysis(cfg)
-        elif c == "14":
-            run_module_find_by_name(cfg)
-        elif c == "15":
-            run_module_tree_debug(cfg)
-        elif c == "16":
-            run_comment_code_analysis(cfg)
-        elif c == "f":
-            if confirm("Force refresh cached AST?"):
-                force_refresh_ast(cfg)
         elif c in VARIABLE_ANALYSES:
             name, kinds = VARIABLE_ANALYSES[c]
             # kinds is either a set[IssueKind] or None at this point
-            run_variable_analysis(cfg, kinds if isinstance(kinds, (set, type(None))) else None)
+            run_variable_analysis(
+                cfg, kinds if isinstance(kinds, (set, type(None))) else None
+            )
+        else:
+            print("Invalid choice.")
+            pause()
+
+
+def module_analysis_submenu(cfg: dict):
+    """Module analysis submenu."""
+    while True:
+        clear_screen()
+        print("\n--- Module Analysis ---")
+        print("1) Compare module variants by name")
+        print("2) List module instances by name")
+        print("3) Debug module tree structure")
+        print("b) Back")
+        print("q) Quit")
+
+        c = input("> ").strip().lower()
+        if c == "b":
+            return
+        if c == "q":
+            quit_app()
+
+        if c == "1":
+            run_module_duplicates_analysis(cfg)
+        elif c == "2":
+            run_module_find_by_name(cfg)
+        elif c == "3":
+            run_module_tree_debug(cfg)
+        else:
+            print("Invalid choice.")
+            pause()
+
+
+def interface_communication_submenu(cfg: dict):
+    """Interface and communication analysis submenu."""
+    while True:
+        clear_screen()
+        print("\n--- Interface & Communication ---")
+        print("1) MMS interface variables (WriteData/Outputvariable)")
+        print("2) Validate ICF paths (per program)")
+        print("b) Back")
+        print("q) Quit")
+
+        c = input("> ").strip().lower()
+        if c == "b":
+            return
+        if c == "q":
+            quit_app()
+
+        if c == "1":
+            run_mms_interface_analysis(cfg)
+        elif c == "2":
+            run_icf_validation(cfg)
+        else:
+            print("Invalid choice.")
+            pause()
+
+
+def code_quality_submenu(cfg: dict):
+    """Code quality analysis submenu."""
+    while True:
+        clear_screen()
+        print("\n--- Code Quality ---")
+        print("1) Commented-out code in comments")
+        print("b) Back")
+        print("q) Quit")
+
+        c = input("> ").strip().lower()
+        if c == "b":
+            return
+        if c == "q":
+            quit_app()
+
+        if c == "1":
+            run_comment_code_analysis(cfg)
+        else:
+            print("Invalid choice.")
+            pause()
+
+
+def analysis_menu(cfg: dict):
+    while True:
+        clear_screen()
+        print("\n--- Analyses ---")
+        print("1) Variable Usage Analysis")
+        print("2) Module Analysis")
+        print("3) Interface & Communication")
+        print("4) Code Quality")
+        print("f) Force refresh cached AST")
+        print("b) Back")
+        print("q) Quit")
+
+        c = input("> ").strip().lower()
+        if c == "b":
+            return
+        if c == "q":
+            quit_app()
+
+        if c == "1":
+            variable_usage_submenu(cfg)
+        elif c == "2":
+            module_analysis_submenu(cfg)
+        elif c == "3":
+            interface_communication_submenu(cfg)
+        elif c == "4":
+            code_quality_submenu(cfg)
+        elif c == "f":
+            if confirm("Force refresh cached AST?"):
+                force_refresh_ast(cfg)
         else:
             print("Invalid choice.")
             pause()
@@ -580,7 +674,9 @@ def run_icf_validation(cfg: dict):
     """Validate ICF paths against per-program ASTs (non-recursive, report-only)."""
     icf_dir_raw = cfg.get("icf_dir", "")
     if not icf_dir_raw:
-        print("❌ icf_dir is not set in the config. Set it before running ICF validation.")
+        print(
+            "❌ icf_dir is not set in the config. Set it before running ICF validation."
+        )
         pause()
         return
 
@@ -667,7 +763,9 @@ def run_debug_variable_usage(cfg: dict):
         return
 
     try:
-        report = debug_variable_usage(project_bp, var_name, debug=cfg.get("debug", False))
+        report = debug_variable_usage(
+            project_bp, var_name, debug=cfg.get("debug", False)
+        )
         print("\n" + report)
     except Exception as e:
         print(f"❌ Error during debug: {e}")
@@ -755,8 +853,15 @@ q) Quit
         elif c == "3" and confirm("Dump dependency graph?"):
             engine_module.dump_dependency_graph(project)
         elif c == "4" and confirm("Dump variable report?"):
-            print(analyze_variables(project_bp, debug=cfg.get("debug", False),
-                                    unavailable_libraries=getattr(graph, 'unavailable_libraries', set())).summary())
+            print(
+                analyze_variables(
+                    project_bp,
+                    debug=cfg.get("debug", False),
+                    unavailable_libraries=getattr(
+                        graph, "unavailable_libraries", set()
+                    ),
+                ).summary()
+            )
         else:
             print("Invalid choice.")
 
