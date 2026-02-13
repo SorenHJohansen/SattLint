@@ -1,9 +1,9 @@
 """Variable usage analysis and reporting utilities."""
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import difflib
 import re
-from typing import Any, Union, cast
+from typing import Any, TypeAlias, Union, cast
 from enum import Enum
 from pathlib import Path
 from .sattline_builtins import get_function_signature
@@ -40,6 +40,7 @@ from ..models.ast_model import (
     ParameterMapping,
     Simple_DataType,
 )
+from .framework import Issue, format_report_header
 
 log = logging.getLogger("SattLint")
 
@@ -55,6 +56,7 @@ class ScopeContext:
     param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]]
     module_path: list[str]
     display_module_path: list[str]
+    current_library: str | None = None
     parent_context: ScopeContext | None = None
 
     def resolve_variable(self, var_ref: str) -> tuple[Variable | None, str, list[str], list[str]]:
@@ -120,6 +122,7 @@ class IssueKind(Enum):
     STRING_MAPPING_MISMATCH = "string_mapping_mismatch"
     DATATYPE_DUPLICATION = "datatype_duplication"
     NAME_COLLISION = "name_collision"
+    MIN_MAX_MAPPING_MISMATCH = "min_max_mapping_mismatch"
 
 
 @dataclass
@@ -149,6 +152,10 @@ class VariablesReport:
     issues: list[VariableIssue]
 
     @property
+    def name(self) -> str:
+        return self.basepicture_name
+
+    @property
     def unused(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.UNUSED]
 
@@ -168,10 +175,18 @@ class VariablesReport:
     def datatype_duplication(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.DATATYPE_DUPLICATION]
 
+    @property
+    def min_max_mapping_mismatch(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.MIN_MAX_MAPPING_MISMATCH]
+
     def summary(self) -> str:
         if not self.issues:
-            return f"No variable issues in {self.basepicture_name}"
-        lines = [f"Variable issues in {self.basepicture_name}:"]
+            lines = format_report_header("Variable issues", self.basepicture_name, status="ok")
+            lines.append("No issues found.")
+            return "\n".join(lines)
+
+        lines = format_report_header("Variable issues", self.basepicture_name, status="issues")
+        lines.append(f"Issues: {len(self.issues)}")
         if self.unused:
             lines.append("  - Unused variables:")
             for uv in self.unused:
@@ -260,7 +275,49 @@ class VariablesReport:
                             lines.append(f"          + {dup_loc} ({dup_role})")
 
             lines.append("")
+
+        if self.min_max_mapping_mismatch:
+            lines.append("  - Min/Max mapping name mismatches:")
+            lines.append("")
+
+            location_w = max(
+                len(".".join(m.module_path)) for m in self.min_max_mapping_mismatch
+            )
+            src_name_w = max(
+                len(m.source_variable.name) if m.source_variable else 0
+                for m in self.min_max_mapping_mismatch
+            )
+            tgt_name_w = max(
+                len(m.variable.name) for m in self.min_max_mapping_mismatch
+            )
+
+            header = (
+                f"      {'Location':<{location_w}}  "
+                f"{'Source Var':<{src_name_w}}  =>  "
+                f"{'Target Var':<{tgt_name_w}}"
+            )
+            lines.append(header)
+            lines.append("      " + "-" * len(header.strip()))
+
+            for m in self.min_max_mapping_mismatch:
+                location = ".".join(m.module_path)
+                src_name = m.source_variable.name if m.source_variable else "?"
+                tgt_name = m.variable.name
+
+                row = (
+                    f"      {location:<{location_w}}  "
+                    f"{src_name:<{src_name_w}}  =>  "
+                    f"{tgt_name:<{tgt_name_w}}"
+                )
+                lines.append(row)
+
+            lines.append("")
         return "\n".join(lines)
+
+
+WriteLocation: TypeAlias = tuple[tuple[str, ...], int]
+WriteField: TypeAlias = tuple[str, tuple[WriteLocation, ...]]
+WriteFields: TypeAlias = tuple[WriteField, ...]
 
 
 @dataclass(frozen=True)
@@ -269,12 +326,19 @@ class MMSInterfaceHit:
     moduletype_name: str
     parameter_name: str
     source_variable: str
+    write_fields: WriteFields = ()
+    write_note: str | None = None
 
 
 @dataclass
 class MMSInterfaceReport:
     basepicture_name: str
     hits: list[MMSInterfaceHit]
+    issues: list[Issue] = field(default_factory=list)
+
+    @property
+    def name(self) -> str:
+        return self.basepicture_name
 
     @property
     def unique_variables(self) -> set[str]:
@@ -282,22 +346,110 @@ class MMSInterfaceReport:
 
     def summary(self) -> str:
         if not self.hits:
-            return (
-                f"No MMSWriteVar/MMSReadVar interface mappings found in {self.basepicture_name}"
+            lines = format_report_header(
+                "MMS interface mappings",
+                self.basepicture_name,
+                status="ok",
             )
+            lines.append("No mappings found.")
+            return "\n".join(lines)
 
-        lines = [
-            f"MMS interface mappings in {self.basepicture_name}:",
-            f"Total mappings: {len(self.hits)}",
-            f"Unique variables: {len(self.unique_variables)}",
-            "",
-        ]
+        def _merge_write_counts(
+            hits: list[MMSInterfaceHit],
+        ) -> tuple[int, dict[str, int], dict[tuple[str, tuple[str, ...]], int]]:
+            dedup: dict[tuple[str, tuple[str, ...]], int] = {}
+            for hit in hits:
+                for field_path, locations in hit.write_fields:
+                    field_label = field_path or "<whole>"
+                    for path, count in locations:
+                        key = (field_label.casefold(), tuple(path))
+                        dedup[key] = max(dedup.get(key, 0), count)
 
-        for hit in sorted(self.hits, key=lambda h: (".".join(h.module_path), h.parameter_name.casefold(), h.source_variable.casefold())):
-            location = " -> ".join(hit.module_path)
+            field_totals: dict[str, int] = {}
+            total = 0
+            for (field_label, _path), count in dedup.items():
+                field_totals[field_label] = field_totals.get(field_label, 0) + count
+                total += count
+
+            return total, field_totals, dedup
+
+        hits_by_var: dict[str, list[MMSInterfaceHit]] = {}
+        for hit in self.hits:
+            hits_by_var.setdefault(hit.source_variable.casefold(), []).append(hit)
+
+        lines = format_report_header(
+            "MMS interface mappings",
+            self.basepicture_name,
+            status="data",
+        )
+        lines.extend(
+            [
+                f"Total mappings: {len(self.hits)}",
+                f"Unique variables: {len(self.unique_variables)}",
+                "",
+            ]
+        )
+
+        ranked_vars = []
+        for key, var_hits in hits_by_var.items():
+            total, field_totals, _dedup = _merge_write_counts(var_hits)
+            display_name = var_hits[0].source_variable
+            ranked_vars.append((total, display_name, field_totals))
+
+        ranked_vars.sort(key=lambda item: (-item[0], item[1].casefold()))
+
+        lines.append("Most-written MMS variables:")
+        for total, display_name, field_totals in ranked_vars[:10]:
+            if total == 0:
+                lines.append(f"  - {display_name}: 0 writes")
+                continue
+
+            top_fields = sorted(field_totals.items(), key=lambda item: (-item[1], item[0]))[:3]
+            top_fields_str = ", ".join(
+                f"{field} ({count}x)" for field, count in top_fields
+            )
             lines.append(
-                f"  - {location} | {hit.moduletype_name}.{hit.parameter_name} => {hit.source_variable}"
+                f"  - {display_name}: {total} writes (top fields: {top_fields_str})"
             )
+
+        lines.append("")
+        lines.append("Details by MMS variable:")
+
+        for _total, display_name, _field_totals in ranked_vars:
+            var_hits = hits_by_var[display_name.casefold()]
+            total, _field_totals, dedup = _merge_write_counts(var_hits)
+            lines.append("")
+            lines.append(f"  Variable: {display_name}")
+            lines.append(f"    Total writes: {total}")
+            lines.append("    Mappings:")
+            for hit in sorted(
+                var_hits,
+                key=lambda h: (".".join(h.module_path), h.parameter_name.casefold()),
+            ):
+                location = ".".join(hit.module_path)
+                lines.append(
+                    f"      - {location} | {hit.moduletype_name}.{hit.parameter_name}"
+                )
+
+            if dedup:
+                lines.append("    Field writes:")
+                grouped_paths: dict[str, list[tuple[tuple[str, ...], int]]] = {}
+                for (field_label, path), count in sorted(
+                    dedup.items(), key=lambda item: (item[0][0], ".".join(item[0][1]))
+                ):
+                    grouped_paths.setdefault(field_label, []).append((path, count))
+
+                for field_label, locations in grouped_paths.items():
+                    write_parts = []
+                    for path, count in locations:
+                        path_str = ".".join(path)
+                        write_parts.append(
+                            f"{path_str} ({count}x)" if count > 1 else path_str
+                        )
+                    lines.append(f"      - {field_label} => {', '.join(write_parts)}")
+            else:
+                note = next((h.write_note for h in var_hits if h.write_note), None)
+                lines.append(f"    Field writes: {note or 'none'}")
 
         return "\n".join(lines)
 
@@ -328,15 +480,26 @@ class ICFValidationReport:
     skipped_entries: int
     issues: list[ICFValidationIssue]
 
+    @property
+    def name(self) -> str:
+        return f"{self.icf_file.name} ({self.program_name})"
+
     def summary(self) -> str:
-        lines = [
-            f"ICF validation for {self.icf_file.name} (program {self.program_name}):",
-            f"  Entries: {self.total_entries}",
-            f"  Validated: {self.validated_entries}",
-            f"  Valid: {self.valid_entries}",
-            f"  Skipped: {self.skipped_entries}",
-            f"  Invalid: {len(self.issues)}",
-        ]
+        status = "ok" if not self.issues else "issues"
+        lines = format_report_header(
+            "ICF validation",
+            f"{self.icf_file.name} ({self.program_name})",
+            status=status,
+        )
+        lines.extend(
+            [
+                f"Entries: {self.total_entries}",
+                f"Validated: {self.validated_entries}",
+                f"Valid: {self.valid_entries}",
+                f"Skipped: {self.skipped_entries}",
+                f"Invalid: {len(self.issues)}",
+            ]
+        )
 
         if self.issues:
             lines.append("")
@@ -386,67 +549,276 @@ def analyze_mms_interface_variables(
     parameter mapping for those module types.
     """
     target_types = {
-        "mmswritevar": {"writedata"},
-        "mmsreadvar": {"outputvariable"},
+        "mmswritevar": {"localvariable", "writedata"},
+        "mmsreadvar": {"localvariable", "outputvariable"},
+        "mmsreadwrite": {"inputvariable", "outputvariable"},
     }
+
+    analyzer = VariablesAnalyzer(
+        base_picture,
+        debug=debug,
+        fail_loudly=False,
+    )
+    analyzer.run()
 
     hits: list[MMSInterfaceHit] = []
 
-    def _walk_modules(
+    def _collect_write_locations(
+        module_path: list[str],
+        source_variable: str,
+    ) -> WriteFields | None:
+        if not source_variable:
+            return None
+
+        base = source_variable.split(".", 1)[0]
+        field_path = source_variable.split(".", 1)[1] if "." in source_variable else None
+        var = _find_var_in_scope(base_picture, module_path, base)
+        if var is None:
+            return None
+
+        aliases = _find_all_aliases(var, analyzer._alias_links, debug=debug)
+        aliases.insert(0, (var, ""))
+        upstream_aliases = _find_all_aliases_upstream(var, analyzer._alias_links)
+
+        field_writes: dict[str, list[list[str]]] = {}
+        whole_var_writes: list[list[str]] = []
+
+        for alias_var, prefix in aliases:
+            for field, locs in (alias_var.field_writes or {}).items():
+                if prefix and field:
+                    full_field = f"{prefix}.{field}"
+                elif prefix:
+                    full_field = prefix
+                else:
+                    full_field = field
+
+                field_writes.setdefault(full_field.casefold(), []).extend(locs)
+
+            for loc, kind in (alias_var.usage_locations or []):
+                if kind == "write":
+                    whole_var_writes.append(loc)
+
+        # Include upstream mappings (parent variables) by stripping the mapping prefix.
+        for alias_var, strip_prefix in upstream_aliases:
+            for field, locs in (alias_var.field_writes or {}).items():
+                if strip_prefix:
+                    if field == strip_prefix:
+                        full_field = ""
+                    elif field.startswith(strip_prefix + "."):
+                        full_field = field[len(strip_prefix) + 1 :]
+                    else:
+                        continue
+                else:
+                    full_field = field
+
+                field_writes.setdefault(full_field.casefold(), []).extend(locs)
+
+            if not strip_prefix:
+                for loc, kind in (alias_var.usage_locations or []):
+                    if kind == "write":
+                        whole_var_writes.append(loc)
+
+        if field_path:
+            prefix = field_path.casefold()
+            matched_fields = {
+                field: locs
+                for field, locs in field_writes.items()
+                if field == prefix or field.startswith(prefix + ".")
+            }
+            if not matched_fields:
+                return ()
+
+            results = []
+            for field, locs in sorted(matched_fields.items()):
+                counts: dict[tuple[str, ...], int] = {}
+                for loc in locs:
+                    key = tuple(loc)
+                    counts[key] = counts.get(key, 0) + 1
+                results.append(
+                    (field, tuple(sorted(counts.items(), key=lambda item: ".".join(item[0]))))
+                )
+            return tuple(results)
+
+        if not field_writes and not whole_var_writes:
+            return ()
+
+        results = []
+        for field, locs in sorted(field_writes.items()):
+            counts: dict[tuple[str, ...], int] = {}
+            for loc in locs:
+                key = tuple(loc)
+                counts[key] = counts.get(key, 0) + 1
+            results.append(
+                (field, tuple(sorted(counts.items(), key=lambda item: ".".join(item[0]))))
+            )
+
+        if whole_var_writes:
+            counts = {}
+            for loc in whole_var_writes:
+                key = tuple(loc)
+                counts[key] = counts.get(key, 0) + 1
+            results.append(
+                ("", tuple(sorted(counts.items(), key=lambda item: ".".join(item[0]))))
+            )
+
+        return tuple(results)
+
+    def _resolve_param_source(
+        param_map: dict[str, str],
+        source: Any,
+        allow_passthrough: bool,
+    ) -> str | None:
+        full = _varname_full(source)
+        if not full:
+            return None
+
+        base = full.split(".", 1)[0] if full else ""
+        suffix = full[len(base) :] if len(full) > len(base) else ""
+
+        if base:
+            mapped = param_map.get(base.casefold())
+            if mapped:
+                return f"{mapped}{suffix}"
+
+        return full if allow_passthrough else None
+
+    def _build_param_map(
+        param_mappings: list[ParameterMapping] | None,
+        param_map: dict[str, str],
+        allow_passthrough: bool,
+    ) -> dict[str, str]:
+        resolved: dict[str, str] = {}
+        for pm in param_mappings or []:
+            target_name = _varname_base(pm.target)
+            if not target_name or pm.is_source_global:
+                continue
+
+            resolved_source = _resolve_param_source(
+                param_map,
+                pm.source,
+                allow_passthrough,
+            )
+            if not resolved_source:
+                continue
+
+            resolved[target_name] = resolved_source
+        return resolved
+
+    def _walk_typedef(
         modules: list[SingleModule | FrameModule | ModuleTypeInstance] | None,
         path: list[str],
+        param_map: dict[str, str],
+        visited_types: set[str],
     ) -> None:
         for mod in modules or []:
-            if isinstance(mod, SingleModule):
-                next_path = path + [mod.header.name]
-                _walk_modules(mod.submodules, next_path)
-            elif isinstance(mod, FrameModule):
-                next_path = path + [mod.header.name]
-                _walk_modules(mod.submodules, next_path)
-            elif isinstance(mod, ModuleTypeInstance):
-                next_path = path + [mod.header.name]
+            if isinstance(mod, ModuleTypeInstance):
                 mt_name = mod.moduletype_name or ""
                 mt_key = mt_name.casefold()
+                next_path = path + [mod.header.name]
+                current_map = _build_param_map(
+                    mod.parametermappings,
+                    param_map,
+                    allow_passthrough=False,
+                )
 
                 if mt_key in target_types:
                     param_targets = target_types[mt_key]
-                    for pm in mod.parametermappings or []:
-                        target_name = _varname_base(pm.target)
-                        if not target_name or target_name not in param_targets:
+                    for target_name in sorted(param_targets):
+                        resolved = current_map.get(target_name)
+                        if not resolved:
                             continue
 
-                        if pm.is_source_global:
-                            if debug:
-                                log.debug(
-                                    "Skipping GLOBAL mapping for %s.%s at %s",
-                                    mt_name,
-                                    target_name,
-                                    " -> ".join(next_path),
-                                )
-                            continue
-
-                        source_full = _varname_full(pm.source)
-                        if not source_full:
-                            if debug and pm.source_literal is not None:
-                                log.debug(
-                                    "Skipping literal mapping for %s.%s at %s: %r",
-                                    mt_name,
-                                    target_name,
-                                    " -> ".join(next_path),
-                                    pm.source_literal,
-                                )
-                            continue
-
+                        writes = _collect_write_locations(next_path, resolved)
                         hits.append(
                             MMSInterfaceHit(
                                 module_path=next_path,
                                 moduletype_name=mt_name,
                                 parameter_name=target_name,
-                                source_variable=source_full,
+                                source_variable=resolved,
+                                write_fields=writes or (),
+                                write_note=None if writes is not None else "unknown (variable not found)",
                             )
                         )
 
-    _walk_modules(base_picture.submodules, [base_picture.header.name])
+                if mt_key in visited_types:
+                    continue
+
+                try:
+                    inner_def = _resolve_moduletype_def_strict(base_picture, mt_name)
+                except ValueError:
+                    continue
+
+                visited_types.add(mt_key)
+                _walk_typedef(
+                    inner_def.submodules,
+                    next_path,
+                    current_map,
+                    visited_types,
+                )
+                visited_types.remove(mt_key)
+            elif isinstance(mod, (SingleModule, FrameModule)):
+                _walk_typedef(
+                    mod.submodules,
+                    path + [mod.header.name],
+                    param_map,
+                    visited_types,
+                )
+
+    def _walk_modules(
+        modules: list[SingleModule | FrameModule | ModuleTypeInstance] | None,
+        path: list[str],
+        param_map: dict[str, str],
+    ) -> None:
+        for mod in modules or []:
+            if isinstance(mod, SingleModule):
+                next_path = path + [mod.header.name]
+                _walk_modules(mod.submodules, next_path, param_map)
+            elif isinstance(mod, FrameModule):
+                next_path = path + [mod.header.name]
+                _walk_modules(mod.submodules, next_path, param_map)
+            elif isinstance(mod, ModuleTypeInstance):
+                next_path = path + [mod.header.name]
+                mt_name = mod.moduletype_name or ""
+                mt_key = mt_name.casefold()
+                current_map = _build_param_map(
+                    mod.parametermappings,
+                    param_map,
+                    allow_passthrough=True,
+                )
+
+                if mt_key in target_types:
+                    param_targets = target_types[mt_key]
+                    for target_name in sorted(param_targets):
+                        resolved = current_map.get(target_name)
+                        if not resolved:
+                            continue
+
+                        writes = _collect_write_locations(next_path, resolved)
+                        hits.append(
+                            MMSInterfaceHit(
+                                module_path=next_path,
+                                moduletype_name=mt_name,
+                                parameter_name=target_name,
+                                source_variable=resolved,
+                                write_fields=writes or (),
+                                write_note=None if writes is not None else "unknown (variable not found)",
+                            )
+                        )
+
+                try:
+                    mt_def = _resolve_moduletype_def_strict(base_picture, mt_name)
+                except ValueError:
+                    continue
+
+                if current_map:
+                    _walk_typedef(
+                        mt_def.submodules,
+                        next_path,
+                        current_map,
+                        {mt_key},
+                    )
+
+    _walk_modules(base_picture.submodules, [base_picture.header.name], {})
 
     return MMSInterfaceReport(basepicture_name=base_picture.header.name, hits=hits)
 
@@ -1171,6 +1543,41 @@ def _find_all_aliases(target_var: Variable, alias_links: list[tuple[Variable, Va
     return aliases
 
 
+def _find_all_aliases_upstream(
+    target_var: Variable,
+    alias_links: list[tuple[Variable, Variable, str]],
+) -> list[tuple[Variable, str]]:
+    """
+    Find alias sources by walking parent links (child -> parent).
+    Returns (parent_var, field_prefix_to_strip) tuples where field_prefix_to_strip
+    is the path in the parent variable that corresponds to the target variable.
+    """
+    aliases: list[tuple[Variable, str]] = []
+    to_visit: list[tuple[Variable, str]] = [(target_var, "")]
+    visited: list[tuple[Variable, str]] = []
+
+    while to_visit:
+        current, current_prefix = to_visit.pop()
+
+        if any(current is v and current_prefix == p for v, p in visited):
+            continue
+
+        visited.append((current, current_prefix))
+
+        for parent, child, mapping_name in alias_links:
+            if child is current:
+                if current_prefix and mapping_name:
+                    new_prefix = f"{mapping_name}.{current_prefix}"
+                elif mapping_name:
+                    new_prefix = mapping_name
+                else:
+                    new_prefix = current_prefix
+                to_visit.append((parent, new_prefix))
+
+    aliases = [(v, p) for v, p in visited if v is not target_var]
+    return aliases
+
+
 def _find_module_instances(bp: BasePicture, typedef_name: str):
     """
     Find all instances of a module (by name) in the project.
@@ -1650,6 +2057,17 @@ class VariablesAnalyzer:
     External ModuleTypeInstance mappings are considered used.
     """
 
+    _OPAQUE_BUILTIN_TYPES: set[str] = {
+        "alarm4realspar",
+        "arrayobject",
+        "eventqueueitem",
+        "eventsortrectype",
+        "multrealspar",
+        "randomgenerator",
+        "relaypidtunerpar",
+        "sortedeventtype",
+    }
+
     def __init__(
         self,
         base_picture: BasePicture,
@@ -1672,8 +2090,10 @@ class VariablesAnalyzer:
         self.access_graph = AccessGraph()
 
         self.typedef_index = {
-            mt.name.lower(): mt for mt in (self.bp.moduletype_defs or [])
+            mt.name.lower(): [] for mt in (self.bp.moduletype_defs or [])
         }
+        for mt in self.bp.moduletype_defs or []:
+            self.typedef_index.setdefault(mt.name.lower(), []).append(mt)
         self.used_params_by_typedef: dict[str, set[str]] = {}
         self.param_reads_by_typedef: dict[str, set[str]] = {}
         self.param_writes_by_typedef: dict[str, set[str]] = {}
@@ -1730,6 +2150,37 @@ class VariablesAnalyzer:
             return dt.value
         return str(dt) if dt is not None else "None"
 
+    _MIN_NAME_TOKENS: set[str] = {"min", "minimum"}
+    _MAX_NAME_TOKENS: set[str] = {"max", "maximum"}
+
+    def _mapping_name_text(self, value: Any) -> str | None:
+        if isinstance(value, dict) and const.KEY_VAR_NAME in value:
+            return value[const.KEY_VAR_NAME]
+        if isinstance(value, Variable):
+            return value.name
+        if isinstance(value, str):
+            return value
+        return None
+
+    def _tokenize_name(self, name: str) -> set[str]:
+        parts = re.split(r"[\s_.\-]+", name)
+        tokens: list[str] = []
+        for part in parts:
+            if not part:
+                continue
+            sub_parts = re.findall(
+                r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+",
+                part,
+            )
+            tokens.extend(sub_parts or [part])
+        return {t.lower() for t in tokens if t}
+
+    def _minmax_flags(self, name: str) -> tuple[bool, bool, bool]:
+        tokens = self._tokenize_name(name)
+        has_min = any(t in self._MIN_NAME_TOKENS for t in tokens)
+        has_max = any(t in self._MAX_NAME_TOKENS for t in tokens)
+        return has_min, has_max, has_min and has_max
+
     def _record_mapping_mismatch_issue(
         self, tgt: Variable, src: Variable, path: list[str]
     ) -> None:
@@ -1742,6 +2193,38 @@ class VariablesAnalyzer:
         )
         self._issues.append(issue)
 
+    def _record_min_max_mismatch_issue(
+        self, tgt: Variable, src: Variable, path: list[str]
+    ) -> None:
+        issue = VariableIssue(
+            kind=IssueKind.MIN_MAX_MAPPING_MISMATCH,
+            module_path=path.copy(),
+            variable=tgt,
+            role="min/max mapping mismatch",
+            source_variable=src,
+        )
+        self._issues.append(issue)
+
+    def _check_min_max_mapping(
+        self,
+        pm: ParameterMapping,
+        tgt_var: Variable,
+        src_var: Variable,
+        path: list[str],
+    ) -> None:
+        tgt_name = self._mapping_name_text(pm.target) or tgt_var.name
+        src_name = self._mapping_name_text(pm.source) or src_var.name
+        if not tgt_name or not src_name:
+            return
+
+        tgt_min, tgt_max, tgt_amb = self._minmax_flags(tgt_name)
+        src_min, src_max, src_amb = self._minmax_flags(src_name)
+        if tgt_amb or src_amb:
+            return
+
+        if (tgt_min and src_max) or (tgt_max and src_min):
+            self._record_min_max_mismatch_issue(tgt_var, src_var, path)
+
     def _check_param_mappings_for_single(
         self,
         mod: SingleModule,
@@ -1749,7 +2232,7 @@ class VariablesAnalyzer:
         parent_env: dict[str, Variable],
         parent_path: list[str],
     ) -> None:
-        params_by_name = {v.name: v for v in (mod.moduleparameters or [])}
+        params_by_name = {v.name.casefold(): v for v in (mod.moduleparameters or [])}
 
         for pm in mod.parametermappings or []:
             tgt_name = self._varname_base(pm.target)
@@ -1761,12 +2244,19 @@ class VariablesAnalyzer:
         inst,  # ModuleTypeInstance
         parent_env: dict[str, Variable],
         parent_path: list[str],
+        current_library: str | None = None,
     ) -> None:
-        mt = self.typedef_index.get(inst.moduletype_name.lower())
-        if not mt:
+        try:
+            mt = _resolve_moduletype_def_strict(
+                self.bp,
+                inst.moduletype_name,
+                current_library=current_library,
+                unavailable_libraries=self._unavailable_libraries,
+            )
+        except ValueError:
             return
         # Only parameters are valid mapping targets [2]
-        params_by_name = {v.name: v for v in (mt.moduleparameters or [])}
+        params_by_name = {v.name.casefold(): v for v in (mt.moduleparameters or [])}
         for pm in inst.parametermappings or []:
             tgt_name = self._varname_base(pm.target)
             tgt_var = params_by_name.get(tgt_name) if tgt_name else None
@@ -1806,6 +2296,8 @@ class VariablesAnalyzer:
                 )
             if tgt_var.datatype is not src_var.datatype:
                 self._record_mapping_mismatch_issue(tgt_var, src_var, path)
+
+        self._check_min_max_mapping(pm, tgt_var, src_var, path)
 
     def _index_all_variables(self) -> None:
         def _add(v: Variable):
@@ -1949,6 +2441,9 @@ class VariablesAnalyzer:
                 )
                 return current
 
+            if isinstance(current, str) and current.casefold() in self._OPAQUE_BUILTIN_TYPES:
+                return current
+
             rec = self.type_graph.record(str(current))
             if rec is None:
                 site = self._site_str()
@@ -2028,6 +2523,9 @@ class VariablesAnalyzer:
 
             rec = self.type_graph.record(type_name)
             if rec is None:
+                if key in self._OPAQUE_BUILTIN_TYPES:
+                    results.append(prefix)
+                    continue
                 # Unknown external type: record-wide expansion can't proceed.
                 # Fail loudly for real record types, but allow the builtin pseudo-type.
                 if self._unavailable_libraries:
@@ -2125,6 +2623,7 @@ class VariablesAnalyzer:
             param_mappings=context.param_mappings,
             module_path=module_path,
             display_module_path=display_module_path,
+            current_library=context.current_library,
             parent_context=context.parent_context,
         )
 
@@ -2492,6 +2991,7 @@ class VariablesAnalyzer:
             param_mappings={},
             module_path=module_path,
             display_module_path=display_path,
+            current_library=self.bp.origin_lib,
             parent_context=None
         )
 
@@ -2574,6 +3074,7 @@ class VariablesAnalyzer:
             param_mappings=param_mappings,
             module_path=module_path,
             display_module_path=display_module_path,
+            current_library=parent_context.current_library,
             parent_context=parent_context
         )
 
@@ -2658,6 +3159,7 @@ class VariablesAnalyzer:
             param_mappings=param_mappings,
             module_path=module_path,
             display_module_path=display_module_path,
+            current_library=mt.origin_lib or (parent_context.current_library if parent_context else None),
             parent_context=parent_context
         )
 
@@ -2754,6 +3256,7 @@ class VariablesAnalyzer:
                 param_mappings={},
                 module_path=path.copy(),
                 display_module_path=display_path,
+                current_library=mt.origin_lib,
                 parent_context=None
             )
 
@@ -3011,7 +3514,19 @@ class VariablesAnalyzer:
 
             elif isinstance(child, ModuleTypeInstance):
                 external = self._is_external_typename(child.moduletype_name)
-                mt = self.typedef_index.get(child.moduletype_name.lower())
+                mt: ModuleTypeDef | None = None
+
+                if not external:
+                    try:
+                        mt = _resolve_moduletype_def_strict(
+                            self.bp,
+                            child.moduletype_name,
+                            current_library=parent_context.current_library,
+                            unavailable_libraries=self._unavailable_libraries,
+                        )
+                    except ValueError:
+                        mt = None
+                        external = True
 
                 reads, writes = None, None  # Initialize to None
 
@@ -3091,6 +3606,7 @@ class VariablesAnalyzer:
                         child,
                         parent_env=parent_context.env,
                         parent_path=parent_path + [child_name],
+                        current_library=parent_context.current_library,
                     )
 
 
@@ -3337,9 +3853,10 @@ class VariablesAnalyzer:
     ) -> None:
         if not base_name:
             return
-        var = env.get(base_name)
+        normalized = base_name.lower()
+        var = env.get(normalized)
         if var is None:
-            var = self._lookup_global_variable(base_name)
+            var = self._lookup_global_variable(normalized)
         if var is not None:
             var.mark_read(path)
         else:

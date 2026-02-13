@@ -1333,7 +1333,7 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         type="Function",
         return_type="Real",
         parameters=[
-            Parameter(name="Randomenerator", datatype="RandomGenerator", direction="inout", sorting="RS/WS", ownership="RO/WO")
+            Parameter(name="RandomGenerator", datatype="RandomGenerator", direction="inout", sorting="RS/WS", ownership="RO/WO")
         ],
         precision_scangroup=True
     ),

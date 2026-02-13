@@ -20,6 +20,11 @@ TREE_TAG_MODULETYPE_PAR_TRANSFER = "moduletype_par_transfer"
 TREE_TAG_VARIABLE_NAME = "variable_name"
 TREE_TAG_MODULEDEF_OPTS_SEQ = "moduledef_opts_seq"
 TREE_TAG_INTERACT_BODY_SEQ = "interact_body_seq"
+TREE_TAG_BASE_MODULE_BODY = "base_module_body"
+TREE_TAG_MODULE_BODY = "module_body"
+TREE_TAG_MODULETYPE_DEFINITION = "moduletype_definition"
+TREE_TAG_COORDINATES = "coordinates"
+TREE_TAG_TEXT_CONTENT = "text_content"
 
 KEY_NAME = "name"
 KEY_COORDS = "coords"
@@ -191,11 +196,15 @@ GRAMMAR_VALUE_DEFAULT = "Default"
 GRAMMAR_VALUE_NEW = "New"
 GRAMMAR_VALUE_OLD = "Old"
 
+TOKEN_NEW = "NEW"
+TOKEN_OLD = "OLD"
+TOKEN_VARNAME = "VARNAME"
+
 GRAMMAR_REGEX_COMMENT = r"/\(\*[\s\S]*?\*\)(\s*;)?/"
 GRAMMAR_REGEX_SL_DATECODE = r"/\d+/"
 GRAMMAR_REGEX_BOOL = r"/True\b|False\b/"
 GRAMMAR_REGEX_NAME = (
-    r"/'[^']*'|"
+    r"/'[^']{1,20}'|"
     r"(?!IF\b|THEN\b|ELSE\b|ELSIF\b|ENDIF\b|AND\b|OR\b|NOT\b|True\b|False\b)"
     r"\b[A-ZÆØÅÄÖa-zæøåäö][A-ZÆØÅÄÖa-zæøåäö0-9_']{0,19}\b/"
 )

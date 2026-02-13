@@ -271,3 +271,47 @@ def test_copyvariable_fails_loudly_on_unknown_field_prefix():
     analyzer = VariablesAnalyzer(bp)
     with pytest.raises(ValueError):
         analyzer.run()
+
+
+def test_copyvariable_allows_opaque_builtin_record_type():
+    src = Variable(name="Random", datatype="RandomGenerator")
+    dst = Variable(name="Random2", datatype="RandomGenerator")
+
+    m1 = SingleModule(
+        header=_hdr("M1"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[src, dst],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                _eq(
+                    [
+                        (
+                            const.KEY_FUNCTION_CALL,
+                            "CopyVariable",
+                            [_varref("Random"), _varref("Random2")],
+                        )
+                    ]
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[m1],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp, fail_loudly=False)
+    analyzer.run()
+
+    assert not analyzer.analysis_warnings
+    assert src.read
+    assert dst.written

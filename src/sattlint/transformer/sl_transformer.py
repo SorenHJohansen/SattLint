@@ -51,7 +51,10 @@ def _flatten_items(items):
     for it in items:
         if isinstance(it, list):
             yield from _flatten_items(it)
-        elif isinstance(it, Tree) and it.data in ("base_module_body", "module_body"):
+        elif isinstance(it, Tree) and it.data in (
+            const.TREE_TAG_BASE_MODULE_BODY,
+            const.TREE_TAG_MODULE_BODY,
+        ):
             tree = cast(Tree, it)
             yield from _flatten_items(tree.children)
         else:
@@ -113,11 +116,11 @@ class SLTransformer(Transformer):
     # ------------------------
     def module_body(self, items):
         # Keep structure; collectors will unwrap via _flatten_items
-        return Tree("module_body", items)
+        return Tree(const.TREE_TAG_MODULE_BODY, items)
 
     def base_module_body(self, items):
         # Keep structure; collectors will unwrap via _flatten_items
-        return Tree("base_module_body", items)
+        return Tree(const.TREE_TAG_BASE_MODULE_BODY, items)
 
     def IGNOREMAXMODULE(self, _):
         return const.GRAMMAR_VALUE_IGNOREMAXMODULE
@@ -422,7 +425,7 @@ class SLTransformer(Transformer):
                     parts.append(ch.value)
                 elif ch.type == const.KEY_DOT:
                     parts.append(".")
-                elif ch.type in (const.GRAMMAR_VALUE_NEW, const.GRAMMAR_VALUE_OLD):
+                elif ch.type in (const.TOKEN_NEW, const.TOKEN_OLD):
                     state = ch.type.lower()
             elif isinstance(ch, str):
                 if ch.lower() in (const.GRAMMAR_VALUE_NEW, const.GRAMMAR_VALUE_OLD):
@@ -511,7 +514,7 @@ class SLTransformer(Transformer):
         for it in items:
             if isinstance(it, ModuleTypeDef):
                 out.append(it)
-            elif isinstance(it, Tree) and it.data == "moduletype_definition":
+            elif isinstance(it, Tree) and it.data == const.TREE_TAG_MODULETYPE_DEFINITION:
                 # Defensive in case Lark passes Trees; they will be transformed via moduletype_definition
                 tree = cast(Tree, it)
                 for ch in tree.children:
@@ -758,7 +761,7 @@ class SLTransformer(Transformer):
             ):
                 coords.append((float(it[0]), float(it[1])))
             # Fallback: if for some reason coordinates wasn't transformed
-            elif isinstance(it, Tree) and it.data == "coordinates":
+            elif isinstance(it, Tree) and it.data == const.TREE_TAG_COORDINATES:
                 tree = cast(Tree, it)
                 nums = [float(x) for x in tree.children if isinstance(x, (int, float))]
                 if len(nums) >= 2:
@@ -930,7 +933,7 @@ class SLTransformer(Transformer):
             if isinstance(node, str):
                 return node
             # Defensive: if the grammar still wraps it sometimes
-            if hasattr(node, "data") and getattr(node, "data", None) == "text_content":
+            if hasattr(node, "data") and getattr(node, "data", None) == const.TREE_TAG_TEXT_CONTENT:
                 for ch in getattr(node, "children", []):
                     if isinstance(ch, str):
                         return ch
@@ -939,7 +942,7 @@ class SLTransformer(Transformer):
             )
 
         for i, it in enumerate(items):
-            if isinstance(it, Token) and it.type == "VARNAME":
+            if isinstance(it, Token) and it.type == const.TOKEN_VARNAME:
                 # Walk backwards to find the nearest preceding text node
                 j = i - 1
                 while j >= 0:
@@ -1767,7 +1770,11 @@ class SLTransformer(Transformer):
 
     def BOOL(self, tok: Token) -> bool:
         s = str(tok)
-        return True if s == "True" else False
+        if s == const.GRAMMAR_VALUE_BOOL_TRUE:
+            return True
+        if s == const.GRAMMAR_VALUE_BOOL_FALSE:
+            return False
+        raise ValueError(f"BOOL expected {const.GRAMMAR_VALUE_BOOL_TRUE}/{const.GRAMMAR_VALUE_BOOL_FALSE}; got: {s}")
 
     # Keywords we care about as flags
     def GLOBAL_KW(self, _) -> Literal[True]:  # "GLOBAL"

@@ -59,8 +59,8 @@
 1. **Parse**: Lark grammar (`grammar/sattline.lark`) → Parse tree
 2. **Transform**: `SLTransformer` → AST objects (`models/ast_model.py`)
 3. **Resolve**: Build unified `BasePicture` with all dependencies
-4. **Analyze**: `VariablesAnalyzer` detects issues (unused vars, type mismatches, etc.)
-5. **Report**: Generate findings or DOCX documentation
+4. **Analyze**: Analyzer registry runs checks (variables, MMS mappings, SFC placeholders, etc.)
+5. **Report**: Standardized report summaries (shared header format) + DOCX documentation
 
 ---
 
@@ -85,6 +85,9 @@ This deterministic execution means:
 Here's a complete, minimal SattLine program:
 
 ```sattline
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
 BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
 LOCALVARIABLES
     Counter: integer := 0;
@@ -159,7 +162,7 @@ Continuous logic executed every scan cycle:
 ```sattline
 EQUATIONBLOCK Main COORD -0.9, 0.06 OBJSIZE 0.82, 0.72 :
     Output = Input * Gain + Offset;                    # Assignment
-    
+
     IF Condition THEN                                  # If-statement
         Value = 1;
     ELSIF OtherCondition THEN
@@ -167,9 +170,9 @@ EQUATIONBLOCK Main COORD -0.9, 0.06 OBJSIZE 0.82, 0.72 :
     ELSE
         Value = 0;
     ENDIF;
-    
+
     Result = IF Cond THEN 1 ELSE 0 ENDIF;              # Ternary expression
-    
+
     CopyVariable(Source, Destination, Status);         # Procedure call
     IsEqual = Equal(A, B);                             # Function call
 ENDDEF (*Main*);
@@ -188,14 +191,14 @@ SEQUENCE MySeq (SeqControl, SeqTimer)
             Running = True;
         Exit:
             Log("Starting");
-    
+
     Transition                                          # Condition to proceed
         WAIT_FOR StartCondition;
-    
+
     Step Processing                                     # Normal step
         Active:
             DoWork();
-    
+
     ALTERNATIVESEQ                                      # Conditional branch
         Transition WAIT_FOR ConditionA;
         Step PathA
@@ -203,13 +206,13 @@ SEQUENCE MySeq (SeqControl, SeqTimer)
         Transition WAIT_FOR ConditionB;
         Step PathB
     ENDALTERNATIVE;
-    
+
     PARALLELSEQ                                         # Parallel execution
         Step Branch1
         PARALLELBRANCH
         Step Branch2
     ENDPARALLEL;
-    
+
     Fork JumpToOtherTransition;                         # Jump (dangerous)
     Break;                                              # Stop normal flow
 ENDSEQUENCE;
@@ -257,9 +260,9 @@ ModuleDef
     ZoomLimits = 0.0 0.01
     Zoomable
     GraphObjects :
-        RectangleObject ( -1.0 , 1.0 ) ( 1.0 , -1.0 ) 
+        RectangleObject ( -1.0 , 1.0 ) ( 1.0 , -1.0 )
             OutlineColour : Colour0 = 5
-        TextObject ( 0.12 , -0.04 ) ( 0.12 , -0.2 ) 
+        TextObject ( 0.12 , -0.04 ) ( 0.12 , -0.2 )
             "Label" VarName Width_ = 5
     InteractObjects :
         ComBut_ ( 0.0 , 0.0 ) ( 0.1 , 0.05 )
@@ -361,7 +364,7 @@ class Sequence:
     type: str                               # "sequence" or "opensequence"
     code: list[SFCStep | SFCTransition | SFCAlternative | ...]
 
-@dataclass  
+@dataclass
 class Equation:
     name: str
     code: list[Any]                         # Statements/expressions
@@ -600,12 +603,12 @@ Common SattLine functions (defined in `analyzers/sattline_builtins.py`):
 # Comparison
 Equal(A, B) -> boolean
 
-# Variable operations  
+# Variable operations
 CopyVariable(Source, Destination, Status)
 
 # String operations
 StringLength(Str) -> integer
-StringConcat(A, B, Result, Status)
+Concatenate(Str1, Str2, Result, Status)
 
 # Type conversions
 RealToInteger(R, I, Status)
@@ -623,34 +626,18 @@ IntegerToReal(I, R)
 1. **Create analyzer file** (e.g., `analyzers/my_analyzer.py`):
 
 ```python
-from ..models.ast_model import BasePicture, Variable, SingleModule
 from dataclasses import dataclass
-from enum import Enum
+from ..models.ast_model import BasePicture
+from .framework import Issue, SimpleReport
 
-class MyIssueKind(Enum):
-    MY_ISSUE = "my_issue"
-
-@dataclass
-class MyIssue:
-    kind: MyIssueKind
-    module_path: list[str]
-    message: str
-
-@dataclass
-class MyReport:
-    issues: list[MyIssue]
-    
-    def summary(self) -> str:
-        return f"Found {len(self.issues)} issues"
-
-def analyze_something(base_picture: BasePicture) -> MyReport:
-    issues = []
+def analyze_something(base_picture: BasePicture) -> SimpleReport:
+    issues: list[Issue] = []
     # Walk the AST and collect issues
-    return MyReport(issues=issues)
+    return SimpleReport(name=base_picture.header.name, issues=issues)
 ```
 
-2. **Integrate in app.py** - Add menu option to run the analyzer
-3. **Add tests** in `tests/test_analyzers.py`
+2. **Register in the analyzer registry** (`analyzers/registry.py`)
+3. **Add tests** in `tests/test_analyzers.py` or a new test module
 
 ### Extending the Grammar
 
@@ -688,6 +675,9 @@ from sattlint.analyzers.my_analyzer import analyze_something
 
 def test_my_analyzer():
     code = '''
+    "SyntaxVersion"
+    "OriginalFileDate"
+    "ProgramDate"
     BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
     LOCALVARIABLES
         TestVar: boolean;
@@ -746,6 +736,7 @@ Debug output includes:
 **Parse Error:**
 - Check `grammar/sattline.lark` for correct syntax rules
 - Verify transformer handles all grammar branches
+- Prefer token-type constants (e.g., `TOKEN_NEW`/`TOKEN_OLD`) over literal token strings
 - Look at test fixtures for valid syntax examples
 
 **Variable Not Found:**
@@ -798,8 +789,11 @@ print(analyze_module_localvar_fields(bp, "BasePicture.Module1", "LocalVar"))
 
 | File | Purpose |
 |------|---------|
+| `src/sattlint/analyzers/framework.py` | Analysis framework primitives and report formatting helpers |
+| `src/sattlint/analyzers/registry.py` | Registry of CLI-exposed analyzers |
 | `src/sattlint/analyzers/variables.py` | Variable usage analyzer (main analysis) |
 | `src/sattlint/analyzers/modules.py` | Module structure analyzer |
+| `src/sattlint/analyzers/sfc.py` | SFC analysis placeholder (future checks) |
 | `src/sattlint/analyzers/sattline_builtins.py` | Built-in function signatures |
 | `src/sattlint/resolution/symbol_table.py` | Symbol table management |
 | `src/sattlint/resolution/type_graph.py` | Type dependency tracking |
@@ -918,10 +912,12 @@ walk_modules(bp.submodules, [bp.header.name])
 4. **Respect parameter mappings** - Variables are often accessed indirectly through `=>` connections
 5. **Consider case-insensitivity** - SattLine identifiers are case-insensitive (compare with `.casefold()`)
 6. **Understand the scope hierarchy** - Variables can be accessed from parent scopes unless shadowed
-7. **Look at existing analyzers** - Follow the pattern in `variables.py` for new analysis features
+7. **Use the framework/registry** - Follow `analyzers/framework.py` + `analyzers/registry.py` patterns for new checks
 8. **Test with the fixtures** - The test files in `tests/fixtures/` cover most language features
+9. **Parser header lines** - The grammar start rule requires three header `STRING` lines before `BasePicture`, so parser tests should include them
+10. **Strict mode only** - Prefer strict validation and fail loudly on any ambiguity or missing data; do not add fallback behavior
 
 ---
 
-*Last updated: 2026-02-11*
+*Last updated: 2026-02-13*
 *For questions about SattLine syntax, see `sattline_language_reference.md`*

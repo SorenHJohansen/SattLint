@@ -14,13 +14,13 @@
 
 **SetStringPos(Str, Pos, Status)** — Set current position
 
-**PutBlanks(Str, Length, Status)** — Insert blanks
+**PutBlanks(String, NumberOfSpaces, Status)** — Insert blanks
 
-**CutString(Str, Length, Status)** — Truncate to length
+**CutString(String, Length, Status)** — Truncate to length
 
-**InsertString(Str1, Str2, Length, Status)** — Insert Str2 into Str1
+**InsertString(String, String2, Length, Status)** — Insert String2 into String
 
-**ExtractString(Str1, Str2, Length, Status)** — Extract substring
+**ExtractString(String, String2, Length, Status)** — Extract substring
 
 **Concatenate(Str1, Str2, Result, Status)** — Concatenate strings
 

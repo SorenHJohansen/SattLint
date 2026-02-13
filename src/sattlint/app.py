@@ -19,6 +19,8 @@ from .analyzers.variables import (
     parse_icf_file,
     validate_icf_entries_against_program,
 )
+from .analyzers.framework import AnalysisContext
+from .analyzers.registry import get_default_analyzers
 from .analyzers import variables as variables_module
 from .analyzers.modules import (
     debug_module_structure,
@@ -49,6 +51,7 @@ VARIABLE_ANALYSES = {
     "4": ("Written but never read", {IssueKind.NEVER_READ}),
     "5": ("String mapping type mismatches", {IssueKind.STRING_MAPPING_MISMATCH}),
     "6": ("Duplicated complex datatypes", {IssueKind.DATATYPE_DUPLICATION}),
+    "7": ("Min/Max mapping name mismatches", {IssueKind.MIN_MAX_MAPPING_MISMATCH}),
 }
 
 
@@ -81,6 +84,15 @@ def clear_screen():
 
 def pause():
     input("\nPress Enter to continue...")
+
+
+class QuitApp(Exception):
+    pass
+
+
+def quit_app() -> None:
+    clear_screen()
+    raise QuitApp()
 
 
 def self_check(cfg: dict) -> bool:
@@ -325,12 +337,20 @@ def ensure_ast_cache(cfg: dict) -> bool:
     cached = cache.load(key)
 
     fast = cfg.get("fast_cache_validation", False)
-    if cached and cache.validate(cached, fast=fast):
-        print("✔ AST cache OK")
-        return True
-
     if cached:
-        print("⚠ AST cache stale; rebuilding (this may take a while)...")
+        has_manifest = bool(cached.get("files"))
+        if fast and has_manifest:
+            is_valid = cache.validate(cached, fast=False)
+        else:
+            is_valid = cache.validate(cached, fast=fast)
+        if is_valid:
+            print("✔ AST cache OK")
+            return True
+
+        if has_manifest:
+            print("⚠ AST cache stale; rebuilding (this may take a while)...")
+        else:
+            print("⚠ AST cache missing file manifest; rebuilding (this may take a while)...")
     else:
         print("⚠ AST cache missing; building (this may take a while)...")
 
@@ -402,7 +422,7 @@ def variable_analysis_menu(cfg: dict):
         if c == "b":
             return
         if c == "q":
-            sys.exit(0)
+            quit_app()
 
         if c == "7":
             if confirm("Run 'Datatype usage analysis'? "):
@@ -447,7 +467,7 @@ def module_analysis_menu(cfg: dict):
         if c == "b":
             return
         if c == "q":
-            sys.exit(0)
+            quit_app()
 
         if c == "1":
             if confirm("Compare module variants by name?"):
@@ -595,8 +615,9 @@ def run_analysis_menu(cfg: dict):
     while True:
         clear_screen()
         print("\n--- Run analysis ---")
-        print("1) Variable analyses")
-        print("2) Module analyses")
+        print("1) Run checks")
+        print("2) Variable analyses")
+        print("3) Module analyses")
         print("b) Back")
         print("q) Quit")
 
@@ -604,12 +625,15 @@ def run_analysis_menu(cfg: dict):
         if c == "b":
             return
         if c == "q":
-            sys.exit(0)
+            quit_app()
 
         if c == "1":
-            variable_analysis_menu(cfg)
+            run_checks_menu(cfg)
             return
         if c == "2":
+            variable_analysis_menu(cfg)
+            return
+        if c == "3":
             module_analysis_menu(cfg)
             return
 
@@ -656,6 +680,74 @@ def run_module_localvar_analysis(cfg: dict):
         traceback.print_exc()
 
     pause()
+
+
+def _get_enabled_analyzers():
+    return [spec for spec in get_default_analyzers() if spec.enabled]
+
+
+def _print_available_checks():
+    print("\n--- Available checks ---")
+    for spec in _get_enabled_analyzers():
+        print(f"- {spec.key}: {spec.name}")
+        print(f"  {spec.description}")
+
+
+def _run_checks(cfg: dict, selected_keys: list[str] | None) -> None:
+    analyzers = _get_enabled_analyzers()
+    if selected_keys:
+        selected = {key.casefold() for key in selected_keys}
+        analyzers = [spec for spec in analyzers if spec.key.casefold() in selected]
+
+    if not analyzers:
+        print("❌ No matching checks found")
+        pause()
+        return
+
+    project_bp, graph = load_project(cfg)
+    context = AnalysisContext(
+        base_picture=project_bp,
+        graph=graph,
+        debug=cfg.get("debug", False),
+    )
+
+    print("\n--- Running checks ---")
+    for spec in analyzers:
+        print(f"\n=== {spec.name} ({spec.key}) ===")
+        report = spec.run(context)
+        print(report.summary())
+
+    pause()
+
+
+def run_checks_menu(cfg: dict):
+    while True:
+        clear_screen()
+        print("\n--- Run checks ---")
+        print("1) Run all checks")
+        print("2) Run selected checks")
+        print("3) List available checks")
+        print("b) Back")
+        print("q) Quit")
+
+        c = input("> ").strip().lower()
+        if c == "b":
+            return
+        if c == "q":
+            quit_app()
+
+        if c == "1":
+            _run_checks(cfg, None)
+        elif c == "2":
+            raw = input("Enter check keys (comma-separated): ").strip()
+            keys = [key.strip() for key in raw.split(",") if key.strip()]
+            _run_checks(cfg, keys)
+        elif c == "3":
+            _print_available_checks()
+            pause()
+        else:
+            print("Invalid choice.")
+            pause()
 
 
 def run_mms_interface_analysis(cfg: dict):
@@ -835,7 +927,7 @@ q) Quit
         if c == "b":
             return
         if c == "q":
-            sys.exit(0)
+            quit_app()
 
         project_bp, graph = load_project(cfg)
         project = (project_bp, graph)
@@ -885,7 +977,7 @@ q) Quit
         if c == "q":
             if dirty and confirm("Unsaved config changes. Save before quitting?"):
                 save_config(CONFIG_PATH, cfg)
-            print("Bye.")
+            quit_app()
             sys.exit(0)
 
         elif c == "1":
@@ -959,75 +1051,81 @@ q) Quit
 # Main loop
 # ----------------------------
 def main():
-    cfg, default_used = load_config(CONFIG_PATH)
-    if default_used:
-        print(
-            "⚠ Default config created. Please edit configuration before running analysis."
-        )
-        pause()
-    else:
-        if not self_check(cfg):
-            if not confirm("Self-check failed. Continue?"):
-                return
-        ensure_ast_cache(cfg)
-    dirty = False
+    try:
+        cfg, default_used = load_config(CONFIG_PATH)
+        if default_used:
+            print(
+                "⚠ Default config created. Please edit configuration before running analysis."
+            )
+            pause()
+        else:
+            if not self_check(cfg):
+                if not confirm("Self-check failed. Continue?"):
+                    return
+            ensure_ast_cache(cfg)
+        dirty = False
 
-    while True:
-        clear_screen()
-        print("""
+        while True:
+            clear_screen()
+            print("""
 How to use SattLint
 ------------------
 • Navigate using the number keys shown in each menu
 • Press Enter to confirm a selection
 • Changes are NOT saved until you choose "Save config"
-• Use "Run analysis" to analyze the configured root program
+• Use "Run checks" to analyze the configured root program
 • Use "Dump outputs" to inspect parse trees, ASTs, etc.
 • Use "Edit config" to change settings
 • Use "Self-check" to check if the config is OK
 • Press 'q' at any time in the main menu to quit
 
 === SattLint ===
-1) Variable analyses
-2) Dump outputs
-3) Edit config
-4) Self-check diagnostics
-5) Force refresh cached AST
-6) Module analyses
+1) Run checks
+2) Variable analyses
+3) Dump outputs
+4) Edit config
+5) Self-check diagnostics
+6) Force refresh cached AST
+7) Module analyses
 q) Quit
 """)
-        c = input("> ").strip().lower()
+            c = input("> ").strip().lower()
 
-        if c == "1":
-            variable_analysis_menu(cfg)
+            if c == "1":
+                run_checks_menu(cfg)
 
-        elif c == "2":
-            dump_menu(cfg)
+            elif c == "2":
+                variable_analysis_menu(cfg)
 
-        elif c == "3":
-            dirty |= config_menu(cfg)
+            elif c == "3":
+                dump_menu(cfg)
 
-        elif c == "4":
-            clear_screen()
-            self_check(cfg)
-            pause()
+            elif c == "4":
+                dirty |= config_menu(cfg)
 
-        elif c == "5":
-            if confirm("Force refresh cached AST?"):
-                force_refresh_ast(cfg)
-                print("✔ AST cache refreshed")
+            elif c == "5":
+                clear_screen()
+                self_check(cfg)
                 pause()
 
-        elif c == "6":
-            module_analysis_menu(cfg)
+            elif c == "6":
+                if confirm("Force refresh cached AST?"):
+                    force_refresh_ast(cfg)
+                    print("✔ AST cache refreshed")
+                    pause()
 
-        elif c == "q":
-            if dirty and confirm("Unsaved config changes. Save before quitting?"):
-                save_config(CONFIG_PATH, cfg)
-            print("Bye.")
-            return
+            elif c == "7":
+                module_analysis_menu(cfg)
 
-        else:
-            print("Invalid choice.")
+            elif c == "q":
+                if dirty and confirm("Unsaved config changes. Save before quitting?"):
+                    save_config(CONFIG_PATH, cfg)
+                quit_app()
+
+            else:
+                print("Invalid choice.")
+    except QuitApp:
+        return
 
 
 if __name__ == "__main__":
