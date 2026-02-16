@@ -28,6 +28,9 @@ from ..models.ast_model import (
     SFCTransitionSub,
     SFCFork,
     SFCBreak,
+    SourceSpan,
+    IntLiteral,
+    FloatLiteral,
 )
 
 DEFAULT_INIT = object()
@@ -1763,10 +1766,12 @@ class SLTransformer(Transformer):
         return _strip_quoted(str(tok))
 
     def SIGNED_INT(self, tok: Token) -> int:
-        return int(str(tok))
+        span = SourceSpan(line=getattr(tok, "line", 0), column=getattr(tok, "column", 0))
+        return IntLiteral(int(str(tok)), span)
 
     def REAL(self, tok: Token) -> float:
-        return float(str(tok))
+        span = SourceSpan(line=getattr(tok, "line", 0), column=getattr(tok, "column", 0))
+        return FloatLiteral(float(str(tok)), span)
 
     def BOOL(self, tok: Token) -> bool:
         s = str(tok)

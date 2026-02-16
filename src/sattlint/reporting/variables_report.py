@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
-from ..models.ast_model import Variable, Simple_DataType
+from ..models.ast_model import Variable, Simple_DataType, SourceSpan
 from ..analyzers.framework import format_report_header
 
 
@@ -14,27 +14,48 @@ class IssueKind(Enum):
     DATATYPE_DUPLICATION = "datatype_duplication"
     NAME_COLLISION = "name_collision"
     MIN_MAX_MAPPING_MISMATCH = "min_max_mapping_mismatch"
+    MAGIC_NUMBER = "magic_number"
+    SHADOWING = "shadowing"
+    RESET_CONTAMINATION = "reset_contamination"
 
 
 @dataclass
 class VariableIssue:
     kind: IssueKind
     module_path: list[str]
-    variable: Variable
+    variable: Variable | None
     role: str | None = None
     source_variable: Variable | None = None
     duplicate_count: int | None = None  #
     duplicate_locations: list[tuple[list[str], str]] | None = None
+    literal_value: int | float | None = None
+    literal_span: SourceSpan | None = None
+    site: str | None = None
+    field_path: str | None = None
+    sequence_name: str | None = None
+    reset_variable: str | None = None
 
     def __str__(self) -> str:
         mp = ".".join(self.module_path)
+        if self.variable is None and self.literal_value is not None:
+            return f"[{mp}] magic number {self.literal_value}"
+        if self.variable is None:
+            return f"[{mp}]"
         dt = (
             self.variable.datatype.value
             if isinstance(self.variable.datatype, Simple_DataType)
             else str(self.variable.datatype)
         )
         role_txt = f"{self.role} "
-        return f"[{mp}] {role_txt} {self.variable.name!r} ({dt})"
+        field_txt = f".{self.field_path}" if self.field_path else ""
+        seq_txt = f" seq={self.sequence_name!r}" if self.sequence_name else ""
+        reset_txt = (
+            f" reset={self.reset_variable!r}" if self.reset_variable else ""
+        )
+        return (
+            f"[{mp}] {role_txt} {self.variable.name!r}{field_txt} ({dt})"
+            f"{seq_txt}{reset_txt}"
+        )
 
 
 @dataclass
@@ -69,6 +90,18 @@ class VariablesReport:
     @property
     def min_max_mapping_mismatch(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.MIN_MAX_MAPPING_MISMATCH]
+
+    @property
+    def magic_numbers(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.MAGIC_NUMBER]
+
+    @property
+    def shadowing(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.SHADOWING]
+
+    @property
+    def reset_contamination(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.RESET_CONTAMINATION]
 
     def summary(self) -> str:
         if not self.issues:
@@ -201,5 +234,28 @@ class VariablesReport:
                     f"{tgt_name:<{tgt_name_w}}"
                 )
                 lines.append(row)
+
+        if self.magic_numbers:
+            lines.append("  - Magic numbers in code:")
+            for issue in self.magic_numbers:
+                location = ".".join(issue.module_path)
+                site = f" [{issue.site}]" if issue.site else ""
+                if issue.literal_span is not None:
+                    span_text = f"line {issue.literal_span.line}, col {issue.literal_span.column}"
+                else:
+                    span_text = "line ?, col ?"
+                lines.append(
+                    f"      * {location}{site}: {issue.literal_value} ({span_text})"
+                )
+
+        if self.shadowing:
+            lines.append("  - Variable shadowing:")
+            for issue in self.shadowing:
+                lines.append(f"      * {issue}")
+
+        if self.reset_contamination:
+            lines.append("  - Reset contamination (missing reset writes):")
+            for issue in self.reset_contamination:
+                lines.append(f"      * {issue}")
 
         return "\n".join(lines)

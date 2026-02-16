@@ -441,6 +441,10 @@ Expressions are stored as nested tuples for easy traversal:
 
 # Variable reference with optional field path and OLD/NEW
 {'var_name': 'VarName.Field:OLD'}
+
+# Numeric literals carry source spans
+IntLiteral(42, SourceSpan(line=12, column=5))
+FloatLiteral(2.5, SourceSpan(line=20, column=7))
 ```
 
 ### Grammar to AST Pipeline
@@ -502,6 +506,9 @@ class IssueKind(Enum):
     NEVER_READ = "never_read"                   # Written but never read
     STRING_MAPPING_MISMATCH = "string_mapping_mismatch"  # String param mapped to non-string
     DATATYPE_DUPLICATION = "datatype_duplication"        # Same complex type defined multiple times
+    MAGIC_NUMBER = "magic_number"               # Numeric literals in code
+    SHADOWING = "shadowing"                     # Local variables hide outer/global names
+    RESET_CONTAMINATION = "reset_contamination" # Writes during run not reset on .Reset
 ```
 
 ### Field-Level Tracking
@@ -812,6 +819,7 @@ print(analyze_module_localvar_fields(bp, "BasePicture.Module1", "LocalVar"))
 | `src/sattlint/analyzers/framework.py` | Analysis framework primitives and report formatting helpers |
 | `src/sattlint/analyzers/registry.py` | Registry of CLI-exposed analyzers |
 | `src/sattlint/analyzers/variables.py` | Variable usage analyzer (main analysis) |
+| `src/sattlint/analyzers/shadowing.py` | Variable shadowing analyzer |
 | `src/sattlint/analyzers/validators.py` | Dedicated validators (min/max naming, string types) |
 | `src/sattlint/analyzers/modules.py` | Module structure analyzer |
 | `src/sattlint/analyzers/mms.py` | MMS interface analysis |

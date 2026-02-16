@@ -7,7 +7,7 @@ from typing import Iterable
 import json
 import os
 
-CACHE_VERSION = 2  # Bump when the cache payload format changes.
+CACHE_VERSION = 3  # Bump when the cache payload format changes.
 LOOKUP_CACHE_VERSION = 1
 
 
@@ -97,7 +97,7 @@ class FileASTCache:
         try:
             with p.open("rb") as f:
                 payload = pickle.load(f)
-        except (OSError, pickle.UnpicklingError):
+        except (OSError, pickle.UnpicklingError, TypeError, AttributeError, EOFError):
             return None
 
         if payload.get("version") != CACHE_VERSION:
@@ -167,8 +167,11 @@ class ASTCache:
         p = self._path(key)
         if not p.exists():
             return None
-        with p.open("rb") as f:
-            return pickle.load(f)
+        try:
+            with p.open("rb") as f:
+                return pickle.load(f)
+        except (OSError, pickle.UnpicklingError, TypeError, AttributeError, EOFError):
+            return None
 
     def save(
         self,
