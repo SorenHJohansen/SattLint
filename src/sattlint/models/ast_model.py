@@ -8,6 +8,30 @@ from ..utils.formatter import format_list, format_optional, format_expr, format_
 import textwrap
 
 
+@dataclass(frozen=True)
+class SourceSpan:
+    line: int
+    column: int
+
+
+class IntLiteral(int):
+    span: SourceSpan
+
+    def __new__(cls, value: int, span: SourceSpan):
+        obj = int.__new__(cls, value)
+        obj.span = span
+        return obj
+
+
+class FloatLiteral(float):
+    span: SourceSpan
+
+    def __new__(cls, value: float, span: SourceSpan):
+        obj = float.__new__(cls, value)
+        obj.span = span
+        return obj
+
+
 
 
 

@@ -41,6 +41,9 @@ from ..models.ast_model import (
     SFCBreak,
     ParameterMapping,
     Simple_DataType,
+    IntLiteral,
+    FloatLiteral,
+    SourceSpan,
 )
 from ..models.usage import VariableUsage
 from ..resolution.common import (
@@ -801,6 +804,7 @@ class VariablesAnalyzer:
             self._apply_alias_back_propagation()
 
         self._detect_datatype_duplications()
+        self._detect_reset_contamination()
 
         # Collect issues across this file
         bp_path = [self.bp.header.name]
@@ -865,6 +869,24 @@ class VariablesAnalyzer:
         self._issues.append(
             VariableIssue(
                 kind=kind, module_path=path.copy(), variable=variable, role=role
+            )
+        )
+
+    def _add_magic_number_issue(
+        self,
+        path: list[str],
+        value: int | float,
+        span: SourceSpan | None,
+    ) -> None:
+        self._issues.append(
+            VariableIssue(
+                kind=IssueKind.MAGIC_NUMBER,
+                module_path=path.copy(),
+                variable=None,
+                role="literal",
+                literal_value=value,
+                literal_span=span,
+                site=self._site_str(),
             )
         )
 
@@ -1939,6 +1961,12 @@ class VariablesAnalyzer:
                 self._walk_stmt_or_expr(ch, context, path)
             return
 
+        if isinstance(obj, (IntLiteral, FloatLiteral)):
+            span = getattr(obj, "span", None)
+            value = int(obj) if isinstance(obj, IntLiteral) else float(obj)
+            self._add_magic_number_issue(path, value, span)
+            return
+
         # IF Statement: (IF, branches, else_block) [5]
         if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
             _, branches, else_block = obj
@@ -2004,6 +2032,13 @@ class VariablesAnalyzer:
             and obj[0] in (const.KEY_PLUS, const.KEY_MINUS)
         ):
             _, inner = obj
+            if isinstance(inner, (IntLiteral, FloatLiteral)):
+                span = getattr(inner, "span", None)
+                value = int(inner) if isinstance(inner, IntLiteral) else float(inner)
+                if obj[0] == const.KEY_MINUS:
+                    value = -value
+                self._add_magic_number_issue(path, value, span)
+                return
             self._walk_stmt_or_expr(inner, context, path)
             return
 
@@ -2264,3 +2299,685 @@ class VariablesAnalyzer:
                     duplicate_locations=duplicate_locs,
                 )
             )
+
+    # ------------ Reset contamination detection ------------
+
+    def _detect_reset_contamination(self) -> None:
+        root_path = [self.bp.header.name]
+
+        for mod in self.bp.submodules or []:
+            self._collect_reset_contamination_from_module(mod, root_path)
+
+        if self._limit_to_module_path is not None:
+            return
+
+        for mt in self.bp.moduletype_defs or []:
+            if not self._is_from_root_origin(getattr(mt, "origin_file", None)):
+                continue
+            td_path = [self.bp.header.name, f"TypeDef:{mt.name}"]
+            self._check_reset_contamination_for_typedef(mt, td_path)
+
+    def _should_analyze_reset_path(self, path: list[str]) -> bool:
+        if self._limit_to_module_path is None:
+            return True
+        return (
+            path_startswith_casefold(self._limit_to_module_path, path)
+            or path_startswith_casefold(path, self._limit_to_module_path)
+        )
+
+    def _collect_reset_contamination_from_module(
+        self,
+        mod: Union[SingleModule, FrameModule, ModuleTypeInstance],
+        path: list[str],
+    ) -> None:
+        if isinstance(mod, SingleModule):
+            mod_path = path + [mod.header.name]
+            if self._should_analyze_reset_path(mod_path):
+                self._check_reset_contamination_for_single(mod, mod_path)
+            for ch in mod.submodules or []:
+                self._collect_reset_contamination_from_module(ch, mod_path)
+        elif isinstance(mod, FrameModule):
+            mod_path = path + [mod.header.name]
+            for ch in mod.submodules or []:
+                self._collect_reset_contamination_from_module(ch, mod_path)
+        elif isinstance(mod, ModuleTypeInstance):
+            return
+
+    def _build_local_env(
+        self, moduleparameters: list[Variable] | None, localvariables: list[Variable] | None
+    ) -> dict[str, Variable]:
+        env: dict[str, Variable] = {}
+        for v in moduleparameters or []:
+            env[v.name.casefold()] = v
+        for v in localvariables or []:
+            env[v.name.casefold()] = v
+        return env
+
+    def _check_reset_contamination_for_single(
+        self, mod: SingleModule, path: list[str]
+    ) -> None:
+        if mod.modulecode is None:
+            return
+        env = self._build_local_env(mod.moduleparameters, mod.localvariables)
+        self._check_reset_contamination_for_modulecode(mod.modulecode, env, path)
+
+    def _check_reset_contamination_for_typedef(
+        self, mt: ModuleTypeDef, path: list[str]
+    ) -> None:
+        if mt.modulecode is None:
+            return
+        env = self._build_local_env(mt.moduleparameters, mt.localvariables)
+        self._check_reset_contamination_for_modulecode(mt.modulecode, env, path)
+
+    def _check_reset_contamination_for_modulecode(
+        self,
+        modulecode: ModuleCode,
+        env: dict[str, Variable],
+        path: list[str],
+    ) -> None:
+        sequences = list(modulecode.sequences or [])
+        if not sequences:
+            return
+
+        var_refs = self._collect_var_refs_in_modulecode(modulecode)
+        for seq in sequences:
+            seq_name = getattr(seq, "name", "")
+            if not seq_name:
+                continue
+            reset_ref = f"{seq_name}.Reset"
+            reset_ref_cf = reset_ref.casefold()
+            if reset_ref_cf not in var_refs:
+                continue
+
+            reset_old_vars = self._collect_reset_old_vars(modulecode, reset_ref_cf)
+            run_writes: dict[tuple[str, str], tuple[Variable, str]] = {}
+            reset_writes: dict[tuple[str, str], tuple[Variable, str]] = {}
+
+            self._collect_reset_writes_in_modulecode(
+                modulecode,
+                env,
+                reset_ref_cf,
+                {v.casefold() for v in reset_old_vars},
+                run_writes,
+                reset_writes,
+            )
+
+            if not run_writes:
+                continue
+
+            reset_whole_vars = {
+                key[0] for key, (_, field_path) in reset_writes.items() if not field_path
+            }
+            reset_keys = set(reset_writes.keys())
+            reset_old_cf = {v.casefold() for v in reset_old_vars}
+
+            for key, (var, field_path) in sorted(
+                run_writes.items(), key=lambda item: (item[0][0], item[0][1])
+            ):
+                var_key, field_key = key
+                if var_key in reset_old_cf:
+                    continue
+                if var_key in reset_whole_vars:
+                    continue
+                if key in reset_keys:
+                    continue
+
+                self._issues.append(
+                    VariableIssue(
+                        kind=IssueKind.RESET_CONTAMINATION,
+                        module_path=path.copy(),
+                        variable=var,
+                        role="localvariable",
+                        field_path=field_path or None,
+                        sequence_name=seq_name,
+                        reset_variable=reset_ref,
+                    )
+                )
+
+    def _collect_var_refs_in_modulecode(self, modulecode: ModuleCode) -> set[str]:
+        refs: set[str] = set()
+
+        def visit(obj: Any) -> None:
+            if obj is None:
+                return
+            if isinstance(obj, dict) and const.KEY_VAR_NAME in obj:
+                full = obj[const.KEY_VAR_NAME]
+                if isinstance(full, str) and full:
+                    refs.add(full.casefold())
+                return
+            if isinstance(obj, list):
+                for it in obj:
+                    visit(it)
+                return
+            if isinstance(obj, tuple):
+                for it in obj[1:]:
+                    visit(it)
+                return
+            if hasattr(obj, "children"):
+                for ch in getattr(obj, "children", []):
+                    visit(ch)
+
+        for seq in modulecode.sequences or []:
+            for node in seq.code or []:
+                visit(node)
+        for eq in modulecode.equations or []:
+            for stmt in eq.code or []:
+                visit(stmt)
+
+        return refs
+
+    def _collect_reset_old_vars(
+        self, modulecode: ModuleCode, reset_ref_cf: str
+    ) -> set[str]:
+        reset_old_vars: set[str] = set()
+
+        def visit(obj: Any) -> None:
+            if obj is None:
+                return
+            if hasattr(obj, "data") and getattr(obj, "data") == const.KEY_STATEMENT:
+                for ch in getattr(obj, "children", []):
+                    visit(ch)
+                return
+            if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
+                _, target, expr = obj
+                if (
+                    isinstance(expr, dict)
+                    and const.KEY_VAR_NAME in expr
+                    and isinstance(expr[const.KEY_VAR_NAME], str)
+                    and expr[const.KEY_VAR_NAME].casefold() == reset_ref_cf
+                ):
+                    if isinstance(target, dict) and const.KEY_VAR_NAME in target:
+                        tgt = target[const.KEY_VAR_NAME]
+                        if isinstance(tgt, str) and tgt:
+                            reset_old_vars.add(tgt)
+                visit(expr)
+                return
+            if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
+                _, branches, else_block = obj
+                for cond, stmts in branches or []:
+                    visit(cond)
+                    for st in stmts or []:
+                        visit(st)
+                for st in else_block or []:
+                    visit(st)
+                return
+            if isinstance(obj, list):
+                for it in obj:
+                    visit(it)
+                return
+            if isinstance(obj, tuple):
+                for it in obj[1:]:
+                    visit(it)
+                return
+            if hasattr(obj, "children"):
+                for ch in getattr(obj, "children", []):
+                    visit(ch)
+
+        for seq in modulecode.sequences or []:
+            for node in seq.code or []:
+                visit(node)
+        for eq in modulecode.equations or []:
+            for stmt in eq.code or []:
+                visit(stmt)
+
+        return reset_old_vars
+
+    def _collect_reset_writes_in_modulecode(
+        self,
+        modulecode: ModuleCode,
+        env: dict[str, Variable],
+        reset_ref_cf: str,
+        reset_old_vars_cf: set[str],
+        run_writes: dict[tuple[str, str], tuple[Variable, str]],
+        reset_writes: dict[tuple[str, str], tuple[Variable, str]],
+    ) -> None:
+        for eq in modulecode.equations or []:
+            for stmt in eq.code or []:
+                self._collect_reset_writes_in_stmt(
+                    stmt,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode="run",
+                )
+
+        for seq in modulecode.sequences or []:
+            for node in seq.code or []:
+                self._collect_reset_writes_in_seq_node(
+                    node,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                )
+
+    def _collect_reset_writes_in_seq_node(
+        self,
+        node: Any,
+        env: dict[str, Variable],
+        reset_ref_cf: str,
+        reset_old_vars_cf: set[str],
+        run_writes: dict[tuple[str, str], tuple[Variable, str]],
+        reset_writes: dict[tuple[str, str], tuple[Variable, str]],
+    ) -> None:
+        if isinstance(node, SFCStep):
+            for stmt in node.code.enter or []:
+                self._collect_reset_writes_in_stmt(
+                    stmt,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode="run",
+                )
+            for stmt in node.code.active or []:
+                self._collect_reset_writes_in_stmt(
+                    stmt,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode="run",
+                )
+            for stmt in node.code.exit or []:
+                self._collect_reset_writes_in_stmt(
+                    stmt,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode="run",
+                )
+            return
+
+        if isinstance(node, SFCTransition):
+            return
+
+        if isinstance(node, SFCAlternative):
+            for branch in node.branches or []:
+                for sub in branch or []:
+                    self._collect_reset_writes_in_seq_node(
+                        sub,
+                        env,
+                        reset_ref_cf,
+                        reset_old_vars_cf,
+                        run_writes,
+                        reset_writes,
+                    )
+            return
+
+        if isinstance(node, SFCParallel):
+            for branch in node.branches or []:
+                for sub in branch or []:
+                    self._collect_reset_writes_in_seq_node(
+                        sub,
+                        env,
+                        reset_ref_cf,
+                        reset_old_vars_cf,
+                        run_writes,
+                        reset_writes,
+                    )
+            return
+
+        if isinstance(node, SFCSubsequence):
+            for sub in node.body or []:
+                self._collect_reset_writes_in_seq_node(
+                    sub,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                )
+            return
+
+        if isinstance(node, SFCTransitionSub):
+            for sub in node.body or []:
+                self._collect_reset_writes_in_seq_node(
+                    sub,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                )
+            return
+
+    def _collect_reset_writes_in_stmt(
+        self,
+        obj: Any,
+        env: dict[str, Variable],
+        reset_ref_cf: str,
+        reset_old_vars_cf: set[str],
+        run_writes: dict[tuple[str, str], tuple[Variable, str]],
+        reset_writes: dict[tuple[str, str], tuple[Variable, str]],
+        mode: str,
+    ) -> None:
+        if obj is None:
+            return
+        if hasattr(obj, "data") and getattr(obj, "data") == const.KEY_STATEMENT:
+            for ch in getattr(obj, "children", []):
+                self._collect_reset_writes_in_stmt(
+                    ch,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode,
+                )
+            return
+
+        if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
+            _, branches, else_block = obj
+            saw_run = False
+            saw_reset = False
+            for cond, stmts in branches or []:
+                cond_flags = self._classify_reset_condition(
+                    cond, reset_ref_cf, reset_old_vars_cf
+                )
+                branch_mode = mode
+                if cond_flags["run"] and not cond_flags["reset"]:
+                    branch_mode = "run"
+                elif cond_flags["reset"] and not cond_flags["run"]:
+                    branch_mode = "reset"
+                if cond_flags["run"]:
+                    saw_run = True
+                if cond_flags["reset"]:
+                    saw_reset = True
+                for st in stmts or []:
+                    self._collect_reset_writes_in_stmt(
+                        st,
+                        env,
+                        reset_ref_cf,
+                        reset_old_vars_cf,
+                        run_writes,
+                        reset_writes,
+                        branch_mode,
+                    )
+            if else_block:
+                else_mode = mode
+                if saw_run and not saw_reset:
+                    else_mode = "reset"
+                elif saw_reset and not saw_run:
+                    else_mode = "run"
+                for st in else_block or []:
+                    self._collect_reset_writes_in_stmt(
+                        st,
+                        env,
+                        reset_ref_cf,
+                        reset_old_vars_cf,
+                        run_writes,
+                        reset_writes,
+                        else_mode,
+                    )
+            return
+
+        if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
+            _, target, expr = obj
+            if mode in ("run", "reset"):
+                write_bucket = run_writes if mode == "run" else reset_writes
+                self._record_reset_write(target, env, write_bucket)
+            self._collect_reset_writes_in_stmt(
+                expr,
+                env,
+                reset_ref_cf,
+                reset_old_vars_cf,
+                run_writes,
+                reset_writes,
+                mode,
+            )
+            return
+
+        if isinstance(obj, tuple) and obj and obj[0] == const.KEY_FUNCTION_CALL:
+            _, fn_name, args = obj
+            if mode in ("run", "reset"):
+                write_bucket = run_writes if mode == "run" else reset_writes
+                self._record_function_call_writes(fn_name, args or [], env, write_bucket)
+            for arg in args or []:
+                self._collect_reset_writes_in_stmt(
+                    arg,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode,
+                )
+            return
+
+        if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_TERNARY, "Ternary"):
+            _, branches, else_expr = obj
+            for cond, then_expr in branches or []:
+                self._collect_reset_writes_in_stmt(
+                    cond,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode,
+                )
+                self._collect_reset_writes_in_stmt(
+                    then_expr,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode,
+                )
+            if else_expr is not None:
+                self._collect_reset_writes_in_stmt(
+                    else_expr,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode,
+                )
+            return
+
+        if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_COMPARE, "compare"):
+            _, left, pairs = obj
+            self._collect_reset_writes_in_stmt(
+                left,
+                env,
+                reset_ref_cf,
+                reset_old_vars_cf,
+                run_writes,
+                reset_writes,
+                mode,
+            )
+            for _sym, rhs in pairs or []:
+                self._collect_reset_writes_in_stmt(
+                    rhs,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode,
+                )
+            return
+
+        if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_ADD, const.KEY_MUL):
+            _, left, parts = obj
+            self._collect_reset_writes_in_stmt(
+                left,
+                env,
+                reset_ref_cf,
+                reset_old_vars_cf,
+                run_writes,
+                reset_writes,
+                mode,
+            )
+            for _opval, rhs in parts or []:
+                self._collect_reset_writes_in_stmt(
+                    rhs,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode,
+                )
+            return
+
+        if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_PLUS, const.KEY_MINUS):
+            _, inner = obj
+            self._collect_reset_writes_in_stmt(
+                inner,
+                env,
+                reset_ref_cf,
+                reset_old_vars_cf,
+                run_writes,
+                reset_writes,
+                mode,
+            )
+            return
+
+        if isinstance(obj, tuple) and obj and obj[0] in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND):
+            for sub in obj[1] or []:
+                self._collect_reset_writes_in_stmt(
+                    sub,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode,
+                )
+            return
+
+        if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_NOT:
+            self._collect_reset_writes_in_stmt(
+                obj[1],
+                env,
+                reset_ref_cf,
+                reset_old_vars_cf,
+                run_writes,
+                reset_writes,
+                mode,
+            )
+            return
+
+        if isinstance(obj, list):
+            for it in obj:
+                self._collect_reset_writes_in_stmt(
+                    it,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode,
+                )
+            return
+
+        if hasattr(obj, "children"):
+            for ch in getattr(obj, "children", []):
+                self._collect_reset_writes_in_stmt(
+                    ch,
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    run_writes,
+                    reset_writes,
+                    mode,
+                )
+
+    def _classify_reset_condition(
+        self, cond: Any, reset_ref_cf: str, reset_old_vars_cf: set[str]
+    ) -> dict[str, bool]:
+        positives: set[str] = set()
+        negatives: set[str] = set()
+
+        def visit(obj: Any, negated: bool) -> None:
+            if obj is None:
+                return
+            if isinstance(obj, dict) and const.KEY_VAR_NAME in obj:
+                full = obj[const.KEY_VAR_NAME]
+                if isinstance(full, str) and full:
+                    name_cf = full.casefold()
+                    if name_cf == reset_ref_cf or name_cf in reset_old_vars_cf:
+                        if negated:
+                            negatives.add(name_cf)
+                        else:
+                            positives.add(name_cf)
+                return
+            if isinstance(obj, tuple) and obj:
+                if obj[0] == const.GRAMMAR_VALUE_NOT:
+                    visit(obj[1], not negated)
+                    return
+                for it in obj[1:]:
+                    visit(it, negated)
+                return
+            if isinstance(obj, list):
+                for it in obj:
+                    visit(it, negated)
+                return
+            if hasattr(obj, "children"):
+                for ch in getattr(obj, "children", []):
+                    visit(ch, negated)
+
+        visit(cond, False)
+
+        is_run = reset_ref_cf in negatives
+        is_reset = reset_ref_cf in positives or bool(negatives & reset_old_vars_cf)
+        return {"run": is_run, "reset": is_reset}
+
+    def _record_reset_write(
+        self,
+        target: Any,
+        env: dict[str, Variable],
+        out: dict[tuple[str, str], tuple[Variable, str]],
+    ) -> None:
+        if not isinstance(target, dict) or const.KEY_VAR_NAME not in target:
+            return
+        full_ref = target[const.KEY_VAR_NAME]
+        if not isinstance(full_ref, str) or not full_ref:
+            return
+        base, field_path = self._split_var_ref(full_ref)
+        if not base:
+            return
+        var = env.get(base.casefold())
+        if var is None:
+            return
+        field_path = field_path or ""
+        key = (var.name.casefold(), field_path.casefold())
+        out[key] = (var, field_path)
+
+    def _record_function_call_writes(
+        self,
+        fn_name: str,
+        args: list[Any],
+        env: dict[str, Variable],
+        out: dict[tuple[str, str], tuple[Variable, str]],
+    ) -> None:
+        sig = get_function_signature(fn_name)
+        if sig is None:
+            return
+        for idx, arg in enumerate(args):
+            if idx >= len(sig.parameters):
+                break
+            direction = sig.parameters[idx].direction
+            if direction not in ("out", "inout"):
+                continue
+            if isinstance(arg, dict) and const.KEY_VAR_NAME in arg:
+                self._record_reset_write(arg, env, out)
+
+    def _split_var_ref(self, full_ref: str) -> tuple[str, str]:
+        if not full_ref:
+            return "", ""
+        if "." not in full_ref:
+            return full_ref, ""
+        base, field_path = full_ref.split(".", 1)
+        return base, field_path
