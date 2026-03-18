@@ -108,6 +108,12 @@ Ranking notes:
 - Why: flags heavy operations inside high-frequency actions.
 - Files: [src/sattlint/analyzers/sfc.py](src/sattlint/analyzers/sfc.py), [src/sattlint/analyzers/sattline_builtins.py](src/sattlint/analyzers/sattline_builtins.py), [src/sattlint/models/ast_model.py](src/sattlint/models/ast_model.py), [SattLineReferenceDocs/sattline_execution_reference.md](SattLineReferenceDocs/sattline_execution_reference.md)
 
+### 21. Initial values for recipe and engineering parameters
+
+- Ease: 3/5. Usefulness: 4/5.
+- Why: identifies recipe/engineering parameters missing initial values or defaults.
+- Files: [src/sattlint/analyzers/variables.py](src/sattlint/analyzers/variables.py), [src/sattlint/models/ast_model.py](src/sattlint/models/ast_model.py), [tests/test_analyzers.py](tests/test_analyzers.py)
+
 ## Completed
 
 ### 14. Reset-detection and batch contamination checks

@@ -22,6 +22,7 @@ It parses SattLine source files, resolves dependencies across libraries, builds 
 ## Features
 
 - **Interactive menu-driven application**.
+- **Non-interactive syntax check** for a single SattLine file via `sattlint syntax-check <file>`.
 - **Full SattLine parsing** using a Lark grammar (`grammar/sattline.lark`).
 - **Recursive dependency resolution** across a configurable set of library directories, with optional vendor-library exclusion.
 - **Variable-usage analysis** reports:
@@ -81,6 +82,16 @@ sattlint
 ```
 
 This starts the interactive SattLint application.
+
+To validate that a single SattLine file parses and transforms cleanly, run:
+
+```bash
+sattlint syntax-check path/to/Program.s
+```
+
+The command prints `OK` and exits with code `0` when the file is valid. If parsing or transformation fails, it prints a compact error message with location information when available and exits non-zero.
+
+The syntax check also performs strict post-transform validation for structural mistakes that the grammar alone may accept. Current checks include consecutive `SEQSTEP` blocks with no intervening `SEQTRANSITION`, missing `SEQINITSTEP` at the start of a sequence, unknown `SEQFORK` targets, duplicate names in the same declaration scope, `OLD`/`NEW` access on non-`STATE` variables, and identifier names longer than 20 characters.
 
 ### Interactive Usage
 

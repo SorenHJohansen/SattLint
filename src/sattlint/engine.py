@@ -1,12 +1,33 @@
 """Parsing and project-loading engine for SattLine sources."""
+from dataclasses import dataclass
 from pathlib import Path
-from lark import Lark
-from .grammar import constants
+from lark import Lark, Tree
+from lark.exceptions import VisitError
+from .grammar import constants as const
 from .transformer.sl_transformer import SLTransformer
 from .grammar.parser_decode import is_compressed, preprocess_sl_text
-from .models.ast_model import BasePicture, DataType, ModuleTypeDef
+from .models.ast_model import (
+    BasePicture,
+    DataType,
+    Equation,
+    FrameModule,
+    ModuleCode,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    Sequence,
+    SFCAlternative,
+    SFCBreak,
+    SFCFork,
+    SFCParallel,
+    SFCStep,
+    SFCSubsequence,
+    SFCTransition,
+    SFCTransitionSub,
+    SingleModule,
+    Variable,
+)
 from .utils.text_processing import strip_sl_comments
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from enum import Enum
 from .models.project_graph import ProjectGraph
 from .cache import FileLookupCache, FileASTCache, get_cache_dir
@@ -19,6 +40,20 @@ logging.basicConfig(
     force=True,
 )
 log = logging.getLogger("SattLint")
+
+
+class StructuralValidationError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class SyntaxValidationResult:
+    file_path: Path
+    ok: bool
+    stage: str
+    message: str | None = None
+    line: int | None = None
+    column: int | None = None
 
 
 class CodeMode(Enum):
@@ -60,8 +95,8 @@ def create_sl_parser() -> Lark:
     # We only include constants that start with "GRAMMAR_VALUE_" or "GRAMMAR_REGEX_"
     # as these are specifically for the grammar file.
     grammar_substitutions = {
-        name: getattr(constants, name)
-        for name in dir(constants)
+        name: getattr(const, name)
+        for name in dir(const)
         if name.startswith("GRAMMAR_VALUE_") or name.startswith("GRAMMAR_REGEX_")
     }
     # Format the grammar string by replacing placeholders with constant values
@@ -71,6 +106,500 @@ def create_sl_parser() -> Lark:
     return Lark(
         formatted_grammar, start="start", parser="lalr", propagate_positions=True
     )
+
+
+def _read_text_simple(path: Path) -> str:
+    # If utf-8 fails, try cp1252 (covers characters like 'ø' / 0xF8)
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        try:
+            return path.read_text(encoding="cp1252")
+        except UnicodeDecodeError:
+            return path.read_text(encoding="latin-1")
+
+
+def _identifier_length(name: str) -> int:
+    if len(name) >= 2 and name.startswith("'") and name.endswith("'"):
+        return len(name[1:-1])
+    return len(name)
+
+
+def _validate_identifier(name: str | None, context: str) -> None:
+    if not name:
+        return
+    if _identifier_length(name) > 20:
+        raise StructuralValidationError(
+            f"{context} name {name!r} exceeds 20 characters"
+        )
+
+
+def _ensure_unique_names(names: list[str], context: str, kind: str) -> None:
+    seen: dict[str, str] = {}
+    for name in names:
+        folded = name.casefold()
+        if folded in seen:
+            raise StructuralValidationError(
+                f"{context} has duplicate {kind} names {seen[folded]!r} and {name!r}"
+            )
+        seen[folded] = name
+
+
+def _collect_sequence_labels(nodes: list[object], labels: dict[str, str], context: str) -> None:
+    for node in nodes:
+        label: str | None = None
+        if isinstance(node, SFCStep):
+            label = node.name
+        elif isinstance(node, SFCTransition) and node.name:
+            label = node.name
+        elif isinstance(node, SFCSubsequence):
+            label = node.name
+        elif isinstance(node, SFCTransitionSub):
+            label = node.name
+
+        if label:
+            folded = label.casefold()
+            if folded in labels:
+                raise StructuralValidationError(
+                    f"{context} has duplicate sequence labels {labels[folded]!r} and {label!r}"
+                )
+            labels[folded] = label
+
+        if isinstance(node, SFCAlternative):
+            for branch in node.branches:
+                _collect_sequence_labels(branch, labels, context)
+        elif isinstance(node, SFCParallel):
+            for branch in node.branches:
+                _collect_sequence_labels(branch, labels, context)
+        elif isinstance(node, SFCSubsequence):
+            _collect_sequence_labels(node.body, labels, context)
+        elif isinstance(node, SFCTransitionSub):
+            _collect_sequence_labels(node.body, labels, context)
+
+
+def _iter_variable_refs(node: object):
+    if isinstance(node, dict) and const.KEY_VAR_NAME in node:
+        yield node
+        return
+
+    if isinstance(node, Tree):
+        for child in node.children:
+            yield from _iter_variable_refs(child)
+        return
+
+    if isinstance(node, tuple):
+        for item in node:
+            yield from _iter_variable_refs(item)
+        return
+
+    if isinstance(node, list):
+        for item in node:
+            yield from _iter_variable_refs(item)
+
+
+def _validate_variable_refs(
+    node: object,
+    env: dict[str, Variable],
+    context: str,
+) -> None:
+    for ref in _iter_variable_refs(node):
+        state = ref.get("state")
+        if not state:
+            continue
+
+        full_name = ref[const.KEY_VAR_NAME]
+        base_name = str(full_name).split(".", 1)[0]
+        variable = env.get(base_name.casefold())
+        if variable is not None and not variable.state:
+            raise StructuralValidationError(
+                f"{context} uses {state.upper()} on non-STATE variable {base_name!r}"
+            )
+
+
+def _validate_call_arg_node(node: object, context: str) -> None:
+    if isinstance(node, str):
+        raise StructuralValidationError(
+            f"{context} uses string literal {node!r}; string literals are only allowed in parameter connections"
+        )
+
+    if isinstance(node, Tree):
+        for child in node.children:
+            _validate_call_arg_node(child, context)
+        return
+
+    if isinstance(node, list):
+        for item in node:
+            _validate_call_arg_node(item, context)
+        return
+
+    if isinstance(node, dict):
+        if const.KEY_VAR_NAME in node:
+            return
+
+        for value in node.values():
+            _validate_call_arg_node(value, context)
+        return
+
+    if isinstance(node, tuple):
+        if len(node) == 3 and node[0] == const.KEY_FUNCTION_CALL:
+            fn_name = node[1]
+            args = node[2] or []
+            for index, arg in enumerate(args, start=1):
+                _validate_call_arg_node(
+                    arg,
+                    f"{context} call {fn_name!r} argument {index}",
+                )
+            return
+
+        for item in node:
+            _validate_call_arg_node(item, context)
+
+
+def _validate_no_string_literals_in_calls(node: object, context: str) -> None:
+    if isinstance(node, Tree):
+        for child in node.children:
+            _validate_no_string_literals_in_calls(child, context)
+        return
+
+    if isinstance(node, list):
+        for item in node:
+            _validate_no_string_literals_in_calls(item, context)
+        return
+
+    if isinstance(node, dict):
+        if const.KEY_VAR_NAME in node:
+            return
+
+        for value in node.values():
+            _validate_no_string_literals_in_calls(value, context)
+        return
+
+    if isinstance(node, tuple):
+        if len(node) == 3 and node[0] == const.KEY_FUNCTION_CALL:
+            fn_name = node[1]
+            args = node[2] or []
+            for index, arg in enumerate(args, start=1):
+                _validate_call_arg_node(
+                    arg,
+                    f"{context} call {fn_name!r} argument {index}",
+                )
+            return
+
+        for item in node:
+            _validate_no_string_literals_in_calls(item, context)
+
+
+def _validate_statement_list(
+    statements: list[object],
+    env: dict[str, Variable],
+    context: str,
+) -> None:
+    for statement in statements:
+        _validate_variable_refs(statement, env, context)
+        _validate_no_string_literals_in_calls(statement, context)
+
+
+def _validate_code_blocks(code, env: dict[str, Variable], context: str) -> None:
+    _validate_statement_list(code.enter, env, f"{context} ENTERCODE")
+    _validate_statement_list(code.active, env, f"{context} ACTIVECODE")
+    _validate_statement_list(code.exit, env, f"{context} EXITCODE")
+
+
+def _validate_sequence_nodes(
+    nodes: list[object],
+    context: str,
+    *,
+    labels: dict[str, str],
+    env: dict[str, Variable],
+    require_init_step: bool,
+) -> None:
+    previous_step: str | None = None
+    init_steps = 0
+
+    if require_init_step:
+        if not nodes or not isinstance(nodes[0], SFCStep) or nodes[0].kind != "init":
+            raise StructuralValidationError(
+                f"{context} must start with exactly one SEQINITSTEP"
+            )
+
+    for index, node in enumerate(nodes):
+        if isinstance(node, SFCStep):
+            _validate_identifier(node.name, f"{context} step")
+            if node.kind == "init":
+                init_steps += 1
+                if index != 0:
+                    raise StructuralValidationError(
+                        f"{context} has SEQINITSTEP {node.name!r} outside the first position"
+                    )
+            if previous_step is not None:
+                raise StructuralValidationError(
+                    f"{context} has step {node.name!r} immediately after step "
+                    f"{previous_step!r} without an intervening transition"
+                )
+            _validate_code_blocks(node.code, env, f"{context} step {node.name!r}")
+            previous_step = node.name
+            continue
+
+        previous_step = None
+
+        if isinstance(node, SFCTransition):
+            _validate_identifier(node.name, f"{context} transition")
+        elif isinstance(node, SFCTransitionSub):
+            _validate_identifier(node.name, f"{context} transition-sub")
+            _validate_sequence_nodes(
+                node.body,
+                f"{context} transition-sub {node.name!r}",
+                labels=labels,
+                env=env,
+                require_init_step=False,
+            )
+        elif isinstance(node, SFCSubsequence):
+            _validate_identifier(node.name, f"{context} subsequence")
+            _validate_sequence_nodes(
+                node.body,
+                f"{context} subsequence {node.name!r}",
+                labels=labels,
+                env=env,
+                require_init_step=False,
+            )
+        elif isinstance(node, SFCAlternative):
+            for index, branch in enumerate(node.branches, start=1):
+                _validate_sequence_nodes(
+                    branch,
+                    f"{context} alternative branch {index}",
+                    labels=labels,
+                    env=env,
+                    require_init_step=False,
+                )
+        elif isinstance(node, SFCParallel):
+            for index, branch in enumerate(node.branches, start=1):
+                _validate_sequence_nodes(
+                    branch,
+                    f"{context} parallel branch {index}",
+                    labels=labels,
+                    env=env,
+                    require_init_step=False,
+                )
+        elif isinstance(node, SFCFork):
+            _validate_identifier(node.target, f"{context} fork target")
+            if node.target.casefold() not in labels:
+                raise StructuralValidationError(
+                    f"{context} has SEQFORK target {node.target!r} that does not exist in the sequence"
+                )
+        elif isinstance(node, SFCBreak):
+            continue
+
+    if require_init_step and init_steps != 1:
+        raise StructuralValidationError(
+            f"{context} must contain exactly one SEQINITSTEP"
+        )
+
+
+def _validate_module_code(
+    modulecode: ModuleCode | None,
+    context: str,
+    env: dict[str, Variable],
+) -> None:
+    if modulecode is None:
+        return
+
+    for equation in modulecode.equations or []:
+        if isinstance(equation, Equation):
+            _validate_identifier(equation.name, f"{context} equation")
+            _validate_statement_list(
+                equation.code or [],
+                env,
+                f"{context} equation {equation.name!r}",
+            )
+
+    for sequence in modulecode.sequences or []:
+        if isinstance(sequence, Sequence):
+            _validate_identifier(sequence.name, f"{context} sequence")
+            labels: dict[str, str] = {}
+            _collect_sequence_labels(sequence.code or [], labels, f"{context} sequence {sequence.name!r}")
+            _validate_sequence_nodes(
+                sequence.code or [],
+                f"{context} sequence {sequence.name!r}",
+                labels=labels,
+                env=env,
+                require_init_step=True,
+            )
+
+
+def _validate_variable_list(variables: list[Variable] | None, context: str) -> None:
+    names = [variable.name for variable in variables or []]
+    _ensure_unique_names(names, context, "variable")
+    for variable in variables or []:
+        _validate_identifier(variable.name, f"{context} variable")
+
+
+def _validate_datatypes(datatypes: list[DataType] | None, context: str) -> None:
+    _ensure_unique_names([datatype.name for datatype in datatypes or []], context, "datatype")
+    for datatype in datatypes or []:
+        _validate_identifier(datatype.name, f"{context} datatype")
+        _validate_variable_list(datatype.var_list, f"{context} datatype {datatype.name!r}")
+
+
+def _merge_env(parent_env: dict[str, Variable], variables: list[Variable] | None) -> dict[str, Variable]:
+    merged = dict(parent_env)
+    for variable in variables or []:
+        merged[variable.name.casefold()] = variable
+    return merged
+
+
+def _validate_module(
+    module: object,
+    context: str,
+    parent_env: dict[str, Variable],
+) -> None:
+    if isinstance(module, SingleModule):
+        _validate_identifier(module.header.name, f"{context} module")
+        module_context = f"{context} module {module.header.name!r}"
+        _validate_variable_list(module.moduleparameters, module_context)
+        _validate_variable_list(module.localvariables, module_context)
+        env = _merge_env(parent_env, module.moduleparameters)
+        env = _merge_env(env, module.localvariables)
+        _validate_module_code(module.modulecode, module_context, env)
+        for submodule in module.submodules or []:
+            _validate_module(submodule, module_context, env)
+        return
+
+    if isinstance(module, FrameModule):
+        _validate_identifier(module.header.name, f"{context} frame")
+        module_context = f"{context} frame {module.header.name!r}"
+        _validate_module_code(module.modulecode, module_context, parent_env)
+        for submodule in module.submodules or []:
+            _validate_module(submodule, module_context, parent_env)
+        return
+
+    if isinstance(module, ModuleTypeInstance):
+        _validate_identifier(module.header.name, f"{context} module instance")
+        _validate_identifier(module.moduletype_name, f"{context} module type reference")
+        return
+
+
+def validate_transformed_basepicture(basepic: BasePicture) -> None:
+    _validate_identifier(basepic.header.name, "BasePicture")
+    _validate_variable_list(basepic.localvariables, "BasePicture")
+    _validate_datatypes(basepic.datatype_defs, "BasePicture")
+    _ensure_unique_names(
+        [moduletype.name for moduletype in basepic.moduletype_defs or []],
+        "BasePicture",
+        "moduletype",
+    )
+
+    base_env = _merge_env({}, basepic.localvariables)
+
+    for moduletype in basepic.moduletype_defs or []:
+        if isinstance(moduletype, ModuleTypeDef):
+            _validate_identifier(moduletype.name, "BasePicture moduletype")
+            moduletype_context = f"BasePicture moduletype {moduletype.name!r}"
+            _validate_variable_list(moduletype.moduleparameters, moduletype_context)
+            _validate_variable_list(moduletype.localvariables, moduletype_context)
+            env = _merge_env(base_env, moduletype.moduleparameters)
+            env = _merge_env(env, moduletype.localvariables)
+            _validate_module_code(moduletype.modulecode, moduletype_context, env)
+            for submodule in moduletype.submodules or []:
+                _validate_module(submodule, moduletype_context, env)
+
+    _validate_module_code(basepic.modulecode, "BasePicture", base_env)
+
+    for submodule in basepic.submodules or []:
+        _validate_module(submodule, "BasePicture", base_env)
+
+
+def parse_source_file(
+    code_path: Path,
+    *,
+    parser: Lark | None = None,
+    transformer: SLTransformer | None = None,
+    debug: Callable[[str], None] | None = None,
+) -> BasePicture:
+    source_path = Path(code_path)
+    if debug is not None:
+        debug(f"Parsing file: {source_path}")
+
+    src = _read_text_simple(source_path)
+    if is_compressed(src):
+        if debug is not None:
+            debug("Compressed format detected; decoding before parsing")
+        src, _ = preprocess_sl_text(src)
+
+    cleaned = strip_sl_comments(src)
+    active_parser = parser if parser is not None else create_sl_parser()
+    active_transformer = transformer if transformer is not None else SLTransformer()
+    tree = active_parser.parse(cleaned)
+
+    if debug is not None:
+        debug("Parse OK, transforming with SLTransformer")
+
+    basepic = active_transformer.transform(tree)
+    try:
+        setattr(basepic, "parse_tree", tree)
+    except Exception:
+        if debug is not None:
+            debug("BasePicture does not allow dynamic attributes; parse tree not attached")
+
+    if debug is not None:
+        debug(f"Transform result type: {type(basepic).__name__}")
+
+    if not isinstance(basepic, BasePicture):
+        raise RuntimeError(
+            "Transform result is not BasePicture; check transformer.start()"
+        )
+
+    validate_transformed_basepicture(basepic)
+
+    return basepic
+
+
+def _extract_error_position(exc: Exception) -> tuple[int | None, int | None]:
+    line = getattr(exc, "line", None)
+    column = getattr(exc, "column", None)
+    if isinstance(exc, VisitError) and exc.orig_exc is not None:
+        line = line if line is not None else getattr(exc.orig_exc, "line", None)
+        column = column if column is not None else getattr(exc.orig_exc, "column", None)
+    return line, column
+
+
+def validate_single_file_syntax(code_path: Path) -> SyntaxValidationResult:
+    target_path = Path(code_path)
+    try:
+        parse_source_file(target_path)
+    except VisitError as exc:
+        line, column = _extract_error_position(exc)
+        message = str(exc.orig_exc) if exc.orig_exc is not None else str(exc)
+        return SyntaxValidationResult(
+            file_path=target_path,
+            ok=False,
+            stage="transform",
+            message=message,
+            line=line,
+            column=column,
+        )
+    except StructuralValidationError as exc:
+        line, column = _extract_error_position(exc)
+        return SyntaxValidationResult(
+            file_path=target_path,
+            ok=False,
+            stage="validation",
+            message=str(exc),
+            line=line,
+            column=column,
+        )
+    except Exception as exc:
+        line, column = _extract_error_position(exc)
+        stage = "parse" if line is not None or column is not None else "validation"
+        return SyntaxValidationResult(
+            file_path=target_path,
+            ok=False,
+            stage=stage,
+            message=str(exc),
+            line=line,
+            column=column,
+        )
+
+    return SyntaxValidationResult(file_path=target_path, ok=True, stage="ok")
 
 
 # ---------- Loader with recursive resolution ----------
@@ -113,6 +642,21 @@ class SattLineProjectLoader(DebugMixin):
         except Exception:
             base_r = base
         return any(base_r == ign for ign in self._ignored_dirs)
+
+    def _is_allowed_base(self, base: Path) -> bool:
+        allowed = [self.program_dir, *self.other_lib_dirs, self.abb_lib_dir]
+        try:
+            base_r = base.resolve()
+        except Exception:
+            base_r = base
+        for candidate in allowed:
+            try:
+                cand_r = candidate.resolve()
+            except Exception:
+                cand_r = candidate
+            if base_r == cand_r:
+                return True
+        return False
 
     def _get_base_index(self, base: Path) -> dict[str, dict[str, Path]]:
         if base in self._base_indexes:
@@ -168,6 +712,9 @@ class SattLineProjectLoader(DebugMixin):
 
         base = Path(cached.get("base_dir", ""))
         if not base or self._is_ignored_base(base):
+            return None
+        if not self._is_allowed_base(base):
+            self._lookup_cache.forget(kind, name, self.mode.value)
             return None
 
         cached_ext = cached.get("ext")
@@ -307,14 +854,7 @@ class SattLineProjectLoader(DebugMixin):
         return names
 
     def _read_text_simple(self, path: Path) -> str:
-        # If utf-8 fails, try cp1252 (covers characters like 'ø' / 0xF8)
-        try:
-            return path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            try:
-                return path.read_text(encoding="cp1252")
-            except UnicodeDecodeError:
-                return path.read_text(encoding="latin-1")
+        return _read_text_simple(path)
 
     def _library_name_for_path(self, code_path: Path) -> str:
         """
@@ -350,29 +890,12 @@ class SattLineProjectLoader(DebugMixin):
         return lib_name
 
     def _parse_one(self, code_path: Path) -> BasePicture:
-        self.dbg(f"Parsing file: {code_path}")
-        src = self._read_text_simple(code_path)
-        if is_compressed(src):
-            self.dbg("Compressed format detected; decoding before parsing")
-            src, _ = preprocess_sl_text(src)
-        cleaned = strip_sl_comments(src)
-        tree = self.parser.parse(cleaned)  # may raise LarkError
-        self.dbg("Parse OK, transforming with SLTransformer")
-        basepic = self.transformer.transform(tree)
-        # Attach raw parse tree for later dumping in CLI
-        try:
-            setattr(basepic, "parse_tree", tree)  # <-- add this
-        except Exception:
-            # If BasePicture uses __slots__, skip attaching
-            self.dbg(
-                "BasePicture does not allow dynamic attributes; parse tree not attached"
-            )
-        self.dbg(f"Transform result type: {type(basepic).__name__}")
-        if not isinstance(basepic, BasePicture):
-            self.dbg(
-                "Warning: transform result is not BasePicture; check transformer.start()"
-            )
-        return basepic
+        return parse_source_file(
+            code_path,
+            parser=self.parser,
+            transformer=self.transformer,
+            debug=self.dbg,
+        )
 
     def _load_or_parse(self, code_path: Path) -> BasePicture:
         cached = self._ast_cache.load(code_path, self.mode.value)

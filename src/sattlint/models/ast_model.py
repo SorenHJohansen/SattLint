@@ -17,19 +17,25 @@ class SourceSpan:
 class IntLiteral(int):
     span: SourceSpan
 
-    def __new__(cls, value: int, span: SourceSpan):
+    def __new__(cls, value: int, span: SourceSpan | None = None):
         obj = int.__new__(cls, value)
-        obj.span = span
+        obj.span = span if span is not None else SourceSpan(0, 0)
         return obj
+
+    def __reduce__(self):
+        return (type(self), (int(self), self.span))
 
 
 class FloatLiteral(float):
     span: SourceSpan
 
-    def __new__(cls, value: float, span: SourceSpan):
+    def __new__(cls, value: float, span: SourceSpan | None = None):
         obj = float.__new__(cls, value)
-        obj.span = span
+        obj.span = span if span is not None else SourceSpan(0, 0)
         return obj
+
+    def __reduce__(self):
+        return (type(self), (float(self), self.span))
 
 
 
@@ -339,7 +345,7 @@ class SingleModule:
             f"Moduleparameters: {format_list(self.moduleparameters)}",
             f"Localvariables  : {format_list(self.localvariables)}",
             f"Submodules      : {format_list(self.submodules)}",
-            f"ModuleDef       : {format_optional(self.moduledef)}",
+            # f"ModuleDef       : {format_optional(self.moduledef)}",
             f"ModuleCode      : {format_optional(self.modulecode)}",
             f"ParameterMappings: {format_list(self.parametermappings)}",
         ]
@@ -363,7 +369,7 @@ class FrameModule:
             f"Invoke_coord : {self.header.invoke_coord!r}",
             f"Datecode     : {self.datecode!r}",
             f"Submodules   : {format_list(self.submodules)}",
-            f"ModuleDef    : {format_optional(self.moduledef)}",
+            # f"ModuleDef    : {format_optional(self.moduledef)}",
             f"ModuleCode   : {format_optional(self.modulecode)}",
         ]
         return "FrameModule{\n" + textwrap.indent("\n".join(lines), "    ") + "}"
@@ -417,7 +423,7 @@ class ModuleTypeDef:
             f"Moduleparameters: {format_list(self.moduleparameters)}",
             f"Localvariables  : {format_list(self.localvariables)}",
             f"Submodules      : {format_list(self.submodules)}",
-            f"ModuleDef       : {format_optional(self.moduledef)}",
+            # f"ModuleDef       : {format_optional(self.moduledef)}",
             f"ModuleCode      : {format_optional(self.modulecode)}",
             f"ParameterMappings: {format_list(self.parametermappings)}",
         ]
@@ -451,7 +457,7 @@ class BasePicture:
             f"TYPEDEFINITIONS (Modules): {format_list(self.moduletype_defs)}\n"
             f"Localvariables: {format_list(self.localvariables)}\n\n"
             f"Submodules: {format_list(self.submodules)}\n\n"
-            f"ModuleDef: {self.moduledef}\n\n"
+            # f"ModuleDef: {self.moduledef}\n\n"
             f"ModuleCode: {self.modulecode}\n\n"
         ]
         return "BasePicture{\n" + textwrap.indent("\n  ".join(lines), "    ") + "}"

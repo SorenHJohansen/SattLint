@@ -14,6 +14,42 @@ from sattlint.analyzers import variable_usage_reporting as variables_reporting_m
 from sattlint.models.ast_model import FrameModule, ModuleTypeInstance, SingleModule
 
 
+VALID_SINGLE_FILE = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    A: integer := 0;
+    B: integer := 1;
+    C: integer := 2;
+    D: integer := 3;
+    X: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        X = IF A > 0 THEN B ELSE C + D ENDIF;
+ENDDEF (*BasePicture*);
+"""
+
+
+INVALID_SINGLE_FILE = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    TestVar: integer := 0
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        TestVar = TestVar + 1;
+ENDDEF (*BasePicture*);
+"""
+
+
 class DummyReport:
     def summary(self):
         return "summary"
@@ -338,6 +374,67 @@ def test_main_menu_all_options(noop_screen, monkeypatch, real_context):
     app.main()
 
     assert calls == ["analysis", "dump", "save"]
+
+
+def test_syntax_check_command_ok(tmp_path, capsys):
+    source_file = tmp_path / "ValidProgram.s"
+    source_file.write_text(VALID_SINGLE_FILE, encoding="utf-8")
+
+    exit_code = app.main(["syntax-check", str(source_file)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == "OK"
+    assert captured.err == ""
+
+
+def test_cli_entry_point_forwards_sys_argv_without_loading_ast(
+    tmp_path, capsys, monkeypatch
+):
+    source_file = tmp_path / "ValidProgram.s"
+    source_file.write_text(VALID_SINGLE_FILE, encoding="utf-8")
+
+    monkeypatch.setattr(app, "load_config", lambda *_: pytest.fail("load_config should not run"))
+    monkeypatch.setattr(app, "ensure_ast_cache", lambda *_: pytest.fail("ensure_ast_cache should not run"))
+    monkeypatch.setattr(app, "self_check", lambda *_: pytest.fail("self_check should not run"))
+    monkeypatch.setattr(app.sys, "argv", ["sattlint", "syntax-check", str(source_file)])
+
+    exit_code = app.cli()
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == "OK"
+    assert captured.err == ""
+
+
+def test_syntax_check_command_reports_parse_error(tmp_path, capsys):
+    source_file = tmp_path / "InvalidProgram.s"
+    source_file.write_text(INVALID_SINGLE_FILE, encoding="utf-8")
+
+    exit_code = app.main(["syntax-check", str(source_file)])
+
+    captured = capsys.readouterr()
+    assert exit_code != 0
+    assert "ERROR [parse]" in captured.err
+    assert str(source_file) in captured.err
+
+
+def test_syntax_check_command_rejects_missing_file(tmp_path, capsys):
+    missing_file = tmp_path / "MissingProgram.s"
+
+    exit_code = app.main(["syntax-check", str(missing_file)])
+
+    captured = capsys.readouterr()
+    assert exit_code != 0
+    assert "File not found" in captured.err
+
+
+def test_main_returns_error_for_unknown_cli_command(capsys):
+    exit_code = app.main(["unknown-command"])
+
+    captured = capsys.readouterr()
+    assert exit_code != 0
+    assert "usage:" in captured.err.lower()
 
 
 def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_context):

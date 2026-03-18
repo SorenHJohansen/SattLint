@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
 from pathlib import Path
 import os
@@ -31,7 +32,7 @@ from .analyzers.modules import (
     find_modules_by_name,
     compare_modules,
 )
-from .cache import ASTCache, compute_cache_key
+from .cache import ASTCache, compute_cache_key, get_cache_dir
 from .engine import GRAMMAR_PATH
 
 VARIABLE_ANALYSES = {
@@ -107,6 +108,59 @@ def apply_debug(cfg: dict):
     log.setLevel(logging.DEBUG if cfg.get("debug") else logging.INFO)
 
 
+def build_cli_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="sattlint")
+    subparsers = parser.add_subparsers(dest="command")
+
+    syntax_parser = subparsers.add_parser(
+        "syntax-check",
+        help="Validate a single SattLine file with the parser and transformer",
+    )
+    syntax_parser.add_argument("file", help="Path to the SattLine source file")
+    return parser
+
+
+def _format_syntax_error(result: engine_module.SyntaxValidationResult) -> str:
+    location = ""
+    if result.line is not None and result.column is not None:
+        location = f":{result.line}:{result.column}"
+    elif result.line is not None:
+        location = f":{result.line}"
+
+    detail = result.message or "Unknown error"
+    return f"ERROR [{result.stage}] {result.file_path}{location}: {detail}"
+
+
+def run_syntax_check_command(file_path: str) -> int:
+    target_path = Path(file_path)
+    if not target_path.exists() or not target_path.is_file():
+        print(f"ERROR [io] {target_path}: File not found", file=sys.stderr)
+        return 1
+
+    result = engine_module.validate_single_file_syntax(target_path)
+    if result.ok:
+        print("OK")
+        return 0
+
+    print(_format_syntax_error(result), file=sys.stderr)
+    return 1
+
+
+def run_cli(argv: list[str]) -> int:
+    parser = build_cli_parser()
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+        return code
+
+    if args.command == "syntax-check":
+        return run_syntax_check_command(args.file)
+
+    parser.print_usage(sys.stderr)
+    return 1
+
+
 # ----------------------------
 # Display
 # ----------------------------
@@ -135,7 +189,7 @@ def show_config(cfg: dict):
 # Analysis & dumps
 # ----------------------------
 def load_project(cfg: dict, *, use_cache: bool = True):
-    cache_dir = CONFIG_PATH.parent / "cache"
+    cache_dir = get_cache_dir()
     cache = ASTCache(cache_dir)
 
     key = compute_cache_key(cfg)  # now only hashes config, not files
@@ -202,7 +256,7 @@ def load_program_ast(cfg: dict, program_name: str):
 
 def force_refresh_ast(cfg: dict):
     """Clear cached AST for current config and rebuild it."""
-    cache_dir = CONFIG_PATH.parent / "cache"
+    cache_dir = get_cache_dir()
     cache = ASTCache(cache_dir)
     key = compute_cache_key(cfg)
     cache.clear(key)
@@ -213,7 +267,7 @@ def force_refresh_ast(cfg: dict):
 def ensure_ast_cache(cfg: dict) -> bool:
     """Check AST cache validity and rebuild if needed with user feedback."""
     print("\n⏳ Checking AST cache...")
-    cache_dir = CONFIG_PATH.parent / "cache"
+    cache_dir = get_cache_dir()
     cache = ASTCache(cache_dir)
     key = compute_cache_key(cfg)
     cached = cache.load(key)
@@ -970,7 +1024,11 @@ q) Quit
 # ----------------------------
 # Main loop
 # ----------------------------
-def main():
+def main(argv: list[str] | None = None) -> int:
+    cli_args = [] if argv is None else argv
+    if cli_args:
+        return run_cli(cli_args)
+
     try:
         cfg, default_used = load_config(CONFIG_PATH)
         if default_used:
@@ -981,7 +1039,7 @@ def main():
         else:
             if not self_check(cfg):
                 if not confirm("Self-check failed. Continue?"):
-                    return
+                    return 0
             ensure_ast_cache(cfg)
         dirty = False
 
@@ -1037,8 +1095,14 @@ q) Quit
             else:
                 print("Invalid choice.")
     except QuitApp:
-        return
+        return 0
+
+    return 0
+
+
+def cli() -> int:
+    return main(sys.argv[1:])
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(cli())

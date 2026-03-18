@@ -51,7 +51,7 @@ markers = [
 ]
 
 [project.scripts]
-sattlint = "sattlint.app:main"
+sattlint = "sattlint.app:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]

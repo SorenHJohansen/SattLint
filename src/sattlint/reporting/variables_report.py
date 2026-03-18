@@ -140,9 +140,13 @@ class VariablesReport:
                 len(m.source_variable.datatype_text) if m.source_variable else 0
                 for m in self.string_mapping_mismatch
             )
-            tgt_name_w = max(len(m.variable.name) for m in self.string_mapping_mismatch)
+            tgt_name_w = max(
+                len(m.variable.name) if m.variable else 0
+                for m in self.string_mapping_mismatch
+            )
             tgt_type_w = max(
-                len(m.variable.datatype_text) for m in self.string_mapping_mismatch
+                len(m.variable.datatype_text) if m.variable else 0
+                for m in self.string_mapping_mismatch
             )
 
             # Table header
@@ -159,8 +163,8 @@ class VariablesReport:
                 location = ".".join(m.module_path)
                 src_name = m.source_variable.name if m.source_variable else "?"
                 src_type = m.source_variable.datatype_text if m.source_variable else "?"
-                tgt_name = m.variable.name
-                tgt_type = m.variable.datatype_text
+                tgt_name = m.variable.name if m.variable else "?"
+                tgt_type = m.variable.datatype_text if m.variable else "?"
 
                 row = (
                     f"      {location:<{location_w}}  "
@@ -178,7 +182,7 @@ class VariablesReport:
             # Group by datatype name for duplication summary.
             by_dtype: dict[str, list[VariableIssue]] = {}
             for issue in self.datatype_duplication:
-                dt_name = issue.variable.datatype_text
+                dt_name = issue.variable.datatype_text if issue.variable else "?"
                 by_dtype.setdefault(dt_name, []).append(issue)
 
             for dt_name, issues in sorted(by_dtype.items()):
@@ -190,7 +194,7 @@ class VariablesReport:
                 for issue in issues:
                     loc = ".".join(issue.module_path)
                     lines.append(
-                        f"        - {loc}: {issue.variable.name} ({issue.role})"
+                        f"        - {loc}: {issue.variable.name if issue.variable else '?'} ({issue.role})"
                     )
 
                     if issue.duplicate_locations:
@@ -212,7 +216,8 @@ class VariablesReport:
                 for m in self.min_max_mapping_mismatch
             )
             tgt_name_w = max(
-                len(m.variable.name) for m in self.min_max_mapping_mismatch
+                len(m.variable.name) if m.variable else 0
+                for m in self.min_max_mapping_mismatch
             )
 
             header = (
@@ -226,7 +231,7 @@ class VariablesReport:
             for m in self.min_max_mapping_mismatch:
                 location = ".".join(m.module_path)
                 src_name = m.source_variable.name if m.source_variable else "?"
-                tgt_name = m.variable.name
+                tgt_name = m.variable.name if m.variable else "?"
 
                 row = (
                     f"      {location:<{location_w}}  "

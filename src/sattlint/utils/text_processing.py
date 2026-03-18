@@ -355,8 +355,9 @@ def find_comments_with_code(text: str) -> list[CommentCodeHit]:
                     if next_ch == string_quote:
                         line, col, extra = _advance_position(ch, next_ch, line, col)
                         i += 1 + extra
-                        line, col, extra = _advance_position(next_ch, None, line, col)
-                        i += 1 + extra
+                        if next_ch is not None:
+                            line, col, extra = _advance_position(next_ch, None, line, col)
+                            i += 1 + extra
                         continue
                     in_string = False
                     string_quote = ""
