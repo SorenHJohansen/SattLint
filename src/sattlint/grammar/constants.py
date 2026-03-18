@@ -96,6 +96,14 @@ GRAMMAR_REGEX_REAL = r"/[+-]?(?:\d+\.\d+(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+)/"
 GRAMMAR_VALUE_BOOL_TRUE = "True"
 GRAMMAR_VALUE_BOOL_FALSE = "False"
 GRAMMAR_REGEX_STRING = r"/\"([^\n\"]|\"\")*\"/"
+GRAMMAR_REGEX_NOT = r"/NOT\b/"
+GRAMMAR_REGEX_AND = r"/AND\b/"
+GRAMMAR_REGEX_OR = r"/OR\b/"
+GRAMMAR_REGEX_IF = r"/IF\b/"
+GRAMMAR_REGEX_THEN = r"/THEN\b/"
+GRAMMAR_REGEX_ELSE = r"/ELSE\b/"
+GRAMMAR_REGEX_ELSIF = r"/ELSIF\b/"
+GRAMMAR_REGEX_ENDIF = r"/ENDIF\b/"
 
 GRAMMAR_VALUE_BASEPICTURE = "BasePicture"
 GRAMMAR_VALUE_TYPEDEFINITIONS = "TYPEDEFINITIONS"
@@ -206,7 +214,7 @@ GRAMMAR_REGEX_BOOL = r"/True\b|False\b/"
 GRAMMAR_REGEX_NAME = (
     r"/'[^']{1,20}'|"
     r"(?!IF\b|THEN\b|ELSE\b|ELSIF\b|ENDIF\b|AND\b|OR\b|NOT\b|True\b|False\b)"
-    r"\b[A-ZÆØÅÄÖa-zæøåäö][A-ZÆØÅÄÖa-zæøåäö0-9_']{0,19}\b/"
+    r"\b[A-ZÆØÅÄÖÉÑÇa-zæøåäöéñçß][A-ZÆØÅÄÖÉÑÇa-zæøåäöéñçß0-9_']{0,19}\b/"
 )
 GRAMMAR_REGEX_STRING_CRLF = r"/\"([^\"\n]|\"\")*\n/"
 

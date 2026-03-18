@@ -47,7 +47,7 @@
 
 ## Project Overview
 
-**SattLint** parses SattLine source files, builds an Abstract Syntax Tree (AST), resolves dependencies across library directories, and performs static analysis on variable usage.
+**SattLint** parses SattLine source files, builds an Abstract Syntax Tree (AST), resolves dependencies across library directories, performs static analysis on variable usage, and exposes a single-file syntax validation CLI.
 
 ### File Extensions
 
@@ -62,9 +62,10 @@
 
 1. **Parse**: Lark grammar (`grammar/sattline.lark`) → Parse tree
 2. **Transform**: `SLTransformer` → AST objects (`models/ast_model.py`)
-3. **Resolve**: Build unified `BasePicture` with all dependencies
-4. **Analyze**: Analyzer registry runs checks (variables, MMS mappings, SFC placeholders, etc.)
-5. **Report**: Standardized report summaries (shared header format) + DOCX documentation
+3. **Validate CLI**: `sattlint syntax-check <file>` runs parse + transform on one file, applies strict post-transform validation, and prints `OK` or a compact error
+4. **Resolve**: Build unified `BasePicture` with all dependencies
+5. **Analyze**: Analyzer registry runs checks (variables, MMS mappings, SFC placeholders, etc.)
+6. **Report**: Standardized report summaries (shared header format) + DOCX documentation
 
 ---
 
@@ -729,6 +730,9 @@ pytest -v --tb=short
 
 # Specific test
 pytest tests/test_analyzers.py::test_variable_usage -v
+
+# Syntax-check CLI and parser helper
+pytest tests/test_app.py tests/test_parser.py -v
 ```
 
 **Note on test runners:** If an IDE test runner reports 0 tests collected, run pytest directly via the repo venv instead:
@@ -893,10 +897,16 @@ print(analyze_module_localvar_fields(bp, "BasePicture.Module1", "LocalVar"))
 ### Parse a SattLine file
 
 ```python
-from sattlint.engine import create_parser, parse_file
+from pathlib import Path
+from sattlint.engine import parse_source_file
 
-parser = create_parser()
-bp = parse_file(parser, "path/to/Program.s")
+bp = parse_source_file(Path("path/to/Program.s"))
+```
+
+### Validate a single file from the CLI
+
+```bash
+sattlint syntax-check path/to/Program.s
 ```
 
 ### Run variable analysis
@@ -949,14 +959,22 @@ walk_modules(bp.submodules, [bp.header.name])
 3. **Check for field-level access** - SattLine heavily uses record types with dot notation
 4. **Respect parameter mappings** - Variables are often accessed indirectly through `=>` connections
 5. **Consider case-insensitivity** - SattLine identifiers are case-insensitive (compare with `.casefold()`)
+6. **Identifier charset** - Grammar allows extended Latin letters in names (e.g., `å`, `ä`, `ö`, `æ`, `ø`, `é`, `ß`, `ñ`, `ç`).
+7. **Keyword-prefixed names** - The lexer treats `NOT`, `AND`, `OR`, `IF`, `THEN`, `ELSE`, `ELSIF`, `ENDIF` as operators/keywords only when they are standalone words, so identifiers like `NOTOG217Active` or `IFState` are valid.
+8. **SEQFORK targets** - `SEQFORK` accepts multiple target names in a single line (comma-separated).
 6. **Understand the scope hierarchy** - Variables can be accessed from parent scopes unless shadowed
 7. **Use the framework/registry** - Follow `analyzers/framework.py` + `analyzers/registry.py` patterns for new checks
-8. **Test with the fixtures** - The test files in `tests/fixtures/` cover most language features
-9. **Keep menu tests in sync** - If you change CLI menu layouts or numbering, update `tests/test_app.py` inputs accordingly
-10. **Parser header lines** - The grammar start rule requires three header `STRING` lines before `BasePicture`, so parser tests should include them
-11. **Strict mode only** - Prefer strict validation and fail loudly on any ambiguity or missing data; do not add fallback behavior
+9. **Test with the fixtures** - The test files in `tests/fixtures/` cover most language features
+10. **Keep menu tests in sync** - If you change CLI menu layouts or numbering, update `tests/test_app.py` inputs accordingly
+11. **CLI mode is argument-driven** - the installed `sattlint` console script must call `app.cli()` so `sys.argv[1:]` reaches `app.main(argv)`; calling `app.main()` with no argv still opens the interactive menu
+12. **Parser header lines** - The grammar start rule requires three header `STRING` lines before `BasePicture`, so parser tests should include them
+13. **Strict mode only** - Prefer strict validation and fail loudly on any ambiguity or missing data; do not add fallback behavior
+14. **Sequence structure validation** - The post-transform validator rejects consecutive `SEQSTEP` nodes with no intervening transition, missing initial steps, duplicate sequence labels, and unknown `SEQFORK` targets even if the grammar accepted the token stream
+15. **State access validation** - The post-transform validator rejects `:OLD` / `:NEW` access on variables that are not declared `STATE`
+16. **Scope uniqueness validation** - The post-transform validator rejects duplicate local variable names, datatype names, and moduletype names within the same declaration scope
+17. **String literal call validation** - The post-transform validator rejects string literals in module-code function/procedure call arguments; string literals are allowed in parameter mappings only
 
 ---
 
-*Last updated: 2026-02-13*
+*Last updated: 2026-03-18*
 *For questions about SattLine syntax, see `sattline_language_reference.md`*
