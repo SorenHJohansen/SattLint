@@ -226,6 +226,50 @@ def test_mes_batch_control_variable_init_mapping_is_accepted():
     assert not any(issue.kind.startswith("spec.mes_batch_control_") for issue in report.issues)
 
 
+def test_mes_batch_control_unresolved_mapping_is_reported():
+    mes = ModuleTypeDef(
+        name="MES_BatchControl",
+        origin_lib="NNEMESIFLib",
+        origin_file="Root.s",
+        moduleparameters=[
+            Variable(name="Max_TRY", datatype=Simple_DataType.INTEGER),
+            Variable(name="Repeat_TRY", datatype=Simple_DataType.INTEGER),
+        ],
+    )
+    instance = ModuleTypeInstance(
+        header=_hdr("MES_BatchControl"),
+        moduletype_name="MES_BatchControl",
+        parametermappings=[
+            ParameterMapping(
+                target=_varref("Max_TRY"),
+                source_type=const.TREE_TAG_VARIABLE_NAME,
+                is_duration=False,
+                is_source_global=False,
+                source=_varref("RuntimeConfiguredMaxTry"),
+            ),
+            ParameterMapping(
+                target=_varref("Repeat_TRY"),
+                source_type=const.KEY_VALUE,
+                is_duration=False,
+                is_source_global=False,
+                source_literal=20,
+            ),
+        ],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        origin_file="Root.s",
+        moduletype_defs=[mes],
+        submodules=[instance],
+    )
+
+    report = analyze_spec_compliance(bp)
+
+    issues = [issue for issue in report.issues if issue.kind == "spec.mes_batch_control_max_try"]
+    assert len(issues) == 1
+    assert "could not be resolved statically" in issues[0].message
+
+
 def test_external_moduletype_sequence_rules_are_skipped_for_program_target():
     external = ModuleTypeDef(
         name="ExternalType",

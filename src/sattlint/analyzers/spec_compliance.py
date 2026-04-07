@@ -289,7 +289,9 @@ class SpecComplianceAnalyzer:
         issue_kind: str,
     ) -> None:
         parameter_value = self._get_parameter_value(inst, mt_def, env, parameter_name)
-        if parameter_value.status == "resolved" and parameter_value.value != expected_value:
+        if parameter_value.status == "resolved":
+            if parameter_value.value == expected_value:
+                return
             self._issues.append(
                 Issue(
                     kind=issue_kind,
@@ -303,6 +305,7 @@ class SpecComplianceAnalyzer:
                         "parameter": parameter_name,
                         "expected": expected_value,
                         "actual": parameter_value.value,
+                        "status": parameter_value.status,
                     },
                 )
             )
@@ -320,9 +323,36 @@ class SpecComplianceAnalyzer:
                         "instance": inst.header.name,
                         "parameter": parameter_name,
                         "expected": expected_value,
+                        "status": parameter_value.status,
                     },
                 )
             )
+            return
+
+        if parameter_value.status == "unresolved_mapping":
+            message = (
+                f"{inst.moduletype_name} parameter {parameter_name} is mapped, "
+                "but the configured value could not be resolved statically."
+            )
+        else:
+            message = (
+                f"{inst.moduletype_name} parameter {parameter_name} could not be verified "
+                "because its definition or configured value is unavailable."
+            )
+
+        self._issues.append(
+            Issue(
+                kind=issue_kind,
+                message=message,
+                module_path=module_path.copy(),
+                data={
+                    "instance": inst.header.name,
+                    "parameter": parameter_name,
+                    "expected": expected_value,
+                    "status": parameter_value.status,
+                },
+            )
+        )
 
     def _matches_moduletype(
         self,
