@@ -181,10 +181,14 @@ def test_magic_number_detection_in_equations_and_sfc():
     magic = [i for i in analyzer.issues if i.kind is IssueKind.MAGIC_NUMBER]
     assert len(magic) == 2
 
-    values = sorted(i.literal_value for i in magic)
+    values = sorted(i.literal_value for i in magic if i.literal_value is not None)
     assert values == [2.5, 42]
 
-    spans = {(i.literal_span.line, i.literal_span.column) for i in magic}
+    spans = {
+        (i.literal_span.line, i.literal_span.column)
+        for i in magic
+        if i.literal_span is not None
+    }
     assert (12, 5) in spans
     assert (20, 7) in spans
 
@@ -247,6 +251,101 @@ def test_shadowing_detected_for_moduletype_instance_locals():
     report = analyze_shadowing(bp)
 
     assert any(i.kind is IssueKind.SHADOWING for i in report.issues)
+
+
+def test_shadowing_ignores_external_moduletype_instance_locals_for_program_target():
+    mt = ModuleTypeDef(
+        name="TypeA",
+        moduleparameters=[],
+        localvariables=[Variable(name="Setting", datatype=Simple_DataType.INTEGER)],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+        origin_file="TypeA.x",
+        origin_lib="SomeLib",
+    )
+
+    instance = ModuleTypeInstance(
+        header=_hdr("InstanceA"),
+        moduletype_name="TypeA",
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[mt],
+        localvariables=[Variable(name="setting", datatype=Simple_DataType.INTEGER)],
+        submodules=[instance],
+        modulecode=None,
+        moduledef=None,
+        origin_file="Root.x",
+        origin_lib="ProgramLib",
+    )
+
+    report = analyze_shadowing(bp)
+
+    assert not any(i.kind is IssueKind.SHADOWING for i in report.issues)
+
+
+def test_variable_analysis_ignores_external_moduletype_usage_for_program_target():
+    library_mt = ModuleTypeDef(
+        name="LibType",
+        moduleparameters=[Variable(name="Input", datatype=Simple_DataType.INTEGER)],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="E1",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[_varref("Input")],
+                )
+            ]
+        ),
+        parametermappings=[],
+        origin_file="LibType.x",
+        origin_lib="SomeLib",
+    )
+
+    instance = ModuleTypeInstance(
+        header=_hdr("LibInst"),
+        moduletype_name="LibType",
+        parametermappings=[
+            ParameterMapping(
+                target=_varref("Input"),
+                source_type=const.TREE_TAG_VARIABLE_NAME,
+                is_duration=False,
+                is_source_global=False,
+                source=_varref("ProgramVar"),
+                source_literal=None,
+            )
+        ],
+    )
+
+    program_var = Variable(name="ProgramVar", datatype=Simple_DataType.INTEGER)
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[library_mt],
+        localvariables=[program_var],
+        submodules=[instance],
+        modulecode=None,
+        moduledef=None,
+        origin_file="Root.x",
+        origin_lib="ProgramLib",
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert any(
+        issue.kind is IssueKind.UNUSED and issue.variable is program_var
+        for issue in analyzer.issues
+    )
 
 
 def test_reset_contamination_detected_for_missing_reset_write():

@@ -47,6 +47,14 @@ def analyze_mms_interface_variables(
     )
     analyzer.run()
 
+    def _is_from_root_origin(origin_file: str | None) -> bool:
+        if not origin_file:
+            return True
+        root_origin = getattr(base_picture, "origin_file", None)
+        if not root_origin:
+            return False
+        return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
+
     hits: list[MMSInterfaceHit] = []
 
     def _collect_write_locations(
@@ -299,6 +307,9 @@ def analyze_mms_interface_variables(
                 try:
                     mt_def = resolve_moduletype_def_strict(base_picture, mt_name)
                 except ValueError:
+                    continue
+
+                if not _is_from_root_origin(getattr(mt_def, "origin_file", None)):
                     continue
 
                 if current_map:

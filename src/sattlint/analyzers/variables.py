@@ -822,6 +822,7 @@ class VariablesAnalyzer:
                 self._add_issue(IssueKind.READ_ONLY_NON_CONST, bp_path, v, role=role)
             elif usage.written and not usage.read:
                 self._add_issue(IssueKind.NEVER_READ, bp_path, v, role=role)
+            self._add_unused_field_issues(bp_path, v, role, usage)
 
         for mod in self.bp.submodules or []:
             self._collect_issues_from_module(mod, path=bp_path)
@@ -837,8 +838,10 @@ class VariablesAnalyzer:
                 # moduleparameters: UNUSED only
                 for v in mt.moduleparameters or []:
                     role = "moduleparameter"
-                    if self._get_usage(v).is_unused:
+                    usage = self._get_usage(v)
+                    if usage.is_unused:
                         self._add_issue(IssueKind.UNUSED, td_path, v, role=role)
+                    self._add_unused_field_issues(td_path, v, role, usage)
                 # localvariables: UNUSED / READ_ONLY_NON_CONST / NEVER_READ
                 for v in mt.localvariables or []:
                     role = "localvariable"
@@ -855,6 +858,7 @@ class VariablesAnalyzer:
                         )
                     elif usage.written and not usage.read:
                         self._add_issue(IssueKind.NEVER_READ, td_path, v, role=role)
+                    self._add_unused_field_issues(td_path, v, role, usage)
 
         if self.debug:
             log.debug("Variables analysis complete. Issues=%d", len(self._issues))
@@ -864,13 +868,78 @@ class VariablesAnalyzer:
     # ------------ Traversal helpers ------------
 
     def _add_issue(
-        self, kind: IssueKind, path: list[str], variable: Variable, role: str
+        self,
+        kind: IssueKind,
+        path: list[str],
+        variable: Variable,
+        role: str,
+        field_path: str | None = None,
     ) -> None:
         self._issues.append(
             VariableIssue(
-                kind=kind, module_path=path.copy(), variable=variable, role=role
+                kind=kind,
+                module_path=path.copy(),
+                variable=variable,
+                role=role,
+                field_path=field_path,
             )
         )
+
+    def _iter_unused_leaf_field_paths(
+        self,
+        variable: Variable,
+        usage: VariableUsage,
+    ) -> list[str]:
+        if usage.is_unused or usage.usage_locations:
+            return []
+
+        if isinstance(variable.datatype, Simple_DataType):
+            return []
+
+        declared_leaf_paths = [
+            ".".join(field_path)
+            for field_path in self.type_graph.iter_leaf_field_paths(variable.datatype)
+            if field_path
+        ]
+        if not declared_leaf_paths:
+            return []
+
+        accessed_prefixes: set[str] = set()
+        for field_path in list((usage.field_reads or {}).keys()) + list(
+            (usage.field_writes or {}).keys()
+        ):
+            normalized = ".".join(segment for segment in field_path.split(".") if segment)
+            if normalized:
+                accessed_prefixes.add(normalized.casefold())
+
+        if not accessed_prefixes:
+            return []
+
+        return [
+            leaf_path
+            for leaf_path in declared_leaf_paths
+            if not any(
+                leaf_path.casefold() == accessed_prefix
+                or leaf_path.casefold().startswith(f"{accessed_prefix}.")
+                for accessed_prefix in accessed_prefixes
+            )
+        ]
+
+    def _add_unused_field_issues(
+        self,
+        path: list[str],
+        variable: Variable,
+        role: str,
+        usage: VariableUsage,
+    ) -> None:
+        for field_path in self._iter_unused_leaf_field_paths(variable, usage):
+            self._add_issue(
+                IssueKind.UNUSED,
+                path,
+                variable,
+                role=role,
+                field_path=field_path,
+            )
 
     def _add_magic_number_issue(
         self,
@@ -899,10 +968,14 @@ class VariablesAnalyzer:
             my_path = path + [mod.header.name]
             # Moduleparameters: only classify UNUSED (const does not apply to params)
             for v in mod.moduleparameters or []:
-                if self._get_usage(v).is_unused:
+                usage = self._get_usage(v)
+                if usage.is_unused:
                     self._add_issue(
                         IssueKind.UNUSED, my_path, v, role="moduleparameter"
                     )
+                self._add_unused_field_issues(
+                    my_path, v, role="moduleparameter", usage=usage
+                )
             # Localvariables: both UNUSED and READ_ONLY_NON_CONST apply
             for v in mod.localvariables or []:
                 usage = self._get_usage(v)
@@ -916,6 +989,9 @@ class VariablesAnalyzer:
                     self._add_issue(
                         IssueKind.READ_ONLY_NON_CONST, my_path, v, role="localvariable"
                     )
+                self._add_unused_field_issues(
+                    my_path, v, role="localvariable", usage=usage
+                )
             for ch in mod.submodules or []:
                 self._collect_issues_from_module(ch, my_path)
 
@@ -1324,9 +1400,17 @@ class VariablesAnalyzer:
                         mt = None
                         external = True
 
+                if external:
+                    continue
+
+                if mt is not None and not self._is_from_root_origin(
+                    getattr(mt, "origin_file", None)
+                ):
+                    continue
+
                 reads, writes = None, None  # Initialize to None
 
-                if not external and mt:
+                if mt:
                     mt_key = child.moduletype_name.lower()
 
                     # **CHANGED**: Build typedef scope context with mappings
@@ -1393,7 +1477,7 @@ class VariablesAnalyzer:
                         parent_context=parent_context,
                     )
 
-                if not external:
+                if mt is not None:
                     self._check_param_mappings_for_type_instance(
                         child,
                         parent_env=parent_context.env,

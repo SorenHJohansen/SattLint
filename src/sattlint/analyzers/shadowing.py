@@ -50,6 +50,15 @@ class ShadowingAnalyzer:
         )
         return self._issues
 
+    def _is_from_root_origin(self, origin_file: str | None) -> bool:
+        if not origin_file:
+            return True
+        root_origin = getattr(self.bp, "origin_file", None)
+        if not root_origin:
+            return False
+
+        return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
+
     def _walk_submodules(
         self,
         children: Iterable[SingleModule | FrameModule | ModuleTypeInstance],
@@ -82,6 +91,8 @@ class ShadowingAnalyzer:
             elif isinstance(child, ModuleTypeInstance):
                 mt = self._resolve_moduletype(child, current_library)
                 if mt is None:
+                    continue
+                if not self._is_from_root_origin(getattr(mt, "origin_file", None)):
                     continue
 
                 child_locals = list(mt.localvariables or [])

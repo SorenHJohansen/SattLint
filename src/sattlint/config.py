@@ -8,7 +8,7 @@ import tomli_w
 from pathlib import Path
 
 DEFAULT_CONFIG = {
-    "root": "",
+    "analyzed_programs_and_libraries": [],
     "mode": "official",
     "scan_root_only": False,
     "fast_cache_validation": True,
@@ -64,8 +64,12 @@ def save_config(path: Path, cfg: dict) -> None:
         tomli_w.dump(normalize(cfg), f)
 
 
-def root_exists(root: str, cfg: dict) -> bool:
-    dirs = [Path(cfg["program_dir"])] + [Path(p) for p in cfg["other_lib_dirs"]]
+def target_exists(target: str, cfg: dict) -> bool:
+    dirs = [
+        Path(cfg["program_dir"]),
+        Path(cfg["ABB_lib_dir"]),
+        *[Path(p) for p in cfg["other_lib_dirs"]],
+    ]
 
     if cfg["mode"] == "draft":
         extensions = [".s", ".x"]  # Try draft first, fallback to official
@@ -76,7 +80,7 @@ def root_exists(root: str, cfg: dict) -> bool:
         if not d.exists():
             continue
         for ext in extensions:
-            if (d / f"{root}{ext}").exists():
+            if (d / f"{target}{ext}").exists():
                 return True
 
     return False
@@ -95,7 +99,7 @@ def self_check(cfg: dict) -> bool:
 
     # Required keys
     required_keys = [
-        "root",
+        "analyzed_programs_and_libraries",
         "mode",
         "scan_root_only",
         "fast_cache_validation",
@@ -134,12 +138,22 @@ def self_check(cfg: dict) -> bool:
         else:
             print(f"✔ other_lib_dirs: {path}")
 
-    # Root existence
-    if root_exists(cfg.get("root", ""), cfg):
-        print(f"✔ Root program/library found: {cfg['root']}")
-    else:
-        print(f"❌ Root program/library not found: {cfg.get('root')}")
+    targets = [
+        str(target).strip()
+        for target in cfg.get("analyzed_programs_and_libraries", [])
+        if str(target).strip()
+    ]
+    if not targets:
+        print("❌ analyzed_programs_and_libraries must contain at least one entry")
         ok = False
+    else:
+        print("Analyzed programs/libraries:")
+        for target in targets:
+            if target_exists(target, cfg):
+                print(f"✔ {target}")
+            else:
+                print(f"❌ {target} (not found)")
+                ok = False
 
     print("------------------------------\n")
     return ok
