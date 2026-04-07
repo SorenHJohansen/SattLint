@@ -77,7 +77,7 @@ class Variable:
     state: bool | None = False
     opsave: bool | None = False
     secure: bool | None = False
-    init_value: bool | None = None
+    init_value: Any | None = None
     description: str | None = None
 
     @property

@@ -34,6 +34,12 @@ from .analyzers.modules import (
     compare_modules,
 )
 from .cache import ASTCache, compute_cache_key, get_cache_dir
+from .docgenerator import generate_docx
+from .docgenerator.classification import (
+    classify_documentation_structure,
+    discover_documentation_unit_candidates,
+    document_scope_summary,
+)
 from .engine import GRAMMAR_PATH
 from .models.ast_model import BasePicture
 from .models.project_graph import ProjectGraph
@@ -170,6 +176,9 @@ def run_cli(argv: list[str]) -> int:
 
 
 def show_config(cfg: dict):
+    documentation_cfg = config_module.get_documentation_config(cfg)
+    unit_selection = config_module.get_documentation_unit_selection(cfg)
+
     print("\n--- Current configuration ---")
     print("analyzed_programs_and_libraries:")
     for i, target in enumerate(cfg["analyzed_programs_and_libraries"], 1):
@@ -187,6 +196,21 @@ def show_config(cfg: dict):
     print("other_lib_dirs:")
     for i, p in enumerate(cfg["other_lib_dirs"], 1):
         print(f"  {i}. {p}")
+    print("documentation.section_order:")
+    for i, name in enumerate(documentation_cfg.get("section_order", []), 1):
+        print(f"  {i}. {name}")
+    print("documentation.classifications:")
+    for category, rule in documentation_cfg.get("classifications", {}).items():
+        active = [key for key, value in rule.items() if value]
+        summary = ", ".join(active) if active else "no active matchers"
+        print(f"  {category}: {summary}")
+    print(f"documentation.units.mode: {unit_selection['mode']}")
+    print("documentation.units.instance_paths:")
+    for i, value in enumerate(unit_selection.get("instance_paths", []), 1):
+        print(f"  {i}. {value}")
+    print("documentation.units.moduletype_names:")
+    for i, value in enumerate(unit_selection.get("moduletype_names", []), 1):
+        print(f"  {i}. {value}")
     print("-----------------------------\n")
 
 
@@ -222,6 +246,184 @@ def _cache_key_for_target(cfg: dict, target_name: str) -> str:
     cache_cfg = cfg.copy()
     cache_cfg["analysis_target"] = target_name
     return compute_cache_key(cache_cfg)
+
+
+def _split_csv_values(raw: str) -> list[str]:
+    return [value.strip() for value in raw.split(",") if value.strip()]
+
+
+def _set_documentation_unit_selection(
+    cfg: dict,
+    *,
+    mode: str,
+    instance_paths: list[str] | None = None,
+    moduletype_names: list[str] | None = None,
+) -> None:
+    documentation = cfg.setdefault("documentation", {})
+    units = documentation.setdefault("units", {})
+    units["mode"] = mode
+    units["instance_paths"] = list(instance_paths or [])
+    units["moduletype_names"] = list(moduletype_names or [])
+
+
+def _documentation_config_without_scope(cfg: dict) -> dict:
+    documentation_cfg = config_module.get_documentation_config(cfg)
+    documentation_cfg["units"] = {
+        "mode": "all",
+        "instance_paths": [],
+        "moduletype_names": [],
+    }
+    return documentation_cfg
+
+
+def _preview_documentation_candidates_for_target(
+    target_name: str,
+    project_bp: BasePicture,
+    graph: ProjectGraph,
+    cfg: dict,
+) -> None:
+    classification = classify_documentation_structure(
+        project_bp,
+        documentation_config=_documentation_config_without_scope(cfg),
+        unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+    )
+    candidates = discover_documentation_unit_candidates(classification)
+    print(f"\n=== Target: {target_name} ===")
+    if not candidates:
+        print("⚠ No unit candidates detected.")
+        return
+
+    for index, entry in enumerate(candidates, 1):
+        summary = document_scope_summary(entry, classification)
+        print(
+            f"  {index}. {entry.short_path} | type={entry.moduletype_label or entry.kind} | "
+            f"ops={summary['operations']} em={summary['equipment_modules']} "
+            f"rp={summary['recipe_parameters']} ep={summary['engineering_parameters']} up={summary['user_parameters']}"
+        )
+
+
+def preview_documentation_unit_candidates(cfg: dict) -> None:
+    print("\n--- Documentation Unit Candidates ---")
+    for target_name, project_bp, graph in _iter_loaded_projects(cfg):
+        _preview_documentation_candidates_for_target(target_name, project_bp, graph, cfg)
+    pause()
+
+
+def configure_documentation_scope_by_moduletype(cfg: dict) -> bool:
+    print("\n--- Documentation Scope by Unit ModuleType ---")
+    print("Enter one or more unit moduletype names (comma-separated).")
+    print("Example: ApplTank, XDilute_221X251XY")
+    raw = input("> ").strip()
+    values = _split_csv_values(raw)
+    if not values:
+        print("❌ No moduletype names provided")
+        pause()
+        return False
+    _set_documentation_unit_selection(
+        cfg,
+        mode="moduletype_names",
+        moduletype_names=values,
+    )
+    print("✔ Documentation scope updated")
+    pause()
+    return True
+
+
+def configure_documentation_scope_by_instance_path(cfg: dict) -> bool:
+    print("\n--- Documentation Scope by Unit Instance Path ---")
+    print("Enter one or more unit instance paths (comma-separated).")
+    print("Use the candidate preview to find valid paths.")
+    raw = input("> ").strip()
+    values = _split_csv_values(raw)
+    if not values:
+        print("❌ No instance paths provided")
+        pause()
+        return False
+    _set_documentation_unit_selection(
+        cfg,
+        mode="instance_paths",
+        instance_paths=values,
+    )
+    print("✔ Documentation scope updated")
+    pause()
+    return True
+
+
+def reset_documentation_scope(cfg: dict) -> bool:
+    _set_documentation_unit_selection(cfg, mode="all")
+    print("✔ Documentation scope reset to all units")
+    pause()
+    return True
+
+
+def run_generate_documentation(cfg: dict) -> None:
+    print("\n--- Generate Documentation ---")
+    documentation_cfg = config_module.get_documentation_config(cfg)
+
+    for target_name, project_bp, graph in _iter_loaded_projects(cfg):
+        classification = classify_documentation_structure(
+            project_bp,
+            documentation_config=documentation_cfg,
+            unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+        )
+        scope = classification.scope
+        if scope and scope.mode != "all" and not (scope.roots or []):
+            print(f"\n=== Target: {target_name} ===")
+            print("⚠ No unit roots matched the configured documentation scope; skipping target.")
+            if scope.unmatched_values:
+                print("Unmatched scope filters: " + ", ".join(scope.unmatched_values))
+            continue
+
+        default_name = f"{target_name}_FS.docx"
+        out_name = prompt(f"Output DOCX for {target_name}", default_name)
+        if scope and scope.roots:
+            print(
+                f"Selected units for {target_name}: "
+                + ", ".join(entry.short_path for entry in scope.roots)
+            )
+        generate_docx(
+            project_bp,
+            out_name,
+            documentation_config=documentation_cfg,
+            unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+        )
+
+    pause()
+
+
+def documentation_menu(cfg: dict) -> bool:
+    dirty = False
+    while True:
+        clear_screen()
+        print("""
+--- Documentation ---
+1) Generate documentation
+2) Preview detected unit candidates
+3) Scope all units
+4) Scope by unit moduletype name(s)
+5) Scope by unit instance path(s)
+b) Back
+q) Quit
+""")
+        c = input("> ").strip().lower()
+        if c == "b":
+            return dirty
+        if c == "q":
+            quit_app()
+
+        if c == "1":
+            run_generate_documentation(cfg)
+        elif c == "2":
+            preview_documentation_unit_candidates(cfg)
+        elif c == "3":
+            dirty |= reset_documentation_scope(cfg)
+        elif c == "4":
+            dirty |= configure_documentation_scope_by_moduletype(cfg)
+        elif c == "5":
+            dirty |= configure_documentation_scope_by_instance_path(cfg)
+        else:
+            print("Invalid choice.")
+            pause()
 
 
 def _iter_loaded_projects(
@@ -1159,6 +1361,7 @@ How to use SattLint
 • Changes are NOT saved until you choose "Save config"
 • Use "Analyses" to analyze the configured programs/libraries
 • Use "Dump outputs" to inspect parse trees, ASTs, etc.
+• Use "Documentation" to generate FS-style DOCX output and control unit scope
 • Use "Edit config" to change settings
 • Use "Self-check" to check if the config is OK
 • Press 'q' at any time in the main menu to quit
@@ -1166,9 +1369,10 @@ How to use SattLint
 === SattLint ===
 1) Analyses
 2) Dump outputs
-3) Edit config
-4) Self-check diagnostics
-5) Force refresh cached AST
+3) Documentation
+4) Edit config
+5) Self-check diagnostics
+6) Force refresh cached AST
 q) Quit
 """)
             c = input("> ").strip().lower()
@@ -1180,14 +1384,17 @@ q) Quit
                 dump_menu(cfg)
 
             elif c == "3":
-                dirty |= config_menu(cfg)
+                dirty |= documentation_menu(cfg)
 
             elif c == "4":
+                dirty |= config_menu(cfg)
+
+            elif c == "5":
                 clear_screen()
                 self_check(cfg)
                 pause()
 
-            elif c == "5":
+            elif c == "6":
                 if confirm("Force refresh cached AST?"):
                     force_refresh_ast(cfg)
                     print("✔ AST cache refreshed")
