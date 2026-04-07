@@ -11,6 +11,8 @@ from .models.ast_model import (
     DataType,
     Equation,
     FrameModule,
+    FloatLiteral,
+    IntLiteral,
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
@@ -23,11 +25,14 @@ from .models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
+    Simple_DataType,
     SingleModule,
     Variable,
 )
-from .utils.text_processing import strip_sl_comments
-from collections.abc import Callable, Iterable
+from .resolution.type_graph import TypeGraph
+from .analyzers.sattline_builtins import SATTLINE_BUILTINS
+from .utils.text_processing import find_disallowed_comments, strip_sl_comments
+from collections.abc import Callable, Iterable, Sequence as AbcSequence
 from enum import Enum
 from .models.project_graph import ProjectGraph
 from .cache import FileLookupCache, FileASTCache, get_cache_dir
@@ -44,6 +49,13 @@ log = logging.getLogger("SattLint")
 
 class StructuralValidationError(ValueError):
     pass
+
+
+class RawSourceValidationError(StructuralValidationError):
+    def __init__(self, message: str, *, line: int | None = None, column: int | None = None):
+        super().__init__(message)
+        self.line = line
+        self.column = column
 
 
 @dataclass(frozen=True)
@@ -117,6 +129,23 @@ def _read_text_simple(path: Path) -> str:
             return path.read_text(encoding="cp1252")
         except UnicodeDecodeError:
             return path.read_text(encoding="latin-1")
+
+
+def _load_source_text(
+    code_path: Path,
+    *,
+    debug: Callable[[str], None] | None = None,
+) -> str:
+    source_path = Path(code_path)
+    if debug is not None:
+        debug(f"Parsing file: {source_path}")
+
+    src = _read_text_simple(source_path)
+    if is_compressed(src):
+        if debug is not None:
+            debug("Compressed format detected; decoding before parsing")
+        src, _ = preprocess_sl_text(src)
+    return src
 
 
 def _identifier_length(name: str) -> int:
@@ -216,6 +245,231 @@ def _validate_variable_refs(
             )
 
 
+_STRING_SIMPLE_TYPES = {
+    Simple_DataType.IDENTSTRING,
+    Simple_DataType.TAGSTRING,
+    Simple_DataType.STRING,
+    Simple_DataType.LINESTRING,
+    Simple_DataType.MAXSTRING,
+}
+
+
+def _format_datatype(datatype: Simple_DataType | str | None) -> str:
+    if datatype is None:
+        return "unknown"
+    if isinstance(datatype, Simple_DataType):
+        return datatype.value
+    return str(datatype)
+
+
+def _is_string_simple_type(datatype: Simple_DataType | str | None) -> bool:
+    return isinstance(datatype, Simple_DataType) and datatype in _STRING_SIMPLE_TYPES
+
+
+def _normalize_builtin_datatype(datatype: str) -> Simple_DataType | str:
+    try:
+        return Simple_DataType.from_any(datatype)
+    except ValueError:
+        return datatype
+
+
+def _resolve_ref_datatype(
+    ref: dict[str, object],
+    env: dict[str, Variable],
+    type_graph: TypeGraph,
+) -> Simple_DataType | str | None:
+    full_name = str(ref[const.KEY_VAR_NAME])
+    parts = [part for part in full_name.split(".") if part]
+    if not parts:
+        return None
+
+    variable = env.get(parts[0].casefold())
+    if variable is None:
+        return None
+
+    current: Simple_DataType | str = variable.datatype
+    for field_name in parts[1:]:
+        if isinstance(current, Simple_DataType):
+            return None
+
+        field = type_graph.field(str(current), field_name)
+        if field is None:
+            return None
+        current = field.datatype
+
+    return current
+
+
+def _merge_numeric_types(
+    datatypes: AbcSequence[Simple_DataType | str | None],
+) -> Simple_DataType | None:
+    numeric_types = {Simple_DataType.INTEGER, Simple_DataType.REAL}
+    if not datatypes or any(dt not in numeric_types for dt in datatypes):
+        return None
+    if Simple_DataType.REAL in datatypes:
+        return Simple_DataType.REAL
+    return Simple_DataType.INTEGER
+
+
+def _merge_compatible_types(
+    datatypes: list[Simple_DataType | str | None],
+) -> Simple_DataType | str | None:
+    filtered = [dt for dt in datatypes if dt is not None]
+    if not filtered:
+        return None
+
+    first = filtered[0]
+    if all(dt == first for dt in filtered[1:]):
+        return first
+
+    numeric = _merge_numeric_types(filtered)
+    if numeric is not None:
+        return numeric
+
+    if all(_is_string_simple_type(dt) for dt in filtered):
+        return Simple_DataType.STRING
+
+    return None
+
+
+def _infer_expression_datatype(
+    node: object,
+    env: dict[str, Variable],
+    type_graph: TypeGraph,
+) -> Simple_DataType | str | None:
+    if isinstance(node, bool):
+        return Simple_DataType.BOOLEAN
+    if isinstance(node, (IntLiteral, int)) and not isinstance(node, bool):
+        return Simple_DataType.INTEGER
+    if isinstance(node, (FloatLiteral, float)):
+        return Simple_DataType.REAL
+    if isinstance(node, str):
+        return Simple_DataType.STRING
+
+    if isinstance(node, dict):
+        if const.KEY_VAR_NAME in node:
+            return _resolve_ref_datatype(node, env, type_graph)
+        return None
+
+    if not isinstance(node, tuple) or not node:
+        return None
+
+    tag = node[0]
+    if tag == const.KEY_FUNCTION_CALL and len(node) == 3:
+        builtin = SATTLINE_BUILTINS.get(str(node[1]).casefold())
+        if builtin is None or builtin.return_type is None:
+            return None
+        return _normalize_builtin_datatype(builtin.return_type)
+
+    if tag in (const.KEY_COMPARE, const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND, const.GRAMMAR_VALUE_NOT):
+        return Simple_DataType.BOOLEAN
+
+    if tag in (const.KEY_ADD, const.KEY_MUL) and len(node) == 3:
+        datatypes = [_infer_expression_datatype(node[1], env, type_graph)]
+        datatypes.extend(
+            _infer_expression_datatype(item[1], env, type_graph)
+            for item in node[2]
+            if isinstance(item, tuple) and len(item) == 2
+        )
+        return _merge_numeric_types(datatypes)
+
+    if tag in (const.KEY_PLUS, const.KEY_MINUS) and len(node) == 2:
+        dtype = _infer_expression_datatype(node[1], env, type_graph)
+        return _merge_numeric_types([dtype])
+
+    if tag == const.KEY_TERNARY and len(node) == 3:
+        branch_types = [
+            _infer_expression_datatype(branch[1], env, type_graph)
+            for branch in node[1]
+            if isinstance(branch, tuple) and len(branch) == 2
+        ]
+        branch_types.append(_infer_expression_datatype(node[2], env, type_graph))
+        return _merge_compatible_types(branch_types)
+
+    return None
+
+
+def _builtin_type_matches(
+    actual: Simple_DataType | str,
+    expected: Simple_DataType | str,
+    *,
+    direction: str,
+) -> bool:
+    if isinstance(expected, str) and expected.casefold() == "anytype":
+        return True
+
+    if isinstance(expected, Simple_DataType):
+        if not isinstance(actual, Simple_DataType):
+            return False
+
+        if actual == expected:
+            return True
+
+        if _is_string_simple_type(actual) and _is_string_simple_type(expected):
+            return True
+
+        if (
+            direction == "in"
+            and expected == Simple_DataType.REAL
+            and actual == Simple_DataType.INTEGER
+        ):
+            return True
+
+        return False
+
+    if isinstance(actual, str):
+        return actual.casefold() == expected.casefold()
+
+    return False
+
+
+def _is_variable_ref_node(node: object) -> bool:
+    return isinstance(node, dict) and const.KEY_VAR_NAME in node
+
+
+def _validate_builtin_call_signature(
+    fn_name: str | None,
+    args: list[object],
+    env: dict[str, Variable],
+    type_graph: TypeGraph,
+    context: str,
+) -> None:
+    if not fn_name:
+        return
+
+    builtin = SATTLINE_BUILTINS.get(fn_name.casefold())
+    if builtin is None:
+        return
+
+    expected_arg_count = len(builtin.parameters)
+    actual_arg_count = len(args)
+    if actual_arg_count != expected_arg_count:
+        raise StructuralValidationError(
+            f"{context} call {fn_name!r} has {actual_arg_count} arguments but builtin expects {expected_arg_count}"
+        )
+
+    for index, parameter in enumerate(builtin.parameters, start=1):
+        argument = args[index - 1]
+
+        if parameter.direction in {"in var", "out", "inout"} and not _is_variable_ref_node(argument):
+            raise StructuralValidationError(
+                f"{context} call {fn_name!r} argument {index} must be a variable reference because builtin parameter {parameter.name!r} is {parameter.direction!r}"
+            )
+
+        actual = _infer_expression_datatype(argument, env, type_graph)
+        if actual is None:
+            continue
+
+        expected = _normalize_builtin_datatype(parameter.datatype)
+        if _builtin_type_matches(actual, expected, direction=parameter.direction):
+            continue
+
+        raise StructuralValidationError(
+            f"{context} call {fn_name!r} argument {index} has datatype {_format_datatype(actual)!r} "
+            f"but builtin parameter {parameter.name!r} expects {_format_datatype(expected)!r}"
+        )
+
+
 def _validate_call_arg_node(node: object, context: str) -> None:
     if isinstance(node, str):
         raise StructuralValidationError(
@@ -251,7 +505,8 @@ def _validate_call_arg_node(node: object, context: str) -> None:
                 )
             return
 
-        for item in node:
+        items = node[1:] if node and isinstance(node[0], str) else node
+        for item in items:
             _validate_call_arg_node(item, context)
 
 
@@ -289,20 +544,59 @@ def _validate_no_string_literals_in_calls(node: object, context: str) -> None:
             _validate_no_string_literals_in_calls(item, context)
 
 
+def _validate_builtin_call_types(
+    node: object,
+    env: dict[str, Variable],
+    type_graph: TypeGraph,
+    context: str,
+) -> None:
+    if isinstance(node, Tree):
+        for child in node.children:
+            _validate_builtin_call_types(child, env, type_graph, context)
+        return
+
+    if isinstance(node, list):
+        for item in node:
+            _validate_builtin_call_types(item, env, type_graph, context)
+        return
+
+    if isinstance(node, dict):
+        if const.KEY_VAR_NAME in node:
+            return
+
+        for value in node.values():
+            _validate_builtin_call_types(value, env, type_graph, context)
+        return
+
+    if isinstance(node, tuple):
+        if len(node) == 3 and node[0] == const.KEY_FUNCTION_CALL:
+            fn_name = node[1]
+            args = node[2] or []
+            _validate_builtin_call_signature(fn_name, args, env, type_graph, context)
+            for arg in args:
+                _validate_builtin_call_types(arg, env, type_graph, context)
+            return
+
+        for item in node:
+            _validate_builtin_call_types(item, env, type_graph, context)
+
+
 def _validate_statement_list(
     statements: list[object],
     env: dict[str, Variable],
+    type_graph: TypeGraph,
     context: str,
 ) -> None:
     for statement in statements:
         _validate_variable_refs(statement, env, context)
         _validate_no_string_literals_in_calls(statement, context)
+        _validate_builtin_call_types(statement, env, type_graph, context)
 
 
-def _validate_code_blocks(code, env: dict[str, Variable], context: str) -> None:
-    _validate_statement_list(code.enter, env, f"{context} ENTERCODE")
-    _validate_statement_list(code.active, env, f"{context} ACTIVECODE")
-    _validate_statement_list(code.exit, env, f"{context} EXITCODE")
+def _validate_code_blocks(code, env: dict[str, Variable], type_graph: TypeGraph, context: str) -> None:
+    _validate_statement_list(code.enter, env, type_graph, f"{context} ENTERCODE")
+    _validate_statement_list(code.active, env, type_graph, f"{context} ACTIVECODE")
+    _validate_statement_list(code.exit, env, type_graph, f"{context} EXITCODE")
 
 
 def _validate_sequence_nodes(
@@ -311,6 +605,7 @@ def _validate_sequence_nodes(
     *,
     labels: dict[str, str],
     env: dict[str, Variable],
+    type_graph: TypeGraph,
     require_init_step: bool,
 ) -> None:
     previous_step: str | None = None
@@ -336,7 +631,7 @@ def _validate_sequence_nodes(
                     f"{context} has step {node.name!r} immediately after step "
                     f"{previous_step!r} without an intervening transition"
                 )
-            _validate_code_blocks(node.code, env, f"{context} step {node.name!r}")
+            _validate_code_blocks(node.code, env, type_graph, f"{context} step {node.name!r}")
             previous_step = node.name
             continue
 
@@ -351,6 +646,7 @@ def _validate_sequence_nodes(
                 f"{context} transition-sub {node.name!r}",
                 labels=labels,
                 env=env,
+                type_graph=type_graph,
                 require_init_step=False,
             )
         elif isinstance(node, SFCSubsequence):
@@ -360,6 +656,7 @@ def _validate_sequence_nodes(
                 f"{context} subsequence {node.name!r}",
                 labels=labels,
                 env=env,
+                type_graph=type_graph,
                 require_init_step=False,
             )
         elif isinstance(node, SFCAlternative):
@@ -369,6 +666,7 @@ def _validate_sequence_nodes(
                     f"{context} alternative branch {index}",
                     labels=labels,
                     env=env,
+                    type_graph=type_graph,
                     require_init_step=False,
                 )
         elif isinstance(node, SFCParallel):
@@ -378,6 +676,7 @@ def _validate_sequence_nodes(
                     f"{context} parallel branch {index}",
                     labels=labels,
                     env=env,
+                    type_graph=type_graph,
                     require_init_step=False,
                 )
         elif isinstance(node, SFCFork):
@@ -399,6 +698,7 @@ def _validate_module_code(
     modulecode: ModuleCode | None,
     context: str,
     env: dict[str, Variable],
+    type_graph: TypeGraph,
 ) -> None:
     if modulecode is None:
         return
@@ -409,6 +709,7 @@ def _validate_module_code(
             _validate_statement_list(
                 equation.code or [],
                 env,
+                type_graph,
                 f"{context} equation {equation.name!r}",
             )
 
@@ -422,6 +723,7 @@ def _validate_module_code(
                 f"{context} sequence {sequence.name!r}",
                 labels=labels,
                 env=env,
+                type_graph=type_graph,
                 require_init_step=True,
             )
 
@@ -451,6 +753,7 @@ def _validate_module(
     module: object,
     context: str,
     parent_env: dict[str, Variable],
+    type_graph: TypeGraph,
 ) -> None:
     if isinstance(module, SingleModule):
         _validate_identifier(module.header.name, f"{context} module")
@@ -459,17 +762,17 @@ def _validate_module(
         _validate_variable_list(module.localvariables, module_context)
         env = _merge_env(parent_env, module.moduleparameters)
         env = _merge_env(env, module.localvariables)
-        _validate_module_code(module.modulecode, module_context, env)
+        _validate_module_code(module.modulecode, module_context, env, type_graph)
         for submodule in module.submodules or []:
-            _validate_module(submodule, module_context, env)
+            _validate_module(submodule, module_context, env, type_graph)
         return
 
     if isinstance(module, FrameModule):
         _validate_identifier(module.header.name, f"{context} frame")
         module_context = f"{context} frame {module.header.name!r}"
-        _validate_module_code(module.modulecode, module_context, parent_env)
+        _validate_module_code(module.modulecode, module_context, parent_env, type_graph)
         for submodule in module.submodules or []:
-            _validate_module(submodule, module_context, parent_env)
+            _validate_module(submodule, module_context, parent_env, type_graph)
         return
 
     if isinstance(module, ModuleTypeInstance):
@@ -489,6 +792,7 @@ def validate_transformed_basepicture(basepic: BasePicture) -> None:
     )
 
     base_env = _merge_env({}, basepic.localvariables)
+    type_graph = TypeGraph.from_basepicture(basepic)
 
     for moduletype in basepic.moduletype_defs or []:
         if isinstance(moduletype, ModuleTypeDef):
@@ -498,33 +802,23 @@ def validate_transformed_basepicture(basepic: BasePicture) -> None:
             _validate_variable_list(moduletype.localvariables, moduletype_context)
             env = _merge_env(base_env, moduletype.moduleparameters)
             env = _merge_env(env, moduletype.localvariables)
-            _validate_module_code(moduletype.modulecode, moduletype_context, env)
+            _validate_module_code(moduletype.modulecode, moduletype_context, env, type_graph)
             for submodule in moduletype.submodules or []:
-                _validate_module(submodule, moduletype_context, env)
+                _validate_module(submodule, moduletype_context, env, type_graph)
 
-    _validate_module_code(basepic.modulecode, "BasePicture", base_env)
+    _validate_module_code(basepic.modulecode, "BasePicture", base_env, type_graph)
 
     for submodule in basepic.submodules or []:
-        _validate_module(submodule, "BasePicture", base_env)
+        _validate_module(submodule, "BasePicture", base_env, type_graph)
 
 
-def parse_source_file(
-    code_path: Path,
+def parse_source_text(
+    src: str,
     *,
     parser: Lark | None = None,
     transformer: SLTransformer | None = None,
     debug: Callable[[str], None] | None = None,
 ) -> BasePicture:
-    source_path = Path(code_path)
-    if debug is not None:
-        debug(f"Parsing file: {source_path}")
-
-    src = _read_text_simple(source_path)
-    if is_compressed(src):
-        if debug is not None:
-            debug("Compressed format detected; decoding before parsing")
-        src, _ = preprocess_sl_text(src)
-
     cleaned = strip_sl_comments(src)
     active_parser = parser if parser is not None else create_sl_parser()
     active_transformer = transformer if transformer is not None else SLTransformer()
@@ -553,6 +847,17 @@ def parse_source_file(
     return basepic
 
 
+def parse_source_file(
+    code_path: Path,
+    *,
+    parser: Lark | None = None,
+    transformer: SLTransformer | None = None,
+    debug: Callable[[str], None] | None = None,
+) -> BasePicture:
+    src = _load_source_text(code_path, debug=debug)
+    return parse_source_text(src, parser=parser, transformer=transformer, debug=debug)
+
+
 def _extract_error_position(exc: Exception) -> tuple[int | None, int | None]:
     line = getattr(exc, "line", None)
     column = getattr(exc, "column", None)
@@ -565,7 +870,16 @@ def _extract_error_position(exc: Exception) -> tuple[int | None, int | None]:
 def validate_single_file_syntax(code_path: Path) -> SyntaxValidationResult:
     target_path = Path(code_path)
     try:
-        parse_source_file(target_path)
+        src = _load_source_text(target_path)
+        violations = find_disallowed_comments(src)
+        if violations:
+            first = violations[0]
+            raise RawSourceValidationError(
+                "comment is only allowed inside EQUATIONBLOCK or SEQUENCE/OPENSEQUENCE blocks",
+                line=first.start_line,
+                column=first.start_col,
+            )
+        parse_source_text(src)
     except VisitError as exc:
         line, column = _extract_error_position(exc)
         message = str(exc.orig_exc) if exc.orig_exc is not None else str(exc)

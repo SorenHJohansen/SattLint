@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 import os
 import sys
+from typing import Iterator, cast
 from . import engine as engine_module
 from . import config as config_module
 from .analyzers.variables import (
@@ -34,6 +35,8 @@ from .analyzers.modules import (
 )
 from .cache import ASTCache, compute_cache_key, get_cache_dir
 from .engine import GRAMMAR_PATH
+from .models.ast_model import BasePicture
+from .models.project_graph import ProjectGraph
 
 VARIABLE_ANALYSES = {
     "1": ("All variable analyses", None),
@@ -100,8 +103,8 @@ def prompt(msg: str, default: str | None = None) -> str:
     return input(f"{msg}: ").strip()
 
 
-def root_exists(root: str, cfg: dict) -> bool:
-    return config_module.root_exists(root, cfg)
+def target_exists(target: str, cfg: dict) -> bool:
+    return config_module.target_exists(target, cfg)
 
 
 def apply_debug(cfg: dict):
@@ -168,8 +171,10 @@ def run_cli(argv: list[str]) -> int:
 
 def show_config(cfg: dict):
     print("\n--- Current configuration ---")
+    print("analyzed_programs_and_libraries:")
+    for i, target in enumerate(cfg["analyzed_programs_and_libraries"], 1):
+        print(f"  {i}. {target}")
     for k in (
-        "root",
         "mode",
         "scan_root_only",
         "fast_cache_validation",
@@ -188,16 +193,82 @@ def show_config(cfg: dict):
 # ----------------------------
 # Analysis & dumps
 # ----------------------------
-def load_project(cfg: dict, *, use_cache: bool = True):
+def _get_analyzed_targets(cfg: dict) -> list[str]:
+    seen: set[str] = set()
+    targets: list[str] = []
+    for raw in cfg.get("analyzed_programs_and_libraries", []):
+        target = str(raw).strip()
+        if not target:
+            continue
+        key = target.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        targets.append(target)
+    return targets
+
+
+def _require_analyzed_targets(cfg: dict) -> list[str]:
+    targets = _get_analyzed_targets(cfg)
+    if not targets:
+        raise RuntimeError(
+            "No analyzed programs/libraries configured. "
+            "Add entries to 'analyzed_programs_and_libraries' first."
+        )
+    return targets
+
+
+def _cache_key_for_target(cfg: dict, target_name: str) -> str:
+    cache_cfg = cfg.copy()
+    cache_cfg["analysis_target"] = target_name
+    return compute_cache_key(cache_cfg)
+
+
+def _iter_loaded_projects(
+    cfg: dict,
+    *,
+    use_cache: bool = True,
+) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+    for target_name in _require_analyzed_targets(cfg):
+        project_bp, graph = load_project(
+            cfg,
+            target_name=target_name,
+            use_cache=use_cache,
+        )
+        yield target_name, project_bp, graph
+
+
+def _source_paths_for_current_target(project_bp, graph) -> set[Path]:
+    source_files = getattr(graph, "source_files", set())
+    origin_file = getattr(project_bp, "origin_file", None)
+    if origin_file:
+        matches = {
+            path for path in source_files if path.name.casefold() == origin_file.casefold()
+        }
+        if matches:
+            return matches
+
+    target_name = project_bp.header.name.casefold()
+    return {path for path in source_files if path.stem.casefold() == target_name}
+
+
+def load_project(
+    cfg: dict,
+    target_name: str | None = None,
+    *,
+    use_cache: bool = True,
+) -> tuple[BasePicture, ProjectGraph]:
+    targets = _require_analyzed_targets(cfg)
+    selected_target = target_name or targets[0]
     cache_dir = get_cache_dir()
     cache = ASTCache(cache_dir)
 
-    key = compute_cache_key(cfg)  # now only hashes config, not files
+    key = _cache_key_for_target(cfg, selected_target)
     cached = cache.load(key) if use_cache else None
 
     if cached:
         log.debug("✔ Using cached AST (not revalidated)")
-        return cached["project"]
+        return cast(tuple[BasePicture, ProjectGraph], cached["project"])
 
     loader = engine_module.SattLineProjectLoader(
         program_dir=Path(cfg["program_dir"]),
@@ -208,12 +279,12 @@ def load_project(cfg: dict, *, use_cache: bool = True):
         debug=cfg["debug"],
     )
 
-    graph = loader.resolve(cfg["root"], strict=False)
+    graph = loader.resolve(selected_target, strict=False)
 
-    root_bp = graph.ast_by_name.get(cfg["root"])
+    root_bp = graph.ast_by_name.get(selected_target)
     if not root_bp:
         raise RuntimeError(
-            f"Root program '{cfg['root']}' not parsed.\n"
+            f"Target '{selected_target}' not parsed.\n"
             f"Resolved: {list(graph.ast_by_name.keys())}\n"
             f"Missing: {graph.missing}"
         )
@@ -255,71 +326,73 @@ def load_program_ast(cfg: dict, program_name: str):
 
 
 def force_refresh_ast(cfg: dict):
-    """Clear cached AST for current config and rebuild it."""
+    """Clear cached ASTs for configured targets and rebuild them."""
     cache_dir = get_cache_dir()
     cache = ASTCache(cache_dir)
-    key = compute_cache_key(cfg)
-    cache.clear(key)
-    log.debug("✔ AST cache cleared")
-    return load_project(cfg, use_cache=False)
+    result = None
+    for target_name in _require_analyzed_targets(cfg):
+        cache.clear(_cache_key_for_target(cfg, target_name))
+        result = load_project(cfg, target_name=target_name, use_cache=False)
+    log.debug("✔ AST caches cleared")
+    return result
 
 
 def ensure_ast_cache(cfg: dict) -> bool:
-    """Check AST cache validity and rebuild if needed with user feedback."""
-    print("\n⏳ Checking AST cache...")
+    """Check AST caches for configured targets and rebuild if needed."""
     cache_dir = get_cache_dir()
     cache = ASTCache(cache_dir)
-    key = compute_cache_key(cfg)
-    cached = cache.load(key)
-
     fast = cfg.get("fast_cache_validation", False)
-    if cached:
-        has_manifest = bool(cached.get("files"))
-        if fast and has_manifest:
-            is_valid = cache.validate(cached, fast=False)
-        else:
-            is_valid = cache.validate(cached, fast=fast)
-        if is_valid:
-            print("✔ AST cache OK")
-            return True
+    ok = True
+    for target_name in _require_analyzed_targets(cfg):
+        print(f"\n⏳ Checking AST cache for {target_name}...")
+        cached = cache.load(_cache_key_for_target(cfg, target_name))
+        if cached:
+            has_manifest = bool(cached.get("files"))
+            if fast and has_manifest:
+                is_valid = cache.validate(cached, fast=False)
+            else:
+                is_valid = cache.validate(cached, fast=fast)
+            if is_valid:
+                print("✔ AST cache OK")
+                continue
 
-        if has_manifest:
-            print("⚠ AST cache stale; rebuilding (this may take a while)...")
+            if has_manifest:
+                print("⚠ AST cache stale; rebuilding (this may take a while)...")
+            else:
+                print(
+                    "⚠ AST cache missing file manifest; rebuilding (this may take a while)..."
+                )
         else:
-            print(
-                "⚠ AST cache missing file manifest; rebuilding (this may take a while)..."
-            )
-    else:
-        print("⚠ AST cache missing; building (this may take a while)...")
+            print("⚠ AST cache missing; building (this may take a while)...")
 
-    try:
-        load_project(cfg, use_cache=False)
-        print("✔ AST cache updated")
-        return True
-    except Exception as exc:
-        print(f"❌ Failed to build AST cache: {exc}")
-        return False
+        try:
+            load_project(cfg, target_name=target_name, use_cache=False)
+            print("✔ AST cache updated")
+        except Exception as exc:
+            print(f"❌ Failed to build AST cache for {target_name}: {exc}")
+            ok = False
+
+    return ok
 
 
 def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
-    project_bp, graph = load_project(cfg)
+    for target_name, project_bp, graph in _iter_loaded_projects(cfg):
+        report = analyze_variables(
+            project_bp,
+            debug=cfg.get("debug", False),
+            unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+        )
 
-    report = analyze_variables(
-        project_bp,
-        debug=cfg.get("debug", False),
-        unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
-    )
+        if kinds is not None:
+            report = filter_variable_report(report, kinds)
 
-    if kinds is not None:
-        report = filter_variable_report(report, kinds)
-
-    print(report.summary())
+        print(f"\n=== Target: {target_name} ===")
+        print(report.summary())
     pause()
 
 
 def run_datatype_usage_analysis(cfg: dict):
     """Interactive datatype usage analysis (field-level usage by variable name)."""
-    project_bp, graph = load_project(cfg)
 
     print("\n--- Datatype Usage Analysis ---")
     print("Enter the variable name to analyze:")
@@ -330,16 +403,18 @@ def run_datatype_usage_analysis(cfg: dict):
         pause()
         return
 
-    try:
-        report = variables_reporting_module.analyze_datatype_usage(
-            project_bp,
-            var_name,
-            debug=cfg.get("debug", False),
-            unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
-        )
-        print("\n" + report)
-    except Exception as e:
-        print(f"❌ Error during analysis: {e}")
+    for target_name, project_bp, graph in _iter_loaded_projects(cfg):
+        try:
+            report = variables_reporting_module.analyze_datatype_usage(
+                project_bp,
+                var_name,
+                debug=cfg.get("debug", False),
+                unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+            )
+            print(f"\n=== Target: {target_name} ===")
+            print(report)
+        except Exception as e:
+            print(f"❌ Error during analysis for {target_name}: {e}")
 
     pause()
 
@@ -492,8 +567,6 @@ def analysis_menu(cfg: dict):
 
 
 def run_module_duplicates_analysis(cfg: dict):
-    project_bp, _ = load_project(cfg)
-
     print("\n--- Compare Module Variants ---")
     print("Enter module name(s) to compare (comma-separated):")
     raw_names = input("> ").strip()
@@ -504,47 +577,47 @@ def run_module_duplicates_analysis(cfg: dict):
         pause()
         return
 
-    for module_name in module_names:
-        try:
-            matches = find_modules_by_name(
-                project_bp, module_name, debug=cfg.get("debug", False)
-            )
-            if not matches:
-                print(f"\n⚠ No modules found with name {module_name!r}.")
-                continue
-
-            print(f"\nFound {len(matches)} instance(s) for {module_name!r}:")
-            for idx, (path, module) in enumerate(matches, 1):
-                datecode = getattr(module, "datecode", None)
-                datecode_txt = f" (DateCode: {datecode})" if datecode else ""
-                print(f"  {idx}) {' -> '.join(path)}{datecode_txt}")
-
-            print("\nSelect instances to compare (e.g., 6,7).")
-            print("Press Enter to compare all instances.")
-            selection = input("> ").strip()
-
-            if selection:
-                indices = _parse_index_selection(selection, len(matches))
-                if len(indices) < 2:
-                    print("⚠ Need at least two instances to compare; skipping.")
-                    continue
-                selected = [matches[i - 1] for i in indices]
-                result = compare_modules(selected)
-            else:
-                result = analyze_module_duplicates(
+    for target_name, project_bp, _graph in _iter_loaded_projects(cfg):
+        print(f"\n=== Target: {target_name} ===")
+        for module_name in module_names:
+            try:
+                matches = find_modules_by_name(
                     project_bp, module_name, debug=cfg.get("debug", False)
                 )
+                if not matches:
+                    print(f"\n⚠ No modules found with name {module_name!r}.")
+                    continue
 
-            print("\n" + result.summary())
-        except Exception as e:
-            print(f"❌ Error during analysis for {module_name!r}: {e}")
+                print(f"\nFound {len(matches)} instance(s) for {module_name!r}:")
+                for idx, (path, module) in enumerate(matches, 1):
+                    datecode = getattr(module, "datecode", None)
+                    datecode_txt = f" (DateCode: {datecode})" if datecode else ""
+                    print(f"  {idx}) {' -> '.join(path)}{datecode_txt}")
+
+                print("\nSelect instances to compare (e.g., 6,7).")
+                print("Press Enter to compare all instances.")
+                selection = input("> ").strip()
+
+                if selection:
+                    indices = _parse_index_selection(selection, len(matches))
+                    if len(indices) < 2:
+                        print("⚠ Need at least two instances to compare; skipping.")
+                        continue
+                    selected = [matches[i - 1] for i in indices]
+                    result = compare_modules(selected)
+                else:
+                    result = analyze_module_duplicates(
+                        project_bp, module_name, debug=cfg.get("debug", False)
+                    )
+
+                print("\n" + result.summary())
+            except Exception as e:
+                print(f"❌ Error during analysis for {module_name!r}: {e}")
 
     pause()
 
 
 def run_module_find_by_name(cfg: dict):
-    project_bp, _ = load_project(cfg)
-
     print("\n--- Find Module Instances ---")
     print("Enter module name(s) to search for (comma-separated):")
     raw_names = input("> ").strip()
@@ -556,18 +629,20 @@ def run_module_find_by_name(cfg: dict):
         return
 
     try:
-        for module_name in module_names:
-            matches = find_modules_by_name(
-                project_bp, module_name, debug=cfg.get("debug", False)
-            )
-            if not matches:
-                print(f"\nNo modules found with name {module_name!r}.")
-                continue
-            print(f"\nFound {len(matches)} module instance(s) for {module_name!r}:")
-            for path, module in matches:
-                datecode = getattr(module, "datecode", None)
-                datecode_txt = f" (DateCode: {datecode})" if datecode else ""
-                print(f"  - {' -> '.join(path)}{datecode_txt}")
+        for target_name, project_bp, _graph in _iter_loaded_projects(cfg):
+            print(f"\n=== Target: {target_name} ===")
+            for module_name in module_names:
+                matches = find_modules_by_name(
+                    project_bp, module_name, debug=cfg.get("debug", False)
+                )
+                if not matches:
+                    print(f"\nNo modules found with name {module_name!r}.")
+                    continue
+                print(f"\nFound {len(matches)} module instance(s) for {module_name!r}:")
+                for path, module in matches:
+                    datecode = getattr(module, "datecode", None)
+                    datecode_txt = f" (DateCode: {datecode})" if datecode else ""
+                    print(f"  - {' -> '.join(path)}{datecode_txt}")
     except Exception as e:
         print(f"❌ Error during search: {e}")
 
@@ -601,8 +676,6 @@ def _parse_index_selection(selection: str, max_index: int) -> list[int]:
 
 
 def run_module_tree_debug(cfg: dict):
-    project_bp, _ = load_project(cfg)
-
     print("\n--- Debug Module Tree Structure ---")
     max_depth_txt = prompt("Max depth", "10")
     try:
@@ -612,7 +685,9 @@ def run_module_tree_debug(cfg: dict):
         max_depth = 10
 
     try:
-        debug_module_structure(project_bp, max_depth=max_depth)
+        for target_name, project_bp, _graph in _iter_loaded_projects(cfg):
+            print(f"\n=== Target: {target_name} ===")
+            debug_module_structure(project_bp, max_depth=max_depth)
     except Exception as e:
         print(f"❌ Error during debug: {e}")
 
@@ -629,12 +704,11 @@ def variable_analysis_menu(cfg: dict):
 
 def run_module_localvar_analysis(cfg: dict):
     """Interactive module local variable analysis."""
-    project_bp, _ = load_project(cfg)
-
     print("\n--- Module Local Variable Analysis ---")
     print("Enter the module path (strict) relative to BasePicture.")
     print("Example: StartMaster.KaHA251A")
-    module_path = input(f"{project_bp.header.name}.").strip()
+    default_bp, _default_graph = load_project(cfg)
+    module_path = input(f"{default_bp.header.name}.").strip()
 
     if not module_path:
         print("❌ No module path provided")
@@ -649,21 +723,20 @@ def run_module_localvar_analysis(cfg: dict):
         pause()
         return
 
-    try:
-        from .analyzers.variable_usage_reporting import analyze_module_localvar_fields
+    from .analyzers.variable_usage_reporting import analyze_module_localvar_fields
 
-        report = analyze_module_localvar_fields(
-            project_bp,
-            module_path,
-            var_name,
-            debug=cfg.get("debug", False),
-        )
-        print("\n" + report)
-    except Exception as e:
-        print(f"❌ Error during analysis: {e}")
-        import traceback
-
-        traceback.print_exc()
+    for target_name, project_bp, _graph in _iter_loaded_projects(cfg):
+        try:
+            report = analyze_module_localvar_fields(
+                project_bp,
+                module_path,
+                var_name,
+                debug=cfg.get("debug", False),
+            )
+            print(f"\n=== Target: {target_name} ===")
+            print(report)
+        except Exception as e:
+            print(f"❌ Error during analysis for {target_name}: {e}")
 
     pause()
 
@@ -683,18 +756,18 @@ def _run_checks(cfg: dict, selected_keys: list[str] | None) -> None:
         pause()
         return
 
-    project_bp, graph = load_project(cfg)
-    context = AnalysisContext(
-        base_picture=project_bp,
-        graph=graph,
-        debug=cfg.get("debug", False),
-    )
-
     print("\n--- Running checks ---")
-    for spec in analyzers:
-        print(f"\n=== {spec.name} ({spec.key}) ===")
-        report = spec.run(context)
-        print(report.summary())
+    for target_name, project_bp, graph in _iter_loaded_projects(cfg):
+        context = AnalysisContext(
+            base_picture=project_bp,
+            graph=graph,
+            debug=cfg.get("debug", False),
+        )
+        print(f"\n=== Target: {target_name} ===")
+        for spec in analyzers:
+            print(f"\n=== {spec.name} ({spec.key}) ===")
+            report = spec.run(context)
+            print(report.summary())
 
     pause()
 
@@ -705,21 +778,18 @@ def run_checks_menu(cfg: dict):
 
 def run_mms_interface_analysis(cfg: dict):
     """List variables mapped into MMSWriteVar/MMSReadVar interface modules."""
-    project_bp, _ = load_project(cfg)
-
     print("\n--- MMS Interface Variables ---")
 
-    try:
-        report = analyze_mms_interface_variables(
-            project_bp,
-            debug=cfg.get("debug", False),
-        )
-        print("\n" + report.summary())
-    except Exception as e:
-        print(f"❌ Error during analysis: {e}")
-        import traceback
-
-        traceback.print_exc()
+    for target_name, project_bp, _graph in _iter_loaded_projects(cfg):
+        try:
+            report = analyze_mms_interface_variables(
+                project_bp,
+                debug=cfg.get("debug", False),
+            )
+            print(f"\n=== Target: {target_name} ===")
+            print(report.summary())
+        except Exception as e:
+            print(f"❌ Error during analysis for {target_name}: {e}")
 
     pause()
 
@@ -805,8 +875,6 @@ def run_icf_validation(cfg: dict):
 
 def run_debug_variable_usage(cfg: dict):
     """Interactive debug for specific variable usage."""
-    project_bp, _ = load_project(cfg)
-
     print("\n--- Variable Usage (Fields + Locations) ---")
     print("Enter the variable name to analyze:")
     var_name = input("> ").strip()
@@ -816,32 +884,32 @@ def run_debug_variable_usage(cfg: dict):
         pause()
         return
 
-    try:
-        report = debug_variable_usage(
-            project_bp, var_name, debug=cfg.get("debug", False)
-        )
-        print("\n" + report)
-    except Exception as e:
-        print(f"❌ Error during debug: {e}")
+    for target_name, project_bp, _graph in _iter_loaded_projects(cfg):
+        try:
+            report = debug_variable_usage(
+                project_bp, var_name, debug=cfg.get("debug", False)
+            )
+            print(f"\n=== Target: {target_name} ===")
+            print(report)
+        except Exception as e:
+            print(f"❌ Error during debug for {target_name}: {e}")
 
     pause()
 
 
 def run_comment_code_analysis(cfg: dict):
     """Scan raw source files for code-like content inside comments."""
-    project_bp, graph = load_project(cfg)
-
     print("\n--- Commented-out Code ---")
-    paths = getattr(graph, "source_files", set())
-    report = analyze_comment_code_files(paths, project_bp.header.name)
-    print("\n" + report.summary())
+    for target_name, project_bp, graph in _iter_loaded_projects(cfg):
+        paths = _source_paths_for_current_target(project_bp, graph)
+        report = analyze_comment_code_files(paths, project_bp.header.name)
+        print(f"\n=== Target: {target_name} ===")
+        print(report.summary())
     pause()
 
 
 def run_advanced_datatype_analysis(cfg: dict):
     """Enhanced datatype analysis with filtering options."""
-    project_bp, graph = load_project(cfg)
-
     print("\n--- Advanced Datatype Analysis ---")
     print("1) Analyze variable by name (field-level usage)")
     print("2) Compare module variants by name")
@@ -853,13 +921,15 @@ def run_advanced_datatype_analysis(cfg: dict):
     if choice == "1":
         var_name = input("Enter variable name: ").strip()
         if var_name:
-            report = variables_reporting_module.analyze_datatype_usage(
-                project_bp,
-                var_name,
-                debug=cfg.get("debug", False),
-                unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
-            )
-            print("\n" + report)
+            for target_name, project_bp, graph in _iter_loaded_projects(cfg):
+                report = variables_reporting_module.analyze_datatype_usage(
+                    project_bp,
+                    var_name,
+                    debug=cfg.get("debug", False),
+                    unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+                )
+                print(f"\n=== Target: {target_name} ===")
+                print(report)
 
     elif choice == "2":
         module_name = input("Enter module name to compare: ").strip()
@@ -869,12 +939,14 @@ def run_advanced_datatype_analysis(cfg: dict):
     elif choice == "3":
         var_name = input("Enter variable name to debug: ").strip()
         if var_name:
-            report = variables_reporting_module.debug_variable_usage(
-                project_bp,
-                var_name,
-                debug=cfg.get("debug", False),
-            )
-            print("\n" + report)
+            for target_name, project_bp, _graph in _iter_loaded_projects(cfg):
+                report = variables_reporting_module.debug_variable_usage(
+                    project_bp,
+                    var_name,
+                    debug=cfg.get("debug", False),
+                )
+                print(f"\n=== Target: {target_name} ===")
+                print(report)
 
     pause()
 
@@ -897,25 +969,27 @@ q) Quit
         if c == "q":
             quit_app()
 
-        project_bp, graph = load_project(cfg)
-        project = (project_bp, graph)
-
         if c == "1" and confirm("Dump parse tree?"):
-            engine_module.dump_parse_tree(project)
+            for _target_name, project_bp, graph in _iter_loaded_projects(cfg):
+                engine_module.dump_parse_tree((project_bp, graph))
         elif c == "2" and confirm("Dump AST?"):
-            engine_module.dump_ast(project)
+            for _target_name, project_bp, graph in _iter_loaded_projects(cfg):
+                engine_module.dump_ast((project_bp, graph))
         elif c == "3" and confirm("Dump dependency graph?"):
-            engine_module.dump_dependency_graph(project)
+            for _target_name, project_bp, graph in _iter_loaded_projects(cfg):
+                engine_module.dump_dependency_graph((project_bp, graph))
         elif c == "4" and confirm("Dump variable report?"):
-            print(
-                analyze_variables(
-                    project_bp,
-                    debug=cfg.get("debug", False),
-                    unavailable_libraries=getattr(
-                        graph, "unavailable_libraries", set()
-                    ),
-                ).summary()
-            )
+            for target_name, project_bp, graph in _iter_loaded_projects(cfg):
+                print(f"\n=== Target: {target_name} ===")
+                print(
+                    analyze_variables(
+                        project_bp,
+                        debug=cfg.get("debug", False),
+                        unavailable_libraries=getattr(
+                            graph, "unavailable_libraries", set()
+                        ),
+                    ).summary()
+                )
         else:
             print("Invalid choice.")
 
@@ -931,16 +1005,17 @@ def config_menu(cfg: dict) -> bool:
         clear_screen()
         show_config(cfg)
         print("""
-1) Change Root program/library to analyze
-2) Toggle Mode (official/draft)
-3) Toggle scan_root_only
-4) Toggle fast_cache_validation
-5) Change Program_dir
-6) Change ABB_lib_dir
-7) Add/remove other_lib_dirs
-8) Save config
-9) Change ICF_dir
-10) Toggle debug
+1) Add analyzed program/library
+2) Remove analyzed program/library
+3) Toggle Mode (official/draft)
+4) Toggle scan_root_only
+5) Toggle fast_cache_validation
+6) Change Program_dir
+7) Change ABB_lib_dir
+8) Add/remove other_lib_dirs
+9) Save config
+10) Change ICF_dir
+11) Toggle debug
 b) Back
 q) Quit
 """)
@@ -955,43 +1030,74 @@ q) Quit
             sys.exit(0)
 
         elif c == "1":
-            new = prompt("New root program/library", cfg["root"])
-            if not root_exists(new, cfg):
-                print("❌ Root not found in configured directories")
+            new = prompt("Program/library name to add")
+            if not target_exists(new, cfg):
+                print("❌ Target not found in configured directories")
                 pause()
-            elif confirm(f"Change root to '{new}'?"):
-                cfg["root"] = new
+            elif any(
+                str(existing).casefold() == new.casefold()
+                for existing in cfg["analyzed_programs_and_libraries"]
+            ):
+                print("⚠ Target already listed")
+                pause()
+            elif confirm(f"Add '{new}' to analyzed_programs_and_libraries?"):
+                cfg["analyzed_programs_and_libraries"].append(new)
                 dirty = True
 
         elif c == "2":
+            targets = cfg["analyzed_programs_and_libraries"]
+            if not targets:
+                print("⚠ No analyzed targets configured")
+                pause()
+                continue
+
+            print("\nCurrent analyzed_programs_and_libraries:")
+            for i, target in enumerate(targets, 1):
+                print(f"{i}. {target}")
+
+            idx_txt = prompt("Index to remove")
+            try:
+                idx = int(idx_txt) - 1
+            except ValueError:
+                print("❌ Invalid index")
+                pause()
+                continue
+
+            if 0 <= idx < len(targets) and confirm(
+                f"Remove '{targets[idx]}' from analyzed_programs_and_libraries?"
+            ):
+                targets.pop(idx)
+                dirty = True
+
+        elif c == "3":
             new = "draft" if cfg["mode"] == "official" else "official"
             if confirm(f"Switch mode to '{new}'?"):
                 cfg["mode"] = new
                 dirty = True
 
-        elif c == "3":
+        elif c == "4":
             if confirm("Toggle scan_root_only?"):
                 cfg["scan_root_only"] = not cfg["scan_root_only"]
                 dirty = True
 
-        elif c == "4":
+        elif c == "5":
             if confirm("Toggle fast_cache_validation?"):
                 cfg["fast_cache_validation"] = not cfg["fast_cache_validation"]
                 dirty = True
 
-        elif c == "5":
+        elif c == "6":
             new = prompt("New program_dir", cfg["program_dir"])
             if confirm("Change program_dir?"):
                 cfg["program_dir"] = new
                 dirty = True
 
-        elif c == "6":
+        elif c == "7":
             new = prompt("New ABB_lib_dir", cfg["ABB_lib_dir"])
             if confirm("Change ABB_lib_dir?"):
                 cfg["ABB_lib_dir"] = new
                 dirty = True
 
-        elif c == "7":
+        elif c == "8":
             libs = cfg["other_lib_dirs"]
             print("\nCurrent other_lib_dirs:")
             for i, p in enumerate(libs, 1):
@@ -1004,16 +1110,16 @@ q) Quit
                 if 0 <= idx < len(libs):
                     libs.pop(idx)
                     dirty = True
-        elif c == "8":
+        elif c == "9":
             if confirm("Save config to disk?"):
                 save_config(CONFIG_PATH, cfg)
                 dirty = False
-        elif c == "9":
+        elif c == "10":
             new = prompt("New ICF_dir", cfg["icf_dir"])
             if confirm("Change ICF_dir?"):
                 cfg["icf_dir"] = new
                 dirty = True
-        elif c == "10":
+        elif c == "11":
             if confirm("Toggle debug?"):
                 cfg["debug"] = not cfg["debug"]
                 dirty = True
@@ -1051,7 +1157,7 @@ How to use SattLint
 • Navigate using the number keys shown in each menu
 • Press Enter to confirm a selection
 • Changes are NOT saved until you choose "Save config"
-• Use "Analyses" to analyze the configured root program
+• Use "Analyses" to analyze the configured programs/libraries
 • Use "Dump outputs" to inspect parse trees, ASTs, etc.
 • Use "Edit config" to change settings
 • Use "Self-check" to check if the config is OK

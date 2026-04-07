@@ -20,6 +20,13 @@ class CommentCodeHit:
     indicators: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class CommentPlacementViolation:
+    start_line: int
+    start_col: int
+    text: str
+
+
 # Regex patterns for fast filtering (syntax hints, not definitive)
 _ASSIGN_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_:.]*\s*(?::=|=(?!=))\s*")
 _CALL_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\s*\([^()\n]*\S[^()\n]*\)")
@@ -272,6 +279,10 @@ def _is_at_keyword(text: str, pos: int, keyword: str) -> bool:
     """Check if text at position starts with keyword (case-insensitive, word boundary)."""
     if pos + len(keyword) > len(text):
         return False
+    if pos > 0:
+        before_char = text[pos - 1]
+        if before_char.isalnum() or before_char == "_":
+            return False
     substr = text[pos : pos + len(keyword)]
     if substr.casefold() != keyword.casefold():
         return False
@@ -282,6 +293,173 @@ def _is_at_keyword(text: str, pos: int, keyword: str) -> bool:
         if after_char.isalnum() or after_char == "_":
             return False
     return True
+
+
+def _is_valid_enddef_label_comment(comment_text: str) -> bool:
+    stripped = comment_text.strip()
+    return bool(stripped) and "\n" not in stripped and "\r" not in stripped
+
+
+def find_disallowed_comments(text: str) -> list[CommentPlacementViolation]:
+    """Find comments that appear outside equation and sequence blocks.
+
+    Inside ModuleCode, freestanding comments before the first EQUATIONBLOCK or
+    SEQUENCE/OPENSEQUENCE block are rejected. Conventional ENDDEF label
+    comments such as ``ENDDEF (*BasePicture*);`` remain allowed.
+
+    Comments outside ModuleCode are ignored.
+    """
+    violations: list[CommentPlacementViolation] = []
+    n = len(text)
+    i = 0
+    depth = 0
+    in_string = False
+    string_quote = ""
+    line = 1
+    col = 1
+    in_module_code = False
+    awaiting_first_block = False
+    pending_enddef_label = False
+    comment_start_line = 1
+    comment_start_col = 1
+    comment_text: list[str] = []
+    comment_allowed_by_enddef = False
+
+    while i < n:
+        ch = text[i]
+        next_ch = text[i + 1] if i + 1 < n else None
+
+        if depth == 0:
+            if not in_string:
+                if pending_enddef_label and not ch.isspace() and not (
+                    ch == "(" and next_ch == "*"
+                ):
+                    pending_enddef_label = False
+
+                if _is_at_keyword(text, i, "ModuleCode"):
+                    in_module_code = True
+                    awaiting_first_block = True
+                    pending_enddef_label = False
+                    i += len("ModuleCode")
+                    col += len("ModuleCode")
+                    continue
+
+                if in_module_code and _is_at_keyword(text, i, "EQUATIONBLOCK"):
+                    awaiting_first_block = False
+                    i += len("EQUATIONBLOCK")
+                    col += len("EQUATIONBLOCK")
+                    pending_enddef_label = False
+                    continue
+
+                if in_module_code and _is_at_keyword(text, i, "OPENSEQUENCE"):
+                    awaiting_first_block = False
+                    i += len("OPENSEQUENCE")
+                    col += len("OPENSEQUENCE")
+                    pending_enddef_label = False
+                    continue
+
+                if in_module_code and _is_at_keyword(text, i, "SEQUENCE"):
+                    awaiting_first_block = False
+                    i += len("SEQUENCE")
+                    col += len("SEQUENCE")
+                    pending_enddef_label = False
+                    continue
+
+                if _is_at_keyword(text, i, "ENDDEF"):
+                    if in_module_code:
+                        awaiting_first_block = False
+                        in_module_code = False
+                    pending_enddef_label = True
+                    i += len("ENDDEF")
+                    col += len("ENDDEF")
+                    continue
+
+                if ch == '"' or ch == "'":
+                    in_string = True
+                    string_quote = ch
+                    line, col, extra = _advance_position(ch, next_ch, line, col)
+                    i += 1 + extra
+                    continue
+
+                if ch == "(" and next_ch == "*":
+                    comment_start_line = line
+                    comment_start_col = col
+                    comment_text = []
+                    comment_allowed_by_enddef = pending_enddef_label
+                    pending_enddef_label = False
+                    if in_module_code and awaiting_first_block and not comment_allowed_by_enddef:
+                        violations.append(
+                            CommentPlacementViolation(
+                                start_line=comment_start_line,
+                                start_col=comment_start_col,
+                                text="",
+                            )
+                        )
+                    depth = 1
+                    i += 2
+                    col += 2
+                    continue
+            else:
+                if ch == "\n" or ch == "\r":
+                    line, col, extra = _advance_position(ch, next_ch, line, col)
+                    i += 1 + extra
+                    in_string = False
+                    string_quote = ""
+                    continue
+                if ch == string_quote:
+                    if next_ch == string_quote:
+                        line, col, extra = _advance_position(ch, next_ch, line, col)
+                        i += 1 + extra
+                        if next_ch is not None:
+                            line, col, extra = _advance_position(next_ch, None, line, col)
+                            i += 1 + extra
+                        continue
+                    in_string = False
+                    string_quote = ""
+                elif ch == "\\":
+                    line, col, extra = _advance_position(ch, next_ch, line, col)
+                    i += 1 + extra
+                    if next_ch is not None:
+                        line, col, extra = _advance_position(next_ch, None, line, col)
+                        i += 1 + extra
+                    continue
+
+            line, col, extra = _advance_position(ch, next_ch, line, col)
+            i += 1 + extra
+        else:
+            if ch == "(" and next_ch == "*":
+                depth += 1
+                comment_text.append("(*")
+                i += 2
+                col += 2
+                continue
+
+            if ch == "*" and next_ch == ")":
+                depth -= 1
+                i += 2
+                col += 2
+                if depth == 0:
+                    if comment_allowed_by_enddef and not _is_valid_enddef_label_comment(
+                        "".join(comment_text)
+                    ):
+                        violations.append(
+                            CommentPlacementViolation(
+                                start_line=comment_start_line,
+                                start_col=comment_start_col,
+                                text="".join(comment_text),
+                            )
+                        )
+                    comment_text = []
+                    comment_allowed_by_enddef = False
+                else:
+                    comment_text.append("*)")
+                continue
+
+            comment_text.append(ch)
+            line, col, extra = _advance_position(ch, next_ch, line, col)
+            i += 1 + extra
+
+    return violations
 
 
 def find_comments_with_code(text: str) -> list[CommentCodeHit]:

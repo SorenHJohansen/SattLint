@@ -102,6 +102,114 @@ ENDDEF (*BasePicture*);
 	assert bp.name == "BasePicture"
 
 
+def test_validate_single_file_syntax_rejects_comment_outside_equation_or_sequence(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	TransferRequest: boolean := False;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	(*
+		Keep output publishing separate from guard evaluation.
+		The regression steps update latched request variables, and this block
+		republishes them every scan so the TransferPanel one-shot signals are
+		continuously reasserted while a step needs them.
+	*)
+	EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+		TransferRequest = False;
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "CommentOutsideEquationOrSequence.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is False
+	assert result.stage == "validation"
+	assert result.line == 11
+	assert result.column == 2
+	assert result.message is not None
+	assert "only allowed inside EQUATIONBLOCK or SEQUENCE/OPENSEQUENCE blocks" in result.message
+
+
+def test_validate_single_file_syntax_allows_comment_inside_equation_block(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	Counter: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+		(* This comment is allowed inside an equation block. *)
+		Counter = Counter + 1;
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "CommentInsideEquation.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_allows_comment_inside_sequence_block(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	OPENSEQUENCE MainSequence (SeqControl) COORD 0.0, 0.2 OBJSIZE 2.0, 1.68
+		(* This comment is allowed inside a sequence block. *)
+		SEQINITSTEP InitSim
+		SEQTRANSITION Start WAIT_FOR True
+		SEQSTEP Running
+	ENDOPENSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "CommentInsideSequence.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_allows_top_level_comment_outside_modulecode(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+(*
+	1998-11-20 08:11 FDH
+	Library created
+*)
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "TopLevelCommentAllowed.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
+
+
 def test_validate_single_file_syntax_reports_location(tmp_path):
 	code = """
 "SyntaxVersion"
@@ -317,3 +425,172 @@ ENDDEF (*BasePicture*);
 
 	assert result.ok is True
 	assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_rejects_builtin_function_datatype_mismatch(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	Name1: string;
+	Flag: boolean := False;
+	Match: boolean := False;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+		Match = EqualStrings(Name1, Flag, True);
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "BuiltinFunctionDatatypeMismatch.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is False
+	assert result.stage == "validation"
+	assert result.message is not None
+	assert "call 'EqualStrings' argument 2 has datatype 'boolean'" in result.message
+	assert "expects 'string'" in result.message
+
+
+def test_validate_single_file_syntax_rejects_builtin_procedure_datatype_mismatch(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	SourceDuration: duration;
+	DestinationTime: time;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+		CopyTime(SourceDuration, DestinationTime);
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "BuiltinProcedureDatatypeMismatch.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is False
+	assert result.stage == "validation"
+	assert result.message is not None
+	assert "call 'CopyTime' argument 1 has datatype 'duration'" in result.message
+	assert "expects 'time'" in result.message
+
+
+def test_validate_single_file_syntax_allows_builtin_string_family_match(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	Name1: identstring;
+	Name2: string;
+	Match: boolean := False;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+		Match = EqualStrings(Name1, Name2, True);
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "BuiltinStringFamilyMatch.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_rejects_builtin_arity_mismatch(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	Name1: string;
+	Name2: string;
+	Match: boolean := False;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+		Match = EqualStrings(Name1, Name2);
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "BuiltinArityMismatch.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is False
+	assert result.stage == "validation"
+	assert result.message is not None
+	assert "call 'EqualStrings' has 2 arguments but builtin expects 3" in result.message
+
+
+def test_validate_single_file_syntax_rejects_builtin_in_var_expression(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	SourceTime: time;
+	DestinationTime: time;
+	UseSource: boolean := False;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+		CopyTime(IF UseSource THEN SourceTime ELSE SourceTime ENDIF, DestinationTime);
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "BuiltinInVarExpression.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is False
+	assert result.stage == "validation"
+	assert result.message is not None
+	assert "call 'CopyTime' argument 1 must be a variable reference" in result.message
+	assert "is 'in var'" in result.message
+
+
+def test_validate_single_file_syntax_rejects_builtin_out_expression(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	SourceTime: time;
+	DestinationTime: time;
+	UseDestination: boolean := False;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+		CopyTime(SourceTime, IF UseDestination THEN DestinationTime ELSE DestinationTime ENDIF);
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "BuiltinOutExpression.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is False
+	assert result.stage == "validation"
+	assert result.message is not None
+	assert "call 'CopyTime' argument 2 must be a variable reference" in result.message
+	assert "is 'out'" in result.message

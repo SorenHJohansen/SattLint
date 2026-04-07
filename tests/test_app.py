@@ -162,20 +162,20 @@ def test_load_and_save_config(tmp_path, capsys):
     assert cfg["mode"] == "official"
     assert config_path.exists()
 
-    cfg["root"] = "RootProgram"
+    cfg["analyzed_programs_and_libraries"] = ["RootProgram"]
     app.save_config(config_path, cfg)
     out = capsys.readouterr().out
     assert "Config saved" in out
 
     loaded, created = app.load_config(config_path)
     assert created is False
-    assert loaded["root"] == "RootProgram"
+    assert loaded["analyzed_programs_and_libraries"] == ["RootProgram"]
 
 
 def test_save_config_rejects_none(tmp_path):
     config_path = tmp_path / "config.toml"
     cfg = cast(dict[str, object], app.DEFAULT_CONFIG.copy())
-    cfg["root"] = None
+    cfg["analyzed_programs_and_libraries"] = None
     with pytest.raises(ValueError):
         app.save_config(config_path, cfg)
 
@@ -190,7 +190,7 @@ def test_self_check_handles_paths(tmp_path, monkeypatch, capsys):
     cfg = app.DEFAULT_CONFIG.copy()
     cfg.update(
         {
-            "root": "Root",
+            "analyzed_programs_and_libraries": ["Root"],
             "program_dir": str(program_dir),
             "ABB_lib_dir": str(abb_dir),
             "other_lib_dirs": [str(tmp_path / "other")],
@@ -200,7 +200,8 @@ def test_self_check_handles_paths(tmp_path, monkeypatch, capsys):
     ok = app.self_check(cfg)
     assert ok is True
     out = capsys.readouterr().out
-    assert "Root program/library found" in out
+    assert "Analyzed programs/libraries:" in out
+    assert "✔ Root" in out
 
 
 def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_context):
@@ -286,7 +287,11 @@ def test_dump_menu_all_options(noop_screen, monkeypatch, real_context):
         app.dump_menu(cfg)
         return
 
-    monkeypatch.setattr(app, "load_project", lambda *_: ("project", SimpleNamespace()))
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("TargetA", "project", SimpleNamespace())]),
+    )
 
     dump_calls = []
 
@@ -315,33 +320,37 @@ def test_config_menu_all_options(noop_screen, monkeypatch, tmp_path):
     cfg["program_dir"] = str(tmp_path / "programs")
     cfg["ABB_lib_dir"] = str(tmp_path / "abb")
 
-    monkeypatch.setattr(app, "root_exists", lambda *_: True)
+    monkeypatch.setattr(app, "target_exists", lambda *_: True)
     monkeypatch.setattr(app, "save_config", lambda *_: None)
 
     inputs = [
         "1",
-        "NewRoot",
-        "y",
-        "2",
+        "NewTarget",
         "y",
         "3",
         "y",
         "4",
         "y",
         "5",
+        "6",
         str(tmp_path / "prog"),
         "y",
-        "6",
+        "7",
         str(tmp_path / "abb_new"),
         "y",
-        "7",
+        "8",
         "y",
         str(tmp_path / "lib1"),
-        "7",
+        "8",
         "n",
         "y",
         "1",
-        "8",
+        "10",
+        str(tmp_path / "icf"),
+        "y",
+        "11",
+        "y",
+        "9",
         "y",
         "b",
     ]
@@ -350,7 +359,7 @@ def test_config_menu_all_options(noop_screen, monkeypatch, tmp_path):
     dirty = app.config_menu(cfg)
 
     assert dirty is False
-    assert cfg["root"] == "NewRoot"
+    assert cfg["analyzed_programs_and_libraries"] == ["NewTarget"]
     assert cfg["mode"] in ("official", "draft")
 
 
@@ -463,7 +472,11 @@ def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_conte
         app.run_advanced_datatype_analysis(cfg)
         return
 
-    monkeypatch.setattr(app, "load_project", lambda *_: ("project", "graph"))
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("TargetA", "project", SimpleNamespace(unavailable_libraries=set()))]),
+    )
     monkeypatch.setattr(
         variables_reporting_module, "analyze_datatype_usage", lambda *_, **__: "report"
     )
@@ -479,3 +492,24 @@ def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_conte
 
     monkeypatch.setattr(builtins, "input", make_input(["3", "VarName"]))
     app.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())
+
+
+def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatch, capsys):
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter(
+            [
+                ("ProgramA", "bp-a", SimpleNamespace(unavailable_libraries=set())),
+                ("LibB", "bp-b", SimpleNamespace(unavailable_libraries=set())),
+            ]
+        ),
+    )
+    monkeypatch.setattr(app, "analyze_variables", lambda *_, **__: DummyReport())
+
+    app.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+
+    out = capsys.readouterr().out
+    assert "=== Target: ProgramA ===" in out
+    assert "=== Target: LibB ===" in out
+    assert out.count("summary") == 2

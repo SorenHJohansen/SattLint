@@ -4,6 +4,7 @@ import pytest
 
 from sattlint import constants as const
 from sattlint.analyzers.variables import VariablesAnalyzer
+from sattlint.reporting.variables_report import IssueKind
 from sattlint.models.ast_model import (
     BasePicture,
     DataType,
@@ -231,6 +232,123 @@ def test_initvariable_writes_all_fields_and_reads_nothing():
     # InitRec is NOT read (per user semantics)
     initrec_u = analyzer._get_usage(initrec)
     assert not (initrec_u.read or initrec_u.field_reads), "InitRec must not be counted as read"
+
+
+def test_partial_record_usage_reports_unused_leaf_fields():
+    dt = DataType(
+        name="RecType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="A", datatype=Simple_DataType.INTEGER),
+            Variable(name="B", datatype=Simple_DataType.REAL),
+        ],
+    )
+
+    rec = Variable(name="Rec", datatype="RecType")
+
+    m1 = SingleModule(
+        header=_hdr("M1"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[rec],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                _eq(
+                    [
+                        (
+                            const.KEY_ASSIGN,
+                            _varref("Rec.A"),
+                            1,
+                        )
+                    ]
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[dt],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[m1],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    unused_fields = {
+        issue.field_path.casefold()
+        for issue in analyzer.issues
+        if issue.kind is IssueKind.UNUSED
+        and issue.variable is rec
+        and issue.field_path is not None
+    }
+
+    assert "b" in unused_fields
+    assert "a" not in unused_fields
+
+
+def test_whole_record_access_does_not_report_unused_leaf_fields():
+    dt = DataType(
+        name="RecType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="A", datatype=Simple_DataType.INTEGER),
+            Variable(name="B", datatype=Simple_DataType.REAL),
+        ],
+    )
+
+    src = Variable(name="Src", datatype="RecType")
+    dst = Variable(name="Dst", datatype="RecType")
+
+    m1 = SingleModule(
+        header=_hdr("M1"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[src, dst],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                _eq(
+                    [
+                        (
+                            const.KEY_ASSIGN,
+                            _varref("Dst"),
+                            _varref("Src"),
+                        )
+                    ]
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[dt],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[m1],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.UNUSED
+        and (issue.variable is src or issue.variable is dst)
+        and issue.field_path is not None
+        for issue in analyzer.issues
+    )
 
 
 def test_copyvariable_fails_loudly_on_unknown_field_prefix():

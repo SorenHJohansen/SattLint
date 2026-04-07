@@ -63,8 +63,8 @@
 1. **Parse**: Lark grammar (`grammar/sattline.lark`) → Parse tree
 2. **Transform**: `SLTransformer` → AST objects (`models/ast_model.py`)
 3. **Validate CLI**: `sattlint syntax-check <file>` runs parse + transform on one file, applies strict post-transform validation, and prints `OK` or a compact error
-4. **Resolve**: Build unified `BasePicture` with all dependencies
-5. **Analyze**: Analyzer registry runs checks (variables, MMS mappings, SFC placeholders, etc.)
+4. **Resolve**: For each configured analyzed target in `analyzed_programs_and_libraries`, build a unified `BasePicture` with all dependencies needed for resolution
+5. **Analyze**: Run analyzers per analyzed target; dependencies remain available for parsing/type resolution, but reporting is scoped to the explicitly analyzed target being processed
 6. **Report**: Standardized report summaries (shared header format) + DOCX documentation
 
 ---
@@ -333,6 +333,11 @@ class VariableUsage:
     field_writes: dict[str, list[list[str]]]      # Field-level writes
 ```
 
+Unused-variable reporting uses both whole-variable access and `field_reads` / `field_writes`.
+For record-typed variables, the analyzer can emit `UNUSED` issues for individual leaf fields when
+the record is only partially accessed. Whole-record accesses suppress per-field unused findings for
+that variable to avoid false positives.
+
 #### Module Types
 
 ```python
@@ -511,6 +516,8 @@ class IssueKind(Enum):
     SHADOWING = "shadowing"                     # Local variables hide outer/global names
     RESET_CONTAMINATION = "reset_contamination" # Writes during run not reset on .Reset
 ```
+
+`UNUSED` covers both whole variables and unused leaf fields within record variables.
 
 ### Field-Level Tracking
 
@@ -806,6 +813,7 @@ print(analyze_module_localvar_fields(bp, "BasePicture.Module1", "LocalVar"))
 | File | Purpose |
 |------|---------|
 | `src/sattlint/app.py` | CLI entry point, interactive menu |
+| `src/sattlint/config.py` | Persistent config, self-checks, and analyzed-target validation |
 | `src/sattlint/engine.py` | Parser creation, project loading, BasePicture merging |
 | `src/sattlint/cache.py` | AST caching for faster reloads |
 | `src/sattlint/grammar/sattline.lark` | Lark grammar definition |
@@ -973,8 +981,10 @@ walk_modules(bp.submodules, [bp.header.name])
 15. **State access validation** - The post-transform validator rejects `:OLD` / `:NEW` access on variables that are not declared `STATE`
 16. **Scope uniqueness validation** - The post-transform validator rejects duplicate local variable names, datatype names, and moduletype names within the same declaration scope
 17. **String literal call validation** - The post-transform validator rejects string literals in module-code function/procedure call arguments; string literals are allowed in parameter mappings only
+18. **Builtin call datatype validation** - When a module-code call matches an entry in `analyzers/sattline_builtins.py`, the post-transform validator checks argument count, requires `in var`/`out`/`inout` parameters to be variable references, and checks argument datatypes against the builtin signature using scoped variables and record field resolution
+19. **Comment placement validation** - `sattlint syntax-check` rejects freestanding comments that appear directly inside `ModuleCode` before the first `EQUATIONBLOCK` or `SEQUENCE`/`OPENSEQUENCE`; comments outside `ModuleCode` and standard trailing `ENDDEF (*Name*)` label comments remain allowed
 
 ---
 
-*Last updated: 2026-03-18*
+*Last updated: 2026-03-19*
 *For questions about SattLine syntax, see `sattline_language_reference.md`*

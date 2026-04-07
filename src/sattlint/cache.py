@@ -141,7 +141,8 @@ def compute_cache_key(cfg: dict) -> str:
     h = hashlib.sha256()
 
     for k in (
-        "root",
+        "analysis_target",
+        "analyzed_programs_and_libraries",
         "mode",
         "scan_root_only",
         "fast_cache_validation",
