@@ -47,7 +47,7 @@
 
 ## Project Overview
 
-**SattLint** parses SattLine source files, builds an Abstract Syntax Tree (AST), resolves dependencies across library directories, performs static analysis on variable usage, and exposes a single-file syntax validation CLI.
+**SattLint** parses SattLine source files, builds an Abstract Syntax Tree (AST), resolves dependencies across library directories, performs static analysis on variable usage, exposes a single-file syntax validation CLI, and can run engineering-spec compliance checks over AST-visible code patterns. DOCX generation now builds an FS-style document structure from configurable documentation-classification rules instead of dumping the merged AST in declaration order, and can be scoped to selected unit roots by instance path or unit moduletype name.
 
 ### File Extensions
 
@@ -65,7 +65,8 @@
 3. **Validate CLI**: `sattlint syntax-check <file>` runs parse + transform on one file, applies strict post-transform validation, and prints `OK` or a compact error
 4. **Resolve**: For each configured analyzed target in `analyzed_programs_and_libraries`, build a unified `BasePicture` with all dependencies needed for resolution
 5. **Analyze**: Run analyzers per analyzed target; dependencies remain available for parsing/type resolution, but reporting is scoped to the explicitly analyzed target being processed
-6. **Report**: Standardized report summaries (shared header format) + DOCX documentation
+6. **Spec compliance**: Run the engineering-spec analyzer for AST-visible rules such as BasePicture code placement, SFC step/transition naming, and selected module-instance contracts
+7. **Report**: Standardized report summaries (shared header format) + DOCX documentation
 
 ---
 
@@ -832,6 +833,7 @@ print(analyze_module_localvar_fields(bp, "BasePicture.Module1", "LocalVar"))
 | `src/sattlint/analyzers/registry.py` | Registry of CLI-exposed analyzers |
 | `src/sattlint/analyzers/variables.py` | Variable usage analyzer (main analysis) |
 | `src/sattlint/analyzers/shadowing.py` | Variable shadowing analyzer |
+| `src/sattlint/analyzers/spec_compliance.py` | Engineering-spec compliance analyzer for AST-visible rules |
 | `src/sattlint/analyzers/validators.py` | Dedicated validators (min/max naming, string types) |
 | `src/sattlint/analyzers/modules.py` | Module structure analyzer |
 | `src/sattlint/analyzers/mms.py` | MMS interface analysis |
@@ -854,6 +856,7 @@ print(analyze_module_localvar_fields(bp, "BasePicture.Module1", "LocalVar"))
 | File | Purpose |
 |------|---------|
 | `src/sattlint/docgenerator/docgen.py` | Word document (.docx) generator |
+| `src/sattlint/docgenerator/classification.py` | Config-driven documentation classification for equipment modules, operations, and parameter groups |
 | `src/sattlint/docgenerator/configgen.py` | Excel configuration generator |
 
 ### Tests & Examples
@@ -938,10 +941,25 @@ print(mms_report.summary())
 ### Generate documentation
 
 ```python
+from sattlint.config import get_documentation_config
 from sattlint.docgenerator.docgen import generate_docx
 
-generate_docx(bp, "output.docx")
+generate_docx(bp, "output.docx", documentation_config=get_documentation_config())
 ```
+
+The default documentation config classifies:
+- operations by descendant moduletype label `NNEMESIFLib:MES_StateControl`
+- equipment modules by descendant moduletype label `nnestruct:EquipModCoordinate`
+- recipe parameters by moduletype name containing `RecPar`
+- engineering parameters by moduletype name containing `EngPar`
+- user parameters by moduletype name containing `UsrPar`
+
+The documentation unit-scope config supports:
+- `mode = "all"` to document everything in the analyzed target
+- `mode = "instance_paths"` with dotted unit instance paths such as `StartMaster.KaHA251A`
+- `mode = "moduletype_names"` with unit moduletype names such as `ApplTank`
+
+`classification.py` also exposes unit-candidate discovery used by the interactive documentation menu in `app.py`.
 
 ### Walk the module hierarchy
 
@@ -972,6 +990,7 @@ walk_modules(bp.submodules, [bp.header.name])
 8. **SEQFORK targets** - `SEQFORK` accepts multiple target names in a single line (comma-separated).
 6. **Understand the scope hierarchy** - Variables can be accessed from parent scopes unless shadowed
 7. **Use the framework/registry** - Follow `analyzers/framework.py` + `analyzers/registry.py` patterns for new checks
+8. **Spec analyzer scope** - `analyzers/spec_compliance.py` only enforces rules that are explicit and AST-visible; do not turn broader engineering guidance into parser errors or heuristic-heavy findings without deliberate scoping
 9. **Test with the fixtures** - The test files in `tests/fixtures/` cover most language features
 10. **Keep menu tests in sync** - If you change CLI menu layouts or numbering, update `tests/test_app.py` inputs accordingly
 11. **CLI mode is argument-driven** - the installed `sattlint` console script must call `app.cli()` so `sys.argv[1:]` reaches `app.main(argv)`; calling `app.main()` with no argv still opens the interactive menu
@@ -986,5 +1005,5 @@ walk_modules(bp.submodules, [bp.header.name])
 
 ---
 
-*Last updated: 2026-03-19*
+*Last updated: 2026-04-07*
 *For questions about SattLine syntax, see `sattline_language_reference.md`*

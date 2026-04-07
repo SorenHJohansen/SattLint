@@ -1,11 +1,20 @@
 """Configuration management for SattLint."""
 from __future__ import annotations
 
+from copy import deepcopy
 import os
 import sys
 import tomllib
 import tomli_w
 from pathlib import Path
+
+_DOCUMENTATION_RULE_LIST_KEYS = (
+    "moduletype_name_contains",
+    "moduletype_label_equals",
+    "descendant_moduletype_name_contains",
+    "descendant_moduletype_label_equals",
+)
+_DOCUMENTATION_UNIT_SELECTION_MODES = {"all", "instance_paths", "moduletype_names"}
 
 DEFAULT_CONFIG = {
     "analyzed_programs_and_libraries": [],
@@ -17,7 +26,89 @@ DEFAULT_CONFIG = {
     "ABB_lib_dir": "",
     "icf_dir": "",
     "other_lib_dirs": [],
+    "documentation": {
+        "section_order": [
+            "equipment_modules",
+            "operations",
+            "recipe_parameters",
+            "engineering_parameters",
+            "user_parameters",
+        ],
+        "units": {
+            "mode": "all",
+            "instance_paths": [],
+            "moduletype_names": [],
+        },
+        "classifications": {
+            "equipment_modules": {
+                "moduletype_name_contains": [],
+                "moduletype_label_equals": [],
+                "descendant_moduletype_name_contains": [],
+                "descendant_moduletype_label_equals": [
+                    "nnestruct:EquipModCoordinate"
+                ],
+            },
+            "operations": {
+                "moduletype_name_contains": [],
+                "moduletype_label_equals": [],
+                "descendant_moduletype_name_contains": [],
+                "descendant_moduletype_label_equals": [
+                    "NNEMESIFLib:MES_StateControl"
+                ],
+            },
+            "recipe_parameters": {
+                "moduletype_name_contains": ["RecPar"],
+                "moduletype_label_equals": [],
+                "descendant_moduletype_name_contains": [],
+                "descendant_moduletype_label_equals": [],
+            },
+            "engineering_parameters": {
+                "moduletype_name_contains": ["EngPar"],
+                "moduletype_label_equals": [],
+                "descendant_moduletype_name_contains": [],
+                "descendant_moduletype_label_equals": [],
+            },
+            "user_parameters": {
+                "moduletype_name_contains": ["UsrPar"],
+                "moduletype_label_equals": [],
+                "descendant_moduletype_name_contains": [],
+                "descendant_moduletype_label_equals": [],
+            },
+        },
+    },
 }
+
+
+def _deep_merge_dict(base: dict, override: dict) -> dict:
+    merged = deepcopy(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_dict(merged[key], value)
+            continue
+        merged[key] = value
+    return merged
+
+
+def get_documentation_config(cfg: dict | None = None) -> dict:
+    documentation_defaults = deepcopy(DEFAULT_CONFIG["documentation"])
+    if not cfg:
+        return documentation_defaults
+
+    if "documentation" in cfg and isinstance(cfg.get("documentation"), dict):
+        override = cfg.get("documentation", {})
+    else:
+        override = cfg
+    if not isinstance(override, dict):
+        return documentation_defaults
+    return _deep_merge_dict(documentation_defaults, override)
+
+
+def get_documentation_unit_selection(cfg: dict | None = None) -> dict:
+    documentation_cfg = get_documentation_config(cfg)
+    units = documentation_cfg.get("units", {})
+    if not isinstance(units, dict):
+        return deepcopy(DEFAULT_CONFIG["documentation"]["units"])
+    return _deep_merge_dict(DEFAULT_CONFIG["documentation"]["units"], units)
 
 def get_config_path() -> Path:
     if os.name == "nt":
@@ -33,15 +124,14 @@ def get_config_path() -> Path:
 def load_config(path: Path) -> tuple[dict, bool]:
     if not path.exists():
         print(f"⚠ No config found, creating default: {path}")
-        cfg = DEFAULT_CONFIG.copy()
+        cfg = deepcopy(DEFAULT_CONFIG)
         save_config(path, cfg)
         return cfg, True
 
     with path.open("rb") as f:
         cfg = tomllib.load(f)
 
-    merged = DEFAULT_CONFIG.copy()
-    merged.update(cfg)
+    merged = _deep_merge_dict(DEFAULT_CONFIG, cfg)
     merged.pop("ignore_ABB_lib", None)
     return merged, False
 
@@ -108,6 +198,7 @@ def self_check(cfg: dict) -> bool:
         "ABB_lib_dir",
         "icf_dir",
         "other_lib_dirs",
+        "documentation",
     ]
     for k in required_keys:
         if k not in cfg:
@@ -154,6 +245,75 @@ def self_check(cfg: dict) -> bool:
             else:
                 print(f"❌ {target} (not found)")
                 ok = False
+
+    documentation = cfg.get("documentation", {})
+    if not isinstance(documentation, dict):
+        print("❌ documentation must be a table/object")
+        ok = False
+    else:
+        section_order = documentation.get("section_order", [])
+        if not isinstance(section_order, list) or not all(
+            isinstance(name, str) and name.strip() for name in section_order
+        ):
+            print("❌ documentation.section_order must be a non-empty list of strings")
+            ok = False
+        else:
+            print(
+                "✔ documentation.section_order: "
+                + ", ".join(str(name) for name in section_order)
+            )
+
+        classifications = documentation.get("classifications", {})
+        if not isinstance(classifications, dict) or not classifications:
+            print("❌ documentation.classifications must be a non-empty table/object")
+            ok = False
+        else:
+            for category, rule in classifications.items():
+                if not isinstance(rule, dict):
+                    print(f"❌ documentation.classifications.{category} must be a table/object")
+                    ok = False
+                    continue
+                for key in _DOCUMENTATION_RULE_LIST_KEYS:
+                    values = rule.get(key, [])
+                    if not isinstance(values, list) or not all(
+                        isinstance(item, str) for item in values
+                    ):
+                        print(
+                            f"❌ documentation.classifications.{category}.{key} must be a list of strings"
+                        )
+                        ok = False
+                if ok:
+                    active = [
+                        key for key in _DOCUMENTATION_RULE_LIST_KEYS if rule.get(key)
+                    ]
+                    summary = ", ".join(active) if active else "no active matchers"
+                    print(f"✔ documentation.classifications.{category}: {summary}")
+
+        units = documentation.get("units", {})
+        if not isinstance(units, dict):
+            print("❌ documentation.units must be a table/object")
+            ok = False
+        else:
+            mode = str(units.get("mode", "all")).strip().lower()
+            if mode not in _DOCUMENTATION_UNIT_SELECTION_MODES:
+                print(
+                    "❌ documentation.units.mode must be one of: "
+                    + ", ".join(sorted(_DOCUMENTATION_UNIT_SELECTION_MODES))
+                )
+                ok = False
+            else:
+                print(f"✔ documentation.units.mode: {mode}")
+
+            for key in ("instance_paths", "moduletype_names"):
+                values = units.get(key, [])
+                if not isinstance(values, list) or not all(
+                    isinstance(item, str) for item in values
+                ):
+                    print(f"❌ documentation.units.{key} must be a list of strings")
+                    ok = False
+                else:
+                    summary = ", ".join(values) if values else "<empty>"
+                    print(f"✔ documentation.units.{key}: {summary}")
 
     print("------------------------------\n")
     return ok

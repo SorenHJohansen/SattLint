@@ -1,6 +1,8 @@
 """Analyzer registry for CLI entrypoints."""
 from __future__ import annotations
 
+from sattlint.analyzers.spec_compliance import analyze_spec_compliance
+
 from .framework import AnalysisContext, AnalyzerSpec
 from .sfc import analyze_sfc
 from .variables import analyze_variables
@@ -28,6 +30,13 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
 
     def _run_shadowing(context: AnalysisContext):
         return analyze_shadowing(
+            context.base_picture,
+            debug=context.debug,
+            unavailable_libraries=context.unavailable_libraries,
+        )
+
+    def _run_spec_compliance(context: AnalysisContext):
+        return analyze_spec_compliance(
             context.base_picture,
             debug=context.debug,
             unavailable_libraries=context.unavailable_libraries,
@@ -68,6 +77,13 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
             name="Variable shadowing",
             description="Local variables hiding outer or global names",
             run=_run_shadowing,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="spec-compliance",
+            name="Engineering spec compliance",
+            description="AST-visible checks from the application engineering spec",
+            run=_run_spec_compliance,
             enabled=True,
         ),
     ]

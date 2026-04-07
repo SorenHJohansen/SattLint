@@ -1,6 +1,7 @@
 """Tests for the interactive CLI application helpers."""
 
 import builtins
+from copy import deepcopy
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -204,6 +205,29 @@ def test_self_check_handles_paths(tmp_path, monkeypatch, capsys):
     assert "✔ Root" in out
 
 
+def test_documentation_config_defaults_are_merged(tmp_path):
+    config_path = tmp_path / "config.toml"
+    cfg, _created = app.load_config(config_path)
+    cfg["documentation"] = {
+        "classifications": {
+            "operations": {
+                "descendant_moduletype_label_equals": ["CustomLib:CustomOperation"]
+            }
+        }
+    }
+
+    app.save_config(config_path, cfg)
+    loaded, _created = app.load_config(config_path)
+
+    documentation_cfg = app.config_module.get_documentation_config(loaded)
+    assert documentation_cfg["classifications"]["operations"]["descendant_moduletype_label_equals"] == [
+        "CustomLib:CustomOperation"
+    ]
+    assert documentation_cfg["classifications"]["equipment_modules"]["descendant_moduletype_label_equals"] == [
+        "nnestruct:EquipModCoordinate"
+    ]
+
+
 def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_context):
     if real_context:
         cfg = real_context["cfg"].copy()
@@ -363,6 +387,21 @@ def test_config_menu_all_options(noop_screen, monkeypatch, tmp_path):
     assert cfg["mode"] in ("official", "draft")
 
 
+def test_documentation_menu_scope_by_moduletype(noop_screen, monkeypatch):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    inputs = ["4", "ApplTank, XDilute_221X251XY", "b"]
+    monkeypatch.setattr(builtins, "input", make_input(inputs))
+
+    dirty = app.documentation_menu(cfg)
+
+    assert dirty is True
+    assert cfg["documentation"]["units"]["mode"] == "moduletype_names"
+    assert cfg["documentation"]["units"]["moduletype_names"] == [
+        "ApplTank",
+        "XDilute_221X251XY",
+    ]
+
+
 def test_main_menu_all_options(noop_screen, monkeypatch, real_context):
     cfg = real_context["cfg"].copy() if real_context else app.DEFAULT_CONFIG.copy()
 
@@ -373,11 +412,12 @@ def test_main_menu_all_options(noop_screen, monkeypatch, real_context):
 
     monkeypatch.setattr(app, "analysis_menu", lambda *_: calls.append("analysis"))
     monkeypatch.setattr(app, "dump_menu", lambda *_: calls.append("dump"))
+    monkeypatch.setattr(app, "documentation_menu", lambda *_: True)
     monkeypatch.setattr(app, "config_menu", lambda *_: True)
     monkeypatch.setattr(app, "save_config", lambda *_: calls.append("save"))
     monkeypatch.setattr(app, "force_refresh_ast", lambda *_: None)
 
-    inputs = ["1", "2", "3", "4", "5", "y", "q", "y"]
+    inputs = ["1", "2", "3", "4", "5", "6", "y", "q", "y"]
     monkeypatch.setattr(builtins, "input", make_input(inputs))
 
     app.main()

@@ -32,7 +32,8 @@ It parses SattLine source files, resolves dependencies across libraries, builds 
   - Min/Max mapping name mismatches
 - **SFC analysis** reports parallel-branch write races.
 - **Merge-project capability** – creates a synthetic `BasePicture` that aggregates all datatype and module-type definitions, allowing analysis across file boundaries.
-- **DOCX documentation generation** (`generate_docx`) produces a human-readable specification of the project.
+- **DOCX documentation generation** (`generate_docx`) produces an FS-style specification grouped by detected equipment modules, operations, and parameter categories.
+- **Unit-scoped documentation** lets you limit DOCX generation to selected unit roots by instance path or unit moduletype name.
 - **Debug mode** (`--debug` / `DEBUG`) prints detailed tracing of file discovery, parsing, and analysis steps.
 - **Strict mode** (`--strict`) aborts on missing files or parse errors, useful for CI pipelines.
 
@@ -126,7 +127,8 @@ q) Quit
 - **engine.py** – Workspace setup, parser creation, project loading, merging BasePicture
 - **sl_transformer.py** – Lark Transformer → concrete AST objects, handles all language constructs
 - **variables.py** – VariablesAnalyzer walks AST, records usage, generates reports
-- **docgenerator/** – `generate_docx(project_bp, out_path)` renders a structured Word document
+- **docgenerator/** – `generate_docx(project_bp, out_path, documentation_config=...)` renders an FS-style Word document; `classification.py` maps modules into documentation sections using config-driven rules
+- **Documentation menu** – preview unit candidates, choose scope by instance path or moduletype name, and generate filtered DOCX output from the interactive app
 - **models/** – AST node dataclasses (`BasePicture`, `Module`, `Variable`, etc.)
 - **constants.py** – Grammar literals, regex patterns, tree-tag keys
 
@@ -193,7 +195,7 @@ All settings are stored in config.toml, which is the single source of truth.
 # ----------------------------
 # General project configuration
 # ----------------------------
-root = "ProgramName"
+analyzed_programs_and_libraries = ["ProgramName"]
 mode = "official"          # "official" or "draft"
 scan_root_only = false
 debug = false
@@ -207,7 +209,42 @@ other_lib_dirs = [
   "/mnt/projects/sattline/commonlib",
   "/mnt/projects/sattline/externallibs",
 ]
+
+# ----------------------------
+# Documentation generation
+# ----------------------------
+[documentation]
+section_order = [
+  "equipment_modules",
+  "operations",
+  "recipe_parameters",
+  "engineering_parameters",
+  "user_parameters",
+]
+
+[documentation.classifications.operations]
+descendant_moduletype_label_equals = ["NNEMESIFLib:MES_StateControl"]
+
+[documentation.classifications.equipment_modules]
+descendant_moduletype_label_equals = ["nnestruct:EquipModCoordinate"]
+
+[documentation.classifications.recipe_parameters]
+moduletype_name_contains = ["RecPar"]
+
+[documentation.classifications.engineering_parameters]
+moduletype_name_contains = ["EngPar"]
+
+[documentation.classifications.user_parameters]
+moduletype_name_contains = ["UsrPar"]
+
+[documentation.units]
+mode = "all" # all | instance_paths | moduletype_names
+instance_paths = []
+moduletype_names = []
 ```
+
+The documentation rules are editable. The defaults above are designed around the common NNE/ABB patterns discovered in the loaded project graph.
+When `documentation.units.mode` is not `all`, the DOCX generator filters the document to the selected unit roots and their descendants.
 
 ---
 
