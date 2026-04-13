@@ -33,9 +33,10 @@ It parses SattLine source files, resolves dependencies across libraries, builds 
 - **SFC analysis** reports parallel-branch write races.
 - **Merge-project capability** – creates a synthetic `BasePicture` that aggregates all datatype and module-type definitions, allowing analysis across file boundaries.
 - **DOCX documentation generation** (`generate_docx`) produces an FS-style specification grouped by detected equipment modules, operations, and parameter categories.
-- **Unit-scoped documentation** lets you limit DOCX generation to selected unit roots by instance path or unit moduletype name.
+- **Unit-scoped documentation** lets you limit DOCX generation to selected unit roots from the Documentation menu without storing that scope in config.
 - **Debug mode** (`--debug` / `DEBUG`) prints detailed tracing of file discovery, parsing, and analysis steps.
 - **Strict mode** (`--strict`) aborts on missing files or parse errors, useful for CI pipelines.
+- **Language Server Protocol support** via `sattlint-lsp` plus a local VS Code client in `vscode/sattline-vscode/` for syntax diagnostics, go-to-definition, and completion.
 
 ---
 
@@ -171,6 +172,44 @@ pip install -e .[dev]
 # VS Code will prompt to install Python extension and use .vscode/settings.json
 ```
 
+### VS Code SattLine Extension
+
+The repository includes a no-build VS Code extension client under `vscode/sattline-vscode/` plus a Python LSP server exposed as `sattlint-lsp`.
+
+Set up the Python server first:
+
+```powershell
+.venv\Scripts\Activate.ps1
+pip install -e .[lsp]
+```
+
+Install the VS Code client by copying or symlinking `vscode\sattline-vscode` into your user extensions directory as `local.sattline-vscode-0.1.0`, then reload the VS Code window.
+
+On Windows, that target directory is typically:
+
+```text
+%USERPROFILE%\.vscode\extensions\local.sattline-vscode-0.1.0
+```
+
+There is no npm or TypeScript build step for local development. The extension launches `python -m sattlint_lsp.server` over stdio, supports `.s`, `.x`, `.l`, and `.z` files, and ships a TextMate grammar for syntax highlighting.
+
+If you want a `.vsix`, package it from WSL in the extension folder:
+
+```bash
+cd /mnt/c/Users/SQHJ/OneDrive\ -\ Novo\ Nordisk/Workspace/GitHub.com/SattLint/vscode/sattline-vscode
+npm run package:vsix
+```
+
+That command produces `sattline-vscode-0.1.0.vsix` in `vscode/sattline-vscode/`.
+
+Useful settings:
+- `sattlineLsp.pythonPath` to override interpreter detection
+- `sattlineLsp.entryFile` when editing `.l`/`.z` files in a workspace with multiple root programs
+- `sattlineLsp.mode` to switch between `draft` and `official` resolution
+- `sattlineLsp.scanRootOnly` to skip recursive dependency loading
+- `sattlineLsp.enableVariableDiagnostics` to disable analyzer-backed warnings
+- `sattlineLsp.maxCompletionItems` to cap completion results
+
 ### Code Quality Tools
 - **Formatting**: Black (configured in pyproject.toml)
 - **Linting**: Ruff (configured in pyproject.toml)
@@ -214,37 +253,24 @@ other_lib_dirs = [
 # Documentation generation
 # ----------------------------
 [documentation]
-section_order = [
-  "equipment_modules",
-  "operations",
-  "recipe_parameters",
-  "engineering_parameters",
-  "user_parameters",
-]
+[documentation.classifications.ops]
+desc_label_equals = ["NNEMESIFLib:MES_StateControl"]
 
-[documentation.classifications.operations]
-descendant_moduletype_label_equals = ["NNEMESIFLib:MES_StateControl"]
+[documentation.classifications.em]
+desc_label_equals = ["nnestruct:EquipModCoordinate"]
 
-[documentation.classifications.equipment_modules]
-descendant_moduletype_label_equals = ["nnestruct:EquipModCoordinate"]
+[documentation.classifications.rp]
+name_contains = ["RecPar"]
 
-[documentation.classifications.recipe_parameters]
-moduletype_name_contains = ["RecPar"]
+[documentation.classifications.ep]
+name_contains = ["EngPar"]
 
-[documentation.classifications.engineering_parameters]
-moduletype_name_contains = ["EngPar"]
-
-[documentation.classifications.user_parameters]
-moduletype_name_contains = ["UsrPar"]
-
-[documentation.units]
-mode = "all" # all | instance_paths | moduletype_names
-instance_paths = []
-moduletype_names = []
+[documentation.classifications.up]
+name_contains = ["UsrPar"]
 ```
 
 The documentation rules are editable. The defaults above are designed around the common NNE/ABB patterns discovered in the loaded project graph.
-When `documentation.units.mode` is not `all`, the DOCX generator filters the document to the selected unit roots and their descendants.
+The FS section order follows the reference template in code and is not configured in `config.toml`. Unit scope is selected at runtime from the Documentation menu by unit instance path or unit moduletype name.
 
 ---
 

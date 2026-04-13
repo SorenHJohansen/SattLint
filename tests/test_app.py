@@ -210,8 +210,8 @@ def test_documentation_config_defaults_are_merged(tmp_path):
     cfg, _created = app.load_config(config_path)
     cfg["documentation"] = {
         "classifications": {
-            "operations": {
-                "descendant_moduletype_label_equals": ["CustomLib:CustomOperation"]
+            "ops": {
+                "desc_label_equals": ["CustomLib:CustomOperation"]
             }
         }
     }
@@ -220,11 +220,31 @@ def test_documentation_config_defaults_are_merged(tmp_path):
     loaded, _created = app.load_config(config_path)
 
     documentation_cfg = app.config_module.get_documentation_config(loaded)
-    assert documentation_cfg["classifications"]["operations"]["descendant_moduletype_label_equals"] == [
+    assert documentation_cfg["classifications"]["ops"]["desc_label_equals"] == [
         "CustomLib:CustomOperation"
     ]
-    assert documentation_cfg["classifications"]["equipment_modules"]["descendant_moduletype_label_equals"] == [
+    assert documentation_cfg["classifications"]["em"]["desc_label_equals"] == [
         "nnestruct:EquipModCoordinate"
+    ]
+
+
+def test_legacy_documentation_rule_keys_are_normalized():
+    documentation_cfg = app.config_module.get_documentation_config(
+        {
+            "documentation": {
+                "classifications": {
+                    "ops": {
+                        "descendant_moduletype_label_equals": [
+                            "CustomLib:LegacyOperation"
+                        ]
+                    }
+                }
+            }
+        }
+    )
+
+    assert documentation_cfg["classifications"]["ops"]["desc_label_equals"] == [
+        "CustomLib:LegacyOperation"
     ]
 
 
@@ -389,14 +409,16 @@ def test_config_menu_all_options(noop_screen, monkeypatch, tmp_path):
 
 def test_documentation_menu_scope_by_moduletype(noop_screen, monkeypatch):
     cfg = deepcopy(app.DEFAULT_CONFIG)
+    app._set_documentation_unit_selection(mode="all")
     inputs = ["4", "ApplTank, XDilute_221X251XY", "b"]
     monkeypatch.setattr(builtins, "input", make_input(inputs))
 
     dirty = app.documentation_menu(cfg)
+    selection = app._get_documentation_unit_selection()
 
     assert dirty is True
-    assert cfg["documentation"]["units"]["mode"] == "moduletype_names"
-    assert cfg["documentation"]["units"]["moduletype_names"] == [
+    assert selection["mode"] == "moduletype_names"
+    assert selection["moduletype_names"] == [
         "ApplTank",
         "XDilute_221X251XY",
     ]

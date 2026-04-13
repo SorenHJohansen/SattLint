@@ -237,9 +237,9 @@ def _render_operation_section(
     _underlined(doc, "Description")
     _render_module_metadata(doc, entry)
 
-    recipe_parameters = classification.descendants(entry, category="recipe_parameters")
-    engineering_parameters = classification.descendants(entry, category="engineering_parameters")
-    user_parameters = classification.descendants(entry, category="user_parameters")
+    recipe_parameters = classification.descendants(entry, category="rp")
+    engineering_parameters = classification.descendants(entry, category="ep")
+    user_parameters = classification.descendants(entry, category="up")
 
     _render_parameter_catalog(doc, "Recipe parameters", recipe_parameters)
     _render_parameter_catalog(doc, "Engineering parameters", engineering_parameters)
@@ -307,7 +307,7 @@ def _render_physical_model(
     root: BasePicture,
     classification: DocumentationClassification,
 ) -> None:
-    equipment_modules = classification.categories.get("equipment_modules", [])
+    equipment_modules = classification.categories.get("em", [])
     uncategorized = classification.uncategorized
 
     _heading(doc, "S88 Physical model", level=1)
@@ -315,7 +315,7 @@ def _render_physical_model(
     _paragraph(doc, f"The detected process-cell content for {root.header.name} is listed below.")
 
     _heading(doc, "Instance-configurable parameters", level=3)
-    root_engineering = classification.categories.get("engineering_parameters", [])
+    root_engineering = classification.categories.get("ep", [])
     _render_summary_table(doc, root_engineering, first_header="Engineering Parameter")
 
     if classification.scope and classification.scope.roots:
@@ -345,10 +345,10 @@ def _render_procedural_model(
     root: BasePicture,
     classification: DocumentationClassification,
 ) -> None:
-    operations = classification.categories.get("operations", [])
-    engineering_parameters = classification.categories.get("engineering_parameters", [])
-    user_parameters = classification.categories.get("user_parameters", [])
-    recipe_parameters = classification.categories.get("recipe_parameters", [])
+    operations = classification.categories.get("ops", [])
+    engineering_parameters = classification.categories.get("ep", [])
+    user_parameters = classification.categories.get("up", [])
+    recipe_parameters = classification.categories.get("rp", [])
 
     _heading(doc, "S88 Procedural model", level=1)
     _heading(doc, f"Operations Unit Class - {root.header.name}", level=2)

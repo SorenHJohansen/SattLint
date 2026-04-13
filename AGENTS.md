@@ -47,7 +47,7 @@
 
 ## Project Overview
 
-**SattLint** parses SattLine source files, builds an Abstract Syntax Tree (AST), resolves dependencies across library directories, performs static analysis on variable usage, exposes a single-file syntax validation CLI, and can run engineering-spec compliance checks over AST-visible code patterns. DOCX generation now builds an FS-style document structure from configurable documentation-classification rules instead of dumping the merged AST in declaration order, and can be scoped to selected unit roots by instance path or unit moduletype name.
+**SattLint** parses SattLine source files, builds an Abstract Syntax Tree (AST), resolves dependencies across library directories, performs static analysis on variable usage, exposes a single-file syntax validation CLI, and can run engineering-spec compliance checks over AST-visible code patterns. DOCX generation now builds an FS-style document structure from configurable documentation-classification rules instead of dumping the merged AST in declaration order, and unit scoping is chosen interactively in the app rather than persisted in config. The parser stack now has an explicit parser-core layer under `src/sattline_parser/`; SattLint consumes that package and keeps compatibility wrappers under `src/sattlint/grammar/`, `src/sattlint/models/ast_model.py`, and `src/sattlint/transformer/sl_transformer.py`. Editor-facing workspace discovery and symbol/completion/definition helpers now live in `src/sattlint/editor_api.py`, parser-core preserves declaration spans on key AST nodes plus source spans on variable references so editor clients can map cursor positions back to definitions, editor snapshots skip unresolved moduletype instances when proprietary libraries are unavailable so LSP features can continue over the reachable AST, and `editor_api.build_source_snapshot_from_basepicture()` can now build a source snapshot directly from an already-validated single-file AST. The external language-server layer lives in `src/sattlint_lsp/` with a no-build VS Code client under `vscode/sattline-vscode/`; the server now keeps versioned per-document text state, caches adapter-backed local parse results in `document_state`, preserves the prior adapter result across edits, and can run syntax-only dirty-buffer diagnostics without rebuilding a local semantic snapshot, while definition/completion requests upgrade that cached analysis to a source snapshot on demand and merge dirty-buffer definitions/completions ahead of the workspace snapshot. `src/sattlint_lsp/local_parser.py` now contains the real incremental backend: it strips comments once, reuses checkpointed Lark interactive-parser state up to the last safe prefix before the earliest changed line, reparses only the invalidated suffix, revalidates the transformed AST, and can upgrade a syntax-only analysis to a local semantic snapshot without reparsing unchanged text. Strict post-transform validation also now catches typo-level datatype declarations, incompatible declaration init values, duplicate submodule names within one scope, duplicate or invalid locally-resolvable parameter-mapping targets, and writes to `CONST` variables. The VS Code client can also be packaged into a `.vsix` from WSL by running `npm run package:vsix` inside that extension folder.
 
 ### File Extensions
 
@@ -60,8 +60,8 @@
 
 ### Core Workflow
 
-1. **Parse**: Lark grammar (`grammar/sattline.lark`) → Parse tree
-2. **Transform**: `SLTransformer` → AST objects (`models/ast_model.py`)
+1. **Parse**: Lark grammar (`src/sattline_parser/grammar/sattline.lark`) ? Parse tree
+2. **Transform**: `SLTransformer` ? AST objects (`src/sattline_parser/models/ast_model.py`)
 3. **Validate CLI**: `sattlint syntax-check <file>` runs parse + transform on one file, applies strict post-transform validation, and prints `OK` or a compact error
 4. **Resolve**: For each configured analyzed target in `analyzed_programs_and_libraries`, build a unified `BasePicture` with all dependencies needed for resolution
 5. **Analyze**: Run analyzers per analyzed target; dependencies remain available for parsing/type resolution, but reporting is scoped to the explicitly analyzed target being processed
@@ -115,14 +115,14 @@ SattLine programs are organized hierarchically:
 
 ```sattline
 BasePicture              # Root container
-├── ModuleTypeDefs       # Type definitions (reusable templates)
-│   ├── DataType (Records)
-│   └── ModuleTypeDefinitions
-├── LocalVariables       # Global variables
-└── Submodules           # Module instances
-    ├── SingleModule     # Defined inline with MODULEDEFINITION
-    ├── FrameModule      # Grouping container (no own vars)
-    └── ModuleTypeInstance  # Instance of a ModuleTypeDef
+??? ModuleTypeDefs       # Type definitions (reusable templates)
+?   ??? DataType (Records)
+?   ??? ModuleTypeDefinitions
+??? LocalVariables       # Global variables
+??? Submodules           # Module instances
+    ??? SingleModule     # Defined inline with MODULEDEFINITION
+    ??? FrameModule      # Grouping container (no own vars)
+    ??? ModuleTypeInstance  # Instance of a ModuleTypeDef
 ```
 
 ### Variables
@@ -284,7 +284,7 @@ ENDDEF (*ModuleName*);
 
 ### Core AST Classes
 
-All defined in `src/sattlint/models/ast_model.py`:
+Defined in `src/sattline_parser/models/ast_model.py` and re-exported from `src/sattlint/models/ast_model.py` for compatibility:
 
 #### BasePicture
 The root container aggregating all parsed content:
@@ -318,6 +318,7 @@ class Variable:
     secure: bool = False
     init_value: Any = None
     description: str = None
+    declaration_span: SourceSpan | None = None
 ```
 
 #### VariableUsage
@@ -447,7 +448,7 @@ Expressions are stored as nested tuples for easy traversal:
 ('FunctionCall', 'FunctionName', [arg1, arg2, ...])
 
 # Variable reference with optional field path and OLD/NEW
-{'var_name': 'VarName.Field:OLD'}
+{'var_name': 'VarName.Field', 'state': 'old', 'span': SourceSpan(line=12, column=5)}
 
 # Numeric literals carry source spans
 IntLiteral(42, SourceSpan(line=12, column=5))
@@ -669,21 +670,21 @@ def analyze_something(base_picture: BasePicture) -> SimpleReport:
 
 ### Extending the Grammar
 
-1. **Add rule to `grammar/sattline.lark`**:
+1. **Add rule to `src/sattline_parser/grammar/sattline.lark`**:
 
 ```lark
 new_construct: NEW_KEYWORD some_argument
 NEW_KEYWORD.10: "{GRAMMAR_VALUE_NEW_KEYWORD}"
 ```
 
-2. **Add constant to `grammar/constants.py`**:
+2. **Add constant to `src/sattline_parser/grammar/constants.py`**:
 
 ```python
 GRAMMAR_VALUE_NEW_KEYWORD = "NewKeyword"
 TREE_TAG_NEW_CONSTRUCT = "new_construct"
 ```
 
-3. **Add transformer method** in `transformer/sl_transformer.py`:
+3. **Add transformer method** in `src/sattline_parser/transformer/sl_transformer.py`:
 
 ```python
 def new_construct(self, items):
@@ -691,7 +692,7 @@ def new_construct(self, items):
     return NewConstructNode(args)
 ```
 
-4. **Update AST model** if needed in `models/ast_model.py`
+4. **Update AST model** if needed in `src/sattline_parser/models/ast_model.py`
 
 ### Adding Tests
 
@@ -815,15 +816,29 @@ print(analyze_module_localvar_fields(bp, "BasePicture.Module1", "LocalVar"))
 |------|---------|
 | `src/sattlint/app.py` | CLI entry point, interactive menu |
 | `src/sattlint/config.py` | Persistent config, self-checks, and analyzed-target validation |
-| `src/sattlint/engine.py` | Parser creation, project loading, BasePicture merging |
+| `src/sattlint/editor_api.py` | Public workspace discovery and semantic-query helpers for editor/LSP consumers, including cursor-position definition lookup and AST-to-source-snapshot construction |
+| `src/sattline_parser/api.py` | Parser-core entry points for grammar creation, source loading, and parse/transform-only AST generation |
+| `src/sattline_parser/grammar/sattline.lark` | Parser-core Lark grammar definition |
+| `src/sattline_parser/grammar/constants.py` | Parser-core grammar constants and tree tag keys |
+| `src/sattline_parser/grammar/parser_decode.py` | Parser-core compressed-source decoding helpers |
+| `src/sattline_parser/transformer/sl_transformer.py` | Parser-core Lark Transformer ? AST objects |
+| `src/sattline_parser/models/ast_model.py` | Parser-core AST node dataclasses |
+| `src/sattline_parser/utils/text_processing.py` | Parser-core comment stripping helper used before parsing |
+| `src/sattline_parser/utils/formatter.py` | Parser-core AST pretty-printing and formatting helpers |
+| `src/sattlint/engine.py` | SattLint syntax validation, project loading, BasePicture merging, and parser-core integration |
 | `src/sattlint/cache.py` | AST caching for faster reloads |
-| `src/sattlint/grammar/sattline.lark` | Lark grammar definition |
-| `src/sattlint/grammar/constants.py` | Grammar constants and tree tag keys |
-| `src/sattlint/transformer/sl_transformer.py` | Lark Transformer → AST objects |
-| `src/sattlint/models/ast_model.py` | AST node dataclasses |
+| `src/sattlint/grammar/constants.py` | Compatibility wrapper re-exporting parser-core grammar constants |
+| `src/sattlint/grammar/parser_decode.py` | Compatibility wrapper re-exporting parser-core decode helpers |
+| `src/sattlint/transformer/sl_transformer.py` | Compatibility wrapper re-exporting the parser-core transformer |
+| `src/sattlint/models/ast_model.py` | Compatibility wrapper re-exporting parser-core AST node classes |
 | `src/sattlint/models/project_graph.py` | Project dependency graph |
 | `src/sattlint/utils/text_processing.py` | Text utilities (comment stripping, comment code detection) |
-| `src/sattlint/utils/formatter.py` | AST node pretty-printing and formatting |
+| `src/sattlint_lsp/document_state.py` | Mutable per-document LSP text state, ranged edit application, cached local parser-analysis metadata, previous-analysis retention for incremental parser handoff, and snapshot-required cache checks |
+| `src/sattlint_lsp/local_parser.py` | Checkpoint-based incremental LSP parser adapter that reuses prior Lark interactive-parser state across edits, validates the rebuilt AST, and lazily upgrades clean parses into source-only snapshots |
+| `src/sattlint_lsp/server.py` | Pygls-based language server that reuses `editor_api` for diagnostics, completion, and go-to-definition, and overlays dirty-buffer results ahead of workspace snapshots |
+| `vscode/sattline-vscode/extension.js` | No-build VS Code client that speaks stdio JSON-RPC to `sattlint_lsp.server` |
+| `vscode/sattline-vscode/package.json` | VS Code language contribution points, settings, and activation metadata for SattLine files |
+| `vscode/sattline-vscode/syntaxes/sattline.tmLanguage.json` | TextMate grammar used by the VS Code client for syntax highlighting |
 
 ### Analysis
 
@@ -867,6 +882,8 @@ print(analyze_module_localvar_fields(bp, "BasePicture.Module1", "LocalVar"))
 | `tests/fixtures/sample_sattline_files/LinterTestProgram.s` | Comprehensive test program |
 | `tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s` | Grammar coverage test |
 | `tests/fixtures/sample_sattline_files/BatchDemo.s` | Complex batch processing example |
+| `tests/test_editor_api.py` | Snapshot/discovery/completion/definition coverage for editor-facing APIs |
+| `tests/test_lsp_server.py` | Focused tests for entry-file resolution, syntax diagnostics, completion, semantic diagnostics, and definition mapping |
 
 ### Reference Documentation
 
@@ -893,7 +910,7 @@ print(analyze_module_localvar_fields(bp, "BasePicture.Module1", "LocalVar"))
 
 - **Data acquisition** covers journal operations (JouCreate, JouWriteEntry, JouReadEntry), history logging, and data storage
 
-- **Batch control** follows S88.01 standard with Process Cell → Unit → Equipment Module → Control Module hierarchy, RecipeManagerMaster, ProcessManagerMaster, and Unit Supervisor modules
+- **Batch control** follows S88.01 standard with Process Cell ? Unit ? Equipment Module ? Control Module hierarchy, RecipeManagerMaster, ProcessManagerMaster, and Unit Supervisor modules
 
 - **Controllers** include RealSignal data type, AnalogInRealS, FilterRealS, PID controllers, and mathematical operations
 
@@ -954,12 +971,7 @@ The default documentation config classifies:
 - engineering parameters by moduletype name containing `EngPar`
 - user parameters by moduletype name containing `UsrPar`
 
-The documentation unit-scope config supports:
-- `mode = "all"` to document everything in the analyzed target
-- `mode = "instance_paths"` with dotted unit instance paths such as `StartMaster.KaHA251A`
-- `mode = "moduletype_names"` with unit moduletype names such as `ApplTank`
-
-`classification.py` also exposes unit-candidate discovery used by the interactive documentation menu in `app.py`.
+`classification.py` also exposes unit-candidate discovery used by the interactive documentation menu in `app.py`, where scope can be selected by unit instance path or unit moduletype name.
 
 ### Walk the module hierarchy
 
@@ -985,7 +997,7 @@ walk_modules(bp.submodules, [bp.header.name])
 3. **Check for field-level access** - SattLine heavily uses record types with dot notation
 4. **Respect parameter mappings** - Variables are often accessed indirectly through `=>` connections
 5. **Consider case-insensitivity** - SattLine identifiers are case-insensitive (compare with `.casefold()`)
-6. **Identifier charset** - Grammar allows extended Latin letters in names (e.g., `å`, `ä`, `ö`, `æ`, `ø`, `é`, `ß`, `ñ`, `ç`).
+6. **Identifier charset** - Grammar allows extended Latin letters in names (e.g., `�`, `�`, `�`, `�`, `�`, `�`, `�`, `�`, `�`).
 7. **Keyword-prefixed names** - The lexer treats `NOT`, `AND`, `OR`, `IF`, `THEN`, `ELSE`, `ELSIF`, `ENDIF` as operators/keywords only when they are standalone words, so identifiers like `NOTOG217Active` or `IFState` are valid.
 8. **SEQFORK targets** - `SEQFORK` accepts multiple target names in a single line (comma-separated).
 6. **Understand the scope hierarchy** - Variables can be accessed from parent scopes unless shadowed
@@ -998,12 +1010,14 @@ walk_modules(bp.submodules, [bp.header.name])
 13. **Strict mode only** - Prefer strict validation and fail loudly on any ambiguity or missing data; do not add fallback behavior
 14. **Sequence structure validation** - The post-transform validator rejects consecutive `SEQSTEP` nodes with no intervening transition, missing initial steps, duplicate sequence labels, and unknown `SEQFORK` targets even if the grammar accepted the token stream
 15. **State access validation** - The post-transform validator rejects `:OLD` / `:NEW` access on variables that are not declared `STATE`
-16. **Scope uniqueness validation** - The post-transform validator rejects duplicate local variable names, datatype names, and moduletype names within the same declaration scope
-17. **String literal call validation** - The post-transform validator rejects string literals in module-code function/procedure call arguments; string literals are allowed in parameter mappings only
-18. **Builtin call datatype validation** - When a module-code call matches an entry in `analyzers/sattline_builtins.py`, the post-transform validator checks argument count, requires `in var`/`out`/`inout` parameters to be variable references, and checks argument datatypes against the builtin signature using scoped variables and record field resolution
-19. **Comment placement validation** - `sattlint syntax-check` rejects freestanding comments that appear directly inside `ModuleCode` before the first `EQUATIONBLOCK` or `SEQUENCE`/`OPENSEQUENCE`; comments outside `ModuleCode` and standard trailing `ENDDEF (*Name*)` label comments remain allowed
+16. **Scope uniqueness validation** - The post-transform validator rejects duplicate local variable names, datatype names, moduletype names, and sibling submodule instance names within the same declaration scope
+17. **Declaration validation** - The post-transform validator rejects builtin-like datatype typos (for example `intege` near `integer`) and declaration init values whose literal datatype is incompatible with the declared variable datatype
+18. **String literal call validation** - The post-transform validator rejects string literals in module-code function/procedure call arguments; string literals are allowed in parameter mappings only
+19. **Builtin call datatype validation** - When a module-code call matches an entry in `analyzers/sattline_builtins.py`, the post-transform validator checks argument count, requires `in var`/`out`/`inout` parameters to be variable references, rejects writes to `CONST` variables through `out`/`inout` builtin arguments, and checks argument datatypes against the builtin signature using scoped variables and record field resolution
+20. **Parameter mapping validation** - The post-transform validator rejects duplicate parameter-mapping targets and, when the target moduletype is locally resolvable, rejects unknown local parameter targets, invalid field-target paths, and obvious datatype mismatches in parameter mappings
+21. **Comment placement validation** - `sattlint syntax-check` rejects freestanding comments that appear directly inside `ModuleCode` before the first `EQUATIONBLOCK` or `SEQUENCE`/`OPENSEQUENCE`; comments outside `ModuleCode` and standard trailing `ENDDEF (*Name*)` label comments remain allowed
 
 ---
 
-*Last updated: 2026-04-07*
+*Last updated: 2026-04-13*
 *For questions about SattLine syntax, see `sattline_language_reference.md`*

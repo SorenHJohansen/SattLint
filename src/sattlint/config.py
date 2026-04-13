@@ -9,12 +9,34 @@ import tomli_w
 from pathlib import Path
 
 _DOCUMENTATION_RULE_LIST_KEYS = (
-    "moduletype_name_contains",
-    "moduletype_label_equals",
-    "descendant_moduletype_name_contains",
-    "descendant_moduletype_label_equals",
+    "name_contains",
+    "label_equals",
+    "desc_name_contains",
+    "desc_label_equals",
 )
-_DOCUMENTATION_UNIT_SELECTION_MODES = {"all", "instance_paths", "moduletype_names"}
+
+_DOCUMENTATION_CATEGORY_KEYS = (
+    "em",
+    "ops",
+    "rp",
+    "ep",
+    "up",
+)
+
+_DOCUMENTATION_LEGACY_RULE_KEYS = {
+    "moduletype_name_contains": "name_contains",
+    "moduletype_label_equals": "label_equals",
+    "descendant_moduletype_name_contains": "desc_name_contains",
+    "descendant_moduletype_label_equals": "desc_label_equals",
+}
+
+_DOCUMENTATION_LEGACY_CATEGORY_KEYS = {
+    "equipment_modules": "em",
+    "operations": "ops",
+    "recipe_parameters": "rp",
+    "engineering_parameters": "ep",
+    "user_parameters": "up",
+}
 
 DEFAULT_CONFIG = {
     "analyzed_programs_and_libraries": [],
@@ -27,52 +49,40 @@ DEFAULT_CONFIG = {
     "icf_dir": "",
     "other_lib_dirs": [],
     "documentation": {
-        "section_order": [
-            "equipment_modules",
-            "operations",
-            "recipe_parameters",
-            "engineering_parameters",
-            "user_parameters",
-        ],
-        "units": {
-            "mode": "all",
-            "instance_paths": [],
-            "moduletype_names": [],
-        },
         "classifications": {
-            "equipment_modules": {
-                "moduletype_name_contains": [],
-                "moduletype_label_equals": [],
-                "descendant_moduletype_name_contains": [],
-                "descendant_moduletype_label_equals": [
+            "em": {
+                "name_contains": [],
+                "label_equals": [],
+                "desc_name_contains": [],
+                "desc_label_equals": [
                     "nnestruct:EquipModCoordinate"
                 ],
             },
-            "operations": {
-                "moduletype_name_contains": [],
-                "moduletype_label_equals": [],
-                "descendant_moduletype_name_contains": [],
-                "descendant_moduletype_label_equals": [
+            "ops": {
+                "name_contains": [],
+                "label_equals": [],
+                "desc_name_contains": [],
+                "desc_label_equals": [
                     "NNEMESIFLib:MES_StateControl"
                 ],
             },
-            "recipe_parameters": {
-                "moduletype_name_contains": ["RecPar"],
-                "moduletype_label_equals": [],
-                "descendant_moduletype_name_contains": [],
-                "descendant_moduletype_label_equals": [],
+            "rp": {
+                "name_contains": ["RecPar"],
+                "label_equals": [],
+                "desc_name_contains": [],
+                "desc_label_equals": [],
             },
-            "engineering_parameters": {
-                "moduletype_name_contains": ["EngPar"],
-                "moduletype_label_equals": [],
-                "descendant_moduletype_name_contains": [],
-                "descendant_moduletype_label_equals": [],
+            "ep": {
+                "name_contains": ["EngPar"],
+                "label_equals": [],
+                "desc_name_contains": [],
+                "desc_label_equals": [],
             },
-            "user_parameters": {
-                "moduletype_name_contains": ["UsrPar"],
-                "moduletype_label_equals": [],
-                "descendant_moduletype_name_contains": [],
-                "descendant_moduletype_label_equals": [],
+            "up": {
+                "name_contains": ["UsrPar"],
+                "label_equals": [],
+                "desc_name_contains": [],
+                "desc_label_equals": [],
             },
         },
     },
@@ -89,10 +99,44 @@ def _deep_merge_dict(base: dict, override: dict) -> dict:
     return merged
 
 
+def _normalize_documentation_rule_keys(config: dict) -> dict:
+    normalized = deepcopy(config)
+    documentation = normalized.get("documentation")
+    if not isinstance(documentation, dict):
+        return normalized
+
+    classifications = documentation.get("classifications")
+    if not isinstance(classifications, dict):
+        return normalized
+
+    for legacy_key, short_key in _DOCUMENTATION_LEGACY_CATEGORY_KEYS.items():
+        if legacy_key not in classifications:
+            continue
+        legacy_rule = classifications.pop(legacy_key)
+        if short_key in classifications:
+            continue
+        classifications[short_key] = legacy_rule
+
+    for rule in classifications.values():
+        if not isinstance(rule, dict):
+            continue
+        for legacy_key, short_key in _DOCUMENTATION_LEGACY_RULE_KEYS.items():
+            if legacy_key not in rule:
+                continue
+            legacy_values = rule.pop(legacy_key)
+            if short_key in rule:
+                continue
+            rule[short_key] = legacy_values
+
+    return normalized
+
+
 def get_documentation_config(cfg: dict | None = None) -> dict:
     documentation_defaults = deepcopy(DEFAULT_CONFIG["documentation"])
     if not cfg:
         return documentation_defaults
+
+    cfg = _normalize_documentation_rule_keys(cfg)
 
     if "documentation" in cfg and isinstance(cfg.get("documentation"), dict):
         override = cfg.get("documentation", {})
@@ -101,14 +145,6 @@ def get_documentation_config(cfg: dict | None = None) -> dict:
     if not isinstance(override, dict):
         return documentation_defaults
     return _deep_merge_dict(documentation_defaults, override)
-
-
-def get_documentation_unit_selection(cfg: dict | None = None) -> dict:
-    documentation_cfg = get_documentation_config(cfg)
-    units = documentation_cfg.get("units", {})
-    if not isinstance(units, dict):
-        return deepcopy(DEFAULT_CONFIG["documentation"]["units"])
-    return _deep_merge_dict(DEFAULT_CONFIG["documentation"]["units"], units)
 
 def get_config_path() -> Path:
     if os.name == "nt":
@@ -130,6 +166,8 @@ def load_config(path: Path) -> tuple[dict, bool]:
 
     with path.open("rb") as f:
         cfg = tomllib.load(f)
+
+    cfg = _normalize_documentation_rule_keys(cfg)
 
     merged = _deep_merge_dict(DEFAULT_CONFIG, cfg)
     merged.pop("ignore_ABB_lib", None)
@@ -251,24 +289,18 @@ def self_check(cfg: dict) -> bool:
         print("❌ documentation must be a table/object")
         ok = False
     else:
-        section_order = documentation.get("section_order", [])
-        if not isinstance(section_order, list) or not all(
-            isinstance(name, str) and name.strip() for name in section_order
-        ):
-            print("❌ documentation.section_order must be a non-empty list of strings")
-            ok = False
-        else:
-            print(
-                "✔ documentation.section_order: "
-                + ", ".join(str(name) for name in section_order)
-            )
-
         classifications = documentation.get("classifications", {})
         if not isinstance(classifications, dict) or not classifications:
             print("❌ documentation.classifications must be a non-empty table/object")
             ok = False
         else:
             for category, rule in classifications.items():
+                if category not in _DOCUMENTATION_CATEGORY_KEYS:
+                    print(
+                        f"❌ documentation.classifications.{category} is not a supported category"
+                    )
+                    ok = False
+                    continue
                 if not isinstance(rule, dict):
                     print(f"❌ documentation.classifications.{category} must be a table/object")
                     ok = False
@@ -282,38 +314,13 @@ def self_check(cfg: dict) -> bool:
                             f"❌ documentation.classifications.{category}.{key} must be a list of strings"
                         )
                         ok = False
-                if ok:
-                    active = [
-                        key for key in _DOCUMENTATION_RULE_LIST_KEYS if rule.get(key)
-                    ]
-                    summary = ", ".join(active) if active else "no active matchers"
-                    print(f"✔ documentation.classifications.{category}: {summary}")
-
-        units = documentation.get("units", {})
-        if not isinstance(units, dict):
-            print("❌ documentation.units must be a table/object")
-            ok = False
-        else:
-            mode = str(units.get("mode", "all")).strip().lower()
-            if mode not in _DOCUMENTATION_UNIT_SELECTION_MODES:
-                print(
-                    "❌ documentation.units.mode must be one of: "
-                    + ", ".join(sorted(_DOCUMENTATION_UNIT_SELECTION_MODES))
-                )
-                ok = False
-            else:
-                print(f"✔ documentation.units.mode: {mode}")
-
-            for key in ("instance_paths", "moduletype_names"):
-                values = units.get(key, [])
-                if not isinstance(values, list) or not all(
-                    isinstance(item, str) for item in values
-                ):
-                    print(f"❌ documentation.units.{key} must be a list of strings")
-                    ok = False
-                else:
-                    summary = ", ".join(values) if values else "<empty>"
-                    print(f"✔ documentation.units.{key}: {summary}")
+                for key in _DOCUMENTATION_RULE_LIST_KEYS:
+                    values = [str(item) for item in rule.get(key, []) if str(item).strip()]
+                    if values:
+                        print(
+                            f"✔ documentation.classifications.{category}.{key}: "
+                            + ", ".join(values)
+                        )
 
     print("------------------------------\n")
     return ok

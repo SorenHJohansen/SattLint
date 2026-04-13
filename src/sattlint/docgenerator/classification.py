@@ -17,6 +17,13 @@ from ..models.ast_model import (
 from ..resolution.common import format_moduletype_label, path_startswith_casefold, resolve_moduletype_def_strict
 
 DocumentableNode: TypeAlias = SingleModule | FrameModule | ModuleTypeInstance
+DOCUMENTATION_CATEGORY_ORDER = [
+    "em",
+    "ops",
+    "rp",
+    "ep",
+    "up",
+]
 
 
 @dataclass(frozen=True)
@@ -96,11 +103,7 @@ def classify_documentation_structure(
     unavailable_libraries: set[str] | None = None,
 ) -> DocumentationClassification:
     doc_cfg = config_module.get_documentation_config(documentation_config)
-    section_order = [
-        str(name)
-        for name in doc_cfg.get("section_order", [])
-        if str(name).strip()
-    ]
+    section_order = DOCUMENTATION_CATEGORY_ORDER.copy()
     rules = doc_cfg.get("classifications", {})
 
     entries = _collect_documented_modules(
@@ -135,11 +138,11 @@ def discover_documentation_unit_candidates(
     categorized_paths = {
         entry.path
         for category in (
-            "equipment_modules",
-            "operations",
-            "recipe_parameters",
-            "engineering_parameters",
-            "user_parameters",
+            "em",
+            "ops",
+            "rp",
+            "ep",
+            "up",
         )
         for entry in classification.categories.get(category, [])
     }
@@ -149,8 +152,8 @@ def discover_documentation_unit_candidates(
         for entry in classification.all_entries
         if entry.path not in categorized_paths
         and (
-            classification.descendants(entry, category="equipment_modules")
-            or classification.descendants(entry, category="operations")
+            classification.descendants(entry, category="em")
+            or classification.descendants(entry, category="ops")
         )
     ]
 
@@ -177,19 +180,11 @@ def discover_documentation_unit_candidates(
 
 def document_scope_summary(entry: DocumentedModule, classification: DocumentationClassification) -> dict[str, int]:
     return {
-        "operations": len(classification.descendants(entry, category="operations")),
-        "equipment_modules": len(
-            classification.descendants(entry, category="equipment_modules")
-        ),
-        "recipe_parameters": len(
-            classification.descendants(entry, category="recipe_parameters")
-        ),
-        "engineering_parameters": len(
-            classification.descendants(entry, category="engineering_parameters")
-        ),
-        "user_parameters": len(
-            classification.descendants(entry, category="user_parameters")
-        ),
+        "ops": len(classification.descendants(entry, category="ops")),
+        "em": len(classification.descendants(entry, category="em")),
+        "rp": len(classification.descendants(entry, category="rp")),
+        "ep": len(classification.descendants(entry, category="ep")),
+        "up": len(classification.descendants(entry, category="up")),
     }
 
 
@@ -437,10 +432,10 @@ def _matches_rule(
     rule: dict,
     entries: list[DocumentedModule],
 ) -> bool:
-    direct_name_patterns = _rule_list(rule, "moduletype_name_contains")
-    direct_label_patterns = _rule_list(rule, "moduletype_label_equals")
-    descendant_name_patterns = _rule_list(rule, "descendant_moduletype_name_contains")
-    descendant_label_patterns = _rule_list(rule, "descendant_moduletype_label_equals")
+    direct_name_patterns = _rule_list(rule, "name_contains")
+    direct_label_patterns = _rule_list(rule, "label_equals")
+    descendant_name_patterns = _rule_list(rule, "desc_name_contains")
+    descendant_label_patterns = _rule_list(rule, "desc_label_equals")
 
     if not any(
         (

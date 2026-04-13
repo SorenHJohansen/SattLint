@@ -117,11 +117,11 @@ def test_classify_documentation_structure_detects_recursive_categories():
         config_module.get_documentation_config(),
     )
 
-    operations = {entry.name for entry in classification.categories["operations"]}
-    equipment_modules = {entry.name for entry in classification.categories["equipment_modules"]}
-    recipe_parameters = {entry.name for entry in classification.categories["recipe_parameters"]}
-    engineering_parameters = {entry.name for entry in classification.categories["engineering_parameters"]}
-    user_parameters = {entry.name for entry in classification.categories["user_parameters"]}
+    operations = {entry.name for entry in classification.categories["ops"]}
+    equipment_modules = {entry.name for entry in classification.categories["em"]}
+    recipe_parameters = {entry.name for entry in classification.categories["rp"]}
+    engineering_parameters = {entry.name for entry in classification.categories["ep"]}
+    user_parameters = {entry.name for entry in classification.categories["up"]}
 
     assert operations == {"Prepare"}
     assert equipment_modules == {"Tank", "DiluteTank"}
@@ -130,8 +130,8 @@ def test_classify_documentation_structure_detects_recursive_categories():
     assert "GlobalLimit" in engineering_parameters
     assert "UserTarget" in user_parameters
 
-    operation_entry = classification.categories["operations"][0]
-    assert {entry.name for entry in classification.descendants(operation_entry, category="recipe_parameters")} == {"RecipeSP"}
+    operation_entry = classification.categories["ops"][0]
+    assert {entry.name for entry in classification.descendants(operation_entry, category="rp")} == {"RecipeSP"}
 
 
 def test_generate_docx_renders_fs_style_sections(tmp_path):
@@ -169,8 +169,8 @@ def test_classify_documentation_scope_by_moduletype_name():
 
     assert classification.scope is not None
     assert [entry.name for entry in classification.scope.roots or []] == ["UnitA"]
-    assert {entry.name for entry in classification.categories["operations"]} == {"Prepare"}
-    assert {entry.name for entry in classification.categories["equipment_modules"]} == {"Tank"}
+    assert {entry.name for entry in classification.categories["ops"]} == {"Prepare"}
+    assert {entry.name for entry in classification.categories["em"]} == {"Tank"}
 
 
 def test_discover_documentation_unit_candidates_returns_unit_roots():

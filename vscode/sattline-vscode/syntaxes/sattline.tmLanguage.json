@@ -1,0 +1,281 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "SattLine",
+  "scopeName": "source.sattline",
+  "fileTypes": [
+    "s",
+    "x",
+    "l",
+    "z"
+  ],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#module-declarations"
+    },
+    {
+      "include": "#typedef-declarations"
+    },
+    {
+      "include": "#block-labels"
+    },
+    {
+      "include": "#booleans"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#structure-keywords"
+    },
+    {
+      "include": "#flow-keywords"
+    },
+    {
+      "include": "#graphics-keywords"
+    },
+    {
+      "include": "#modifiers"
+    },
+    {
+      "include": "#state-access"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#functions"
+    },
+    {
+      "include": "#quoted-identifiers"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "include": "#comment-block"
+        }
+      ]
+    },
+    "comment-block": {
+      "name": "comment.block.sattline",
+      "begin": "\\(\\*",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.comment.begin.sattline"
+        }
+      },
+      "end": "\\*\\)",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.comment.end.sattline"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#comment-block"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.sattline",
+          "begin": "\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.sattline"
+            }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.sattline"
+            }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.quote.sattline",
+              "match": "\"\""
+            }
+          ]
+        }
+      ]
+    },
+    "module-declarations": {
+      "patterns": [
+        {
+          "name": "meta.module.root.sattline",
+          "match": "^(\\s*)(?i:BasePicture)\\b",
+          "captures": {
+            "2": {
+              "name": "entity.name.type.module.sattline"
+            }
+          }
+        },
+        {
+          "name": "meta.module.instance.sattline",
+          "match": "^(\\s*)('(?:[^'\\n]|'')+'|[A-Za-z\\u00C0-\\u024F][A-Za-z0-9_\\u00C0-\\u024F']*)\\s+(?=(?i:Invocation)\\b)",
+          "captures": {
+            "2": {
+              "name": "entity.name.type.module.sattline"
+            }
+          }
+        }
+      ]
+    },
+    "typedef-declarations": {
+      "patterns": [
+        {
+          "name": "meta.moduletype.definition.sattline",
+          "match": "^(\\s*)('(?:[^'\\n]|'')+'|[A-Za-z\\u00C0-\\u024F][A-Za-z0-9_\\u00C0-\\u024F']*)\\s*(?==\\s*(?:(?i:PRIVATE_))?(?i:MODULEDEFINITION)\\b)",
+          "captures": {
+            "2": {
+              "name": "entity.name.type.module.sattline"
+            }
+          }
+        },
+        {
+          "name": "meta.record.definition.sattline",
+          "match": "^(\\s*)('(?:[^'\\n]|'')+'|[A-Za-z\\u00C0-\\u024F][A-Za-z0-9_\\u00C0-\\u024F']*)\\s*(?==\\s*(?i:RECORD)\\b)",
+          "captures": {
+            "2": {
+              "name": "entity.name.type.record.sattline"
+            }
+          }
+        }
+      ]
+    },
+    "block-labels": {
+      "patterns": [
+        {
+          "name": "meta.enddef.label.sattline",
+          "match": "\\b((?i:ENDDEF))(\\s*\\(\\*)([^*\\n]+)(\\*\\))",
+          "captures": {
+            "1": {
+              "name": "keyword.control.definition.sattline"
+            },
+            "2": {
+              "name": "punctuation.definition.comment.begin.sattline"
+            },
+            "3": {
+              "name": "entity.name.section.sattline"
+            },
+            "4": {
+              "name": "punctuation.definition.comment.end.sattline"
+            }
+          }
+        },
+        {
+          "name": "meta.named.block.sattline",
+          "match": "\\b((?i:EQUATIONBLOCK|SEQUENCE|OPENSEQUENCE|SEQINITSTEP|SEQSTEP|SUBSEQUENCE|SUBSEQTRANSITION))\\s+('(?:[^'\\n]|'')+'|[A-Za-z\\u00C0-\\u024F][A-Za-z0-9_\\u00C0-\\u024F']*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.flow.sattline"
+            },
+            "2": {
+              "name": "entity.name.section.sattline"
+            }
+          }
+        }
+      ]
+    },
+    "booleans": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.sattline",
+          "match": "\\b(?i:True|False)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.sattline",
+          "match": "\\b(?i:boolean|integer|real|string|identstring|tagstring|time|duration|linestring|maxstring)\\b"
+        }
+      ]
+    },
+    "structure-keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.definition.sattline",
+          "match": "\\b(?i:BasePicture|Invocation|MODULEDEFINITION|TYPEDEFINITIONS|RECORD|ENDDEF|MODULEPARAMETERS|LOCALVARIABLES|SUBMODULES|ModuleDef|ModuleCode|GraphObjects|InteractObjects|PRIVATE_|DateCode_|GroupConn)\\b"
+        }
+      ]
+    },
+    "flow-keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.flow.sattline",
+          "match": "\\b(?i:IF|THEN|ELSE|ELSIF|ENDIF|SEQUENCE|OPENSEQUENCE|ENDSEQUENCE|ENDOPENSEQUENCE|SEQINITSTEP|SEQSTEP|SEQTRANSITION|WAIT_FOR|ENTERCODE|ACTIVECODE|EXITCODE|EQUATIONBLOCK|ALTERNATIVESEQ|ALTERNATIVEBRANCH|ENDALTERNATIVE|PARALLELSEQ|PARALLELBRANCH|ENDPARALLEL|SEQBREAK|SEQFORK|SUBSEQUENCE|ENDSUBSEQUENCE|SUBSEQTRANSITION|ENDSUBSEQTRANSITION)\\b"
+        }
+      ]
+    },
+    "graphics-keywords": {
+      "patterns": [
+        {
+          "name": "support.type.property-name.sattline",
+          "match": "\\b(?i:Frame_Module|ClippingBounds|ZoomLimits|Zoomable|Grid|Two_Layers_|LayerLimit_|Layer_|IgnoreMaxModule|LayerModule|SeqControl|SeqTimer|COORD|OBJSIZE|TextObject|RectangleObject|LineObject|OvalObject|PolygonObject|Spline|Polyline|Connection|SegmentObject|CompositeObject|ConnectionNode|Enable_|VarName|ValueFraction|Colour0|Colour1|OutlineColour|FillColour|Width_|Colour|ColourStyle|InVar_|OutVar_|ComBut_|OptBut_|ProcedureInteract|ComButProc_|NewWindow|CheckBox_|TextBox_|MenuInteract|SimpleInteract|LeftAligned|RightAligned)\\b"
+        }
+      ]
+    },
+    "modifiers": {
+      "patterns": [
+        {
+          "name": "storage.modifier.sattline",
+          "match": "\\b(?i:GLOBAL|Const|State|OpSave|Secure|Duration_Value|Time_Value|Default|New|Old)\\b"
+        }
+      ]
+    },
+    "state-access": {
+      "patterns": [
+        {
+          "name": "keyword.operator.state.sattline",
+          "match": ":(?i:Old|New)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.sattline",
+          "match": "\\b(?i:AND|OR|NOT)\\b|:=|=>|==|<>|<=|>=|[=+\\-*/<>]"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.sattline",
+          "match": "(?<![A-Za-z0-9_])(?:[+-]?\\d+\\.\\d+(?:[eE][+-]?\\d+)?|[+-]?\\d+[eE][+-]?\\d+|[+-]?\\d+)(?![A-Za-z0-9_])"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "support.function.sattline",
+          "match": "\\b([A-Za-z\\u00C0-\\u024F][A-Za-z0-9_\\u00C0-\\u024F']*)(?=\\s*\\()"
+        }
+      ]
+    },
+    "quoted-identifiers": {
+      "patterns": [
+        {
+          "name": "entity.name.type.sattline",
+          "match": "'(?:[^'\\n]|'')+'"
+        }
+      ]
+    }
+  }
+}

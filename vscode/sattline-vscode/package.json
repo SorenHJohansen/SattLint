@@ -1,0 +1,104 @@
+{
+  "name": "sattline-vscode",
+  "displayName": "SattLine LSP",
+  "description": "VS Code client for the SattLint-based SattLine language server.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SorenHJohansen/SattLint.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SorenHJohansen/SattLint/issues"
+  },
+  "homepage": "https://github.com/SorenHJohansen/SattLint",
+  "files": [
+    "extension.js",
+    "language-configuration.json",
+    "syntaxes/*.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "package:vsix": "npm exec --yes --package @vscode/vsce -- vsce package"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "sattline",
+        "aliases": [
+          "SattLine",
+          "sattline"
+        ],
+        "extensions": [
+          ".s",
+          ".x",
+          ".l",
+          ".z"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sattline",
+        "scopeName": "source.sattline",
+        "path": "./syntaxes/sattline.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "sattlineLsp.restartServer",
+        "title": "SattLine: Restart Language Server"
+      }
+    ],
+    "configuration": {
+      "title": "SattLine LSP",
+      "properties": {
+        "sattlineLsp.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Python interpreter used to launch the SattLine language server. Leave empty to auto-detect the workspace .venv or python.defaultInterpreterPath."
+        },
+        "sattlineLsp.entryFile": {
+          "type": "string",
+          "default": "",
+          "description": "Root program file to load when editing library files in a workspace with multiple .s/.x programs. Relative values are resolved from the workspace root."
+        },
+        "sattlineLsp.mode": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "official"
+          ],
+          "default": "draft",
+          "description": "SattLine code mode used when resolving matching source and dependency extensions."
+        },
+        "sattlineLsp.scanRootOnly": {
+          "type": "boolean",
+          "default": false,
+          "description": "If enabled, only parse the configured root program instead of recursively loading dependencies."
+        },
+        "sattlineLsp.enableVariableDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Publish SattLint variable diagnostics for saved files in addition to syntax diagnostics from the open buffer."
+        },
+        "sattlineLsp.maxCompletionItems": {
+          "type": "number",
+          "default": 100,
+          "minimum": 1,
+          "description": "Maximum number of completion items returned by the SattLine language server."
+        }
+      }
+    }
+  }
+}
