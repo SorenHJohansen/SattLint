@@ -3,6 +3,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from lark import Lark, Tree
 from lark.exceptions import VisitError
+from sattline_parser import create_parser as parser_core_create_parser
+from sattline_parser import parse_source_file as parser_core_parse_source_file
+from sattline_parser import parse_source_text as parser_core_parse_source_text
+from sattline_parser import strip_sl_comments
 from .grammar import constants as const
 from .transformer.sl_transformer import SLTransformer
 from .grammar.parser_decode import is_compressed, preprocess_sl_text
@@ -16,6 +20,7 @@ from .models.ast_model import (
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
+    ParameterMapping,
     Sequence,
     SFCAlternative,
     SFCBreak,
@@ -27,11 +32,12 @@ from .models.ast_model import (
     SFCTransitionSub,
     Simple_DataType,
     SingleModule,
+    SourceSpan,
     Variable,
 )
 from .resolution.type_graph import TypeGraph
 from .analyzers.sattline_builtins import SATTLINE_BUILTINS
-from .utils.text_processing import find_disallowed_comments, strip_sl_comments
+from .utils.text_processing import find_disallowed_comments
 from collections.abc import Callable, Iterable, Sequence as AbcSequence
 from enum import Enum
 from .models.project_graph import ProjectGraph
@@ -48,7 +54,16 @@ log = logging.getLogger("SattLint")
 
 
 class StructuralValidationError(ValueError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        line: int | None = None,
+        column: int | None = None,
+    ):
+        super().__init__(message)
+        self.line = line
+        self.column = column
 
 
 class RawSourceValidationError(StructuralValidationError):
@@ -82,10 +97,6 @@ def deps_ext(mode: CodeMode) -> str:
 
 
 BASE_DIR = Path(__file__).resolve().parent
-GRAMMAR_PATH = Path(__file__).resolve().parent / "grammar" / "sattline.lark"
-
-if not GRAMMAR_PATH.exists():
-    raise RuntimeError(f"Grammar file missing: {GRAMMAR_PATH}")
 
 
 class DebugMixin:
@@ -97,27 +108,8 @@ class DebugMixin:
 
 
 def create_sl_parser() -> Lark:
-    """
-    Loads the Lark grammar from a file, injecting terminal constants,
-    and returns a configured Lark parser.
-    """
-    with open(GRAMMAR_PATH, "r"):
-        grammar_text = GRAMMAR_PATH.read_text(encoding="utf-8")
-    # Prepare the dictionary of constants to inject into the grammar template
-    # We only include constants that start with "GRAMMAR_VALUE_" or "GRAMMAR_REGEX_"
-    # as these are specifically for the grammar file.
-    grammar_substitutions = {
-        name: getattr(const, name)
-        for name in dir(const)
-        if name.startswith("GRAMMAR_VALUE_") or name.startswith("GRAMMAR_REGEX_")
-    }
-    # Format the grammar string by replacing placeholders with constant values
-    formatted_grammar = grammar_text.format(**grammar_substitutions)
-
-    # Now, initialize the Lark parser with the formatted grammar
-    return Lark(
-        formatted_grammar, start="start", parser="lalr", propagate_positions=True
-    )
+    """Compatibility wrapper that delegates parser creation to parser-core."""
+    return parser_core_create_parser()
 
 
 def _read_text_simple(path: Path) -> str:
@@ -161,6 +153,155 @@ def _validate_identifier(name: str | None, context: str) -> None:
         raise StructuralValidationError(
             f"{context} name {name!r} exceeds 20 characters"
         )
+
+
+def _span_kwargs(span: SourceSpan | None) -> dict[str, int]:
+    if span is None:
+        return {}
+    return {"line": span.line, "column": span.column}
+
+
+def _ref_span(ref: dict[str, object] | str | None) -> SourceSpan | None:
+    if not isinstance(ref, dict):
+        return None
+    span = ref.get("span")
+    return span if isinstance(span, SourceSpan) else None
+
+
+def _bounded_levenshtein(left: str, right: str, *, max_distance: int = 2) -> int | None:
+    left_cf = left.casefold()
+    right_cf = right.casefold()
+
+    if left_cf == right_cf:
+        return 0
+    if abs(len(left_cf) - len(right_cf)) > max_distance:
+        return None
+
+    previous = list(range(len(right_cf) + 1))
+    for row_index, left_char in enumerate(left_cf, start=1):
+        current = [row_index]
+        row_min = current[0]
+        for col_index, right_char in enumerate(right_cf, start=1):
+            cost = 0 if left_char == right_char else 1
+            current_value = min(
+                previous[col_index] + 1,
+                current[col_index - 1] + 1,
+                previous[col_index - 1] + cost,
+            )
+            current.append(current_value)
+            row_min = min(row_min, current_value)
+        if row_min > max_distance:
+            return None
+        previous = current
+
+    distance = previous[-1]
+    return distance if distance <= max_distance else None
+
+
+def _suggest_datatype_name(name: str, known_datatypes: AbcSequence[str]) -> str | None:
+    best_match: str | None = None
+    best_distance: int | None = None
+    for candidate in known_datatypes:
+        distance = _bounded_levenshtein(name, candidate, max_distance=2)
+        if distance is None:
+            continue
+        if best_distance is None or distance < best_distance:
+            best_match = candidate
+            best_distance = distance
+    return best_match
+
+
+def _split_dotted_name(name: str) -> tuple[str, tuple[str, ...]]:
+    parts = tuple(part for part in str(name).split(".") if part)
+    if not parts:
+        return "", ()
+    return parts[0], parts[1:]
+
+
+def _resolve_variable_field_datatype(
+    variable: Variable,
+    field_path: tuple[str, ...],
+    type_graph: TypeGraph,
+) -> Simple_DataType | str | None:
+    current: Simple_DataType | str = variable.datatype
+    for field_name in field_path:
+        if isinstance(current, Simple_DataType):
+            return None
+        field = type_graph.field(str(current), field_name)
+        if field is None:
+            return None
+        current = field.datatype
+    return current
+
+
+def _infer_literal_datatype(value: object) -> Simple_DataType | str | None:
+    if isinstance(value, bool):
+        return Simple_DataType.BOOLEAN
+    if isinstance(value, (IntLiteral, int)) and not isinstance(value, bool):
+        return Simple_DataType.INTEGER
+    if isinstance(value, (FloatLiteral, float)):
+        return Simple_DataType.REAL
+    if isinstance(value, str):
+        return Simple_DataType.STRING
+    if isinstance(value, dict) and const.GRAMMAR_VALUE_TIME_VALUE in value:
+        return const.GRAMMAR_VALUE_TIME_VALUE
+    return None
+
+
+def _assignment_type_matches(
+    actual: Simple_DataType | str | None,
+    expected: Simple_DataType | str | None,
+) -> bool:
+    if actual is None or expected is None:
+        return True
+
+    if actual == const.GRAMMAR_VALUE_TIME_VALUE:
+        return expected in {Simple_DataType.TIME, Simple_DataType.DURATION}
+
+    if isinstance(expected, Simple_DataType):
+        if not isinstance(actual, Simple_DataType):
+            return False
+        return _builtin_type_matches(actual, expected, direction="in")
+
+    if isinstance(actual, Simple_DataType):
+        return False
+
+    return str(actual).casefold() == str(expected).casefold()
+
+
+def _validate_declared_variable(
+    variable: Variable,
+    context: str,
+    *,
+    type_graph: TypeGraph,
+    known_datatypes: AbcSequence[str],
+) -> None:
+    if isinstance(variable.datatype, str) and not type_graph.has_record(variable.datatype):
+        suggestion = _suggest_datatype_name(variable.datatype, known_datatypes)
+        if suggestion is not None:
+            raise StructuralValidationError(
+                f"{context} variable {variable.name!r} uses unknown datatype {variable.datatype_text!r}; did you mean {suggestion!r}?",
+                **_span_kwargs(variable.declaration_span),
+            )
+
+    if variable.init_value is None:
+        return
+
+    init_datatype = _infer_literal_datatype(variable.init_value)
+    if init_datatype is None:
+        return
+
+    if isinstance(variable.datatype, str) and not type_graph.has_record(variable.datatype):
+        return
+
+    if _assignment_type_matches(init_datatype, variable.datatype):
+        return
+
+    raise StructuralValidationError(
+        f"{context} variable {variable.name!r} has init value {variable.init_value!r} with datatype {_format_datatype(init_datatype)!r} "
+        f"but declared datatype is {_format_datatype(variable.datatype)!r}",
+        **_span_kwargs(variable.declaration_span),
+    )
 
 
 def _ensure_unique_names(names: list[str], context: str, kind: str) -> None:
@@ -298,6 +439,14 @@ def _resolve_ref_datatype(
         current = field.datatype
 
     return current
+
+
+def _resolve_root_variable(ref: dict[str, object], env: dict[str, Variable]) -> Variable | None:
+    full_name = str(ref.get(const.KEY_VAR_NAME, ""))
+    base_name, _field_path = _split_dotted_name(full_name)
+    if not base_name:
+        return None
+    return env.get(base_name.casefold())
 
 
 def _merge_numeric_types(
@@ -456,6 +605,14 @@ def _validate_builtin_call_signature(
                 f"{context} call {fn_name!r} argument {index} must be a variable reference because builtin parameter {parameter.name!r} is {parameter.direction!r}"
             )
 
+        if parameter.direction in {"out", "inout"} and isinstance(argument, dict) and _is_variable_ref_node(argument):
+            variable = _resolve_root_variable(argument, env)
+            if variable is not None and variable.const:
+                raise StructuralValidationError(
+                    f"{context} call {fn_name!r} argument {index} writes to CONST variable {variable.name!r}",
+                    **_span_kwargs(_ref_span(argument)),
+                )
+
         actual = _infer_expression_datatype(argument, env, type_graph)
         if actual is None:
             continue
@@ -588,6 +745,18 @@ def _validate_statement_list(
     context: str,
 ) -> None:
     for statement in statements:
+        if (
+            isinstance(statement, tuple)
+            and len(statement) == 3
+            and statement[0] == const.KEY_ASSIGN
+            and _is_variable_ref_node(statement[1])
+        ):
+            variable = _resolve_root_variable(statement[1], env)
+            if variable is not None and variable.const:
+                raise StructuralValidationError(
+                    f"{context} assignment writes to CONST variable {variable.name!r}",
+                    **_span_kwargs(_ref_span(statement[1])),
+                )
         _validate_variable_refs(statement, env, context)
         _validate_no_string_literals_in_calls(statement, context)
         _validate_builtin_call_types(statement, env, type_graph, context)
@@ -728,18 +897,136 @@ def _validate_module_code(
             )
 
 
-def _validate_variable_list(variables: list[Variable] | None, context: str) -> None:
+def _validate_variable_list(
+    variables: list[Variable] | None,
+    context: str,
+    *,
+    type_graph: TypeGraph | None = None,
+    known_datatypes: AbcSequence[str] = (),
+) -> None:
     names = [variable.name for variable in variables or []]
     _ensure_unique_names(names, context, "variable")
     for variable in variables or []:
         _validate_identifier(variable.name, f"{context} variable")
+        if type_graph is not None:
+            _validate_declared_variable(
+                variable,
+                context,
+                type_graph=type_graph,
+                known_datatypes=known_datatypes,
+            )
 
 
-def _validate_datatypes(datatypes: list[DataType] | None, context: str) -> None:
+def _validate_datatypes(
+    datatypes: list[DataType] | None,
+    context: str,
+    *,
+    type_graph: TypeGraph,
+    known_datatypes: AbcSequence[str],
+) -> None:
     _ensure_unique_names([datatype.name for datatype in datatypes or []], context, "datatype")
     for datatype in datatypes or []:
         _validate_identifier(datatype.name, f"{context} datatype")
-        _validate_variable_list(datatype.var_list, f"{context} datatype {datatype.name!r}")
+        _validate_variable_list(
+            datatype.var_list,
+            f"{context} datatype {datatype.name!r}",
+            type_graph=type_graph,
+            known_datatypes=known_datatypes,
+        )
+
+
+def _validate_unique_submodule_names(
+    modules: list[SingleModule | FrameModule | ModuleTypeInstance] | None,
+    context: str,
+) -> None:
+    seen: dict[str, str] = {}
+    for module in modules or []:
+        name = module.header.name
+        folded = name.casefold()
+        if folded in seen:
+            raise StructuralValidationError(
+                f"{context} has duplicate submodule names {seen[folded]!r} and {name!r}",
+                **_span_kwargs(module.header.declaration_span),
+            )
+        seen[folded] = name
+
+
+def _validate_parameter_mappings(
+    parametermappings: AbcSequence[ParameterMapping] | None,
+    context: str,
+    *,
+    type_graph: TypeGraph,
+    expected_parameters: dict[str, Variable] | None = None,
+    source_env: dict[str, Variable] | None = None,
+) -> None:
+    seen: dict[str, str] = {}
+
+    for mapping in parametermappings or []:
+        if not hasattr(mapping, "target"):
+            continue
+
+        target = getattr(mapping, "target")
+        target_name = (
+            str(target.get(const.KEY_VAR_NAME))
+            if isinstance(target, dict) and const.KEY_VAR_NAME in target
+            else str(target)
+        )
+        target_span = _ref_span(target)
+        target_key = target_name.casefold()
+        if target_key in seen:
+            raise StructuralValidationError(
+                f"{context} has duplicate parameter mapping targets {seen[target_key]!r} and {target_name!r}",
+                **_span_kwargs(target_span),
+            )
+        seen[target_key] = target_name
+
+        if expected_parameters is None:
+            continue
+
+        base_name, field_path = _split_dotted_name(target_name)
+        target_variable = expected_parameters.get(base_name.casefold())
+        if target_variable is None:
+            raise StructuralValidationError(
+                f"{context} maps unknown parameter target {target_name!r}",
+                **_span_kwargs(target_span),
+            )
+
+        target_datatype = _resolve_variable_field_datatype(target_variable, field_path, type_graph)
+        if field_path and target_datatype is None:
+            if isinstance(target_variable.datatype, Simple_DataType):
+                raise StructuralValidationError(
+                    f"{context} parameter mapping target {target_name!r} uses field access on non-record parameter {target_variable.name!r}",
+                    **_span_kwargs(target_span),
+                )
+            if type_graph.has_record(str(target_variable.datatype)):
+                raise StructuralValidationError(
+                    f"{context} parameter mapping target {target_name!r} does not exist",
+                    **_span_kwargs(target_span),
+                )
+            continue
+
+        if target_datatype is None:
+            target_datatype = target_variable.datatype
+
+        actual_datatype: Simple_DataType | str | None = None
+        source_description: str | None = None
+        source_literal = getattr(mapping, "source_literal", None)
+        source = getattr(mapping, "source", None)
+        if source_literal is not None:
+            actual_datatype = _infer_literal_datatype(source_literal)
+            source_description = repr(source_literal)
+        elif isinstance(source, dict) and source_env is not None:
+            actual_datatype = _resolve_ref_datatype(source, source_env, type_graph)
+            source_description = str(source.get(const.KEY_VAR_NAME))
+
+        if actual_datatype is None or _assignment_type_matches(actual_datatype, target_datatype):
+            continue
+
+        raise StructuralValidationError(
+            f"{context} maps {source_description or 'value'!r} with datatype {_format_datatype(actual_datatype)!r} "
+            f"to parameter target {target_name!r} with datatype {_format_datatype(target_datatype)!r}",
+            **_span_kwargs(target_span),
+        )
 
 
 def _merge_env(parent_env: dict[str, Variable], variables: list[Variable] | None) -> dict[str, Variable]:
@@ -754,62 +1041,153 @@ def _validate_module(
     context: str,
     parent_env: dict[str, Variable],
     type_graph: TypeGraph,
+    known_datatypes: AbcSequence[str],
+    moduletype_index: dict[str, list[ModuleTypeDef]],
 ) -> None:
     if isinstance(module, SingleModule):
         _validate_identifier(module.header.name, f"{context} module")
         module_context = f"{context} module {module.header.name!r}"
-        _validate_variable_list(module.moduleparameters, module_context)
-        _validate_variable_list(module.localvariables, module_context)
+        _validate_variable_list(
+            module.moduleparameters,
+            module_context,
+            type_graph=type_graph,
+            known_datatypes=known_datatypes,
+        )
+        _validate_variable_list(
+            module.localvariables,
+            module_context,
+            type_graph=type_graph,
+            known_datatypes=known_datatypes,
+        )
         env = _merge_env(parent_env, module.moduleparameters)
         env = _merge_env(env, module.localvariables)
+        _validate_parameter_mappings(
+            module.parametermappings,
+            module_context,
+            type_graph=type_graph,
+            expected_parameters={variable.name.casefold(): variable for variable in module.moduleparameters or []},
+            source_env=parent_env,
+        )
         _validate_module_code(module.modulecode, module_context, env, type_graph)
+        _validate_unique_submodule_names(module.submodules, module_context)
         for submodule in module.submodules or []:
-            _validate_module(submodule, module_context, env, type_graph)
+            _validate_module(
+                submodule,
+                module_context,
+                env,
+                type_graph,
+                known_datatypes,
+                moduletype_index,
+            )
         return
 
     if isinstance(module, FrameModule):
         _validate_identifier(module.header.name, f"{context} frame")
         module_context = f"{context} frame {module.header.name!r}"
         _validate_module_code(module.modulecode, module_context, parent_env, type_graph)
+        _validate_unique_submodule_names(module.submodules, module_context)
         for submodule in module.submodules or []:
-            _validate_module(submodule, module_context, parent_env, type_graph)
+            _validate_module(
+                submodule,
+                module_context,
+                parent_env,
+                type_graph,
+                known_datatypes,
+                moduletype_index,
+            )
         return
 
     if isinstance(module, ModuleTypeInstance):
         _validate_identifier(module.header.name, f"{context} module instance")
         _validate_identifier(module.moduletype_name, f"{context} module type reference")
+        matches = moduletype_index.get(module.moduletype_name.casefold(), [])
+        expected_parameters = None
+        if len(matches) == 1:
+            expected_parameters = {
+                variable.name.casefold(): variable
+                for variable in matches[0].moduleparameters or []
+            }
+        _validate_parameter_mappings(
+            module.parametermappings,
+            f"{context} module instance {module.header.name!r}",
+            type_graph=type_graph,
+            expected_parameters=expected_parameters,
+            source_env=parent_env,
+        )
         return
 
 
 def validate_transformed_basepicture(basepic: BasePicture) -> None:
     _validate_identifier(basepic.header.name, "BasePicture")
-    _validate_variable_list(basepic.localvariables, "BasePicture")
-    _validate_datatypes(basepic.datatype_defs, "BasePicture")
     _ensure_unique_names(
         [moduletype.name for moduletype in basepic.moduletype_defs or []],
         "BasePicture",
         "moduletype",
     )
 
-    base_env = _merge_env({}, basepic.localvariables)
     type_graph = TypeGraph.from_basepicture(basepic)
+    known_datatypes = tuple([datatype.value for datatype in Simple_DataType] + [datatype.name for datatype in basepic.datatype_defs or []])
+    moduletype_index: dict[str, list[ModuleTypeDef]] = {}
+    for moduletype in basepic.moduletype_defs or []:
+        moduletype_index.setdefault(moduletype.name.casefold(), []).append(moduletype)
+
+    _validate_variable_list(
+        basepic.localvariables,
+        "BasePicture",
+        type_graph=type_graph,
+        known_datatypes=known_datatypes,
+    )
+    _validate_datatypes(
+        basepic.datatype_defs,
+        "BasePicture",
+        type_graph=type_graph,
+        known_datatypes=known_datatypes,
+    )
+
+    base_env = _merge_env({}, basepic.localvariables)
 
     for moduletype in basepic.moduletype_defs or []:
         if isinstance(moduletype, ModuleTypeDef):
             _validate_identifier(moduletype.name, "BasePicture moduletype")
             moduletype_context = f"BasePicture moduletype {moduletype.name!r}"
-            _validate_variable_list(moduletype.moduleparameters, moduletype_context)
-            _validate_variable_list(moduletype.localvariables, moduletype_context)
+            _validate_variable_list(
+                moduletype.moduleparameters,
+                moduletype_context,
+                type_graph=type_graph,
+                known_datatypes=known_datatypes,
+            )
+            _validate_variable_list(
+                moduletype.localvariables,
+                moduletype_context,
+                type_graph=type_graph,
+                known_datatypes=known_datatypes,
+            )
             env = _merge_env(base_env, moduletype.moduleparameters)
             env = _merge_env(env, moduletype.localvariables)
             _validate_module_code(moduletype.modulecode, moduletype_context, env, type_graph)
+            _validate_unique_submodule_names(moduletype.submodules, moduletype_context)
             for submodule in moduletype.submodules or []:
-                _validate_module(submodule, moduletype_context, env, type_graph)
+                _validate_module(
+                    submodule,
+                    moduletype_context,
+                    env,
+                    type_graph,
+                    known_datatypes,
+                    moduletype_index,
+                )
 
     _validate_module_code(basepic.modulecode, "BasePicture", base_env, type_graph)
+    _validate_unique_submodule_names(basepic.submodules, "BasePicture")
 
     for submodule in basepic.submodules or []:
-        _validate_module(submodule, "BasePicture", base_env, type_graph)
+        _validate_module(
+            submodule,
+            "BasePicture",
+            base_env,
+            type_graph,
+            known_datatypes,
+            moduletype_index,
+        )
 
 
 def parse_source_text(
@@ -819,29 +1197,12 @@ def parse_source_text(
     transformer: SLTransformer | None = None,
     debug: Callable[[str], None] | None = None,
 ) -> BasePicture:
-    cleaned = strip_sl_comments(src)
-    active_parser = parser if parser is not None else create_sl_parser()
-    active_transformer = transformer if transformer is not None else SLTransformer()
-    tree = active_parser.parse(cleaned)
-
-    if debug is not None:
-        debug("Parse OK, transforming with SLTransformer")
-
-    basepic = active_transformer.transform(tree)
-    try:
-        setattr(basepic, "parse_tree", tree)
-    except Exception:
-        if debug is not None:
-            debug("BasePicture does not allow dynamic attributes; parse tree not attached")
-
-    if debug is not None:
-        debug(f"Transform result type: {type(basepic).__name__}")
-
-    if not isinstance(basepic, BasePicture):
-        raise RuntimeError(
-            "Transform result is not BasePicture; check transformer.start()"
-        )
-
+    basepic = parser_core_parse_source_text(
+        src,
+        parser=parser,
+        transformer=transformer,
+        debug=debug,
+    )
     validate_transformed_basepicture(basepic)
 
     return basepic
@@ -854,8 +1215,14 @@ def parse_source_file(
     transformer: SLTransformer | None = None,
     debug: Callable[[str], None] | None = None,
 ) -> BasePicture:
-    src = _load_source_text(code_path, debug=debug)
-    return parse_source_text(src, parser=parser, transformer=transformer, debug=debug)
+    basepic = parser_core_parse_source_file(
+        code_path,
+        parser=parser,
+        transformer=transformer,
+        debug=debug,
+    )
+    validate_transformed_basepicture(basepic)
+    return basepic
 
 
 def _extract_error_position(exc: Exception) -> tuple[int | None, int | None]:

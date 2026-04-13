@@ -24,5 +24,9 @@
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,
     "files.encoding": "utf8",
+    "files.autoGuessEncoding": true,
+    "files.candidateGuessEncodings": [
+        "windows1252"
+    ],
     "editor.formatOnSave": true,
 }

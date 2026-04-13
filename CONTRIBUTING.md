@@ -73,11 +73,26 @@ pip install -e .[dev]
 # - Pylance (automatically installed with Python extension)
 ```
 
+To run the local SattLine VS Code extension client:
+
+```powershell
+pip install -e .[lsp]
+```
+
+Then copy or symlink `vscode\sattline-vscode` into your VS Code user extensions directory as `local.sattline-vscode-0.1.0` and reload the window. There is no npm or TypeScript build step in the current client.
+
+If you need a packaged extension artifact, run the extension-local packaging script from WSL:
+
+```bash
+cd /mnt/c/Users/SQHJ/OneDrive\ -\ Novo\ Nordisk/Workspace/GitHub.com/SattLint/vscode/sattline-vscode
+npm run package:vsix
+```
+
 #### 2. VS Code Configuration
 The repository includes `.vscode/settings.json` which configures:
 - Python interpreter detection
 - Ruff for linting
-- Black for formatting  
+- Black for formatting
 - MyPy for type checking
 - Pytest for testing
 
@@ -129,6 +144,8 @@ pre-commit install
 - `pyproject.toml` - Project configuration and dependencies
 - `.editorconfig` - Cross-editor formatting rules
 - `.vscode/settings.json` - VS Code workspace configuration
+- `vscode/sattline-vscode/` - Local VS Code extension client for `sattlint_lsp`
+- `src/sattlint_lsp/` - Python LSP server implementation used by the VS Code client
 
 ## Making Changes
 

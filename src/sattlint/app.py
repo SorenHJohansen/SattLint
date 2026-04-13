@@ -57,6 +57,11 @@ VARIABLE_ANALYSES = {
 
 CONFIG_PATH = config_module.get_config_path()
 DEFAULT_CONFIG = config_module.DEFAULT_CONFIG
+_DOCUMENTATION_SCOPE_STATE = {
+    "mode": "all",
+    "instance_paths": [],
+    "moduletype_names": [],
+}
 
 
 def load_config(path: Path):
@@ -177,7 +182,6 @@ def run_cli(argv: list[str]) -> int:
 
 def show_config(cfg: dict):
     documentation_cfg = config_module.get_documentation_config(cfg)
-    unit_selection = config_module.get_documentation_unit_selection(cfg)
 
     print("\n--- Current configuration ---")
     print("analyzed_programs_and_libraries:")
@@ -196,21 +200,12 @@ def show_config(cfg: dict):
     print("other_lib_dirs:")
     for i, p in enumerate(cfg["other_lib_dirs"], 1):
         print(f"  {i}. {p}")
-    print("documentation.section_order:")
-    for i, name in enumerate(documentation_cfg.get("section_order", []), 1):
-        print(f"  {i}. {name}")
     print("documentation.classifications:")
     for category, rule in documentation_cfg.get("classifications", {}).items():
-        active = [key for key, value in rule.items() if value]
-        summary = ", ".join(active) if active else "no active matchers"
-        print(f"  {category}: {summary}")
-    print(f"documentation.units.mode: {unit_selection['mode']}")
-    print("documentation.units.instance_paths:")
-    for i, value in enumerate(unit_selection.get("instance_paths", []), 1):
-        print(f"  {i}. {value}")
-    print("documentation.units.moduletype_names:")
-    for i, value in enumerate(unit_selection.get("moduletype_names", []), 1):
-        print(f"  {i}. {value}")
+        print(f"  {category}:")
+        for key, values in rule.items():
+            if values:
+                print(f"    {key}: {', '.join(str(value) for value in values)}")
     print("-----------------------------\n")
 
 
@@ -252,18 +247,23 @@ def _split_csv_values(raw: str) -> list[str]:
     return [value.strip() for value in raw.split(",") if value.strip()]
 
 
+def _get_documentation_unit_selection() -> dict:
+    return {
+        "mode": _DOCUMENTATION_SCOPE_STATE["mode"],
+        "instance_paths": list(_DOCUMENTATION_SCOPE_STATE["instance_paths"]),
+        "moduletype_names": list(_DOCUMENTATION_SCOPE_STATE["moduletype_names"]),
+    }
+
+
 def _set_documentation_unit_selection(
-    cfg: dict,
     *,
     mode: str,
     instance_paths: list[str] | None = None,
     moduletype_names: list[str] | None = None,
 ) -> None:
-    documentation = cfg.setdefault("documentation", {})
-    units = documentation.setdefault("units", {})
-    units["mode"] = mode
-    units["instance_paths"] = list(instance_paths or [])
-    units["moduletype_names"] = list(moduletype_names or [])
+    _DOCUMENTATION_SCOPE_STATE["mode"] = mode
+    _DOCUMENTATION_SCOPE_STATE["instance_paths"] = list(instance_paths or [])
+    _DOCUMENTATION_SCOPE_STATE["moduletype_names"] = list(moduletype_names or [])
 
 
 def _documentation_config_without_scope(cfg: dict) -> dict:
@@ -297,8 +297,8 @@ def _preview_documentation_candidates_for_target(
         summary = document_scope_summary(entry, classification)
         print(
             f"  {index}. {entry.short_path} | type={entry.moduletype_label or entry.kind} | "
-            f"ops={summary['operations']} em={summary['equipment_modules']} "
-            f"rp={summary['recipe_parameters']} ep={summary['engineering_parameters']} up={summary['user_parameters']}"
+            f"ops={summary['ops']} em={summary['em']} "
+            f"rp={summary['rp']} ep={summary['ep']} up={summary['up']}"
         )
 
 
@@ -320,7 +320,6 @@ def configure_documentation_scope_by_moduletype(cfg: dict) -> bool:
         pause()
         return False
     _set_documentation_unit_selection(
-        cfg,
         mode="moduletype_names",
         moduletype_names=values,
     )
@@ -340,7 +339,6 @@ def configure_documentation_scope_by_instance_path(cfg: dict) -> bool:
         pause()
         return False
     _set_documentation_unit_selection(
-        cfg,
         mode="instance_paths",
         instance_paths=values,
     )
@@ -350,7 +348,7 @@ def configure_documentation_scope_by_instance_path(cfg: dict) -> bool:
 
 
 def reset_documentation_scope(cfg: dict) -> bool:
-    _set_documentation_unit_selection(cfg, mode="all")
+    _set_documentation_unit_selection(mode="all")
     print("✔ Documentation scope reset to all units")
     pause()
     return True
@@ -359,6 +357,7 @@ def reset_documentation_scope(cfg: dict) -> bool:
 def run_generate_documentation(cfg: dict) -> None:
     print("\n--- Generate Documentation ---")
     documentation_cfg = config_module.get_documentation_config(cfg)
+    documentation_cfg["units"] = _get_documentation_unit_selection()
 
     for target_name, project_bp, graph in _iter_loaded_projects(cfg):
         classification = classify_documentation_structure(
@@ -395,6 +394,7 @@ def documentation_menu(cfg: dict) -> bool:
     dirty = False
     while True:
         clear_screen()
+        selection = _get_documentation_unit_selection()
         print("""
 --- Documentation ---
 1) Generate documentation
@@ -405,6 +405,15 @@ def documentation_menu(cfg: dict) -> bool:
 b) Back
 q) Quit
 """)
+        print(
+            "Current scope: "
+            + (
+                "all units"
+                if selection["mode"] == "all"
+                else f"{selection['mode']} -> "
+                + ", ".join(selection["instance_paths"] or selection["moduletype_names"])
+            )
+        )
         c = input("> ").strip().lower()
         if c == "b":
             return dirty
