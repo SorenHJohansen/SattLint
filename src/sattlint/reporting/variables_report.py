@@ -1,13 +1,13 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
 from ..models.ast_model import Variable, Simple_DataType, SourceSpan
 from ..analyzers.framework import format_report_header
 
 
 class IssueKind(Enum):
     UNUSED = "unused"
+    UNUSED_DATATYPE_FIELD = "unused_datatype_field"
     READ_ONLY_NON_CONST = "read_only_non_const"
     NEVER_READ = "never_read"
     STRING_MAPPING_MISMATCH = "string_mapping_mismatch"
@@ -24,10 +24,11 @@ class VariableIssue:
     kind: IssueKind
     module_path: list[str]
     variable: Variable | None
+    datatype_name: str | None = None
     role: str | None = None
     source_variable: Variable | None = None
     duplicate_count: int | None = None  #
-    duplicate_locations: list[tuple[list[str], str]] | None = None
+    duplicate_locations: list[tuple[list[str], str, str]] | None = None
     literal_value: int | float | None = None
     literal_span: SourceSpan | None = None
     site: str | None = None
@@ -37,6 +38,9 @@ class VariableIssue:
 
     def __str__(self) -> str:
         mp = ".".join(self.module_path)
+        if self.variable is None and self.datatype_name is not None:
+            field_txt = f".{self.field_path}" if self.field_path else ""
+            return f"[{mp}] datatype {self.datatype_name!r}{field_txt}"
         if self.variable is None and self.literal_value is not None:
             return f"[{mp}] magic number {self.literal_value}"
         if self.variable is None:
@@ -70,6 +74,10 @@ class VariablesReport:
     @property
     def unused(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.UNUSED]
+
+    @property
+    def unused_datatype_fields(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.UNUSED_DATATYPE_FIELD]
 
     @property
     def read_only_non_const(self) -> list[VariableIssue]:
@@ -115,6 +123,15 @@ class VariablesReport:
             lines.append("  - Unused variables:")
             for uv in self.unused:
                 lines.append(f"      * {uv}")
+        if self.unused_datatype_fields:
+            lines.append("  - Unused fields in datatypes:")
+            for issue in self.unused_datatype_fields:
+                location = ".".join(issue.module_path)
+                datatype_name = issue.datatype_name or "?"
+                field_name = issue.field_path or "?"
+                lines.append(
+                    f"      * [{location}] {datatype_name}.{field_name}"
+                )
         if self.read_only_non_const:
             lines.append("  - Read-only but not Const variables:")
             for rn in self.read_only_non_const:
@@ -179,28 +196,33 @@ class VariablesReport:
             lines.append("  - Duplicated complex datatypes (should be RECORD):")
             lines.append("")
 
-            # Group by datatype name for duplication summary.
-            by_dtype: dict[str, list[VariableIssue]] = {}
-            for issue in self.datatype_duplication:
+            for issue in sorted(
+                self.datatype_duplication,
+                key=lambda item: (
+                    item.variable.datatype_text if item.variable else "?",
+                    ".".join(item.module_path),
+                    item.variable.name if item.variable else "?",
+                ),
+            ):
                 dt_name = issue.variable.datatype_text if issue.variable else "?"
-                by_dtype.setdefault(dt_name, []).append(issue)
-
-            for dt_name, issues in sorted(by_dtype.items()):
-                total_count = sum(i.duplicate_count or 0 for i in issues)
+                loc = ".".join(issue.module_path)
+                count = issue.duplicate_count or 0
                 lines.append(
-                    f"      Datatype '{dt_name}' declared {total_count} times:"
+                    f"      Datatype '{dt_name}' declared {count} times in {loc}:"
+                )
+                lines.append(
+                    f"        - {issue.variable.name if issue.variable else '?'} ({issue.role})"
                 )
 
-                for issue in issues:
-                    loc = ".".join(issue.module_path)
-                    lines.append(
-                        f"        - {loc}: {issue.variable.name if issue.variable else '?'} ({issue.role})"
-                    )
-
-                    if issue.duplicate_locations:
-                        for dup_path, dup_role in issue.duplicate_locations:
-                            dup_loc = ".".join(dup_path)
-                            lines.append(f"          + {dup_loc} ({dup_role})")
+                if issue.duplicate_locations:
+                    for dup_path, dup_role, dup_name in issue.duplicate_locations:
+                        dup_loc = ".".join(dup_path)
+                        if dup_loc == loc:
+                            lines.append(f"          + {dup_name} ({dup_role})")
+                        else:
+                            lines.append(
+                                f"          + {dup_loc}: {dup_name} ({dup_role})"
+                            )
 
             lines.append("")
 

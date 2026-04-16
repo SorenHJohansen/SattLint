@@ -1,9 +1,9 @@
 """Shared pytest fixtures and test utilities."""
+from importlib import import_module
 import sys
 from pathlib import Path
 
 import pytest
-from lark import Lark
 
 # Ensure `src/` is on sys.path so `import sattlint` works in dev/test runs.
 _ROOT = Path(__file__).resolve().parents[1]
@@ -11,9 +11,8 @@ _SRC = _ROOT / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from sattlint.engine import SattLineProjectLoader, create_sl_parser
-from sattlint.transformer.sl_transformer import SLTransformer
-from sattlint.models.ast_model import BasePicture
+create_sl_parser = import_module("sattlint.engine").create_sl_parser
+SLTransformer = import_module("sattlint.transformer.sl_transformer").SLTransformer
 
 
 @pytest.fixture

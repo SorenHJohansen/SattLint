@@ -285,8 +285,8 @@ def test_partial_record_usage_reports_unused_leaf_fields():
     unused_fields = {
         issue.field_path.casefold()
         for issue in analyzer.issues
-        if issue.kind is IssueKind.UNUSED
-        and issue.variable is rec
+        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
+        and issue.datatype_name == "RecType"
         and issue.field_path is not None
     }
 
@@ -344,9 +344,8 @@ def test_whole_record_access_does_not_report_unused_leaf_fields():
     analyzer.run()
 
     assert not any(
-        issue.kind is IssueKind.UNUSED
-        and (issue.variable is src or issue.variable is dst)
-        and issue.field_path is not None
+        issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
+        and issue.datatype_name == "RecType"
         for issue in analyzer.issues
     )
 

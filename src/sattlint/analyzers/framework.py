@@ -53,6 +53,7 @@ class AnalysisContext:
     base_picture: BasePicture
     graph: Any | None = None
     debug: bool = False
+    target_is_library: bool = False
 
     @property
     def unavailable_libraries(self) -> set[str]:

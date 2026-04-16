@@ -11,7 +11,6 @@ from openpyxl import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.chart import BarChart, Reference
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 import logging
@@ -19,7 +18,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Optional
 
-log = logging.getLogger("SattLineConfigExcel")
+log = logging.getLogger("SattLint")
 
 
 @dataclass
@@ -301,7 +300,7 @@ class SattLineConfigExtractor:
             log.warning(f"No .k files found in {self.kfiles_dir}")
             return configurations
 
-        log.info(f"📁 Found {len(config_files)} configuration files")
+        log.info(f"Found {len(config_files)} configuration files")
 
         for config_file in config_files:
             config_info = parser.parse_configuration_file(config_file)
@@ -641,7 +640,7 @@ class ExcelGenerator:
         # Title
         ws.merge_cells('A1:I1')
         title_cell = ws['A1']
-        title_cell.value = "🖥️ Workstation Configuration Overview"
+        title_cell.value = "Workstation Configuration Overview"
         title_cell.font = Font(bold=True, size=16, color="FFFFFF")
         title_cell.fill = PatternFill(start_color="2E75B6", end_color="2E75B6", fill_type="solid")
         title_cell.alignment = Alignment(horizontal='center', vertical='center')
@@ -784,7 +783,7 @@ class ExcelGenerator:
             # Store with original case name, but create lowercase key for lookup
             config_contents[config.config_name.lower()] = {
                 'programs': [p['name'] for p in config.programs],  # Original case preserved
-                'libraries': [l['name'] for l in config.libraries]  # Original case preserved
+                'libraries': [library['name'] for library in config.libraries]  # Original case preserved
             }
 
         # Populate station configs with programs and libraries from configuration files
@@ -1013,7 +1012,7 @@ class ExcelGenerator:
         # Results section - Affected Workstations
         ws.merge_cells('A19:H19')
         results_header = ws['A19']
-        results_header.value = "🖥️ AFFECTED WORKSTATIONS"
+        results_header.value = "AFFECTED WORKSTATIONS"
         results_header.font = Font(bold=True, size=12, color="FFFFFF")
         results_header.fill = PatternFill(start_color="ED7D31", end_color="ED7D31", fill_type="solid")
         results_header.alignment = Alignment(horizontal='center')

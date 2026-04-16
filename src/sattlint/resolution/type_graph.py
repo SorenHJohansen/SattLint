@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from ..models.ast_model import BasePicture, DataType, Simple_DataType, Variable
+from ..models.ast_model import BasePicture, Simple_DataType, Variable
 
 
 def _cf(s: str) -> str:
@@ -34,14 +34,18 @@ class TypeGraph:
         self._records_by_key = records_by_key
 
     @classmethod
-    def from_basepicture(cls, bp: BasePicture) -> "TypeGraph":
+    def from_datatypes(cls, datatypes: Iterable) -> "TypeGraph":
         records: dict[str, RecordDef] = {}
-        for dt in bp.datatype_defs or []:
+        for dt in datatypes or []:
             fields: dict[str, FieldDef] = {}
             for v in dt.var_list or []:
                 fields[_cf(v.name)] = FieldDef(name=v.name, datatype=v.datatype)
             records[_cf(dt.name)] = RecordDef(name=dt.name, fields_by_key=fields)
         return cls(records)
+
+    @classmethod
+    def from_basepicture(cls, bp: BasePicture) -> "TypeGraph":
+        return cls.from_datatypes(bp.datatype_defs or [])
 
     def has_record(self, type_name: str) -> bool:
         return _cf(type_name) in self._records_by_key

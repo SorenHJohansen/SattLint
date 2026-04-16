@@ -205,6 +205,14 @@ def test_self_check_handles_paths(tmp_path, monkeypatch, capsys):
     assert "✔ Root" in out
 
 
+def test_self_check_allows_empty_analyzed_target_list(capsys):
+    ok = app.self_check(app.DEFAULT_CONFIG.copy())
+
+    out = capsys.readouterr().out
+    assert ok is True
+    assert "WARNING analyzed_programs_and_libraries is empty" in out
+
+
 def test_documentation_config_defaults_are_merged(tmp_path):
     config_path = tmp_path / "config.toml"
     cfg, _created = app.load_config(config_path)
@@ -478,6 +486,69 @@ def test_cli_entry_point_forwards_sys_argv_without_loading_ast(
     assert captured.err == ""
 
 
+def test_main_starts_without_targets_and_skips_ast_cache(noop_screen, monkeypatch):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg["analyzed_programs_and_libraries"] = []
+    calls = []
+
+    monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))
+    monkeypatch.setattr(app, "self_check", lambda *_: calls.append("self_check") or True)
+    monkeypatch.setattr(
+        app,
+        "ensure_ast_cache",
+        lambda *_: pytest.fail("ensure_ast_cache should not run without analyzed targets"),
+    )
+    monkeypatch.setattr(builtins, "input", make_input(["q"]))
+
+    exit_code = app.main()
+
+    assert exit_code == 0
+    assert calls == ["self_check"]
+
+
+def test_main_blocks_target_dependent_menu_actions_without_targets(
+    noop_screen, monkeypatch, capsys
+):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg["analyzed_programs_and_libraries"] = []
+
+    monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))
+    monkeypatch.setattr(app, "self_check", lambda *_: True)
+    monkeypatch.setattr(
+        app,
+        "ensure_ast_cache",
+        lambda *_: pytest.fail("ensure_ast_cache should not run without analyzed targets"),
+    )
+    monkeypatch.setattr(
+        app,
+        "analysis_menu",
+        lambda *_: pytest.fail("analysis_menu should be blocked without analyzed targets"),
+    )
+    monkeypatch.setattr(
+        app,
+        "dump_menu",
+        lambda *_: pytest.fail("dump_menu should be blocked without analyzed targets"),
+    )
+    monkeypatch.setattr(
+        app,
+        "documentation_menu",
+        lambda *_: pytest.fail("documentation_menu should be blocked without analyzed targets"),
+    )
+    monkeypatch.setattr(
+        app,
+        "force_refresh_ast",
+        lambda *_: pytest.fail("force_refresh_ast should be blocked without analyzed targets"),
+    )
+    monkeypatch.setattr(app, "pause", lambda: None)
+    monkeypatch.setattr(builtins, "input", make_input(["1", "2", "3", "6", "q"]))
+
+    exit_code = app.main()
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert out.count("No analyzed programs/libraries configured.") == 4
+
+
 def test_syntax_check_command_reports_parse_error(tmp_path, capsys):
     source_file = tmp_path / "InvalidProgram.s"
     source_file.write_text(INVALID_SINGLE_FILE, encoding="utf-8")
@@ -575,3 +646,107 @@ def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatc
     assert "=== Target: ProgramA ===" in out
     assert "=== Target: LibB ===" in out
     assert out.count("summary") == 2
+
+
+def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, capsys):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg["analyzed_programs_and_libraries"] = ["Broken", "Working"]
+    working_graph = SimpleNamespace(unavailable_libraries=set())
+
+    def fake_load_project(_cfg, target_name=None, *, use_cache=True):
+        if target_name == "Broken":
+            raise app.TargetLoadError(
+                "Broken",
+                resolved=["dep_a", "dep_b"],
+                missing=[
+                    "Broken parse/transform error: root failed",
+                    "dep_c parse/transform error: something bad happened",
+                    "transitive_lib parse/transform error: nested failure",
+                    "Missing code file for 'dep_d' (draft)",
+                ],
+                warnings=[
+                    "dep_c: BasePicture module instance 'Child' maps unknown parameter target 'Wrong'",
+                    "transitive_lib: BasePicture module instance 'Nested' maps unknown parameter target 'Oops'",
+                ],
+                direct_dependencies=["dep_c", "dep_d"],
+            )
+        return "bp-working", working_graph
+
+    monkeypatch.setattr(app, "load_project", fake_load_project)
+
+    projects = list(app._iter_loaded_projects(cfg))
+
+    out = capsys.readouterr().out
+    assert projects == [("Working", "bp-working", working_graph)]
+    assert "=== Target: Broken ===" in out
+    assert "Failed to load target:" in out
+    assert "Target 'Broken' was not parsed." in out
+    assert "Direct dependencies from the target file (2):" in out
+    assert "Resolved targets (2):" in out
+    assert "  - dep_a" in out
+    assert "Root target validation errors (1):" in out
+    assert "Failed direct dependencies (2):" in out
+    assert "  - dep_c: something bad happened" in out
+    assert "Direct dependency warnings (1):" in out
+    assert "Transitive dependency failures (1):" in out
+    assert "Transitive dependency warnings (1):" in out
+
+
+def test_run_variable_analysis_reports_when_no_targets_load(noop_screen, monkeypatch, capsys):
+    monkeypatch.setattr(app, "_iter_loaded_projects", lambda *_args, **_kwargs: iter(()))
+
+    app.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+
+    out = capsys.readouterr().out
+    assert "No variable analysis output was produced because no target loaded successfully." in out
+
+
+def test_run_variable_analysis_prints_validation_warnings(noop_screen, monkeypatch, capsys):
+    graph = SimpleNamespace(unavailable_libraries=set(), warnings=["dep_a: warning one", "dep_b: warning two"])
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("ProgramA", "bp", graph)]),
+    )
+    monkeypatch.setattr(app, "analyze_variables", lambda *_, **__: DummyReport())
+
+    app.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+
+    out = capsys.readouterr().out
+    assert "Validation warnings (2):" in out
+    assert "  - dep_a: warning one" in out
+    assert "summary" in out
+
+
+def test_run_variable_analysis_marks_library_targets(noop_screen, monkeypatch):
+    graph = SimpleNamespace(
+        unavailable_libraries=set(),
+        warnings=[],
+        source_files={
+            Path(r"C:\libs\ProjectLib\LibraryTarget.x"),
+        },
+    )
+    project_bp = SimpleNamespace(
+        header=SimpleNamespace(name="LibraryTarget"),
+        origin_file="LibraryTarget.x",
+    )
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("LibraryTarget", project_bp, graph)]),
+    )
+
+    captured: dict[str, object] = {}
+
+    def _fake_analyze_variables(*_args, **kwargs):
+        captured.update(kwargs)
+        return DummyReport()
+
+    monkeypatch.setattr(app, "analyze_variables", _fake_analyze_variables)
+
+    cfg = app.DEFAULT_CONFIG.copy()
+    cfg["program_dir"] = r"C:\programs"
+
+    app.run_variable_analysis(cfg, None)
+
+    assert captured["analyzed_target_is_library"] is True

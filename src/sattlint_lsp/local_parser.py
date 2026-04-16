@@ -13,11 +13,24 @@ from sattline_parser.api import create_parser
 from sattline_parser.transformer.sl_transformer import SLTransformer
 from sattline_parser.utils.text_processing import strip_sl_comments
 from sattlint.editor_api import SemanticSnapshot, build_source_snapshot_from_basepicture
-from sattlint.engine import StructuralValidationError, parse_source_text, validate_transformed_basepicture
-from sattlint.models.ast_model import BasePicture
+from sattlint.models.ast_model import (
+    BasePicture,
+    FrameModule,
+    ModuleCode,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    Sequence,
+    SFCAlternative,
+    SFCParallel,
+    SFCStep,
+    SFCSubsequence,
+    SFCTransitionSub,
+    SingleModule,
+    SourceSpan,
+    Variable,
+)
 from sattlint.utils.text_processing import find_disallowed_comments
 
-_MAX_SYNTAX_DIAGNOSTICS = 8
 _CHECKPOINT_TOKEN_INTERVAL = 64
 
 
@@ -36,37 +49,17 @@ def _range_from_position(line: int, column: int, length: int) -> Range:
     return Range(start=start, end=end)
 
 
-def _diagnostic_from_message(message: str, line: int | None, column: int | None) -> Diagnostic:
+def _diagnostic_from_message(
+    message: str,
+    line: int | None,
+    column: int | None,
+    length: int = 1,
+) -> Diagnostic:
     if line is None or column is None:
         range_ = Range(start=Position(line=0, character=0), end=Position(line=0, character=1))
     else:
-        range_ = _range_from_position(line, column, 1)
+        range_ = _range_from_position(line, column, length)
     return Diagnostic(range=range_, message=message, severity=DiagnosticSeverity.Error, source="sattlint")
-
-
-def _mask_line_for_reparse(text: str, line_number: int | None) -> str:
-    if line_number is None or line_number < 1:
-        return text
-
-    lines = text.splitlines(keepends=True)
-    if line_number > len(lines):
-        return text
-
-    original_line = lines[line_number - 1]
-    line_body = original_line
-    line_ending = ""
-    if original_line.endswith("\r\n"):
-        line_body = original_line[:-2]
-        line_ending = "\r\n"
-    elif original_line.endswith("\n") or original_line.endswith("\r"):
-        line_body = original_line[:-1]
-        line_ending = original_line[-1]
-
-    if not line_body:
-        return text
-
-    lines[line_number - 1] = (" " * len(line_body)) + line_ending
-    return "".join(lines)
 
 
 def _append_unique_diagnostic(
@@ -86,39 +79,231 @@ def _append_unique_diagnostic(
     return True
 
 
-def _collect_parse_diagnostics(text: str, *, limit: int = _MAX_SYNTAX_DIAGNOSTICS) -> list[Diagnostic]:
+def _merge_env(parent_env: dict[str, Variable], variables: list[Variable] | None) -> dict[str, Variable]:
+    merged = dict(parent_env)
+    for variable in variables or []:
+        merged[variable.name.casefold()] = variable
+    return merged
+
+
+def _split_dotted_name(name: str) -> tuple[str, tuple[str, ...]]:
+    parts = tuple(part for part in str(name).split(".") if part)
+    if not parts:
+        return "", ()
+    return parts[0], parts[1:]
+
+
+def _collect_sequence_step_features(
+    nodes: list[object],
+    *,
+    seqcontrol: bool,
+    seqtimer: bool,
+    known_steps: dict[str, str],
+    available_features: dict[str, set[str]],
+) -> None:
+    for node in nodes or []:
+        if isinstance(node, SFCStep):
+            key = node.name.casefold()
+            known_steps.setdefault(key, node.name)
+            feature_set = available_features.setdefault(key, set())
+            feature_set.add("x")
+            if seqcontrol:
+                feature_set.add("hold")
+                feature_set.add("reset")
+            if seqtimer:
+                feature_set.add("t")
+            continue
+
+        if isinstance(node, (SFCAlternative, SFCParallel)):
+            for branch in node.branches or []:
+                _collect_sequence_step_features(
+                    branch,
+                    seqcontrol=seqcontrol,
+                    seqtimer=seqtimer,
+                    known_steps=known_steps,
+                    available_features=available_features,
+                )
+            continue
+
+        if isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+            _collect_sequence_step_features(
+                node.body,
+                seqcontrol=seqcontrol,
+                seqtimer=seqtimer,
+                known_steps=known_steps,
+                available_features=available_features,
+            )
+
+
+def _iter_variable_refs(node: object):
+    if isinstance(node, dict) and "var_name" in node:
+        yield node
+        return
+
+    if isinstance(node, dict):
+        for value in node.values():
+            yield from _iter_variable_refs(value)
+        return
+
+    if isinstance(node, tuple):
+        for item in node:
+            yield from _iter_variable_refs(item)
+        return
+
+    if isinstance(node, list):
+        for item in node:
+            yield from _iter_variable_refs(item)
+        return
+
+    children = getattr(node, "children", None)
+    if children is not None:
+        for child in children:
+            yield from _iter_variable_refs(child)
+        return
+
+    node_dict = getattr(node, "__dict__", None)
+    if node_dict is not None:
+        for value in node_dict.values():
+            yield from _iter_variable_refs(value)
+
+
+def _collect_step_auto_variable_diagnostics_for_modulecode(
+    modulecode: ModuleCode | None,
+    env: dict[str, Variable],
+    diagnostics: list[Diagnostic],
+    seen: set[tuple[int, int, str]],
+) -> None:
+    if modulecode is None:
+        return
+
+    known_steps: dict[str, str] = {}
+    available_features: dict[str, set[str]] = {}
+    for sequence in modulecode.sequences or []:
+        if not isinstance(sequence, Sequence):
+            continue
+        _collect_sequence_step_features(
+            sequence.code or [],
+            seqcontrol=bool(sequence.seqcontrol),
+            seqtimer=bool(sequence.seqtimer),
+            known_steps=known_steps,
+            available_features=available_features,
+        )
+
+    if not known_steps:
+        return
+
+    for ref in _iter_variable_refs(modulecode):
+        full_name = ref.get("var_name")
+        span = ref.get("span")
+        if not isinstance(full_name, str) or not isinstance(span, SourceSpan):
+            continue
+
+        base_name, field_path = _split_dotted_name(full_name)
+        if not base_name or len(field_path) != 1:
+            continue
+
+        suffix = field_path[0].casefold()
+        if suffix not in {"hold", "reset", "t", "x"}:
+            continue
+
+        if base_name.casefold() in env:
+            continue
+
+        step_name = known_steps.get(base_name.casefold())
+        if step_name is None:
+            message = (
+                f"{full_name!r} is not available: no sequence step named {base_name!r} exists in this module"
+            )
+        else:
+            feature_set = available_features.get(base_name.casefold(), set())
+            if suffix == "hold" and "hold" not in feature_set:
+                message = (
+                    f"{full_name!r} is not available: step {step_name!r} only exposes .Hold when its sequence enables SeqControl"
+                )
+            elif suffix == "reset" and "reset" not in feature_set:
+                message = (
+                    f"{full_name!r} is not available: step {step_name!r} only exposes .Reset when its sequence enables SeqControl"
+                )
+            elif suffix == "t" and "t" not in feature_set:
+                message = (
+                    f"{full_name!r} is not available: step {step_name!r} only exposes .T when its sequence enables SeqTimer"
+                )
+            else:
+                continue
+
+        _append_unique_diagnostic(
+            diagnostics,
+            seen,
+            _diagnostic_from_message(message, span.line, span.column, len(full_name)),
+        )
+
+
+def _collect_step_auto_variable_diagnostics_for_single(
+    module: SingleModule,
+    parent_env: dict[str, Variable],
+    diagnostics: list[Diagnostic],
+    seen: set[tuple[int, int, str]],
+) -> None:
+    env = _merge_env(parent_env, module.moduleparameters)
+    env = _merge_env(env, module.localvariables)
+    _collect_step_auto_variable_diagnostics_for_modulecode(module.modulecode, env, diagnostics, seen)
+    for child in module.submodules or []:
+        _collect_step_auto_variable_diagnostics_for_module(child, env, diagnostics, seen)
+
+
+def _collect_step_auto_variable_diagnostics_for_typedef(
+    moduletype: ModuleTypeDef,
+    parent_env: dict[str, Variable],
+    diagnostics: list[Diagnostic],
+    seen: set[tuple[int, int, str]],
+) -> None:
+    env = _merge_env(parent_env, moduletype.moduleparameters)
+    env = _merge_env(env, moduletype.localvariables)
+    _collect_step_auto_variable_diagnostics_for_modulecode(moduletype.modulecode, env, diagnostics, seen)
+    for child in moduletype.submodules or []:
+        _collect_step_auto_variable_diagnostics_for_module(child, env, diagnostics, seen)
+
+
+def _collect_step_auto_variable_diagnostics_for_module(
+    module: SingleModule | FrameModule | ModuleTypeInstance,
+    parent_env: dict[str, Variable],
+    diagnostics: list[Diagnostic],
+    seen: set[tuple[int, int, str]],
+) -> None:
+    if isinstance(module, SingleModule):
+        _collect_step_auto_variable_diagnostics_for_single(module, parent_env, diagnostics, seen)
+        return
+
+    if isinstance(module, FrameModule):
+        _collect_step_auto_variable_diagnostics_for_modulecode(module.modulecode, parent_env, diagnostics, seen)
+        for child in module.submodules or []:
+            _collect_step_auto_variable_diagnostics_for_module(child, parent_env, diagnostics, seen)
+
+
+def _collect_step_auto_variable_diagnostics(base_picture: BasePicture) -> tuple[Diagnostic, ...]:
     diagnostics: list[Diagnostic] = []
     seen: set[tuple[int, int, str]] = set()
-    candidate = text
+    root_env = {variable.name.casefold(): variable for variable in (base_picture.localvariables or [])}
 
-    for _ in range(limit):
-        should_continue = True
-        try:
-            parse_source_text(candidate)
-            break
-        except VisitError as exc:
-            line, column = _extract_error_position(exc)
-            message = str(exc.orig_exc) if exc.orig_exc is not None else str(exc)
-        except StructuralValidationError as exc:
-            line, column = _extract_error_position(exc)
-            message = str(exc)
-            should_continue = False
-        except Exception as exc:
-            line, column = _extract_error_position(exc)
-            message = str(exc)
+    _collect_step_auto_variable_diagnostics_for_modulecode(
+        base_picture.modulecode,
+        root_env,
+        diagnostics,
+        seen,
+    )
 
-        diagnostic = _diagnostic_from_message(message, line, column)
-        if not _append_unique_diagnostic(diagnostics, seen, diagnostic):
-            break
-        if not should_continue:
-            break
+    for moduletype in base_picture.moduletype_defs or []:
+        _collect_step_auto_variable_diagnostics_for_typedef(
+            moduletype,
+            root_env,
+            diagnostics,
+            seen,
+        )
 
-        masked = _mask_line_for_reparse(candidate, line)
-        if masked == candidate:
-            break
-        candidate = masked
+    for module in base_picture.submodules or []:
+        _collect_step_auto_variable_diagnostics_for_module(module, root_env, diagnostics, seen)
 
-    return diagnostics
+    return tuple(diagnostics)
 
 
 def _line_start_offset(text: str, zero_based_line: int) -> int:
@@ -234,22 +419,21 @@ class IncrementalDocumentParserAdapter:
             reused_prefix_char_pos = checkpoint.char_pos
             reused_prefix_line = checkpoint.line
 
-        tokens_since_checkpoint = 0
+        # Adaptive checkpoint interval: cap total checkpoints to ~10 regardless of file size.
+        # Each checkpoint deep-copies Lark's value_stack (which grows as the file is parsed),
+        # making per-line checkpointing prohibitively expensive for files >1000 lines.
+        _MAX_DESIRED_CHECKPOINTS = 10
+        clean_lines = cleaned_text.count("\n") + 1
+        checkpoint_line_interval = max(1, clean_lines // _MAX_DESIRED_CHECKPOINTS)
+
         for token in cursor.lexer_state.lex(cursor.parser_state):
             cursor.feed_token(token)
-            tokens_since_checkpoint += 1
             current_line = int(cursor.lexer_state.state.line_ctr.line)
-            if current_line > checkpoints[-1].line:
+            if current_line >= checkpoints[-1].line + checkpoint_line_interval:
                 self._append_checkpoint_if_advanced(checkpoints, cursor)
-                tokens_since_checkpoint = 0
-                continue
-            if tokens_since_checkpoint >= self._checkpoint_token_interval:
-                self._append_checkpoint_if_advanced(checkpoints, cursor)
-                tokens_since_checkpoint = 0
 
         parse_tree = cursor.feed_eof()
         base_picture = SLTransformer().transform(parse_tree)
-        validate_transformed_basepicture(base_picture)
         return IncrementalParseState(
             cleaned_text=cleaned_text,
             checkpoints=tuple(checkpoints),
@@ -292,10 +476,24 @@ class IncrementalDocumentParserAdapter:
                 state = previous_state
             else:
                 state = self._parse_incrementally(cleaned_text, previous_state, changed_line_ranges)
-        except Exception:
-            for diagnostic in _collect_parse_diagnostics(text):
-                _append_unique_diagnostic(diagnostics, seen, diagnostic)
+        except VisitError as exc:
+            line, column = _extract_error_position(exc)
+            message = str(exc.orig_exc) if exc.orig_exc is not None else str(exc)
+            _append_unique_diagnostic(diagnostics, seen, _diagnostic_from_message(message, line, column))
             return DocumentParseResult(syntax_diagnostics=tuple(diagnostics), local_snapshot=None)
+        except Exception as exc:
+            line, column = _extract_error_position(exc)
+            _append_unique_diagnostic(diagnostics, seen, _diagnostic_from_message(str(exc), line, column))
+            return DocumentParseResult(syntax_diagnostics=tuple(diagnostics), local_snapshot=None)
+
+        for diagnostic in _collect_step_auto_variable_diagnostics(state.base_picture):
+            _append_unique_diagnostic(diagnostics, seen, diagnostic)
+
+        # Structural validation (validate_transformed_basepicture) is intentionally
+        # omitted here: it requires full library context to be accurate and its
+        # builtin-call walk is too slow for large library files. It still runs
+        # in engine.parse_source_text / parse_source_file (CLI) and when the full
+        # workspace snapshot is built on save.
 
         if not build_snapshot:
             return DocumentParseResult(
@@ -306,9 +504,14 @@ class IncrementalDocumentParserAdapter:
 
         try:
             snapshot = build_source_snapshot_from_basepicture(state.base_picture, document_path)
-        except Exception:
-            for diagnostic in _collect_parse_diagnostics(text):
-                _append_unique_diagnostic(diagnostics, seen, diagnostic)
+        except VisitError as exc:
+            line, column = _extract_error_position(exc)
+            message = str(exc.orig_exc) if exc.orig_exc is not None else str(exc)
+            _append_unique_diagnostic(diagnostics, seen, _diagnostic_from_message(message, line, column))
+            return DocumentParseResult(syntax_diagnostics=tuple(diagnostics), local_snapshot=None)
+        except Exception as exc:
+            line, column = _extract_error_position(exc)
+            _append_unique_diagnostic(diagnostics, seen, _diagnostic_from_message(str(exc), line, column))
             return DocumentParseResult(syntax_diagnostics=tuple(diagnostics), local_snapshot=None)
 
         return DocumentParseResult(

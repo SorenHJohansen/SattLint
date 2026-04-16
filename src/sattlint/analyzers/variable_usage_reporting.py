@@ -1,7 +1,6 @@
 """Reporting utilities for variable usage analysis."""
 from __future__ import annotations
 import logging
-from typing import Any, cast
 
 from ..models.ast_model import (
     BasePicture,
@@ -9,7 +8,6 @@ from ..models.ast_model import (
     FrameModule,
     ModuleTypeInstance,
     ModuleTypeDef,
-    Variable,
 )
 from ..resolution.common import (
     resolve_module_by_strict_path,
@@ -458,7 +456,6 @@ def _find_module_instances(bp: BasePicture, typedef_name: str):
         search_subs(typedef.submodules or [], path)
 
     # First pass: find the module in all typedef definitions
-    typedef_occurrences = []  # (module, path_within_typedef, parent_typedef_name)
     for mt in bp.moduletype_defs or []:
         find_in_typedef_tree(mt, [f"TypeDef:{mt.name}"])
 

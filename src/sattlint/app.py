@@ -7,6 +7,7 @@ import argparse
 import logging
 from pathlib import Path
 import os
+import re
 import sys
 from typing import Iterator, cast
 from . import engine as engine_module
@@ -18,13 +19,11 @@ from .analyzers.variables import (
 )
 from .analyzers.variable_usage_reporting import (
     debug_variable_usage,
-    analyze_datatype_usage,
 )
 from .analyzers.mms import analyze_mms_interface_variables
 from .analyzers.icf import parse_icf_file, validate_icf_entries_against_program
 from .analyzers.framework import AnalysisContext
 from .analyzers.registry import get_default_analyzers
-from .analyzers import variables as variables_module
 from .analyzers import variable_usage_reporting as variables_reporting_module
 from .analyzers.comment_code import analyze_comment_code_files
 from .analyzers.modules import (
@@ -40,18 +39,18 @@ from .docgenerator.classification import (
     discover_documentation_unit_candidates,
     document_scope_summary,
 )
-from .engine import GRAMMAR_PATH
 from .models.ast_model import BasePicture
 from .models.project_graph import ProjectGraph
 
 VARIABLE_ANALYSES = {
     "1": ("All variable analyses", None),
     "2": ("Unused variables", {IssueKind.UNUSED}),
-    "3": ("Read-only but not CONST", {IssueKind.READ_ONLY_NON_CONST}),
-    "4": ("Written but never read", {IssueKind.NEVER_READ}),
-    "5": ("String mapping type mismatches", {IssueKind.STRING_MAPPING_MISMATCH}),
-    "6": ("Duplicated complex datatypes", {IssueKind.DATATYPE_DUPLICATION}),
-    "7": ("Min/Max mapping name mismatches", {IssueKind.MIN_MAX_MAPPING_MISMATCH}),
+    "3": ("Unused fields in datatypes", {IssueKind.UNUSED_DATATYPE_FIELD}),
+    "4": ("Read-only but not CONST", {IssueKind.READ_ONLY_NON_CONST}),
+    "5": ("Written but never read", {IssueKind.NEVER_READ}),
+    "6": ("String mapping type mismatches", {IssueKind.STRING_MAPPING_MISMATCH}),
+    "7": ("Duplicated complex datatypes", {IssueKind.DATATYPE_DUPLICATION}),
+    "8": ("Min/Max mapping name mismatches", {IssueKind.MIN_MAX_MAPPING_MISMATCH}),
 }
 
 
@@ -62,6 +61,146 @@ _DOCUMENTATION_SCOPE_STATE = {
     "instance_paths": [],
     "moduletype_names": [],
 }
+
+
+class TargetLoadError(RuntimeError):
+    def __init__(
+        self,
+        target_name: str,
+        *,
+        resolved: list[str],
+        missing: list[str],
+        warnings: list[str] | None = None,
+        direct_dependencies: list[str] | None = None,
+    ):
+        self.target_name = target_name
+        self.resolved = list(resolved)
+        self.missing = list(missing)
+        self.warnings = list(warnings or [])
+        self.direct_dependencies = list(direct_dependencies or [])
+        super().__init__(self._build_message())
+
+    @staticmethod
+    def _extract_missing_name(item: str) -> str | None:
+        marker = " parse/transform error: "
+        if marker in item:
+            return item.split(marker, 1)[0]
+        match = re.match(r"Missing code file for '([^']+)'", item)
+        if match:
+            return match.group(1)
+        return None
+
+    @staticmethod
+    def _extract_warning_name(item: str) -> str | None:
+        if ": " not in item:
+            return None
+        return item.split(": ", 1)[0]
+
+    @staticmethod
+    def _format_missing_item(item: str) -> str:
+        marker = " parse/transform error: "
+        if marker in item:
+            name, detail = item.split(marker, 1)
+            return f"{name}: {detail}"
+        return item
+
+    def _build_message(self) -> str:
+        direct_keys = {name.casefold() for name in self.direct_dependencies}
+        root_failures: list[str] = []
+        direct_failures: list[str] = []
+        transitive_failures: list[str] = []
+        other_failures: list[str] = []
+        root_warnings: list[str] = []
+        direct_warnings: list[str] = []
+        transitive_warnings: list[str] = []
+        other_warnings: list[str] = []
+
+        for item in self.missing:
+            failure_name = self._extract_missing_name(item)
+            if failure_name is None:
+                other_failures.append(item)
+                continue
+            if failure_name.casefold() == self.target_name.casefold():
+                root_failures.append(item)
+            elif failure_name.casefold() in direct_keys:
+                direct_failures.append(item)
+            else:
+                transitive_failures.append(item)
+
+        for item in self.warnings:
+            warning_name = self._extract_warning_name(item)
+            if warning_name is None:
+                other_warnings.append(item)
+            elif warning_name.casefold() == self.target_name.casefold():
+                root_warnings.append(item)
+            elif warning_name.casefold() in direct_keys:
+                direct_warnings.append(item)
+            else:
+                transitive_warnings.append(item)
+
+        lines = [f"Target {self.target_name!r} was not parsed."]
+        if self.direct_dependencies:
+            lines.append(f"Direct dependencies from the target file ({len(self.direct_dependencies)}):")
+            lines.extend(f"  - {name}" for name in self.direct_dependencies)
+        if self.resolved:
+            lines.append(f"Resolved targets ({len(self.resolved)}):")
+            lines.extend(f"  - {name}" for name in self.resolved)
+        else:
+            lines.append("Resolved targets: none")
+
+        if root_failures:
+            lines.append(f"Root target validation errors ({len(root_failures)}):")
+            lines.extend(f"  - {self._format_missing_item(item)}" for item in root_failures)
+
+        if root_warnings:
+            lines.append(f"Root target warnings ({len(root_warnings)}):")
+            lines.extend(f"  - {item}" for item in root_warnings)
+
+        if direct_failures:
+            lines.append(f"Failed direct dependencies ({len(direct_failures)}):")
+            lines.extend(f"  - {self._format_missing_item(item)}" for item in direct_failures)
+
+        if direct_warnings:
+            lines.append(f"Direct dependency warnings ({len(direct_warnings)}):")
+            lines.extend(f"  - {item}" for item in direct_warnings)
+
+        if transitive_failures:
+            lines.append(
+                f"Transitive dependency failures ({len(transitive_failures)}):"
+            )
+            lines.extend(
+                f"  - {self._format_missing_item(item)}" for item in transitive_failures
+            )
+
+        if transitive_warnings:
+            lines.append(
+                f"Transitive dependency warnings ({len(transitive_warnings)}):"
+            )
+            lines.extend(f"  - {item}" for item in transitive_warnings)
+
+        if other_failures:
+            lines.append(f"Other missing/failed entries ({len(other_failures)}):")
+            lines.extend(f"  - {self._format_missing_item(item)}" for item in other_failures)
+
+        if other_warnings:
+            lines.append(f"Other warnings ({len(other_warnings)}):")
+            lines.extend(f"  - {item}" for item in other_warnings)
+
+        if not self.missing:
+            lines.append("Missing/failed targets: none")
+
+        return "\n".join(lines)
+
+
+def _print_validation_warnings(warnings: list[str], *, limit: int = 12) -> None:
+    if not warnings:
+        return
+
+    print(f"Validation warnings ({len(warnings)}):")
+    for item in warnings[:limit]:
+        print(f"  - {item}")
+    if len(warnings) > limit:
+        print(f"  - ... (+{len(warnings) - limit} more)")
 
 
 def load_config(path: Path):
@@ -81,7 +220,7 @@ def self_check(cfg: dict) -> bool:
 logging.basicConfig(format="%(message)s", level=logging.DEBUG)
 logging.getLogger().setLevel(logging.DEBUG)
 
-log = logging.getLogger("sattlint")
+log = logging.getLogger("SattLint")
 
 
 # ----------------------------
@@ -235,6 +374,21 @@ def _require_analyzed_targets(cfg: dict) -> list[str]:
             "Add entries to 'analyzed_programs_and_libraries' first."
         )
     return targets
+
+
+def _has_analyzed_targets(cfg: dict) -> bool:
+    return bool(_get_analyzed_targets(cfg))
+
+
+def _require_targets_for_menu_action(cfg: dict, action: str) -> bool:
+    if _has_analyzed_targets(cfg):
+        return True
+    print(
+        "\nNo analyzed programs/libraries configured. "
+        f"Add entries in Edit config before {action}."
+    )
+    pause()
+    return False
 
 
 def _cache_key_for_target(cfg: dict, target_name: str) -> str:
@@ -441,11 +595,17 @@ def _iter_loaded_projects(
     use_cache: bool = True,
 ) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
     for target_name in _require_analyzed_targets(cfg):
-        project_bp, graph = load_project(
-            cfg,
-            target_name=target_name,
-            use_cache=use_cache,
-        )
+        try:
+            project_bp, graph = load_project(
+                cfg,
+                target_name=target_name,
+                use_cache=use_cache,
+            )
+        except Exception as exc:
+            print(f"\n=== Target: {target_name} ===")
+            print("? Failed to load target:")
+            print(exc)
+            continue
         yield target_name, project_bp, graph
 
 
@@ -461,6 +621,22 @@ def _source_paths_for_current_target(project_bp, graph) -> set[Path]:
 
     target_name = project_bp.header.name.casefold()
     return {path for path in source_files if path.stem.casefold() == target_name}
+
+
+def _target_is_library(cfg: dict, project_bp, graph) -> bool:
+    program_dir = cfg.get("program_dir")
+    if not program_dir:
+        return False
+
+    source_paths = _source_paths_for_current_target(project_bp, graph)
+    if not source_paths:
+        return False
+
+    program_path = Path(program_dir)
+    return all(
+        not engine_module._is_within_directory(path, program_path)
+        for path in source_paths
+    )
 
 
 def load_project(
@@ -491,13 +667,20 @@ def load_project(
     )
 
     graph = loader.resolve(selected_target, strict=False)
+    deps_path = loader._find_deps_with_context(
+        selected_target,
+        requester_dir=Path(cfg["program_dir"]),
+    )
+    direct_dependencies = loader._read_deps(deps_path) if deps_path else []
 
     root_bp = graph.ast_by_name.get(selected_target)
     if not root_bp:
-        raise RuntimeError(
-            f"Target '{selected_target}' not parsed.\n"
-            f"Resolved: {list(graph.ast_by_name.keys())}\n"
-            f"Missing: {graph.missing}"
+        raise TargetLoadError(
+            selected_target,
+            resolved=list(graph.ast_by_name.keys()),
+            missing=graph.missing,
+            warnings=graph.warnings,
+            direct_dependencies=direct_dependencies,
         )
 
     project_bp = engine_module.merge_project_basepicture(root_bp, graph)
@@ -538,10 +721,14 @@ def load_program_ast(cfg: dict, program_name: str):
 
 def force_refresh_ast(cfg: dict):
     """Clear cached ASTs for configured targets and rebuild them."""
+    targets = _get_analyzed_targets(cfg)
+    if not targets:
+        return None
+
     cache_dir = get_cache_dir()
     cache = ASTCache(cache_dir)
     result = None
-    for target_name in _require_analyzed_targets(cfg):
+    for target_name in targets:
         cache.clear(_cache_key_for_target(cfg, target_name))
         result = load_project(cfg, target_name=target_name, use_cache=False)
     log.debug("✔ AST caches cleared")
@@ -550,12 +737,16 @@ def force_refresh_ast(cfg: dict):
 
 def ensure_ast_cache(cfg: dict) -> bool:
     """Check AST caches for configured targets and rebuild if needed."""
+    targets = _get_analyzed_targets(cfg)
+    if not targets:
+        return True
+
     cache_dir = get_cache_dir()
     cache = ASTCache(cache_dir)
     fast = cfg.get("fast_cache_validation", False)
     ok = True
-    for target_name in _require_analyzed_targets(cfg):
-        print(f"\n⏳ Checking AST cache for {target_name}...")
+    for target_name in targets:
+        print(f"\nChecking AST cache for {target_name}...")
         cached = cache.load(_cache_key_for_target(cfg, target_name))
         if cached:
             has_manifest = bool(cached.get("files"))
@@ -587,18 +778,25 @@ def ensure_ast_cache(cfg: dict) -> bool:
 
 
 def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
+    produced_output = False
     for target_name, project_bp, graph in _iter_loaded_projects(cfg):
+        produced_output = True
+        target_is_library = _target_is_library(cfg, project_bp, graph)
         report = analyze_variables(
             project_bp,
             debug=cfg.get("debug", False),
             unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+            analyzed_target_is_library=target_is_library,
         )
 
         if kinds is not None:
             report = filter_variable_report(report, kinds)
 
         print(f"\n=== Target: {target_name} ===")
+        _print_validation_warnings(getattr(graph, "warnings", []))
         print(report.summary())
+    if not produced_output:
+        print("\nNo variable analysis output was produced because no target loaded successfully.")
     pause()
 
 
@@ -973,6 +1171,7 @@ def _run_checks(cfg: dict, selected_keys: list[str] | None) -> None:
             base_picture=project_bp,
             graph=graph,
             debug=cfg.get("debug", False),
+            target_is_library=_target_is_library(cfg, project_bp, graph),
         )
         print(f"\n=== Target: {target_name} ===")
         for spec in analyzers:
@@ -1357,7 +1556,8 @@ def main(argv: list[str] | None = None) -> int:
             if not self_check(cfg):
                 if not confirm("Self-check failed. Continue?"):
                     return 0
-            ensure_ast_cache(cfg)
+            if _has_analyzed_targets(cfg):
+                ensure_ast_cache(cfg)
         dirty = False
 
         while True:
@@ -1387,13 +1587,16 @@ q) Quit
             c = input("> ").strip().lower()
 
             if c == "1":
-                analysis_menu(cfg)
+                if _require_targets_for_menu_action(cfg, "running analyses"):
+                    analysis_menu(cfg)
 
             elif c == "2":
-                dump_menu(cfg)
+                if _require_targets_for_menu_action(cfg, "dumping outputs"):
+                    dump_menu(cfg)
 
             elif c == "3":
-                dirty |= documentation_menu(cfg)
+                if _require_targets_for_menu_action(cfg, "using documentation tools"):
+                    dirty |= documentation_menu(cfg)
 
             elif c == "4":
                 dirty |= config_menu(cfg)
@@ -1404,10 +1607,11 @@ q) Quit
                 pause()
 
             elif c == "6":
-                if confirm("Force refresh cached AST?"):
-                    force_refresh_ast(cfg)
-                    print("✔ AST cache refreshed")
-                    pause()
+                if _require_targets_for_menu_action(cfg, "refreshing cached ASTs"):
+                    if confirm("Force refresh cached AST?"):
+                        force_refresh_ast(cfg)
+                        print("✔ AST cache refreshed")
+                        pause()
 
             elif c == "q":
                 if dirty and confirm("Unsaved config changes. Save before quitting?"):

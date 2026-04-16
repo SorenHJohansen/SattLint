@@ -206,6 +206,7 @@ class ModuleDef:
     zoomable: bool = False
     graph_objects: list[GraphObject] = field(default_factory=list)
     interact_objects: list[InteractObject] = field(default_factory=list)
+    properties: dict = field(default_factory=dict)
 
     def __str__(self) -> str:
         lines = [
@@ -322,6 +323,7 @@ class ModuleHeader:
     zoom_limits: tuple[float, float] | None = None
     zoomable: bool = False
     enable_tail: object | None = None
+    invoke_coord_tails: list[Any] = field(default_factory=list)
     groupconn: dict | None = None
     groupconn_global: bool = False
 

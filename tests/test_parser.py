@@ -4,12 +4,12 @@ import pytest
 
 from sattline_parser import api as parser_api
 from sattline_parser import parse_source_text as parser_core_parse_source_text
+from sattline_parser import strip_sl_comments
 from sattlint import constants as const
 from sattlint.engine import (
 	StructuralValidationError,
 	create_sl_parser,
 	parse_source_file,
-	strip_sl_comments,
 	validate_transformed_basepicture,
 	validate_single_file_syntax,
 )
@@ -160,6 +160,31 @@ ENDDEF (*BasePicture*);
 	assert bp.name == "BasePicture"
 
 
+def test_parser_core_sets_sequence_control_and_timer_flags():
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	SEQUENCE MainSeq (SeqControl, SeqTimer) COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+		SEQINITSTEP Start
+		SEQTRANSITION Tr1 WAIT_FOR False
+	ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+
+	bp = parser_core_parse_source_text(code)
+
+	assert bp.modulecode is not None
+	assert bp.modulecode.sequences is not None
+	seq = bp.modulecode.sequences[0]
+	assert seq.seqcontrol is True
+	assert seq.seqtimer is True
+
+
 def test_parser_core_emits_declaration_and_reference_spans():
 	code = """
 "SyntaxVersion"
@@ -193,6 +218,27 @@ ENDDEF (*BasePicture*);
 	assert target["span"].column == 3
 	assert value_ref["span"].line == 11
 	assert value_ref["span"].column == 13
+
+
+def test_parser_core_preserves_invar_tails_in_invoke_coords_and_clipping_bounds():
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0 : InVar_ "PosX",0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	PosX: integer := 0;
+	PanelResize: integer := 0;
+ModuleDef
+	ClippingBounds = ( -1.0 , -1.0 : InVar_ "PanelResize" ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+
+	bp = parser_core_parse_source_text(code)
+
+	assert bp.header.invoke_coord_tails == ["PosX"]
+	assert bp.moduledef is not None
+	assert bp.moduledef.properties[const.KEY_TAILS] == ["PanelResize"]
 
 
 def test_validate_single_file_syntax_rejects_comment_outside_equation_or_sequence(tmp_path):
@@ -504,6 +550,180 @@ ENDDEF (*BasePicture*);
 	assert "duplicate submodule names 'Child' and 'child'" in result.message
 
 
+def test_validate_single_file_syntax_allows_moduletype_instance_reusing_inline_name(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+	ChildType = MODULEDEFINITION DateCode_ 2
+	ModuleDef
+	ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+	ENDDEF (*ChildType*);
+SUBMODULES
+	Child Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 3
+	ModuleDef
+	ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+	ENDDEF (*Child*);
+	Child Invocation (0.0,0.0,0.0,1.0,1.0) : ChildType;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "RepeatedModuleTypeInvocationName.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_allows_distinct_moduletype_instances_with_same_type(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+	ChildType = MODULEDEFINITION DateCode_ 2
+	ModuleDef
+	ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+	ENDDEF (*ChildType*);
+SUBMODULES
+	ChildA Invocation (0.0,0.0,0.0,1.0,1.0) : ChildType;
+	ChildB Invocation (0.0,0.0,0.0,1.0,1.0) : ChildType;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "DistinctModuleTypeInvocations.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
+
+
+def test_validate_transformed_basepicture_workspace_mode_allows_external_style_datatypes():
+	bp = BasePicture(
+		header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+		localvariables=[
+			Variable(name="Wildcard", datatype="AnyType"),
+			Variable(name="ExternalRef", datatype="DI_IOType"),
+		],
+	)
+
+	validate_transformed_basepicture(
+		bp,
+		allow_unresolved_external_datatypes=True,
+	)
+
+
+def test_validate_transformed_basepicture_workspace_mode_allows_duplicate_submodule_names():
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+SUBMODULES
+	Child Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 2
+	ModuleDef
+	ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+	ENDDEF (*Child*);
+	child Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 3
+	ModuleDef
+	ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+	ENDDEF (*child*);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	bp = _parse_to_basepicture(code)
+
+	validate_transformed_basepicture(
+		bp,
+		enforce_unique_submodule_names=False,
+	)
+
+
+def test_validate_transformed_basepicture_workspace_mode_allows_mappings_to_parameterless_module():
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+	ChildType = MODULEDEFINITION DateCode_ 2
+	ModuleDef
+	ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+	ENDDEF (*ChildType*);
+SUBMODULES
+	Child Invocation (0.0,0.0,0.0,1.0,1.0) : ChildType (
+		Wrong => Missing
+	);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	bp = _parse_to_basepicture(code)
+
+	validate_transformed_basepicture(
+		bp,
+		allow_parameterless_module_mappings=True,
+	)
+
+
+def test_validate_transformed_basepicture_workspace_mode_still_rejects_builtin_typos():
+	bp = BasePicture(
+		header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+		localvariables=[Variable(name="Broken", datatype="intege")],
+	)
+
+	with pytest.raises(StructuralValidationError, match="did you mean 'integer'"):
+		validate_transformed_basepicture(
+			bp,
+			allow_unresolved_external_datatypes=True,
+		)
+
+
+def test_validate_transformed_basepicture_workspace_mode_warns_unknown_parameter_target():
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+	ChildType = MODULEDEFINITION DateCode_ 2
+	MODULEPARAMETERS
+		Value: integer;
+	ModuleDef
+	ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+	ENDDEF (*ChildType*);
+SUBMODULES
+	Child Invocation (0.0,0.0,0.0,1.0,1.0) : ChildType (
+		Wrong => 1
+	);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	bp = _parse_to_basepicture(code)
+	warnings: list[str] = []
+
+	validate_transformed_basepicture(
+		bp,
+		warn_unknown_parameter_targets=True,
+		warning_sink=warnings.append,
+	)
+
+	assert warnings == [
+		"BasePicture module instance 'Child' maps unknown parameter target 'Wrong'"
+	]
+
+
 def test_validate_single_file_syntax_rejects_duplicate_parameter_mapping_targets(tmp_path):
 	code = """
 "SyntaxVersion"
@@ -600,6 +820,61 @@ ENDDEF (*BasePicture*);
 	assert result.message is not None
 	assert "with datatype 'string'" in result.message
 	assert "with datatype 'integer'" in result.message
+
+
+def test_validate_single_file_syntax_allows_setstringpos_on_const_string(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	Delimiter: string Const := ";";
+	Status: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+		SetStringPos(Delimiter, 1, Status);
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "ConstSetStringPos.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_accepts_parameter_mapping_to_anytype(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+	ChildType = MODULEDEFINITION DateCode_ 2
+	MODULEPARAMETERS
+		Value: AnyType;
+	ModuleDef
+	ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+	ENDDEF (*ChildType*);
+SUBMODULES
+	Child Invocation (0.0,0.0,0.0,1.0,1.0) : ChildType (
+		Value => 1
+	);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "AnyTypeParameterTarget.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
 
 
 def test_validate_single_file_syntax_rejects_unknown_seqfork_target(tmp_path):

@@ -8,10 +8,10 @@ import typing as t
 from docx import Document as DocumentFactory
 from docx.document import Document as DocClass
 from docx.shared import Inches
+from sattline_parser.utils.formatter import format_expr
 
 from .. import config as config_module
 from ..models.ast_model import BasePicture, Equation, ModuleCode, Sequence, Variable
-from ..utils.formatter import format_expr
 from .classification import DocumentationClassification, DocumentedModule, classify_documentation_structure
 
 

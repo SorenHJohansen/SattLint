@@ -5,11 +5,16 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .analyzers.context_builder import ContextBuilder
 from .analyzers.variables import VariablesAnalyzer
-from .engine import CodeMode, SattLineProjectLoader, merge_project_basepicture
+from .engine import (
+    CodeMode,
+    SattLineProjectLoader,
+    expected_unavailable_library_reason,
+    merge_project_basepicture,
+)
 from .grammar import constants as const
 from .models.ast_model import (
     BasePicture,
@@ -46,6 +51,21 @@ _IGNORED_DISCOVERY_DIRS = {
 }
 
 
+class WorkspaceSnapshotError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        line: int | None = None,
+        column: int | None = None,
+        length: int | None = None,
+    ):
+        super().__init__(message)
+        self.line = line
+        self.column = column
+        self.length = length
+
+
 def _cf(value: str) -> str:
     return value.casefold()
 
@@ -60,6 +80,102 @@ def _format_datatype(datatype: Simple_DataType | str | None) -> str | None:
 
 def _path_key(path: Path) -> str:
     return path.as_posix().casefold()
+
+
+def _path_parent_key(path: Path) -> str:
+    return _path_key(path.parent)
+
+
+def _resolved_path(path: Path | None) -> Path | None:
+    if path is None:
+        return None
+    try:
+        return path.resolve()
+    except Exception:
+        return path
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def _format_name_list(items: list[str], *, limit: int = 12) -> str:
+    if len(items) <= limit:
+        return ", ".join(items)
+    shown = ", ".join(items[:limit])
+    return f"{shown}, ... (+{len(items) - limit} more)"
+
+
+def _format_workspace_snapshot_failure(
+    entry_name: str,
+    graph: ProjectGraph,
+    *,
+    detail: str | None = None,
+) -> str:
+    target_prefix = f"{entry_name} parse/transform error:"
+    dependency_issues = [
+        message
+        for message in graph.missing
+        if not message.casefold().startswith(target_prefix.casefold())
+    ]
+    resolved = sorted(graph.ast_by_name.keys(), key=str.casefold)
+    unavailable = sorted(graph.unavailable_libraries, key=str.casefold)
+
+    if detail is not None:
+        lines = [f"Target {entry_name!r} failed parse/transform: {detail}"]
+    else:
+        lines = [f"Target {entry_name!r} was not parsed."]
+
+    if resolved:
+        lines.append(f"Resolved targets ({len(resolved)}): {_format_name_list(resolved)}")
+
+    if unavailable:
+        lines.append(f"Unavailable libraries ({len(unavailable)}):")
+        for name in unavailable[:8]:
+            reason = expected_unavailable_library_reason(name)
+            if reason:
+                lines.append(f"- {name} ({reason})")
+            else:
+                lines.append(f"- {name}")
+        if len(unavailable) > 8:
+            lines.append(f"- ... (+{len(unavailable) - 8} more)")
+
+    if dependency_issues:
+        lines.append(f"Other dependency issues ({len(dependency_issues)}):")
+        for message in dependency_issues[:8]:
+            lines.append(f"- {message}")
+
+    if graph.warnings:
+        lines.append(f"Validation warnings ({len(graph.warnings)}):")
+        for message in graph.warnings[:8]:
+            lines.append(f"- {message}")
+        if len(dependency_issues) > 8:
+            lines.append(f"- ... (+{len(dependency_issues) - 8} more)")
+
+    return "\n".join(lines)
+
+
+def _first_branch_under(root: Path, path: Path) -> str | None:
+    if not _is_relative_to(path, root):
+        return None
+    relative = path.relative_to(root)
+    if not relative.parts:
+        return None
+    return relative.parts[0].casefold()
+
+
+def _index_source_files(paths: tuple[Path, ...]) -> dict[str, tuple[Path, ...]]:
+    index: dict[str, list[Path]] = {}
+    for path in paths:
+        index.setdefault(path.stem.casefold(), []).append(path)
+    return {
+        stem: tuple(sorted(matches, key=_path_key))
+        for stem, matches in index.items()
+    }
 
 
 def _path_startswith(path: tuple[str, ...], prefix: tuple[str, ...]) -> bool:
@@ -143,19 +259,151 @@ class WorkspaceSourceDiscovery:
     program_files: tuple[Path, ...]
     dependency_files: tuple[Path, ...]
     abb_lib_dir: Path | None = None
+    program_files_by_stem: dict[str, tuple[Path, ...]] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
+    dependency_files_by_stem: dict[str, tuple[Path, ...]] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
 
     def other_lib_dirs_for(self, entry_file: Path) -> tuple[Path, ...]:
-        entry_parent = entry_file.resolve().parent
-        abb_dir = self.abb_lib_dir.resolve() if self.abb_lib_dir else None
-        results: list[Path] = []
+        entry_parent = _resolved_path(entry_file.resolve().parent)
+        return self.ordered_source_dirs_for(entry_parent, include_requester=False)
+
+    def ordered_source_dirs_for(
+        self,
+        requester_dir: Path | None,
+        *,
+        include_requester: bool = True,
+    ) -> tuple[Path, ...]:
+        requester = _resolved_path(requester_dir)
+        abb_dir = _resolved_path(self.abb_lib_dir)
+        ordered: list[Path] = []
+        seen: set[str] = set()
+
+        def add(path: Path | None) -> None:
+            resolved = _resolved_path(path)
+            if resolved is None:
+                return
+            key = _path_key(resolved)
+            if key in seen:
+                return
+            seen.add(key)
+            ordered.append(resolved)
+
+        if requester is not None and include_requester:
+            add(requester)
+
+        cluster_root = self.shared_library_root_for(requester)
+        if cluster_root is not None and requester is not None:
+            requester_branch = _first_branch_under(cluster_root, requester)
+            same_branch: list[Path] = []
+            sibling_branch: list[Path] = []
+            for source_dir in self.source_dirs:
+                resolved = _resolved_path(source_dir)
+                if resolved is None or resolved == requester:
+                    continue
+                if not _is_relative_to(resolved, cluster_root):
+                    continue
+                branch = _first_branch_under(cluster_root, resolved)
+                if requester_branch is not None and branch == requester_branch:
+                    same_branch.append(resolved)
+                else:
+                    sibling_branch.append(resolved)
+            for source_dir in sorted(same_branch, key=_path_key):
+                add(source_dir)
+            for source_dir in sorted(sibling_branch, key=_path_key):
+                add(source_dir)
+
         for source_dir in self.source_dirs:
-            resolved = source_dir.resolve()
-            if resolved == entry_parent:
+            resolved = _resolved_path(source_dir)
+            if resolved is None:
                 continue
             if abb_dir is not None and resolved == abb_dir:
                 continue
-            results.append(source_dir)
-        return tuple(results)
+            add(resolved)
+
+        add(abb_dir)
+        return tuple(ordered)
+
+    def shared_library_root_for(self, requester_dir: Path | None) -> Path | None:
+        requester = _resolved_path(requester_dir)
+        workspace_root = _resolved_path(self.workspace_root)
+        if requester is None or workspace_root is None or not _is_relative_to(requester, workspace_root):
+            return None
+
+        current: Path | None = requester
+        while current is not None and _is_relative_to(current, workspace_root):
+            branches: set[str] = set()
+            for source_dir in self.source_dirs:
+                resolved = _resolved_path(source_dir)
+                if resolved is None or not _is_relative_to(resolved, current):
+                    continue
+                branch = _first_branch_under(current, resolved)
+                if branch is None:
+                    continue
+                branches.add(branch)
+                if len(branches) > 1:
+                    return current
+            if current == workspace_root:
+                break
+            current = current.parent
+
+        return None
+
+    def locate_source_file(
+        self,
+        name: str,
+        *,
+        extensions: list[str],
+        requester_dir: Path | None,
+    ) -> Path | None:
+        if not extensions:
+            return None
+
+        normalized_extensions = {extension.lower() for extension in extensions}
+        if normalized_extensions.issubset(_PROGRAM_EXTENSIONS):
+            matches = self.program_files_by_stem.get(name.casefold(), ())
+        elif normalized_extensions.issubset(_DEPENDENCY_EXTENSIONS):
+            matches = self.dependency_files_by_stem.get(name.casefold(), ())
+        else:
+            matches = tuple(
+                path
+                for path in (
+                    *self.program_files_by_stem.get(name.casefold(), ()),
+                    *self.dependency_files_by_stem.get(name.casefold(), ()),
+                )
+                if path.suffix.lower() in normalized_extensions
+            )
+
+        if not matches:
+            return None
+
+        matches_by_parent: dict[str, dict[str, Path]] = {}
+        for match in matches:
+            suffix = match.suffix.lower()
+            if suffix not in normalized_extensions:
+                continue
+            matches_by_parent.setdefault(_path_parent_key(match), {})[suffix] = match
+
+        for source_dir in self.ordered_source_dirs_for(requester_dir):
+            entries = matches_by_parent.get(_path_key(source_dir))
+            if not entries:
+                continue
+            for extension in extensions:
+                candidate = entries.get(extension.lower())
+                if candidate is not None:
+                    return candidate
+
+        for extension in extensions:
+            for match in matches:
+                if match.suffix.lower() == extension.lower():
+                    return match
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,21 +420,53 @@ class SymbolDefinition:
 
 
 @dataclass(frozen=True, slots=True)
+class SymbolReference:
+    canonical_path: str
+    source_file: str | None
+    source_library: str | None
+    line: int
+    column: int
+    length: int
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
 class _ReferenceOccurrence:
     line: int
     column: int
     text: str
-    root_definition_key: tuple[str, ...]
-    resolved_definition_key: tuple[str, ...]
+    source_file: str | None
+    source_library: str | None
+    segment_texts: tuple[str, ...]
+    definition_keys: tuple[tuple[str, ...], ...]
 
     def matches(self, line: int, column: int) -> bool:
         return self.line == line and _identifier_contains_column(self.column, self.text, column)
 
     def definition_key_for_column(self, column: int) -> tuple[str, ...]:
-        base_text = self.text.split(".", 1)[0]
-        if column <= (self.column + len(base_text) - 1):
-            return self.root_definition_key
-        return self.resolved_definition_key
+        current_column = self.column
+        for segment_text, definition_key in zip(self.segment_texts, self.definition_keys):
+            segment_end = current_column + len(segment_text) - 1
+            if current_column <= column <= segment_end:
+                return definition_key
+            current_column = segment_end + 2
+        return self.definition_keys[-1]
+
+    def reference_for_definition_key(self, definition_key: tuple[str, ...]) -> SymbolReference | None:
+        current_column = self.column
+        for segment_text, candidate_key in zip(self.segment_texts, self.definition_keys):
+            if candidate_key == definition_key:
+                return SymbolReference(
+                    canonical_path=".".join(definition_key),
+                    source_file=self.source_file,
+                    source_library=self.source_library,
+                    line=self.line,
+                    column=current_column,
+                    length=len(segment_text),
+                    text=segment_text,
+                )
+            current_column += len(segment_text) + 1
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,6 +499,11 @@ class SemanticSnapshot:
         compare=False,
     )
     _references_by_file: dict[str, tuple[_ReferenceOccurrence, ...]] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
+    _references_by_definition_key: dict[tuple[str, ...], tuple[SymbolReference, ...]] = field(
         default_factory=dict,
         repr=False,
         compare=False,
@@ -280,13 +565,65 @@ class SemanticSnapshot:
                 continue
             definition_key = occurrence.definition_key_for_column(column)
             definition = self._definitions_by_key.get(definition_key)
-            if definition is None and definition_key != occurrence.root_definition_key:
-                definition = self._definitions_by_key.get(occurrence.root_definition_key)
-                definition_key = occurrence.root_definition_key
+            root_definition_key = occurrence.definition_keys[0]
+            if definition is None and definition_key != root_definition_key:
+                definition = self._definitions_by_key.get(root_definition_key)
+                definition_key = root_definition_key
             if definition is None or definition_key in seen:
                 continue
             seen.add(definition_key)
             matches.append(definition)
+        return matches
+
+    def find_references_to(
+        self,
+        query: str | SymbolDefinition,
+        *,
+        limit: int | None = None,
+    ) -> list[SymbolReference]:
+        if isinstance(query, SymbolDefinition):
+            definition_key = tuple(_cf(segment) for segment in query.canonical_path.split("."))
+        else:
+            definitions = self.find_definitions(query, limit=1)
+            if not definitions:
+                return []
+            definition_key = tuple(_cf(segment) for segment in definitions[0].canonical_path.split("."))
+
+        references = list(self._references_by_definition_key.get(definition_key, ()))
+        if limit is not None:
+            return references[:limit]
+        return references
+
+    def find_references_at(
+        self,
+        source_file: Path | str,
+        line: int,
+        column: int,
+        *,
+        limit: int | None = None,
+    ) -> list[SymbolReference]:
+        definitions = self.find_definitions_at(source_file, line, column)
+        if not definitions:
+            return []
+
+        matches: list[SymbolReference] = []
+        seen: set[tuple[str, str | None, str | None, int, int, int]] = set()
+        for definition in definitions:
+            for reference in self.find_references_to(definition):
+                key = (
+                    reference.canonical_path.casefold(),
+                    reference.source_file.casefold() if reference.source_file is not None else None,
+                    reference.source_library.casefold() if reference.source_library is not None else None,
+                    reference.line,
+                    reference.column,
+                    reference.length,
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                matches.append(reference)
+                if limit is not None and len(matches) >= limit:
+                    return matches
         return matches
 
     def complete(
@@ -374,6 +711,7 @@ class _SemanticIndexBuilder:
         self._definitions_by_key: dict[tuple[str, ...], SymbolDefinition] = {}
         self._definitions_in_order: list[SymbolDefinition] = []
         self._references_by_file: dict[str, list[_ReferenceOccurrence]] = {}
+        self._references_by_definition_key: dict[tuple[str, ...], list[SymbolReference]] = {}
         self._moduletype_index: dict[str, list[ModuleTypeDef]] = {}
         self._datatype_field_definitions = self._build_datatype_field_definitions()
         for moduletype in base_picture.moduletype_defs or []:
@@ -395,6 +733,7 @@ class _SemanticIndexBuilder:
         dict[tuple[str, ...], SymbolDefinition],
         dict[str, list[ModuleTypeDef]],
         dict[str, tuple[_ReferenceOccurrence, ...]],
+        dict[tuple[str, ...], tuple[SymbolReference, ...]],
     ]:
         root_context = self.context_builder.build_for_basepicture()
         self._record_variables(
@@ -409,11 +748,13 @@ class _SemanticIndexBuilder:
             self.base_picture.moduledef,
             context=root_context,
             source_file=self.base_picture.origin_file,
+            source_library=self.base_picture.origin_lib,
         )
         self._record_scope_references(
             self.base_picture.modulecode,
             context=root_context,
             source_file=self.base_picture.origin_file,
+            source_library=self.base_picture.origin_lib,
         )
         self._walk_moduletype_defs(
             self.base_picture.moduletype_defs or [],
@@ -434,6 +775,7 @@ class _SemanticIndexBuilder:
             self._definitions_by_key,
             self._moduletype_index,
             {key: tuple(value) for key, value in self._references_by_file.items()},
+            {key: tuple(value) for key, value in self._references_by_definition_key.items()},
         )
 
     def _build_datatype_field_definitions(
@@ -459,15 +801,15 @@ class _SemanticIndexBuilder:
 
             next_active = set(active_types)
             next_active.add(current_key)
-            for field in datatype.var_list or []:
-                path = prefix + (field.name,)
+            for variable_field in datatype.var_list or []:
+                path = prefix + (variable_field.name,)
                 results[(root_type_name.casefold(), tuple(_cf(segment) for segment in path))] = (
-                    field,
+                    variable_field,
                     datatype.origin_file,
                     datatype.origin_lib,
                 )
-                if not isinstance(field.datatype, Simple_DataType):
-                    walk(root_type_name, str(field.datatype), path, next_active)
+                if not isinstance(variable_field.datatype, Simple_DataType):
+                    walk(root_type_name, str(variable_field.datatype), path, next_active)
 
         for datatype in self.base_picture.datatype_defs or []:
             walk(datatype.name, datatype.name, (), set())
@@ -562,10 +904,13 @@ class _SemanticIndexBuilder:
         *,
         context: ScopeContext,
         source_file: str | None,
+        source_library: str | None,
     ) -> None:
         file_key = _source_file_key(source_file)
         if file_key is None or node is None:
             return
+
+        source_file_name = Path(str(source_file)).name if source_file is not None else None
 
         for ref in _iter_variable_refs(node):
             full_name = ref.get(const.KEY_VAR_NAME)
@@ -577,24 +922,43 @@ class _SemanticIndexBuilder:
             if resolved_var is None:
                 continue
 
-            root_key = CanonicalPath(tuple(declaration_path + [resolved_var.name])).key()
-            resolved_key = root_key
-            if field_path:
-                resolved_key = CanonicalPath(
-                    tuple(declaration_path + [resolved_var.name] + [segment for segment in field_path.split(".") if segment])
-                ).key()
+            reference_segments = tuple(segment for segment in full_name.split(".") if segment)
+            if not reference_segments:
+                continue
+
+            resolved_segments = [segment for segment in field_path.split(".") if segment] if field_path else []
+            definition_keys = [CanonicalPath(tuple(declaration_path + [resolved_var.name])).key()]
+            for index in range(1, min(len(reference_segments), len(resolved_segments) + 1)):
+                definition_keys.append(
+                    CanonicalPath(
+                        tuple(declaration_path + [resolved_var.name] + resolved_segments[:index])
+                    ).key()
+                )
+            if len(definition_keys) < len(reference_segments):
+                definition_keys.extend([definition_keys[-1]] * (len(reference_segments) - len(definition_keys)))
 
             state = ref.get("state")
             text = full_name if not state else f"{full_name}:{state}"
-            self._references_by_file.setdefault(file_key, []).append(
-                _ReferenceOccurrence(
-                    line=span.line,
-                    column=span.column,
-                    text=text,
-                    root_definition_key=root_key,
-                    resolved_definition_key=resolved_key,
-                )
+            occurrence = _ReferenceOccurrence(
+                line=span.line,
+                column=span.column,
+                text=text,
+                source_file=source_file_name,
+                source_library=source_library,
+                segment_texts=reference_segments,
+                definition_keys=tuple(definition_keys),
             )
+            self._references_by_file.setdefault(file_key, []).append(occurrence)
+
+            recorded_keys: set[tuple[str, ...]] = set()
+            for definition_key in occurrence.definition_keys:
+                if definition_key in recorded_keys:
+                    continue
+                recorded_keys.add(definition_key)
+                symbol_reference = occurrence.reference_for_definition_key(definition_key)
+                if symbol_reference is None:
+                    continue
+                self._references_by_definition_key.setdefault(definition_key, []).append(symbol_reference)
 
     def _repath_context(
         self,
@@ -645,11 +1009,13 @@ class _SemanticIndexBuilder:
                     module.moduledef,
                     context=child_context,
                     source_file=current_origin_file,
+                    source_library=current_origin_library,
                 )
                 self._record_scope_references(
                     module.modulecode,
                     context=child_context,
                     source_file=current_origin_file,
+                    source_library=current_origin_library,
                 )
                 self._walk_submodules(
                     module.submodules or [],
@@ -713,11 +1079,13 @@ class _SemanticIndexBuilder:
                 moduletype.moduledef,
                 context=typedef_context,
                 source_file=moduletype.origin_file,
+                source_library=moduletype.origin_lib,
             )
             self._record_scope_references(
                 moduletype.modulecode,
                 context=typedef_context,
                 source_file=moduletype.origin_file,
+                source_library=moduletype.origin_lib,
             )
             self._walk_submodules(
                 moduletype.submodules or [],
@@ -768,11 +1136,13 @@ class _SemanticIndexBuilder:
                 moduletype.moduledef,
                 context=typedef_context,
                 source_file=moduletype.origin_file,
+                source_library=moduletype.origin_lib,
             )
             self._record_scope_references(
                 moduletype.modulecode,
                 context=typedef_context,
                 source_file=moduletype.origin_file,
+                source_library=moduletype.origin_lib,
             )
             self._walk_submodules(
                 moduletype.submodules or [],
@@ -887,12 +1257,17 @@ def discover_workspace_sources(workspace_root: Path) -> WorkspaceSourceDiscovery
     )
     abb_lib_dir = abb_candidates[0] if abb_candidates else None
 
+    sorted_program_files = tuple(sorted(program_files, key=_path_key))
+    sorted_dependency_files = tuple(sorted(dependency_files, key=_path_key))
+
     return WorkspaceSourceDiscovery(
         workspace_root=root,
         source_dirs=tuple(sorted(source_dirs, key=_path_key)),
-        program_files=tuple(sorted(program_files, key=_path_key)),
-        dependency_files=tuple(sorted(dependency_files, key=_path_key)),
+        program_files=sorted_program_files,
+        dependency_files=sorted_dependency_files,
         abb_lib_dir=abb_lib_dir,
+        program_files_by_stem=_index_source_files(sorted_program_files),
+        dependency_files_by_stem=_index_source_files(sorted_dependency_files),
     )
 
 
@@ -906,7 +1281,23 @@ def _single_entry_discovery(entry_path: Path, workspace_root: Path) -> Workspace
         program_files=program_files,
         dependency_files=dependency_files,
         abb_lib_dir=None,
+        program_files_by_stem=_index_source_files(program_files),
+        dependency_files_by_stem=_index_source_files(dependency_files),
     )
+
+
+def _build_lsp_workspace_lookup(
+    discovery: WorkspaceSourceDiscovery,
+) -> Callable[[str, list[str], Path | None, str], Path | None]:
+    def lookup(name: str, extensions: list[str], requester_dir: Path | None, kind: str) -> Path | None:
+        candidate = discovery.locate_source_file(
+            name,
+            extensions=extensions,
+            requester_dir=requester_dir,
+        )
+        return candidate
+
+    return lookup
 
 
 def _build_semantic_snapshot(
@@ -930,6 +1321,7 @@ def _build_semantic_snapshot(
         definitions_by_key,
         moduletype_index,
         references_by_file,
+        references_by_definition_key,
     ) = builder.build()
 
     diagnostics: tuple[VariableIssue, ...] = ()
@@ -955,6 +1347,7 @@ def _build_semantic_snapshot(
         _definitions_by_key=definitions_by_key,
         _moduletype_index=moduletype_index,
         _references_by_file=references_by_file,
+        _references_by_definition_key=references_by_definition_key,
     )
 
 
@@ -1010,6 +1403,7 @@ def load_workspace_snapshot(
     entry_file: Path,
     *,
     workspace_root: Path | None = None,
+    discovery: WorkspaceSourceDiscovery | None = None,
     mode: CodeMode | str = CodeMode.DRAFT,
     other_lib_dirs: list[Path] | None = None,
     abb_lib_dir: Path | None = None,
@@ -1022,12 +1416,12 @@ def load_workspace_snapshot(
         raise FileNotFoundError(f"Entry file does not exist: {entry_path}")
 
     root = Path(workspace_root).resolve() if workspace_root else entry_path.parent
-    discovery = discover_workspace_sources(root)
+    resolved_discovery = discovery or discover_workspace_sources(root)
     normalized_mode = _normalize_mode(mode)
     selected_other_lib_dirs = list(other_lib_dirs) if other_lib_dirs is not None else list(
-        discovery.other_lib_dirs_for(entry_path)
+        resolved_discovery.other_lib_dirs_for(entry_path)
     )
-    selected_abb_lib_dir = abb_lib_dir or discovery.abb_lib_dir or (root / "__missing_abb_lib__")
+    selected_abb_lib_dir = abb_lib_dir or resolved_discovery.abb_lib_dir or (root / "__missing_abb_lib__")
 
     loader = SattLineProjectLoader(
         program_dir=entry_path.parent,
@@ -1036,15 +1430,31 @@ def load_workspace_snapshot(
         mode=normalized_mode,
         scan_root_only=scan_root_only,
         debug=debug,
+        contextual_lookup=_build_lsp_workspace_lookup(resolved_discovery),
     )
 
     graph = loader.resolve(entry_path.stem, strict=False)
     root_bp = graph.ast_by_name.get(entry_path.stem)
     if root_bp is None:
-        raise RuntimeError(
-            f"Target {entry_path.stem!r} was not parsed. "
-            f"Resolved targets: {sorted(graph.ast_by_name.keys())}. Missing: {graph.missing}"
+        target_prefix = f"{entry_path.stem} parse/transform error:"
+        target_failure = next(
+            (
+                message
+                for message in graph.missing
+                if message.casefold().startswith(target_prefix.casefold())
+            ),
+            None,
         )
+        if target_failure is not None:
+            detail = target_failure[len(target_prefix) :].strip()
+            failure = graph.failures.get(entry_path.stem.casefold())
+            raise WorkspaceSnapshotError(
+                _format_workspace_snapshot_failure(entry_path.stem, graph, detail=detail),
+                line=failure.line if failure is not None else None,
+                column=failure.column if failure is not None else None,
+                length=failure.length if failure is not None else None,
+            )
+        raise WorkspaceSnapshotError(_format_workspace_snapshot_failure(entry_path.stem, graph))
 
     project_bp = merge_project_basepicture(root_bp, graph)
 
@@ -1052,7 +1462,7 @@ def load_workspace_snapshot(
         project_bp,
         entry_path=entry_path,
         workspace_root=root,
-        discovery=discovery,
+        discovery=resolved_discovery,
         project_graph=graph,
         collect_variable_diagnostics=collect_variable_diagnostics,
         debug=debug,
@@ -1063,6 +1473,7 @@ __all__ = [
     "CompletionItem",
     "SemanticSnapshot",
     "SymbolDefinition",
+    "SymbolReference",
     "WorkspaceSourceDiscovery",
     "discover_workspace_sources",
     "load_source_snapshot",

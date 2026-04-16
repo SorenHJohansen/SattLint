@@ -6,7 +6,8 @@ import signal
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
 
-from sattlint.engine import create_sl_parser, strip_sl_comments  # noqa: E402
+from sattlint.engine import create_sl_parser  # noqa: E402
+from sattline_parser import strip_sl_comments  # noqa: E402
 from sattlint.grammar.parser_decode import preprocess_sl_text, is_compressed  # noqa: E402
 
 ABB_DIR = pathlib.Path(
