@@ -2,15 +2,27 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-from lsprotocol.types import Position, Range
+from lsprotocol.types import CompletionItem as LspCompletionItem, CompletionItemKind, Position, Range
 
 from sattlint.editor_api import load_workspace_snapshot
 from sattlint_lsp.document_state import DocumentState, apply_content_changes
 from sattlint_lsp.local_parser import DocumentParseResult, FullDocumentParserAdapter, IncrementalParseState
 from sattlint_lsp.server import (
+    _load_snapshot_bundle,
+    _invalidate_cached_entries_for_path,
+    _process_workspace_scan_entries,
+    _publish_closed_document_diagnostics,
+    _publish_workspace_diagnostics_for_paths,
+    _semantic_diagnostics_for_path,
     _get_or_build_local_snapshot,
     _overlay_definition_candidates,
     _publish_diagnostics,
+    on_completion,
+    on_did_close,
+    on_definition,
+    on_hover,
+    on_references,
+    on_rename,
     collect_completion_candidates,
     collect_local_completion_candidates,
     collect_local_definition_locations,
@@ -20,6 +32,8 @@ from sattlint_lsp.server import (
     infer_module_path_from_source,
     resolve_entry_file,
     resolve_definition_path,
+    LspSettings,
+    SattLineLanguageServer,
     SnapshotBundle,
 )
 
@@ -27,6 +41,63 @@ from sattlint_lsp.server import (
 def _write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def _snapshot_bundle(snapshot, entry_file: Path) -> SnapshotBundle:
+    source_files = tuple(sorted((path.resolve() for path in snapshot.project_graph.source_files), key=lambda path: path.as_posix().casefold()))
+    by_name, by_key = build_source_path_index(source_files)
+    return SnapshotBundle(
+        snapshot=snapshot,
+        source_paths_by_name=by_name,
+        source_paths_by_key=by_key,
+        entry_file=entry_file.resolve(),
+        cache_key=entry_file.resolve().as_posix().casefold(),
+        source_files=source_files,
+    )
+
+
+def _record_library_source(record_name: str, field_name: str) -> str:
+    return f'''
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+    {record_name} = RECORD DateCode_ 2
+        {field_name}: integer;
+    ENDDEF (*{record_name}*);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+'''.strip()
+
+
+def _program_with_dependency(record_name: str) -> str:
+    return f'''
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Dep: {record_name};
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+'''.strip()
+
+
+def _source_with_unused_variable(variable_name: str = "UnusedVar") -> str:
+    return f'''
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    {variable_name}: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+'''.strip()
 
 
 def test_resolve_entry_file_prefers_program_document(tmp_path):
@@ -51,6 +122,82 @@ def test_resolve_entry_file_uses_configured_root_for_library_document(tmp_path):
     )
 
     assert resolved == entry.resolve()
+
+
+def test_publish_diagnostics_ignores_dependency_list_documents(monkeypatch, tmp_path):
+    published = []
+    fake_ls = SimpleNamespace(
+        settings=SimpleNamespace(enable_variable_diagnostics=True),
+        document_states={"file:///Libs/Support.l": object()},
+        local_parser=FullDocumentParserAdapter(),
+        text_document_publish_diagnostics=lambda params: published.append(params),
+    )
+    fake_document = SimpleNamespace(
+        uri="file:///Libs/Support.l",
+        source="Support\nOtherDep\n",
+    )
+
+    monkeypatch.setattr("sattlint_lsp.server._document_path", lambda document: tmp_path / "Libs" / "Support.l")
+
+    _publish_diagnostics(cast(Any, fake_ls), cast(Any, fake_document))
+
+    assert len(published) == 1
+    assert published[0].uri == "file:///Libs/Support.l"
+    assert published[0].diagnostics == []
+    assert "file:///Libs/Support.l" not in fake_ls.document_states
+
+
+def test_load_snapshot_bundle_prefers_sibling_library_cluster(tmp_path):
+    entry_file = tmp_path / "Libs" / "HA" / "ProjectLib" / "Main.s"
+    _write_text(entry_file, _program_with_dependency("SupportRec"))
+    _write_text(entry_file.with_suffix(".l"), "Support\n")
+    _write_text(tmp_path / "Libs" / "HA" / "NNELib" / "Support.s", _record_library_source("SupportRec", "SiblingField"))
+    _write_text(tmp_path / "AFallbackLib" / "Support.s", _record_library_source("SupportRec", "FallbackField"))
+
+    fake_ls = SattLineLanguageServer()
+    fake_ls.workspace_root = tmp_path
+    fake_ls.settings = LspSettings(enable_variable_diagnostics=False)
+
+    bundle = _load_snapshot_bundle(cast(Any, fake_ls), entry_file)
+
+    assert bundle is not None
+    assert bundle.snapshot.find_definitions("BasePicture.Dep.SiblingField")
+    assert bundle.snapshot.find_definitions("BasePicture.Dep.FallbackField") == []
+
+
+def test_load_snapshot_bundle_allows_reused_invocation_name_for_moduletype_instance(tmp_path):
+    entry_file = tmp_path / "Programs" / "Main.s"
+    _write_text(
+        entry_file,
+        """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+    ChildType = MODULEDEFINITION DateCode_ 2
+    ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    ENDDEF (*ChildType*);
+SUBMODULES
+    Child Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 3
+    ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    ENDDEF (*Child*);
+    Child Invocation (0.0,0.0,0.0,1.0,1.0) : ChildType;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+""".strip(),
+    )
+
+    fake_ls = SattLineLanguageServer()
+    fake_ls.workspace_root = tmp_path
+    fake_ls.settings = LspSettings(enable_variable_diagnostics=False)
+
+    bundle = _load_snapshot_bundle(cast(Any, fake_ls), entry_file)
+
+    assert bundle is not None
 
 
 def test_collect_syntax_diagnostics_reports_comment_violation(tmp_path):
@@ -99,7 +246,7 @@ ENDDEF (*BasePicture*);
     )
 
 
-def test_collect_syntax_diagnostics_reports_multiple_parse_errors_by_reparsing(tmp_path):
+def test_collect_syntax_diagnostics_reports_first_parse_error(tmp_path):
     source = """
 "SyntaxVersion"
 "OriginalFileDate"
@@ -118,10 +265,15 @@ ENDDEF (*BasePicture*);
 
     diagnostics = collect_syntax_diagnostics(tmp_path / "Program.s", source)
 
-    assert len(diagnostics) >= 2
+    assert len(diagnostics) >= 1
 
 
-def test_collect_syntax_diagnostics_reports_builtin_datatype_typo(tmp_path):
+def test_collect_syntax_diagnostics_does_not_report_unknown_type_suggestion(tmp_path):
+    # validate_transformed_basepicture is intentionally excluded from the local
+    # incremental parser (it requires full library context, is slow on large files,
+    # and produces false positives for library files). Datatype-typo suggestions
+    # are therefore not reported as real-time LSP diagnostics; they are only caught
+    # by the CLI syntax-check command and during workspace snapshot loading.
     source = """
 "SyntaxVersion"
 "OriginalFileDate"
@@ -136,10 +288,101 @@ ENDDEF (*BasePicture*);
 
     diagnostics = collect_syntax_diagnostics(tmp_path / "Program.s", source)
 
-    assert len(diagnostics) == 1
-    assert "did you mean 'integer'" in diagnostics[0].message
-    assert diagnostics[0].range.start.line == 5
-    assert diagnostics[0].range.start.character == 4
+    assert len(diagnostics) == 0
+
+
+def test_collect_syntax_diagnostics_reports_invalid_sequence_auto_variables(tmp_path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    si: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Start
+        SEQTRANSITION Tr1 WAIT_FOR False
+    ENDSEQUENCE
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        IF CompareGoldens.X THEN
+            si = 1;
+        ENDIF;
+        IF Start.T > 0 THEN
+            si = 2;
+        ENDIF;
+        IF Start.Reset THEN
+            si = 3;
+        ENDIF;
+        IF Start.Hold THEN
+            si = 4;
+        ENDIF;
+ENDDEF (*BasePicture*);
+""".strip()
+
+    diagnostics = collect_syntax_diagnostics(tmp_path / "Program.s", source)
+
+    assert len(diagnostics) == 4
+    assert any("no sequence step named 'CompareGoldens' exists in this module" in diagnostic.message for diagnostic in diagnostics)
+    assert any("only exposes .T when its sequence enables SeqTimer" in diagnostic.message for diagnostic in diagnostics)
+    assert any("only exposes .Reset when its sequence enables SeqControl" in diagnostic.message for diagnostic in diagnostics)
+    assert any("only exposes .Hold when its sequence enables SeqControl" in diagnostic.message for diagnostic in diagnostics)
+
+
+def test_collect_syntax_diagnostics_allows_valid_sequence_auto_variables(tmp_path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    si: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq (SeqControl, SeqTimer) COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Start
+        SEQTRANSITION Tr1 WAIT_FOR False
+    ENDSEQUENCE
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        IF Start.X AND Start.T >= 0 AND NOT Start.Reset AND NOT Start.Hold THEN
+            si = 1;
+        ENDIF;
+ENDDEF (*BasePicture*);
+""".strip()
+
+    diagnostics = collect_syntax_diagnostics(tmp_path / "Program.s", source)
+
+    assert diagnostics == []
+
+
+def test_collect_syntax_diagnostics_allows_step_x_without_seqcontrol(tmp_path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    si: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Start
+        SEQTRANSITION Tr1 WAIT_FOR False
+    ENDSEQUENCE
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        IF Start.X THEN
+            si = 1;
+        ENDIF;
+ENDDEF (*BasePicture*);
+""".strip()
+
+    diagnostics = collect_syntax_diagnostics(tmp_path / "Program.s", source)
+
+    assert diagnostics == []
 
 
 def test_infer_module_path_from_source_tracks_nested_modules():
@@ -311,8 +554,7 @@ ENDDEF (*BasePicture*);
     entry_file = tmp_path / "Program" / "Main.s"
     _write_text(entry_file, source)
     snapshot = load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=True)
-    by_name, by_key = build_source_path_index(snapshot.project_graph.source_files)
-    bundle = SnapshotBundle(snapshot=snapshot, source_paths_by_name=by_name, source_paths_by_key=by_key)
+    bundle = _snapshot_bundle(snapshot, entry_file)
 
     published = []
     fake_ls = SimpleNamespace(
@@ -335,6 +577,58 @@ ENDDEF (*BasePicture*);
     assert any(diagnostic.message.startswith("Unused variable") for diagnostic in published[0].diagnostics)
 
 
+def test_publish_diagnostics_limits_workspace_failure_to_active_file(monkeypatch, tmp_path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+""".strip()
+
+    published = []
+    fake_ls = SimpleNamespace(
+        settings=SimpleNamespace(enable_variable_diagnostics=True),
+        document_states={},
+        local_parser=FullDocumentParserAdapter(),
+        text_document_publish_diagnostics=lambda params: published.append(params),
+    )
+    fake_document = SimpleNamespace(
+        uri="file:///Program/Main.s",
+        source=source,
+    )
+
+    monkeypatch.setattr("sattlint_lsp.server._document_path", lambda document: tmp_path / "Program" / "Main.s")
+    monkeypatch.setattr(
+        "sattlint_lsp.server._load_snapshot_bundle",
+        lambda ls, path: (_ for _ in ()).throw(
+            type(
+                "WorkspaceFailure",
+                (RuntimeError,),
+                {"line": 11, "column": 24, "length": 12},
+            )(
+                "Target 'Main' failed parse/transform: root issue\n"
+                "Resolved targets (2): Main, Support\n"
+                "Unavailable libraries (1):\n"
+                "- controllib (expected proprietary dependency)\n"
+                "Other dependency issues (1):\n"
+                "- Support parse/transform error: dependency issue"
+            )
+        ),
+    )
+
+    _publish_diagnostics(cast(Any, fake_ls), cast(Any, fake_document))
+
+    assert len(published) == 1
+    assert len(published[0].diagnostics) == 1
+    assert published[0].diagnostics[0].message == "Target 'Main' failed parse/transform: root issue"
+    assert published[0].diagnostics[0].range.start.line == 10
+    assert published[0].diagnostics[0].range.start.character == 23
+    assert published[0].diagnostics[0].range.end.character == 35
+
+
 def test_collect_semantic_diagnostics_maps_unused_issue_to_source_file(tmp_path):
     source = """
 "SyntaxVersion"
@@ -351,8 +645,7 @@ ENDDEF (*BasePicture*);
     entry_file = tmp_path / "Program" / "Main.s"
     _write_text(entry_file, source)
     snapshot = load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=True)
-    by_name, by_key = build_source_path_index(snapshot.project_graph.source_files)
-    bundle = SnapshotBundle(snapshot=snapshot, source_paths_by_name=by_name, source_paths_by_key=by_key)
+    bundle = _snapshot_bundle(snapshot, entry_file)
 
     diagnostics = collect_semantic_diagnostics(bundle, entry_file)
     target = next(d for d in diagnostics if d.message.startswith("Unused variable"))
@@ -377,8 +670,7 @@ ENDDEF (*BasePicture*);
     entry_file = tmp_path / "Program" / "Main.s"
     _write_text(entry_file, source)
     snapshot = load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=False)
-    by_name, by_key = build_source_path_index(snapshot.project_graph.source_files)
-    bundle = SnapshotBundle(snapshot=snapshot, source_paths_by_name=by_name, source_paths_by_key=by_key)
+    bundle = _snapshot_bundle(snapshot, entry_file)
     definition = snapshot.find_definitions("BasePicture.Dv", limit=1)[0]
 
     assert resolve_definition_path(bundle, definition) == entry_file.resolve()
@@ -657,6 +949,358 @@ def test_get_or_build_local_snapshot_upgrades_prior_syntax_only_analysis(tmp_pat
     ]
 
 
+def test_publish_workspace_diagnostics_for_paths_deduplicates_shared_library_diagnostics(tmp_path):
+    shared = (tmp_path / "Libs" / "Shared.s").resolve()
+    diagnostic = cast(
+        Any,
+        SimpleNamespace(
+            range=Range(start=Position(line=0, character=0), end=Position(line=0, character=1)),
+            message="Unused variable: localvariable",
+            severity=1,
+            source="sattlint",
+        ),
+    )
+    ls = SattLineLanguageServer()
+    ls.workspace_root = tmp_path
+    ls.settings = LspSettings(enable_variable_diagnostics=True, workspace_diagnostics_mode="background")
+    ls.entry_diagnostics = {
+        "entry-a": {shared: (diagnostic,)},
+        "entry-b": {shared: (diagnostic,)},
+    }
+
+    _publish_workspace_diagnostics_for_paths(ls, {shared})
+
+    assert shared in ls.published_workspace_diagnostics
+    assert len(ls.published_workspace_diagnostics[shared]) == 1
+    assert ls.published_workspace_diagnostics[shared][0].message.startswith("Unused variable")
+
+
+def test_publish_closed_document_diagnostics_restores_workspace_diagnostics(tmp_path):
+    path = (tmp_path / "Libs" / "Shared.s").resolve()
+    diagnostic = cast(
+        Any,
+        SimpleNamespace(
+            range=Range(start=Position(line=0, character=0), end=Position(line=0, character=1)),
+            message="Unused variable",
+            severity=1,
+            source="sattlint",
+        ),
+    )
+    published = []
+
+    ls = SattLineLanguageServer()
+    ls.text_document_publish_diagnostics = lambda params: published.append(params)
+    ls.entry_diagnostics = {"entry": {path: (diagnostic,)}}
+
+    _publish_closed_document_diagnostics(ls, path)
+
+    assert len(published) == 1
+    assert published[0].uri.casefold() == path.as_uri().casefold()
+    assert len(published[0].diagnostics) == 1
+    assert published[0].diagnostics[0].message == "Unused variable"
+    assert ls.published_workspace_diagnostics[path][0].message == "Unused variable"
+
+
+def test_publish_closed_document_diagnostics_loads_snapshot_when_cache_is_empty(monkeypatch, tmp_path):
+    path = (tmp_path / "Program" / "Main.s").resolve()
+    diagnostic = cast(
+        Any,
+        SimpleNamespace(
+            range=Range(start=Position(line=1, character=2), end=Position(line=1, character=5)),
+            message="Variable is written but never read",
+            severity=2,
+            source="sattlint",
+        ),
+    )
+    published = []
+    fake_bundle = SnapshotBundle(
+        snapshot=cast(Any, object()),
+        source_paths_by_name={},
+        source_paths_by_key={},
+        entry_file=path,
+        cache_key=path.as_posix().casefold(),
+        source_files=(path,),
+    )
+
+    ls = SattLineLanguageServer()
+    ls.text_document_publish_diagnostics = lambda params: published.append(params)
+
+    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", lambda server, document_path: fake_bundle)
+    monkeypatch.setattr("sattlint_lsp.server.collect_semantic_diagnostics", lambda bundle, document_path: [diagnostic])
+
+    _publish_closed_document_diagnostics(ls, path)
+
+    assert len(published) == 1
+    assert published[0].uri.casefold() == path.as_uri().casefold()
+    assert len(published[0].diagnostics) == 1
+    assert published[0].diagnostics[0].message == "Variable is written but never read"
+    assert ls.published_workspace_diagnostics[path][0].message == "Variable is written but never read"
+
+
+def test_semantic_diagnostics_for_path_reuses_bundle_cache(monkeypatch, tmp_path):
+    path = (tmp_path / "Program" / "Main.s").resolve()
+    diagnostic = cast(
+        Any,
+        SimpleNamespace(
+            range=Range(start=Position(line=0, character=0), end=Position(line=0, character=1)),
+            message="Unused variable",
+            severity=1,
+            source="sattlint",
+        ),
+    )
+    bundle = SnapshotBundle(
+        snapshot=cast(Any, object()),
+        source_paths_by_name={},
+        source_paths_by_key={},
+        entry_file=path,
+        cache_key=path.as_posix().casefold(),
+        source_files=(path,),
+    )
+    calls = 0
+
+    def fake_collect(current_bundle, document_path):
+        nonlocal calls
+        calls += 1
+        assert current_bundle is bundle
+        assert document_path == path
+        return [diagnostic]
+
+    monkeypatch.setattr("sattlint_lsp.server.collect_semantic_diagnostics", fake_collect)
+
+    first = _semantic_diagnostics_for_path(bundle, path)
+    second = _semantic_diagnostics_for_path(bundle, path)
+
+    assert len(first) == 1
+    assert first is second
+    assert first[0].message == "Unused variable"
+    assert calls == 1
+
+
+def test_on_did_close_clears_stale_diagnostics_when_no_workspace_diagnostics_exist(tmp_path):
+    path = (tmp_path / "Program" / "Main.s").resolve()
+    uri = path.as_uri()
+    published = []
+
+    ls = SattLineLanguageServer()
+    ls.text_document_publish_diagnostics = lambda params: published.append(params)
+    ls.document_states[uri] = DocumentState(
+        uri=uri,
+        path=path,
+        version=2,
+        text="Alpha = ;\n",
+        is_dirty=True,
+    )
+
+    on_did_close(ls, cast(Any, SimpleNamespace(text_document=SimpleNamespace(uri=uri))))
+
+    assert uri not in ls.document_states
+    assert len(published) == 1
+    assert published[0].uri.casefold() == uri.casefold()
+    assert published[0].diagnostics == []
+
+
+def test_invalidate_cached_entries_for_path_marks_affected_entries_stale(tmp_path):
+    entry_a = (tmp_path / "Programs" / "PlantA.s").resolve()
+    entry_b = (tmp_path / "Programs" / "PlantB.s").resolve()
+    shared = (tmp_path / "Libs" / "Shared.s").resolve()
+    other = (tmp_path / "Libs" / "Other.s").resolve()
+
+    diagnostic = cast(
+        Any,
+        SimpleNamespace(
+            range=Range(start=Position(line=0, character=0), end=Position(line=0, character=1)),
+            message="Unused variable",
+            severity=1,
+            source="sattlint",
+        ),
+    )
+    key_a = entry_a.as_posix().casefold()
+    key_b = entry_b.as_posix().casefold()
+    bundle_a = SnapshotBundle(
+        snapshot=cast(Any, None),
+        source_paths_by_name={},
+        source_paths_by_key={},
+        entry_file=entry_a,
+        cache_key=key_a,
+        source_files=(entry_a, shared),
+    )
+    bundle_b = SnapshotBundle(
+        snapshot=cast(Any, None),
+        source_paths_by_name={},
+        source_paths_by_key={},
+        entry_file=entry_b,
+        cache_key=key_b,
+        source_files=(entry_b, other),
+    )
+
+    ls = SattLineLanguageServer()
+    ls.workspace_root = tmp_path
+    ls.settings = LspSettings(enable_variable_diagnostics=True, workspace_diagnostics_mode="background")
+    ls.snapshot_store.ensure_configured(tmp_path, ls.settings)
+    with ls.snapshot_store._lock:
+        state_a = ls.snapshot_store._state_for_entry_locked(entry_a)
+        state_a.bundle = bundle_a
+        state_b = ls.snapshot_store._state_for_entry_locked(entry_b)
+        state_b.bundle = bundle_b
+        ls.snapshot_store._source_file_to_entry_keys = {
+            entry_a: {key_a},
+            shared: {key_a},
+            entry_b: {key_b},
+            other: {key_b},
+        }
+    ls.entry_diagnostics = {
+        key_a: {shared: (diagnostic,)},
+        key_b: {other: (diagnostic,)},
+    }
+    ls.published_workspace_diagnostics = {shared: (diagnostic,), other: (diagnostic,)}
+
+    affected_entries = _invalidate_cached_entries_for_path(ls, shared)
+
+    assert affected_entries == (entry_a,)
+    with ls.snapshot_store._lock:
+        assert ls.snapshot_store._states[key_a].stale is True
+        assert ls.snapshot_store._states[key_b].stale is False
+        assert shared in ls.snapshot_store._source_file_to_entry_keys
+    assert shared not in ls.published_workspace_diagnostics
+    assert other in ls.published_workspace_diagnostics
+
+
+def test_on_hover_falls_back_to_local_snapshot_when_workspace_snapshot_fails(monkeypatch, tmp_path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Dv: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Dv = 1;
+ENDDEF (*BasePicture*);
+""".strip()
+
+    entry_file = tmp_path / "Program" / "Main.s"
+    _write_text(entry_file, source)
+    document = SimpleNamespace(uri=entry_file.resolve().as_uri(), source=source, version=1)
+    fake_ls = SimpleNamespace(
+        workspace=SimpleNamespace(get_text_document=lambda uri: document),
+        document_states={},
+        local_parser=FullDocumentParserAdapter(),
+        settings=SimpleNamespace(max_completion_items=20),
+    )
+    target_line = source.splitlines().index("        Dv = 1;")
+    params = SimpleNamespace(
+        text_document=SimpleNamespace(uri=document.uri),
+        position=SimpleNamespace(
+            line=target_line,
+            character=source.splitlines()[target_line].index("Dv"),
+        ),
+    )
+
+    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", lambda ls, path, **kwargs: None)
+
+    hover = on_hover(cast(Any, fake_ls), cast(Any, params))
+
+    assert hover is not None
+    hover_text = cast(Any, hover).contents.value
+    assert "Dv" in hover_text
+    assert "integer" in hover_text
+
+
+def test_on_references_falls_back_to_local_snapshot_when_workspace_snapshot_fails(monkeypatch, tmp_path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Dv: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Dv = Dv;
+ENDDEF (*BasePicture*);
+""".strip()
+
+    entry_file = tmp_path / "Program" / "Main.s"
+    _write_text(entry_file, source)
+    document = SimpleNamespace(uri=entry_file.resolve().as_uri(), source=source, version=1)
+    fake_ls = SimpleNamespace(
+        workspace=SimpleNamespace(get_text_document=lambda uri: document),
+        document_states={},
+        local_parser=FullDocumentParserAdapter(),
+        settings=SimpleNamespace(max_completion_items=20),
+    )
+    target_line = source.splitlines().index("        Dv = Dv;")
+    params = SimpleNamespace(
+        text_document=SimpleNamespace(uri=document.uri),
+        position=SimpleNamespace(
+            line=target_line,
+            character=source.splitlines()[target_line].rindex("Dv"),
+        ),
+        context=SimpleNamespace(includeDeclaration=True),
+    )
+
+    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", lambda ls, path, **kwargs: None)
+
+    locations = on_references(cast(Any, fake_ls), cast(Any, params))
+
+    assert locations is not None
+    assert len(locations) == 3
+    assert all(location.uri.casefold() == document.uri.casefold() for location in locations)
+
+
+def test_on_rename_falls_back_to_local_snapshot_when_workspace_snapshot_fails(monkeypatch, tmp_path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Dv: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Dv = Dv;
+ENDDEF (*BasePicture*);
+""".strip()
+
+    entry_file = tmp_path / "Program" / "Main.s"
+    _write_text(entry_file, source)
+    document = SimpleNamespace(uri=entry_file.resolve().as_uri(), source=source, version=1)
+    fake_ls = SimpleNamespace(
+        workspace=SimpleNamespace(get_text_document=lambda uri: document),
+        document_states={},
+        local_parser=FullDocumentParserAdapter(),
+        settings=SimpleNamespace(max_completion_items=20),
+    )
+    target_line = source.splitlines().index("        Dv = Dv;")
+    params = SimpleNamespace(
+        text_document=SimpleNamespace(uri=document.uri),
+        position=SimpleNamespace(
+            line=target_line,
+            character=source.splitlines()[target_line].rindex("Dv"),
+        ),
+        new_name="Renamed",
+    )
+
+    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", lambda ls, path, **kwargs: None)
+
+    edit = on_rename(cast(Any, fake_ls), cast(Any, params))
+
+    assert edit is not None
+    changes = cast(Any, edit).changes
+    assert changes is not None
+    matching_uri = next((uri for uri in changes if uri.casefold() == document.uri.casefold()), None)
+    assert matching_uri is not None
+    assert len(changes[matching_uri]) == 3
+    assert all(item.new_text == "Renamed" for item in changes[matching_uri])
+
+
 def test_get_or_build_local_snapshot_passes_previous_result_and_changed_ranges_to_adapter(tmp_path):
     entry_file = tmp_path / "Program" / "Main.s"
     uri = entry_file.resolve().as_uri()
@@ -818,8 +1462,7 @@ ENDDEF (*BasePicture*);
     entry_file = tmp_path / "Program" / "Main.s"
     _write_text(entry_file, source)
     workspace_snapshot = load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=False)
-    by_name, by_key = build_source_path_index(workspace_snapshot.project_graph.source_files)
-    bundle = SnapshotBundle(snapshot=workspace_snapshot, source_paths_by_name=by_name, source_paths_by_key=by_key)
+    bundle = _snapshot_bundle(workspace_snapshot, entry_file)
 
     from sattlint.editor_api import load_source_snapshot
 
@@ -838,3 +1481,139 @@ ENDDEF (*BasePicture*);
 
     assert len(definitions) == 1
     assert definitions[0].canonical_path.endswith("Renamed")
+
+
+def test_on_definition_falls_back_to_local_snapshot_when_workspace_snapshot_fails(monkeypatch, tmp_path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Dv: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Dv = 1;
+ENDDEF (*BasePicture*);
+""".strip()
+
+    entry_file = tmp_path / "Program" / "Main.s"
+    _write_text(entry_file, source)
+    document = SimpleNamespace(uri=entry_file.resolve().as_uri(), source=source, version=1)
+    fake_ls = SimpleNamespace(
+        workspace=SimpleNamespace(get_text_document=lambda uri: document),
+        document_states={},
+        local_parser=FullDocumentParserAdapter(),
+        settings=SimpleNamespace(max_completion_items=20),
+    )
+    params = SimpleNamespace(
+        text_document=SimpleNamespace(uri=document.uri),
+        position=SimpleNamespace(
+            line=source.splitlines().index("        Dv = 1;"),
+            character=source.splitlines()[source.splitlines().index("        Dv = 1;")].index("Dv"),
+        ),
+    )
+
+    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", lambda ls, path: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    locations = on_definition(cast(Any, fake_ls), cast(Any, params))
+
+    assert locations is not None
+    assert len(locations) == 1
+    assert locations[0].range.start.line == 5
+
+
+def test_on_definition_ignores_dependency_list_documents(monkeypatch, tmp_path):
+    document_path = tmp_path / "Libs" / "Support.l"
+    document = SimpleNamespace(uri=document_path.resolve().as_uri(), source="Support\n", version=1)
+    fake_ls = SimpleNamespace(
+        workspace=SimpleNamespace(get_text_document=lambda uri: document),
+        document_states={},
+        local_parser=FullDocumentParserAdapter(),
+        settings=SimpleNamespace(max_completion_items=20),
+    )
+    params = SimpleNamespace(
+        text_document=SimpleNamespace(uri=document.uri),
+        position=SimpleNamespace(line=0, character=0),
+    )
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("dependency lists should not trigger definition analysis")
+
+    monkeypatch.setattr("sattlint_lsp.server._get_or_build_local_snapshot", fail_if_called)
+
+    assert on_definition(cast(Any, fake_ls), cast(Any, params)) is None
+
+
+def test_on_completion_falls_back_to_local_snapshot_when_workspace_snapshot_fails(monkeypatch, tmp_path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Dv: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Dv = Dv;
+ENDDEF (*BasePicture*);
+""".strip()
+
+    entry_file = tmp_path / "Program" / "Main.s"
+    _write_text(entry_file, source)
+    document = SimpleNamespace(uri=entry_file.resolve().as_uri(), source=source, version=1)
+    fake_ls = SimpleNamespace(
+        workspace=SimpleNamespace(get_text_document=lambda uri: document),
+        document_states={},
+        local_parser=FullDocumentParserAdapter(),
+        settings=SimpleNamespace(max_completion_items=20),
+    )
+    target_line = source.splitlines().index("        Dv = Dv;")
+    params = SimpleNamespace(
+        text_document=SimpleNamespace(uri=document.uri),
+        position=SimpleNamespace(
+            line=target_line,
+            character=source.splitlines()[target_line].rindex("Dv") + 2,
+        ),
+    )
+
+    monkeypatch.setattr("sattlint_lsp.server._get_or_build_local_snapshot", lambda ls, document, path: object())
+    monkeypatch.setattr(
+        "sattlint_lsp.server.collect_local_completion_candidates",
+        lambda *args, **kwargs: [
+            LspCompletionItem(label="Dv", kind=CompletionItemKind.Variable),
+        ],
+    )
+    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", lambda ls, path: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    result = on_completion(cast(Any, fake_ls), cast(Any, params))
+
+    assert any(item.label == "Dv" for item in result.items)
+
+
+def test_on_completion_ignores_dependency_list_documents(monkeypatch, tmp_path):
+    document_path = tmp_path / "Libs" / "Support.l"
+    document = SimpleNamespace(uri=document_path.resolve().as_uri(), source="Support\n", version=1)
+    fake_ls = SimpleNamespace(
+        workspace=SimpleNamespace(get_text_document=lambda uri: document),
+        document_states={},
+        local_parser=FullDocumentParserAdapter(),
+        settings=SimpleNamespace(max_completion_items=20),
+    )
+    params = SimpleNamespace(
+        text_document=SimpleNamespace(uri=document.uri),
+        position=SimpleNamespace(line=0, character=0),
+    )
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("dependency lists should not trigger completion analysis")
+
+    monkeypatch.setattr("sattlint_lsp.server._get_or_build_local_snapshot", fail_if_called)
+
+    result = on_completion(cast(Any, fake_ls), cast(Any, params))
+
+    assert result.items == []

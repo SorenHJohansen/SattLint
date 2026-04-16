@@ -5,17 +5,7 @@ import textwrap
 from ..grammar import constants as const
 
 if TYPE_CHECKING:
-    from ..models.ast_model import (
-        Variable,
-        SFCStep,
-        SFCTransition,
-        SFCAlternative,
-        SFCParallel,
-        SFCSubsequence,
-        SFCTransitionSub,
-        SFCFork,
-        SFCBreak
-    )
+    pass
 
 
 def format_list(

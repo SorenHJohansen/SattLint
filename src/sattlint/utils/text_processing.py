@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from lark import Lark
-    from lark.exceptions import LarkError
 
 
 @dataclass(frozen=True)

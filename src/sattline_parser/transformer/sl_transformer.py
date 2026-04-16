@@ -86,6 +86,59 @@ class SLTransformer(Transformer):
     def __init__(self):
         super().__init__()
 
+    def _extract_coord_tails(self, nodes: list[Any]) -> list[Any]:
+        tails: list[Any] = []
+
+        def visit(x: Any):
+            if x is None or isinstance(x, Token):
+                return
+            if isinstance(x, (IntLiteral, FloatLiteral, int, float, bool)):
+                return
+            if isinstance(x, str):
+                tails.append(x)
+                return
+            if isinstance(x, tuple):
+                if len(x) == 2 and all(isinstance(v, (int, float)) for v in x):
+                    return
+                tails.append(x)
+                return
+            if isinstance(x, dict):
+                if const.KEY_VAR_NAME in x:
+                    tails.append(x)
+                    return
+                for value in x.values():
+                    visit(value)
+                return
+            if isinstance(x, list):
+                for value in x:
+                    visit(value)
+                return
+            if _is_tree(x):
+                for child in getattr(x, "children", []):
+                    visit(child)
+
+        for node in nodes:
+            visit(node)
+        return tails
+
+    def _merge_tails(self, *tail_groups: list[Any]) -> list[Any]:
+        merged: list[Any] = []
+        for group in tail_groups:
+            for tail in group or []:
+                merged.append(tail)
+        return merged
+
+    def _extract_coord_payloads(self, items: list[Any]) -> tuple[list[Any], list[Any]]:
+        coords: list[Any] = []
+        tails: list[Any] = []
+        for it in items:
+            if isinstance(it, dict) and const.KEY_COORDS in it:
+                coords.append(it[const.KEY_COORDS])
+                tails.extend(it.get(const.KEY_TAILS) or [])
+            elif isinstance(it, tuple):
+                coords.append(it)
+        return coords, tails
+
     # ---------- top-level ----------
     def start(self, items) -> BasePicture:
         for it in items:
@@ -159,6 +212,7 @@ class SLTransformer(Transformer):
     def module_header(self, items, meta) -> ModuleHeader:
         name = None
         coords5: tuple[float, float, float, float, float] | None = None
+        coord_tails: list[Any] = []
         args_trees: list[Tree] = []
         layer = None
         enable_val = True
@@ -169,6 +223,19 @@ class SLTransformer(Transformer):
         for it in items:
             if isinstance(it, str) and name is None:
                 name = it
+            elif isinstance(it, dict) and const.TREE_TAG_INVOKE_COORD in it:
+                raw = it[const.TREE_TAG_INVOKE_COORD]
+                if isinstance(raw, tuple) and len(raw) >= 5 and all(
+                    isinstance(x, (int, float)) for x in raw
+                ):
+                    coords5 = (
+                        float(raw[0]),
+                        float(raw[1]),
+                        float(raw[2]),
+                        float(raw[3]),
+                        float(raw[4]),
+                    )
+                    coord_tails = list(it.get(const.KEY_TAILS) or [])
             elif (
                 isinstance(it, tuple)
                 and len(it) >= 5
@@ -215,6 +282,7 @@ class SLTransformer(Transformer):
             enable=enable_val,
             zoom_limits=zoom_limits,
             enable_tail=enable_tail,
+            invoke_coord_tails=coord_tails,
         )
 
     # ------------------------
@@ -763,25 +831,37 @@ class SLTransformer(Transformer):
     def coordinates(self, items):
         """
         Grammar: "(" REAL coord_tail* "," REAL coord_tail* ")"
-        Extract only the two top-level REALs; ignore coord_tail Trees/dicts.
+        Preserve coordinate tails so InVar_-driven coordinate bindings can be analyzed.
         """
         nums = [float(v) for v in items if isinstance(v, (int, float))]
         if len(nums) < 2:
             raise ValueError(f"coordinates missing REAL values (got {len(nums)})")
-        return (nums[0], nums[1])
+        tails = self._extract_coord_tails(items)
+        return {
+            const.KEY_COORDS: (nums[0], nums[1]),
+            const.KEY_TAILS: tails or None,
+        }
 
     def origo_size_pair(self, items):
         # coordinates coordinates
-        coords = []
+        coords: list[tuple[float, float]] = []
+        tails: list[Any] = []
         for it in items:
-            # Already-transformed coordinates -> plain (x, y) tuple
-            if (
+            if isinstance(it, dict) and const.KEY_COORDS in it:
+                coord = it[const.KEY_COORDS]
+                if (
+                    isinstance(coord, tuple)
+                    and len(coord) == 2
+                    and all(isinstance(x, (int, float)) for x in coord)
+                ):
+                    coords.append((float(coord[0]), float(coord[1])))
+                    tails.extend(it.get(const.KEY_TAILS) or [])
+            elif (
                 isinstance(it, tuple)
                 and len(it) == 2
                 and all(isinstance(x, (int, float)) for x in it)
             ):
                 coords.append((float(it[0]), float(it[1])))
-            # Fallback: if for some reason coordinates wasn't transformed
             elif isinstance(it, Tree) and it.data == const.TREE_TAG_COORDINATES:
                 tree = cast(Tree, it)
                 nums = [float(x) for x in tree.children if isinstance(x, (int, float))]
@@ -791,17 +871,24 @@ class SLTransformer(Transformer):
             raise ValueError(
                 f"origo_size_pair expected 2 coordinate pairs, found {len(coords)}"
             )
-        return (coords[0], coords[1])
+        return {
+            const.KEY_COORDS: (coords[0], coords[1]),
+            const.KEY_TAILS: tails or None,
+        }
 
     def invoke_coord(self, items):
         """
         Grammar: REAL coord_tail* ',' REAL coord_tail* ',' ... (5 times)
-        Extract only the five top-level REALs; ignore coord_tail Trees/dicts.
+        Preserve coordinate tails so dynamic invocation coordinates count as reads.
         """
         nums = [float(v) for v in items if isinstance(v, (int, float))]
         if len(nums) < 5:
             raise ValueError(f"invoke_coord expected 5 REALs, found {len(nums)}")
-        return tuple(nums[:5])  # (x, y, z1, z2, z3)
+        tails = self._extract_coord_tails(items)
+        return {
+            const.TREE_TAG_INVOKE_COORD: tuple(nums[:5]),
+            const.KEY_TAILS: tails or None,
+        }
 
     def coord_invar_tail(self, items):
         # ":" (INVAR_PREFIX | OUTVAR_PREFIX) connected_variable
@@ -817,8 +904,13 @@ class SLTransformer(Transformer):
         return Tree(const.GRAMMAR_VALUE_CLIPPINGBOUNDS, items)
 
     def clippingbounds(self, items):
-        # return the tuple-of-tuples directly
-        return items[-1]  # ( (x1,y1), (x2,y2) )
+        payload = items[-1]
+        if isinstance(payload, dict) and const.KEY_COORDS in payload:
+            return {
+                const.GRAMMAR_VALUE_CLIPPINGBOUNDS: payload[const.KEY_COORDS],
+                const.KEY_TAILS: payload.get(const.KEY_TAILS) or None,
+            }
+        return {const.GRAMMAR_VALUE_CLIPPINGBOUNDS: payload}
 
     def seq_layers(self, items) -> dict[str, Any]:
         return {const.KEY_SEQ_LAYERS: items[-1]}
@@ -858,8 +950,12 @@ class SLTransformer(Transformer):
     def moduledef(self, items) -> ModuleDef:
         m = ModuleDef()
         for it in items:
-            # clippingbounds now returns a tuple-of-tuples
-            if (
+            if isinstance(it, dict) and const.GRAMMAR_VALUE_CLIPPINGBOUNDS in it:
+                m.clipping_bounds = it[const.GRAMMAR_VALUE_CLIPPINGBOUNDS]
+                tails = it.get(const.KEY_TAILS) or []
+                if tails:
+                    m.properties.setdefault(const.KEY_TAILS, []).extend(tails)
+            elif (
                 isinstance(it, tuple)
                 and len(it) == 2
                 and all(isinstance(t, tuple) for t in it)
@@ -895,6 +991,8 @@ class SLTransformer(Transformer):
                 return
             # enable() returns a dict with TREE_TAG_ENABLE + KEY_TAIL
             if isinstance(x, dict):
+                if const.KEY_TAIL in x and x[const.KEY_TAIL] is not None:
+                    tails.append(x[const.KEY_TAIL])
                 if (
                     const.TREE_TAG_ENABLE in x
                     and const.KEY_TAIL in x
@@ -914,6 +1012,18 @@ class SLTransformer(Transformer):
                     "invar_tail",
                 ):
                     tails.append(x)
+                elif data in (
+                    "format_string",
+                    "value_fraction",
+                    "width",
+                    "assign_colour",
+                    "colour_style",
+                ):
+                    for ch in getattr(x, "children", []):
+                        if isinstance(ch, (str, tuple)):
+                            tails.append(ch)
+                        elif isinstance(ch, dict) and const.KEY_VAR_NAME in ch:
+                            tails.append(ch)
                 # Recurse into children
                 for ch in getattr(x, "children", []):
                     visit(ch)
@@ -933,7 +1043,8 @@ class SLTransformer(Transformer):
         go = GraphObject(const.GRAMMAR_VALUE_TEXTOBJECT)
 
         # Coordinates ((x,y),(w,h))
-        for it in items:
+        coord_payloads, coord_tails = self._extract_coord_payloads(items)
+        for it in coord_payloads:
             if (
                 isinstance(it, tuple)
                 and len(it) == 2
@@ -943,7 +1054,7 @@ class SLTransformer(Transformer):
                 break
 
         # Collect tails (Enable_/InVar_ etc.) across the object
-        tails = self._collect_invar_enable_tails(items)  # robust recursive collector
+        tails = self._merge_tails(coord_tails, self._collect_invar_enable_tails(items))
         if tails:
             go.properties[const.KEY_TAILS] = tails
 
@@ -988,7 +1099,8 @@ class SLTransformer(Transformer):
 
     def rectangle_object(self, items) -> GraphObject:
         go = GraphObject(const.GRAMMAR_VALUE_RECTANGLEOBJECT)
-        for it in items:
+        coord_payloads, coord_tails = self._extract_coord_payloads(items)
+        for it in coord_payloads:
             if (
                 isinstance(it, tuple)
                 and len(it) == 2
@@ -996,14 +1108,15 @@ class SLTransformer(Transformer):
             ):
                 go.properties[const.KEY_COORDS] = it
                 break
-        tails = self._collect_invar_enable_tails(items)
+        tails = self._merge_tails(coord_tails, self._collect_invar_enable_tails(items))
         if tails:
             go.properties[const.KEY_TAILS] = tails
         return go
 
     def line_object(self, items) -> GraphObject:
         go = GraphObject(const.GRAMMAR_VALUE_LINEOBJECT)
-        for it in items:
+        coord_payloads, coord_tails = self._extract_coord_payloads(items)
+        for it in coord_payloads:
             if (
                 isinstance(it, tuple)
                 and len(it) == 2
@@ -1011,14 +1124,15 @@ class SLTransformer(Transformer):
             ):
                 go.properties[const.KEY_COORDS] = it
                 break
-        tails = self._collect_invar_enable_tails(items)
+        tails = self._merge_tails(coord_tails, self._collect_invar_enable_tails(items))
         if tails:
             go.properties[const.KEY_TAILS] = tails
         return go
 
     def oval_object(self, items) -> GraphObject:
         go = GraphObject(const.GRAMMAR_VALUE_OVALOBJECT)
-        for it in items:
+        coord_payloads, coord_tails = self._extract_coord_payloads(items)
+        for it in coord_payloads:
             if (
                 isinstance(it, tuple)
                 and len(it) == 2
@@ -1026,7 +1140,7 @@ class SLTransformer(Transformer):
             ):
                 go.properties[const.KEY_COORDS] = it
                 break
-        tails = self._collect_invar_enable_tails(items)
+        tails = self._merge_tails(coord_tails, self._collect_invar_enable_tails(items))
         if tails:
             go.properties[const.KEY_TAILS] = tails
         return go
@@ -1034,14 +1148,16 @@ class SLTransformer(Transformer):
     def polygon_object(self, items) -> GraphObject:
         go = GraphObject(const.GRAMMAR_VALUE_POLYGONOBJECT)
         # First coordinates are polygon vertices; not strictly needed for usage
-        tails = self._collect_invar_enable_tails(items)
+        _coord_payloads, coord_tails = self._extract_coord_payloads(items)
+        tails = self._merge_tails(coord_tails, self._collect_invar_enable_tails(items))
         if tails:
             go.properties[const.KEY_TAILS] = tails
         return go
 
     def segment_object(self, items) -> GraphObject:
         go = GraphObject(const.GRAMMAR_VALUE_SEGMENTOBJECT)
-        for it in items:
+        coord_payloads, coord_tails = self._extract_coord_payloads(items)
+        for it in coord_payloads:
             if (
                 isinstance(it, tuple)
                 and len(it) == 2
@@ -1049,14 +1165,15 @@ class SLTransformer(Transformer):
             ):
                 go.properties[const.KEY_COORDS] = it
                 break
-        tails = self._collect_invar_enable_tails(items)
+        tails = self._merge_tails(coord_tails, self._collect_invar_enable_tails(items))
         if tails:
             go.properties[const.KEY_TAILS] = tails
         return go
 
     def composite_object(self, items) -> GraphObject:
         go = GraphObject(const.GRAMMAR_VALUE_COMPOSITEOBJECT)
-        tails = self._collect_invar_enable_tails(items)
+        _coord_payloads, coord_tails = self._extract_coord_payloads(items)
+        tails = self._merge_tails(coord_tails, self._collect_invar_enable_tails(items))
         if tails:
             go.properties[const.KEY_TAILS] = tails
         return go
@@ -1287,9 +1404,9 @@ class SLTransformer(Transformer):
                 tree = cast(Tree, item)
                 for child in tree.children:
                     if isinstance(child, Token):
-                        if child.type == const.GRAMMAR_VALUE_SEQCONTROL:
+                        if child.value == const.GRAMMAR_VALUE_SEQCONTROL:
                             seqcontrol = True
-                        elif child.type == const.GRAMMAR_VALUE_SEQTIMER:
+                        elif child.value == const.GRAMMAR_VALUE_SEQTIMER:
                             seqtimer = True
             elif isinstance(item, Tree) and item.data == const.KEY_SEQUENCE_BODY:
                 # children are already typed SFC nodes
@@ -1367,14 +1484,14 @@ class SLTransformer(Transformer):
         props = {}
         coords = []
         proc = None
-        tails = []
+        coord_payloads, coord_tails = self._extract_coord_payloads(items)
         for it in items:
             if isinstance(it, tuple):
                 coords.append(it)
+            elif isinstance(it, dict) and const.KEY_COORDS in it:
+                coords.append(it[const.KEY_COORDS])
             elif isinstance(it, dict) and const.KEY_PROCEDURE_CALL in it:
                 proc = it[const.KEY_PROCEDURE_CALL]
-            elif isinstance(it, dict):
-                tails.append(it)
             elif isinstance(it, list):
                 # defensive
                 for sub in it:
@@ -1383,6 +1500,7 @@ class SLTransformer(Transformer):
         props[const.KEY_COORDS] = coords or None
         if proc:
             props[const.KEY_PROCEDURE] = proc
+        tails = self._merge_tails(coord_tails, self._collect_invar_enable_tails(items))
         if tails:
             props[const.KEY_TAILS] = tails
         return InteractObject(type=const.GRAMMAR_VALUE_COMBUTPROC, properties=props)
@@ -1437,6 +1555,8 @@ class SLTransformer(Transformer):
                 itype = it.value
             elif isinstance(it, tuple):
                 coords.append(it)
+            elif isinstance(it, dict) and const.KEY_COORDS in it:
+                coords.append(it[const.KEY_COORDS])
             elif isinstance(it, Tree) and it.data == const.TREE_TAG_INTERACT_BODY_SEQ:
                 tree = cast(Tree, it)
                 for child in tree.children:
@@ -1445,6 +1565,9 @@ class SLTransformer(Transformer):
                 for child in it:
                     body.append(child)
         props = {const.KEY_COORDS: coords or None, const.KEY_BODY: body or None}
+        tails = self._collect_invar_enable_tails(items)
+        if tails:
+            props[const.KEY_TAILS] = tails
         return InteractObject(type=itype or const.KEY_INTERACT, properties=props)
 
     def interact_assign_variable(self, items):
@@ -1458,8 +1581,10 @@ class SLTransformer(Transformer):
                 tree = cast(Tree, it)
                 tail = tree
             elif not isinstance(it, Token):
-                # the 'value' subtree or other processed value
-                val = it
+                if val is None:
+                    val = it
+                else:
+                    tail = it
         return {
             const.KEY_ASSIGN: {
                 const.KEY_NAME: name,
@@ -1509,7 +1634,7 @@ class SLTransformer(Transformer):
             return items[0]
         # Two children: first is the NOT token, second is the operand
         # Be defensive if something odd shows up
-        op, expr = items[0], items[1] if len(items) >= 2 else None
+        expr = items[1] if len(items) >= 2 else None
         return (const.GRAMMAR_VALUE_NOT, expr)
 
     def layer_info(self, items) -> int:

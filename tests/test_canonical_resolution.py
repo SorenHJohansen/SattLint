@@ -1,6 +1,5 @@
 """Tests for canonical path resolution across parameter mappings."""
 
-import pytest
 
 from sattlint import constants as const
 from sattlint.analyzers.variables import VariablesAnalyzer, IssueKind

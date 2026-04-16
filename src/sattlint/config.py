@@ -273,8 +273,8 @@ def self_check(cfg: dict) -> bool:
         if str(target).strip()
     ]
     if not targets:
-        print("❌ analyzed_programs_and_libraries must contain at least one entry")
-        ok = False
+        print("WARNING analyzed_programs_and_libraries is empty")
+        print("Configure targets before running analyses, documentation, or AST cache refresh.")
     else:
         print("Analyzed programs/libraries:")
         for target in targets:

@@ -94,6 +94,7 @@ class DocumentState:
     path: Path
     version: int
     text: str
+    is_dirty: bool = False
     changed_line_ranges: tuple[tuple[int, int], ...] = ()
     syntax_diagnostics: tuple[Any, ...] = ()
     local_snapshot: SemanticSnapshot | None = None
@@ -108,10 +109,11 @@ class DocumentState:
         if self.analysis_result is not None and self.analysis_version == self.version:
             self.previous_analysis_result = self.analysis_result
 
-    def replace_text(self, *, version: int, text: str) -> None:
+    def replace_text(self, *, version: int, text: str, is_dirty: bool = False) -> None:
         self.preserve_analysis_result()
         self.version = version
         self.text = text
+        self.is_dirty = is_dirty
         self.changed_line_ranges = ()
         self.syntax_diagnostics = ()
         self.clear_analysis()
@@ -126,6 +128,7 @@ class DocumentState:
         self.preserve_analysis_result()
         self.version = version
         self.text = updated
+        self.is_dirty = True
         self.changed_line_ranges = changed_ranges
         self.syntax_diagnostics = ()
         self.clear_analysis()

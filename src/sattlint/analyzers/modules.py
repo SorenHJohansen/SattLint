@@ -11,7 +11,6 @@ from ..models.ast_model import (
     ModuleTypeDef,
     Variable,
     ParameterMapping,
-    ModuleCode,
     Sequence,
     Equation,
 )
@@ -299,7 +298,7 @@ class ComparisonResult:
                 lines.append(f"Submodules: {unique_fp.num_submodules}")
                 lines.append(f"Sequences: {unique_fp.num_sequences}")
                 lines.append(f"Equations: {unique_fp.num_equations}")
-                lines.append(f"Locations:")
+                lines.append("Locations:")
                 for path, fp in instances:
                     lines.append(f"  DateCode: {fp.datecode} - {' → '.join(path)}")
                 lines.append("")

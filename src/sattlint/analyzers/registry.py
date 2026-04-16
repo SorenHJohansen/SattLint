@@ -17,6 +17,7 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
             context.base_picture,
             debug=context.debug,
             unavailable_libraries=context.unavailable_libraries,
+            analyzed_target_is_library=context.target_is_library,
         )
 
     def _run_mms_interface(context: AnalysisContext):

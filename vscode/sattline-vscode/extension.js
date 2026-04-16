@@ -7,6 +7,7 @@ const LANGUAGE_ID = 'sattline';
 const RESTART_COMMAND = 'sattlineLsp.restartServer';
 const STOPPED_BEFORE_REPLYING_MESSAGE = 'Language server stopped before replying.';
 const DID_CHANGE_DEBOUNCE_MS = 250;
+const PROGRAM_EXTENSIONS = new Set(['.s', '.x']);
 
 function getErrorMessage(error) {
     if (error instanceof Error && error.message) {
@@ -41,7 +42,17 @@ function onceProcessSettled(child) {
 }
 
 function isSattlineDocument(document) {
-    return document && document.uri.scheme === 'file' && document.languageId === LANGUAGE_ID;
+    if (!document || document.uri.scheme !== 'file') {
+        return false;
+    }
+    return PROGRAM_EXTENSIONS.has(path.extname(document.uri.fsPath || '').toLowerCase());
+}
+
+function createDocumentSelector() {
+    return [
+        { scheme: 'file', pattern: '**/*.s' },
+        { scheme: 'file', pattern: '**/*.x' },
+    ];
 }
 
 function toRange(range) {
@@ -56,6 +67,16 @@ function toCompletionItem(item) {
     completion.detail = item.detail;
     completion.kind = item.kind;
     return completion;
+}
+
+function toMarkdownString(contents) {
+    if (typeof contents === 'string') {
+        return new vscode.MarkdownString(contents);
+    }
+    if (contents && typeof contents.value === 'string') {
+        return new vscode.MarkdownString(contents.value);
+    }
+    return new vscode.MarkdownString('');
 }
 
 function toLspRange(range) {
@@ -138,6 +159,7 @@ function buildInitializationOptions(folder) {
         mode: config.get('mode') || 'draft',
         scanRootOnly: config.get('scanRootOnly') || false,
         enableVariableDiagnostics: config.get('enableVariableDiagnostics', true),
+        workspaceDiagnosticsMode: config.get('workspaceDiagnosticsMode', 'background'),
         maxCompletionItems: config.get('maxCompletionItems', 100),
     };
 }
@@ -301,6 +323,9 @@ class StdioLspBridge {
             capabilities: {
                 textDocument: {
                     definition: {},
+                    hover: { contentFormat: ['markdown', 'plaintext'] },
+                    references: {},
+                    rename: {},
                     completion: {
                         completionItem: {
                             documentationFormat: ['plaintext'],
@@ -425,6 +450,60 @@ class StdioLspBridge {
         return items.map(toCompletionItem);
     }
 
+    async requestHover(document, position) {
+        await this.start();
+        this.flushDidChange(document);
+        const result = await this.sendRequest('textDocument/hover', {
+            textDocument: { uri: document.uri.toString() },
+            position: { line: position.line, character: position.character },
+        });
+        if (!result || !result.contents) {
+            return undefined;
+        }
+        const contents = Array.isArray(result.contents)
+            ? result.contents.map(toMarkdownString)
+            : [toMarkdownString(result.contents)];
+        const range = result.range ? toRange(result.range) : undefined;
+        return new vscode.Hover(contents, range);
+    }
+
+    async requestReferences(document, position) {
+        await this.start();
+        this.flushDidChange(document);
+        const result = await this.sendRequest('textDocument/references', {
+            textDocument: { uri: document.uri.toString() },
+            position: { line: position.line, character: position.character },
+            context: { includeDeclaration: true },
+        });
+        if (!result) {
+            return undefined;
+        }
+        const locations = Array.isArray(result) ? result : [result];
+        return locations.map((location) => new vscode.Location(vscode.Uri.parse(location.uri), toRange(location.range)));
+    }
+
+    async requestRename(document, position, newName) {
+        await this.start();
+        this.flushDidChange(document);
+        const result = await this.sendRequest('textDocument/rename', {
+            textDocument: { uri: document.uri.toString() },
+            position: { line: position.line, character: position.character },
+            newName,
+        });
+        if (!result || !result.changes) {
+            return undefined;
+        }
+
+        const edit = new vscode.WorkspaceEdit();
+        for (const [uri, edits] of Object.entries(result.changes)) {
+            const targetUri = vscode.Uri.parse(uri);
+            for (const item of edits || []) {
+                edit.replace(targetUri, toRange(item.range), item.newText || '');
+            }
+        }
+        return edit;
+    }
+
     sendNotification(method, params) {
         this.tryWriteMessage({ jsonrpc: '2.0', method, params });
     }
@@ -516,12 +595,36 @@ class StdioLspBridge {
 }
 
 function registerLanguageFeatures(context, bridge) {
-    const selector = [{ scheme: 'file', language: LANGUAGE_ID }];
+    const selector = createDocumentSelector();
 
     context.subscriptions.push(
         vscode.languages.registerDefinitionProvider(selector, {
             provideDefinition(document, position) {
                 return bridge.requestDefinitions(document, position);
+            },
+        }),
+    );
+
+    context.subscriptions.push(
+        vscode.languages.registerHoverProvider(selector, {
+            provideHover(document, position) {
+                return bridge.requestHover(document, position);
+            },
+        }),
+    );
+
+    context.subscriptions.push(
+        vscode.languages.registerReferenceProvider(selector, {
+            provideReferences(document, position) {
+                return bridge.requestReferences(document, position);
+            },
+        }),
+    );
+
+    context.subscriptions.push(
+        vscode.languages.registerRenameProvider(selector, {
+            provideRenameEdits(document, position, newName) {
+                return bridge.requestRename(document, position, newName);
             },
         }),
     );

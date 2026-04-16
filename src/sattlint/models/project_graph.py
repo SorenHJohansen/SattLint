@@ -5,6 +5,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+@dataclass(frozen=True)
+class ProjectFailure:
+    name: str
+    message: str
+    line: int | None = None
+    column: int | None = None
+    length: int | None = None
+
+
 @dataclass
 class ProjectGraph:
     ast_by_name: dict[str, BasePicture] = field(default_factory=dict)
@@ -15,6 +24,8 @@ class ProjectGraph:
     # library_name.casefold() -> set of dependency library names (casefolded)
     library_dependencies: dict[str, set[str]] = field(default_factory=dict)
     missing: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    failures: dict[str, ProjectFailure] = field(default_factory=dict)
     ignored_vendor: list[str] = field(default_factory=list)
     # Track libraries that couldn't be loaded (e.g., proprietary ABB libraries)
     unavailable_libraries: set[str] = field(default_factory=set)

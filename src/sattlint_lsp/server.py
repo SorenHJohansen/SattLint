@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import threading
 from typing import Any
 
 from lsprotocol.types import (
@@ -12,19 +13,27 @@ from lsprotocol.types import (
     CompletionItemKind,
     CompletionList,
     CompletionOptions,
-    DidCloseTextDocumentParams,
     DefinitionParams,
     Diagnostic,
     DiagnosticSeverity,
     DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams,
     DidOpenTextDocumentParams,
     DidSaveTextDocumentParams,
+    Hover,
+    HoverParams,
     InitializeParams,
     Location,
+    MarkupContent,
+    MarkupKind,
     Position,
     PublishDiagnosticsParams,
     Range,
+    ReferenceParams,
+    RenameParams,
     TextDocumentPositionParams,
+    TextEdit,
+    WorkspaceEdit,
 )
 from pygls import uris
 from pygls.lsp.server import LanguageServer
@@ -33,9 +42,9 @@ from pygls.workspace import TextDocument
 from sattlint.editor_api import (
     SemanticSnapshot,
     SymbolDefinition,
+    SymbolReference,
     discover_workspace_sources,
     load_source_snapshot,
-    load_workspace_snapshot,
 )
 from sattlint.engine import CodeMode
 from sattlint.models.ast_model import Simple_DataType
@@ -43,12 +52,14 @@ from sattlint.reporting.variables_report import IssueKind
 
 from .document_state import DocumentState
 from .local_parser import IncrementalDocumentParserAdapter
+from .workspace_store import SnapshotBundle, WorkspaceSnapshotStore
 
 _PROGRAM_SUFFIXES = {".s", ".x"}
 _NAME_PATTERN = r"[0-9A-Za-z_'\u00C0-\u024F]+"
 _REFERENCE_EXPR_RE = re.compile(rf"{_NAME_PATTERN}(?:\.{_NAME_PATTERN})*")
 _BASE_COMPLETION_RE = re.compile(rf"(?P<base>{_NAME_PATTERN}(?:\.{_NAME_PATTERN})*)\.(?P<prefix>{_NAME_PATTERN})?$")
 _IDENTIFIER_PREFIX_RE = re.compile(rf"(?P<prefix>{_NAME_PATTERN})$")
+_VALID_IDENTIFIER_RE = re.compile(rf"^(?:'[^']+'|{_NAME_PATTERN})$")
 _MODULE_START_RE = re.compile(
     rf"^\s*(?P<name>'[^']+'|{_NAME_PATTERN})\s+Invocation\b.*:\s+MODULEDEFINITION\b",
     re.IGNORECASE,
@@ -57,10 +68,12 @@ _TYPEDEF_START_RE = re.compile(
     rf"^\s*(?P<name>'[^']+'|{_NAME_PATTERN})\s*=\s*(?:PRIVATE_)?MODULEDEFINITION\b",
     re.IGNORECASE,
 )
-_ENDDEF_RE = re.compile(r"^\s*ENDDEF\b", re.IGNORECASE)
 _ENDDEF_LABEL_RE = re.compile(r"^\s*ENDDEF\b(?:\s*\(\*(?P<label>.*?)\*\))?", re.IGNORECASE)
+_INTERACTIVE_SNAPSHOT_WAIT_S = 0.05
+_DIAGNOSTIC_SNAPSHOT_WAIT_S = 0.15
 _ISSUE_LABELS = {
     IssueKind.UNUSED: "Unused variable",
+    IssueKind.UNUSED_DATATYPE_FIELD: "Unused datatype field",
     IssueKind.READ_ONLY_NON_CONST: "Read-only variable should be CONST",
     IssueKind.NEVER_READ: "Variable is written but never read",
     IssueKind.STRING_MAPPING_MISMATCH: "String mapping datatype mismatch",
@@ -72,6 +85,11 @@ _ISSUE_LABELS = {
     IssueKind.RESET_CONTAMINATION: "Variable is contaminated across reset",
 }
 _DEFAULT_LOCAL_PARSER = IncrementalDocumentParserAdapter()
+
+
+def _is_program_path(path: Path) -> bool:
+    return path.suffix.lower() in _PROGRAM_SUFFIXES
+
 
 def _cf(value: str) -> str:
     return value.casefold()
@@ -96,12 +114,53 @@ def _range_for_definition(definition: SymbolDefinition) -> Range | None:
     return _range_from_position(definition.declaration_span.line, definition.declaration_span.column, len(label))
 
 
-def _diagnostic_from_message(message: str, line: int | None, column: int | None) -> Diagnostic:
+def _diagnostic_from_message(
+    message: str,
+    line: int | None,
+    column: int | None,
+    length: int | None = None,
+) -> Diagnostic:
     if line is None or column is None:
         range_ = Range(start=Position(line=0, character=0), end=Position(line=0, character=1))
     else:
-        range_ = _range_from_position(line, column, 1)
+        range_ = _range_from_position(line, column, max(length or 8, 1))
     return Diagnostic(range=range_, message=message, severity=DiagnosticSeverity.Error, source="sattlint")
+
+
+def _root_workspace_failure_message(message: str) -> str:
+    lines: list[str] = []
+    for raw_line in message.splitlines():
+        line = raw_line.strip()
+        if not line:
+            if lines:
+                break
+            continue
+        if line.startswith(("Resolved targets (", "Unavailable libraries (", "Other dependency issues (", "- ")):
+            break
+        lines.append(line)
+    if lines:
+        return "\n".join(lines)
+    return message
+
+
+def _normalize_workspace_diagnostics_mode(value: Any) -> str:
+    normalized = str(value).strip().lower()
+    if normalized in {"off", "background"}:
+        return normalized
+    return "background"
+
+
+def _identifier_length(name: str) -> int:
+    if len(name) >= 2 and name.startswith("'") and name.endswith("'"):
+        return len(name[1:-1])
+    return len(name)
+
+
+def _validate_rename_target(new_name: str) -> None:
+    if not _VALID_IDENTIFIER_RE.fullmatch(new_name):
+        raise ValueError(f"{new_name!r} is not a valid SattLine identifier")
+    if _identifier_length(new_name) > 20:
+        raise ValueError(f"{new_name!r} exceeds the 20 character identifier limit")
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +169,7 @@ class LspSettings:
     mode: str = CodeMode.DRAFT.value
     scan_root_only: bool = False
     enable_variable_diagnostics: bool = True
+    workspace_diagnostics_mode: str = "background"
     max_completion_items: int = 100
 
     @classmethod
@@ -128,15 +188,11 @@ class LspSettings:
             mode=raw_mode,
             scan_root_only=bool(data.get("scanRootOnly", False)),
             enable_variable_diagnostics=bool(data.get("enableVariableDiagnostics", True)),
+            workspace_diagnostics_mode=_normalize_workspace_diagnostics_mode(
+                data.get("workspaceDiagnosticsMode", "background")
+            ),
             max_completion_items=limit,
         )
-
-
-@dataclass(frozen=True, slots=True)
-class SnapshotBundle:
-    snapshot: SemanticSnapshot
-    source_paths_by_name: dict[str, tuple[Path, ...]]
-    source_paths_by_key: dict[tuple[str, str], Path]
 
 
 class SattLineLanguageServer(LanguageServer):
@@ -144,9 +200,73 @@ class SattLineLanguageServer(LanguageServer):
         super().__init__(name="sattline-lsp", version="0.1.0")
         self.settings = LspSettings()
         self.workspace_root: Path | None = None
-        self.snapshot_cache: dict[str, SnapshotBundle] = {}
+        self.snapshot_store = WorkspaceSnapshotStore()
         self.document_states: dict[str, DocumentState] = {}
+        self.document_paths: dict[Path, str] = {}
+        self.entry_diagnostics: dict[str, dict[Path, tuple[Diagnostic, ...]]] = {}
+        self.published_workspace_diagnostics: dict[Path, tuple[Diagnostic, ...]] = {}
+        self.workspace_scan_condition = threading.Condition()
+        self.workspace_scan_pending: set[Path] = set()
+        self.workspace_scan_generation = 0
+        self.entry_scan_generation: dict[str, int] = {}
+        self.workspace_scan_thread: threading.Thread | None = None
         self.local_parser = _DEFAULT_LOCAL_PARSER
+
+
+def _diagnostic_signature(diagnostic: Diagnostic) -> tuple[int, int, int, int, int, str, str, int]:
+    severity = int(diagnostic.severity) if diagnostic.severity is not None else 0
+    return (
+        diagnostic.range.start.line,
+        diagnostic.range.start.character,
+        diagnostic.range.end.line,
+        diagnostic.range.end.character,
+        severity,
+        diagnostic.source or "",
+        diagnostic.message,
+        0,
+    )
+
+
+def _merge_unique_diagnostics(*collections: tuple[Diagnostic, ...] | list[Diagnostic]) -> tuple[Diagnostic, ...]:
+    unique: dict[tuple[int, int, int, int, int, str, str, int], Diagnostic] = {}
+    for collection in collections:
+        for diagnostic in collection:
+            unique.setdefault(_diagnostic_signature(diagnostic), diagnostic)
+    return tuple(unique[key] for key in sorted(unique))
+
+
+def _document_uri_for_path(path: Path) -> str:
+    resolved = path.resolve()
+    return uris.from_fs_path(str(resolved)) or resolved.as_uri()
+
+
+def _ensure_snapshot_store_configured(ls: SattLineLanguageServer) -> bool:
+    return ls.snapshot_store.ensure_configured(ls.workspace_root, ls.settings)
+
+
+def _document_state_for_path(ls: SattLineLanguageServer, document_path: Path) -> DocumentState | None:
+    document_paths = getattr(ls, "document_paths", None)
+    if document_paths is None:
+        return None
+    uri = document_paths.get(document_path.resolve())
+    if uri is None:
+        return None
+    return ls.document_states.get(uri)
+
+
+def _ensure_document_paths(ls: SattLineLanguageServer) -> dict[Path, str]:
+    document_paths = getattr(ls, "document_paths", None)
+    if document_paths is None:
+        document_paths = {}
+        setattr(ls, "document_paths", document_paths)
+    return document_paths
+
+
+def _background_workspace_diagnostics_enabled(ls: SattLineLanguageServer) -> bool:
+    return (
+        ls.settings.enable_variable_diagnostics
+        and ls.settings.workspace_diagnostics_mode == "background"
+    )
 
 
 def resolve_entry_file(
@@ -169,6 +289,8 @@ def resolve_entry_file(
     if len(discovery.program_files) == 1:
         return discovery.program_files[0].resolve()
     return None
+
+
 def collect_syntax_diagnostics(
     document_path: Path,
     text: str,
@@ -301,21 +423,21 @@ def collect_completion_candidates(
     ]
 
 
-def build_source_path_index(paths: set[Path]) -> tuple[dict[str, tuple[Path, ...]], dict[tuple[str, str], Path]]:
+def build_source_path_index(paths: set[Path] | tuple[Path, ...]) -> tuple[dict[str, tuple[Path, ...]], dict[tuple[str, str], Path]]:
     by_name: dict[str, list[Path]] = {}
     by_key: dict[tuple[str, str], Path] = {}
-    for path in sorted(paths):
+    for path in sorted((item.resolve() for item in paths), key=lambda item: item.as_posix().casefold()):
         file_key = path.name.casefold()
         by_name.setdefault(file_key, []).append(path)
         by_key[(file_key, path.parent.name.casefold())] = path
     return ({name: tuple(items) for name, items in by_name.items()}, by_key)
 
 
-def resolve_definition_path(bundle: SnapshotBundle, definition: SymbolDefinition) -> Path | None:
-    if not definition.source_file:
+def _resolve_bundle_source_path(bundle: SnapshotBundle, source_file: str | None, source_library: str | None) -> Path | None:
+    if not source_file:
         return None
-    file_key = definition.source_file.casefold()
-    library_key = (definition.source_library or "").casefold()
+    file_key = source_file.casefold()
+    library_key = (source_library or "").casefold()
     direct = bundle.source_paths_by_key.get((file_key, library_key))
     if direct is not None:
         return direct
@@ -323,6 +445,14 @@ def resolve_definition_path(bundle: SnapshotBundle, definition: SymbolDefinition
     if len(candidates) == 1:
         return candidates[0]
     return None
+
+
+def resolve_definition_path(bundle: SnapshotBundle, definition: SymbolDefinition) -> Path | None:
+    return _resolve_bundle_source_path(bundle, definition.source_file, definition.source_library)
+
+
+def _resolve_reference_path(bundle: SnapshotBundle, reference: SymbolReference) -> Path | None:
+    return _resolve_bundle_source_path(bundle, reference.source_file, reference.source_library)
 
 
 def _definition_key(definition: SymbolDefinition) -> tuple[str, ...]:
@@ -361,6 +491,32 @@ def _merge_completion_items(
     return merged[:limit]
 
 
+def _reference_signature(reference: SymbolReference) -> tuple[str, str | None, str | None, int, int, int]:
+    return (
+        reference.canonical_path.casefold(),
+        reference.source_file.casefold() if reference.source_file is not None else None,
+        reference.source_library.casefold() if reference.source_library is not None else None,
+        reference.line,
+        reference.column,
+        reference.length,
+    )
+
+
+def _merge_references(
+    preferred: list[SymbolReference],
+    fallback: list[SymbolReference],
+) -> list[SymbolReference]:
+    merged: list[SymbolReference] = []
+    seen: set[tuple[str, str | None, str | None, int, int, int]] = set()
+    for reference in [*preferred, *fallback]:
+        signature = _reference_signature(reference)
+        if signature in seen:
+            continue
+        seen.add(signature)
+        merged.append(reference)
+    return merged
+
+
 def _definition_locations_from_candidates(
     candidates: list[SymbolDefinition],
     *,
@@ -391,6 +547,54 @@ def _definition_locations_from_candidates(
     return locations
 
 
+def _reference_locations_from_matches(
+    references: list[SymbolReference],
+    *,
+    bundle: SnapshotBundle | None,
+    active_document_path: Path,
+) -> list[Location]:
+    locations: list[Location] = []
+    active_uri = uris.from_fs_path(str(active_document_path.resolve())) or active_document_path.resolve().as_uri()
+    active_name = active_document_path.name.casefold()
+
+    for reference in references:
+        target_uri: str | None = None
+        if (reference.source_file or "").casefold() == active_name:
+            target_uri = active_uri
+        elif bundle is not None:
+            target_path = _resolve_reference_path(bundle, reference)
+            if target_path is not None:
+                target_uri = uris.from_fs_path(str(target_path)) or target_path.as_uri()
+
+        if target_uri is None:
+            continue
+        locations.append(
+            Location(
+                uri=target_uri,
+                range=_range_from_position(reference.line, reference.column, reference.length),
+            )
+        )
+    return locations
+
+
+def _merge_locations(preferred: list[Location], fallback: list[Location]) -> list[Location]:
+    merged: list[Location] = []
+    seen: set[tuple[str, int, int, int, int]] = set()
+    for location in [*preferred, *fallback]:
+        key = (
+            location.uri.casefold(),
+            location.range.start.line,
+            location.range.start.character,
+            location.range.end.line,
+            location.range.end.character,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(location)
+    return merged
+
+
 def _overlay_definition_candidates(
     bundle: SnapshotBundle,
     *,
@@ -419,6 +623,30 @@ def _overlay_definition_candidates(
     return _merge_definitions(local_at_cursor, workspace_at_cursor)
 
 
+def _local_definition_candidates(
+    document_path: Path,
+    source_text: str,
+    *,
+    line: int,
+    column: int,
+    snapshot: SemanticSnapshot | None,
+) -> list[SymbolDefinition]:
+    if snapshot is None:
+        return []
+
+    definitions = snapshot.find_definitions_at(document_path, line + 1, column + 1)
+    if definitions:
+        return definitions
+
+    reference_expr = _reference_expr_at_position(source_text, line=line, column=column)
+    if not reference_expr:
+        return []
+    return _filter_visible_definitions(
+        snapshot.find_definitions(reference_expr),
+        infer_module_path_from_source(source_text, line),
+    )
+
+
 def collect_local_definition_locations(
     document_path: Path,
     source_text: str,
@@ -434,14 +662,13 @@ def collect_local_definition_locations(
         except Exception:
             return []
 
-    definitions = local_snapshot.find_definitions_at(document_path, line + 1, column + 1)
-    if not definitions:
-        reference_expr = _reference_expr_at_position(source_text, line=line, column=column)
-        if reference_expr:
-            definitions = _filter_visible_definitions(
-                local_snapshot.find_definitions(reference_expr),
-                infer_module_path_from_source(source_text, line),
-            )
+    definitions = _local_definition_candidates(
+        document_path,
+        source_text,
+        line=line,
+        column=column,
+        snapshot=local_snapshot,
+    )
     if not definitions:
         return []
 
@@ -519,6 +746,22 @@ def collect_semantic_diagnostics(bundle: SnapshotBundle, document_path: Path) ->
     return diagnostics
 
 
+def _semantic_diagnostics_for_path(bundle: SnapshotBundle, document_path: Path) -> tuple[Diagnostic, ...]:
+    resolved_path = document_path.resolve()
+    with bundle.semantic_diagnostics_lock:
+        cached = bundle.semantic_diagnostics_by_path.get(resolved_path)
+    if cached is not None:
+        return cached
+
+    diagnostics = tuple(collect_semantic_diagnostics(bundle, resolved_path))
+    with bundle.semantic_diagnostics_lock:
+        cached = bundle.semantic_diagnostics_by_path.get(resolved_path)
+        if cached is not None:
+            return cached
+        bundle.semantic_diagnostics_by_path[resolved_path] = diagnostics
+    return diagnostics
+
+
 def _document_path(document: TextDocument) -> Path:
     uri = document.uri or ""
     return Path(uris.to_fs_path(uri) or uri).resolve()
@@ -539,14 +782,18 @@ def _record_document_open(
     version: int,
     text: str,
 ) -> DocumentState:
+    document_paths = _ensure_document_paths(ls)
     state = ls.document_states.get(uri)
     if state is None:
         state = DocumentState(uri=uri, path=document_path, version=version, text=text)
         ls.document_states[uri] = state
-        return state
+    else:
+        previous_path = state.path.resolve()
+        document_paths.pop(previous_path, None)
+        state.path = document_path
+        state.replace_text(version=version, text=text, is_dirty=False)
 
-    state.path = document_path
-    state.replace_text(version=version, text=text)
+    document_paths[document_path.resolve()] = uri
     return state
 
 
@@ -559,13 +806,18 @@ def _record_document_change(
     content_changes: list[Any],
     fallback_text: str,
 ) -> DocumentState:
+    document_paths = _ensure_document_paths(ls)
     state = ls.document_states.get(uri)
     if state is None:
         state = DocumentState(uri=uri, path=document_path, version=version, text=fallback_text)
         ls.document_states[uri] = state
+    else:
+        previous_path = state.path.resolve()
+        document_paths.pop(previous_path, None)
+        state.path = document_path
 
-    state.path = document_path
     state.apply_changes(version=version, content_changes=content_changes, fallback_text=fallback_text)
+    document_paths[document_path.resolve()] = uri
     return state
 
 
@@ -622,40 +874,51 @@ def _get_or_build_local_snapshot(
     return state.local_snapshot
 
 
-def _workspace_root_for_document(ls: SattLineLanguageServer, document_path: Path) -> Path:
-    return (ls.workspace_root or document_path.parent).resolve()
-
-
-def _cache_key(entry_file: Path) -> str:
-    return entry_file.as_posix().casefold()
-
-
-def _load_snapshot_bundle(ls: SattLineLanguageServer, document_path: Path) -> SnapshotBundle | None:
-    workspace_root = _workspace_root_for_document(ls, document_path)
-    entry_file = resolve_entry_file(
-        document_path,
-        workspace_root=workspace_root,
-        configured_entry_file=ls.settings.entry_file,
-    )
-    if entry_file is None:
+def _load_snapshot_bundle(
+    ls: SattLineLanguageServer,
+    document_path: Path,
+    *,
+    wait_budget: float | None = _INTERACTIVE_SNAPSHOT_WAIT_S,
+    allow_stale: bool = True,
+    raise_on_error: bool = False,
+) -> SnapshotBundle | None:
+    if not _ensure_snapshot_store_configured(ls):
         return None
-
-    key = _cache_key(entry_file)
-    cached = ls.snapshot_cache.get(key)
-    if cached is not None:
-        return cached
-
-    snapshot = load_workspace_snapshot(
-        entry_file,
-        workspace_root=workspace_root,
-        mode=ls.settings.mode,
-        scan_root_only=ls.settings.scan_root_only,
-        collect_variable_diagnostics=ls.settings.enable_variable_diagnostics,
+    return ls.snapshot_store.get_bundle_for_document(
+        document_path,
+        wait_budget=wait_budget,
+        allow_stale=allow_stale,
+        raise_on_error=raise_on_error,
     )
-    by_name, by_key = build_source_path_index(snapshot.project_graph.source_files)
-    bundle = SnapshotBundle(snapshot=snapshot, source_paths_by_name=by_name, source_paths_by_key=by_key)
-    ls.snapshot_cache[key] = bundle
-    return bundle
+
+
+def _load_snapshot_bundle_compat(
+    ls: SattLineLanguageServer,
+    document_path: Path,
+    *,
+    wait_budget: float | None = _INTERACTIVE_SNAPSHOT_WAIT_S,
+    allow_stale: bool = True,
+    raise_on_error: bool = False,
+) -> SnapshotBundle | None:
+    try:
+        return _load_snapshot_bundle(
+            ls,
+            document_path,
+            wait_budget=wait_budget,
+            allow_stale=allow_stale,
+            raise_on_error=raise_on_error,
+        )
+    except TypeError as exc:
+        if "unexpected keyword argument" not in str(exc):
+            if raise_on_error:
+                raise
+            return None
+    try:
+        return _load_snapshot_bundle(ls, document_path)
+    except Exception:
+        if raise_on_error:
+            raise
+        return None
 
 
 def _publish_diagnostics(
@@ -666,6 +929,14 @@ def _publish_diagnostics(
     include_comment_validation: bool = True,
 ) -> None:
     document_path = _document_path(document)
+    if not _is_program_path(document_path):
+        state = ls.document_states.pop(document.uri, None)
+        state_path = getattr(state, "path", None)
+        if state_path is not None:
+            _ensure_document_paths(ls).pop(Path(state_path).resolve(), None)
+        ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=document.uri, diagnostics=[]))
+        return
+
     state = _analyze_document_state(
         ls,
         document,
@@ -678,19 +949,31 @@ def _publish_diagnostics(
         ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=document.uri, diagnostics=syntax_diagnostics))
         return
 
-    if not include_semantic:
-        ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=document.uri, diagnostics=[]))
-        return
-
-    if not ls.settings.enable_variable_diagnostics:
+    if not include_semantic or not ls.settings.enable_variable_diagnostics:
         ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=document.uri, diagnostics=[]))
         return
 
     try:
-        bundle = _load_snapshot_bundle(ls, document_path)
+        bundle = _load_snapshot_bundle_compat(
+            ls,
+            document_path,
+            wait_budget=_DIAGNOSTIC_SNAPSHOT_WAIT_S,
+            allow_stale=True,
+            raise_on_error=True,
+        )
     except Exception as exc:
         ls.text_document_publish_diagnostics(
-            PublishDiagnosticsParams(uri=document.uri, diagnostics=[_diagnostic_from_message(str(exc), None, None)])
+            PublishDiagnosticsParams(
+                uri=document.uri,
+                diagnostics=[
+                    _diagnostic_from_message(
+                        _root_workspace_failure_message(str(exc)),
+                        getattr(exc, "line", None),
+                        getattr(exc, "column", None),
+                        getattr(exc, "length", None),
+                    )
+                ],
+            )
         )
         return
 
@@ -710,8 +993,300 @@ def _publish_diagnostics(
         return
 
     ls.text_document_publish_diagnostics(
-        PublishDiagnosticsParams(uri=document.uri, diagnostics=collect_semantic_diagnostics(bundle, document_path))
+        PublishDiagnosticsParams(uri=document.uri, diagnostics=list(_semantic_diagnostics_for_path(bundle, document_path)))
     )
+
+
+def _store_entry_workspace_diagnostics(
+    ls: SattLineLanguageServer,
+    entry_key: str,
+    diagnostics_by_path: dict[Path, tuple[Diagnostic, ...]],
+    generation: int,
+) -> None:
+    if generation != ls.entry_scan_generation.get(entry_key):
+        return
+    previous = ls.entry_diagnostics.get(entry_key, {})
+    ls.entry_diagnostics[entry_key] = diagnostics_by_path
+    affected_paths = {path.resolve() for path in previous} | {path.resolve() for path in diagnostics_by_path}
+    _publish_workspace_diagnostics_for_paths(ls, affected_paths)
+
+
+def _collect_entry_workspace_diagnostics(
+    ls: SattLineLanguageServer,
+    entry_file: Path,
+) -> tuple[str, dict[Path, tuple[Diagnostic, ...]]]:
+    key = entry_file.resolve().as_posix().casefold()
+    try:
+        bundle = ls.snapshot_store.get_bundle_for_entry(
+            entry_file,
+            wait_budget=None,
+            allow_stale=False,
+            raise_on_error=True,
+        )
+    except Exception as exc:
+        return (
+            key,
+            {
+                entry_file.resolve(): (
+                    _diagnostic_from_message(
+                        _root_workspace_failure_message(str(exc)),
+                        getattr(exc, "line", None),
+                        getattr(exc, "column", None),
+                        getattr(exc, "length", None),
+                    ),
+                )
+            },
+        )
+
+    if bundle is None:
+        return key, {}
+
+    diagnostics_by_path: dict[Path, tuple[Diagnostic, ...]] = {}
+    for source_path in bundle.source_files:
+        diagnostics = _semantic_diagnostics_for_path(bundle, source_path)
+        if diagnostics:
+            diagnostics_by_path[source_path.resolve()] = diagnostics
+    return key, diagnostics_by_path
+
+
+def _process_workspace_scan_entries(
+    ls: SattLineLanguageServer,
+    entry_files: tuple[Path, ...],
+) -> None:
+    _ensure_snapshot_store_configured(ls)
+    ls.snapshot_store.prefetch_entries(entry_files)
+    for entry_file in entry_files:
+        entry_key = entry_file.resolve().as_posix().casefold()
+        generation = ls.entry_scan_generation.get(entry_key)
+        if generation is None:
+            continue
+        key, diagnostics_by_path = _collect_entry_workspace_diagnostics(ls, entry_file)
+        _store_entry_workspace_diagnostics(ls, key, diagnostics_by_path, generation)
+
+
+def _workspace_scan_worker(ls: SattLineLanguageServer) -> None:
+    while True:
+        with ls.workspace_scan_condition:
+            if not ls.workspace_scan_pending:
+                ls.workspace_scan_thread = None
+                return
+            entry_files = tuple(
+                sorted(
+                    (path.resolve() for path in ls.workspace_scan_pending),
+                    key=lambda path: path.as_posix().casefold(),
+                )
+            )
+            ls.workspace_scan_pending.clear()
+        _process_workspace_scan_entries(ls, entry_files)
+
+
+def _schedule_workspace_scan(
+    ls: SattLineLanguageServer,
+    entry_files: tuple[Path, ...] | None = None,
+) -> None:
+    if not _background_workspace_diagnostics_enabled(ls):
+        return
+    if not _ensure_snapshot_store_configured(ls):
+        return
+
+    entries = entry_files or ls.snapshot_store.list_entry_files()
+    if not entries:
+        return
+
+    ls.snapshot_store.prefetch_entries(entries)
+    resolved_entries = tuple(sorted((path.resolve() for path in entries), key=lambda path: path.as_posix().casefold()))
+    with ls.workspace_scan_condition:
+        ls.workspace_scan_generation += 1
+        generation = ls.workspace_scan_generation
+        for entry in resolved_entries:
+            ls.workspace_scan_pending.add(entry)
+            ls.entry_scan_generation[entry.as_posix().casefold()] = generation
+        if ls.workspace_scan_thread is None or not ls.workspace_scan_thread.is_alive():
+            ls.workspace_scan_thread = threading.Thread(
+                target=_workspace_scan_worker,
+                args=(ls,),
+                name="sattline-workspace-scan",
+                daemon=True,
+            )
+            ls.workspace_scan_thread.start()
+
+
+def _invalidate_cached_entries_for_path(
+    ls: SattLineLanguageServer,
+    document_path: Path,
+) -> tuple[Path, ...]:
+    if not _ensure_snapshot_store_configured(ls):
+        return ()
+
+    affected_entries = ls.snapshot_store.invalidate_path(document_path)
+    affected_entry_keys = ls.snapshot_store.get_affected_entry_keys(document_path)
+    affected_paths: set[Path] = set()
+    for entry_key in affected_entry_keys:
+        previous = ls.entry_diagnostics.pop(entry_key, {})
+        affected_paths.update(path.resolve() for path in previous)
+    if affected_paths:
+        _publish_workspace_diagnostics_for_paths(ls, affected_paths)
+    return affected_entries
+
+
+def _publish_workspace_diagnostics_for_paths(
+    ls: SattLineLanguageServer,
+    paths: set[Path],
+) -> None:
+    for path in sorted((item.resolve() for item in paths), key=lambda candidate: candidate.as_posix().casefold()):
+        state = _document_state_for_path(ls, path)
+        if state is not None and state.is_dirty:
+            continue
+
+        merged = _merge_unique_diagnostics(
+            *[
+                diagnostics_by_path.get(path, ())
+                for diagnostics_by_path in ls.entry_diagnostics.values()
+                if path in diagnostics_by_path
+            ]
+        )
+        previous = ls.published_workspace_diagnostics.get(path, ())
+        if tuple(map(_diagnostic_signature, previous)) == tuple(map(_diagnostic_signature, merged)):
+            continue
+        if merged:
+            ls.published_workspace_diagnostics[path] = merged
+        else:
+            ls.published_workspace_diagnostics.pop(path, None)
+
+        ls.text_document_publish_diagnostics(
+            PublishDiagnosticsParams(uri=_document_uri_for_path(path), diagnostics=list(merged))
+        )
+
+
+def _publish_closed_document_diagnostics(
+    ls: SattLineLanguageServer,
+    document_path: Path,
+) -> None:
+    resolved_path = document_path.resolve()
+    merged = _merge_unique_diagnostics(
+        *[
+            diagnostics_by_path.get(resolved_path, ())
+            for diagnostics_by_path in ls.entry_diagnostics.values()
+            if resolved_path in diagnostics_by_path
+        ]
+    )
+
+    if not merged and ls.settings.enable_variable_diagnostics:
+        try:
+            bundle = _load_snapshot_bundle_compat(
+                ls,
+                resolved_path,
+                wait_budget=_INTERACTIVE_SNAPSHOT_WAIT_S,
+                allow_stale=True,
+                raise_on_error=False,
+            )
+        except Exception:
+            bundle = None
+        if bundle is not None:
+            merged = _semantic_diagnostics_for_path(bundle, resolved_path)
+
+    if merged:
+        ls.published_workspace_diagnostics[resolved_path] = merged
+    else:
+        ls.published_workspace_diagnostics.pop(resolved_path, None)
+
+    ls.text_document_publish_diagnostics(
+        PublishDiagnosticsParams(uri=_document_uri_for_path(resolved_path), diagnostics=list(merged))
+    )
+
+
+def _resolve_symbol_context(
+    ls: SattLineLanguageServer,
+    document: TextDocument,
+    *,
+    line: int,
+    column: int,
+) -> tuple[Path, str, SemanticSnapshot | None, SnapshotBundle | None, list[SymbolDefinition]]:
+    document_path = _document_path(document)
+    source_text = _source_text_for_document(ls, document)
+    if not _is_program_path(document_path):
+        return document_path, source_text, None, None, []
+
+    local_snapshot = _get_or_build_local_snapshot(ls, document, document_path)
+    bundle = _load_snapshot_bundle_compat(
+        ls,
+        document_path,
+        wait_budget=_INTERACTIVE_SNAPSHOT_WAIT_S,
+        allow_stale=True,
+        raise_on_error=False,
+    )
+
+    if bundle is None:
+        candidates = _local_definition_candidates(
+            document_path,
+            source_text,
+            line=line,
+            column=column,
+            snapshot=local_snapshot,
+        )
+        return document_path, source_text, local_snapshot, None, candidates
+
+    candidates = _overlay_definition_candidates(
+        bundle,
+        document_path=document_path,
+        source_text=source_text,
+        line=line,
+        column=column,
+        local_snapshot=local_snapshot,
+    )
+    return document_path, source_text, local_snapshot, bundle, candidates
+
+
+def _collect_reference_matches(
+    bundle: SnapshotBundle | None,
+    local_snapshot: SemanticSnapshot | None,
+    candidates: list[SymbolDefinition],
+) -> list[SymbolReference]:
+    local_references: list[SymbolReference] = []
+    workspace_references: list[SymbolReference] = []
+    for definition in candidates:
+        if local_snapshot is not None:
+            local_references.extend(local_snapshot.find_references_to(definition))
+        if bundle is not None:
+            workspace_references.extend(bundle.snapshot.find_references_to(definition))
+    return _merge_references(local_references, workspace_references)
+
+
+def _definition_uri(
+    definition: SymbolDefinition,
+    *,
+    bundle: SnapshotBundle | None,
+    active_document_path: Path,
+) -> str | None:
+    active_name = active_document_path.name.casefold()
+    if (definition.source_file or "").casefold() == active_name:
+        return uris.from_fs_path(str(active_document_path.resolve())) or active_document_path.resolve().as_uri()
+    if bundle is None:
+        return None
+    target_path = resolve_definition_path(bundle, definition)
+    if target_path is None:
+        return None
+    return uris.from_fs_path(str(target_path)) or target_path.as_uri()
+
+
+def _append_workspace_edit(
+    changes: dict[str, list[TextEdit]],
+    uri: str,
+    range_: Range,
+    new_text: str,
+) -> None:
+    changes.setdefault(uri, []).append(TextEdit(range=range_, new_text=new_text))
+
+
+def _build_hover(definition: SymbolDefinition) -> Hover | None:
+    lines = [f"**{definition.canonical_path.split('.')[-1]}**"]
+    if definition.datatype:
+        lines.append(f"Type: {definition.datatype}")
+    lines.append(f"Kind: {definition.kind}")
+    lines.append(f"Path: {definition.canonical_path}")
+    if definition.display_module_path:
+        lines.append(f"Scope: {' -> '.join(definition.display_module_path)}")
+    return Hover(contents=MarkupContent(kind=MarkupKind.Markdown, value="\n\n".join(lines)))
 
 
 server = SattLineLanguageServer()
@@ -729,16 +1304,34 @@ def on_initialize(ls: SattLineLanguageServer, params: InitializeParams) -> None:
         ls.workspace_root = Path(root_path).resolve()
     else:
         ls.workspace_root = None
-    ls.snapshot_cache.clear()
+
     ls.document_states.clear()
+    ls.document_paths.clear()
+    ls.entry_diagnostics.clear()
+    ls.published_workspace_diagnostics.clear()
+    ls.entry_scan_generation.clear()
+    with ls.workspace_scan_condition:
+        ls.workspace_scan_pending.clear()
+        ls.workspace_scan_generation = 0
+        ls.workspace_scan_thread = None
+    _ensure_snapshot_store_configured(ls)
+    _schedule_workspace_scan(ls)
 
 
 @server.feature("textDocument/didOpen")
 def on_did_open(ls: SattLineLanguageServer, params: DidOpenTextDocumentParams) -> None:
     document = ls.workspace.get_text_document(params.text_document.uri)
+    document_path = _document_path(document)
+    if not _is_program_path(document_path):
+        state = ls.document_states.pop(document.uri, None)
+        if state is not None:
+            _ensure_document_paths(ls).pop(state.path.resolve(), None)
+        ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=document.uri, diagnostics=[]))
+        return
+
     _record_document_open(
         ls,
-        _document_path(document),
+        document_path,
         uri=document.uri,
         version=params.text_document.version,
         text=params.text_document.text,
@@ -749,9 +1342,17 @@ def on_did_open(ls: SattLineLanguageServer, params: DidOpenTextDocumentParams) -
 @server.feature("textDocument/didChange")
 def on_did_change(ls: SattLineLanguageServer, params: DidChangeTextDocumentParams) -> None:
     document = ls.workspace.get_text_document(params.text_document.uri)
+    document_path = _document_path(document)
+    if not _is_program_path(document_path):
+        state = ls.document_states.pop(document.uri, None)
+        if state is not None:
+            _ensure_document_paths(ls).pop(state.path.resolve(), None)
+        ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=document.uri, diagnostics=[]))
+        return
+
     _record_document_change(
         ls,
-        _document_path(document),
+        document_path,
         uri=document.uri,
         version=params.text_document.version,
         content_changes=list(params.content_changes or []),
@@ -763,30 +1364,50 @@ def on_did_change(ls: SattLineLanguageServer, params: DidChangeTextDocumentParam
 @server.feature("textDocument/didSave")
 def on_did_save(ls: SattLineLanguageServer, params: DidSaveTextDocumentParams) -> None:
     document = ls.workspace.get_text_document(params.text_document.uri)
+    document_path = _document_path(document)
+    if not _is_program_path(document_path):
+        state = ls.document_states.pop(document.uri, None)
+        if state is not None:
+            ls.document_paths.pop(state.path.resolve(), None)
+        ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=document.uri, diagnostics=[]))
+        return
+
     _record_document_open(
         ls,
-        _document_path(document),
+        document_path,
         uri=document.uri,
         version=getattr(document, "version", 0),
         text=document.source,
     )
-    ls.snapshot_cache.clear()
+    affected_entries = _invalidate_cached_entries_for_path(ls, document_path)
     _publish_diagnostics(ls, document)
+    _schedule_workspace_scan(ls, affected_entries)
 
 
 @server.feature("textDocument/didClose")
 def on_did_close(ls: SattLineLanguageServer, params: DidCloseTextDocumentParams) -> None:
-    ls.document_states.pop(params.text_document.uri, None)
+    state = ls.document_states.pop(params.text_document.uri, None)
+    document_path = state.path if state is not None else Path(uris.to_fs_path(params.text_document.uri) or params.text_document.uri)
+    _ensure_document_paths(ls).pop(document_path.resolve(), None)
+    if not _is_program_path(document_path):
+        ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=params.text_document.uri, diagnostics=[]))
+        return
+
+    _publish_closed_document_diagnostics(ls, document_path)
 
 
 @server.feature("textDocument/definition")
 def on_definition(ls: SattLineLanguageServer, params: DefinitionParams) -> list[Location] | None:
     document = ls.workspace.get_text_document(params.text_document.uri)
-    document_path = _document_path(document)
-    source_text = _source_text_for_document(ls, document)
-    local_snapshot = _get_or_build_local_snapshot(ls, document, document_path)
+    document_path, source_text, local_snapshot, bundle, candidates = _resolve_symbol_context(
+        ls,
+        document,
+        line=params.position.line,
+        column=params.position.character,
+    )
+    if not _is_program_path(document_path):
+        return None
 
-    bundle = _load_snapshot_bundle(ls, document_path)
     if bundle is None:
         local_locations = collect_local_definition_locations(
             document_path,
@@ -797,14 +1418,6 @@ def on_definition(ls: SattLineLanguageServer, params: DefinitionParams) -> list[
         )
         return local_locations or None
 
-    candidates = _overlay_definition_candidates(
-        bundle,
-        document_path=document_path,
-        source_text=source_text,
-        line=params.position.line,
-        column=params.position.character,
-        local_snapshot=local_snapshot,
-    )
     locations = _definition_locations_from_candidates(
         candidates,
         bundle=bundle,
@@ -814,10 +1427,104 @@ def on_definition(ls: SattLineLanguageServer, params: DefinitionParams) -> list[
     return locations or None
 
 
+@server.feature("textDocument/hover")
+def on_hover(ls: SattLineLanguageServer, params: HoverParams) -> Hover | None:
+    document = ls.workspace.get_text_document(params.text_document.uri)
+    document_path, _source_text, _local_snapshot, _bundle, candidates = _resolve_symbol_context(
+        ls,
+        document,
+        line=params.position.line,
+        column=params.position.character,
+    )
+    if not _is_program_path(document_path) or not candidates:
+        return None
+    return _build_hover(candidates[0])
+
+
+@server.feature("textDocument/references")
+def on_references(ls: SattLineLanguageServer, params: ReferenceParams) -> list[Location] | None:
+    document = ls.workspace.get_text_document(params.text_document.uri)
+    document_path, _source_text, local_snapshot, bundle, candidates = _resolve_symbol_context(
+        ls,
+        document,
+        line=params.position.line,
+        column=params.position.character,
+    )
+    if not _is_program_path(document_path) or not candidates:
+        return None
+
+    references = _collect_reference_matches(bundle, local_snapshot, candidates)
+    locations = _reference_locations_from_matches(
+        references,
+        bundle=bundle,
+        active_document_path=document_path,
+    )
+    if getattr(getattr(params, "context", None), "include_declaration", False) or getattr(
+        getattr(params, "context", None), "includeDeclaration", False
+    ):
+        declaration_locations: list[Location] = []
+        for definition in candidates:
+            target_range = _range_for_definition(definition)
+            target_uri = _definition_uri(definition, bundle=bundle, active_document_path=document_path)
+            if target_range is None or target_uri is None:
+                continue
+            declaration_locations.append(Location(uri=target_uri, range=target_range))
+        locations = _merge_locations(declaration_locations, locations)
+    return locations or None
+
+
+@server.feature("textDocument/rename")
+def on_rename(ls: SattLineLanguageServer, params: RenameParams) -> WorkspaceEdit | None:
+    _validate_rename_target(params.new_name)
+
+    document = ls.workspace.get_text_document(params.text_document.uri)
+    document_path, _source_text, local_snapshot, bundle, candidates = _resolve_symbol_context(
+        ls,
+        document,
+        line=params.position.line,
+        column=params.position.character,
+    )
+    if not _is_program_path(document_path) or not candidates:
+        return None
+
+    references = _collect_reference_matches(bundle, local_snapshot, candidates)
+    changes: dict[str, list[TextEdit]] = {}
+
+    for definition in candidates:
+        target_range = _range_for_definition(definition)
+        target_uri = _definition_uri(definition, bundle=bundle, active_document_path=document_path)
+        if target_range is not None and target_uri is not None:
+            _append_workspace_edit(changes, target_uri, target_range, params.new_name)
+
+    for reference in references:
+        target_uri: str | None = None
+        if (reference.source_file or "").casefold() == document_path.name.casefold():
+            target_uri = uris.from_fs_path(str(document_path.resolve())) or document_path.resolve().as_uri()
+        elif bundle is not None:
+            target_path = _resolve_reference_path(bundle, reference)
+            if target_path is not None:
+                target_uri = uris.from_fs_path(str(target_path)) or target_path.as_uri()
+        if target_uri is None:
+            continue
+        _append_workspace_edit(
+            changes,
+            target_uri,
+            _range_from_position(reference.line, reference.column, reference.length),
+            params.new_name,
+        )
+
+    if not changes:
+        return None
+    return WorkspaceEdit(changes=changes)
+
+
 @server.feature("textDocument/completion", CompletionOptions(trigger_characters=["."]))
 def on_completion(ls: SattLineLanguageServer, params: TextDocumentPositionParams) -> CompletionList:
     document = ls.workspace.get_text_document(params.text_document.uri)
     document_path = _document_path(document)
+    if not _is_program_path(document_path):
+        return CompletionList(is_incomplete=False, items=[])
+
     source_text = _source_text_for_document(ls, document)
     local_snapshot = _get_or_build_local_snapshot(ls, document, document_path)
 
@@ -830,7 +1537,13 @@ def on_completion(ls: SattLineLanguageServer, params: TextDocumentPositionParams
         snapshot=local_snapshot,
     )
 
-    bundle = _load_snapshot_bundle(ls, document_path)
+    bundle = _load_snapshot_bundle_compat(
+        ls,
+        document_path,
+        wait_budget=_INTERACTIVE_SNAPSHOT_WAIT_S,
+        allow_stale=True,
+        raise_on_error=False,
+    )
     if bundle is None:
         return CompletionList(is_incomplete=False, items=local_items)
 

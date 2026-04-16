@@ -92,6 +92,15 @@
           "default": true,
           "description": "Publish SattLint variable diagnostics for saved files in addition to syntax diagnostics from the open buffer."
         },
+        "sattlineLsp.workspaceDiagnosticsMode": {
+          "type": "string",
+          "enum": [
+            "background",
+            "off"
+          ],
+          "default": "background",
+          "description": "Whether the language server should keep workspace-wide semantic diagnostics warm in the background after startup and save operations."
+        },
         "sattlineLsp.maxCompletionItems": {
           "type": "number",
           "default": 100,
