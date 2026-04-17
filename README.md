@@ -2,307 +2,261 @@
 
 SattLint is a cross-platform tool for people who write SattLine and want help checking code, tracing dependencies, and generating Word documentation.
 
-This README is written for coworkers who want to install and use the tool. You do not need Git. You do not need to know Python beyond copying a few commands once.
+This guide is written for coworkers who just want to get it running quickly. No Git knowledge is needed.
+
+---
 
 ## What SattLint Does
 
 SattLint can help you:
 
-- check whether a SattLine file parses correctly
-- analyze a full program or library together with its dependencies
-- find issues such as unused variables, written-but-never-read variables, shadowing, and related code-quality problems
-- generate FS-style Word documentation as a `.docx` file
-- inspect parser outputs when something looks wrong
+* check whether a SattLine file parses correctly
+* analyze a full program or library together with its dependencies
+* find issues such as unused variables, written-but-never-read variables, and shadowing
+* generate FS-style Word documentation as a `.docx` file
+* inspect parser outputs when something looks wrong
+
+---
 
 ## What You Need
 
-- Windows or Linux
-- Python 3.13 or newer
-- pipx (recommended for easy terminal access)
-- A local copy of your SattLine code folders
-- VS Code, PowerShell/Windows Terminal, or Linux terminal
+* Windows or Linux
+* Python **3.13 or newer**
+* **pipx** (used to install and run SattLint cleanly)
+* A local copy of your SattLine code
 
-Git is not required.
+---
 
-## Install Without Git
+## Installation (pipx only)
 
-### Linux (using pipx)
+### 1. Get SattLint
 
-1. Install pipx (if not already installed):
-   ```bash
-   pip install pipx
-   pipx ensurepath
-   ```
+You need a local copy of the SattLint folder.
 
-2. Install SattLint:
-   ```bash
-   pipx install .
-   ```
+Use one of these:
 
-3. Start SattLint:
-   ```bash
-   sattlint
-   ```
+* Download the repository as a ZIP file and extract it
+* Copy the SattLint folder from a coworker or shared drive
 
-To update later, run `pipx upgrade sattlint` in the SattLint folder.
+Example locations:
 
-### Linux (alternative - manual venv)
+* Linux: `~/SattLint`
+* Windows: `C:\Tools\SattLint`
 
-If you prefer not to use pipx:
+---
 
-1. Get SattLint:
-   - Download the repository as a ZIP file from GitHub and extract it.
-   - Copy a prepared SattLint folder from a coworker.
+### 2. Install pipx
 
-   Assume the folder is extracted to something like:
-   ```text
-   ~/SattLint
-   ```
+#### Linux
 
-2. Install Python 3.13 from python.org or your package manager.
-
-3. Open a terminal in the SattLint folder and run:
-   ```bash
-   python3.13 -m venv .venv
-   .venv/bin/pip install --upgrade pip
-   .venv/bin/pip install .
-   ```
-
-4. Start SattLint:
-   ```bash
-   .venv/bin/sattlint
-   ```
-
-### Windows (using pipx)
-
-1. Install pipx (if not already installed):
-   ```powershell
-   pip install pipx
-   pipx ensurepath
-   ```
-
-2. Install SattLint:
-   ```powershell
-   pipx install .
-   ```
-
-3. Start SattLint:
-   ```powershell
-   sattlint
-   ```
-
-To update later, run `pipx upgrade sattlint` in the SattLint folder.
-
-### Windows (alternative - manual venv)
-
-#### 1. Get SattLint
-
-Use one of these options:
-
-1. Download the repository as a ZIP file from GitHub and extract it.
-2. Copy a prepared SattLint folder from a shared drive or from a coworker.
-
-For the rest of this guide, assume the folder is extracted to something like:
-
-```text
-C:\Tools\SattLint
+```bash
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
 ```
 
-### 2. Install Python
+Restart your terminal after this.
 
-Install Python 3.13 from python.org.
-
-During installation, make sure Python is available from the terminal.
-
-### 3. Open a terminal in the SattLint folder
-
-In VS Code:
-
-1. Open the SattLint folder.
-2. Open the terminal.
-
-Or in Windows Explorer:
-
-1. Open the SattLint folder.
-2. Click the address bar.
-3. Type `powershell` and press Enter.
-
-### 4. Run the one-time install commands
-
-Copy and run these commands exactly:
+#### Windows
 
 ```powershell
-py -3.13 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install .
+py -m pip install --user pipx
+py -m pipx ensurepath
 ```
 
-If `py -3.13` does not work, try:
+Restart your terminal after this.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install .
+---
+
+### 3. Install SattLint
+
+Open a terminal **inside the SattLint folder** and run:
+
+```bash
+pipx install .
 ```
 
-### 5. Start SattLint
+This installs SattLint globally (but isolated), so you can run it from anywhere.
 
-Run:
+---
 
-```powershell
-.\.venv\Scripts\sattlint.exe
+### 4. Start SattLint
+
+```bash
+sattlint
 ```
 
 That opens the interactive menu.
 
+---
+
+## Updating SattLint
+
+If you receive a newer version:
+
+1. Replace your SattLint folder with the new version
+2. Run:
+
+```bash
+pipx reinstall sattlint
+```
+
+---
+
 ## First-Time Setup
 
-The first time SattLint starts, it creates its config file automatically.
+The first time SattLint runs, it creates a config file automatically.
 
-On Windows the config file is stored here:
+* **Windows:**
+  `%APPDATA%\sattlint\config.toml`
 
-```text
-%APPDATA%\sattlint\config.toml
-```
+* **Linux:**
+  `~/.config/sattlint/config.toml`
 
-On Linux the config file is stored here:
+### Configure it
 
-```text
-~/.config/sattlint/config.toml
-```
+1. Start SattLint
 
-Use the menu to fill in the settings:
+2. Choose `4) Edit config`
 
-1. Choose `4) Edit config`.
-2. Set `program_dir` to the folder that contains the SattLine programs you want to analyze.
-3. Set `ABB_lib_dir` to your ABB or shared base library folder.
-4. Add any extra library folders under `other_lib_dirs`.
-5. Set `icf_dir` if you use ICF-related checks.
-6. Add one or more program or library names under `analyzed_programs_and_libraries`.
-7. Choose the right mode: `official` or `draft`.
-8. Choose `9) Save config`.
-9. Go back to the main menu.
-10. Run `5) Self-check diagnostics`.
+3. Set:
 
-Important: when you add a program or library name, use the name without the file extension.
+   * `program_dir` → your SattLine program folder
+   * `ABB_lib_dir` → shared/ABB libraries
+   * `other_lib_dirs` → any additional libraries
+   * `analyzed_programs_and_libraries` → what to analyze
 
-Example:
+4. Save with `9) Save config`
 
-- use `MyProgram`
-- do not use `MyProgram.s`
-- do not use `MyProgram.x`
+5. Run `5) Self-check diagnostics`
 
-## Which Settings Mean What
+**Important:**
+Use names *without file extensions*
 
-- `program_dir`: your main SattLine program folder
-- `ABB_lib_dir`: the ABB or shared library folder
-- `other_lib_dirs`: any additional project library folders
-- `icf_dir`: folder with ICF files if you use them
-- `analyzed_programs_and_libraries`: the root items SattLint should analyze
-- `mode`: choose `official` for official files, or `draft` for draft files
-- `scan_root_only`: only scan the selected roots and skip wider dependency loading
-- `fast_cache_validation`: keeps startup faster by reusing cached parser data when possible
-- `debug`: prints more internal detail when troubleshooting
+✔ `MyProgram`
+✘ `MyProgram.s`
+
+---
 
 ## Daily Use
 
-Start the tool with:
+Start SattLint:
 
 ```bash
 sattlint
 ```
 
-Main menu overview:
+Main menu:
 
-- `1) Analyses`: run the built-in code checks
-- `2) Dump outputs`: inspect parse trees, ASTs, and related internal outputs
-- `3) Documentation`: generate a Word document for the configured targets
-- `4) Edit config`: change folders, targets, and other settings
-- `5) Self-check diagnostics`: verify that paths and Python setup still look correct
-- `6) Force refresh cached AST`: rebuild cached parser data if results look stale
+* `1) Analyses` → run checks
+* `2) Dump outputs` → inspect parser data
+* `3) Documentation` → generate Word docs
+* `4) Edit config` → change setup
+* `5) Self-check diagnostics` → verify setup
+* `6) Force refresh cached AST` → fix stale results
 
-## Generate Word Documentation
-
-To create documentation:
-
-1. Start SattLint.
-2. Choose `3) Documentation`.
-3. Choose `1) Generate documentation`.
-4. Accept the proposed output file name, or enter your own.
-
-SattLint can also limit documentation to selected units:
-
-- `2) Preview detected unit candidates`
-- `4) Scope by unit moduletype name(s)`
-- `5) Scope by unit instance path(s)`
-
-The output is a `.docx` file that you can open in Word.
+---
 
 ## Check One File Quickly
 
-If you only want to know whether one SattLine file parses correctly, you do not need the full interactive menu.
-
-**Linux/Windows (with pipx):**
 ```bash
 sattlint syntax-check /path/to/Program.s
 ```
 
-If the file is valid, SattLint prints:
+Output:
 
-```text
-OK
-```
+* `OK` → valid file
+* Error message → invalid file
 
-If the file is invalid, SattLint prints a short error message with line information when possible.
+---
 
-## Updating SattLint
+## Generate Word Documentation
 
-**With pipx:**
-```bash
-pipx upgrade sattlint
-```
+1. Start SattLint
+2. Choose `3) Documentation`
+3. Choose `1) Generate documentation`
 
-If the update behaves strangely, run `pipx reinstall sattlint`.
+You can optionally scope by units before generating.
+
+Output is a `.docx` file.
+
+---
 
 ## Common Problems
 
-### `py` is not recognized
+### `sattlint` not found
 
-Python is either not installed, or not available in the terminal. Reinstall Python 3.13 and make sure terminal access is enabled.
+pipx is not on your PATH.
 
-### SattLint says Python 3.13+ is required
+Fix:
 
-Install Python 3.13 or newer, then recreate the `.venv` folder.
+```bash
+pipx ensurepath
+```
 
-### A target cannot be found
+Restart terminal.
 
-Check all of these:
+---
 
-- the target name is listed without `.s`, `.x`, `.l`, or `.z`
-- `program_dir`, `ABB_lib_dir`, and `other_lib_dirs` point to the correct folders
-- the selected `mode` matches the files you want to analyze
+### Python version error
 
-### Libraries are missing during analysis
+Install Python 3.13+ and reinstall:
 
-Usually this means one of the library folders is missing from config. Add the missing folder under `ABB_lib_dir` or `other_lib_dirs`, save the config, and try again.
+```bash
+pipx reinstall sattlint
+```
 
-### Results look old or wrong after many file changes
+---
 
-Run `6) Force refresh cached AST` from the main menu.
+### Targets not found
 
-## If Someone Already Installed It For You
+Check:
 
-If a coworker already prepared the SattLint folder on your machine, you can usually skip the install section and just run:
+* Names have no extensions
+* Paths in config are correct
+* Mode (`official` / `draft`) matches files
+
+---
+
+### Missing libraries
+
+Add missing folders to:
+
+* `ABB_lib_dir`
+* `other_lib_dirs`
+
+---
+
+### Results look outdated
+
+Run:
+
+```
+6) Force refresh cached AST
+```
+
+---
+
+## If It Was Already Installed For You
+
+You can usually just run:
 
 ```bash
 sattlint
 ```
 
+---
+
 ## For Developers
 
-This README is intentionally focused on everyday users.
+This README is focused on usage.
 
-If you want development setup, tests, or VS Code extension details, see [CONTRIBUTING.md](CONTRIBUTING.md).
+For development setup, tests, and tooling, see:
+
+```
+CONTRIBUTING.md
+```
+
+---
 
 ## License
 
