@@ -11,7 +11,7 @@ from typing import Any
 
 from lsprotocol.types import Diagnostic
 
-from sattlint.editor_api import (
+from sattlint.core.semantic import (
     SemanticSnapshot,
     WorkspaceSourceDiscovery,
     discover_workspace_sources,
@@ -254,14 +254,14 @@ class WorkspaceSnapshotStore:
                 self._finalize_future(state_key, future)
 
         with self._lock:
-            state = self._states.get(state_key)
-            if state is None:
+            final_state = self._states.get(state_key)
+            if final_state is None:
                 return None
-            bundle = self._bundle_from_state(state, allow_stale=allow_stale)
+            bundle = self._bundle_from_state(final_state, allow_stale=allow_stale)
             if bundle is not None:
                 return bundle
-            if raise_on_error and state.last_error is not None:
-                raise state.last_error
+            if raise_on_error and final_state.last_error is not None:
+                raise final_state.last_error
             if raise_on_error and last_error is not None:
                 raise last_error
             return None
@@ -296,9 +296,8 @@ class WorkspaceSnapshotStore:
         return state
 
     def _submit_refresh_locked(self, state: _EntrySnapshotState) -> Future[SnapshotBundle]:
-        assert self._workspace_root is not None
-        assert self._settings is not None
-        assert self._discovery is not None
+        if self._workspace_root is None or self._settings is None or self._discovery is None:
+            raise RuntimeError("workspace snapshot store is not initialized")
         config_version = self._config_version
         generation = state.generation
         workspace_root = self._workspace_root
@@ -312,14 +311,15 @@ class WorkspaceSnapshotStore:
             discovery,
         )
         state.future = future
-        future.add_done_callback(
-            lambda completed, key=state.cache_key, expected_config_version=config_version, expected_generation=generation: self._finalize_future(
-                key,
+        def _complete_snapshot(completed: Future[SnapshotBundle]) -> None:
+            self._finalize_future(
+                state.cache_key,
                 completed,
-                expected_config_version=expected_config_version,
-                expected_generation=expected_generation,
+                expected_config_version=config_version,
+                expected_generation=generation,
             )
-        )
+
+        future.add_done_callback(_complete_snapshot)
         return future
 
     def _build_bundle(
@@ -387,7 +387,9 @@ class WorkspaceSnapshotStore:
                 state.last_error = error
                 return
 
-            assert bundle is not None
+            if bundle is None:
+                state.last_error = RuntimeError("snapshot refresh completed without a bundle")
+                return
             previous_bundle = state.bundle
             state.bundle = bundle
             state.stale = False

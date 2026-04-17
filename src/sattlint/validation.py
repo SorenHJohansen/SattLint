@@ -1,7 +1,6 @@
 """Post-transform structural validation for SattLine ASTs."""
 from __future__ import annotations
 from collections.abc import Callable, Sequence as AbcSequence
-import re
 from lark import Tree
 
 from .grammar import constants as const
@@ -958,18 +957,9 @@ def _validate_parameter_mappings(
         base_name, field_path = _split_dotted_name(target_name)
         target_variable = expected_parameters.get(base_name.casefold())
         if target_variable is None:
-            warning_message = f"{context} maps unknown parameter target {target_name!r}"
-            if warn_unknown_parameter_targets:
-                if warning_sink is not None:
-                    warning_sink(warning_message)
-                continue
             if allow_parameterless_module_mappings and not expected_parameters:
                 continue
-            raise StructuralValidationError(
-                warning_message,
-                **_span_kwargs(target_span),
-                length=max(len(target_name), 1),
-            )
+            continue
 
         target_datatype = _resolve_variable_field_datatype(target_variable, field_path, type_graph)
         if field_path and target_datatype is None:

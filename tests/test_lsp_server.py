@@ -10,7 +10,6 @@ from sattlint_lsp.local_parser import DocumentParseResult, FullDocumentParserAda
 from sattlint_lsp.server import (
     _load_snapshot_bundle,
     _invalidate_cached_entries_for_path,
-    _process_workspace_scan_entries,
     _publish_closed_document_diagnostics,
     _publish_workspace_diagnostics_for_paths,
     _semantic_diagnostics_for_path,
@@ -266,6 +265,8 @@ ENDDEF (*BasePicture*);
     diagnostics = collect_syntax_diagnostics(tmp_path / "Program.s", source)
 
     assert len(diagnostics) >= 1
+    assert "Expected one of:" in diagnostics[0].message
+    assert "^" in diagnostics[0].message
 
 
 def test_collect_syntax_diagnostics_does_not_report_unknown_type_suggestion(tmp_path):

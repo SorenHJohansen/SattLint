@@ -267,7 +267,7 @@ class ComparisonResult:
             lines.append("")
 
             # Group instances by variant FINGERPRINT (not just by id)
-            variant_map = {}
+            variant_map: dict[int, list[tuple[list[str], ModuleFingerprint]]] = {}
             for path, fp in self.all_instances:
                 # Find which unique fingerprint this instance matches
                 for i, unique_fp in enumerate(self.fingerprints, 1):
@@ -714,27 +714,27 @@ def _walk_modules(
 
     elif isinstance(node, BasePicture):
         if debug:
-            print(f"  → BasePicture: {node.name!r}")
-            print(f"  → Has {len(node.submodules)} direct submodules")
-            print(f"  → Has {len(node.moduletype_defs)} moduletype_defs")
+            log.debug("  BasePicture: %r", node.name)
+            log.debug("  Has %d direct submodules", len(node.submodules))
+            log.debug("  Has %d moduletype_defs", len(node.moduletype_defs))
 
         for i, sub in enumerate(node.submodules):
             if debug:
-                print(f"  → Submodule[{i}]: {type(sub).__name__}")
+                log.debug("  Submodule[%d]: %s", i, type(sub).__name__)
             _walk_modules(sub, target_name, current_path, results, debug)
 
         for i, mtd in enumerate(node.moduletype_defs):
             if debug:
-                print(f"  → ModuleTypeDef[{i}]: {mtd.name!r}")
+                log.debug("  ModuleTypeDef[%d]: %r", i, mtd.name)
             _walk_modules(mtd, target_name, current_path, results, debug)
 
     elif isinstance(node, ModuleTypeInstance):
         if debug:
-            print(f"  → ModuleTypeInstance: {node.header.name!r} (no submodules)")
+            log.debug("  ModuleTypeInstance: %r (no submodules)", node.header.name)
         pass
     else:
         if debug:
-            print(f"  → Unknown node type: {type(node).__name__}")
+            log.debug("  Unknown node type: %s", type(node).__name__)
 
 
 def find_modules_by_name(
@@ -742,13 +742,13 @@ def find_modules_by_name(
 ) -> list[tuple[list[str], SingleModule]]:
     """Find all SingleModule instances with the given name, returning path and module."""
     if debug:
-        print(f"\n=== SEARCHING FOR '{target_name}' ===")
+        log.debug("=== SEARCHING FOR %r ===", target_name)
 
     results: list[tuple[list[str], SingleModule]] = []
     _walk_modules(base_picture, target_name, [base_picture.header.name], results, debug)
 
     if debug:
-        print(f"=== SEARCH COMPLETE: Found {len(results)} matches ===\n")
+        log.debug("=== SEARCH COMPLETE: Found %d matches ===", len(results))
 
     return results
 

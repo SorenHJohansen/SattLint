@@ -1,281 +1,238 @@
 # SattLint
 
-**SattLint** is a Python-based static-analysis and documentation-generation utility for SattLine projects.
-It parses SattLine source files, resolves dependencies across libraries, builds a unified abstract syntax tree (AST), runs a variable-usage analyzer, and can generate a nicely formatted Word document (`.docx`) describing the whole project.
+SattLint is a Windows-friendly tool for people who write SattLine and want help checking code, tracing dependencies, and generating Word documentation.
 
----
+This README is written for coworkers who want to install and use the tool. You do not need Git. You do not need to know Python beyond copying a few commands once.
 
-## Table of Contents
+## What SattLint Does
 
-1. [Features](#features)
-2. [Quick Start](#quick-start)
-   - [Prerequisites](#prerequisites)
-   - [Installation](#installation)
-   - [How to run](#how-to-run)
-   - [Interactive usage](#interactive-usage)
-3. [Core Components](#core-components)
-4. [Configuration](#configuration)
-5. [License & Contributing](#license--contributing)
+SattLint can help you:
 
----
+- check whether a SattLine file parses correctly
+- analyze a full program or library together with its dependencies
+- find issues such as unused variables, written-but-never-read variables, shadowing, and related code-quality problems
+- generate FS-style Word documentation as a `.docx` file
+- inspect parser outputs when something looks wrong
 
-## Features
+## What You Need
 
-- **Interactive menu-driven application**.
-- **Non-interactive syntax check** for a single SattLine file via `sattlint syntax-check <file>`.
-- **Full SattLine parsing** using a Lark grammar (`grammar/sattline.lark`).
-- **Recursive dependency resolution** across a configurable set of library directories, with optional vendor-library exclusion.
-- **Variable-usage analysis** reports:
-  - Unused variables
-  - Read-only variables not declared `CONST`
-  - Variables that are written but never read
-  - Min/Max mapping name mismatches
-- **SFC analysis** reports parallel-branch write races.
-- **Merge-project capability** – creates a synthetic `BasePicture` that aggregates all datatype and module-type definitions, allowing analysis across file boundaries.
-- **DOCX documentation generation** (`generate_docx`) produces an FS-style specification grouped by detected equipment modules, operations, and parameter categories.
-- **Unit-scoped documentation** lets you limit DOCX generation to selected unit roots from the Documentation menu without storing that scope in config.
-- **Debug mode** (`--debug` / `DEBUG`) prints detailed tracing of file discovery, parsing, and analysis steps.
-- **Strict mode** (`--strict`) aborts on missing files or parse errors, useful for CI pipelines.
-- **Language Server Protocol support** via `sattlint-lsp` plus a local VS Code client in `vscode/sattline-vscode/` for syntax diagnostics, go-to-definition, and completion.
+- Windows
+- Python 3.13 or newer
+- A local copy of your SattLine code folders
+- VS Code, PowerShell, or Windows Terminal
 
----
+Git is not required.
 
-## Quick Start
+## Install Without Git
 
-### Prerequisites
+### 1. Get SattLint
 
-- Python 3.11 or newer
-- Git (optional, for cloning)
-- pipx
-- A working SattLine codebase (expects a root program and its dependent libraries)
+Use one of these options:
 
-### Installation
+1. Download the repository as a ZIP file from GitHub and extract it.
+2. Copy a prepared SattLint folder from a shared drive or from a coworker.
 
-```bash
-# Clone the repository
-git clone <repo-url>
-cd SattLint
-```
-
-Install pipx:
-
-```bash
-python3 -m pip install --user pipx
-```
-
-```bash
-# Install the package
-pipx install sattlint
-```
-
-Dependencies are declared in `pyproject.toml` like:
-
-```toml
-lark-parser>=0.11.0
-python-docx>=0.8.11
-```
-
-### How to Run
-
-In the terminal just type:
-
-```bash
-sattlint
-```
-
-This starts the interactive SattLint application.
-
-To validate that a single SattLine file parses and transforms cleanly, run:
-
-```bash
-sattlint syntax-check path/to/Program.s
-```
-
-The command prints `OK` and exits with code `0` when the file is valid. If parsing or transformation fails, it prints a compact error message with location information when available and exits non-zero.
-
-The syntax check also performs strict post-transform validation for structural mistakes that the grammar alone may accept. Current checks include consecutive `SEQSTEP` blocks with no intervening `SEQTRANSITION`, missing `SEQINITSTEP` at the start of a sequence, unknown `SEQFORK` targets, duplicate names in the same declaration scope, `OLD`/`NEW` access on non-`STATE` variables, and identifier names longer than 20 characters.
-
-### Interactive Usage
-
-When started, SattLint presents a menu similar to:
-
-```bash
-=== SattLint ===
-How to use SattLint
-------------------
-- Navigate using the number keys shown in each menu
-- Press Enter to confirm a selection
-- Changes are NOT saved until you choose "Save config"
-- Use "Configuration" to change settings
-- Use "Run analysis" to analyze the configured root program
-- Use "Dump outputs" to inspect parse trees, ASTs, etc.
-- Press 'q' at any time in the main menu to quit
-
-1) Show config
-2) Configuration
-3) Run analysis
-4) Dump outputs
-5) Save config
-6) Self-check diagnostics
-q) Quit
-```
-
----
-
-## Core Components
-
-- **app.py** – Main entry point
-- **engine.py** – Workspace setup, parser creation, project loading, merging BasePicture
-- **sl_transformer.py** – Lark Transformer → concrete AST objects, handles all language constructs
-- **variables.py** – VariablesAnalyzer walks AST, records usage, generates reports
-- **docgenerator/** – `generate_docx(project_bp, out_path, documentation_config=...)` renders an FS-style Word document; `classification.py` maps modules into documentation sections using config-driven rules
-- **Documentation menu** – preview unit candidates, choose scope by instance path or moduletype name, and generate filtered DOCX output from the interactive app
-- **models/** – AST node dataclasses (`BasePicture`, `Module`, `Variable`, etc.)
-- **constants.py** – Grammar literals, regex patterns, tree-tag keys
-
----
-
-## Cross-Platform Development
-
-SattLint supports development on both Linux and Windows platforms:
-
-### Development Environments
-- **Linux**: Recommended with Neovim + LSP (pyright/ruff)
-- **Windows**: Recommended with Visual Studio Code + Python extension
-
-### Quick Setup
-
-#### Linux (Neovim)
-```bash
-# Install Python version manager
-mise install python@3.13
-
-# Create and activate virtual environment
-python -m venv .venv
-source .venv/bin/activate
-
-# Install in development mode
-pip install -e .[dev]
-
-# Install development tools (already in pyproject.toml)
-```
-
-#### Windows (VS Code)
-```powershell
-# Create and activate virtual environment
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-
-# Install in development mode
-pip install -e .[dev]
-
-# VS Code will prompt to install Python extension and use .vscode/settings.json
-```
-
-### VS Code SattLine Extension
-
-The repository includes a no-build VS Code extension client under `vscode/sattline-vscode/` plus a Python LSP server exposed as `sattlint-lsp`.
-
-Set up the Python server first:
-
-```powershell
-.venv\Scripts\Activate.ps1
-pip install -e .[lsp]
-```
-
-Install the VS Code client by copying or symlinking `vscode\sattline-vscode` into your user extensions directory as `local.sattline-vscode-0.1.0`, then reload the VS Code window.
-
-On Windows, that target directory is typically:
+For the rest of this guide, assume the folder is extracted to something like:
 
 ```text
-%USERPROFILE%\.vscode\extensions\local.sattline-vscode-0.1.0
+C:\Tools\SattLint
 ```
 
-There is no npm or TypeScript build step for local development. The extension launches `python -m sattlint_lsp.server` over stdio, supports `.s`, `.x`, `.l`, and `.z` files, and ships a TextMate grammar for syntax highlighting.
+### 2. Install Python
 
-If you want a `.vsix`, package it from WSL in the extension folder:
+Install Python 3.13 from python.org.
 
-```bash
-cd /mnt/c/Users/SQHJ/OneDrive\ -\ Novo\ Nordisk/Workspace/GitHub.com/SattLint/vscode/sattline-vscode
-npm run package:vsix
+During installation, make sure Python is available from the terminal.
+
+### 3. Open a terminal in the SattLint folder
+
+In VS Code:
+
+1. Open the SattLint folder.
+2. Open the terminal.
+
+Or in Windows Explorer:
+
+1. Open the SattLint folder.
+2. Click the address bar.
+3. Type `powershell` and press Enter.
+
+### 4. Run the one-time install commands
+
+Copy and run these commands exactly:
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install .
 ```
 
-That command produces `sattline-vscode-0.1.0.vsix` in `vscode/sattline-vscode/`.
+If `py -3.13` does not work, try:
 
-Useful settings:
-- `sattlineLsp.pythonPath` to override interpreter detection
-- `sattlineLsp.entryFile` when editing `.l`/`.z` files in a workspace with multiple root programs
-- `sattlineLsp.mode` to switch between `draft` and `official` resolution
-- `sattlineLsp.scanRootOnly` to skip recursive dependency loading
-- `sattlineLsp.enableVariableDiagnostics` to disable analyzer-backed warnings
-- `sattlineLsp.maxCompletionItems` to cap completion results
-
-### Code Quality Tools
-- **Formatting**: Black (configured in pyproject.toml)
-- **Linting**: Ruff (configured in pyproject.toml)
-- **Type Checking**: MyPy (configured in pyproject.toml)
-- **Testing**: Pytest (configured in pyproject.toml)
-
-### Git Workflow
-The repository is configured for seamless development across platforms:
-- `.editorconfig` ensures consistent formatting across editors
-- `.vscode/settings.json` provides VS Code workspace configuration
-- All settings are committed to git for consistency between machines
-
----
-
-## Configuration
-
-All settings are stored in config.toml, which is the single source of truth.
-
-`config.toml` example:
-
-```toml
-# ----------------------------
-# General project configuration
-# ----------------------------
-analyzed_programs_and_libraries = ["ProgramName"]
-mode = "official"          # "official" or "draft"
-scan_root_only = false
-debug = false
-
-# ----------------------------
-# Paths
-# ----------------------------
-ABB_lib_dir = "/mnt/vendor_dir"
-program_dir = "/mnt/projects/sattline/unitlib"
-other_lib_dirs = [
-  "/mnt/projects/sattline/commonlib",
-  "/mnt/projects/sattline/externallibs",
-]
-
-# ----------------------------
-# Documentation generation
-# ----------------------------
-[documentation]
-[documentation.classifications.ops]
-desc_label_equals = ["NNEMESIFLib:MES_StateControl"]
-
-[documentation.classifications.em]
-desc_label_equals = ["nnestruct:EquipModCoordinate"]
-
-[documentation.classifications.rp]
-name_contains = ["RecPar"]
-
-[documentation.classifications.ep]
-name_contains = ["EngPar"]
-
-[documentation.classifications.up]
-name_contains = ["UsrPar"]
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install .
 ```
 
-The documentation rules are editable. The defaults above are designed around the common NNE/ABB patterns discovered in the loaded project graph.
-The FS section order follows the reference template in code and is not configured in `config.toml`. Unit scope is selected at runtime from the Documentation menu by unit instance path or unit moduletype name.
+### 5. Start SattLint
 
----
+Run:
 
-## License & Contributing
+```powershell
+.\.venv\Scripts\sattlint.exe
+```
 
-- Released under the **MIT License**
-- Contributions welcome: fork, create a feature branch, and submit a PR
-- Follow existing code style (PEP 8, type hints, docstrings)
+That opens the interactive menu.
+
+## First-Time Setup
+
+The first time SattLint starts, it creates its config file automatically.
+
+On Windows the config file is stored here:
+
+```text
+%APPDATA%\sattlint\config.toml
+```
+
+Use the menu to fill in the settings:
+
+1. Choose `4) Edit config`.
+2. Set `program_dir` to the folder that contains the SattLine programs you want to analyze.
+3. Set `ABB_lib_dir` to your ABB or shared base library folder.
+4. Add any extra library folders under `other_lib_dirs`.
+5. Set `icf_dir` if you use ICF-related checks.
+6. Add one or more program or library names under `analyzed_programs_and_libraries`.
+7. Choose the right mode: `official` or `draft`.
+8. Choose `9) Save config`.
+9. Go back to the main menu.
+10. Run `5) Self-check diagnostics`.
+
+Important: when you add a program or library name, use the name without the file extension.
+
+Example:
+
+- use `MyProgram`
+- do not use `MyProgram.s`
+- do not use `MyProgram.x`
+
+## Which Settings Mean What
+
+- `program_dir`: your main SattLine program folder
+- `ABB_lib_dir`: the ABB or shared library folder
+- `other_lib_dirs`: any additional project library folders
+- `icf_dir`: folder with ICF files if you use them
+- `analyzed_programs_and_libraries`: the root items SattLint should analyze
+- `mode`: choose `official` for official files, or `draft` for draft files
+- `scan_root_only`: only scan the selected roots and skip wider dependency loading
+- `fast_cache_validation`: keeps startup faster by reusing cached parser data when possible
+- `debug`: prints more internal detail when troubleshooting
+
+## Daily Use
+
+Start the tool with:
+
+```powershell
+.\.venv\Scripts\sattlint.exe
+```
+
+Main menu overview:
+
+- `1) Analyses`: run the built-in code checks
+- `2) Dump outputs`: inspect parse trees, ASTs, and related internal outputs
+- `3) Documentation`: generate a Word document for the configured targets
+- `4) Edit config`: change folders, targets, and other settings
+- `5) Self-check diagnostics`: verify that paths and Python setup still look correct
+- `6) Force refresh cached AST`: rebuild cached parser data if results look stale
+
+## Generate Word Documentation
+
+To create documentation:
+
+1. Start SattLint.
+2. Choose `3) Documentation`.
+3. Choose `1) Generate documentation`.
+4. Accept the proposed output file name, or enter your own.
+
+SattLint can also limit documentation to selected units:
+
+- `2) Preview detected unit candidates`
+- `4) Scope by unit moduletype name(s)`
+- `5) Scope by unit instance path(s)`
+
+The output is a `.docx` file that you can open in Word.
+
+## Check One File Quickly
+
+If you only want to know whether one SattLine file parses correctly, you do not need the full interactive menu.
+
+Run:
+
+```powershell
+.\.venv\Scripts\sattlint.exe syntax-check C:\Path\To\Program.s
+```
+
+If the file is valid, SattLint prints:
+
+```text
+OK
+```
+
+If the file is invalid, SattLint prints a short error message with line information when possible.
+
+## Updating SattLint
+
+When you get a newer copy of the SattLint folder, open a terminal in that folder and run:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade .
+```
+
+If the update behaves strangely, the clean fix is:
+
+1. Delete the `.venv` folder.
+2. Run the install steps again.
+
+## Common Problems
+
+### `py` is not recognized
+
+Python is either not installed, or not available in the terminal. Reinstall Python 3.13 and make sure terminal access is enabled.
+
+### SattLint says Python 3.13+ is required
+
+Install Python 3.13 or newer, then recreate the `.venv` folder.
+
+### A target cannot be found
+
+Check all of these:
+
+- the target name is listed without `.s`, `.x`, `.l`, or `.z`
+- `program_dir`, `ABB_lib_dir`, and `other_lib_dirs` point to the correct folders
+- the selected `mode` matches the files you want to analyze
+
+### Libraries are missing during analysis
+
+Usually this means one of the library folders is missing from config. Add the missing folder under `ABB_lib_dir` or `other_lib_dirs`, save the config, and try again.
+
+### Results look old or wrong after many file changes
+
+Run `6) Force refresh cached AST` from the main menu.
+
+## If Someone Already Installed It For You
+
+If a coworker already prepared the SattLint folder on your machine, you can usually skip the install section and just run:
+
+```powershell
+.\.venv\Scripts\sattlint.exe
+```
+
+## For Developers
+
+This README is intentionally focused on everyday users.
+
+If you want development setup, tests, or VS Code extension details, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+SattLint is released under the MIT License.

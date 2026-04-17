@@ -6,13 +6,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from lark.exceptions import VisitError
+from lark.exceptions import UnexpectedInput, VisitError
 from lsprotocol.types import Diagnostic, DiagnosticSeverity, Position, Range
 
-from sattline_parser.api import create_parser
+from sattline_parser.api import create_parser, describe_parse_error
 from sattline_parser.transformer.sl_transformer import SLTransformer
 from sattline_parser.utils.text_processing import strip_sl_comments
-from sattlint.editor_api import SemanticSnapshot, build_source_snapshot_from_basepicture
+from sattlint.core.ast_tools import iter_variable_refs
+from sattlint.core.document import LineIndex
+from sattlint.core.semantic import SemanticSnapshot, build_source_snapshot_from_basepicture
 from sattlint.models.ast_model import (
     BasePicture,
     FrameModule,
@@ -135,38 +137,6 @@ def _collect_sequence_step_features(
             )
 
 
-def _iter_variable_refs(node: object):
-    if isinstance(node, dict) and "var_name" in node:
-        yield node
-        return
-
-    if isinstance(node, dict):
-        for value in node.values():
-            yield from _iter_variable_refs(value)
-        return
-
-    if isinstance(node, tuple):
-        for item in node:
-            yield from _iter_variable_refs(item)
-        return
-
-    if isinstance(node, list):
-        for item in node:
-            yield from _iter_variable_refs(item)
-        return
-
-    children = getattr(node, "children", None)
-    if children is not None:
-        for child in children:
-            yield from _iter_variable_refs(child)
-        return
-
-    node_dict = getattr(node, "__dict__", None)
-    if node_dict is not None:
-        for value in node_dict.values():
-            yield from _iter_variable_refs(value)
-
-
 def _collect_step_auto_variable_diagnostics_for_modulecode(
     modulecode: ModuleCode | None,
     env: dict[str, Variable],
@@ -192,7 +162,7 @@ def _collect_step_auto_variable_diagnostics_for_modulecode(
     if not known_steps:
         return
 
-    for ref in _iter_variable_refs(modulecode):
+    for ref in iter_variable_refs(modulecode):
         full_name = ref.get("var_name")
         span = ref.get("span")
         if not isinstance(full_name, str) or not isinstance(span, SourceSpan):
@@ -307,15 +277,7 @@ def _collect_step_auto_variable_diagnostics(base_picture: BasePicture) -> tuple[
 
 
 def _line_start_offset(text: str, zero_based_line: int) -> int:
-    if zero_based_line <= 0:
-        return 0
-
-    offset = 0
-    for index, line in enumerate(text.splitlines(keepends=True)):
-        if index >= zero_based_line:
-            break
-        offset += len(line)
-    return min(offset, len(text))
+    return LineIndex.from_text(text).line_start_offset(zero_based_line)
 
 
 @dataclass(frozen=True, slots=True)
@@ -347,8 +309,14 @@ class IncrementalDocumentParserAdapter:
         self._parser = create_parser()
         self._checkpoint_token_interval = max(1, int(checkpoint_token_interval))
 
+    def _cursor_lexer(self, cursor):
+        lexer = getattr(cursor, "lexer_thread", None)
+        if lexer is not None:
+            return lexer
+        return cursor.lexer_state
+
     def _capture_checkpoint(self, cursor) -> _ParseCheckpoint:
-        line_counter = cursor.lexer_state.state.line_ctr
+        line_counter = self._cursor_lexer(cursor).state.line_ctr
         return _ParseCheckpoint(
             char_pos=int(line_counter.char_pos),
             line=int(line_counter.line),
@@ -383,7 +351,9 @@ class IncrementalDocumentParserAdapter:
 
     def _resume_cursor(self, checkpoint: _ParseCheckpoint, cleaned_text: str):
         cursor = checkpoint.cursor.as_mutable()
-        cursor.lexer_state.state.text = cleaned_text
+        lexer = self._cursor_lexer(cursor)
+        text_slice_type = type(lexer.state.text)
+        lexer.state.text = text_slice_type.cast_from(cleaned_text)
         return cursor
 
     def _append_checkpoint_if_advanced(self, checkpoints: list[_ParseCheckpoint], cursor) -> None:
@@ -412,7 +382,8 @@ class IncrementalDocumentParserAdapter:
             cursor = self._parser.parse_interactive(cleaned_text)
             checkpoints = [self._capture_checkpoint(cursor)]
         else:
-            assert previous_state is not None
+            if previous_state is None:
+                raise RuntimeError("missing previous parser state for checkpoint resume")
             checkpoint_index, checkpoint = selected
             cursor = self._resume_cursor(checkpoint, cleaned_text)
             checkpoints = list(previous_state.checkpoints[: checkpoint_index + 1])
@@ -425,10 +396,11 @@ class IncrementalDocumentParserAdapter:
         _MAX_DESIRED_CHECKPOINTS = 10
         clean_lines = cleaned_text.count("\n") + 1
         checkpoint_line_interval = max(1, clean_lines // _MAX_DESIRED_CHECKPOINTS)
+        lexer = self._cursor_lexer(cursor)
 
-        for token in cursor.lexer_state.lex(cursor.parser_state):
+        for token in lexer.lex(cursor.parser_state):
             cursor.feed_token(token)
-            current_line = int(cursor.lexer_state.state.line_ctr.line)
+            current_line = int(lexer.state.line_ctr.line)
             if current_line >= checkpoints[-1].line + checkpoint_line_interval:
                 self._append_checkpoint_if_advanced(checkpoints, cursor)
 
@@ -476,6 +448,14 @@ class IncrementalDocumentParserAdapter:
                 state = previous_state
             else:
                 state = self._parse_incrementally(cleaned_text, previous_state, changed_line_ranges)
+        except UnexpectedInput as exc:
+            details = describe_parse_error(exc, cleaned_text)
+            _append_unique_diagnostic(
+                diagnostics,
+                seen,
+                _diagnostic_from_message(details.message, details.line, details.column),
+            )
+            return DocumentParseResult(syntax_diagnostics=tuple(diagnostics), local_snapshot=None)
         except VisitError as exc:
             line, column = _extract_error_position(exc)
             message = str(exc.orig_exc) if exc.orig_exc is not None else str(exc)

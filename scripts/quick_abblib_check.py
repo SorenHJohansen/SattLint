@@ -1,5 +1,6 @@
 """Quick parse validation for ABB library samples."""
 
+import argparse
 import pathlib
 import sys
 import signal
@@ -10,9 +11,9 @@ from sattlint.engine import create_sl_parser  # noqa: E402
 from sattline_parser import strip_sl_comments  # noqa: E402
 from sattlint.grammar.parser_decode import preprocess_sl_text, is_compressed  # noqa: E402
 
-ABB_DIR = pathlib.Path(
-    r"c:/Users/SQHJ/OneDrive - Novo Nordisk/Workspace/GitHub.com/SattLint/Libs/HA/ABBLib"
-)
+
+def _default_abb_dir() -> pathlib.Path:
+    return pathlib.Path(__file__).resolve().parents[1] / "Libs" / "HA" / "ABBLib"
 
 
 class TimeoutException(Exception):
@@ -46,14 +47,27 @@ def parse_with_timeout(parser, text: str, timeout_sec: int = 10) -> tuple[bool, 
         return (False, str(ex)[:150])
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Quickly parse-check ABB library samples.")
+    parser.add_argument(
+        "--library-dir",
+        default=str(_default_abb_dir()),
+        help="Directory containing ABB library files",
+    )
+    args = parser.parse_args(argv)
+
+    abb_dir = pathlib.Path(args.library_dir).expanduser().resolve()
+    if not abb_dir.exists() or not abb_dir.is_dir():
+        print(f"Library directory not found: {abb_dir}", file=sys.stderr)
+        return 2
+
     parser = create_sl_parser()
 
     print("="*70)
     print("Testing Pretty files (uncompressed)")
     print("="*70)
 
-    pretty_files = sorted(ABB_DIR.glob("Pretty*.txt"))
+    pretty_files = sorted(abb_dir.glob("Pretty*.txt"))
     pretty_errors = []
 
     for i, path in enumerate(pretty_files, 1):
@@ -80,7 +94,7 @@ def main() -> int:
     compressed_errors = []
     checked_count = 0
 
-    for path in sorted(ABB_DIR.glob("*.x")):
+    for path in sorted(abb_dir.glob("*.x")):
         base_name = path.stem
 
         if base_name not in pretty_map:

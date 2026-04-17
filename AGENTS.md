@@ -1,1037 +1,201 @@
-# AGENTS.md - AI Assistant Context for SattLint
+# AGENTS.md - AI Working Guide for SattLint
 
-> This file provides context for AI assistants working with the SattLint codebase.
-> SattLint is a Python-based static analyzer and documentation generator for SattLine,
-> a proprietary PLC programming language developed by ABB for industrial automation.
->
-> **IMPORTANT:** This file (`AGENTS.md`) is the source of truth for AI context.
-> If you make structural changes, refactor code, or add new features, **YOU MUST UPDATE THIS FILE**.
-> Keep the file lists, architectural descriptions, and code examples current.
+> This file is the primary AI working guide for stable SattLint repo conventions, workflows, safety rules, and critical invariants.
+> Direct user instructions, code, tests, and clearly newer repo documentation take precedence if this file is stale.
+> Update this file when architecture boundaries, entry points, workflows, or critical invariants materially change.
 
 ---
 
-## What is SattLine?
+## Purpose
 
-**SattLine** is a proprietary PLC (Programmable Logic Controller) programming language and runtime environment originally developed by Alfa Laval Automation, later acquired by ABB. It is used for industrial automation control systems in manufacturing, process industries, and batch control applications.
-
-**Key Characteristics:**
-- **Scan-based execution**: Programs run in continuous scan cycles, reading inputs, executing logic, and writing outputs
-- **Hierarchical module structure**: Programs are organized as a tree of modules with BasePicture at the root
-- **Graphical + Textual**: Supports both visual SFC (Sequential Function Chart) programming and textual equation blocks
-- **Real-time control**: Designed for deterministic real-time control of industrial equipment
-
-**File Mode Convention:**
-- **Draft mode** (`.s`, `.l`): Work-in-progress files, can be edited freely
-- **Official mode** (`.x`, `.z`): Frozen/approved files, changes require explicit version increment
-
-**Example Programs:** See `tests/fixtures/sample_sattline_files/` for real examples:
-- `LinterTestProgram.s` - Basic program with various variable usage patterns
-- `BatchDemo.s` - Complex batch processing with multiple scangroups
-- `SattLineFullGrammarTest.s` - Comprehensive grammar coverage examples
+- Keep durable agent-facing guidance here.
+- Keep this file concise enough to be used as an instruction file rather than a handbook.
+- Move long examples, detailed architecture notes, and extended reference material into repo docs.
+- Use `docs/ai-agent-reference.md` for deeper SattLine examples, AST details, file maps, and common task snippets.
 
 ---
 
-## Table of Contents
+## Repo At A Glance
 
-1. [What is SattLine?](#what-is-sattline)
-2. [Project Overview](#project-overview)
-3. [SattLine Language Fundamentals](#sattline-language-fundamentals)
-4. [AST Architecture](#ast-architecture)
-5. [Variable Analysis System](#variable-analysis-system)
-6. [Code Patterns & Conventions](#code-patterns--conventions)
-7. [Working with the Codebase](#working-with-the-codebase)
-8. [Testing & Debugging](#testing--debugging)
-9. [Key Files Reference](#key-files-reference)
-
----
-
-## Project Overview
-
-**SattLint** parses SattLine source files, builds an Abstract Syntax Tree (AST), resolves dependencies across library directories, performs static analysis on variable usage, exposes a single-file syntax validation CLI, and can run engineering-spec compliance checks over AST-visible code patterns. DOCX generation now builds an FS-style document structure from configurable documentation-classification rules instead of dumping the merged AST in declaration order, and unit scoping is chosen interactively in the app rather than persisted in config. The parser stack now has an explicit parser-core layer under `src/sattline_parser/`; SattLint consumes that package and keeps compatibility wrappers under `src/sattlint/grammar/`, `src/sattlint/models/ast_model.py`, and `src/sattlint/transformer/sl_transformer.py`. Editor-facing workspace discovery and symbol/completion/definition/reference helpers now live in `src/sattlint/editor_api.py`, parser-core preserves declaration spans on key AST nodes plus source spans on variable references so editor clients can map cursor positions back to definitions, editor snapshots skip unresolved moduletype instances when proprietary libraries are unavailable so LSP features can continue over the reachable AST, and `editor_api.build_source_snapshot_from_basepicture()` can now build a source snapshot directly from an already-validated single-file AST. Workspace snapshots used by the editor/LSP also now apply a proximity-based dependency heuristic on top of workspace discovery: bare dependency names from `.l`/`.z` files are resolved relative to the requesting library directory first, then across sibling library roots under the nearest shared workspace cluster (for example adjacent roots under `Libs/HA`), before falling back to the rest of the discovered workspace; CLI resolution remains config/search-path driven, workspace-load errors now surface the root target's own parse/transform failure explicitly when available, preserve that root failure's source coordinates for editor diagnostics, formatted snapshot failures separate unavailable libraries from other dependency parse failures, and missing `ControlLib` is treated as an expected unavailable proprietary dependency for workspace/editor loading instead of a standard missing-code error. The external language-server layer lives in `src/sattlint_lsp/` with a no-build VS Code client under `vscode/sattline-vscode/`; the client/server only perform live LSP analysis for `.s`/`.x` program files while treating `.l`/`.z` files strictly as dependency-name lists for workspace resolution, and the server now keeps versioned per-document text state, caches adapter-backed local parse results in `document_state`, preserves the prior adapter result across edits, and can run syntax-only dirty-buffer diagnostics without rebuilding a local semantic snapshot. Workspace snapshot loading is now centralized in `src/sattlint_lsp/workspace_store.py`, which caches workspace discovery, deduplicates in-flight snapshot refreshes, marks bundles stale on targeted invalidation, and lets interactive requests fall back to cached bundles or local snapshots under short wait budgets instead of blocking on a full reload. Definition/completion/hover/references/rename requests upgrade cached local analysis to a source snapshot on demand, merge dirty-buffer results ahead of the workspace snapshot, fall back to the local snapshot if workspace resolution fails, and trim workspace-load diagnostics on a document down to that document's own root parse/transform failure instead of inlining dependency sections from other files. Workspace-wide LSP diagnostics can now also be warmed in the background after startup and save operations: the server keeps one semantic snapshot cache entry per discovered root source, indexes each snapshot by its resolved `project_graph.source_files`, caches per-source semantic diagnostics inside each snapshot bundle so repeated publishes and close-path restores can reuse them, invalidates only the entries that depend on a changed file, republishes aggregated diagnostics for clean files while leaving dirty-buffer syntax diagnostics in control of open unsaved editors, and restores saved-file workspace diagnostics when an unsaved buffer is closed. `src/sattlint_lsp/local_parser.py` now contains the real incremental backend: it strips comments once, reuses checkpointed Lark interactive-parser state up to the last safe prefix before the earliest changed line, reparses only the invalidated suffix, revalidates the transformed AST, and can upgrade a syntax-only analysis to a local semantic snapshot without reparsing unchanged text. Strict post-transform validation also now catches typo-level datatype declarations, incompatible declaration init values, duplicate inline/frame submodule names within one scope, duplicate identical moduletype-instance invocation pairs, duplicate or invalid locally-resolvable parameter-mapping targets, and writes to `CONST` variables. The VS Code client can also be packaged into a `.vsix` from WSL by running `npm run package:vsix` inside that extension folder.
-
-### File Extensions
-
-- `.s` / `.x` - Source files (draft / official mode)
-  - **Draft mode** (`.s`): Work-in-progress, freely editable
-  - **Official mode** (`.x`): Frozen/approved, changes require explicit version increment
-- `.l` / `.z` - Library dependencies (draft / official mode)
-- `.g` - Graphical representation files
-- `.p` - Program files
-
-### Core Workflow
-
-1. **Parse**: Lark grammar (`src/sattline_parser/grammar/sattline.lark`) ? Parse tree
-2. **Transform**: `SLTransformer` ? AST objects (`src/sattline_parser/models/ast_model.py`)
-3. **Validate CLI**: `sattlint syntax-check <file>` runs parse + transform on one file, applies strict post-transform validation, and prints `OK` or a compact error
-4. **Resolve**: For each configured analyzed target in `analyzed_programs_and_libraries`, build a unified `BasePicture` with all dependencies needed for resolution
-5. **Analyze**: Run analyzers per analyzed target; dependencies remain available for parsing/type resolution, but reporting is scoped to the explicitly analyzed target being processed
-6. **Spec compliance**: Run the engineering-spec analyzer for AST-visible rules such as BasePicture code placement, SFC step/transition naming, and selected module-instance contracts
-7. **Report**: Standardized report summaries (shared header format) + DOCX documentation
+- `src/sattline_parser/` contains the parser core: grammar, transformer, AST models, and parser-side utilities.
+- `src/sattlint/` contains the CLI, config, analyzers, reporting, doc generation, and compatibility wrappers.
+- `src/sattlint/core/` contains the shared semantic and document helpers used by editor-facing code.
+- `src/sattlint_lsp/` contains the incremental parser backend, workspace snapshot store, and language server.
+- `vscode/sattline-vscode/` contains the no-build VS Code client.
+- `tests/` contains fixtures and regression coverage.
+- `artifacts/analysis/` contains machine-readable outputs from the dev-analysis pipeline.
+- `artifacts/audit/` contains machine-readable outputs from the repository audit runner.
 
 ---
 
-## SattLine Language Fundamentals
+## Agent Workflow
 
-### Scan-Based Execution Model
-
-SattLine programs run in a **continuous scan cycle**, which is fundamental to PLC programming:
-
-1. **Read Inputs**: All input signals are read at the start of the scan
-2. **Execute Logic**: Equation blocks and active sequence steps are evaluated
-3. **Write Outputs**: All outputs are updated at the end of the scan
-4. **Repeat**: The cycle repeats continuously (typically 10-1000ms per scan)
-
-This deterministic execution means:
-- Variables retain their values between scans
-- State variables (`:OLD` / `:NEW`) can detect edge transitions
-- Equations are continuously evaluated, not called once
-
-### Minimal Example ("Hello World")
-
-Here's a complete, minimal SattLine program:
-
-```sattline
-"SyntaxVersion"
-"OriginalFileDate"
-"ProgramDate"
-BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
-LOCALVARIABLES
-    Counter: integer := 0;
-    Running: boolean := False;
-ModuleCode
-    EQUATIONBLOCK Main :
-        Counter = Counter + 1;
-        IF Counter > 100 THEN
-            Counter = 0;
-            Running = True;
-        ENDIF;
-    ENDDEF (*Main*);
-ENDDEF (*BasePicture*);
-```
-
-### Module Hierarchy
-
-SattLine programs are organized hierarchically:
-
-```sattline
-BasePicture              # Root container
-??? ModuleTypeDefs       # Type definitions (reusable templates)
-?   ??? DataType (Records)
-?   ??? ModuleTypeDefinitions
-??? LocalVariables       # Global variables
-??? Submodules           # Module instances
-    ??? SingleModule     # Defined inline with MODULEDEFINITION
-    ??? FrameModule      # Grouping container (no own vars)
-    ??? ModuleTypeInstance  # Instance of a ModuleTypeDef
-```
-
-### Variables
-
-Variables have attributes and are declared in groups:
-
-```sattline
-LOCALVARIABLES
-    Var1, Var2 "description": integer := 10;           # Basic declaration
-    GlobalVar: GLOBAL boolean;                         # Global scope
-    ConstVar: CONST integer := 5;                      # Constant (read-only)
-    StateVar: STATE real;                              # Supports OLD/NEW
-    SecureVar: SECURE string;                          # Protected value
-    OpSaveVar: OPSAVE boolean := True;                 # Operator-saveable
-```
-
-**Key Variable Attributes:**
-- `State` - Access via `Var:OLD` or `Var:NEW` for edge detection
-- `Const` - Value set at initialization, never changes
-- `Global` - Accessible across module boundaries
-- `OpSave` - Value preserved across operator stations
-- `Secure` - Protected from unauthorized modification
-
-### Data Types (Records)
-
-Structured types defined with RECORD:
-
-```sattline
-TYPEDEFINITIONS
-    MyRecord = RECORD DateCode_ 12345
-        Field1: integer := 0;
-        Field2: string := "default";
-        Nested: AnotherRecord;                        # Nested records allowed
-    ENDDEF (*MyRecord*);
-```
-
-Access via dot notation: `MyVar.Field1`, `MyVar.Nested.Field2`
-
-### Equation Blocks
-
-Continuous logic executed every scan cycle:
-
-```sattline
-EQUATIONBLOCK Main COORD -0.9, 0.06 OBJSIZE 0.82, 0.72 :
-    Output = Input * Gain + Offset;                    # Assignment
-
-    IF Condition THEN                                  # If-statement
-        Value = 1;
-    ELSIF OtherCondition THEN
-        Value = 2;
-    ELSE
-        Value = 0;
-    ENDIF;
-
-    Result = IF Cond THEN 1 ELSE 0 ENDIF;              # Ternary expression
-
-    CopyVariable(Source, Destination, Status);         # Procedure call
-    IsEqual = Equal(A, B);                             # Function call
-ENDDEF (*Main*);
-```
-
-### Sequence Blocks (SFC - Sequential Function Chart)
-
-Graphical sequential control with steps and transitions:
-
-```sattline
-SEQUENCE MySeq (SeqControl, SeqTimer)
-    InitStep Start                                     # Initial step (executes first)
-        Enter:
-            Counter = 0;
-        Active:
-            Running = True;
-        Exit:
-            Log("Starting");
-
-    Transition                                          # Condition to proceed
-        WAIT_FOR StartCondition;
-
-    Step Processing                                     # Normal step
-        Active:
-            DoWork();
-
-    ALTERNATIVESEQ                                      # Conditional branch
-        Transition WAIT_FOR ConditionA;
-        Step PathA
-        ALTERNATIVEBRANCH
-        Transition WAIT_FOR ConditionB;
-        Step PathB
-    ENDALTERNATIVE;
-
-    PARALLELSEQ                                         # Parallel execution
-        Step Branch1
-        PARALLELBRANCH
-        Step Branch2
-    ENDPARALLEL;
-
-    Fork JumpToOtherTransition;                         # Jump (dangerous)
-    Break;                                              # Stop normal flow
-ENDSEQUENCE;
-```
-
-**SFC Auto-generated Variables:**
-- `StepName.X` - Boolean, true when step is active
-- `StepName.T` - Integer, milliseconds since activation
-
-### Comments
-
-```sattline
-(* This is a comment
-   (* Comments can be nested *)
-   And span multiple lines *)
-```
-
-### Parameter Mappings
-
-When instantiating modules, parameters are connected via `=>`:
-
-```sattline
-SUBMODULES
-    MyInstance Invocation (0.0, 0.0, 0.0, 1.0, 1.0) : ModuleType (
-        Param1 => SourceVar,                           # Map to variable
-        Param2 => GLOBAL GlobalVar,                    # Map to global
-        Param3 => 42                                   # Map to literal
-    );
-```
-
-### Graphics and Interaction Objects
-
-SattLine includes a rich graphics system for operator interfaces (HMI). See `sattline_graphics_reference.md` for complete details.
-
-**Key Concepts:**
-- **ModuleDef** - Graphical definition with clipping bounds, zoom limits, grid settings
-- **GraphObjects** - Visual primitives (Rectangle, Line, Oval, Polygon, Text)
-- **InteractObjects** - Operator controls (buttons, checkboxes, text editors)
-- **Animation** - Variables can drive position, rotation, scaling, color
-
-**Graphical Elements in Source Files:**
-```sattline
-ModuleDef
-    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-    ZoomLimits = 0.0 0.01
-    Zoomable
-    GraphObjects :
-        RectangleObject ( -1.0 , 1.0 ) ( 1.0 , -1.0 )
-            OutlineColour : Colour0 = 5
-        TextObject ( 0.12 , -0.04 ) ( 0.12 , -0.2 )
-            "Label" VarName Width_ = 5
-    InteractObjects :
-        ComBut_ ( 0.0 , 0.0 ) ( 0.1 , 0.05 )
-            Enable_ = True : InVar_ "ButtonVar"
-ENDDEF (*ModuleName*);
-```
-
-**Important:** The parser extracts graphical information but static analysis focuses on variable usage within code blocks.
+- Inspect repo structure, current implementation, tests, and existing tooling before changing behavior.
+- Reuse existing patterns, validators, analyzers, pipeline hooks, and tests before introducing new abstractions or new dependencies.
+- Propose a concise plan before broad or multi-file changes.
+- Ask for clarification when intended behavior, user-facing semantics, or safety requirements are unclear.
+- Prefer incremental, reviewable changes over large rewrites.
+- Keep user-facing behavior explicit; avoid hidden side effects or silent mode switches.
+- When changing CLI menus or prompts, update `tests/test_app.py` and related interaction coverage in the same change.
 
 ---
 
-## AST Architecture
+## Change Boundaries
 
-### Core AST Classes
+### Allowed
 
-Defined in `src/sattline_parser/models/ast_model.py` and re-exported from `src/sattlint/models/ast_model.py` for compatibility:
+- analyzers, validators, tests, docs, helper scripts, config or CI wiring
+- small refactors required to support the requested work
+- low-risk fixes discovered during implementation
+- targeted editor or LSP improvements that stay within established architecture
 
-#### BasePicture
-The root container aggregating all parsed content:
+### Avoid
 
-```python
-@dataclass
-class BasePicture:
-    header: ModuleHeader
-    name: str = "BasePicture"
-    datatype_defs: list[DataType]           # Record definitions
-    moduletype_defs: list[ModuleTypeDef]    # Module type definitions
-    localvariables: list[Variable]          # Global variables
-    submodules: list[SingleModule | FrameModule | ModuleTypeInstance]
-    moduledef: ModuleDef | None             # Graphical definition
-    modulecode: ModuleCode | None           # Sequences and equations
-    library_dependencies: dict[str, list[str]]  # Lib dependency graph
-```
-
-#### Variable
-Represents a variable declaration in the AST. Immutable during analysis.
-
-```python
-@dataclass
-class Variable:
-    name: str
-    datatype: Simple_DataType | str         # Built-in or record name
-    global_var: bool = False
-    const: bool = False
-    state: bool = False
-    opsave: bool = False
-    secure: bool = False
-    init_value: Any = None
-    description: str = None
-    declaration_span: SourceSpan | None = None
-```
-
-#### VariableUsage
-Tracks mutable analysis state (detached from the AST):
-
-```python
-# Defined in src/sattlint/models/usage.py
-@dataclass
-class VariableUsage:
-    read: bool = False
-    written: bool = False
-    usage_locations: list[tuple[list[str], str]]  # [(path, kind), ...]
-    field_reads: dict[str, list[list[str]]]       # Field-level reads
-    field_writes: dict[str, list[list[str]]]      # Field-level writes
-```
-
-Unused-variable reporting uses both whole-variable access and `field_reads` / `field_writes`.
-For record-typed variables, the analyzer can emit `UNUSED` issues for individual leaf fields when
-the record is only partially accessed. Whole-record accesses suppress per-field unused findings for
-that variable to avoid false positives.
-
-#### Module Types
-
-```python
-# Inline module definition
-@dataclass
-class SingleModule:
-    header: ModuleHeader
-    moduleparameters: list[Variable]
-    localvariables: list[Variable]
-    submodules: list[...]                   # Can be nested
-    modulecode: ModuleCode | None
-    parametermappings: list[ParameterMapping]
-
-# Reference to a ModuleTypeDef
-@dataclass
-class ModuleTypeInstance:
-    header: ModuleHeader
-    moduletype_name: str
-    parametermappings: list[ParameterMapping]
-
-# Type template (reusable definition)
-@dataclass
-class ModuleTypeDef:
-    name: str
-    moduleparameters: list[Variable]
-    localvariables: list[Variable]
-    submodules: list[...]
-    modulecode: ModuleCode | None
-```
-
-#### ModuleCode
-
-```python
-@dataclass
-class ModuleCode:
-    sequences: list[Sequence]               # SFC blocks
-    equations: list[Equation]               # Equation blocks
-
-@dataclass
-class Sequence:
-    name: str
-    type: str                               # "sequence" or "opensequence"
-    code: list[SFCStep | SFCTransition | SFCAlternative | ...]
-
-@dataclass
-class Equation:
-    name: str
-    code: list[Any]                         # Statements/expressions
-```
-
-#### SFC Nodes
-
-```python
-@dataclass
-class SFCStep:
-    kind: str                               # "init" or "step"
-    name: str
-    code: SFCCodeBlocks                     # enter, active, exit
-
-@dataclass
-class SFCTransition:
-    name: str | None
-    condition: Any                          # Expression
-
-@dataclass
-class SFCAlternative:
-    branches: list[list[Any]]               # Each branch is list of nodes
-
-@dataclass
-class SFCParallel:
-    branches: list[list[Any]]
-
-@dataclass
-class SFCFork:
-    target: str                             # Jump target
-
-@dataclass
-class SFCBreak:
-    pass                                    # Stops sequence flow
-```
-
-### Expression Representation
-
-Expressions are stored as nested tuples for easy traversal:
-
-```python
-# Assignment: Target = Value
-('assign', {'var_name': 'Output'}, ('mul', Left, [(op, Right), ...]))
-
-# If statement: IF Cond THEN ... ELSIF ... ELSE ... ENDIF
-('IF', [(cond1, [stmts1...]), (cond2, [stmts2...])], else_stmts)
-
-# Comparison: A > B
-('compare', left_expr, [('>', right_expr)])
-
-# Boolean operators
-('OR', [expr1, expr2, ...])
-('AND', [expr1, expr2, ...])
-('NOT', expr)
-
-# Arithmetic
-('add', left, [('+', right1), ('-', right2), ...])
-('mul', left, [('*', right1), ('/', right2), ...])
-
-# Function/procedure calls
-('FunctionCall', 'FunctionName', [arg1, arg2, ...])
-
-# Variable reference with optional field path and OLD/NEW
-{'var_name': 'VarName.Field', 'state': 'old', 'span': SourceSpan(line=12, column=5)}
-
-# Numeric literals carry source spans
-IntLiteral(42, SourceSpan(line=12, column=5))
-FloatLiteral(2.5, SourceSpan(line=20, column=7))
-```
-
-### Grammar to AST Pipeline
-
-1. **Grammar** (`grammar/sattline.lark`):
-   - Lark grammar defining SattLine syntax
-   - Uses placeholders like `{GRAMMAR_VALUE_IF}` resolved at runtime
-   - Handles nested expressions with proper operator precedence
-
-2. **Transformer** (`transformer/sl_transformer.py`):
-   - `SLTransformer` extends Lark's `Transformer`
-   - Methods named after grammar rules convert trees to AST objects
-   - Uses `_flatten_items()` to unwrap nested structures
-   - Builds `ParameterMapping` objects for `=>` connections
-
-3. **Engine** (`engine.py`):
-   - `create_parser()` - Loads grammar, creates Lark parser
-   - `parse_file()` - Parses single file to `BasePicture`
-   - `load_project()` - Recursively resolves dependencies
-   - `merge_basepictures()` - Combines multiple files into unified AST
+- broad rewrites without clear justification and regression coverage
+- duplicate or overlapping tooling when existing repo tooling can be extended
+- silent user-facing behavior changes
+- deleting major functionality without strong evidence, explanation, and replacement intent
+- weakening strict validation semantics just to make fixtures or tests pass
 
 ---
 
-## Variable Analysis System
+## Security And Privacy
 
-### Scope Context
-
-The `VariablesAnalyzer` maintains scope as it traverses the module hierarchy:
-
-```python
-@dataclass
-class ScopeContext:
-    env: dict[str, Variable]               # Variables declared in this scope
-    param_mappings: dict[str, tuple[       # Parameter => Source mappings
-        Variable,                           # Source variable
-        str,                                # Field prefix
-        list[str],                          # Source declaration module path
-        list[str]                           # Source display path
-    ]]
-    module_path: list[str]                 # Current location in hierarchy
-    display_module_path: list[str]
-    parent_context: ScopeContext | None    # Parent scope for lookups
-```
-
-### Analysis Process
-
-1. **Build Symbol Tables**: Register all variables and their locations
-2. **Track Accesses**: Mark variables as read/written when encountered
-3. **Resolve Mappings**: Follow parameter mappings to track field-level usage
-4. **Build Alias Links**: Connect source variables to parameter usages
-5. **Generate Issues**: Report problems found
-
-### Issue Types
-
-```python
-class IssueKind(Enum):
-    UNUSED = "unused"                           # Never read or written
-    READ_ONLY_NON_CONST = "read_only_non_const" # Read but not written, should be CONST
-    NEVER_READ = "never_read"                   # Written but never read
-    STRING_MAPPING_MISMATCH = "string_mapping_mismatch"  # String param mapped to non-string
-    DATATYPE_DUPLICATION = "datatype_duplication"        # Same complex type defined multiple times
-    MAGIC_NUMBER = "magic_number"               # Numeric literals in code
-    SHADOWING = "shadowing"                     # Local variables hide outer/global names
-    RESET_CONTAMINATION = "reset_contamination" # Writes during run not reset on .Reset
-```
-
-`UNUSED` covers both whole variables and unused leaf fields within record variables.
-
-### Field-Level Tracking
-
-When a record variable is mapped to a parameter:
-
-```sattline
-# Source module has:
-MessageSetup: MessageType;  # Record with fields AckText, Priority, etc.
-
-# Submodule mapping:
-OpMessage => MessageSetup   # Maps entire record
-
-# In submodule, accessing:
-OpMessage.AckText           # Accesses MessageSetup.AckText
-```
-
-The analyzer:
-1. Creates an alias link: `MessageSetup -> OpMessage` with prefix ""
-2. When `OpMessage.AckText` is accessed, marks `MessageSetup.AckText` as read
-3. Accumulates prefixes through nested mappings
-
-### Key Analyzer Methods
-
-- `analyze_variables(bp)` - Main entry, returns `VariablesReport`
-- `analyze_mms_interface_variables(bp)` - Find MMS communication mappings
-- `analyze_module_localvar_fields(bp, path, var_name)` - Deep field analysis
-- `debug_variable_usage(bp, var_name)` - Show all usages of a variable
+- Never print or paste full secrets, tokens, passwords, connection strings, certificates, or private keys.
+- Redact sensitive values in summaries, diffs, findings, logs, and examples.
+- Report PII by type or category and file path, not by raw value.
+- Call out issues that may require git-history cleanup separately from normal code fixes.
+- Watch for hardcoded local paths, usernames such as `SQHJ`, internal hostnames, local domains, drive-letter assumptions, and machine-specific behavior.
+- Treat OneDrive-backed, user-profile, temp, and local workspace paths as potentially sensitive in reports.
+- Prefer repo-relative or config-driven paths over developer-machine paths.
 
 ---
 
-## Code Patterns & Conventions
+## Validation And Strictness
 
-### Good Patterns
-
-**Use CONST for read-only values:**
-```sattline
-# Good
-MaxRetries: CONST integer := 5;
-
-# Bad (linter will flag)
-MaxRetries: integer := 5;  # Never written, should be CONST
-```
-
-**Initialize state variables:**
-```sattline
-Counter: STATE integer := 0;  # Clear initial value
-```
-
-**Use descriptive variable names (max 20 chars):**
-```sattline
-TankLevelHigh: boolean;  # Good
-TLH: boolean;            # Too abbreviated
-```
-
-**Clean up unused variables:**
-```sattline
-# Remove variables that are never accessed
-TempUnused: integer;  # Linter will flag this
-```
-
-### Common Anti-Patterns (Linter Catches These)
-
-**Unused variables:**
-```sattline
-LOCALVARIABLES
-    UsedVar, UnusedVar: boolean;  # UnusedVar will be flagged
-```
-
-**Read-only non-CONST:**
-```sattline
-ConfigValue: integer := 10;  # Never written after init, should be CONST
-```
-
-**Write-only variables:**
-```sattline
-DebugOutput: string;  # Written but never read (dead code)
-```
-
-**String type mismatches in mappings:**
-```sattline
-# Source module:
-NumericCode: integer;
-
-# Submodule mapping (bad):
-StringParam => NumericCode  # String parameter mapped to integer variable
-```
-
-**Duplicated complex datatypes:**
-```sattline
-# Multiple modules defining the same record structure
-# Instead, define once in a library and reuse
-```
-
-### State Variable Usage
-
-```sattline
-Trigger: STATE boolean;
-
-# In equation block:
-IF Trigger:OLD = False AND Trigger:NEW = True THEN
-    RisingEdgeDetected = True;  # Detect rising edge
-ENDIF;
-```
-
-### Built-in Functions
-
-Common SattLine functions (defined in `analyzers/sattline_builtins.py`):
-
-```python
-# Comparison
-Equal(A, B) -> boolean
-
-# Variable operations
-CopyVariable(Source, Destination, Status)
-
-# String operations
-StringLength(Str) -> integer
-Concatenate(Str1, Str2, Result, Status)
-
-# Type conversions
-RealToInteger(R, I, Status)
-IntegerToReal(I, R)
-
-# See sattline_builtins.py for complete list
-```
+- `sattlint syntax-check` is strict. It should fail clearly on invalid input and should not gain new silent fallback behavior.
+- Workspace, editor, and LSP flows may degrade only in already-established ways, such as unavailable proprietary dependencies, cached workspace bundles, local source snapshots, or syntax-only dirty-buffer analysis.
+- Do not add new silent fallback behavior outside those established workspace or editor flows.
+- Preserve the distinction between single-file strict validation and dependency-aware workspace loading.
+- Prefer focused validation first, then broader repo checks when warranted.
+- For analyzer or repo-audit work, prefer the existing JSON pipeline in `src/sattlint/devtools/pipeline.py` and its outputs under `artifacts/analysis/`.
+- Use `src/sattlint/devtools/repo_audit.py` and `artifacts/audit/` for repository-portability, PII, wiring, architecture, and public-readiness scans.
 
 ---
 
-## Working with the Codebase
+## Repo-Audit And Public-Readiness
 
-### Adding a New Analyzer
-
-1. **Create analyzer file** (e.g., `analyzers/my_analyzer.py`):
-
-```python
-from dataclasses import dataclass
-from ..models.ast_model import BasePicture
-from .framework import Issue, SimpleReport
-
-def analyze_something(base_picture: BasePicture) -> SimpleReport:
-    issues: list[Issue] = []
-    # Walk the AST and collect issues
-    return SimpleReport(name=base_picture.header.name, issues=issues)
-```
-
-2. **Register in the analyzer registry** (`analyzers/registry.py`)
-3. **Add tests** in `tests/test_analyzers.py` or a new test module
-
-### Extending the Grammar
-
-1. **Add rule to `src/sattline_parser/grammar/sattline.lark`**:
-
-```lark
-new_construct: NEW_KEYWORD some_argument
-NEW_KEYWORD.10: "{GRAMMAR_VALUE_NEW_KEYWORD}"
-```
-
-2. **Add constant to `src/sattline_parser/grammar/constants.py`**:
-
-```python
-GRAMMAR_VALUE_NEW_KEYWORD = "NewKeyword"
-TREE_TAG_NEW_CONSTRUCT = "new_construct"
-```
-
-3. **Add transformer method** in `src/sattline_parser/transformer/sl_transformer.py`:
-
-```python
-def new_construct(self, items):
-    # Transform parse tree items to AST
-    return NewConstructNode(args)
-```
-
-4. **Update AST model** if needed in `src/sattline_parser/models/ast_model.py`
-
-### Adding Tests
-
-```python
-# tests/test_my_feature.py
-import pytest
-from sattlint.engine import parse_text
-from sattlint.analyzers.my_analyzer import analyze_something
-
-def test_my_analyzer():
-    code = '''
-    "SyntaxVersion"
-    "OriginalFileDate"
-    "ProgramDate"
-    BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
-    LOCALVARIABLES
-        TestVar: boolean;
-    ModuleCode
-        EQUATIONBLOCK Main :
-            TestVar = True;
-        ENDDEF (*Main*);
-    ENDDEF (*BasePicture*);
-    '''
-    bp = parse_text(code)
-    report = analyze_something(bp)
-    assert len(report.issues) == 0
-```
+- Agents may add or improve checks for hardcoded paths and environment leaks.
+- Agents may add or improve checks for secrets and PII.
+- Agents may add or improve checks for dead code or unused logic.
+- Agents may add or improve checks for feature wiring and feature coverage.
+- Agents may add or improve checks for architecture and structure issues.
+- Agents may add or improve checks for configuration hygiene.
+- Agents may add or improve checks for CLI or TUI UX consistency.
+- Agents may add or improve checks for logging and observability.
+- Agents may add or improve checks for test coverage gaps.
+- Agents may add or improve checks for public-readiness.
+- Prefer integrating with existing tooling first.
+- Prefer lightweight standard tools over redundant new dependencies.
+- If custom audit logic is needed, place it in a maintainable location such as `tools/audit/` or integrate it into `src/sattlint/devtools/repo_audit.py` or the shared devtools pipeline.
+- Add tests for custom audit logic where practical.
+- Keep audit output actionable and machine-readable when possible.
 
 ---
 
-## Testing & Debugging
+## Reporting Expectations
 
-### Running Tests
-
-```bash
-# All tests
-pytest
-
-# Specific test file
-pytest tests/test_analyzers.py
-
-# With debug output
-pytest -v --tb=short
-
-# Specific test
-pytest tests/test_analyzers.py::test_variable_usage -v
-
-# Syntax-check CLI and parser helper
-pytest tests/test_app.py tests/test_parser.py -v
-```
-
-**Note on test runners:** If an IDE test runner reports 0 tests collected, run pytest directly via the repo venv instead:
-
-```bash
-& ".venv/Scripts/python.exe" -m pytest
-```
-
-### Debug Mode
-
-Enable debug logging to see detailed trace:
-
-```python
-# In code
-analyzer = VariablesAnalyzer(bp, debug=True)
-
-# Or set environment variable
-DEBUG=1 sattlint
-```
-
-Debug output includes:
-- File discovery and loading
-- Parse tree structure
-- Variable access tracking
-- Parameter mapping resolution
-- Alias link creation
-
-### Common Debugging Scenarios
-
-**Parse Error:**
-- Check `grammar/sattline.lark` for correct syntax rules
-- Verify transformer handles all grammar branches
-- Prefer token-type constants (e.g., `TOKEN_NEW`/`TOKEN_OLD`) over literal token strings
-- Look at test fixtures for valid syntax examples
-
-**Variable Not Found:**
-- Check scope resolution in `variables.py`
-- Verify parameter mappings are correctly parsed
-- Use `debug_variable_usage(bp, "VarName")` to trace
-
-**False Positive in Analysis:**
-- Check if variable is accessed through parameter mapping
-- Verify alias links are created correctly
-- Review field path reconstruction logic
-
-### Useful Debug Functions
-
-```python
-from sattlint.analyzers.variable_usage_reporting import (
-    debug_variable_usage,
-    analyze_datatype_usage,
-    analyze_module_localvar_fields
-)
-
-# Show all usages of a specific variable
-print(debug_variable_usage(bp, "MyVariable"))
-
-# Analyze field-level usage for a record variable
-print(analyze_datatype_usage(bp, "MyRecordVar"))
-
-# Deep analysis of a local variable within a module
-print(analyze_module_localvar_fields(bp, "BasePicture.Module1", "LocalVar"))
-```
+- For non-trivial work, report the summary of changes.
+- For non-trivial work, report the exact files changed.
+- For non-trivial work, report the commands run.
+- Group findings by severity when relevant.
+- Distinguish confirmed issues from suspected or heuristic findings.
+- Report assumptions and limitations.
+- Report recommended follow-up work.
+- Do not expose raw secrets or raw PII in reports.
 
 ---
 
-## Key Files Reference
+## Definition Of Done
 
-### Core Source Files
-
-| File | Purpose |
-|------|---------|
-| `src/sattlint/app.py` | CLI entry point, interactive menu |
-| `src/sattlint/config.py` | Persistent config, self-checks, and analyzed-target validation |
-| `src/sattlint/editor_api.py` | Public workspace discovery and semantic-query helpers for editor/LSP consumers, including cursor-position definition lookup and AST-to-source-snapshot construction |
-| `src/sattline_parser/api.py` | Parser-core entry points for grammar creation, source loading, and parse/transform-only AST generation |
-| `src/sattline_parser/grammar/sattline.lark` | Parser-core Lark grammar definition |
-| `src/sattline_parser/grammar/constants.py` | Parser-core grammar constants and tree tag keys |
-| `src/sattline_parser/grammar/parser_decode.py` | Parser-core compressed-source decoding helpers |
-| `src/sattline_parser/transformer/sl_transformer.py` | Parser-core Lark Transformer ? AST objects |
-| `src/sattline_parser/models/ast_model.py` | Parser-core AST node dataclasses |
-| `src/sattline_parser/utils/text_processing.py` | Parser-core comment stripping helper used before parsing |
-| `src/sattline_parser/utils/formatter.py` | Parser-core AST pretty-printing and formatting helpers used directly by doc generation and AST model string rendering |
-| `src/sattlint/engine.py` | SattLint syntax validation, project loading, BasePicture merging, and parser-core integration |
-| `src/sattlint/cache.py` | AST caching for faster reloads |
-| `src/sattlint/grammar/constants.py` | Compatibility wrapper re-exporting parser-core grammar constants |
-| `src/sattlint/grammar/parser_decode.py` | Compatibility wrapper re-exporting parser-core decode helpers |
-| `src/sattlint/transformer/sl_transformer.py` | Compatibility wrapper re-exporting the parser-core transformer |
-| `src/sattlint/models/ast_model.py` | Compatibility wrapper re-exporting parser-core AST node classes |
-| `src/sattlint/models/project_graph.py` | Project dependency graph |
-| `src/sattlint/utils/text_processing.py` | Text utilities (comment stripping, comment code detection) |
-| `src/sattlint_lsp/document_state.py` | Mutable per-document LSP text state, ranged edit application, cached local parser-analysis metadata, previous-analysis retention for incremental parser handoff, and snapshot-required cache checks |
-| `src/sattlint_lsp/local_parser.py` | Checkpoint-based incremental LSP parser adapter that reuses prior Lark interactive-parser state across edits, validates the rebuilt AST, and lazily upgrades clean parses into source-only snapshots |
-| `src/sattlint_lsp/workspace_store.py` | Persistent workspace snapshot/discovery cache for the LSP with deduplicated refreshes, stale-bundle tracking, targeted invalidation, and source-file-to-entry indexing |
-| `src/sattlint_lsp/server.py` | Pygls-based language server that reuses `editor_api` for diagnostics, completion, hover, definition, references, and rename, overlays dirty-buffer results ahead of workspace snapshots, and maintains background workspace-diagnostics caches with targeted invalidation by resolved source file |
-| `vscode/sattline-vscode/extension.js` | No-build VS Code client that speaks stdio JSON-RPC to `sattlint_lsp.server` |
-| `vscode/sattline-vscode/package.json` | VS Code language contribution points, settings, and activation metadata for SattLine files |
-| `vscode/sattline-vscode/syntaxes/sattline.tmLanguage.json` | TextMate grammar used by the VS Code client for syntax highlighting |
-
-### Analysis
-
-| File | Purpose |
-|------|---------|
-| `src/sattlint/analyzers/framework.py` | Analysis framework primitives and report formatting helpers |
-| `src/sattlint/analyzers/registry.py` | Registry of CLI-exposed analyzers |
-| `src/sattlint/analyzers/variables.py` | Variable usage analyzer (main analysis) |
-| `src/sattlint/analyzers/shadowing.py` | Variable shadowing analyzer |
-| `src/sattlint/analyzers/spec_compliance.py` | Engineering-spec compliance analyzer for AST-visible rules |
-| `src/sattlint/analyzers/validators.py` | Dedicated validators (min/max naming, string types) |
-| `src/sattlint/analyzers/modules.py` | Module structure analyzer |
-| `src/sattlint/analyzers/mms.py` | MMS interface analysis |
-| `src/sattlint/analyzers/icf.py` | ICF file parsing and validation |
-| `src/sattlint/analyzers/comment_code.py` | Commented-out code detection (raw source scan) |
-| `src/sattlint/analyzers/sfc.py` | SFC analysis placeholder (future checks) |
-| `src/sattlint/analyzers/sattline_builtins.py` | Built-in function signatures |
-| `src/sattlint/resolution/symbol_table.py` | Symbol table management |
-| `src/sattlint/resolution/type_graph.py` | Type dependency tracking |
-| `src/sattlint/resolution/access_graph.py` | Variable access tracking |
-| `src/sattlint/resolution/scope.py` | Scope and variable resolution context |
-| `src/sattlint/resolution/common.py` | Shared resolution utilities (paths, moduletypes) |
-| `src/sattlint/reporting/variables_report.py` | Variables analyzer reporting classes |
-| `src/sattlint/reporting/mms_report.py` | MMS analysis reporting |
-| `src/sattlint/reporting/icf_report.py` | ICF analysis reporting |
-| `src/sattlint/reporting/comment_code_report.py` | Commented-out code reporting |
-
-### Documentation Generation
-
-| File | Purpose |
-|------|---------|
-| `src/sattlint/docgenerator/docgen.py` | Word document (.docx) generator |
-| `src/sattlint/docgenerator/classification.py` | Config-driven documentation classification for equipment modules, operations, and parameter groups |
-| `src/sattlint/docgenerator/configgen.py` | Excel configuration generator |
-
-### Tests & Examples
-
-| Path | Contents |
-|------|----------|
-| `tests/fixtures/sample_sattline_files/` | Real SattLine code examples |
-| `tests/fixtures/sample_sattline_files/LinterTestProgram.s` | Comprehensive test program |
-| `tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s` | Grammar coverage test |
-| `tests/fixtures/sample_sattline_files/BatchDemo.s` | Complex batch processing example |
-| `tests/test_editor_api.py` | Snapshot/discovery/completion/definition coverage for editor-facing APIs |
-| `tests/test_lsp_server.py` | Focused tests for entry-file resolution, syntax diagnostics, completion, hover/definition/references/rename fallback behavior, semantic diagnostics, background workspace-diagnostics aggregation, and targeted cache invalidation |
-
-### Reference Documentation
-
-| File | Contents |
-|------|----------|
-| `sattline_language_reference.md` | Complete language syntax and semantics reference |
-| `sattline_graphics_reference.md` | Graphics, interaction objects, and window management |
-| `sattline_execution_reference.md` | Scan groups, execution order, and runtime behavior |
-| `sattline_hardware_reference.md` | Control systems, I/O systems, and hardware configuration |
-| `sattline_system_procedures_reference.md` | System procedures, string handling, timers, and utility functions |
-| `sattline_data_acquisition_reference.md` | Journals, history logging, and data storage |
-| `sattline_batch_control_reference.md` | S88.01 batch control, BatchLib modules, and recipe management |
-| `sattline_controllers_analog_reference.md` | PID controllers, analog signals, and control loop components |
-| `sattline_alarms_events_reference.md` | Event detection, alarm handling, and EventLib modules |
-| `sattline_io_communication_reference.md` | I/O connection, MMS, COMLI, and network communication |
-
-**Important Notes:**
-
-- **Graphics reference** covers module visualization, graphical objects, interaction objects, composite objects, and animation
-
-- **Execution reference** covers scan groups (Fast/Normal/Slow/Manual), cycle time, priority, phase, and execution order sorting
-
-- **System procedures** include: String handling (ClearString, StringLength, Concatenate), Timers (StartTimer, StopTimer, TimerExpired), ACOF valve supervision (Acof1-Acof9), and variable operations (CopyVariable, Equal)
-
-- **Data acquisition** covers journal operations (JouCreate, JouWriteEntry, JouReadEntry), history logging, and data storage
-
-- **Batch control** follows S88.01 standard with Process Cell ? Unit ? Equipment Module ? Control Module hierarchy, RecipeManagerMaster, ProcessManagerMaster, and Unit Supervisor modules
-
-- **Controllers** include RealSignal data type, AnalogInRealS, FilterRealS, PID controllers, and mathematical operations
-
-- **Alarms/Events** use EventDetector modules, severity levels (1-8), classes (1-16), and EventLib for presentation and logging
-
-- **I/O & Communication** covers I/O addressing (bus.node.module.channel), MMS protocol, COMLI protocol, and network routing
+- Relevant tests are added or updated.
+- Appropriate validation commands are run.
+- Docs are updated when workflows, behavior, or architecture-facing usage materially change.
+- `AGENTS.md` is updated only when stable conventions, workflows, entry points, or critical invariants materially change.
+- The LSP is restarted when the change touches the language server, shared semantic core, editor facade, or VS Code client.
 
 ---
 
-## Quick Reference: Common Tasks
+## SattLint Workflow And Architecture
 
-### Parse a SattLine file
-
-```python
-from pathlib import Path
-from sattlint.engine import parse_source_file
-
-bp = parse_source_file(Path("path/to/Program.s"))
-```
-
-### Validate a single file from the CLI
-
-```bash
-sattlint syntax-check path/to/Program.s
-```
-
-### Run variable analysis
-
-```python
-from sattlint.analyzers.variables import analyze_variables
-
-report = analyze_variables(bp, debug=False)
-print(report.summary())
-```
-
-### Find all MMS interface mappings
-
-```python
-from sattlint.analyzers.mms import analyze_mms_interface_variables
-
-mms_report = analyze_mms_interface_variables(bp)
-print(mms_report.summary())
-```
-
-### Generate documentation
-
-```python
-from sattlint.config import get_documentation_config
-from sattlint.docgenerator.docgen import generate_docx
-
-generate_docx(bp, "output.docx", documentation_config=get_documentation_config())
-```
-
-The default documentation config classifies:
-- operations by descendant moduletype label `NNEMESIFLib:MES_StateControl`
-- equipment modules by descendant moduletype label `nnestruct:EquipModCoordinate`
-- recipe parameters by moduletype name containing `RecPar`
-- engineering parameters by moduletype name containing `EngPar`
-- user parameters by moduletype name containing `UsrPar`
-
-`classification.py` also exposes unit-candidate discovery used by the interactive documentation menu in `app.py`, where scope can be selected by unit instance path or unit moduletype name.
-
-### Walk the module hierarchy
-
-```python
-def walk_modules(modules, path=None):
-    if path is None:
-        path = []
-    for mod in modules or []:
-        current_path = path + [mod.header.name]
-        print(f"{' -> '.join(current_path)}: {type(mod).__name__}")
-        if hasattr(mod, 'submodules'):
-            walk_modules(mod.submodules, current_path)
-
-walk_modules(bp.submodules, [bp.header.name])
-```
+- Analysis selection is driven by the config list `analyzed_programs_and_libraries`, not by a single `root` entry.
+- Reports should stay scoped to explicitly analyzed targets even when dependencies are loaded for resolution.
+- Program-target analysis should not let external library module code create findings or usage marks for non-root-origin moduletype definitions.
+- The parser core lives under `src/sattline_parser/`; compatibility wrappers remain under `src/sattlint/grammar/`, `src/sattlint/models/ast_model.py`, and `src/sattlint/transformer/sl_transformer.py`.
+- Shared editor semantics live under `src/sattlint/core/`; `src/sattlint/editor_api.py` remains a compatibility facade.
+- Workspace snapshot loading and caching are centralized in `src/sattlint_lsp/workspace_store.py`.
+- The VS Code client is no-build and lives under `vscode/sattline-vscode/`.
+- If you materially change these boundaries, update this file and the deeper reference doc.
 
 ---
 
-## Tips for AI Assistants
+## Critical SattLine And SattLint Invariants
 
-1. **Always refer to test fixtures** when unsure about syntax - they contain real working examples
-2. **Use the AST model classes** defined in `ast_model.py` - they have helpful `__str__` methods for debugging
-3. **Check for field-level access** - SattLine heavily uses record types with dot notation
-4. **Respect parameter mappings** - Variables are often accessed indirectly through `=>` connections
-5. **Consider case-insensitivity** - SattLine identifiers are case-insensitive (compare with `.casefold()`)
-6. **Identifier charset** - Grammar allows extended Latin letters in names (e.g., `å`, `ä`, `ö`, `æ`, `ø`, `é`, `ß`, `ñ`, `ç`).
-7. **Keyword-prefixed names** - The lexer treats `NOT`, `AND`, `OR`, `IF`, `THEN`, `ELSE`, `ELSIF`, `ENDIF` as operators/keywords only when they are standalone words, so identifiers like `NOTOG217Active` or `IFState` are valid.
-8. **SEQFORK targets** - `SEQFORK` accepts multiple target names in a single line (comma-separated).
-6. **Understand the scope hierarchy** - Variables can be accessed from parent scopes unless shadowed
-7. **Use the framework/registry** - Follow `analyzers/framework.py` + `analyzers/registry.py` patterns for new checks
-8. **Spec analyzer scope** - `analyzers/spec_compliance.py` only enforces rules that are explicit and AST-visible; do not turn broader engineering guidance into parser errors or heuristic-heavy findings without deliberate scoping
-9. **Test with the fixtures** - The test files in `tests/fixtures/` cover most language features
-10. **Keep menu tests in sync** - If you change CLI menu layouts or numbering, update `tests/test_app.py` inputs accordingly
-11. **CLI mode is argument-driven** - the installed `sattlint` console script must call `app.cli()` so `sys.argv[1:]` reaches `app.main(argv)`; calling `app.main()` with no argv still opens the interactive menu
-12. **Parser header lines** - The grammar start rule requires three header `STRING` lines before `BasePicture`, so parser tests should include them
-13. **Strict mode only** - Prefer strict validation and fail loudly on any ambiguity or missing data; do not add fallback behavior
-14. **Sequence structure validation** - The post-transform validator rejects consecutive `SEQSTEP` nodes with no intervening transition, missing initial steps, duplicate sequence labels, and unknown `SEQFORK` targets even if the grammar accepted the token stream
-15. **State access validation** - The post-transform validator rejects `:OLD` / `:NEW` access on variables that are not declared `STATE`
-16. **Scope uniqueness validation** - The post-transform validator rejects duplicate local variable names, datatype names, moduletype names, and sibling submodule instance names within the same declaration scope
-17. **Declaration validation** - The post-transform validator rejects builtin-like datatype typos (for example `intege` near `integer`) and declaration init values whose literal datatype is incompatible with the declared variable datatype
-18. **String literal call validation** - The post-transform validator rejects string literals in module-code function/procedure call arguments; string literals are allowed in parameter mappings only
-19. **Builtin call datatype validation** - When a module-code call matches an entry in `analyzers/sattline_builtins.py`, the post-transform validator checks argument count, requires `in var`/`out`/`inout` parameters to be variable references, rejects writes to `CONST` variables through `out`/`inout` builtin arguments, and checks argument datatypes against the builtin signature using scoped variables and record field resolution
-20. **Parameter mapping validation** - The post-transform validator rejects duplicate parameter-mapping targets and, when the target moduletype is locally resolvable, rejects unknown local parameter targets, invalid field-target paths, and obvious datatype mismatches in parameter mappings; `AnyType` is treated as a wildcard parameter datatype for this compatibility check
-21. **Proprietary workspace dependency** - Editor/LSP workspace loading treats `ControlLib` as an expected unavailable proprietary library and records it under unavailable libraries instead of surfacing it as a standard missing-code dependency error
-22. **Comment placement validation** - `sattlint syntax-check` rejects freestanding comments that appear directly inside `ModuleCode` before the first `EQUATIONBLOCK` or `SEQUENCE`/`OPENSEQUENCE`; comments outside `ModuleCode` and standard trailing `ENDDEF (*Name*)` label comments remain allowed
-23. **Restart the VS Code LSP after LSP changes** - After changing files that affect the SattLine language server or VS Code client (for example under `src/sattlint_lsp/`, `src/sattlint/editor_api.py`, or `vscode/sattline-vscode/`), restart the server with the `sattlineLsp.restartServer` command before finishing so the live editor state matches the code on disk
-24. **Workspace validation uses dependency context** - During project/editor workspace loading, structural validation should consider datatypes and moduletype definitions already resolved from dependency files before treating a near-match datatype name as a typo in the current file; workspace validation now also treats `AnyType` as a valid wildcard datatype and limits unknown-datatype typo suggestions to builtin datatypes so unresolved external-style names do not fail project loading. Single-file syntax-check remains standalone and strict.
-25. **Workspace duplicate-submodule scope** - Duplicate sibling submodule instance names remain a strict single-file syntax-check error, but project/editor workspace loading only enforces that uniqueness for sources under `program_dir`; dependency libraries outside `program_dir` are allowed to load past duplicate sibling names so other validation and analysis can continue.
-26. **Workspace parameter-mapping scope** - Single-file syntax-check still rejects unknown parameter-mapping targets, but project/editor workspace loading now downgrades unknown locally-resolvable parameter targets to warnings instead of failures; this keeps legacy libraries from blocking analysis while preserving strict validation for real standalone syntax checks.
-27. **Builtin cursor-position const handling** - `SetStringPos` and `GetStringPos` may target `CONST` string variables during validation because they operate on the string cursor position rather than mutating the string value itself.
-28. **Sequence auto-vars in the LSP** - The local LSP parser now reports sequence auto-vars when the referenced step does not exist, treats `StepName.X` as always available for real steps, and reports `StepName.Reset` / `StepName.Hold` without `SeqControl` plus `StepName.T` without `SeqTimer`; this check is editor-only, cheap enough for dirty buffers, and does not depend on external libraries
-29. **Library moduleparameter datatype-field suppression** - Variable analysis now reports partially used record leaves under a separate `UNUSED_DATATYPE_FIELD` category aggregated by datatype across the analyzed target, not as per-variable `UNUSED` issues. For analyzed targets outside `program_dir`, datatypes exposed through root `ModuleTypeDef` moduleparameters are treated as externally open and do not emit unused datatype-field findings; whole-parameter `UNUSED` still reports when the parameter is never used inside the typedef at all.
-30. **Datatype-duplication scope** - The datatype-duplication analyzer ignores `AnyType` and only reports duplicate non-builtin datatype declarations within the same declaration scope/module path; same datatype names reused in different peer modules are reported independently, not merged into one cross-module block.
-31. **Library dependency moduletype usage** - For analyzed targets outside `program_dir`, dependency `ModuleTypeInstance` mappings are treated as external read/write usage so library locals mapped into external moduletype parameters are not misclassified as read-only or unused; program-target analysis still ignores dependency moduletype internals.
-32. **Graphics and interact `InVar_` coverage** - Parser-core now preserves `InVar_` tails from invocation coordinates and `ModuleDef` clipping bounds, and variable analysis also treats `InVar_` usage in graphics/interact property tails such as `Width_`, `ValueFraction`, `Format_String_`, colour assignments/styles, and interact assignment tails as reads; literal numeric/boolean `InVar_` tails are ignored rather than treated as variable references.
-33. **Unused datatype-field aggregation** - The analyzer emits one `UNUSED_DATATYPE_FIELD` finding per unused leaf path on a datatype declared in the analyzed target after combining field reads/writes from all tracked variables of that datatype; whole-record accesses suppress findings for that datatype, and datatypes with no observed field-level usage do not emit partial-field findings.
-34. **Graphics tail debug filtering** - Variable analysis ignores presentation-only graphics/interact tail keywords such as `Real_Value`, `Int_Value`, `Relative_`, `Decimal_`, `Abs_`, `Digits_`, alignment flags, `Duration_Value`, and `SetApp_` when classifying unresolved tail references, so debug logs only report plausible missing variables rather than formatting tokens.
+### Language And Parser
+
+- The grammar start rule requires three header `STRING` lines before `BasePicture`; parser tests and minimal fixtures must include them.
+- SattLine identifiers are case-insensitive. Compare names with `.casefold()`.
+- Extended Latin letters are valid in identifiers.
+- Keyword-prefixed identifiers such as `NOTOG217Active` or `IFState` are valid because keywords tokenize only as standalone words.
+- `SEQFORK` accepts multiple comma-separated targets.
+- `.s` and `.l` are draft-mode files; `.x` and `.z` are official or frozen files.
+
+### Validation Rules To Preserve
+
+- Post-transform validation rejects consecutive `SEQSTEP` nodes with no intervening transition, missing initial steps, duplicate sequence labels, and unknown `SEQFORK` targets.
+- `:OLD` and `:NEW` access is only valid on `STATE` variables.
+- Scope uniqueness checks reject duplicate local variable names, datatype names, moduletype names, and sibling submodule instance names within the same declaration scope.
+- Declaration validation rejects builtin-like datatype typos and incompatible declaration init literals.
+- String literals are rejected in module-code function or procedure call arguments; they are allowed in parameter mappings.
+- Builtin call validation checks arity, variable-reference requirements for `in var`, `out`, and `inout`, const-write restrictions, and datatype compatibility. `SetStringPos` and `GetStringPos` on `CONST` string variables remain allowed.
+- Single-file `sattlint syntax-check` rejects freestanding comments directly inside `ModuleCode` before the first `EQUATIONBLOCK` or `SEQUENCE` or `OPENSEQUENCE`.
+- Single-file `syntax-check` remains stricter than workspace loading by design.
+
+### Variable-Analysis Gotchas
+
+- Field-level usage matters. Record access can flow through parameter mappings and nested aliases, not just direct reads or writes.
+- Respect parameter mappings when tracing usage and datatype compatibility.
+- Whole-record access suppresses partial-field unused findings for that datatype.
+- Partial record-leaf reporting uses `UNUSED_DATATYPE_FIELD`, aggregated by datatype across the analyzed target rather than as per-variable noise.
+- For analyzed targets outside `program_dir`, root `ModuleTypeDef` moduleparameters are treated as externally open for datatype-field reporting, and dependency `ModuleTypeInstance` mappings can count as external read or write usage.
+- Graphics and interact `InVar_` tails can represent real reads. Preserve parser-core tail storage and analyzer coverage for invocation coordinates, `ModuleDef` clipping bounds, and supported graphics or interact properties. Ignore literal numeric or boolean tails rather than treating them as variables.
+
+### CLI And Testing
+
+- The installed `sattlint` console script must call `app.cli()` so `sys.argv[1:]` reaches `app.main(argv)`.
+- Calling `app.main()` with no argv still opens the interactive menu.
+- If you change CLI menu layout or numbering, keep `tests/test_app.py` in sync.
+- If an IDE runner reports zero tests collected, run pytest through the repo venv instead.
+- Use the real fixtures under `tests/fixtures/sample_sattline_files/` when uncertain about syntax or semantics.
+
+### Workspace, Editor, And LSP
+
+- The VS Code client and server only do live LSP analysis for `.s` and `.x` program files; `.l` and `.z` are dependency-name lists for workspace resolution.
+- Workspace or editor loading may use dependency context, local snapshots, cached bundles, and proximity-based `.l` or `.z` resolution. CLI and config-driven resolution remain unchanged.
+- `ControlLib` is an expected unavailable proprietary dependency in workspace or editor flows and should be reported as unavailable rather than as a normal missing-code error.
+- Workspace validation intentionally differs from single-file strict validation for some dependency cases. Do not collapse those two modes together.
+- Single-file strict validation still rejects unknown locally resolvable parameter targets and duplicate sibling submodule names; workspace or editor loading may continue past those issues in dependency libraries outside `program_dir`.
+- The local LSP parser can report cheap dirty-buffer sequence auto-var issues; preserve that distinction from full workspace semantic analysis.
+- After changing `src/sattlint_lsp/`, `src/sattlint/core/`, `src/sattlint/editor_api.py`, or `vscode/sattline-vscode/`, restart the server with the `sattlineLsp.restartServer` command.
 
 ---
 
-*Last updated: 2026-04-16*
-*For questions about SattLine syntax, see `sattline_language_reference.md`*
+## Reference Material
+
+- For extended SattLine examples, AST notes, file maps, and task snippets, see `docs/ai-agent-reference.md`.
+- For domain language details, see the `sattline_*_reference.md` files and `SattLineReferenceDocs/`.
+- For parser and analyzer behavior, prefer current code and tests over stale prose.
+
+---
+
+*Last updated: 2026-04-17*

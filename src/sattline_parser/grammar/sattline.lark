@@ -20,9 +20,9 @@ header_lines:               syntax_version_line original_file_date_line program_
 // ============================================================================
 
 // Invocation types
-module_header:              NAME INVOCATION "(" invoke_coord arguments* ")"
+module_header:              NAME INVOCATION "(" invoke_coord arguments ")"
 argument:                   ZOOMABLE | IGNOREMAXMODULE | LAYERMODULE | layer_info | enable | zoomlimits | interact_assign_variable | "SymbolModule" | "Non_Zoomable"
-arguments:                  argument (argument)*
+arguments:                  argument*
 
 base_picture_module:        module_header ":" MODULEDEFINITION sl_datecode frame_module? scan_group? base_module_body ENDDEF_KW
 base_module_body:           datatype_typedefinitions? moduletype_definitions? module_body
@@ -147,7 +147,9 @@ coordinates:                "(" REAL coord_tail* "," REAL coord_tail* ")"
 coord_invar_tail:           ":" ((INVAR_PREFIX | OUTVAR_PREFIX) connected_variable | expression)
 coord_clippingbounds:       (CLIPPINGBOUNDS | "ClippingBounds") "=" clip_values
 clip_values:                clip_value+
-clip_value:                 REAL coord_invar_tail?
+clip_value:                 clip_value_tailed | clip_value_plain
+clip_value_tailed.1:        REAL coord_invar_tail
+clip_value_plain:           REAL_NOTAIL
 
 
 //Module options
@@ -167,10 +169,14 @@ layer_info:                 LAYER_PREFIX "=" SIGNED_INT
 enable:                     ENABLE_PREFIX "=" BOOL (invar | enable_expression)
 enable_expression:          ":" "(" expression ")"
 invar:                      ":" INVAR_PREFIX connected_variable
-variable_name:              NAME (DOT NAME)* (":" (NEW | OLD))?
-format_string:              "Format_String_" "=" value (invar_tail | enable_expression)?
+variable_name:              NAME (DOT NAME)* STATE_SUFFIX?
+format_string:              format_string_tailed | format_string_plain
+format_string_tailed.1:     "Format_String_" "=" value (invar_tail | enable_expression)
+format_string_plain:        "Format_String_" "=" plain_value
 connected_variable:         value | variable_name
-value_fraction:             VALUEFRACTION "=" SIGNED_INT invar?
+value_fraction:             value_fraction_tailed | value_fraction_plain
+value_fraction_tailed.1:    VALUEFRACTION "=" SIGNED_INT invar
+value_fraction_plain:       VALUEFRACTION "=" SIGNED_INT_NOTAIL
 connection_node:            CONNECTIONNODE "(" REAL "," REAL ")"
 alignment:                  LEFTALIGNED | RIGHTALIGNED
 
@@ -178,14 +184,20 @@ alignment:                  LEFTALIGNED | RIGHTALIGNED
 color_properties:           outline_colour | fill_colour
 outline_colour:             OUTLINECOLOUR ":" width? colour_assignments? colour_style?
 fill_colour:                FILLCOLOUR ":" colour_assignments? colour_style?
-assign_colour:              (COLOUR0 | COLOUR1) "=" SIGNED_INT invar?
+assign_colour:              assign_colour_tailed | assign_colour_plain
+assign_colour_tailed.1:     (COLOUR0 | COLOUR1) "=" SIGNED_INT invar
+assign_colour_plain:        (COLOUR0 | COLOUR1) "=" SIGNED_INT_NOTAIL
 colour_assignments:         assign_colour+
-colour_style: COLOURSTYLE "=" (REAL | BOOL) (invar | enable_expression)?
-width:                      WIDTH_KEY "=" SIGNED_INT invar?
+colour_style: colour_style_tailed | colour_style_plain
+colour_style_tailed.1: COLOURSTYLE "=" (REAL | BOOL) (invar | enable_expression)
+colour_style_plain: COLOURSTYLE "=" (REAL_NOTAIL | BOOL_NOTAIL)
+width:                      width_tailed | width_plain
+width_tailed.1:             WIDTH_KEY "=" SIGNED_INT invar
+width_plain:                WIDTH_KEY "=" SIGNED_INT_NOTAIL
 
 //Object types
 text_object:                TEXTOBJECT origo_size_pair (text_content | VARNAME | value_fraction| alignment | connection_node | width | format_string)+ common_properties
-text_content:               STRING_CRLF | STRING
+text_content:               STRING_CRLF | STRING | STRING_NOTAIL
 
 rectangle_object:           RECTANGLEOBJECT origo_size_pair common_properties
 line_object:                LINEOBJECT origo_size_pair common_properties
@@ -207,7 +219,7 @@ combutproc_item: COMBUTPROC origo_size_pair+ procedure_call combutproc_tail*
 
 procedure_call:             NAME procedure_args?
 procedure_args:             proc_atom+
-proc_atom:                  value | invar_tail | enable_expression
+proc_atom:                  value | plain_value | invar_tail | enable_expression
 
 combutproc_tail: layer_info
 | interact_assign_variable
@@ -233,17 +245,23 @@ interact_body: layer_info
 | format_string
 
 
-interact_value_line: value_or_invar+
-value_or_invar: value | invar_tail
+interact_value_line: value_or_invar
+value_or_invar: value | plain_value | invar_tail
 
-invar_tail: ":" (INVAR_PREFIX | OUTVAR_PREFIX) (connected_variable | NAME value+)
+invar_tail: ":" (INVAR_PREFIX | OUTVAR_PREFIX) (connected_variable | litstring_tail)
+litstring_tail: "LitString" STRING
 
 // A “flag” is a bare NAME, optionally with a small, non-overlapping tail.
 // Keep it narrow so it doesn’t look like “NAME value value …”
-interact_flag: NAME (STRING | SIGNED_INT)? invar_tail?
+interact_flag: NAME
 
 // Explicit "="ment lines (unambiguous: NAME "=" …)
-interact_assign_variable: (NAME | TEXTOBJECT | GLOBAL_KW) "=" value (invar_tail | enable_expression)?
+interact_assign_variable: interact_assign_variable_tailed | interact_assign_variable_plain
+interact_assign_variable_tailed.1: NAME "=" value (invar_tail | enable_expression)
+                                 | TEXTOBJECT "=" value (invar_tail | enable_expression)
+interact_assign_variable_plain: NAME "=" plain_value
+                              | TEXTOBJECT "=" plain_value
+plain_value: BOOL_NOTAIL | REAL_NOTAIL | STRING_NOTAIL | SIGNED_INT_NOTAIL
 
 // ============================================================================
 // TERMINALS
@@ -280,9 +298,13 @@ MINUS:                      "{GRAMMAR_VALUE_MINUS}"
 MULTIPLY:                   "{GRAMMAR_VALUE_MULTIPLY}"
 DIVIDE:                     "{GRAMMAR_VALUE_DIVIDE}"
 // Literals
+SIGNED_INT_NOTAIL.1:       {GRAMMAR_REGEX_SIGNED_INT_NOTAIL}
 SIGNED_INT:                 {GRAMMAR_REGEX_SIGNED_INT}
+REAL_NOTAIL.1:             {GRAMMAR_REGEX_REAL_NOTAIL}
 REAL:                       {GRAMMAR_REGEX_REAL}
+BOOL_NOTAIL.1:             {GRAMMAR_REGEX_BOOL_NOTAIL}
 BOOL:                       {GRAMMAR_REGEX_BOOL}
+STRING_NOTAIL.1:           {GRAMMAR_REGEX_STRING_NOTAIL}
 STRING:                     {GRAMMAR_REGEX_STRING}
 // Top-level/module structure
 TYPEDEFINITIONS.10:         "{GRAMMAR_VALUE_TYPEDEFINITIONS}"
@@ -383,6 +405,7 @@ SECURE_KW.10:               "{GRAMMAR_VALUE_SECURE_KW}"
 DURATION_VALUE.10:          "{GRAMMAR_VALUE_DURATION_VALUE}"
 TIME_VALUE.10:              "{GRAMMAR_VALUE_TIME_VALUE}"
 DEFAULT.10:                 "{GRAMMAR_VALUE_DEFAULT}"
+STATE_SUFFIX.10:            /:\s*(?:New|Old)\b/
 NEW.10:                     "{GRAMMAR_VALUE_NEW}"
 OLD.10:                     "{GRAMMAR_VALUE_OLD}"
 // Special Formats

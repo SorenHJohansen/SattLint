@@ -67,6 +67,7 @@ class AnalyzerSpec:
     description: str
     run: Callable[[AnalysisContext], Report]
     enabled: bool = True
+    supports_live_diagnostics: bool = False
 
 
 @dataclass(frozen=True)

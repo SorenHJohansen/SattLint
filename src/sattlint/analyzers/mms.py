@@ -129,12 +129,12 @@ def analyze_mms_interface_variables(
 
             results = []
             for field, locs in sorted(matched_fields.items()):
-                counts: dict[tuple[str, ...], int] = {}
+                matched_counts: dict[tuple[str, ...], int] = {}
                 for loc in locs:
                     key = tuple(loc)
-                    counts[key] = counts.get(key, 0) + 1
+                    matched_counts[key] = matched_counts.get(key, 0) + 1
                 results.append(
-                    (field, tuple(sorted(counts.items(), key=lambda item: ".".join(item[0]))))
+                    (field, tuple(sorted(matched_counts.items(), key=lambda item: ".".join(item[0]))))
                 )
             return tuple(results)
 
@@ -152,12 +152,12 @@ def analyze_mms_interface_variables(
             )
 
         if whole_var_writes:
-            counts = {}
+            whole_counts: dict[tuple[str, ...], int] = {}
             for loc in whole_var_writes:
                 key = tuple(loc)
-                counts[key] = counts.get(key, 0) + 1
+                whole_counts[key] = whole_counts.get(key, 0) + 1
             results.append(
-                ("", tuple(sorted(counts.items(), key=lambda item: ".".join(item[0]))))
+                ("", tuple(sorted(whole_counts.items(), key=lambda item: ".".join(item[0]))))
             )
 
         return tuple(results)

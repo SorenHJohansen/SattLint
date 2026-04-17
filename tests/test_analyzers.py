@@ -24,7 +24,11 @@ from sattlint.models.ast_model import (
     SourceSpan,
     Variable,
 )
-from sattlint.reporting.variables_report import VariablesReport
+from sattlint.reporting.variables_report import (
+    DEFAULT_VARIABLE_ANALYSIS_KINDS,
+    VariableIssue,
+    VariablesReport,
+)
 from sattlint.resolution.scope import ScopeContext
 
 
@@ -141,6 +145,121 @@ def test_min_max_mapping_mismatch_not_raised_for_aligned_names():
     )
 
 
+def test_unknown_parameter_target_detected_for_single_module_mapping():
+    child = SingleModule(
+        header=_hdr("Child"),
+        moduledef=None,
+        moduleparameters=[
+            Variable(name="DeclaredValue", datatype=Simple_DataType.INTEGER)
+        ],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[
+            ParameterMapping(
+                target=_varref("MissingValue"),
+                source_type=const.TREE_TAG_VARIABLE_NAME,
+                is_duration=False,
+                is_source_global=False,
+                source=_varref("SourceValue"),
+                source_literal=None,
+            )
+        ],
+    )
+
+    parent = SingleModule(
+        header=_hdr("Parent"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="SourceValue", datatype=Simple_DataType.INTEGER)
+        ],
+        submodules=[child],
+        modulecode=None,
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[parent],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    issues = [
+        issue for issue in analyzer.issues
+        if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET
+    ]
+    assert len(issues) == 1
+    assert issues[0].module_path == ["Root", "Parent", "Child"]
+    assert issues[0].role == "unknown parameter mapping target 'MissingValue'"
+
+
+def test_unknown_parameter_target_detected_for_moduletype_instance_mapping():
+    typedef = ModuleTypeDef(
+        name="ChildType",
+        moduleparameters=[
+            Variable(name="DeclaredValue", datatype=Simple_DataType.INTEGER)
+        ],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+    )
+    instance = ModuleTypeInstance(
+        header=_hdr("Child"),
+        moduletype_name="ChildType",
+        parametermappings=[
+            ParameterMapping(
+                target=_varref("MissingValue"),
+                source_type=const.TREE_TAG_VARIABLE_NAME,
+                is_duration=False,
+                is_source_global=False,
+                source=_varref("SourceValue"),
+                source_literal=None,
+            )
+        ],
+    )
+    parent = SingleModule(
+        header=_hdr("Parent"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="SourceValue", datatype=Simple_DataType.INTEGER)
+        ],
+        submodules=[instance],
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[typedef],
+        localvariables=[],
+        submodules=[parent],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    issues = [
+        issue for issue in analyzer.issues
+        if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET
+    ]
+    assert len(issues) == 1
+    assert issues[0].module_path == ["Root", "Parent", "Child"]
+    assert issues[0].role == "unknown parameter mapping target 'MissingValue'"
+
+
 def test_magic_number_detection_in_equations_and_sfc():
     eq = Equation(
         name="Main",
@@ -151,7 +270,17 @@ def test_magic_number_detection_in_equations_and_sfc():
                 const.KEY_ASSIGN,
                 _varref("Output"),
                 IntLiteral(42, SourceSpan(12, 5)),
-            )
+            ),
+            (
+                const.KEY_ASSIGN,
+                _varref("Output"),
+                IntLiteral(0, SourceSpan(13, 5)),
+            ),
+            (
+                const.KEY_ASSIGN,
+                _varref("Output"),
+                (const.KEY_MINUS, IntLiteral(0, SourceSpan(14, 5))),
+            ),
         ],
     )
 
@@ -160,7 +289,10 @@ def test_magic_number_detection_in_equations_and_sfc():
         condition=(
             const.KEY_COMPARE,
             _varref("Output"),
-            [(">", FloatLiteral(2.5, SourceSpan(20, 7)))],
+            [
+                (">", FloatLiteral(2.5, SourceSpan(20, 7))),
+                ("<", FloatLiteral(0.0, SourceSpan(21, 9))),
+            ],
         ),
     )
 
@@ -197,6 +329,9 @@ def test_magic_number_detection_in_equations_and_sfc():
     }
     assert (12, 5) in spans
     assert (20, 7) in spans
+    assert (13, 5) not in spans
+    assert (14, 5) not in spans
+    assert (21, 9) not in spans
 
 
 def test_shadowing_detected_for_nested_locals():
@@ -855,3 +990,73 @@ def test_reset_contamination_cleared_when_reset_writes_present():
     assert not any(
         i.kind is IssueKind.RESET_CONTAMINATION for i in analyzer.issues
     )
+
+
+def test_variables_report_summary_includes_name_collisions():
+    variable = Variable(name="Value", datatype=Simple_DataType.INTEGER)
+    issue = VariableIssue(
+        kind=IssueKind.NAME_COLLISION,
+        module_path=["BasePicture", "TypeDef:Unit"],
+        variable=variable,
+        role="name collision with parameter 'Value'",
+    )
+
+    summary = VariablesReport(basepicture_name="BasePicture", issues=[issue]).summary()
+
+    assert "Name collisions" in summary
+    assert "Value" in summary
+
+
+def test_variables_report_summary_includes_unknown_parameter_targets():
+    issue = VariableIssue(
+        kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
+        module_path=["BasePicture", "Child"],
+        variable=None,
+        role="unknown parameter mapping target 'MissingValue'",
+    )
+
+    summary = VariablesReport(basepicture_name="BasePicture", issues=[issue]).summary()
+
+    assert "Unknown parameter mapping targets" in summary
+    assert "BasePicture.Child" in summary
+
+
+def test_variables_report_summary_lists_all_requested_categories_when_empty():
+    report = VariablesReport(
+        basepicture_name="BasePicture",
+        issues=[],
+        visible_kinds=frozenset(DEFAULT_VARIABLE_ANALYSIS_KINDS),
+        include_empty_sections=True,
+    )
+
+    summary = report.summary()
+
+    assert "Issues: 0" in summary
+    assert "Unused variables" in summary
+    assert "Unused fields in datatypes" in summary
+    assert "Read-only but not Const variables" in summary
+    assert "written, but never read variables" in summary
+    assert "Unknown parameter mapping targets" in summary
+    assert "String mapping type mismatches" in summary
+    assert "Duplicated complex datatypes (should be RECORD)" in summary
+    assert "Min/Max mapping name mismatches" in summary
+    assert "Magic numbers in code" in summary
+    assert "Name collisions" in summary
+    assert "Reset contamination (missing reset writes)" in summary
+    assert summary.count("      none") == len(DEFAULT_VARIABLE_ANALYSIS_KINDS)
+
+
+def test_variables_report_summary_keeps_filtered_empty_output_scoped():
+    report = VariablesReport(
+        basepicture_name="BasePicture",
+        issues=[],
+        visible_kinds=frozenset({IssueKind.RESET_CONTAMINATION}),
+        include_empty_sections=True,
+    )
+
+    summary = report.summary()
+
+    assert "Issues: 0" in summary
+    assert "Reset contamination (missing reset writes)" in summary
+    assert "      none" in summary
+    assert "Unused variables" not in summary

@@ -1,9 +1,9 @@
 """Cache helpers for parsed ASTs and file manifests."""
 from __future__ import annotations
 import hashlib
-import pickle
+import pickle  # nosec B403 - trusted local cache files only
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable, cast
 import json
 import os
 
@@ -27,7 +27,7 @@ class FileLookupCache:
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.path = self.cache_dir / "file_lookup_cache.json"
-        self._data = {"version": LOOKUP_CACHE_VERSION, "entries": {}}
+        self._data: dict[str, Any] = {"version": LOOKUP_CACHE_VERSION, "entries": {}}
         self._load()
 
     def _load(self) -> None:
@@ -35,7 +35,7 @@ class FileLookupCache:
             return
         try:
             with self.path.open("r", encoding="utf-8") as f:
-                data = json.load(f)
+                data = cast(dict[str, Any], json.load(f))
             if data.get("version") != LOOKUP_CACHE_VERSION:
                 return
             entries = data.get("entries")
@@ -55,7 +55,7 @@ class FileLookupCache:
     def _key(self, kind: str, name: str, mode: str) -> str:
         return f"{kind}:{mode}:{name.casefold()}"
 
-    def get(self, kind: str, name: str, mode: str) -> dict | None:
+    def get(self, kind: str, name: str, mode: str) -> dict[str, Any] | None:
         key = self._key(kind, name, mode)
         entry = self._data.get("entries", {}).get(key)
         return entry if isinstance(entry, dict) else None
@@ -96,7 +96,7 @@ class FileASTCache:
             return None
         try:
             with p.open("rb") as f:
-                payload = pickle.load(f)
+                payload = pickle.load(f)  # nosec B301 - loading SattLint-owned local cache files only
         except (OSError, pickle.UnpicklingError, TypeError, AttributeError, EOFError):
             return None
 
@@ -170,7 +170,7 @@ class ASTCache:
             return None
         try:
             with p.open("rb") as f:
-                return pickle.load(f)
+                return pickle.load(f)  # nosec B301 - loading SattLint-owned local cache files only
         except (OSError, pickle.UnpicklingError, TypeError, AttributeError, EOFError):
             return None
 

@@ -1,5 +1,6 @@
 """Parse ABB library files and report failures."""
 
+import argparse
 import pathlib
 import sys
 
@@ -9,9 +10,9 @@ from sattlint.engine import create_sl_parser  # noqa: E402
 from sattline_parser import strip_sl_comments  # noqa: E402
 from sattlint.grammar.parser_decode import preprocess_sl_text, is_compressed  # noqa: E402
 
-ABB_DIR = pathlib.Path(
-    r"c:/Users/SQHJ/OneDrive - Novo Nordisk/Workspace/GitHub.com/SattLint/Libs/HA/ABBLib"
-)
+
+def _default_abb_dir() -> pathlib.Path:
+    return pathlib.Path(__file__).resolve().parents[1] / "Libs" / "HA" / "ABBLib"
 
 
 def parse_text(parser, text: str) -> None:
@@ -19,10 +20,23 @@ def parse_text(parser, text: str) -> None:
     parser.parse(cleaned)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Parse ABB library files and report parser failures.")
+    parser.add_argument(
+        "--library-dir",
+        default=str(_default_abb_dir()),
+        help="Directory containing ABB library files",
+    )
+    args = parser.parse_args(argv)
+
+    abb_dir = pathlib.Path(args.library_dir).expanduser().resolve()
+    if not abb_dir.exists() or not abb_dir.is_dir():
+        print(f"Library directory not found: {abb_dir}", file=sys.stderr)
+        return 2
+
     parser = create_sl_parser()
 
-    pretty_files = sorted(ABB_DIR.glob("Pretty*.txt"))
+    pretty_files = sorted(abb_dir.glob("Pretty*.txt"))
     pretty_map = {p.stem.removeprefix("Pretty"): p for p in pretty_files}
     pretty_errors: list[tuple[str, str]] = []
     for path in pretty_files:
@@ -32,7 +46,7 @@ def main() -> int:
         except Exception as ex:  # noqa: BLE001
             pretty_errors.append((path.name, str(ex)))
 
-    x_files = sorted(ABB_DIR.glob("*.x"))
+    x_files = sorted(abb_dir.glob("*.x"))
     compressed_errors: list[tuple[str, str]] = []
     for path in x_files:
         base_name = path.stem.removesuffix("Lib") if path.stem.endswith("Lib") else path.stem

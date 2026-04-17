@@ -323,7 +323,7 @@ def find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str) 
             continue
 
         # Navigate through the path
-        current = None
+        current: SingleModule | FrameModule | ModuleTypeInstance | ModuleTypeDef | None = None
         for j, segment in enumerate(search_path[1:], 1):  # Skip "BasePicture"
             if j == 1:
                 # First level: check if it's a TypeDef or submodule
@@ -408,9 +408,9 @@ def find_all_aliases(
     that are transitively connected to it through parameter mappings.
     Returns list of (Variable, field_prefix_to_prepend) tuples.
     """
-    aliases = []
-    to_visit = [(target_var, "")]
-    visited = []
+    aliases: list[tuple[Variable, str]] = []
+    to_visit: list[tuple[Variable, str]] = [(target_var, "")]
+    visited: list[tuple[Variable, str]] = []
 
     while to_visit:
         current, current_prefix = to_visit.pop()

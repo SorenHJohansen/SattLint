@@ -1,14 +1,20 @@
 """Variable usage analysis and reporting utilities."""
 from __future__ import annotations
+from collections import Counter
 import difflib
 import re
-from typing import Any, Union
+from typing import TYPE_CHECKING, Any, Union
 from pathlib import Path
 from .sattline_builtins import get_function_signature
 from ..grammar import constants as const
 import logging
 from ..resolution.scope import ScopeContext
-from ..reporting.variables_report import IssueKind, VariableIssue, VariablesReport
+from ..reporting.variables_report import (
+    DEFAULT_VARIABLE_ANALYSIS_KINDS,
+    IssueKind,
+    VariableIssue,
+    VariablesReport,
+)
 from ..resolution import (
     AccessGraph,
     AccessKind,
@@ -52,6 +58,9 @@ from .usage_tracker import UsageTracker
 from .context_builder import ContextBuilder
 from .reset_contamination import detect_reset_contamination
 
+if TYPE_CHECKING:
+    from ..tracing import AnalysisTraceRecorder
+
 log = logging.getLogger("SattLint")
 
 _IGNORED_GRAPHICS_TAIL_BASENAMES = {
@@ -77,6 +86,7 @@ def analyze_variables(
     debug: bool = False,
     unavailable_libraries: set[str] | None = None,
     analyzed_target_is_library: bool = False,
+    trace_recorder: AnalysisTraceRecorder | None = None,
 ) -> VariablesReport:
     """
     Analyze a BasePicture AST and return a comprehensive report:
@@ -92,9 +102,15 @@ def analyze_variables(
         fail_loudly=False,
         unavailable_libraries=unavailable_libraries,
         analyzed_target_is_library=analyzed_target_is_library,
+        trace_recorder=trace_recorder,
     )
     issues = analyzer.run()
-    return VariablesReport(basepicture_name=base_picture.header.name, issues=issues)
+    return VariablesReport(
+        basepicture_name=base_picture.header.name,
+        issues=issues,
+        visible_kinds=frozenset(DEFAULT_VARIABLE_ANALYSIS_KINDS),
+        include_empty_sections=True,
+    )
 
 
 def filter_variable_report(
@@ -109,6 +125,8 @@ def filter_variable_report(
     return VariablesReport(
         basepicture_name=report.basepicture_name,
         issues=filtered,
+        visible_kinds=frozenset(kinds),
+        include_empty_sections=True,
     )
 
 
@@ -142,6 +160,7 @@ class VariablesAnalyzer:
         fail_loudly: bool = True,
         unavailable_libraries: set[str] | None = None,
         analyzed_target_is_library: bool = False,
+        trace_recorder: AnalysisTraceRecorder | None = None,
     ):
         self.bp = base_picture
         self.debug = debug
@@ -149,6 +168,7 @@ class VariablesAnalyzer:
         self._unavailable_libraries = unavailable_libraries or set()
         self._analyzed_target_is_library = analyzed_target_is_library
         self._analysis_warnings: list[str] = []
+        self._trace_recorder = trace_recorder
 
         # Unified collection of issues
         self._issues: list[VariableIssue] = []
@@ -172,7 +192,7 @@ class VariablesAnalyzer:
             global_lookup_fn=self._lookup_global_variable
         )
 
-        self.typedef_index = {
+        self.typedef_index: dict[str, list[ModuleTypeDef]] = {
             mt.name.lower(): [] for mt in (self.bp.moduletype_defs or [])
         }
         for mt in self.bp.moduletype_defs or []:
@@ -213,10 +233,28 @@ class VariablesAnalyzer:
     def _warn(self, message: str) -> None:
         self._analysis_warnings.append(message)
         log.warning(message)
+        self._trace("warning", message=message)
 
     @property
     def issues(self) -> list[VariableIssue]:
         return self._issues
+
+    def _trace(self, action: str, **data: Any) -> None:
+        if self._trace_recorder is None:
+            return
+        self._trace_recorder.event("variables", action, **data)
+
+    def _append_issue(self, issue: VariableIssue) -> None:
+        self._issues.append(issue)
+        self._trace(
+            "issue",
+            kind=issue.kind.value,
+            module_path=issue.module_path,
+            variable=(issue.variable.name if issue.variable is not None else None),
+            role=issue.role,
+            field_path=issue.field_path,
+            site=issue.site,
+        )
 
 
     def _check_param_mappings_for_single(
@@ -775,8 +813,16 @@ class VariablesAnalyzer:
         # the selected subtree.
         self._issues = []
         self.context_builder.issues = self._issues
-        self._mapping_warnings: list[str] = []
         self._limit_to_module_path: list[str] | None = limit_to_module_path
+        self._trace(
+            "start",
+            basepicture_name=self.bp.header.name,
+            localvariable_count=len(self.bp.localvariables or []),
+            submodule_count=len(self.bp.submodules or []),
+            moduletype_count=len(self.bp.moduletype_defs or []),
+            apply_alias_back_propagation=apply_alias_back_propagation,
+            limit_to_module_path=limit_to_module_path,
+        )
 
         if self.debug:
             log.debug(
@@ -789,6 +835,7 @@ class VariablesAnalyzer:
 
         # Build root scope context for BasePicture
         root_context = self.context_builder.build_for_basepicture()
+        self._trace("root-context-built", root_symbols=len(root_context.env))
 
         # Analyze BasePicture body
         self._walk_module_code(self.bp.modulecode, root_context, path=[self.bp.header.name])
@@ -806,9 +853,15 @@ class VariablesAnalyzer:
 
         if apply_alias_back_propagation:
             self._apply_alias_back_propagation()
+            self._trace("alias-back-propagation", alias_link_count=len(self._alias_links))
 
         self._detect_datatype_duplications()
+        issue_count_before_reset = len(self._issues)
         detect_reset_contamination(self.bp, self._issues, self._limit_to_module_path)
+        self._trace(
+            "reset-contamination-scan",
+            added_issue_count=len(self._issues) - issue_count_before_reset,
+        )
 
         # Collect issues across this file
         bp_path = [self.bp.header.name]
@@ -862,6 +915,13 @@ class VariablesAnalyzer:
                         self._add_issue(IssueKind.NEVER_READ, td_path, v, role=role)
 
         self._add_unused_datatype_field_issues()
+        issue_counts = dict(sorted(Counter(issue.kind.value for issue in self._issues).items()))
+        self._trace(
+            "complete",
+            total_issue_count=len(self._issues),
+            issue_counts=issue_counts,
+            warning_count=len(self._analysis_warnings),
+        )
 
         if self.debug:
             log.debug("Variables analysis complete. Issues=%d", len(self._issues))
@@ -878,7 +938,7 @@ class VariablesAnalyzer:
         role: str,
         field_path: str | None = None,
     ) -> None:
-        self._issues.append(
+        self._append_issue(
             VariableIssue(
                 kind=kind,
                 module_path=path.copy(),
@@ -1002,7 +1062,7 @@ class VariablesAnalyzer:
                 ):
                     continue
 
-                self._issues.append(
+                self._append_issue(
                     VariableIssue(
                         kind=IssueKind.UNUSED_DATATYPE_FIELD,
                         module_path=list(state["module_path"]),
@@ -1019,7 +1079,10 @@ class VariablesAnalyzer:
         value: int | float,
         span: SourceSpan | None,
     ) -> None:
-        self._issues.append(
+        if value == 0:
+            return
+
+        self._append_issue(
             VariableIssue(
                 kind=IssueKind.MAGIC_NUMBER,
                 module_path=path.copy(),
@@ -1093,7 +1156,7 @@ class VariablesAnalyzer:
             for k in (set(param_keys.keys()) & set(local_keys.keys())):
                 p = param_keys[k]
                 lv = local_keys[k]
-                self._issues.append(
+                self._append_issue(
                     VariableIssue(
                         kind=IssueKind.NAME_COLLISION,
                         module_path=path.copy(),
@@ -1321,14 +1384,6 @@ class VariablesAnalyzer:
                         target_key = target_name.casefold()
                         target_var = child_context.env.get(target_key)
 
-                        if source_var and not target_var:
-                            # Don't crash the full run for unrelated/broken mappings.
-                            # We avoid fallbacks/heuristics and simply skip alias creation.
-                            self._mapping_warnings.append(
-                                f"Parameter mapping refers to unknown target parameter {target_name!r} "
-                                f"in module {child_name!r}: {pm}"
-                            )
-
                         if source_var and target_var:
                             # Store only the source field prefix (relative to the source variable).
                             # This must NOT include the target parameter name.
@@ -1447,14 +1502,6 @@ class VariablesAnalyzer:
                             source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(full_source_name)
                             target_key = target_name.casefold()
                             target_var = typedef_context.env.get(target_key)
-
-                            if source_var and not target_var:
-                                # Don't crash the full run for unrelated/broken mappings.
-                                # We avoid fallbacks/heuristics and simply skip alias creation.
-                                self._mapping_warnings.append(
-                                    f"Parameter mapping refers to unknown target parameter {target_name!r} "
-                                    f"in typedef instance {child_name!r}: {pm}"
-                                )
 
                             if source_var and target_var:
                                 # Store only the source field prefix (relative to the source variable).
@@ -1673,14 +1720,14 @@ class VariablesAnalyzer:
 
         # InVar string result: "Allow.ProgramDebug"
         if isinstance(tail, str):
-            base = tail.split(".", 1)[0].lower()
-            self._mark_var_by_basename(base, context.env, path)
+            base_name = tail.split(".", 1)[0].lower()
+            self._mark_var_by_basename(base_name, context.env, path)
             return
 
         # InVar variable_name dict result
         if isinstance(tail, dict) and const.KEY_VAR_NAME in tail:
-            base = varname_base(tail)
-            self._mark_var_by_basename(base, context.env, path)
+            mapped_base = varname_base(tail)
+            self._mark_var_by_basename(mapped_base, context.env, path)
             return
 
         raise ValueError(
@@ -1797,15 +1844,15 @@ class VariablesAnalyzer:
 
             # External types: conservatively treat mapping as read+written
             if external_typename is not None:
-                display_path: list[str] = []
+                external_display_path: list[str] = []
                 if parent_path:
-                    display_path.append(decorate_segment(parent_path[0], "BP"))
-                    display_path.extend(parent_path[1:])
+                    external_display_path.append(decorate_segment(parent_path[0], "BP"))
+                    external_display_path.extend(parent_path[1:])
                 use_context = ScopeContext(
                     env=parent_env,
                     param_mappings={},
                     module_path=parent_path.copy(),
-                    display_module_path=display_path,
+                    display_module_path=external_display_path,
                     parent_context=None,
                 )
 
@@ -1862,15 +1909,15 @@ class VariablesAnalyzer:
 
         # External types: conservatively treat mapping as read+written
         if external_typename is not None:
-            display_path: list[str] = []
+            external_mapping_display_path: list[str] = []
             if parent_path:
-                display_path.append(decorate_segment(parent_path[0], "BP"))
-                display_path.extend(parent_path[1:])
+                external_mapping_display_path.append(decorate_segment(parent_path[0], "BP"))
+                external_mapping_display_path.extend(parent_path[1:])
             use_context = ScopeContext(
                 env=parent_env,
                 param_mappings={},
                 module_path=parent_path.copy(),
-                display_module_path=display_path,
+                display_module_path=external_mapping_display_path,
                 parent_context=None,
             )
 
@@ -2275,7 +2322,7 @@ class VariablesAnalyzer:
                 for variable, path, role in occurrences[1:]
             ]
 
-            self._issues.append(
+            self._append_issue(
                 VariableIssue(
                     kind=IssueKind.DATATYPE_DUPLICATION,
                     module_path=first_path,

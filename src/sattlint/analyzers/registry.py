@@ -52,6 +52,7 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
             name="Variable issues",
             description="Unused/read-only/never-read variables and type mismatches",
             run=_run_variables,
+            supports_live_diagnostics=True,
         ),
         AnalyzerSpec(
             key="mms-interface",

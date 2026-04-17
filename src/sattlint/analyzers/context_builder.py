@@ -105,6 +105,26 @@ class ContextBuilder:
             target_name = varname_base(pm.target)
             if not target_name or pm.is_source_global:
                 continue
+            target_display_name = (
+                pm.target[const.KEY_VAR_NAME]
+                if isinstance(pm.target, dict) and const.KEY_VAR_NAME in pm.target
+                else str(pm.target)
+            )
+            target_key = target_name.casefold()
+
+            if target_key not in param_keys:
+                self.issues.append(
+                    VariableIssue(
+                        kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
+                        module_path=module_path.copy(),
+                        variable=None,
+                        role=(
+                            f"unknown parameter mapping target "
+                            f"{target_display_name!r}"
+                        ),
+                    )
+                )
+                continue
 
             # Extract full source reference (e.g., "Dv.I.WT001")
             if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
@@ -119,7 +139,7 @@ class ContextBuilder:
 
             if source_var:
                 # Store mapping: parameter name -> (actual variable, field prefix)
-                param_mappings[target_name.lower()] = (
+                param_mappings[target_key] = (
                     source_var,
                     source_field_prefix,
                     source_decl_path,
@@ -191,6 +211,26 @@ class ContextBuilder:
             target_name = varname_base(pm.target)
             if not target_name or pm.is_source_global:
                 continue
+            target_display_name = (
+                pm.target[const.KEY_VAR_NAME]
+                if isinstance(pm.target, dict) and const.KEY_VAR_NAME in pm.target
+                else str(pm.target)
+            )
+            target_key = target_name.casefold()
+
+            if target_key not in param_keys:
+                self.issues.append(
+                    VariableIssue(
+                        kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
+                        module_path=module_path.copy(),
+                        variable=None,
+                        role=(
+                            f"unknown parameter mapping target "
+                            f"{target_display_name!r}"
+                        ),
+                    )
+                )
+                continue
 
             if parent_context:
                 # Allow full dotted source mapping for partial transfers
@@ -204,7 +244,7 @@ class ContextBuilder:
                 if full_source:
                     source_var, source_field_prefix, source_decl_path, source_decl_display_path = parent_context.resolve_variable(full_source)
                     if source_var:
-                        param_mappings[target_name.lower()] = (
+                        param_mappings[target_key] = (
                             source_var,
                             source_field_prefix,
                             source_decl_path,

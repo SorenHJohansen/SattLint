@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import logging
-from pathlib import Path
 import os
+from pathlib import Path
 import re
+import shutil
+import subprocess  # nosec B404 - clear_screen uses a fixed local command list
 import sys
 from typing import Iterator, cast
 from . import engine as engine_module
@@ -17,6 +19,7 @@ from .analyzers.variables import (
     filter_variable_report,
     analyze_variables,
 )
+from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variable_usage_reporting import (
     debug_variable_usage,
 )
@@ -26,6 +29,7 @@ from .analyzers.framework import AnalysisContext
 from .analyzers.registry import get_default_analyzers
 from .analyzers import variable_usage_reporting as variables_reporting_module
 from .analyzers.comment_code import analyze_comment_code_files
+from .reporting.variables_report import VariablesReport
 from .analyzers.modules import (
     debug_module_structure,
     analyze_module_duplicates,
@@ -48,9 +52,14 @@ VARIABLE_ANALYSES = {
     "3": ("Unused fields in datatypes", {IssueKind.UNUSED_DATATYPE_FIELD}),
     "4": ("Read-only but not CONST", {IssueKind.READ_ONLY_NON_CONST}),
     "5": ("Written but never read", {IssueKind.NEVER_READ}),
-    "6": ("String mapping type mismatches", {IssueKind.STRING_MAPPING_MISMATCH}),
-    "7": ("Duplicated complex datatypes", {IssueKind.DATATYPE_DUPLICATION}),
-    "8": ("Min/Max mapping name mismatches", {IssueKind.MIN_MAX_MAPPING_MISMATCH}),
+    "6": ("Unknown parameter mapping targets", {IssueKind.UNKNOWN_PARAMETER_TARGET}),
+    "7": ("String mapping type mismatches", {IssueKind.STRING_MAPPING_MISMATCH}),
+    "8": ("Duplicated complex datatypes", {IssueKind.DATATYPE_DUPLICATION}),
+    "9": ("Min/Max mapping name mismatches", {IssueKind.MIN_MAX_MAPPING_MISMATCH}),
+    "10": ("Magic numbers", {IssueKind.MAGIC_NUMBER}),
+    "11": ("Name collisions", {IssueKind.NAME_COLLISION}),
+    "12": ("Reset contamination", {IssueKind.RESET_CONTAMINATION}),
+    "13": ("Variable shadowing", {IssueKind.SHADOWING}),
 }
 
 
@@ -203,6 +212,21 @@ def _print_validation_warnings(warnings: list[str], *, limit: int = 12) -> None:
         print(f"  - ... (+{len(warnings) - limit} more)")
 
 
+def _extract_warning_name(item: str) -> str | None:
+    if ": " not in item:
+        return None
+    return item.split(": ", 1)[0]
+
+
+def _target_validation_warnings(target_name: str, warnings: list[str]) -> list[str]:
+    return [
+        item
+        for item in warnings
+        if (warning_name := _extract_warning_name(item)) is None
+        or warning_name.casefold() == target_name.casefold()
+    ]
+
+
 def load_config(path: Path):
     return config_module.load_config(path)
 
@@ -227,7 +251,37 @@ log = logging.getLogger("SattLint")
 # Helpers
 # ----------------------------
 def clear_screen():
-    os.system("cls" if os.name == "nt" else "clear")
+    if not sys.stdout.isatty():
+        return
+
+    if os.name == "nt":
+        try:
+            if os.system("cls") == 0:  # nosec B605 - fixed local console clear command
+                return
+        except OSError:
+            pass
+        clear_command = None
+    else:
+        clear_executable = shutil.which("clear")
+        clear_command = [clear_executable] if clear_executable else None
+
+    if clear_command is not None:
+        try:
+            completed = subprocess.run(  # nosec B603 - clear_screen only executes fixed local commands
+                clear_command,
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if completed.returncode == 0:
+                return
+        except OSError:
+            pass
+
+    try:
+        print("\033[2J\033[H", end="", flush=True)
+    except OSError:
+        pass
 
 
 def pause():
@@ -262,12 +316,16 @@ def apply_debug(cfg: dict):
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="sattlint")
+    parser = argparse.ArgumentParser(
+        prog="sattlint",
+        description="Interactive SattLine analysis app with a non-interactive syntax-check command.",
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     syntax_parser = subparsers.add_parser(
         "syntax-check",
         help="Validate a single SattLine file with the parser and transformer",
+        description="Validate one SattLine source file and report a compact syntax or validation error.",
     )
     syntax_parser.add_argument("file", help="Path to the SattLine source file")
     return parser
@@ -610,7 +668,7 @@ def _iter_loaded_projects(
 
 
 def _source_paths_for_current_target(project_bp, graph) -> set[Path]:
-    source_files = getattr(graph, "source_files", set())
+    source_files: set[Path] = getattr(graph, "source_files", set())
     origin_file = getattr(project_bp, "origin_file", None)
     if origin_file:
         matches = {
@@ -778,6 +836,27 @@ def ensure_ast_cache(cfg: dict) -> bool:
 
 
 def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
+    def _merge_reports(*reports):
+        basepicture_name = reports[0].basepicture_name
+        issues = []
+        visible_kinds: set[IssueKind] = set()
+        include_empty_sections = False
+
+        for report in reports:
+            issues.extend(report.issues)
+            if report.visible_kinds is not None:
+                visible_kinds.update(report.visible_kinds)
+            include_empty_sections = (
+                include_empty_sections or report.include_empty_sections
+            )
+
+        return VariablesReport(
+            basepicture_name=basepicture_name,
+            issues=issues,
+            visible_kinds=frozenset(visible_kinds) if visible_kinds else None,
+            include_empty_sections=include_empty_sections,
+        )
+
     produced_output = False
     for target_name, project_bp, graph in _iter_loaded_projects(cfg):
         produced_output = True
@@ -789,11 +868,35 @@ def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
             analyzed_target_is_library=target_is_library,
         )
 
-        if kinds is not None:
-            report = filter_variable_report(report, kinds)
+        include_shadowing = kinds is None or IssueKind.SHADOWING in kinds
+        standard_kinds = None if kinds is None else kinds - {IssueKind.SHADOWING}
+
+        if standard_kinds is not None:
+            if standard_kinds:
+                report = filter_variable_report(report, standard_kinds)
+            else:
+                report = VariablesReport(
+                    basepicture_name=report.basepicture_name,
+                    issues=[],
+                    visible_kinds=frozenset(),
+                    include_empty_sections=False,
+                )
+
+        if include_shadowing:
+            shadowing_report = analyze_shadowing(
+                project_bp,
+                debug=cfg.get("debug", False),
+                unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+            )
+            if kinds == {IssueKind.SHADOWING}:
+                report = shadowing_report
+            elif kinds is None or standard_kinds:
+                report = _merge_reports(report, shadowing_report)
 
         print(f"\n=== Target: {target_name} ===")
-        _print_validation_warnings(getattr(graph, "warnings", []))
+        _print_validation_warnings(
+            _target_validation_warnings(target_name, getattr(graph, "warnings", []))
+        )
         print(report.summary())
     if not produced_output:
         print("\nNo variable analysis output was produced because no target loaded successfully.")
@@ -837,9 +940,9 @@ def variable_usage_submenu(cfg: dict):
         for k, (name, _) in VARIABLE_ANALYSES.items():
             print(f"{k}) {name}")
         print("\nDetailed analysis:")
-        print("8) Datatype usage analysis (by variable name)")
-        print("9) Variable usage (fields + locations)")
-        print("10) Module local variable field analysis")
+        print("14) Datatype usage analysis (by variable name)")
+        print("15) Variable usage (fields + locations)")
+        print("16) Module local variable field analysis")
         print("b) Back")
         print("q) Quit")
 
@@ -849,11 +952,11 @@ def variable_usage_submenu(cfg: dict):
         if c == "q":
             quit_app()
 
-        if c == "8":
+        if c == "14":
             run_datatype_usage_analysis(cfg)
-        elif c == "9":
+        elif c == "15":
             run_debug_variable_usage(cfg)
-        elif c == "10":
+        elif c == "16":
             run_module_localvar_analysis(cfg)
         elif c in VARIABLE_ANALYSES:
             name, kinds = VARIABLE_ANALYSES[c]
@@ -1622,8 +1725,6 @@ q) Quit
                 print("Invalid choice.")
     except QuitApp:
         return 0
-
-    return 0
 
 
 def cli() -> int:
