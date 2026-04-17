@@ -1,6 +1,6 @@
 # SattLint
 
-SattLint is a Windows-friendly tool for people who write SattLine and want help checking code, tracing dependencies, and generating Word documentation.
+SattLint is a cross-platform tool for people who write SattLine and want help checking code, tracing dependencies, and generating Word documentation.
 
 This README is written for coworkers who want to install and use the tool. You do not need Git. You do not need to know Python beyond copying a few commands once.
 
@@ -16,16 +16,86 @@ SattLint can help you:
 
 ## What You Need
 
-- Windows
+- Windows or Linux
 - Python 3.13 or newer
+- pipx (recommended for easy terminal access)
 - A local copy of your SattLine code folders
-- VS Code, PowerShell, or Windows Terminal
+- VS Code, PowerShell/Windows Terminal, or Linux terminal
 
 Git is not required.
 
 ## Install Without Git
 
-### 1. Get SattLint
+### Linux (using pipx)
+
+1. Install pipx (if not already installed):
+   ```bash
+   pip install pipx
+   pipx ensurepath
+   ```
+
+2. Install SattLint:
+   ```bash
+   pipx install .
+   ```
+
+3. Start SattLint:
+   ```bash
+   sattlint
+   ```
+
+To update later, run `pipx upgrade sattlint` in the SattLint folder.
+
+### Linux (alternative - manual venv)
+
+If you prefer not to use pipx:
+
+1. Get SattLint:
+   - Download the repository as a ZIP file from GitHub and extract it.
+   - Copy a prepared SattLint folder from a coworker.
+
+   Assume the folder is extracted to something like:
+   ```text
+   ~/SattLint
+   ```
+
+2. Install Python 3.13 from python.org or your package manager.
+
+3. Open a terminal in the SattLint folder and run:
+   ```bash
+   python3.13 -m venv .venv
+   .venv/bin/pip install --upgrade pip
+   .venv/bin/pip install .
+   ```
+
+4. Start SattLint:
+   ```bash
+   .venv/bin/sattlint
+   ```
+
+### Windows (using pipx)
+
+1. Install pipx (if not already installed):
+   ```powershell
+   pip install pipx
+   pipx ensurepath
+   ```
+
+2. Install SattLint:
+   ```powershell
+   pipx install .
+   ```
+
+3. Start SattLint:
+   ```powershell
+   sattlint
+   ```
+
+To update later, run `pipx upgrade sattlint` in the SattLint folder.
+
+### Windows (alternative - manual venv)
+
+#### 1. Get SattLint
 
 Use one of these options:
 
@@ -95,6 +165,12 @@ On Windows the config file is stored here:
 %APPDATA%\sattlint\config.toml
 ```
 
+On Linux the config file is stored here:
+
+```text
+~/.config/sattlint/config.toml
+```
+
 Use the menu to fill in the settings:
 
 1. Choose `4) Edit config`.
@@ -132,8 +208,8 @@ Example:
 
 Start the tool with:
 
-```powershell
-.\.venv\Scripts\sattlint.exe
+```bash
+sattlint
 ```
 
 Main menu overview:
@@ -166,10 +242,9 @@ The output is a `.docx` file that you can open in Word.
 
 If you only want to know whether one SattLine file parses correctly, you do not need the full interactive menu.
 
-Run:
-
-```powershell
-.\.venv\Scripts\sattlint.exe syntax-check C:\Path\To\Program.s
+**Linux/Windows (with pipx):**
+```bash
+sattlint syntax-check /path/to/Program.s
 ```
 
 If the file is valid, SattLint prints:
@@ -182,16 +257,12 @@ If the file is invalid, SattLint prints a short error message with line informat
 
 ## Updating SattLint
 
-When you get a newer copy of the SattLint folder, open a terminal in that folder and run:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install --upgrade .
+**With pipx:**
+```bash
+pipx upgrade sattlint
 ```
 
-If the update behaves strangely, the clean fix is:
-
-1. Delete the `.venv` folder.
-2. Run the install steps again.
+If the update behaves strangely, run `pipx reinstall sattlint`.
 
 ## Common Problems
 
@@ -223,8 +294,8 @@ Run `6) Force refresh cached AST` from the main menu.
 
 If a coworker already prepared the SattLint folder on your machine, you can usually skip the install section and just run:
 
-```powershell
-.\.venv\Scripts\sattlint.exe
+```bash
+sattlint
 ```
 
 ## For Developers
