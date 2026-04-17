@@ -1,10 +1,7 @@
-"""Compatibility facade for editor-facing semantic APIs.
+"""Canonical shared core for workspace discovery, semantics, and document text helpers."""
 
-The canonical implementation lives in sattlint.core.semantic so the LSP,
-batch analysis, and editor helpers share a single semantic pipeline.
-"""
-
-from .core.semantic import (
+from .document import LineIndex, utf16_index_to_codepoint_offset
+from .semantic import (
     CompletionItem,
     SemanticDiagnostic,
     SemanticSnapshot,
@@ -20,6 +17,7 @@ from .core.semantic import (
 
 __all__ = [
     "CompletionItem",
+    "LineIndex",
     "SemanticDiagnostic",
     "SemanticSnapshot",
     "SymbolDefinition",
@@ -30,4 +28,5 @@ __all__ = [
     "discover_workspace_sources",
     "load_source_snapshot",
     "load_workspace_snapshot",
+    "utf16_index_to_codepoint_offset",
 ]

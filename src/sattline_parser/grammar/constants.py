@@ -92,10 +92,13 @@ GRAMMAR_VALUE_MULTIPLY = "*"
 GRAMMAR_VALUE_DIVIDE = "/"
 
 GRAMMAR_REGEX_SIGNED_INT = r"/[+-]?\d+/"
+GRAMMAR_REGEX_SIGNED_INT_NOTAIL = r"/[+-]?\d+(?![\d.])(?!(?:[ \t\r\n]*:))/"
 GRAMMAR_REGEX_REAL = r"/[+-]?(?:\d+\.\d+(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+)/"
+GRAMMAR_REGEX_REAL_NOTAIL = r"/[+-]?(?:\d+\.\d+(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+)(?![ \t\r\n]*:)/"
 GRAMMAR_VALUE_BOOL_TRUE = "True"
 GRAMMAR_VALUE_BOOL_FALSE = "False"
 GRAMMAR_REGEX_STRING = r"/\"([^\n\"]|\"\")*\"/"
+GRAMMAR_REGEX_STRING_NOTAIL = r"/\"([^\n\"]|\"\")*\"(?![ \t\r\n]*:)/"
 GRAMMAR_REGEX_NOT = r"/NOT\b/"
 GRAMMAR_REGEX_AND = r"/AND\b/"
 GRAMMAR_REGEX_OR = r"/OR\b/"
@@ -204,17 +207,22 @@ GRAMMAR_VALUE_DEFAULT = "Default"
 GRAMMAR_VALUE_NEW = "New"
 GRAMMAR_VALUE_OLD = "Old"
 
-TOKEN_NEW = "NEW"
-TOKEN_OLD = "OLD"
-TOKEN_VARNAME = "VARNAME"
+TOKEN_NEW = "NEW"  # nosec B105 - grammar token literal, not a credential
+TOKEN_OLD = "OLD"  # nosec B105 - grammar token literal, not a credential
+TOKEN_VARNAME = "VARNAME"  # nosec B105 - grammar token literal, not a credential
 
 GRAMMAR_REGEX_COMMENT = r"/\(\*[\s\S]*?\*\)(\s*;)?/"
 GRAMMAR_REGEX_SL_DATECODE = r"/\d+/"
 GRAMMAR_REGEX_BOOL = r"/True\b|False\b/"
+GRAMMAR_REGEX_BOOL_NOTAIL = r"/(?:True|False)\b(?![ \t\r\n]*:)/"
 GRAMMAR_REGEX_NAME = (
     r"/'[^']{1,20}'|"
-    r"(?!IF\b|THEN\b|ELSE\b|ELSIF\b|ENDIF\b|AND\b|OR\b|NOT\b|True\b|False\b)"
-    r"\b[A-ZÆØÅÄÖÉÑÇa-zæøåäöéñçß][A-ZÆØÅÄÖÉÑÇa-zæøåäöéñçß0-9_']{0,19}\b/"
+    r"(?!"
+    r"(?:IF|THEN|ELSE|ELSIF|ENDIF|AND|OR|NOT|True|False)"
+    r"(?![\p{L}\p{Nl}\p{M}\p{Nd}_'])"
+    r")"
+    r"[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{M}\p{Nd}_']{0,19}"
+    r"(?![\p{L}\p{Nl}\p{M}\p{Nd}_'])/"
 )
 GRAMMAR_REGEX_STRING_CRLF = r"/\"([^\"\n]|\"\")*\n/"
 

@@ -13,6 +13,10 @@ from sattlint import app
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers import variable_usage_reporting as variables_reporting_module
 from sattlint.models.ast_model import FrameModule, ModuleTypeInstance, SingleModule
+from sattlint.reporting.variables_report import (
+    DEFAULT_VARIABLE_ANALYSIS_KINDS,
+    VariablesReport,
+)
 
 
 VALID_SINGLE_FILE = """
@@ -52,8 +56,31 @@ ENDDEF (*BasePicture*);
 
 
 class DummyReport:
+    basepicture_name = "Dummy"
+    issues: list[object] = []
+    visible_kinds = frozenset(DEFAULT_VARIABLE_ANALYSIS_KINDS)
+    include_empty_sections = True
+
     def summary(self):
         return "summary"
+
+
+def make_shadowing_report(basepicture_name="Dummy"):
+    return VariablesReport(
+        basepicture_name=basepicture_name,
+        issues=[],
+        visible_kinds=frozenset({app.IssueKind.SHADOWING}),
+        include_empty_sections=True,
+    )
+
+
+def make_variable_report(basepicture_name="Dummy"):
+    return VariablesReport(
+        basepicture_name=basepicture_name,
+        issues=[],
+        visible_kinds=frozenset(DEFAULT_VARIABLE_ANALYSIS_KINDS),
+        include_empty_sections=True,
+    )
 
 
 def make_input(responses):
@@ -181,6 +208,18 @@ def test_save_config_rejects_none(tmp_path):
         app.save_config(config_path, cfg)
 
 
+def test_clear_screen_uses_os_system_cls_on_windows(monkeypatch):
+    calls: list[str] = []
+
+    monkeypatch.setattr(app.os, "name", "nt")
+    monkeypatch.setattr(app.os, "system", lambda command: calls.append(command) or 0)
+    monkeypatch.setattr(app.sys, "stdout", SimpleNamespace(isatty=lambda: True))
+
+    app.clear_screen()
+
+    assert calls == ["cls"]
+
+
 def test_self_check_handles_paths(tmp_path, monkeypatch, capsys):
     program_dir = tmp_path / "programs"
     abb_dir = tmp_path / "abb"
@@ -271,6 +310,12 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
             "8",
             "9",
             "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
             "b",
             "4",
             "1",
@@ -311,6 +356,12 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
         "8",
         "9",
         "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
         "b",
         "4",
         "1",
@@ -323,7 +374,7 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
 
     app.analysis_menu(app.DEFAULT_CONFIG.copy())
 
-    assert calls.count("variable") == 7
+    assert calls.count("variable") == 13
     assert "datatype" in calls
     assert "debug" in calls
     assert "module" in calls
@@ -559,6 +610,8 @@ def test_syntax_check_command_reports_parse_error(tmp_path, capsys):
     assert exit_code != 0
     assert "ERROR [parse]" in captured.err
     assert str(source_file) in captured.err
+    assert "Expected one of:" in captured.err
+    assert "^" in captured.err
 
 
 def test_syntax_check_command_rejects_missing_file(tmp_path, capsys):
@@ -638,14 +691,51 @@ def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatc
             ]
         ),
     )
-    monkeypatch.setattr(app, "analyze_variables", lambda *_, **__: DummyReport())
+    monkeypatch.setattr(app, "analyze_variables", lambda *_, **__: make_variable_report())
+    monkeypatch.setattr(app, "analyze_shadowing", lambda *_, **__: make_shadowing_report())
 
     app.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     out = capsys.readouterr().out
     assert "=== Target: ProgramA ===" in out
     assert "=== Target: LibB ===" in out
-    assert out.count("summary") == 2
+    assert out.count("Issues: 0") == 2
+
+
+def test_run_variable_analysis_all_reports_lists_empty_categories(
+    noop_screen, monkeypatch, capsys
+):
+    graph = SimpleNamespace(unavailable_libraries=set(), warnings=[])
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("ProgramA", "bp-a", graph)]),
+    )
+    monkeypatch.setattr(
+        app,
+        "analyze_variables",
+        lambda *_, **__: VariablesReport(
+            basepicture_name="ProgramA",
+            issues=[],
+            visible_kinds=frozenset(DEFAULT_VARIABLE_ANALYSIS_KINDS),
+            include_empty_sections=True,
+        ),
+    )
+    monkeypatch.setattr(
+        app,
+        "analyze_shadowing",
+        lambda *_, **__: make_shadowing_report("ProgramA"),
+    )
+
+    app.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+
+    out = capsys.readouterr().out
+    assert "=== Target: ProgramA ===" in out
+    assert "Issues: 0" in out
+    assert "Min/Max mapping name mismatches" in out
+    assert "Name collisions" in out
+    assert "Reset contamination (missing reset writes)" in out
+    assert out.count("      none") >= 3
 
 
 def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, capsys):
@@ -665,8 +755,8 @@ def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, cap
                     "Missing code file for 'dep_d' (draft)",
                 ],
                 warnings=[
-                    "dep_c: BasePicture module instance 'Child' maps unknown parameter target 'Wrong'",
-                    "transitive_lib: BasePicture module instance 'Nested' maps unknown parameter target 'Oops'",
+                    "dep_c: validation warning one",
+                    "transitive_lib: validation warning two",
                 ],
                 direct_dependencies=["dep_c", "dep_d"],
             )
@@ -702,20 +792,48 @@ def test_run_variable_analysis_reports_when_no_targets_load(noop_screen, monkeyp
 
 
 def test_run_variable_analysis_prints_validation_warnings(noop_screen, monkeypatch, capsys):
-    graph = SimpleNamespace(unavailable_libraries=set(), warnings=["dep_a: warning one", "dep_b: warning two"])
+    graph = SimpleNamespace(
+        unavailable_libraries=set(),
+        warnings=["ProgramA: warning one", "dep_b: warning two"],
+    )
     monkeypatch.setattr(
         app,
         "_iter_loaded_projects",
         lambda *_args, **_kwargs: iter([("ProgramA", "bp", graph)]),
     )
-    monkeypatch.setattr(app, "analyze_variables", lambda *_, **__: DummyReport())
+    monkeypatch.setattr(app, "analyze_variables", lambda *_, **__: make_variable_report())
+    monkeypatch.setattr(app, "analyze_shadowing", lambda *_, **__: make_shadowing_report())
 
     app.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     out = capsys.readouterr().out
-    assert "Validation warnings (2):" in out
-    assert "  - dep_a: warning one" in out
-    assert "summary" in out
+    assert "Validation warnings (1):" in out
+    assert "  - ProgramA: warning one" in out
+    assert "dep_b: warning two" not in out
+    assert "Issues: 0" in out
+
+
+def test_run_variable_analysis_hides_dependency_validation_warnings(
+    noop_screen, monkeypatch, capsys
+):
+    graph = SimpleNamespace(
+        unavailable_libraries=set(),
+        warnings=["dep_a: warning one", "dep_b: warning two"],
+    )
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("ProgramA", "bp", graph)]),
+    )
+    monkeypatch.setattr(app, "analyze_variables", lambda *_, **__: make_variable_report())
+    monkeypatch.setattr(app, "analyze_shadowing", lambda *_, **__: make_shadowing_report())
+
+    app.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+
+    out = capsys.readouterr().out
+    assert "Validation warnings (" not in out
+    assert "dep_a: warning one" not in out
+    assert "Issues: 0" in out
 
 
 def test_run_variable_analysis_marks_library_targets(noop_screen, monkeypatch):
@@ -723,7 +841,7 @@ def test_run_variable_analysis_marks_library_targets(noop_screen, monkeypatch):
         unavailable_libraries=set(),
         warnings=[],
         source_files={
-            Path(r"C:\libs\ProjectLib\LibraryTarget.x"),
+            Path("ProjectLib/LibraryTarget.x"),
         },
     )
     project_bp = SimpleNamespace(
@@ -740,13 +858,54 @@ def test_run_variable_analysis_marks_library_targets(noop_screen, monkeypatch):
 
     def _fake_analyze_variables(*_args, **kwargs):
         captured.update(kwargs)
-        return DummyReport()
+        return make_variable_report()
 
     monkeypatch.setattr(app, "analyze_variables", _fake_analyze_variables)
+    monkeypatch.setattr(app, "analyze_shadowing", lambda *_, **__: make_shadowing_report())
 
     cfg = app.DEFAULT_CONFIG.copy()
-    cfg["program_dir"] = r"C:\programs"
+    cfg["program_dir"] = "programs"
 
     app.run_variable_analysis(cfg, None)
 
     assert captured["analyzed_target_is_library"] is True
+
+
+def test_variable_usage_submenu_exposes_min_max_report(noop_screen, monkeypatch):
+    captured: list[object] = []
+    monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
+    monkeypatch.setattr(builtins, "input", make_input(["9", "b"]))
+
+    app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [{app.IssueKind.MIN_MAX_MAPPING_MISMATCH}]
+
+
+def test_variable_usage_submenu_exposes_unknown_parameter_target_report(noop_screen, monkeypatch):
+    captured: list[object] = []
+    monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
+    monkeypatch.setattr(builtins, "input", make_input(["6", "b"]))
+
+    app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [{app.IssueKind.UNKNOWN_PARAMETER_TARGET}]
+
+
+def test_variable_usage_submenu_exposes_reset_contamination_report(noop_screen, monkeypatch):
+    captured: list[object] = []
+    monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
+    monkeypatch.setattr(builtins, "input", make_input(["12", "b"]))
+
+    app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [{app.IssueKind.RESET_CONTAMINATION}]
+
+
+def test_variable_usage_submenu_exposes_shadowing_report(noop_screen, monkeypatch):
+    captured: list[object] = []
+    monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
+    monkeypatch.setattr(builtins, "input", make_input(["13", "b"]))
+
+    app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [{app.IssueKind.SHADOWING}]

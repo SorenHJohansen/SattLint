@@ -138,6 +138,7 @@ def _resolve_icf_path(
 
     for i in range(len(segments), 0, -1):
         module_path = ".".join(segments[:i])
+        resolved: ResolvedModulePath | None
         try:
             resolved = resolve_module_by_strict_path(
                 base_picture,
@@ -145,6 +146,9 @@ def _resolve_icf_path(
                 moduletype_index=moduletype_index,
             )
         except Exception:
+            resolved = None
+
+        if resolved is None:
             continue
 
         if i >= len(segments):

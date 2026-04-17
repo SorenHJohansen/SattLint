@@ -2,8 +2,9 @@
 from dataclasses import dataclass
 from pathlib import Path
 from lark import Lark
-from lark.exceptions import VisitError
+from lark.exceptions import UnexpectedInput, VisitError
 from sattline_parser import create_parser as parser_core_create_parser
+from sattline_parser.api import describe_parse_error
 from sattline_parser import parse_source_file as parser_core_parse_source_file
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from .transformer.sl_transformer import SLTransformer
@@ -194,6 +195,7 @@ def _extract_error_position(exc: Exception) -> tuple[int | None, int | None]:
 
 def validate_single_file_syntax(code_path: Path) -> SyntaxValidationResult:
     target_path = Path(code_path)
+    src = ""
     try:
         src = _load_source_text(target_path)
         violations = find_disallowed_comments(src)
@@ -205,6 +207,16 @@ def validate_single_file_syntax(code_path: Path) -> SyntaxValidationResult:
                 column=first.start_col,
             )
         parse_source_text(src)
+    except UnexpectedInput as exc:
+        details = describe_parse_error(exc, src)
+        return SyntaxValidationResult(
+            file_path=target_path,
+            ok=False,
+            stage="parse",
+            message=details.message,
+            line=details.line,
+            column=details.column,
+        )
     except VisitError as exc:
         line, column = _extract_error_position(exc)
         message = str(exc.orig_exc) if exc.orig_exc is not None else str(exc)

@@ -5,6 +5,7 @@ Generates an Excel spreadsheet documenting SattLine program configurations
 in normalized long format with Excel Tables and an interactive Dashboard.
 """
 
+import argparse
 from pathlib import Path
 import re
 from openpyxl import Workbook
@@ -16,7 +17,8 @@ from openpyxl.worksheet.datavalidation import DataValidation
 import logging
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Optional
+from typing import Any, Optional
+import sys
 
 log = logging.getLogger("SattLint")
 
@@ -288,7 +290,7 @@ class SattLineConfigExtractor:
     def parse_all_configuration_files(self) -> list[ConfigurationFileInfo]:
         """Parse all configuration files (.k files)."""
         parser = ConfigurationFileParser()
-        configurations = []
+        configurations: list[ConfigurationFileInfo] = []
 
         if not self.kfiles_dir.exists():
             log.warning(f"Configuration directory not found: {self.kfiles_dir}")
@@ -619,7 +621,7 @@ class ExcelGenerator:
 
         return len(dependency_data) + 1
 
-    def _create_dashboard(self, component_row_count: int, dependency_row_count: int):
+    def _create_dashboard(self, _component_row_count: int, _dependency_row_count: int):
         """Create dashboard with KPIs."""
         ws = self.dashboard_ws
 
@@ -755,7 +757,7 @@ class ExcelGenerator:
 
         return units_text
 
-    def _build_station_configurations(self, component_data: list[ComponentInfo]) -> dict:
+    def _build_station_configurations(self, component_data: list[ComponentInfo]) -> dict[str, dict[str, Any]]:
         """Build comprehensive configuration data for each station (case-insensitive matching)."""
         station_configs = {}
 
@@ -787,16 +789,16 @@ class ExcelGenerator:
             }
 
         # Populate station configs with programs and libraries from configuration files
-        for station_id, config in station_configs.items():
-            config_file_lower = config['config_file'].lower()
+        for station_id, station_config in station_configs.items():
+            config_file_lower = station_config['config_file'].lower()
 
             if config_file_lower in config_contents:
-                config['programs'] = config_contents[config_file_lower]['programs'].copy()
-                config['libraries'] = config_contents[config_file_lower]['libraries'].copy()
+                station_config['programs'] = config_contents[config_file_lower]['programs'].copy()
+                station_config['libraries'] = config_contents[config_file_lower]['libraries'].copy()
 
                 # Add transitive dependencies
                 additional_libraries = set()
-                for program_name in config['programs']:
+                for program_name in station_config['programs']:
                     # Case-insensitive comparison
                     comp = next((c for c in component_data if c.name.lower() == program_name.lower()), None)
                     if comp:
@@ -808,11 +810,11 @@ class ExcelGenerator:
 
                 for lib in additional_libraries:
                     # Case-insensitive check if library already exists
-                    if not any(existing_lib.lower() == lib.lower() for existing_lib in config['libraries']):
-                        config['libraries'].append(lib)
+                    if not any(existing_lib.lower() == lib.lower() for existing_lib in station_config['libraries']):
+                        station_config['libraries'].append(lib)
 
-                config['libraries'].sort()
-                config['programs'].sort()
+                station_config['libraries'].sort()
+                station_config['programs'].sort()
 
         return station_configs
 
@@ -1018,8 +1020,8 @@ class ExcelGenerator:
         results_header.alignment = Alignment(horizontal='center')
 
         # Build reverse mapping: component -> workstations (use original case for display)
-        component_to_workstations = {}
-        component_original_case = {}  # Map lowercase to original case
+        component_to_workstations: dict[str, set[str]] = {}
+        component_original_case: dict[str, str] = {}  # Map lowercase to original case
 
         for config_file, workstations in self.workstation_mapper.workstation_map.items():
             configurations = self.extractor.parse_all_configuration_files()
@@ -1093,16 +1095,31 @@ class ExcelGenerator:
         log.info("✓ Query Tool created with workstation impact analysis")
 
 
-def main():
+def main(argv: list[str] | None = None):
     """Main entry point."""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
+    parser = argparse.ArgumentParser(
+        description="Generate an Excel workbook from a SattLine configuration root directory."
+    )
+    parser.add_argument("root_dir", help="Root directory containing SattLine configuration files")
+    parser.add_argument(
+        "--output",
+        default="SattLine_Configuration.xlsx",
+        help="Output workbook path",
+    )
+    args = parser.parse_args(argv)
+
     try:
-        root_dir = Path(r"C:\Users\SQHJ\OneDrive - Novo Nordisk\Workspace\Libs\GC")
-        output_file = Path("SattLine_Configuration.xlsx")
+        root_dir = Path(args.root_dir).expanduser().resolve()
+        output_file = Path(args.output).expanduser().resolve()
+
+        if not root_dir.exists() or not root_dir.is_dir():
+            print(f"Invalid root directory: {root_dir}", file=sys.stderr)
+            return 2
 
         extractor = SattLineConfigExtractor(root_dir)
         generator = ExcelGenerator(extractor)

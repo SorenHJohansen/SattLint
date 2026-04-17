@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import pathlib
 import typing as t
 
@@ -13,6 +14,8 @@ from sattline_parser.utils.formatter import format_expr
 from .. import config as config_module
 from ..models.ast_model import BasePicture, Equation, ModuleCode, Sequence, Variable
 from .classification import DocumentationClassification, DocumentedModule, classify_documentation_structure
+
+log = logging.getLogger("SattLint")
 
 
 def _heading(doc: DocClass, text: str, level: int = 1) -> None:
@@ -406,4 +409,4 @@ def generate_docx(
 
     out_file = pathlib.Path(out_path)
     doc.save(str(out_file))
-    print(f"✅ Documentation written to {out_file.resolve()}")
+    log.info("Documentation written to %s", out_file.resolve())

@@ -7,6 +7,7 @@ import sys
 import tomllib
 import tomli_w
 from pathlib import Path
+from typing import Any, cast
 
 _DOCUMENTATION_RULE_LIST_KEYS = (
     "name_contains",
@@ -38,7 +39,7 @@ _DOCUMENTATION_LEGACY_CATEGORY_KEYS = {
     "user_parameters": "up",
 }
 
-DEFAULT_CONFIG = {
+DEFAULT_CONFIG: dict[str, Any] = {
     "analyzed_programs_and_libraries": [],
     "mode": "official",
     "scan_root_only": False,
@@ -89,7 +90,7 @@ DEFAULT_CONFIG = {
 }
 
 
-def _deep_merge_dict(base: dict, override: dict) -> dict:
+def _deep_merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     merged = deepcopy(base)
     for key, value in override.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
@@ -99,7 +100,7 @@ def _deep_merge_dict(base: dict, override: dict) -> dict:
     return merged
 
 
-def _normalize_documentation_rule_keys(config: dict) -> dict:
+def _normalize_documentation_rule_keys(config: dict[str, Any]) -> dict[str, Any]:
     normalized = deepcopy(config)
     documentation = normalized.get("documentation")
     if not isinstance(documentation, dict):
@@ -131,8 +132,8 @@ def _normalize_documentation_rule_keys(config: dict) -> dict:
     return normalized
 
 
-def get_documentation_config(cfg: dict | None = None) -> dict:
-    documentation_defaults = deepcopy(DEFAULT_CONFIG["documentation"])
+def get_documentation_config(cfg: dict[str, Any] | None = None) -> dict[str, Any]:
+    documentation_defaults = cast(dict[str, Any], deepcopy(DEFAULT_CONFIG["documentation"]))
     if not cfg:
         return documentation_defaults
 
@@ -219,8 +220,8 @@ def self_check(cfg: dict) -> bool:
     ok = True
 
     # Python version
-    if sys.version_info < (3, 11):
-        print("❌ Python 3.11+ required")
+    if sys.version_info < (3, 13):
+        print("❌ Python 3.13+ required")
         ok = False
     else:
         print(f"✔ Python {sys.version.split()[0]}")

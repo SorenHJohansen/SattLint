@@ -8,14 +8,12 @@ It is implemented as a plain JavaScript VS Code extension, so there is no npm or
 
 Copy or symlink this folder under your VS Code user extensions directory as `local.sattline-vscode-0.1.0`, then reload the editor window.
 
-The repository task for this conversation also installs a copy under `C:/Users/SQHJ/.vscode/extensions/local.sattline-vscode-0.1.0`.
-
 ## Packaging
 
 If you want a `.vsix` from WSL, run:
 
 ```bash
-cd /mnt/c/Users/SQHJ/OneDrive\ -\ Novo\ Nordisk/Workspace/GitHub.com/SattLint/vscode/sattline-vscode
+cd vscode/sattline-vscode
 npm run package:vsix
 ```
 

@@ -291,8 +291,8 @@ def _resolve_scope_paths(
         for candidate in candidates
     }
     by_name: dict[str, list[DocumentedModule]] = {}
-    for candidate in candidates:
-        by_name.setdefault(candidate.name.casefold(), []).append(candidate)
+    for documented in candidates:
+        by_name.setdefault(documented.name.casefold(), []).append(documented)
 
     roots: list[DocumentedModule] = []
     unmatched: list[str] = []
@@ -300,18 +300,18 @@ def _resolve_scope_paths(
 
     for requested in requested_values:
         key = requested.casefold()
-        candidate = exact_path_map.get(key) or short_path_map.get(key)
-        if candidate is None:
+        requested_candidate: DocumentedModule | None = exact_path_map.get(key) or short_path_map.get(key)
+        if requested_candidate is None:
             name_matches = by_name.get(key, [])
             if len(name_matches) == 1:
-                candidate = name_matches[0]
-        if candidate is None:
+                requested_candidate = name_matches[0]
+        if requested_candidate is None:
             unmatched.append(requested)
             continue
-        if candidate.path in seen_paths:
+        if requested_candidate.path in seen_paths:
             continue
-        roots.append(candidate)
-        seen_paths.add(candidate.path)
+        roots.append(requested_candidate)
+        seen_paths.add(requested_candidate.path)
 
     return roots, unmatched
 

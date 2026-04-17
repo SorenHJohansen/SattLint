@@ -9,7 +9,7 @@ import threading
 from typing import Any
 
 from lsprotocol.types import (
-    CompletionItem,
+    CompletionItem as LspCompletionItem,
     CompletionItemKind,
     CompletionList,
     CompletionOptions,
@@ -39,7 +39,7 @@ from pygls import uris
 from pygls.lsp.server import LanguageServer
 from pygls.workspace import TextDocument
 
-from sattlint.editor_api import (
+from sattlint.core.semantic import (
     SemanticSnapshot,
     SymbolDefinition,
     SymbolReference,
@@ -48,7 +48,6 @@ from sattlint.editor_api import (
 )
 from sattlint.engine import CodeMode
 from sattlint.models.ast_model import Simple_DataType
-from sattlint.reporting.variables_report import IssueKind
 
 from .document_state import DocumentState
 from .local_parser import IncrementalDocumentParserAdapter
@@ -71,19 +70,6 @@ _TYPEDEF_START_RE = re.compile(
 _ENDDEF_LABEL_RE = re.compile(r"^\s*ENDDEF\b(?:\s*\(\*(?P<label>.*?)\*\))?", re.IGNORECASE)
 _INTERACTIVE_SNAPSHOT_WAIT_S = 0.05
 _DIAGNOSTIC_SNAPSHOT_WAIT_S = 0.15
-_ISSUE_LABELS = {
-    IssueKind.UNUSED: "Unused variable",
-    IssueKind.UNUSED_DATATYPE_FIELD: "Unused datatype field",
-    IssueKind.READ_ONLY_NON_CONST: "Read-only variable should be CONST",
-    IssueKind.NEVER_READ: "Variable is written but never read",
-    IssueKind.STRING_MAPPING_MISMATCH: "String mapping datatype mismatch",
-    IssueKind.DATATYPE_DUPLICATION: "Datatype duplication",
-    IssueKind.NAME_COLLISION: "Name collision",
-    IssueKind.MIN_MAX_MAPPING_MISMATCH: "Min/Max mapping name mismatch",
-    IssueKind.MAGIC_NUMBER: "Magic number",
-    IssueKind.SHADOWING: "Variable shadows outer scope",
-    IssueKind.RESET_CONTAMINATION: "Variable is contaminated across reset",
-}
 _DEFAULT_LOCAL_PARSER = IncrementalDocumentParserAdapter()
 
 
@@ -379,7 +365,7 @@ def collect_completion_candidates(
     line: int,
     column: int,
     limit: int = 100,
-) -> list[CompletionItem]:
+) -> list[LspCompletionItem]:
     lines = source_text.splitlines()
     current_line = lines[line] if 0 <= line < len(lines) else ""
     line_prefix = current_line[:column]
@@ -389,7 +375,7 @@ def collect_completion_candidates(
     if dotted_match:
         base_expr = dotted_match.group("base")
         prefix = dotted_match.group("prefix") or ""
-        items_by_label: dict[str, CompletionItem] = {}
+        items_by_label: dict[str, LspCompletionItem] = {}
         for definition in _filter_visible_definitions(snapshot.find_definitions(base_expr), module_path):
             datatype = definition.datatype
             if datatype is None:
@@ -402,7 +388,7 @@ def collect_completion_candidates(
                     continue
                 items_by_label.setdefault(
                     field.name.casefold(),
-                    CompletionItem(
+                    LspCompletionItem(
                         label=field.name,
                         kind=CompletionItemKind.Field,
                         detail=str(field.datatype.value if isinstance(field.datatype, Simple_DataType) else field.datatype),
@@ -414,7 +400,7 @@ def collect_completion_candidates(
     prefix = prefix_match.group("prefix") if prefix_match else ""
     semantic_items = snapshot.complete(prefix=prefix, module_path=module_path, limit=limit)
     return [
-        CompletionItem(
+        LspCompletionItem(
             label=item.label,
             kind=_semantic_completion_kind(item.kind),
             detail=item.detail,
@@ -475,15 +461,15 @@ def _merge_definitions(
 
 
 def _merge_completion_items(
-    preferred: list[CompletionItem],
-    fallback: list[CompletionItem],
+    preferred: list[LspCompletionItem],
+    fallback: list[LspCompletionItem],
     *,
     limit: int,
-) -> list[CompletionItem]:
-    def kind_value(item: CompletionItem) -> int:
+) -> list[LspCompletionItem]:
+    def kind_value(item: LspCompletionItem) -> int:
         return int(item.kind) if item.kind is not None else 0
 
-    items_by_label: dict[tuple[str, int], CompletionItem] = {}
+    items_by_label: dict[tuple[str, int], LspCompletionItem] = {}
     for item in [*preferred, *fallback]:
         key = (item.label.casefold(), kind_value(item))
         items_by_label.setdefault(key, item)
@@ -690,7 +676,7 @@ def collect_local_completion_candidates(
     column: int,
     limit: int = 100,
     snapshot: SemanticSnapshot | None = None,
-) -> list[CompletionItem]:
+) -> list[LspCompletionItem]:
     local_snapshot = snapshot
     if local_snapshot is None:
         try:
@@ -708,42 +694,15 @@ def collect_local_completion_candidates(
 
 
 def collect_semantic_diagnostics(bundle: SnapshotBundle, document_path: Path) -> list[Diagnostic]:
-    resolved_path = document_path.resolve()
-    diagnostics: list[Diagnostic] = []
-
-    for issue in bundle.snapshot.diagnostics:
-        if issue.variable is None:
-            continue
-
-        query_segments = list(issue.module_path) + [issue.variable.name]
-        if issue.field_path:
-            query_segments.extend(segment for segment in issue.field_path.split(".") if segment)
-
-        matches = bundle.snapshot.find_definitions(".".join(query_segments), limit=1)
-        if not matches:
-            continue
-
-        definition = matches[0]
-        target_path = resolve_definition_path(bundle, definition)
-        if target_path is None or target_path.resolve() != resolved_path:
-            continue
-
-        range_ = _range_for_definition(definition)
-        if range_ is None:
-            continue
-
-        label = _ISSUE_LABELS.get(issue.kind, "SattLint issue")
-        message = label if issue.role is None else f"{label}: {issue.role}"
-        diagnostics.append(
-            Diagnostic(
-                range=range_,
-                message=message,
-                severity=DiagnosticSeverity.Warning,
-                source="sattlint",
-            )
+    return [
+        Diagnostic(
+            range=_range_from_position(item.line, item.column, item.length),
+            message=item.message,
+            severity=DiagnosticSeverity.Warning,
+            source="sattlint",
         )
-
-    return diagnostics
+        for item in bundle.snapshot.semantic_diagnostics_for_path(document_path.resolve())
+    ]
 
 
 def _semantic_diagnostics_for_path(bundle: SnapshotBundle, document_path: Path) -> tuple[Diagnostic, ...]:
@@ -1497,18 +1456,18 @@ def on_rename(ls: SattLineLanguageServer, params: RenameParams) -> WorkspaceEdit
             _append_workspace_edit(changes, target_uri, target_range, params.new_name)
 
     for reference in references:
-        target_uri: str | None = None
+        reference_uri: str | None = None
         if (reference.source_file or "").casefold() == document_path.name.casefold():
-            target_uri = uris.from_fs_path(str(document_path.resolve())) or document_path.resolve().as_uri()
+            reference_uri = uris.from_fs_path(str(document_path.resolve())) or document_path.resolve().as_uri()
         elif bundle is not None:
             target_path = _resolve_reference_path(bundle, reference)
             if target_path is not None:
-                target_uri = uris.from_fs_path(str(target_path)) or target_path.as_uri()
-        if target_uri is None:
+                reference_uri = uris.from_fs_path(str(target_path)) or target_path.as_uri()
+        if reference_uri is None:
             continue
         _append_workspace_edit(
             changes,
-            target_uri,
+            reference_uri,
             _range_from_position(reference.line, reference.column, reference.length),
             params.new_name,
         )

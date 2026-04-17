@@ -1,6 +1,7 @@
 """Parser-level tests for SattLine grammar coverage."""
 
 import pytest
+from pathlib import Path
 
 from sattline_parser import api as parser_api
 from sattline_parser import parse_source_text as parser_core_parse_source_text
@@ -138,6 +139,136 @@ ENDDEF (*BasePicture*);
 	parser_api._default_parser.cache_clear()
 
 
+def test_create_parser_uses_regex_and_disk_cache(monkeypatch, tmp_path):
+	captured: dict[str, object] = {}
+	cache_dir = tmp_path / "lark-cache"
+
+	class DummyLark:
+		def __init__(self, grammar, **options):
+			captured["grammar"] = grammar
+			captured["options"] = options
+
+	monkeypatch.setattr(parser_api, "Lark", DummyLark)
+	monkeypatch.setattr(parser_api, "_PARSER_CACHE_DIR", cache_dir)
+	parser = parser_api.create_parser()
+
+	assert isinstance(parser, DummyLark)
+	options = captured["options"]
+	assert isinstance(options, dict)
+	assert options["regex"] is True
+	assert options["cache_grammar"] is True
+	assert Path(options["cache"]).parent == cache_dir
+	assert options["parser"] == "lalr"
+
+
+def test_parser_core_strict_mode_compiles_cleanly():
+	parser = parser_api.create_parser(strict=True)
+
+	assert parser is not None
+
+
+def test_parser_core_accepts_outline_colour_assignment_invar_tail():
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	WidthSource: integer := 0;
+	FormatSource: integer := 0;
+	ColourSource: integer := 0;
+ModuleDef
+	ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+	GraphObjects :
+		TextObject ( 0.0 , 0.0 ) ( 1.0 , 1.0 )
+			"Value" VarName Width_ = 5 : InVar_ "WidthSource"
+			Format_String_ = "" : InVar_ "FormatSource"
+			OutlineColour : Colour0 = 5 : InVar_ "ColourSource"
+ENDDEF (*BasePicture*);
+"""
+
+	bp = parser_core_parse_source_text(code)
+
+	assert isinstance(bp, BasePicture)
+	assert bp.moduledef is not None
+
+
+def test_parser_core_accepts_clipping_bounds_and_interact_tail_sequences():
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+	ClippingBounds = ( -1.0 , -3.12 : InVar_ "PanelResize" ClippingBounds = -2.33 -3.12 0.0 : InVar_ 0.0 100.0 : InVar_ 1.0 ) ( 1.0 , 0.22 )
+	InteractObjects :
+		TextBox_ ( 0.02 , 1.165 ) ( 0.48 , 1.245 )
+			Real_Value
+			"" : InVar_ LitString "+L2" 0
+			Variable = 0.0 : OutVar_ "Plant.Real1"
+			OpMin = 0.0 : InVar_ -1.0E+10
+			OpMax = 100.0 : InVar_ 1.0E+10
+			Event_Text_ = "" : InVar_ LitString "Real1"
+			Event_Severity_ = 0 : InVar_ "Severity"
+			LeftAligned Abs_ Decimal_
+ENDDEF (*BasePicture*);
+"""
+
+	bp = parser_core_parse_source_text(code)
+
+	assert isinstance(bp, BasePicture)
+	assert bp.moduledef is not None
+	assert bp.moduledef.interact_objects is not None
+	assert len(bp.moduledef.interact_objects) == 1
+
+
+def test_parser_core_accepts_interact_flag_plus_textobject_assignment():
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+	ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+	InteractObjects :
+		ComBut_ ( 0.0 , 0.0 ) ( 1.0 , 1.0 )
+			Abs_ TextObject = "" : InVar_ LitString "Start Sim"
+ENDDEF (*BasePicture*);
+"""
+
+	bp = parser_core_parse_source_text(code)
+
+	assert isinstance(bp, BasePicture)
+	assert bp.moduledef is not None
+	assert bp.moduledef.interact_objects is not None
+	assert len(bp.moduledef.interact_objects) == 1
+
+
+def test_parser_core_accepts_combutproc_mixed_plain_and_tailed_args():
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+	ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+	InteractObjects :
+		ComButProc_ ( 0.0 , 0.0 ) ( 1.0 , 1.0 )
+			ToggleWindow
+			"" : InVar_ LitString "-+GainPanel" "" : InVar_ LitString "Calibration"
+			False : InVar_ True 0.0 0.0 0.0 : InVar_ 0.23 0.0 False 0 0 False 0
+			Variable = 0.0
+ENDDEF (*BasePicture*);
+"""
+
+	bp = parser_core_parse_source_text(code)
+
+	assert isinstance(bp, BasePicture)
+	assert bp.moduledef is not None
+	assert bp.moduledef.interact_objects is not None
+	assert len(bp.moduledef.interact_objects) == 1
+
+
 def test_parser_core_parse_source_text_accepts_valid_source():
 	code = """
 "SyntaxVersion"
@@ -158,6 +289,28 @@ ENDDEF (*BasePicture*);
 
 	assert isinstance(bp, BasePicture)
 	assert bp.name == "BasePicture"
+
+
+def test_parser_core_accepts_combining_mark_identifier():
+	identifier = "Cafe\u0301"
+	code = f"""
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	{identifier}: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+		{identifier} = {identifier} + 1;
+ENDDEF (*BasePicture*);
+"""
+
+	bp = parser_core_parse_source_text(code)
+
+	assert bp.localvariables[0].name == identifier
 
 
 def test_parser_core_sets_sequence_control_and_timer_flags():
@@ -373,6 +526,8 @@ ENDDEF (*BasePicture*);
 	assert result.stage == "parse"
 	assert result.line is not None
 	assert result.message
+	assert "Expected one of:" in result.message
+	assert "^" in result.message
 
 
 def test_validate_single_file_syntax_rejects_missing_transition(tmp_path):
@@ -689,7 +844,7 @@ def test_validate_transformed_basepicture_workspace_mode_still_rejects_builtin_t
 		)
 
 
-def test_validate_transformed_basepicture_workspace_mode_warns_unknown_parameter_target():
+def test_validate_transformed_basepicture_workspace_mode_ignores_unknown_parameter_target():
 	code = """
 "SyntaxVersion"
 "OriginalFileDate"
@@ -711,17 +866,10 @@ ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
 """
 	bp = _parse_to_basepicture(code)
-	warnings: list[str] = []
 
 	validate_transformed_basepicture(
 		bp,
-		warn_unknown_parameter_targets=True,
-		warning_sink=warnings.append,
 	)
-
-	assert warnings == [
-		"BasePicture module instance 'Child' maps unknown parameter target 'Wrong'"
-	]
 
 
 def test_validate_single_file_syntax_rejects_duplicate_parameter_mapping_targets(tmp_path):
@@ -757,7 +905,7 @@ ENDDEF (*BasePicture*);
 	assert "duplicate parameter mapping targets 'Value' and 'value'" in result.message
 
 
-def test_validate_single_file_syntax_rejects_unknown_parameter_mapping_target(tmp_path):
+def test_validate_single_file_syntax_allows_unknown_parameter_mapping_target(tmp_path):
 	code = """
 "SyntaxVersion"
 "OriginalFileDate"
@@ -783,10 +931,8 @@ ENDDEF (*BasePicture*);
 
 	result = validate_single_file_syntax(source_file)
 
-	assert result.ok is False
-	assert result.stage == "validation"
-	assert result.message is not None
-	assert "maps unknown parameter target 'Wrong'" in result.message
+	assert result.ok is True
+	assert result.stage == "ok"
 
 
 def test_validate_single_file_syntax_rejects_parameter_mapping_type_mismatch(tmp_path):

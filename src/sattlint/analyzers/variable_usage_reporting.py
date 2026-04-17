@@ -59,29 +59,29 @@ def debug_variable_usage(
             lines.append("  Field reads:")
             for field_path, locations in sorted(usage.field_reads.items()):
                 # Count unique access paths.
-                unique_paths = {}
+                unique_paths: dict[str, int] = {}
                 for loc in locations:
                     where = " -> ".join(loc)
                     unique_paths[where] = unique_paths.get(where, 0) + 1
 
                 lines.append(f"    • {var_name}.{field_path}")
-                for path, count in sorted(unique_paths.items()):
+                for path_label, count in sorted(unique_paths.items()):
                     count_str = f" ({count}x)" if count > 1 else ""
-                    lines.append(f"      {path}{count_str}")
+                    lines.append(f"      {path_label}{count_str}")
 
         # List field-level writes (deduplicated).
         if usage.field_writes:
             lines.append("  Field writes:")
             for field_path, locations in sorted(usage.field_writes.items()):
-                unique_paths = {}
+                unique_write_paths: dict[str, int] = {}
                 for loc in locations:
                     where = " -> ".join(loc)
-                    unique_paths[where] = unique_paths.get(where, 0) + 1
+                    unique_write_paths[where] = unique_write_paths.get(where, 0) + 1
 
                 lines.append(f"    • {var_name}.{field_path}")
-                for path, count in sorted(unique_paths.items()):
+                for path_label, count in sorted(unique_write_paths.items()):
                     count_str = f" ({count}x)" if count > 1 else ""
-                    lines.append(f"      {path}{count_str}")
+                    lines.append(f"      {path_label}{count_str}")
 
         # List whole-variable accesses (deduplicated by path/kind).
         whole_var_locs = [
@@ -91,14 +91,14 @@ def debug_variable_usage(
         if whole_var_locs:
             lines.append("  Whole variable:")
             # Aggregate by path.
-            path_kinds = {}
-            for path, kind in whole_var_locs:
-                where = " -> ".join(path)
+            path_kinds: dict[str, dict[str, int]] = {}
+            for location_path, kind in whole_var_locs:
+                where = " -> ".join(location_path)
                 if where not in path_kinds:
                     path_kinds[where] = {"read": 0, "write": 0}
                 path_kinds[where][kind] += 1
 
-            for path, kinds in sorted(path_kinds.items()):
+            for path_label, kinds in sorted(path_kinds.items()):
                 r_count = kinds["read"]
                 w_count = kinds["write"]
                 access = []
@@ -106,7 +106,7 @@ def debug_variable_usage(
                     access.append(f"R:{r_count}")
                 if w_count > 0:
                     access.append(f"W:{w_count}")
-                lines.append(f"    {' '.join(access)} | {path}")
+                lines.append(f"    {' '.join(access)} | {path_label}")
 
     return "\n".join(lines)
 
@@ -201,11 +201,6 @@ def analyze_module_localvar_fields(
 
     if debug:
         log.debug("Analysis complete. Alias links=%d", len(analyzer._alias_links))
-        if getattr(analyzer, "_mapping_warnings", None):
-            log.debug(
-                "Parameter-mapping warnings=%d (skipped alias creation)",
-                len(analyzer._mapping_warnings),
-            )
 
     # Find the specific local variable instance:
     # - SingleModule: variable is declared on the module node.
@@ -266,10 +261,10 @@ def analyze_module_localvar_fields(
     ]
 
     # Aggregate usage only from connected aliases.
-    all_field_reads = {}
-    all_field_writes = {}
-    whole_var_reads = []
-    whole_var_writes = []
+    all_field_reads: dict[str, list[list[str]]] = {}
+    all_field_writes: dict[str, list[list[str]]] = {}
+    whole_var_reads: list[list[str]] = []
+    whole_var_writes: list[list[str]] = []
 
     if debug:
         log.debug("Aggregating usages from connected aliases")
@@ -318,8 +313,8 @@ def analyze_module_localvar_fields(
         return path_startswith_casefold(location, module_path_list)
 
     # Field-level accesses
-    internal_field_reads = {}
-    internal_field_writes = {}
+    internal_field_reads: dict[str, list[list[str]]] = {}
+    internal_field_writes: dict[str, list[list[str]]] = {}
 
     for field_path, locations in all_field_reads.items():
         filtered = [loc for loc in locations if is_within_module(loc)]
@@ -347,12 +342,12 @@ def analyze_module_localvar_fields(
             writes = internal_field_writes.get(field, [])
 
             # Deduplicate locations
-            unique_read_locs = {}
+            unique_read_locs: dict[str, int] = {}
             for loc in reads:
                 loc_str = " -> ".join(loc)
                 unique_read_locs[loc_str] = unique_read_locs.get(loc_str, 0) + 1
 
-            unique_write_locs = {}
+            unique_write_locs: dict[str, int] = {}
             for loc in writes:
                 loc_str = " -> ".join(loc)
                 unique_write_locs[loc_str] = unique_write_locs.get(loc_str, 0) + 1
@@ -388,7 +383,7 @@ def analyze_module_localvar_fields(
         lines.append("-" * 80)
 
         if internal_whole_reads:
-            unique_reads = {}
+            unique_reads: dict[str, int] = {}
             for loc in internal_whole_reads:
                 loc_str = " -> ".join(loc)
                 unique_reads[loc_str] = unique_reads.get(loc_str, 0) + 1
@@ -399,7 +394,7 @@ def analyze_module_localvar_fields(
                 lines.append(f"    - {loc_str}{count_str}")
 
         if internal_whole_writes:
-            unique_writes = {}
+            unique_writes: dict[str, int] = {}
             for loc in internal_whole_writes:
                 loc_str = " -> ".join(loc)
                 unique_writes[loc_str] = unique_writes.get(loc_str, 0) + 1

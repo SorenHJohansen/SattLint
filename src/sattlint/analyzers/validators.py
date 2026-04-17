@@ -14,7 +14,7 @@ log = logging.getLogger("SattLint")
 class Validator(Protocol):
     """Protocol for validators."""
 
-    def validate(self, **kwargs: Any) -> list[VariableIssue]:
+    def validate(self, **_kwargs: Any) -> list[VariableIssue]:
         """Run validation and return a list of issues."""
         ...
 

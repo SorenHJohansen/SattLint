@@ -139,6 +139,19 @@ class SLTransformer(Transformer):
                 coords.append(it)
         return coords, tails
 
+    def _extract_tailed_rule_payload(self, node: Any) -> Any | None:
+        if not _is_tree(node):
+            return None
+
+        for child in reversed(getattr(node, "children", [])):
+            if isinstance(child, Token):
+                continue
+            if _is_tree(child) and getattr(child, "data", None) == const.KEY_ENABLE_EXPRESSION:
+                return child
+            if isinstance(child, (dict, tuple, str)):
+                return child
+        return None
+
     # ---------- top-level ----------
     def start(self, items) -> BasePicture:
         for it in items:
@@ -149,7 +162,7 @@ class SLTransformer(Transformer):
 
     # ---- DATATYPES ----
     @v_args(meta=True)
-    def record(self, items, meta):
+    def record(self, meta, items):
         name, description, datecode, var_list = None, None, None, []
         for it in items:
             if isinstance(it, str) and name is None:
@@ -209,7 +222,7 @@ class SLTransformer(Transformer):
         )
 
     @v_args(meta=True)
-    def module_header(self, items, meta) -> ModuleHeader:
+    def module_header(self, meta, items) -> ModuleHeader:
         name = None
         coords5: tuple[float, float, float, float, float] | None = None
         coord_tails: list[Any] = []
@@ -435,6 +448,7 @@ class SLTransformer(Transformer):
             header.groupconn = scan_group_info.get("groupconn")
             header.groupconn_global = bool(scan_group_info.get("global", False))
 
+        module: SingleModule | FrameModule
         if is_frame_module:
             module = FrameModule(
                 header=header,
@@ -495,7 +509,7 @@ class SLTransformer(Transformer):
         return module
 
     @v_args(meta=True)
-    def variable_name(self, children, meta):
+    def variable_name(self, meta, children):
         """
         Build a proper variable reference dict that preserves the full dotted path.
         E.g., "Dv.V111.c" should remain intact, not split prematurely.
@@ -509,6 +523,8 @@ class SLTransformer(Transformer):
                     parts.append(ch.value)
                 elif ch.type == const.KEY_DOT:
                     parts.append(".")
+                elif ch.type == "STATE_SUFFIX":
+                    state = ch.value[1:].strip().lower()
                 elif ch.type in (const.TOKEN_NEW, const.TOKEN_OLD):
                     state = ch.type.lower()
             elif isinstance(ch, str):
@@ -529,7 +545,7 @@ class SLTransformer(Transformer):
         }
 
     @v_args(meta=True)
-    def moduletype_definition(self, items, meta) -> ModuleTypeDef:
+    def moduletype_definition(self, meta, items) -> ModuleTypeDef:
         # NAME "=" MODULEDEFINITION sl_datecode scan_group? module_body ENDDEF_KW
         datecode: int | None = None
         moduleparameters: list[Variable] = []
@@ -597,7 +613,7 @@ class SLTransformer(Transformer):
         return mtd
 
     def moduletype_definitions(self, items) -> Tree:
-        out = []
+        out: list[Any] = []
         for it in items:
             if isinstance(it, ModuleTypeDef):
                 out.append(it)
@@ -701,7 +717,7 @@ class SLTransformer(Transformer):
 
     # ---- Variables (AND PARAMETERS) ----
     @v_args(meta=True)
-    def variable_item(self, items, meta):
+    def variable_item(self, meta, items):
         name = items[0]  # already a str from NAME()
         desc = None
         if len(items) > 1 and isinstance(items[1], str):
@@ -985,6 +1001,13 @@ class SLTransformer(Transformer):
         Returns a flat list of tail nodes to be stored on GraphObject/InteractObject.
         """
         tails: list[Any] = []
+        tailed_rules = {
+            "format_string_tailed",
+            "value_fraction_tailed",
+            "width_tailed",
+            "assign_colour_tailed",
+            "colour_style_tailed",
+        }
 
         def visit(x: Any):
             if x is None:
@@ -1012,18 +1035,10 @@ class SLTransformer(Transformer):
                     "invar_tail",
                 ):
                     tails.append(x)
-                elif data in (
-                    "format_string",
-                    "value_fraction",
-                    "width",
-                    "assign_colour",
-                    "colour_style",
-                ):
-                    for ch in getattr(x, "children", []):
-                        if isinstance(ch, (str, tuple)):
-                            tails.append(ch)
-                        elif isinstance(ch, dict) and const.KEY_VAR_NAME in ch:
-                            tails.append(ch)
+                elif data in tailed_rules:
+                    payload = self._extract_tailed_rule_payload(x)
+                    if payload is not None:
+                        tails.append(payload)
                 # Recurse into children
                 for ch in getattr(x, "children", []):
                     visit(ch)
@@ -1257,7 +1272,7 @@ class SLTransformer(Transformer):
 
     def code_blocks(self, items) -> SFCCodeBlocks:
         # entercode? activecode? exitcode? [2]
-        blocks = {"enter": [], "active": [], "exit": []}
+        blocks: dict[str, list[Any]] = {"enter": [], "active": [], "exit": []}
         for it in items:
             if isinstance(it, dict):
                 for k in ("enter", "active", "exit"):
@@ -1570,28 +1585,36 @@ class SLTransformer(Transformer):
             props[const.KEY_TAILS] = tails
         return InteractObject(type=itype or const.KEY_INTERACT, properties=props)
 
-    def interact_assign_variable(self, items):
+    def interact_assign_variable_tailed(self, items):
         name = None
         val = None
         tail = None
         for it in items:
-            if isinstance(it, Token) and it.type == const.KEY_NAME and name is None:
-                name = it.value
-            elif isinstance(it, Tree) and it.data == const.KEY_ENABLE_EXPRESSION:
-                tree = cast(Tree, it)
-                tail = tree
+            if isinstance(it, str) and name is None:
+                name = it
+            elif not isinstance(it, Token) and val is None:
+                val = it
             elif not isinstance(it, Token):
-                if val is None:
-                    val = it
-                else:
-                    tail = it
-        return {
-            const.KEY_ASSIGN: {
-                const.KEY_NAME: name,
-                const.KEY_VALUE: val,
-                const.KEY_TAIL: tail,
-            }
-        }
+                tail = it
+        return {const.KEY_NAME: name, const.KEY_VALUE: val, const.KEY_TAIL: tail}
+
+    def interact_assign_variable_plain(self, items):
+        name = None
+        val = None
+        for it in items:
+            if isinstance(it, str) and name is None:
+                name = it
+            elif not isinstance(it, Token) and val is None:
+                val = it
+        return {const.KEY_NAME: name, const.KEY_VALUE: val, const.KEY_TAIL: None}
+
+    def interact_assign_variable(self, items):
+        for it in items:
+            if isinstance(it, dict) and const.KEY_NAME in it:
+                return {const.KEY_ASSIGN: it}
+        raise ValueError(
+            f"interact_assign_variable expected an assignment payload; got: {items}"
+        )
 
     def interact_flag(self, items) -> dict:
         name = None
@@ -1912,9 +1935,15 @@ class SLTransformer(Transformer):
         span = SourceSpan(line=getattr(tok, "line", 0), column=getattr(tok, "column", 0))
         return IntLiteral(int(str(tok)), span)
 
+    def SIGNED_INT_NOTAIL(self, tok: Token) -> int:
+        return self.SIGNED_INT(tok)
+
     def REAL(self, tok: Token) -> float:
         span = SourceSpan(line=getattr(tok, "line", 0), column=getattr(tok, "column", 0))
         return FloatLiteral(float(str(tok)), span)
+
+    def REAL_NOTAIL(self, tok: Token) -> float:
+        return self.REAL(tok)
 
     def BOOL(self, tok: Token) -> bool:
         s = str(tok)
@@ -1924,22 +1953,28 @@ class SLTransformer(Transformer):
             return False
         raise ValueError(f"BOOL expected {const.GRAMMAR_VALUE_BOOL_TRUE}/{const.GRAMMAR_VALUE_BOOL_FALSE}; got: {s}")
 
+    def BOOL_NOTAIL(self, tok: Token) -> bool:
+        return self.BOOL(tok)
+
+    def STRING_NOTAIL(self, tok: Token) -> str:
+        return self.STRING(tok)
+
     # Keywords we care about as flags
     def GLOBAL_KW(self, _) -> Literal[True]:  # "GLOBAL"
         return True
 
     def CONST_KW(self, _) -> Literal["Const"]:  # const.GRAMMAR_VALUE_CONST_KW
-        return const.GRAMMAR_VALUE_CONST_KW
+        return "Const"
 
     def STATE_KW(self, _) -> Literal["State"]:  # const.GRAMMAR_VALUE_STATE_KW
-        return const.GRAMMAR_VALUE_STATE_KW
+        return "State"
 
     # We’ll ignore these (no fields in your model). Keep them if you add fields later.
     def OPSAVE_KW(self, _) -> Literal["OpSave"]:
-        return const.GRAMMAR_VALUE_OPSAVE_KW
+        return "OpSave"
 
     def SECURE_KW(self, _) -> Literal["Secure"]:
-        return const.GRAMMAR_VALUE_SECURE_KW
+        return "Secure"
 
     # DEFAULT in init
     def DEFAULT(self, _) -> object:

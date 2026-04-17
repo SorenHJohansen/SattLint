@@ -100,5 +100,5 @@ def analyze_comment_code_files(
 
 
 def analyze_comment_code(context: AnalysisContext) -> CommentCodeReport:
-    paths = getattr(context.graph, "source_files", set()) if context.graph else set()
+    paths: Iterable[Path] = getattr(context.graph, "source_files", set()) if context.graph else set()
     return analyze_comment_code_files(paths, context.base_picture.header.name)

@@ -168,4 +168,9 @@ def analyze_shadowing(
         unavailable_libraries=unavailable_libraries,
     )
     issues = analyzer.run()
-    return VariablesReport(basepicture_name=base_picture.header.name, issues=issues)
+    return VariablesReport(
+        basepicture_name=base_picture.header.name,
+        issues=issues,
+        visible_kinds=frozenset({IssueKind.SHADOWING}),
+        include_empty_sections=True,
+    )

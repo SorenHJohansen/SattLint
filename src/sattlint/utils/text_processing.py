@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 import re
 from typing import TYPE_CHECKING
+
+from sattline_parser.api import build_lark_parser
 
 if TYPE_CHECKING:
     from lark import Lark
@@ -41,31 +42,11 @@ _statement_parser: Lark | None = None
 _expression_parser: Lark | None = None
 
 
-def _get_grammar_text() -> str:
-    """Load and format the SattLine grammar with constants."""
-    from ..grammar import constants
-
-    base_dir = Path(__file__).resolve().parent.parent
-    grammar_path = base_dir / "grammar" / "sattline.lark"
-    grammar_template = grammar_path.read_text(encoding="utf-8")
-
-    # Substitute grammar constants
-    substitutions = {
-        name: getattr(constants, name)
-        for name in dir(constants)
-        if name.startswith("GRAMMAR_VALUE_") or name.startswith("GRAMMAR_REGEX_")
-    }
-    return grammar_template.format(**substitutions)
-
-
 def _get_statement_parser() -> Lark:
     """Get or create a parser for SattLine statements."""
     global _statement_parser
     if _statement_parser is None:
-        from lark import Lark
-
-        grammar = _get_grammar_text()
-        _statement_parser = Lark(grammar, start="statement", parser="lalr")
+        _statement_parser = build_lark_parser(start="statement", propagate_positions=False)
     return _statement_parser
 
 
@@ -73,10 +54,7 @@ def _get_expression_parser() -> Lark:
     """Get or create a parser for SattLine expressions."""
     global _expression_parser
     if _expression_parser is None:
-        from lark import Lark
-
-        grammar = _get_grammar_text()
-        _expression_parser = Lark(grammar, start="expression", parser="lalr")
+        _expression_parser = build_lark_parser(start="expression", propagate_positions=False)
     return _expression_parser
 
 
@@ -106,22 +84,27 @@ def _is_valid_code_via_grammar(text: str) -> bool:
         return False
 
     # Try parsing as a statement first
+    statement_is_valid = False
     try:
         parser = _get_statement_parser()
         parser.parse(text)
-        return True
+        statement_is_valid = True
     except Exception:
-        pass
+        statement_is_valid = False
+
+    if statement_is_valid:
+        return True
 
     # Try parsing as an expression
+    expression_is_valid = False
     try:
         parser = _get_expression_parser()
         parser.parse(text)
-        return True
+        expression_is_valid = True
     except Exception:
-        pass
+        expression_is_valid = False
 
-    return False
+    return expression_is_valid
 
 
 def _has_code_syntax_hints(comment_text: str) -> bool:
@@ -159,7 +142,7 @@ def _extract_code_candidates(comment_text: str) -> list[str]:
     Tries to find individual statements or expressions that might be code.
     Handles control structures (IF/THEN/ENDIF) that span multiple lines.
     """
-    candidates = []
+    candidates: list[str] = []
     text = comment_text.strip()
 
     if not text:

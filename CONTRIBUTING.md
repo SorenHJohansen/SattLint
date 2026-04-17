@@ -3,7 +3,7 @@
 This guide covers setting up a development environment for contributing to SattLint.
 
 ## Prerequisites
-- Python 3.11 or newer
+- Python 3.13 or newer
 - Git
 - A SattLine codebase for testing
 
@@ -20,7 +20,7 @@ curl https://mise.run | sh
 mise install python@3.13
 
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/SorenHJohansen/SattLint.git
 cd SattLint
 
 # Create virtual environment
@@ -58,7 +58,7 @@ require'lspconfig'.pyright.setup{
 ```powershell
 # Install Python from python.org or Windows Store
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/SorenHJohansen/SattLint.git
 cd SattLint
 
 # Create virtual environment
@@ -84,7 +84,7 @@ Then copy or symlink `vscode\sattline-vscode` into your VS Code user extensions 
 If you need a packaged extension artifact, run the extension-local packaging script from WSL:
 
 ```bash
-cd /mnt/c/Users/SQHJ/OneDrive\ -\ Novo\ Nordisk/Workspace/GitHub.com/SattLint/vscode/sattline-vscode
+cd vscode/sattline-vscode
 npm run package:vsix
 ```
 
@@ -113,6 +113,9 @@ mypy src/
 
 # Run tests
 pytest tests/ -v
+
+# Run the repository audit
+sattlint-repo-audit --output-dir artifacts/audit
 ```
 
 ### Running Tests
@@ -158,7 +161,7 @@ pre-commit install
 ## Platform-Specific Notes
 
 ### Windows-Specific Tool
-Note: `src/sattlint/docgenerator/configgen.py` contains Windows-specific paths and is intended for Windows environments. This tool generates Excel configuration files and is not required for core SattLint functionality.
+Note: `src/sattlint/docgenerator/configgen.py` generates Excel configuration workbooks and now requires an explicit root directory argument instead of relying on a workstation-specific default path. It is not required for core SattLint functionality.
 
 ### Cross-Platform Compatibility
 - Use `pathlib.Path` for file operations
