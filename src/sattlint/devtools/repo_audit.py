@@ -313,6 +313,11 @@ def _line_findings(
             value = match.group(0)
             if "%USERPROFILE%" in value or "C:\\Users\\MyUser" in value:
                 continue
+            if (
+                rel_path == "README.md"
+                and ("C:\\Tools\\SattLint" in value or "C:\\Path\\To\\Program.s" in value)
+            ):
+                continue
             findings.append(
                 Finding(
                     id="hardcoded-windows-path",

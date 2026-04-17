@@ -1,2 +1,4 @@
-src/config.toml merge=ours
+* text=auto
+*.py text eol=lf
+pyproject.toml merge=ours
 src/config.toml merge=ours

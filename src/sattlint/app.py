@@ -251,37 +251,19 @@ log = logging.getLogger("SattLint")
 # Helpers
 # ----------------------------
 def clear_screen():
-    if not sys.stdout.isatty():
-        return
-
+    import sys
+    sys.stdout.flush()
     if os.name == "nt":
         try:
-            if os.system("cls") == 0:  # nosec B605 - fixed local console clear command
-                return
+            os.system("cls")  # nosec B605 - fixed local console clear command
         except OSError:
             pass
-        clear_command = None
     else:
-        clear_executable = shutil.which("clear")
-        clear_command = [clear_executable] if clear_executable else None
-
-    if clear_command is not None:
         try:
-            completed = subprocess.run(  # nosec B603 - clear_screen only executes fixed local commands
-                clear_command,
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            if completed.returncode == 0:
-                return
+            import subprocess
+            subprocess.run(["clear"], check=False)
         except OSError:
             pass
-
-    try:
-        print("\033[2J\033[H", end="", flush=True)
-    except OSError:
-        pass
 
 
 def pause():
@@ -1637,7 +1619,8 @@ q) Quit
                 cfg["debug"] = not cfg["debug"]
                 dirty = True
         else:
-            print("Invalid choice.")
+            print("Invalid choice.", flush=True)
+            pause()
 
 
 # ----------------------------
@@ -1722,7 +1705,7 @@ q) Quit
                 quit_app()
 
             else:
-                print("Invalid choice.")
+                print("Invalid choice.", flush=True)
     except QuitApp:
         return 0
 
