@@ -9,15 +9,11 @@ This guide covers setting up a development environment for contributing to SattL
 
 ## Development Setup
 
-### Option 1: Linux with Neovim
+### Option 1: Linux or macOS
 
 #### 1. Install Dependencies
 ```bash
-# Install mise for Python version management
-curl https://mise.run | sh
-
-# Install Python 3.13
-mise install python@3.13
+# Install Python 3.13 (via your preferred method: pyenv, mise, uv, or system package)
 
 # Clone repository
 git clone https://github.com/SorenHJohansen/SattLint.git
@@ -31,26 +27,14 @@ source .venv/bin/activate
 pip install -e .[dev]
 ```
 
-#### 2. Neovim Configuration
-Ensure you have these LSP servers configured:
-- `pyright` for Python language server
-- `ruff` for linting and formatting
-- `null-ls` can integrate ruff/black/mypy
+#### 2. Editor Setup
+Configure your editor with:
+- Python language server (pyright or pylance)
+- Ruff for linting and formatting
+- Black for formatting
+- MyPy for type checking
 
-Example nvim-lspconfig:
-```lua
-require'lspconfig'.pyright.setup{
-    settings = {
-        python = {
-            analysis = {
-                autoSearchPaths = true,
-                diagnosticMode = "openFilesOnly",
-                useLibraryCodeForTypes = true
-            }
-        }
-    }
-}
-```
+Consult your editor's documentation for the appropriate LSP and formatter plugins.
 
 ### Option 2: Windows with Visual Studio Code
 
@@ -132,11 +116,11 @@ pytest tests/test_analyzer.py
 
 ### Pre-commit Hooks (Optional)
 ```bash
-# Install pre-commit hooks
+# Install pre-commit framework
 pip install pre-commit
 pre-commit install
 
-# This will run black, ruff, mypy before each commit
+# This will run formatting, linting, and type checks before each commit
 ```
 
 ## Project Structure

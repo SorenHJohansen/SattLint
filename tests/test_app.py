@@ -213,7 +213,9 @@ def test_clear_screen_uses_os_system_cls_on_windows(monkeypatch):
 
     monkeypatch.setattr(app.os, "name", "nt")
     monkeypatch.setattr(app.os, "system", lambda command: calls.append(command) or 0)
-    monkeypatch.setattr(app.sys, "stdout", SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setattr(
+        app.sys, "stdout", SimpleNamespace(isatty=lambda: True, flush=lambda: None)
+    )
 
     app.clear_screen()
 
