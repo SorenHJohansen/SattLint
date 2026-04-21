@@ -1,0 +1,29 @@
+{
+  "case_id": "strict-invalid",
+  "target_file": "../invalid/NotSattLine.s",
+  "mode": "strict",
+  "expectation": {
+    "expected_finding_ids": [
+      "syntax.parse"
+    ],
+    "artifact_fragments": {
+      "status.json": {
+        "execution_status": "ok",
+        "stage": "parse",
+        "validation_ok": false
+      },
+      "summary.json": {
+        "stage": "parse",
+        "validation_ok": false
+      }
+    },
+    "forbidden_finding_ids": [
+      "corpus.execution-error"
+    ]
+  },
+  "required_artifacts": [
+    "findings.json",
+    "status.json",
+    "summary.json"
+  ]
+}

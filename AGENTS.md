@@ -32,6 +32,9 @@
 
 - Inspect repo structure, current implementation, tests, and existing tooling before changing behavior.
 - Reuse existing patterns, validators, analyzers, pipeline hooks, and tests before introducing new abstractions or new dependencies.
+- Prefer repo-local commands over IDE abstractions. In this repo, the VS Code Testing UI or generic test runner is unreliable and can use the wrong interpreter or report zero collected tests.
+- Match the first validation step to the surface you changed: use `sattlint syntax-check` for parser or strict-validation work, targeted `pytest` files for Python or CLI behavior, and quick pipeline or audit profiles for devtools and artifact work.
+- Start narrow, then widen. Prefer the smallest real fixture, target file, or focused test module that exercises the change before running broader suites.
 - When creating a new unit, prefer a real copy-based scaffold from `NNEStart`: copy into a new `*Lib` file, keep as many copied modules as practical, add a named unit wrapper module, and have the program file invoke that wrapper.
 - Propose a concise plan before broad or multi-file changes.
 - Ask for clarification when intended behavior, user-facing semantics, or safety requirements are unclear.
@@ -79,6 +82,9 @@
 - Do not add new silent fallback behavior outside those established workspace or editor flows.
 - Preserve the distinction between single-file strict validation and dependency-aware workspace loading.
 - Prefer focused validation first, then broader repo checks when warranted.
+- For parser, grammar, transformer, or strict-validation changes, validate with `& ".venv/Scripts/sattlint.exe" syntax-check <target>` before reaching for pytest.
+- For Python tests, run pytest through the repo venv with `& ".venv/Scripts/python.exe" -m pytest ...`; do not start with the VS Code test runner in this repo.
+- For CLI entry-point validation, prefer the installed repo-venv command path such as `& ".venv/Scripts/sattlint.exe" ...` so behavior matches the console script users run.
 - For analyzer or repo-audit work, prefer the existing JSON pipeline in `src/sattlint/devtools/pipeline.py` and its outputs under `artifacts/analysis/`.
 - Use `src/sattlint/devtools/repo_audit.py` and `artifacts/audit/` for repository-portability, PII, wiring, architecture, and public-readiness scans.
 - Canonical repo audit command: `sattlint-repo-audit --profile full --output-dir artifacts/audit`.
@@ -179,7 +185,8 @@
 - The installed `sattlint` console script must call `app.cli()` so `sys.argv[1:]` reaches `app.main(argv)`.
 - Calling `app.main()` with no argv still opens the interactive menu.
 - If you change CLI menu layout or numbering, keep `tests/test_app.py` in sync.
-- If an IDE runner reports zero tests collected, run pytest through the repo venv instead.
+- Do not rely on the IDE test runner as the first validation path here; use repo-venv pytest commands directly, and treat IDE zero-test collection as expected noise rather than a project signal.
+- Prefer targeted test modules first, for example `tests/test_app.py` for CLI and menu work, `tests/test_parser.py` for parser or validation work, and `tests/test_pipeline.py` or `tests/test_repo_audit.py` for devtools artifact changes.
 - Use the real fixtures under `tests/fixtures/sample_sattline_files/` when uncertain about syntax or semantics.
 
 ### Workspace, Editor, And LSP
@@ -202,4 +209,4 @@
 
 ---
 
-*Last updated: 2026-04-17*
+*Last updated: 2026-04-21*

@@ -7,7 +7,7 @@ from typing import Any, Iterable, cast
 import json
 import os
 
-CACHE_VERSION = 3  # Bump when the cache payload format changes.
+CACHE_VERSION = 4  # Bump when the cache payload format changes.
 LOOKUP_CACHE_VERSION = 1
 
 

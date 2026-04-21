@@ -11,7 +11,7 @@ from typing import Any
 
 from lsprotocol.types import Diagnostic
 
-from sattlint.core.semantic import (
+from sattlint.editor_api import (
     SemanticSnapshot,
     WorkspaceSourceDiscovery,
     discover_workspace_sources,

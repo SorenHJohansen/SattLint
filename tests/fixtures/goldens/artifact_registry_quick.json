@@ -1,0 +1,168 @@
+{
+    "artifacts": [
+        {
+            "artifact_id": "status",
+            "blocking": true,
+            "depends_on": [],
+            "enabled": true,
+            "filename": "status.json",
+            "optional": false,
+            "producer": "status",
+            "profiles": [
+                "quick",
+                "full"
+            ],
+            "schema_kind": "sattlint.pipeline.status",
+            "schema_version": 1,
+            "used_by": []
+        },
+        {
+            "artifact_id": "summary",
+            "blocking": true,
+            "depends_on": [],
+            "enabled": true,
+            "filename": "summary.json",
+            "optional": false,
+            "producer": "summary",
+            "profiles": [
+                "quick",
+                "full"
+            ],
+            "schema_kind": "sattlint.pipeline.summary",
+            "schema_version": 1,
+            "used_by": []
+        },
+        {
+            "artifact_id": "findings",
+            "blocking": true,
+            "depends_on": [],
+            "enabled": true,
+            "filename": "findings.json",
+            "optional": false,
+            "producer": "findings",
+            "profiles": [
+                "quick",
+                "full"
+            ],
+            "schema_kind": "sattlint.findings",
+            "schema_version": 1,
+            "used_by": []
+        },
+        {
+            "artifact_id": "analysis_diff",
+            "blocking": false,
+            "depends_on": [
+                "findings"
+            ],
+            "enabled": true,
+            "filename": "analysis_diff.json",
+            "optional": true,
+            "producer": "analysis_diff",
+            "profiles": [
+                "quick",
+                "full"
+            ],
+            "schema_kind": "sattlint.analysis_diff",
+            "schema_version": 1,
+            "used_by": []
+        },
+        {
+            "artifact_id": "corpus_results",
+            "blocking": true,
+            "depends_on": [],
+            "enabled": true,
+            "filename": "corpus_results.json",
+            "optional": true,
+            "producer": "corpus_results",
+            "profiles": [
+                "quick",
+                "full"
+            ],
+            "schema_kind": "sattlint.corpus_results",
+            "schema_version": 1,
+            "used_by": []
+        },
+        {
+            "artifact_id": "artifact_registry",
+            "blocking": false,
+            "depends_on": [],
+            "enabled": true,
+            "filename": "artifact_registry.json",
+            "optional": false,
+            "producer": "artifact_registry",
+            "profiles": [
+                "quick",
+                "full"
+            ],
+            "schema_kind": "sattlint.artifact_registry",
+            "schema_version": 1,
+            "used_by": []
+        },
+        {
+            "artifact_id": "environment",
+            "blocking": false,
+            "depends_on": [],
+            "enabled": false,
+            "filename": "environment.json",
+            "optional": false,
+            "producer": "environment",
+            "profiles": [
+                "quick",
+                "full"
+            ],
+            "schema_kind": "sattlint.environment",
+            "schema_version": 1,
+            "used_by": []
+        },
+        {
+            "artifact_id": "ruff",
+            "blocking": true,
+            "depends_on": [],
+            "enabled": false,
+            "filename": "ruff.json",
+            "optional": false,
+            "producer": "ruff",
+            "profiles": [
+                "quick",
+                "full"
+            ],
+            "schema_kind": "sattlint.tool_report",
+            "schema_version": 1,
+            "used_by": []
+        },
+        {
+            "artifact_id": "mypy",
+            "blocking": true,
+            "depends_on": [],
+            "enabled": false,
+            "filename": "mypy.json",
+            "optional": false,
+            "producer": "mypy",
+            "profiles": [
+                "quick",
+                "full"
+            ],
+            "schema_kind": "sattlint.tool_report",
+            "schema_version": 1,
+            "used_by": []
+        },
+        {
+            "artifact_id": "pytest",
+            "blocking": true,
+            "depends_on": [],
+            "enabled": false,
+            "filename": "pytest.json",
+            "optional": false,
+            "producer": "pytest",
+            "profiles": [
+                "quick",
+                "full"
+            ],
+            "schema_kind": "sattlint.tool_report",
+            "schema_version": 1,
+            "used_by": []
+        }
+    ],
+    "generated_by": "sattlint.devtools.pipeline",
+    "profile": "quick"
+}

@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+import json
+from pathlib import Path
 
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.initial_values import analyze_initial_values
@@ -40,19 +43,57 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "shadowing",
     "spec-compliance",
 )
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
+
+
+@dataclass(frozen=True)
+class AnalyzerDeliveryMetadata:
+    scope: str
+    implementation_bucket: str
+    output_artifacts: tuple[str, ...] = ()
+    cli_exposed: bool = False
+    lsp_exposed: bool = False
+    acceptance_tests: tuple[str, ...] = ()
+    depends_on_analyzers: tuple[str, ...] = ()
+    depends_on_artifacts: tuple[str, ...] = ()
+    supports_baselines: bool = True
+    supports_incremental: bool = False
+    min_fixture_set: tuple[str, ...] = ()
+    exposed_via: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "scope": self.scope,
+            "implementation_bucket": self.implementation_bucket,
+            "output_artifacts": list(self.output_artifacts),
+            "cli_exposed": self.cli_exposed,
+            "lsp_exposed": self.lsp_exposed,
+            "acceptance_tests": list(self.acceptance_tests),
+            "depends_on_analyzers": list(self.depends_on_analyzers),
+            "depends_on_artifacts": list(self.depends_on_artifacts),
+            "supports_baselines": self.supports_baselines,
+            "supports_incremental": self.supports_incremental,
+            "min_fixture_set": list(self.min_fixture_set),
+            "exposed_via": list(self.exposed_via),
+        }
 
 
 @dataclass(frozen=True)
 class AnalyzerMetadata:
     spec: AnalyzerSpec
     rule_ids: tuple[str, ...] = ()
+    delivery: AnalyzerDeliveryMetadata = AnalyzerDeliveryMetadata(
+        scope="workspace",
+        implementation_bucket="analyzers",
+    )
 
     @property
     def summary_output(self) -> str:
         return f"{self.spec.key}.summary"
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        data = {
             "key": self.spec.key,
             "name": self.spec.name,
             "description": self.spec.description,
@@ -61,6 +102,8 @@ class AnalyzerMetadata:
             "summary_output": self.summary_output,
             "rule_ids": list(self.rule_ids),
         }
+        data.update(self.delivery.to_dict())
+        return data
 
 
 @dataclass(frozen=True)
@@ -73,6 +116,11 @@ class RuleMetadata:
     description: str
     analyzers: tuple[str, ...]
     outputs: tuple[str, ...]
+    acceptance_tests: tuple[str, ...] | None = None
+    corpus_cases: tuple[str, ...] = ()
+    mutation_applicability: str | None = None
+    suppression_modes: tuple[str, ...] | None = None
+    incremental_safe: bool | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -84,6 +132,11 @@ class RuleMetadata:
             "description": self.description,
             "analyzers": list(self.analyzers),
             "outputs": list(self.outputs),
+            "acceptance_tests": list(self.acceptance_tests or ()),
+            "corpus_cases": list(self.corpus_cases),
+            "mutation_applicability": self.mutation_applicability or "unspecified",
+            "suppression_modes": list(self.suppression_modes or ()),
+            "incremental_safe": self.incremental_safe,
         }
 
 
@@ -117,6 +170,212 @@ def _summary_output_for_analyzer(analyzer_key: str) -> str:
     return f"{analyzer_key}.summary"
 
 
+def _base_delivery_metadata_by_analyzer() -> dict[str, AnalyzerDeliveryMetadata]:
+    shared_fixtures = ("tests/fixtures/sample_sattline_files",)
+    return {
+        SEMANTIC_LAYER_ANALYZER_KEY: AnalyzerDeliveryMetadata(
+            scope="workspace",
+            implementation_bucket="shared-semantic-core",
+            lsp_exposed=True,
+            acceptance_tests=(
+                "tests/test_sattline_semantics.py",
+                "tests/test_pipeline.py",
+            ),
+            min_fixture_set=shared_fixtures,
+        ),
+        "variables": AnalyzerDeliveryMetadata(
+            scope="workspace",
+            implementation_bucket="variables-reporting",
+            cli_exposed=True,
+            lsp_exposed=True,
+            acceptance_tests=(
+                "tests/test_analyzers.py",
+                "tests/test_sattline_semantics.py",
+                "tests/test_app.py",
+            ),
+            supports_incremental=True,
+            min_fixture_set=shared_fixtures,
+            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY,),
+        ),
+        "mms-interface": AnalyzerDeliveryMetadata(
+            scope="workspace",
+            implementation_bucket="interface-mapping",
+            cli_exposed=True,
+            acceptance_tests=(
+                "tests/test_analyzers.py",
+                "tests/test_app.py",
+            ),
+            min_fixture_set=shared_fixtures,
+        ),
+        "sfc": AnalyzerDeliveryMetadata(
+            scope="single-file",
+            implementation_bucket="shared-semantic-core",
+            cli_exposed=True,
+            lsp_exposed=True,
+            acceptance_tests=(
+                "tests/test_sfc.py",
+                "tests/test_analyzers.py",
+                "tests/test_sattline_semantics.py",
+            ),
+            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY,),
+            min_fixture_set=shared_fixtures,
+            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY,),
+        ),
+        "comment-code": AnalyzerDeliveryMetadata(
+            scope="single-file",
+            implementation_bucket="comment-scan",
+            cli_exposed=True,
+            acceptance_tests=(
+                "tests/test_comment_code.py",
+                "tests/test_app.py",
+            ),
+        ),
+        "shadowing": AnalyzerDeliveryMetadata(
+            scope="workspace",
+            implementation_bucket="variables-reporting",
+            cli_exposed=True,
+            acceptance_tests=(
+                "tests/test_analyzers.py",
+                "tests/test_app.py",
+                "tests/test_pipeline.py",
+            ),
+            min_fixture_set=shared_fixtures,
+        ),
+        "spec-compliance": AnalyzerDeliveryMetadata(
+            scope="workspace",
+            implementation_bucket="engineering-rules",
+            cli_exposed=True,
+            lsp_exposed=True,
+            acceptance_tests=(
+                "tests/test_spec_compliance.py",
+                "tests/test_app.py",
+            ),
+            min_fixture_set=shared_fixtures,
+        ),
+        "alarm-integrity": AnalyzerDeliveryMetadata(
+            scope="cross-module",
+            implementation_bucket="shared-semantic-core",
+            lsp_exposed=True,
+            acceptance_tests=(
+                "tests/test_analyzers.py",
+                "tests/test_sattline_semantics.py",
+            ),
+            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY,),
+            min_fixture_set=shared_fixtures,
+            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY,),
+        ),
+        "initial-values": AnalyzerDeliveryMetadata(
+            scope="workspace",
+            implementation_bucket="engineering-rules",
+            lsp_exposed=True,
+            acceptance_tests=("tests/test_analyzers.py",),
+            min_fixture_set=shared_fixtures,
+        ),
+        "naming-consistency": AnalyzerDeliveryMetadata(
+            scope="workspace",
+            implementation_bucket="engineering-rules",
+            acceptance_tests=("tests/test_analyzers.py",),
+            min_fixture_set=shared_fixtures,
+        ),
+        "version-drift": AnalyzerDeliveryMetadata(
+            scope="workspace",
+            implementation_bucket="engineering-rules",
+            acceptance_tests=(
+                "tests/test_analyzers.py",
+                "tests/test_docgen.py",
+            ),
+            min_fixture_set=shared_fixtures,
+            exposed_via=("docgen",),
+        ),
+        "safety-paths": AnalyzerDeliveryMetadata(
+            scope="cross-module",
+            implementation_bucket="shared-semantic-core",
+            lsp_exposed=True,
+            acceptance_tests=(
+                "tests/test_analyzers.py",
+                "tests/test_sattline_semantics.py",
+                "tests/test_editor_api.py",
+            ),
+            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY,),
+            min_fixture_set=shared_fixtures,
+            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY, "editor-api"),
+        ),
+        "taint-paths": AnalyzerDeliveryMetadata(
+            scope="cross-module",
+            implementation_bucket="graph-tracing",
+            lsp_exposed=True,
+            acceptance_tests=(
+                "tests/test_analyzers.py",
+                "tests/test_editor_api.py",
+            ),
+            min_fixture_set=shared_fixtures,
+            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY, "editor-api"),
+        ),
+        "unsafe-defaults": AnalyzerDeliveryMetadata(
+            scope="single-file",
+            implementation_bucket="shared-semantic-core",
+            lsp_exposed=True,
+            acceptance_tests=(
+                "tests/test_pipeline.py",
+                "tests/test_sattline_semantics.py",
+            ),
+            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY,),
+            min_fixture_set=shared_fixtures,
+            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY,),
+        ),
+        "dataflow": AnalyzerDeliveryMetadata(
+            scope="workspace",
+            implementation_bucket="shared-semantic-core",
+            lsp_exposed=True,
+            acceptance_tests=(
+                "tests/test_dataflow.py",
+                "tests/test_analyzers.py",
+                "tests/test_sattline_semantics.py",
+            ),
+            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY,),
+            min_fixture_set=shared_fixtures,
+            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY,),
+        ),
+    }
+
+
+def _build_delivery_metadata(
+    spec: AnalyzerSpec,
+    rule_ids: tuple[str, ...],
+) -> AnalyzerDeliveryMetadata:
+    base = _base_delivery_metadata_by_analyzer().get(spec.key)
+    if base is None:
+        return AnalyzerDeliveryMetadata(
+            scope="workspace",
+            implementation_bucket="analyzers",
+            output_artifacts=(_summary_output_for_analyzer(spec.key),),
+        )
+
+    output_artifacts = [_summary_output_for_analyzer(spec.key)]
+    semantic_summary = _summary_output_for_analyzer(SEMANTIC_LAYER_ANALYZER_KEY)
+    if (
+        spec.key != SEMANTIC_LAYER_ANALYZER_KEY
+        and rule_ids
+        and semantic_summary not in output_artifacts
+    ):
+        output_artifacts.append(semantic_summary)
+
+    return AnalyzerDeliveryMetadata(
+        scope=base.scope,
+        implementation_bucket=base.implementation_bucket,
+        output_artifacts=tuple(output_artifacts),
+        cli_exposed=base.cli_exposed,
+        lsp_exposed=base.lsp_exposed,
+        acceptance_tests=base.acceptance_tests,
+        depends_on_analyzers=base.depends_on_analyzers,
+        depends_on_artifacts=base.depends_on_artifacts,
+        supports_baselines=base.supports_baselines,
+        supports_incremental=base.supports_incremental,
+        min_fixture_set=base.min_fixture_set,
+        exposed_via=base.exposed_via,
+    )
+
+
 def _iter_semantic_rules(
     semantic_rule_groups: tuple[SemanticRuleGroup, ...],
 ) -> tuple[SemanticRule, ...]:
@@ -127,6 +386,70 @@ def _iter_semantic_rules(
     )
 
 
+@lru_cache(maxsize=1)
+def _rule_corpus_cases_by_rule_id() -> dict[str, tuple[str, ...]]:
+    if not DEFAULT_CORPUS_MANIFEST_DIR.exists():
+        return {}
+
+    linked_cases: dict[str, set[str]] = {}
+    for manifest_path in sorted(DEFAULT_CORPUS_MANIFEST_DIR.rglob("*.json")):
+        if not manifest_path.is_file():
+            continue
+
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        case_id = str(payload.get("case_id") or manifest_path.stem)
+        expectation = payload.get("expectation") or {}
+        for rule_id in expectation.get("expected_finding_ids", []):
+            linked_cases.setdefault(str(rule_id), set()).add(case_id)
+
+    return {
+        rule_id: tuple(sorted(case_ids))
+        for rule_id, case_ids in linked_cases.items()
+    }
+
+
+def _build_rule_metadata(
+    rule: SemanticRule,
+    *,
+    mapped_analyzers: tuple[str, ...],
+    analyzer_metadata_by_key: dict[str, AnalyzerMetadata],
+) -> RuleMetadata:
+    corpus_cases = tuple(
+        sorted(
+            set(rule.corpus_cases)
+            | set(_rule_corpus_cases_by_rule_id().get(rule.id, ()))
+        )
+    )
+    return RuleMetadata(
+        id=rule.id,
+        source=rule.source,
+        category=rule.category,
+        severity=rule.severity,
+        applies_to=rule.applies_to,
+        description=rule.description,
+        analyzers=mapped_analyzers,
+        outputs=tuple(
+            analyzer_metadata_by_key[analyzer_key].summary_output
+            if analyzer_key in analyzer_metadata_by_key
+            else _summary_output_for_analyzer(analyzer_key)
+            for analyzer_key in mapped_analyzers
+        ),
+        acceptance_tests=(
+            None
+            if rule.acceptance_tests is None
+            else tuple(sorted(rule.acceptance_tests))
+        ),
+        corpus_cases=corpus_cases,
+        mutation_applicability=rule.mutation_applicability,
+        suppression_modes=(
+            None
+            if rule.suppression_modes is None
+            else tuple(sorted(rule.suppression_modes))
+        ),
+        incremental_safe=rule.incremental_safe,
+    )
+
+
 def get_default_analyzer_catalog() -> AnalyzerCatalog:
     analyzer_specs = tuple(get_default_analyzers())
     semantic_rule_groups = get_sattline_semantic_rule_groups()
@@ -134,41 +457,41 @@ def get_default_analyzer_catalog() -> AnalyzerCatalog:
     rule_ids_by_analyzer: dict[str, list[str]] = {spec.key: [] for spec in analyzer_specs}
     rule_ids_by_analyzer.setdefault(SEMANTIC_LAYER_ANALYZER_KEY, [])
 
-    rules: list[RuleMetadata] = []
+    mapped_rules: list[tuple[SemanticRule, tuple[str, ...]]] = []
     for rule in sorted(_iter_semantic_rules(semantic_rule_groups), key=lambda item: item.id):
         mapped_analyzers = [SEMANTIC_LAYER_ANALYZER_KEY]
         if rule.source in registered_keys and rule.source not in mapped_analyzers:
             mapped_analyzers.append(rule.source)
 
-        mapped_outputs = tuple(_summary_output_for_analyzer(key) for key in mapped_analyzers)
         for analyzer_key in mapped_analyzers:
             rule_ids_by_analyzer.setdefault(analyzer_key, []).append(rule.id)
-
-        rules.append(
-            RuleMetadata(
-                id=rule.id,
-                source=rule.source,
-                category=rule.category,
-                severity=rule.severity,
-                applies_to=rule.applies_to,
-                description=rule.description,
-                analyzers=tuple(mapped_analyzers),
-                outputs=mapped_outputs,
-            )
-        )
+        mapped_rules.append((rule, tuple(mapped_analyzers)))
 
     analyzers = tuple(
         AnalyzerMetadata(
             spec=spec,
             rule_ids=tuple(sorted(rule_ids_by_analyzer.get(spec.key, []))),
+            delivery=_build_delivery_metadata(
+                spec,
+                tuple(sorted(rule_ids_by_analyzer.get(spec.key, []))),
+            ),
         )
         for spec in analyzer_specs
+    )
+    analyzer_metadata_by_key = {analyzer.spec.key: analyzer for analyzer in analyzers}
+    rules = tuple(
+        _build_rule_metadata(
+            rule,
+            mapped_analyzers=mapped_analyzers,
+            analyzer_metadata_by_key=analyzer_metadata_by_key,
+        )
+        for rule, mapped_analyzers in mapped_rules
     )
 
     return AnalyzerCatalog(
         analyzers=analyzers,
         semantic_rule_groups=semantic_rule_groups,
-        rules=tuple(rules),
+        rules=rules,
     )
 
 

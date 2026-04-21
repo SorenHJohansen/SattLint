@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from collections.abc import Mapping
 from typing import Any
 
@@ -30,6 +30,19 @@ class SemanticRule:
     severity: str
     applies_to: str
     description: str
+    acceptance_tests: tuple[str, ...] | None = None
+    corpus_cases: tuple[str, ...] = ()
+    mutation_applicability: str | None = None
+    suppression_modes: tuple[str, ...] | None = None
+    incremental_safe: bool | None = None
+
+
+@dataclass(frozen=True)
+class SemanticRuleContract:
+    acceptance_tests: tuple[str, ...]
+    mutation_applicability: str
+    suppression_modes: tuple[str, ...]
+    incremental_safe: bool
 
 
 @dataclass(frozen=True)
@@ -62,6 +75,173 @@ CATEGORY_LABELS = {
     "control-flow": "Control flow",
     "engineering-spec": "Engineering spec",
 }
+
+
+def _merge_acceptance_tests(*groups: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(sorted({path for group in groups for path in group}))
+
+
+def _rule_contract_entries(
+    contract: SemanticRuleContract,
+    *rule_ids: str,
+) -> dict[str, SemanticRuleContract]:
+    return {rule_id: contract for rule_id in rule_ids}
+
+
+def _attach_rule_contract(
+    rule: SemanticRule,
+    contract: SemanticRuleContract | None,
+) -> SemanticRule:
+    if contract is None:
+        return rule
+    return replace(
+        rule,
+        acceptance_tests=contract.acceptance_tests,
+        mutation_applicability=contract.mutation_applicability,
+        suppression_modes=contract.suppression_modes,
+        incremental_safe=contract.incremental_safe,
+    )
+
+
+_SEMANTIC_LAYER_ACCEPTANCE_TESTS = (
+    "tests/test_pipeline.py",
+    "tests/test_sattline_semantics.py",
+)
+_VARIABLE_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/test_analyzers.py",
+    "tests/test_app.py",
+    "tests/test_sattline_semantics.py",
+)
+_SFC_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/test_analyzers.py",
+    "tests/test_sattline_semantics.py",
+    "tests/test_sfc.py",
+)
+_ALARM_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/test_analyzers.py",
+    "tests/test_sattline_semantics.py",
+)
+_INITIAL_VALUES_SOURCE_ACCEPTANCE_TESTS = ("tests/test_analyzers.py",)
+_SAFETY_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/test_analyzers.py",
+    "tests/test_editor_api.py",
+    "tests/test_sattline_semantics.py",
+)
+_TAINT_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/test_analyzers.py",
+    "tests/test_editor_api.py",
+)
+_DATAFLOW_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/test_analyzers.py",
+    "tests/test_dataflow.py",
+    "tests/test_sattline_semantics.py",
+)
+_UNSAFE_DEFAULTS_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/test_pipeline.py",
+    "tests/test_sattline_semantics.py",
+)
+_SPEC_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/test_app.py",
+    "tests/test_spec_compliance.py",
+    "tests/test_sattline_semantics.py",
+)
+
+_VARIABLE_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _VARIABLE_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=True,
+)
+_SHADOWING_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        ("tests/test_analyzers.py", "tests/test_app.py"),
+    ),
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_SFC_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _SFC_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_ALARM_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _ALARM_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_INITIAL_VALUES_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _INITIAL_VALUES_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_SAFETY_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _SAFETY_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_TAINT_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _TAINT_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_TRACE_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+    mutation_applicability="not_applicable",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_DATAFLOW_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _DATAFLOW_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_UNSAFE_DEFAULTS_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _UNSAFE_DEFAULTS_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_SPEC_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _SPEC_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    mutation_applicability="optional",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
 
 _VARIABLE_RULES: dict[IssueKind, SemanticRule] = {
     IssueKind.UNUSED: SemanticRule(
@@ -493,16 +673,136 @@ _SPEC_RULE_DESCRIPTIONS = {
     "spec.mes_batch_control_repeat_try": "MES_BatchControl Repeat_TRY must resolve to the required value.",
 }
 
+_RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
+    **_rule_contract_entries(
+        _VARIABLE_RULE_CONTRACT,
+        "semantic.unused-variable",
+        "semantic.unused-datatype-field",
+        "semantic.read-only-non-const",
+        "semantic.ui-only-variable",
+        "semantic.procedure-status-handling",
+        "semantic.never-read-write",
+        "semantic.write-without-effect",
+        "semantic.global-scope-minimization",
+        "semantic.hidden-global-coupling",
+        "semantic.high-fan-in-out-variable",
+        "semantic.unknown-parameter-target",
+        "semantic.cross-module-contract-mismatch",
+        "semantic.string-mapping-mismatch",
+        "semantic.duplicated-datatype-layout",
+        "semantic.name-collision",
+        "semantic.min-max-mapping-mismatch",
+        "semantic.reset-contamination",
+        "semantic.implicit-latch",
+    ),
+    **_rule_contract_entries(_SHADOWING_RULE_CONTRACT, "semantic.shadowing"),
+    **_rule_contract_entries(
+        _SFC_RULE_CONTRACT,
+        "semantic.parallel-write-race",
+        "semantic.unreachable-sequence-node",
+        "semantic.unreachable-transition",
+        "semantic.transition-always-true",
+        "semantic.transition-always-false",
+        "semantic.duplicate-transition-guard",
+        "semantic.illegal-state-combination",
+        "semantic.missing-step-enter-contract",
+        "semantic.missing-step-exit-contract",
+        "semantic.step-state-leakage",
+    ),
+    **_rule_contract_entries(
+        _ALARM_RULE_CONTRACT,
+        "semantic.duplicate-alarm-tag",
+        "semantic.duplicate-alarm-condition",
+        "semantic.conflicting-alarm-priority",
+        "semantic.never-cleared-alarm",
+    ),
+    **_rule_contract_entries(
+        _INITIAL_VALUES_RULE_CONTRACT,
+        "semantic.missing-parameter-initial-value",
+    ),
+    **_rule_contract_entries(
+        _SAFETY_RULE_CONTRACT,
+        "semantic.unconsumed-safety-signal",
+    ),
+    **_rule_contract_entries(
+        _TAINT_RULE_CONTRACT,
+        "semantic.external-input-to-critical-sink",
+    ),
+    **_rule_contract_entries(
+        _TRACE_RULE_CONTRACT,
+        "semantic.duplicate-sibling-name",
+        "semantic.unexpected-submodule-type",
+    ),
+    **_rule_contract_entries(
+        _DATAFLOW_RULE_CONTRACT,
+        "semantic.read-before-write",
+        "semantic.dead-overwrite",
+        "semantic.condition-always-true",
+        "semantic.condition-always-false",
+        "semantic.unreachable-branch",
+        "semantic.unreachable-sequence-node-dataflow",
+        "semantic.self-compare-condition",
+        "semantic.scan-cycle-stale-read",
+        "semantic.scan-cycle-implicit-new",
+        "semantic.scan-cycle-temporal-misuse",
+    ),
+    **_rule_contract_entries(
+        _UNSAFE_DEFAULTS_RULE_CONTRACT,
+        "semantic.unsafe-default-true",
+    ),
+    **_rule_contract_entries(_SPEC_RULE_CONTRACT, *_SPEC_RULE_DESCRIPTIONS.keys()),
+}
+
+_VARIABLE_RULES = {
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+    for kind, rule in _VARIABLE_RULES.items()
+}
+_SFC_RULES = {
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+    for kind, rule in _SFC_RULES.items()
+}
+_ALARM_RULES = {
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+    for kind, rule in _ALARM_RULES.items()
+}
+_INITIAL_VALUE_RULES = {
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+    for kind, rule in _INITIAL_VALUE_RULES.items()
+}
+_SAFETY_PATH_RULES = {
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+    for kind, rule in _SAFETY_PATH_RULES.items()
+}
+_TRACE_RULES = {
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+    for kind, rule in _TRACE_RULES.items()
+}
+_DATAFLOW_RULES = {
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+    for kind, rule in _DATAFLOW_RULES.items()
+}
+_TAINT_RULES = {
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+    for kind, rule in _TAINT_RULES.items()
+}
+_UNSAFE_DEFAULT_RULES = {
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+    for kind, rule in _UNSAFE_DEFAULT_RULES.items()
+}
+
 
 def get_sattline_semantic_rule_groups() -> tuple[SemanticRuleGroup, ...]:
     spec_rules = tuple(
-        SemanticRule(
-            id=rule_id,
-            source="spec-compliance",
-            category="engineering-spec",
-            severity="warning",
-            applies_to="sattline-construct",
-            description=description,
+        _attach_rule_contract(
+            SemanticRule(
+                id=rule_id,
+                source="spec-compliance",
+                category="engineering-spec",
+                severity="warning",
+                applies_to="sattline-construct",
+                description=description,
+            ),
+            _RULE_CONTRACTS_BY_ID.get(rule_id),
         )
         for rule_id, description in sorted(_SPEC_RULE_DESCRIPTIONS.items())
     )
@@ -801,13 +1101,16 @@ def _map_spec_issues(issues: list[Issue]) -> list[SemanticIssue]:
     for issue in issues:
         semantic_issues.append(
             SemanticIssue(
-                rule=SemanticRule(
-                    id=issue.kind,
-                    source="spec-compliance",
-                    category="engineering-spec",
-                    severity="warning",
-                    applies_to="sattline-construct",
-                    description=_SPEC_RULE_DESCRIPTIONS.get(issue.kind, issue.kind),
+                rule=_attach_rule_contract(
+                    SemanticRule(
+                        id=issue.kind,
+                        source="spec-compliance",
+                        category="engineering-spec",
+                        severity="warning",
+                        applies_to="sattline-construct",
+                        description=_SPEC_RULE_DESCRIPTIONS.get(issue.kind, issue.kind),
+                    ),
+                    _RULE_CONTRACTS_BY_ID.get(issue.kind),
                 ),
                 message=issue.message,
                 module_path=issue.module_path,

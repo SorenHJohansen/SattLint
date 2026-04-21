@@ -15,6 +15,7 @@ def _cf(s: str) -> str:
 class FieldDef:
     name: str
     datatype: Simple_DataType | str
+    state: bool | None = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +40,11 @@ class TypeGraph:
         for dt in datatypes or []:
             fields: dict[str, FieldDef] = {}
             for v in dt.var_list or []:
-                fields[_cf(v.name)] = FieldDef(name=v.name, datatype=v.datatype)
+                fields[_cf(v.name)] = FieldDef(
+                    name=v.name,
+                    datatype=v.datatype,
+                    state=v.state,
+                )
             records[_cf(dt.name)] = RecordDef(name=dt.name, fields_by_key=fields)
         return cls(records)
 

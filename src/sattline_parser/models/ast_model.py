@@ -80,6 +80,7 @@ class Variable:
     init_value: Any | None = None
     description: str | None = None
     declaration_span: SourceSpan | None = None
+    init_is_duration: bool = False
 
     @property
     def datatype_text(self) -> str:

@@ -30,8 +30,8 @@ SEED_MAPPING: dict[str, str] = {
     "#73": "MODULEPARAMETERS",
     "#7<": "LOCALVARIABLES",
         "#74": "GLOBAL",
-    "#80": ";",
-    "#80;": ";",
+    "#80": "State",
+    "#80;": "State;",
     "#17": "Old",
     "#17;": "Old;",
         "#18": "Old",
@@ -221,6 +221,23 @@ def decode_compressed(text: str, mapping: dict[str, str]) -> str:
     decoded = re.sub(r"ENDIF;\s*\)", "ENDIF)", decoded)
     decoded = re.sub(r":=\s*;", ":= Default;", decoded)
     decoded = re.sub(r"\bGraphObjects\b\s*:\s*InteractObjects\b", "InteractObjects", decoded)
+    decoded = re.sub(
+        r"(\bduration\b(?:\s+OpSave)?\s*:=\s*)(\"[^\"]*\")",
+        r"\1Duration_Value \2",
+        decoded,
+        flags=re.IGNORECASE,
+    )
+    decoded = re.sub(
+        r"(\btime\b(?:\s+OpSave)?\s*:=\s*)(\"[^\"]*\")",
+        r"\1Time_Value \2",
+        decoded,
+        flags=re.IGNORECASE,
+    )
+    decoded = re.sub(
+        r'(=>\s*)("\d{4}-\d{2}-\d{2}-\d{2}:\d{2}:\d{2}\.\d{3}")',
+        r'\1Time_Value \2',
+        decoded,
+    )
     decoded = re.sub(
         r"(ExecuteLocalOld\s*=\s*ExecuteLocal:Old)\s+ENDDEF",
         r"\1; ENDDEF",

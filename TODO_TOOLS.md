@@ -2,6 +2,41 @@
 
 Backlog view of the tooling roadmap. Each row is a discrete feature sized against the current repo seams and test surfaces.
 
+Shared enablement seams to reuse:
+
+- Normalized machine-readable findings live in `src/sattlint/contracts/findings.py`.
+- Pipeline and audit artifact definitions live in `src/sattlint/devtools/artifact_registry.py`.
+- Baseline and diff helpers live in `src/sattlint/devtools/baselines.py`.
+- Corpus execution and reporting live in `src/sattlint/devtools/corpus.py`.
+- Pipeline payload builders live under `src/sattlint/devtools/` rather than inline in one large function.
+- Analyzer delivery and rule metadata live in `src/sattlint/analyzers/registry.py` and `src/sattlint/analyzers/sattline_semantics.py`.
+- Shared artifact assertions and golden contract tests live under `tests/helpers/` and `tests/fixtures/goldens/`.
+
+Implementation guardrails:
+
+- Extend the shared seams above instead of adding parallel registries, ad hoc JSON payloads, or one-off test styles.
+- Prefer this order for new backlog work: metadata or contract first, corpus or targeted tests second, analysis or reporting logic third, shared machine-readable output fourth, CLI or pipeline or LSP exposure last.
+- Do not add a second analyzer registry.
+- Do not add separate schema logic for pipeline and repo audit when shared contracts already exist.
+- Do not build baseline UX before the underlying diff and fingerprint behavior is stable.
+- Do not expose new analyzer behavior in CLI or LSP before machine-readable outputs and tests are settled.
+
+Near-term enablement priorities:
+
+- Expand corpus breadth so more rules are backed by checked-in executable cases instead of metadata alone.
+- Tighten rule-to-corpus coverage expectations where current metadata is still advisory.
+- Extend golden contract fixtures only when a payload shape has stabilized enough to be a long-term contract.
+
+Bootstrap implementation sequence:
+
+- [x] Add a shared machine-readable finding contract.
+- [x] Add an artifact registry for pipeline and audit outputs.
+- [x] Extend analyzer metadata with delivery and acceptance-test fields.
+- [x] Scaffold a corpus manifest and evaluation harness.
+- [x] Move pipeline JSON assembly behind focused builder helpers.
+
+Backlog items may stay marked `No` while partially implemented. A row should flip to `Yes` only when the intended delivery surfaces and acceptance-test coverage are complete.
+
 - `ID` reflects the suggested implementation order and may be renumbered when the backlog is re-prioritized.
 - `Completed` uses `No` for open items and `Yes` for completed items.
 - Scope uses: single-file, workspace, cross-module, or LSP-only.
@@ -17,7 +52,7 @@ Suggested implementation order rationale:
 
 | ID | Completed | Area | Feature | Scope | Implementation bucket | Confidence | Dependencies | Acceptance tests |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | No | Signal quality and observability | Standardized output schema | workspace | reporting only | High | Shared finding serializer, stable severity and confidence fields, pipeline artifact writers, CLI summary rendering | Extend `tests/test_pipeline.py` to assert the normalized schema; extend `tests/test_app.py` for CLI-readable summaries built from the same payload |
+| 1 | Yes | Signal quality and observability | Standardized output schema | workspace | reporting only | High | Shared finding contracts live in `src/sattlint/contracts/findings.py`; pipeline, repo audit, and corpus emit normalized `findings.json` outputs and surface schema metadata consistently in machine-readable summaries and CLI-readable status output; shared artifact assertions live in `tests/helpers/artifact_assertions.py` | `tests/test_pipeline.py`, `tests/test_repo_audit.py`, and `tests/test_corpus.py` assert normalized schema metadata and CLI-readable summaries built from the same payload |
 | 2 | No | Accuracy improvements | SattLine semantic analysis layer | cross-module | shared semantic core | High | Existing `sattline-semantics` analyzer, shared rule metadata, variable lifecycle analysis, parameter mapping resolution, IEC 61131-3 structural validation, Dv datatype tree checks, control-flow reachability, artifact writer for `sattline_semantic.json` | Extend `tests/test_sattline_semantics.py` for unused/read-before-write/cross-module mismatch/dead-branch coverage; extend `tests/test_dataflow.py` for branch-state and write-read semantics; extend `tests/test_pipeline.py` for `artifacts/analysis/sattline_semantic.json` export |
 | 3 | No | Signal quality and observability | Execution tracing | workspace | reporting only | High | Existing tracing payload model, path redaction, analyzer phase hooks, optional pipeline integration | Extend `tests/test_tracing.py` for per-rule and per-file timing plus finding counts; extend `tests/test_pipeline.py` if traces are exported from pipeline runs |
 | 4 | No | Signal quality and observability | Structural graph exports | workspace | shared semantic core | Medium | Workspace snapshot graph inputs, function or module access aggregation, dependency extraction, analyzer registry metadata, artifact writers for `call_graph.json`, `dependency_graph.json`, and `analyzer_registry.json` | Extend `tests/test_pipeline.py` for call graph, dependency graph, and analyzer registry exports; extend `tests/test_repo_audit.py` if graph outputs feed architectural findings |

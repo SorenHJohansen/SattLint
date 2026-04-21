@@ -39,7 +39,7 @@ from pygls import uris
 from pygls.lsp.server import LanguageServer
 from pygls.workspace import TextDocument
 
-from sattlint.core.semantic import (
+from sattlint.editor_api import (
     SemanticSnapshot,
     SymbolDefinition,
     SymbolReference,

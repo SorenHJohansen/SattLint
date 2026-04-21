@@ -1,6 +1,7 @@
 """Post-transform structural validation for SattLine ASTs."""
 from __future__ import annotations
 from collections.abc import Callable, Sequence as AbcSequence
+import re
 from lark import Tree
 
 from .grammar import constants as const
@@ -63,6 +64,17 @@ class RawSourceValidationError(StructuralValidationError):
         self.length = length
 
 
+_PLAIN_DURATION_LITERAL_RE = re.compile(r"\d+(?:\.\d+)?")
+_DURATION_COMPONENT_PATTERNS = (
+    re.compile(r"\d+d", re.IGNORECASE),
+    re.compile(r"\d+h", re.IGNORECASE),
+    re.compile(r"\d+m(?!s)", re.IGNORECASE),
+    re.compile(r"\d+(?:\.\d+)?s", re.IGNORECASE),
+    re.compile(r"\d+ms", re.IGNORECASE),
+)
+_TIME_LITERAL_RE = re.compile(r"\d{4}-\d{2}-\d{2}-\d{2}:\d{2}:\d{2}\.\d{3}")
+
+
 def _identifier_length(name: str) -> int:
     if len(name) >= 2 and name.startswith("'") and name.endswith("'"):
         return len(name[1:-1])
@@ -82,6 +94,80 @@ def _span_kwargs(span: SourceSpan | None) -> dict[str, int]:
     if span is None:
         return {}
     return {"line": span.line, "column": span.column}
+
+
+def _warn_or_raise(
+    message: str,
+    *,
+    warning_sink: Callable[[str], None] | None = None,
+    line: int | None = None,
+    column: int | None = None,
+    length: int | None = None,
+) -> None:
+    if warning_sink is not None:
+        warning_sink(message)
+        return
+    raise StructuralValidationError(
+        message,
+        line=line,
+        column=column,
+        length=length,
+    )
+
+
+def _is_duration_datatype(datatype: Simple_DataType | str | None) -> bool:
+    if isinstance(datatype, Simple_DataType):
+        return datatype == Simple_DataType.DURATION
+    return isinstance(datatype, str) and datatype.casefold() == Simple_DataType.DURATION.value
+
+
+def _is_time_datatype(datatype: Simple_DataType | str | None) -> bool:
+    if isinstance(datatype, Simple_DataType):
+        return datatype == Simple_DataType.TIME
+    return isinstance(datatype, str) and datatype.casefold() == Simple_DataType.TIME.value
+
+
+def _is_valid_duration_literal(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+
+    text = value.strip()
+    if not text:
+        return False
+
+    if text[0] in "+-":
+        text = text[1:]
+    if not text:
+        return False
+
+    if _PLAIN_DURATION_LITERAL_RE.fullmatch(text):
+        return True
+
+    position = 0
+    matched_component = False
+    for pattern in _DURATION_COMPONENT_PATTERNS:
+        match = pattern.match(text, position)
+        if match is None:
+            continue
+        matched_component = True
+        position = match.end()
+
+    return matched_component and position == len(text)
+
+
+def _has_time_literal_marker(value: object) -> bool:
+    return isinstance(value, dict) and const.GRAMMAR_VALUE_TIME_VALUE in value
+
+
+def _extract_time_literal(value: object) -> str | None:
+    if not isinstance(value, dict) or const.GRAMMAR_VALUE_TIME_VALUE not in value:
+        return None
+    literal = value.get(const.GRAMMAR_VALUE_TIME_VALUE)
+    return literal if isinstance(literal, str) else None
+
+
+def _is_valid_time_literal(value: object) -> bool:
+    return isinstance(value, str) and _TIME_LITERAL_RE.fullmatch(value.strip()) is not None
 
 
 def _ref_span(ref: dict[str, object] | str | None) -> SourceSpan | None:
@@ -171,18 +257,48 @@ def _resolve_variable_field_datatype(
     return current
 
 
-def _infer_literal_datatype(value: object) -> Simple_DataType | str | None:
+def _infer_literal_datatype(
+    value: object,
+    *,
+    is_duration: bool = False,
+) -> Simple_DataType | str | None:
     if isinstance(value, bool):
         return Simple_DataType.BOOLEAN
     if isinstance(value, (IntLiteral, int)) and not isinstance(value, bool):
         return Simple_DataType.INTEGER
     if isinstance(value, (FloatLiteral, float)):
         return Simple_DataType.REAL
+    if is_duration and isinstance(value, str) and _is_valid_duration_literal(value):
+        return Simple_DataType.DURATION
     if isinstance(value, str):
         return Simple_DataType.STRING
     if isinstance(value, dict) and const.GRAMMAR_VALUE_TIME_VALUE in value:
         return const.GRAMMAR_VALUE_TIME_VALUE
     return None
+
+
+def _literal_matches_expected_datatype(
+    literal: object,
+    expected: Simple_DataType | str | None,
+    *,
+    is_duration: bool = False,
+) -> bool:
+    if _has_time_literal_marker(literal) and not _is_valid_time_literal(_extract_time_literal(literal)):
+        return False
+
+    actual = _infer_literal_datatype(literal, is_duration=is_duration)
+    if _assignment_type_matches(actual, expected):
+        return True
+
+    return (
+        isinstance(literal, str)
+        and _is_duration_datatype(expected)
+        and _is_valid_duration_literal(literal)
+    ) or (
+        isinstance(literal, str)
+        and _is_time_datatype(expected)
+        and _is_valid_time_literal(literal)
+    )
 
 
 def _assignment_type_matches(
@@ -236,7 +352,24 @@ def _validate_declared_variable(
     if variable.init_value is None:
         return
 
-    init_datatype = _infer_literal_datatype(variable.init_value)
+    if getattr(variable, "init_is_duration", False) and not _is_valid_duration_literal(variable.init_value):
+        raise StructuralValidationError(
+            f"{context} variable {variable.name!r} has invalid duration literal {variable.init_value!r}",
+            **_span_kwargs(variable.declaration_span),
+        )
+
+    if _has_time_literal_marker(variable.init_value) and not _is_valid_time_literal(
+        _extract_time_literal(variable.init_value)
+    ):
+        raise StructuralValidationError(
+            f"{context} variable {variable.name!r} has invalid time literal {_extract_time_literal(variable.init_value)!r}",
+            **_span_kwargs(variable.declaration_span),
+        )
+
+    init_datatype = _infer_literal_datatype(
+        variable.init_value,
+        is_duration=getattr(variable, "init_is_duration", False),
+    )
     if init_datatype is None:
         return
 
@@ -247,7 +380,11 @@ def _validate_declared_variable(
     ):
         return
 
-    if _assignment_type_matches(init_datatype, variable.datatype):
+    if _literal_matches_expected_datatype(
+        variable.init_value,
+        variable.datatype,
+        is_duration=getattr(variable, "init_is_duration", False),
+    ):
         return
 
     raise StructuralValidationError(
@@ -323,6 +460,7 @@ def _iter_variable_refs(node: object):
 def _validate_variable_refs(
     node: object,
     env: dict[str, Variable],
+    type_graph: TypeGraph,
     context: str,
 ) -> None:
     for ref in _iter_variable_refs(node):
@@ -331,13 +469,29 @@ def _validate_variable_refs(
             continue
 
         full_name = ref[const.KEY_VAR_NAME]
-        base_name = str(full_name).split(".", 1)[0]
+        base_name, field_path = _split_dotted_name(str(full_name))
         variable = env.get(base_name.casefold())
-        if variable is not None and not variable.state:
+        if variable is None:
+            continue
+
+        resolved_state = variable.state
+        current_datatype: Simple_DataType | str = variable.datatype
+        for field_name in field_path:
+            if isinstance(current_datatype, Simple_DataType):
+                resolved_state = None
+                break
+            field = type_graph.field(str(current_datatype), field_name)
+            if field is None:
+                resolved_state = None
+                break
+            current_datatype = field.datatype
+            resolved_state = field.state
+
+        if resolved_state is not None and not resolved_state:
             raise StructuralValidationError(
-                f"{context} uses {state.upper()} on non-STATE variable {base_name!r}",
+                f"{context} uses {state.upper()} on non-STATE variable {str(full_name)!r}",
                 **_span_kwargs(_ref_span(ref)),
-                length=max(len(base_name), 1),
+                length=max(len(str(full_name)), 1),
             )
 
 
@@ -714,7 +868,7 @@ def _validate_statement_list(
                     f"{context} assignment writes to CONST variable {variable.name!r}",
                     **_span_kwargs(_ref_span(statement[1])),
                 )
-        _validate_variable_refs(statement, env, context)
+        _validate_variable_refs(statement, env, type_graph, context)
         _validate_no_string_literals_in_calls(statement, context)
         _validate_builtin_call_types(statement, env, type_graph, context)
 
@@ -733,14 +887,18 @@ def _validate_sequence_nodes(
     env: dict[str, Variable],
     type_graph: TypeGraph,
     require_init_step: bool,
+    warning_sink: Callable[[str], None] | None = None,
 ) -> None:
     previous_step: str | None = None
     init_steps = 0
+    missing_initial_init_step = False
 
     if require_init_step:
         if not nodes or not isinstance(nodes[0], SFCStep) or nodes[0].kind != "init":
-            raise StructuralValidationError(
-                f"{context} must start with exactly one SEQINITSTEP"
+            missing_initial_init_step = True
+            _warn_or_raise(
+                f"{context} must start with exactly one SEQINITSTEP",
+                warning_sink=warning_sink,
             )
 
     for index, node in enumerate(nodes):
@@ -749,8 +907,9 @@ def _validate_sequence_nodes(
             if node.kind == "init":
                 init_steps += 1
                 if index != 0:
-                    raise StructuralValidationError(
-                        f"{context} has SEQINITSTEP {node.name!r} outside the first position"
+                    _warn_or_raise(
+                        f"{context} has SEQINITSTEP {node.name!r} outside the first position",
+                        warning_sink=warning_sink,
                     )
             if previous_step is not None:
                 raise StructuralValidationError(
@@ -774,6 +933,7 @@ def _validate_sequence_nodes(
                 env=env,
                 type_graph=type_graph,
                 require_init_step=False,
+                warning_sink=warning_sink,
             )
         elif isinstance(node, SFCSubsequence):
             _validate_identifier(node.name, f"{context} subsequence")
@@ -784,6 +944,7 @@ def _validate_sequence_nodes(
                 env=env,
                 type_graph=type_graph,
                 require_init_step=False,
+                warning_sink=warning_sink,
             )
         elif isinstance(node, SFCAlternative):
             for index, branch in enumerate(node.branches, start=1):
@@ -794,6 +955,7 @@ def _validate_sequence_nodes(
                     env=env,
                     type_graph=type_graph,
                     require_init_step=False,
+                    warning_sink=warning_sink,
                 )
         elif isinstance(node, SFCParallel):
             for index, branch in enumerate(node.branches, start=1):
@@ -804,6 +966,7 @@ def _validate_sequence_nodes(
                     env=env,
                     type_graph=type_graph,
                     require_init_step=False,
+                    warning_sink=warning_sink,
                 )
         elif isinstance(node, SFCFork):
             _validate_identifier(node.target, f"{context} fork target")
@@ -815,9 +978,11 @@ def _validate_sequence_nodes(
             continue
 
     if require_init_step and init_steps != 1:
-        raise StructuralValidationError(
-            f"{context} must contain exactly one SEQINITSTEP"
-        )
+        if not (missing_initial_init_step and init_steps == 0):
+            _warn_or_raise(
+                f"{context} must contain exactly one SEQINITSTEP",
+                warning_sink=warning_sink,
+            )
 
 
 def _validate_module_code(
@@ -825,6 +990,7 @@ def _validate_module_code(
     context: str,
     env: dict[str, Variable],
     type_graph: TypeGraph,
+    warning_sink: Callable[[str], None] | None = None,
 ) -> None:
     if modulecode is None:
         return
@@ -851,6 +1017,7 @@ def _validate_module_code(
                 env=env,
                 type_graph=type_graph,
                 require_init_step=True,
+                warning_sink=warning_sink,
             )
 
 
@@ -927,6 +1094,7 @@ def _validate_parameter_mappings(
     source_env: dict[str, Variable] | None = None,
     allow_parameterless_module_mappings: bool = False,
     warn_unknown_parameter_targets: bool = False,
+    warn_incompatible_parameter_mappings: bool = False,
     warning_sink: Callable[[str], None] | None = None,
 ) -> None:
     seen: dict[str, str] = {}
@@ -985,18 +1153,44 @@ def _validate_parameter_mappings(
         source_literal = getattr(mapping, "source_literal", None)
         source = getattr(mapping, "source", None)
         if source_literal is not None:
-            actual_datatype = _infer_literal_datatype(source_literal)
+            if bool(getattr(mapping, "is_duration", False)) and not _is_valid_duration_literal(source_literal):
+                raise StructuralValidationError(
+                    f"{context} maps invalid duration literal {source_literal!r} to parameter target {target_name!r}",
+                    **_span_kwargs(target_span),
+                )
+            if _has_time_literal_marker(source_literal) and not _is_valid_time_literal(
+                _extract_time_literal(source_literal)
+            ):
+                raise StructuralValidationError(
+                    f"{context} maps invalid time literal {_extract_time_literal(source_literal)!r} to parameter target {target_name!r}",
+                    **_span_kwargs(target_span),
+                )
+            actual_datatype = _infer_literal_datatype(
+                source_literal,
+                is_duration=bool(getattr(mapping, "is_duration", False)),
+            )
             source_description = repr(source_literal)
         elif isinstance(source, dict) and source_env is not None:
             actual_datatype = _resolve_ref_datatype(source, source_env, type_graph)
             source_description = str(source.get(const.KEY_VAR_NAME))
 
-        if actual_datatype is None or _assignment_type_matches(actual_datatype, target_datatype):
+        if actual_datatype is None:
             continue
 
-        raise StructuralValidationError(
+        if source_literal is not None and _literal_matches_expected_datatype(
+            source_literal,
+            target_datatype,
+            is_duration=bool(getattr(mapping, "is_duration", False)),
+        ):
+            continue
+
+        if _assignment_type_matches(actual_datatype, target_datatype):
+            continue
+
+        _warn_or_raise(
             f"{context} maps {source_description or 'value'!r} with datatype {_format_datatype(actual_datatype)!r} "
             f"to parameter target {target_name!r} with datatype {_format_datatype(target_datatype)!r}",
+            warning_sink=warning_sink if warn_incompatible_parameter_mappings else None,
             **_span_kwargs(target_span),
         )
 
@@ -1019,6 +1213,7 @@ def _validate_module(
     enforce_unique_submodule_names: bool = True,
     allow_parameterless_module_mappings: bool = False,
     warn_unknown_parameter_targets: bool = False,
+    warn_incompatible_parameter_mappings: bool = False,
     warning_sink: Callable[[str], None] | None = None,
 ) -> None:
     if isinstance(module, SingleModule):
@@ -1048,9 +1243,16 @@ def _validate_module(
             source_env=parent_env,
             allow_parameterless_module_mappings=allow_parameterless_module_mappings,
             warn_unknown_parameter_targets=warn_unknown_parameter_targets,
+            warn_incompatible_parameter_mappings=warn_incompatible_parameter_mappings,
             warning_sink=warning_sink,
         )
-        _validate_module_code(module.modulecode, module_context, env, type_graph)
+        _validate_module_code(
+            module.modulecode,
+            module_context,
+            env,
+            type_graph,
+            warning_sink=warning_sink,
+        )
         _validate_unique_submodule_names(
             module.submodules,
             module_context,
@@ -1068,6 +1270,7 @@ def _validate_module(
                 enforce_unique_submodule_names,
                 allow_parameterless_module_mappings,
                 warn_unknown_parameter_targets,
+                warn_incompatible_parameter_mappings,
                 warning_sink,
             )
         return
@@ -1075,7 +1278,13 @@ def _validate_module(
     if isinstance(module, FrameModule):
         _validate_identifier(module.header.name, f"{context} frame")
         module_context = f"{context} frame {module.header.name!r}"
-        _validate_module_code(module.modulecode, module_context, parent_env, type_graph)
+        _validate_module_code(
+            module.modulecode,
+            module_context,
+            parent_env,
+            type_graph,
+            warning_sink=warning_sink,
+        )
         _validate_unique_submodule_names(
             module.submodules,
             module_context,
@@ -1093,6 +1302,7 @@ def _validate_module(
                 enforce_unique_submodule_names,
                 allow_parameterless_module_mappings,
                 warn_unknown_parameter_targets,
+                warn_incompatible_parameter_mappings,
                 warning_sink,
             )
         return
@@ -1115,6 +1325,7 @@ def _validate_module(
             source_env=parent_env,
             allow_parameterless_module_mappings=allow_parameterless_module_mappings,
             warn_unknown_parameter_targets=warn_unknown_parameter_targets,
+            warn_incompatible_parameter_mappings=warn_incompatible_parameter_mappings,
             warning_sink=warning_sink,
         )
         return
@@ -1129,6 +1340,7 @@ def validate_transformed_basepicture(
     enforce_unique_submodule_names: bool = True,
     allow_parameterless_module_mappings: bool = False,
     warn_unknown_parameter_targets: bool = False,
+    warn_incompatible_parameter_mappings: bool = False,
     warning_sink: Callable[[str], None] | None = None,
 ) -> None:
     _validate_identifier(basepic.header.name, "BasePicture")
@@ -1190,7 +1402,13 @@ def validate_transformed_basepicture(
             )
             env = _merge_env(base_env, moduletype.moduleparameters)
             env = _merge_env(env, moduletype.localvariables)
-            _validate_module_code(moduletype.modulecode, moduletype_context, env, type_graph)
+            _validate_module_code(
+                moduletype.modulecode,
+                moduletype_context,
+                env,
+                type_graph,
+                warning_sink=warning_sink,
+            )
             _validate_unique_submodule_names(
                 moduletype.submodules,
                 moduletype_context,
@@ -1208,10 +1426,17 @@ def validate_transformed_basepicture(
                     enforce_unique_submodule_names,
                     allow_parameterless_module_mappings,
                     warn_unknown_parameter_targets,
+                    warn_incompatible_parameter_mappings,
                     warning_sink,
                 )
 
-    _validate_module_code(basepic.modulecode, "BasePicture", base_env, type_graph)
+    _validate_module_code(
+        basepic.modulecode,
+        "BasePicture",
+        base_env,
+        type_graph,
+        warning_sink=warning_sink,
+    )
     _validate_unique_submodule_names(
         basepic.submodules,
         "BasePicture",
@@ -1230,6 +1455,7 @@ def validate_transformed_basepicture(
             enforce_unique_submodule_names,
             allow_parameterless_module_mappings,
             warn_unknown_parameter_targets,
+            warn_incompatible_parameter_mappings,
             warning_sink,
         )
 

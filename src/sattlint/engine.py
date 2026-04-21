@@ -59,6 +59,7 @@ class SyntaxValidationResult:
     message: str | None = None
     line: int | None = None
     column: int | None = None
+    warnings: tuple[str, ...] = ()
 
 
 class CodeMode(Enum):
@@ -97,6 +98,32 @@ def _record_project_warning(graph: ProjectGraph, name: str, message: str) -> Non
     graph.warnings.append(f"{name}: {message}")
 
 
+def _format_debug_list(title: str, entries: Iterable[str]) -> str:
+    items = [str(entry) for entry in entries]
+    if not items:
+        return f"{title}: none"
+
+    lines = [f"{title} ({len(items)}):"]
+    lines.extend(f"  - {item}" for item in items)
+    return "\n".join(lines)
+
+
+def _format_debug_missing_entries(entries: Iterable[str]) -> str:
+    items = [str(entry) for entry in entries]
+    if not items:
+        return "Missing/failed: none"
+
+    lines = [f"Missing/failed ({len(items)}):"]
+    for item in items:
+        library_name, separator, detail = item.partition(" parse/transform error: ")
+        if separator:
+            lines.append(f"  - {library_name}")
+            lines.append(f"    parse/transform error: {detail}")
+            continue
+        lines.append(f"  - {item}")
+    return "\n".join(lines)
+
+
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -105,7 +132,9 @@ class DebugMixin:
 
     def dbg(self, msg: str) -> None:
         if self.debug:
-            log.debug(f"[DEBUG] {msg}")
+            lines = str(msg).splitlines() or [""]
+            for line in lines:
+                log.debug(f"[DEBUG] {line}")
 
 
 def _is_within_directory(path: Path, directory: Path) -> bool:
@@ -196,6 +225,7 @@ def _extract_error_position(exc: Exception) -> tuple[int | None, int | None]:
 def validate_single_file_syntax(code_path: Path) -> SyntaxValidationResult:
     target_path = Path(code_path)
     src = ""
+    validation_warnings: list[str] = []
     try:
         src = _load_source_text(target_path)
         violations = find_disallowed_comments(src)
@@ -206,7 +236,11 @@ def validate_single_file_syntax(code_path: Path) -> SyntaxValidationResult:
                 line=first.start_line,
                 column=first.start_col,
             )
-        parse_source_text(src)
+        basepic = parser_core_parse_source_text(src)
+        validate_transformed_basepicture(
+            basepic,
+            warning_sink=validation_warnings.append,
+        )
     except UnexpectedInput as exc:
         details = describe_parse_error(exc, src)
         return SyntaxValidationResult(
@@ -250,7 +284,12 @@ def validate_single_file_syntax(code_path: Path) -> SyntaxValidationResult:
             column=column,
         )
 
-    return SyntaxValidationResult(file_path=target_path, ok=True, stage="ok")
+    return SyntaxValidationResult(
+        file_path=target_path,
+        ok=True,
+        stage="ok",
+        warnings=tuple(validation_warnings),
+    )
 
 
 # ---------- Loader with recursive resolution ----------
@@ -264,6 +303,7 @@ class SattLineProjectLoader(DebugMixin):
         scan_root_only: bool,
         debug: bool,
         contextual_lookup: ContextualFileLookup | None = None,
+        use_file_ast_cache: bool = True,
     ):
         self.program_dir = program_dir
         self.other_lib_dirs = list(other_lib_dirs)
@@ -272,6 +312,7 @@ class SattLineProjectLoader(DebugMixin):
         self.scan_root_only = scan_root_only
         self.debug = debug
         self.contextual_lookup = contextual_lookup
+        self.use_file_ast_cache = use_file_ast_cache
         self.parser = create_sl_parser()  # reuse your grammar setup
         self.transformer = SLTransformer()  # reuse your transformer
         self._visited: set[str] = set()
@@ -585,10 +626,11 @@ class SattLineProjectLoader(DebugMixin):
         )
 
     def _load_or_parse(self, code_path: Path) -> BasePicture:
-        cached = self._ast_cache.load(code_path, self.mode.value)
-        if cached is not None:
-            self.dbg(f"Using cached AST for: {code_path}")
-            return cached
+        if self.use_file_ast_cache:
+            cached = self._ast_cache.load(code_path, self.mode.value)
+            if cached is not None:
+                self.dbg(f"Using cached AST for: {code_path}")
+                return cached
 
         bp = self._parse_one(code_path)
         self._ast_cache.save(code_path, self.mode.value, bp)
@@ -600,9 +642,9 @@ class SattLineProjectLoader(DebugMixin):
         self.dbg(f"Resolving root: {root_name}")
         graph = ProjectGraph()
         self._visit(root_name, graph, strict, requester_dir=self.program_dir)
-        self.dbg(f"Resolved ASTs: {list(graph.ast_by_name.keys())}")
+        self.dbg(_format_debug_list("Resolved ASTs", graph.ast_by_name.keys()))
         if graph.missing:
-            self.dbg(f"Missing/failed: {graph.missing}")
+            self.dbg(_format_debug_missing_entries(graph.missing))
         return graph
 
     def _resolve_root_only(self, root_name: str, strict: bool) -> ProjectGraph:
@@ -630,12 +672,10 @@ class SattLineProjectLoader(DebugMixin):
             validate_transformed_basepicture(
                 bp,
                 allow_unresolved_external_datatypes=True,
-                enforce_unique_submodule_names=_is_within_directory(
-                    code_path,
-                    self.program_dir,
-                ),
+                enforce_unique_submodule_names=False,
                 allow_parameterless_module_mappings=True,
                 warn_unknown_parameter_targets=True,
+                warn_incompatible_parameter_mappings=True,
                 warning_sink=validation_warnings.append,
             )
             for warning in validation_warnings:
@@ -695,19 +735,20 @@ class SattLineProjectLoader(DebugMixin):
                 validation_warnings: list[str] = []
                 bp = self._load_or_parse(code_path)
                 if bp is not None:
-                    validate_transformed_basepicture(
-                        bp,
-                        external_datatypes=tuple(graph.datatype_defs.values()),
-                        external_moduletype_defs=tuple(graph.moduletype_defs.values()),
-                        allow_unresolved_external_datatypes=True,
-                        enforce_unique_submodule_names=_is_within_directory(
-                            code_path,
-                            self.program_dir,
-                        ),
-                        allow_parameterless_module_mappings=True,
-                        warn_unknown_parameter_targets=True,
-                        warning_sink=validation_warnings.append,
-                    )
+                    try:
+                        validate_transformed_basepicture(
+                            bp,
+                            external_datatypes=tuple(graph.datatype_defs.values()),
+                            external_moduletype_defs=tuple(graph.moduletype_defs.values()),
+                            allow_unresolved_external_datatypes=True,
+                            enforce_unique_submodule_names=False,
+                            allow_parameterless_module_mappings=True,
+                            warn_unknown_parameter_targets=True,
+                            warn_incompatible_parameter_mappings=True,
+                            warning_sink=validation_warnings.append,
+                        )
+                    except StructuralValidationError as ex:
+                        _record_project_warning(graph, name, f"validation warning: {ex}")
                     for warning in validation_warnings:
                         _record_project_warning(graph, name, warning)
                     graph.ast_by_name[name] = bp

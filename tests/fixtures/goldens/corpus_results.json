@@ -1,0 +1,41 @@
+{
+    "cases": [
+        {
+            "artifact_dir": "corpus_cases/workspace-semantic",
+            "case_id": "workspace-semantic",
+            "evaluation": {
+                "artifact_fragment_failures": [],
+                "case_id": "workspace-semantic",
+                "missing_finding_ids": [],
+                "passed": true,
+                "unexpected_finding_ids": []
+            },
+            "findings_report": "findings.json",
+            "findings_schema": {
+                "kind": "sattlint.findings",
+                "schema_version": 1
+            },
+            "missing_artifacts": [],
+            "mode": "workspace",
+            "passed": true,
+            "target_file": "tests/fixtures/corpus/valid/Program.s"
+        }
+    ],
+    "entry_report": "corpus_results.json",
+    "failed_case_ids": [],
+    "findings_schema": {
+        "kind": "sattlint.findings",
+        "schema_version": 1
+    },
+    "kind": "sattlint.corpus_results",
+    "manifest_root": "tests/fixtures/corpus/manifests",
+    "output_dir": "artifacts/analysis",
+    "schema_version": 1,
+    "summary": {
+        "case_count": 1,
+        "execution_error_count": 0,
+        "failed_count": 0,
+        "missing_artifact_case_count": 0,
+        "passed_count": 1
+    }
+}

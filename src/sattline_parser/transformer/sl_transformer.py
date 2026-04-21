@@ -653,9 +653,9 @@ class SLTransformer(Transformer):
             is_global = items[idx]
             idx += 1
 
-        # 3) Optional DURATION_VALUE (your transformer returns None)
+        # 3) Optional DURATION_VALUE
         is_duration = False
-        if idx < len(items) and items[idx] is None:
+        if idx < len(items) and items[idx] == const.GRAMMAR_VALUE_DURATION_VALUE:
             is_duration = True
             idx += 1
 
@@ -727,7 +727,10 @@ class SLTransformer(Transformer):
     def opt_var_init(self, items):
         if not items:
             return None
-        return items[-1]  # could be bool/int/float/str or DEFAULT_INIT
+        is_duration = any(
+            item == const.GRAMMAR_VALUE_DURATION_VALUE for item in items[:-1]
+        )
+        return (items[-1], is_duration)
 
     def time_value(self, items):
         time_string = None
@@ -793,8 +796,13 @@ class SLTransformer(Transformer):
 
         # 5) Optional init (single value shared by all names in this group)
         init_value = None
+        init_is_duration = False
         if idx < len(items):
-            init_value = items[idx]  # primitive or DEFAULT_INIT
+            init_raw = items[idx]
+            if isinstance(init_raw, tuple) and len(init_raw) == 2:
+                init_value, init_is_duration = init_raw
+            else:
+                init_value = init_raw
 
         # 6) Build Variables (each keeps its own description)
         variables = []
@@ -810,6 +818,7 @@ class SLTransformer(Transformer):
                 init_value=(None if init_value is DEFAULT_INIT else init_value),
                 description=desc,
                 declaration_span=declaration_span,
+                init_is_duration=(init_is_duration and init_value is not DEFAULT_INIT),
             )
             variables.append(v)
         return variables
@@ -1994,8 +2003,8 @@ class SLTransformer(Transformer):
     def ASSIGN_INIT_VALUE(self, _) -> None:
         return None  # ":="
 
-    def DURATION_VALUE(self, _) -> None:
-        return None  # "Duration_Value"
+    def DURATION_VALUE(self, _) -> object:
+        return const.GRAMMAR_VALUE_DURATION_VALUE
 
     def sl_datecode(self, items) -> int:
         for it in items:
