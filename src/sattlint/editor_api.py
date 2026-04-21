@@ -5,9 +5,13 @@ batch analysis, and editor helpers share a single semantic pipeline.
 """
 
 from .core.semantic import (
+    CallSignatureOccurrence,
     CompletionItem,
+    DEFAULT_SAFETY_SIGNAL_KEYWORDS,
+    SafetyPathTrace,
     SemanticDiagnostic,
     SemanticSnapshot,
+    SymbolAccess,
     SymbolDefinition,
     SymbolReference,
     WorkspaceSnapshotError,
@@ -19,9 +23,13 @@ from .core.semantic import (
 )
 
 __all__ = [
+    "CallSignatureOccurrence",
     "CompletionItem",
+    "DEFAULT_SAFETY_SIGNAL_KEYWORDS",
+    "SafetyPathTrace",
     "SemanticDiagnostic",
     "SemanticSnapshot",
+    "SymbolAccess",
     "SymbolDefinition",
     "SymbolReference",
     "WorkspaceSnapshotError",

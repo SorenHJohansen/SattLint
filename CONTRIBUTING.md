@@ -99,8 +99,15 @@ mypy src/
 pytest tests/ -v
 
 # Run the repository audit
-sattlint-repo-audit --output-dir artifacts/audit
+sattlint-repo-audit --profile full --output-dir artifacts/audit
 ```
+
+The canonical audit entry point is `sattlint-repo-audit`.
+
+- Use `--profile quick` for fast edit-and-verify loops.
+- Use `--profile full` for the complete lint, type, test, security, dead-code, and repo-audit pass.
+- Open `artifacts/audit/status.json` first; it is the compact machine-readable summary intended for tooling and AI agents.
+- The full details remain in `artifacts/audit/summary.json`, `artifacts/audit/findings.json`, and `artifacts/audit/pipeline/`.
 
 ### Running Tests
 ```bash

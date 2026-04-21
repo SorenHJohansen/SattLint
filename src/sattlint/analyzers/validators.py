@@ -1,14 +1,28 @@
 """Dedicated validator classes for variable analysis."""
 from __future__ import annotations
+from dataclasses import dataclass
 import re
 import logging
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
 from ..grammar import constants as const
 from ..models.ast_model import Variable, ParameterMapping, Simple_DataType
 from ..reporting.variables_report import IssueKind, VariableIssue
+from ..resolution import TypeGraph
+from ..resolution.common import varname_full
+from ..validation import (
+    _assignment_type_matches,
+    _infer_literal_datatype,
+    _resolve_variable_field_datatype,
+    _split_dotted_name,
+)
 
 log = logging.getLogger("SattLint")
+
+
+@dataclass(frozen=True, slots=True)
+class AnyTypeFieldContract:
+    field_paths: tuple[str, ...]
 
 
 class Validator(Protocol):
@@ -62,8 +76,6 @@ class StringMappingValidator:
                 issues.append(issue)
 
         return issues
-
-
 class MinMaxValidator:
     """Validates min/max naming conventions in parameter mappings."""
 
@@ -137,4 +149,207 @@ class MinMaxValidator:
             )
             issues.append(issue)
 
+        return issues
+
+
+class ContractMappingValidator:
+    """Validates parameter mappings against strict datatype compatibility rules."""
+
+    def __init__(
+        self,
+        type_graph: TypeGraph,
+        anytype_field_contracts: Mapping[int, Mapping[str, AnyTypeFieldContract]] | None = None,
+    ):
+        self._type_graph = type_graph
+        self._anytype_field_contracts = {
+            owner_id: dict(contracts)
+            for owner_id, contracts in (anytype_field_contracts or {}).items()
+        }
+
+    def _datatype_key(self, datatype: Simple_DataType | str | None) -> str | None:
+        if datatype is None:
+            return None
+        if isinstance(datatype, Simple_DataType):
+            return datatype.value.casefold()
+        return str(datatype).casefold()
+
+    def _is_string_simple_type(self, datatype: Simple_DataType | str | None) -> bool:
+        return isinstance(datatype, Simple_DataType) and datatype in StringMappingValidator._STRING_TYPES
+
+    def _format_datatype(self, datatype: Simple_DataType | str | None) -> str:
+        if datatype is None:
+            return "unknown"
+        if isinstance(datatype, Simple_DataType):
+            return datatype.value
+        return str(datatype)
+
+    def _resolve_source_required_field_datatype(
+        self,
+        mapping: ParameterMapping,
+        source_variable: Variable,
+        required_field_path: str,
+    ) -> Simple_DataType | str | None:
+        source_name = varname_full(mapping.source)
+        if not source_name:
+            return None
+
+        _base_name, source_field_path = _split_dotted_name(source_name)
+        required_segments = tuple(segment for segment in required_field_path.split(".") if segment)
+        combined_path = source_field_path + required_segments
+
+        if not combined_path:
+            return source_variable.datatype
+
+        return _resolve_variable_field_datatype(
+            source_variable,
+            combined_path,
+            self._type_graph,
+        )
+
+    def _check_anytype_field_contracts(
+        self,
+        mapping: ParameterMapping,
+        target_variable: Variable,
+        source_variable: Variable | None,
+        path: list[str],
+        *,
+        owner_contract_id: int | None,
+    ) -> list[VariableIssue]:
+        if owner_contract_id is None or source_variable is None or mapping.source_literal is not None:
+            return []
+
+        contracts_by_param = self._anytype_field_contracts.get(owner_contract_id)
+        if not contracts_by_param:
+            return []
+
+        contract = contracts_by_param.get(target_variable.name.casefold())
+        if contract is None or not contract.field_paths:
+            return []
+
+        source_name = varname_full(mapping.source) or source_variable.name
+        target_name = varname_full(mapping.target) or target_variable.name
+        issues: list[VariableIssue] = []
+
+        for required_field_path in contract.field_paths:
+            datatype = self._resolve_source_required_field_datatype(
+                mapping,
+                source_variable,
+                required_field_path,
+            )
+            if datatype is not None:
+                continue
+
+            issues.append(
+                VariableIssue(
+                    kind=IssueKind.CONTRACT_MISMATCH,
+                    module_path=list(path),
+                    variable=target_variable,
+                    role=(
+                        "cross-module contract mismatch: "
+                        f"{source_name} ({self._format_datatype(source_variable.datatype)}) => "
+                        f"{target_name} ({self._format_datatype(target_variable.datatype)}) "
+                        f"missing required field {required_field_path!r}"
+                    ),
+                    source_variable=source_variable,
+                    field_path=required_field_path,
+                )
+            )
+
+        return issues
+
+    def _resolve_target_datatype(
+        self,
+        target_name: str,
+        target_variable: Variable,
+    ) -> tuple[Simple_DataType | str | None, str | None]:
+        _base_name, field_path = _split_dotted_name(target_name)
+        if not field_path:
+            return target_variable.datatype, None
+
+        datatype = _resolve_variable_field_datatype(
+            target_variable,
+            field_path,
+            self._type_graph,
+        )
+        return datatype, ".".join(field_path)
+
+    def _resolve_source_datatype(
+        self,
+        mapping: ParameterMapping,
+        source_variable: Variable | None,
+    ) -> tuple[Simple_DataType | str | None, str | None]:
+        if mapping.source_literal is not None:
+            return _infer_literal_datatype(mapping.source_literal), repr(mapping.source_literal)
+
+        source_name = varname_full(mapping.source)
+        if not source_name or source_variable is None:
+            return None, source_name
+
+        _base_name, field_path = _split_dotted_name(source_name)
+        if not field_path:
+            return source_variable.datatype, source_name
+
+        datatype = _resolve_variable_field_datatype(
+            source_variable,
+            field_path,
+            self._type_graph,
+        )
+        return datatype, source_name
+
+    def check_contract_mapping(
+        self,
+        pm: ParameterMapping,
+        tgt_var: Variable,
+        src_var: Variable | None,
+        path: list[str],
+        *,
+        owner_contract_id: int | None = None,
+    ) -> list[VariableIssue]:
+        issues: list[VariableIssue] = []
+
+        target_name = varname_full(pm.target) or tgt_var.name
+        target_datatype, target_field_path = self._resolve_target_datatype(
+            target_name,
+            tgt_var,
+        )
+        if target_datatype is None:
+            return issues
+
+        source_datatype, source_name = self._resolve_source_datatype(pm, src_var)
+        if source_datatype is None:
+            return issues
+
+        source_key = self._datatype_key(source_datatype)
+        target_key = self._datatype_key(target_datatype)
+        if source_key is None or target_key is None or source_key == target_key:
+            return issues
+
+        if target_key == "anytype":
+            return self._check_anytype_field_contracts(
+                pm,
+                tgt_var,
+                src_var,
+                path,
+                owner_contract_id=owner_contract_id,
+            )
+
+        if self._is_string_simple_type(source_datatype) and self._is_string_simple_type(target_datatype):
+            return issues
+
+        if _assignment_type_matches(source_datatype, target_datatype) and source_datatype == const.GRAMMAR_VALUE_TIME_VALUE:
+            return issues
+
+        issue = VariableIssue(
+            kind=IssueKind.CONTRACT_MISMATCH,
+            module_path=list(path),
+            variable=tgt_var,
+            role=(
+                "cross-module contract mismatch: "
+                f"{source_name or 'value'} ({self._format_datatype(source_datatype)}) => "
+                f"{target_name} ({self._format_datatype(target_datatype)})"
+            ),
+            source_variable=src_var,
+            field_path=target_field_path,
+        )
+        issues.append(issue)
         return issues

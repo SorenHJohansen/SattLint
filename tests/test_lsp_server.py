@@ -99,6 +99,43 @@ ENDDEF (*BasePicture*);
 '''.strip()
 
 
+def _contract_library_source() -> str:
+    return '''
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+    MismatchType = MODULEDEFINITION DateCode_ 2
+    MODULEPARAMETERS
+        ExpectedValue: real;
+    ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    ENDDEF (*MismatchType*);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+'''.strip()
+
+
+def _program_with_contract_mismatch_dependency() -> str:
+    return '''
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    SourceValue: integer := 1;
+SUBMODULES
+    Child Invocation
+       ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0 ) : MismatchType (
+    ExpectedValue => SourceValue);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+'''.strip()
+
+
 def test_resolve_entry_file_prefers_program_document(tmp_path):
     entry = tmp_path / "Programs" / "Main.s"
     _write_text(entry, '"x"\n"y"\n"z"\n')
@@ -653,6 +690,29 @@ ENDDEF (*BasePicture*);
 
     assert target.range.start.line == 5
     assert target.range.start.character == 4
+    assert "Why it matters:" in target.message
+    assert "Suggested fix:" in target.message
+    assert "Delete the declaration" in target.message
+
+
+def test_collect_semantic_diagnostics_include_actionable_guidance_for_contract_mismatch(tmp_path):
+    entry_file = tmp_path / "Program" / "Main.s"
+    library_file = tmp_path / "Libs" / "Mismatch.s"
+    _write_text(entry_file, _program_with_contract_mismatch_dependency())
+    _write_text(entry_file.with_suffix(".l"), "Mismatch\n")
+    _write_text(library_file, _contract_library_source())
+
+    snapshot = load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=True)
+    bundle = _snapshot_bundle(snapshot, entry_file)
+
+    diagnostics = collect_semantic_diagnostics(bundle, library_file)
+    target = next(d for d in diagnostics if d.message.startswith("Cross-module contract mismatch"))
+
+    assert "integer" in target.message
+    assert "real" in target.message
+    assert "Why it matters:" in target.message
+    assert "Suggested fix:" in target.message
+    assert "Align the source and target datatypes" in target.message
 
 
 def test_resolve_definition_path_prefers_loaded_source_index(tmp_path):

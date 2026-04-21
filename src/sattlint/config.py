@@ -39,6 +39,22 @@ _DOCUMENTATION_LEGACY_CATEGORY_KEYS = {
     "user_parameters": "up",
 }
 
+_NAMING_STYLE_KEYS = (
+    "infer",
+    "pascal",
+    "camel",
+    "snake",
+    "upper_snake",
+    "lower",
+    "upper",
+)
+
+_NAMING_RULE_TARGETS = (
+    "variables",
+    "modules",
+    "instances",
+)
+
 DEFAULT_CONFIG: dict[str, Any] = {
     "analyzed_programs_and_libraries": [],
     "mode": "official",
@@ -49,6 +65,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ABB_lib_dir": "",
     "icf_dir": "",
     "other_lib_dirs": [],
+    "analysis": {
+        "sfc": {
+            "mutually_exclusive_steps": [],
+            "step_contracts": {},
+        },
+        "naming": {
+            "variables": {"style": "infer", "allow": []},
+            "modules": {"style": "infer", "allow": []},
+            "instances": {"style": "infer", "allow": []},
+        },
+    },
     "documentation": {
         "classifications": {
             "em": {
@@ -322,6 +349,86 @@ def self_check(cfg: dict) -> bool:
                             f"✔ documentation.classifications.{category}.{key}: "
                             + ", ".join(values)
                         )
+
+    analysis = cfg.get("analysis", {})
+    if not isinstance(analysis, dict):
+        print("❌ analysis must be a table/object")
+        ok = False
+    else:
+        sfc = analysis.get("sfc", {})
+        if not isinstance(sfc, dict):
+            print("❌ analysis.sfc must be a table/object")
+            ok = False
+        else:
+            step_groups = sfc.get("mutually_exclusive_steps", [])
+            if not isinstance(step_groups, list):
+                print("❌ analysis.sfc.mutually_exclusive_steps must be a list")
+                ok = False
+            else:
+                for index, group in enumerate(step_groups, start=1):
+                    if not isinstance(group, list) or not all(
+                        isinstance(item, str) for item in group
+                    ):
+                        print(
+                            "❌ analysis.sfc.mutually_exclusive_steps"
+                            f"[{index}] must be a list of strings"
+                        )
+                        ok = False
+
+            step_contracts = sfc.get("step_contracts", {})
+            if not isinstance(step_contracts, dict):
+                print("❌ analysis.sfc.step_contracts must be a table/object")
+                ok = False
+            else:
+                for step_name, contract in step_contracts.items():
+                    if not isinstance(step_name, str) or not step_name.strip():
+                        print("❌ analysis.sfc.step_contracts keys must be non-empty strings")
+                        ok = False
+                        continue
+                    if not isinstance(contract, dict):
+                        print(
+                            "❌ analysis.sfc.step_contracts."
+                            f"{step_name} must be a table/object"
+                        )
+                        ok = False
+                        continue
+                    for key in ("required_enter_writes", "required_exit_writes"):
+                        values = contract.get(key, [])
+                        if not isinstance(values, list) or not all(
+                            isinstance(item, str) for item in values
+                        ):
+                            print(
+                                "❌ analysis.sfc.step_contracts."
+                                f"{step_name}.{key} must be a list of strings"
+                            )
+                            ok = False
+
+        naming = analysis.get("naming", {})
+        if not isinstance(naming, dict):
+            print("❌ analysis.naming must be a table/object")
+            ok = False
+        else:
+            for target in _NAMING_RULE_TARGETS:
+                rule = naming.get(target, {})
+                if not isinstance(rule, dict):
+                    print(f"❌ analysis.naming.{target} must be a table/object")
+                    ok = False
+                    continue
+                style = str(rule.get("style", "infer")).strip().lower()
+                if style not in _NAMING_STYLE_KEYS:
+                    print(
+                        f"❌ analysis.naming.{target}.style must be one of: "
+                        + ", ".join(_NAMING_STYLE_KEYS)
+                    )
+                    ok = False
+                allow = rule.get("allow", [])
+                if not isinstance(allow, list) or not all(
+                    isinstance(item, str) for item in allow
+                ):
+                    print(
+                        f"❌ analysis.naming.{target}.allow must be a list of strings"
+                    )
+                    ok = False
 
     print("------------------------------\n")
     return ok

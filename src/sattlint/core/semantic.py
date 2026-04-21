@@ -5,11 +5,21 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
+from ..analyzers.variables import VariablesAnalyzer
 from ..analyzers.context_builder import ContextBuilder
-from .ast_tools import iter_variable_refs
+from ..call_signatures import CallSignatureOccurrence, resolve_call_signature
+from .ast_tools import iter_call_sites, iter_variable_refs
 from .diagnostics import SemanticDiagnostic, collect_project_variable_diagnostics
+from .safety_paths import (
+    DEFAULT_SAFETY_SIGNAL_KEYWORDS,
+    SafetyPathTrace,
+    SymbolAccess,
+    build_safety_path_traces,
+    build_symbol_accesses,
+)
+from .taint_paths import TaintPathTrace, build_taint_path_traces
 from ..engine import (
     CodeMode,
     SattLineProjectLoader,
@@ -30,6 +40,7 @@ from ..models.ast_model import (
 )
 from ..models.project_graph import ProjectGraph
 from ..reporting.variables_report import VariableIssue
+from ..resolution.access_graph import AccessEvent
 from ..resolution import CanonicalPath, CanonicalSymbolTable, SymbolKind, TypeGraph, decorate_segment
 from ..resolution.common import resolve_moduletype_def_strict, resolve_module_by_strict_path
 from ..resolution.scope import ScopeContext
@@ -457,6 +468,7 @@ class SemanticSnapshot:
     type_graph: TypeGraph
     definitions: tuple[SymbolDefinition, ...]
     diagnostics: tuple[VariableIssue, ...] = ()
+    call_signatures: tuple[CallSignatureOccurrence, ...] = ()
     _definitions_by_key: dict[tuple[str, ...], SymbolDefinition] = field(
         default_factory=dict,
         repr=False,
@@ -473,6 +485,21 @@ class SemanticSnapshot:
         compare=False,
     )
     _references_by_definition_key: dict[tuple[str, ...], tuple[SymbolReference, ...]] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
+    _accesses_by_definition_key: dict[tuple[str, ...], tuple[AccessEvent, ...]] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
+    _effect_flow_edges: dict[tuple[str, ...], tuple[tuple[str, ...], ...]] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
+    _effect_flow_display_names: dict[tuple[str, ...], str] = field(
         default_factory=dict,
         repr=False,
         compare=False,
@@ -568,6 +595,53 @@ class SemanticSnapshot:
             return references[:limit]
         return references
 
+    def find_accesses_to(
+        self,
+        query: str | SymbolDefinition,
+        *,
+        limit: int | None = None,
+    ) -> list[SymbolAccess]:
+        if isinstance(query, SymbolDefinition):
+            definition_key = tuple(_cf(segment) for segment in query.canonical_path.split("."))
+        else:
+            definitions = self.find_definitions(query, limit=1)
+            if not definitions:
+                return []
+            definition_key = tuple(_cf(segment) for segment in definitions[0].canonical_path.split("."))
+
+        accesses = list(build_symbol_accesses(self._accesses_by_definition_key.get(definition_key, ())))
+        if limit is not None:
+            return accesses[:limit]
+        return accesses
+
+    def find_safety_paths(
+        self,
+        query: str = "",
+        *,
+        limit: int | None = None,
+        keywords: tuple[str, ...] = DEFAULT_SAFETY_SIGNAL_KEYWORDS,
+    ) -> list[SafetyPathTrace]:
+        return build_safety_path_traces(
+            self._accesses_by_definition_key,
+            query=query,
+            limit=limit,
+            keywords=keywords,
+        )
+
+    def find_taint_paths(
+        self,
+        query: str = "",
+        *,
+        limit: int | None = None,
+    ) -> list[TaintPathTrace]:
+        return build_taint_path_traces(
+            self._effect_flow_edges,
+            self._accesses_by_definition_key,
+            query=query,
+            limit=limit,
+            display_names_by_key=self._effect_flow_display_names,
+        )
+
     def find_references_at(
         self,
         source_file: Path | str,
@@ -629,6 +703,37 @@ class SemanticSnapshot:
         if len(candidates) == 1:
             return candidates
         return ()
+
+    def find_call_signatures(
+        self,
+        query: str = "",
+        *,
+        source_path: Path | str | None = None,
+        limit: int | None = None,
+    ) -> list[CallSignatureOccurrence]:
+        needle = query.strip().casefold()
+        file_key = _source_file_key(source_path) if source_path is not None else None
+        library_key = None
+        if source_path is not None:
+            source = Path(str(source_path))
+            library_key = source.parent.name.casefold()
+
+        matches: list[CallSignatureOccurrence] = []
+        for occurrence in self.call_signatures:
+            if needle and occurrence.name.casefold() != needle:
+                continue
+            if file_key is not None and _source_file_key(occurrence.source_file) != file_key:
+                continue
+            if (
+                library_key is not None
+                and occurrence.source_library is not None
+                and occurrence.source_library.casefold() != library_key
+            ):
+                continue
+            matches.append(occurrence)
+        if limit is not None:
+            return matches[:limit]
+        return matches
 
     def complete(
         self,
@@ -716,6 +821,7 @@ class _SemanticIndexBuilder:
         self._definitions_in_order: list[SymbolDefinition] = []
         self._references_by_file: dict[str, list[_ReferenceOccurrence]] = {}
         self._references_by_definition_key: dict[tuple[str, ...], list[SymbolReference]] = {}
+        self._call_signatures: list[CallSignatureOccurrence] = []
         self._moduletype_index: dict[str, list[ModuleTypeDef]] = {}
         self._datatype_field_definitions = self._build_datatype_field_definitions()
         for moduletype in base_picture.moduletype_defs or []:
@@ -738,6 +844,7 @@ class _SemanticIndexBuilder:
         dict[str, list[ModuleTypeDef]],
         dict[str, tuple[_ReferenceOccurrence, ...]],
         dict[tuple[str, ...], tuple[SymbolReference, ...]],
+        tuple[CallSignatureOccurrence, ...],
     ]:
         root_context = self.context_builder.build_for_basepicture()
         self._record_variables(
@@ -754,9 +861,21 @@ class _SemanticIndexBuilder:
             source_file=self.base_picture.origin_file,
             source_library=self.base_picture.origin_lib,
         )
+        self._record_call_signatures(
+            self.base_picture.moduledef,
+            module_path=(self.base_picture.header.name,),
+            source_file=self.base_picture.origin_file,
+            source_library=self.base_picture.origin_lib,
+        )
         self._record_scope_references(
             self.base_picture.modulecode,
             context=root_context,
+            source_file=self.base_picture.origin_file,
+            source_library=self.base_picture.origin_lib,
+        )
+        self._record_call_signatures(
+            self.base_picture.modulecode,
+            module_path=(self.base_picture.header.name,),
             source_file=self.base_picture.origin_file,
             source_library=self.base_picture.origin_lib,
         )
@@ -780,6 +899,7 @@ class _SemanticIndexBuilder:
             self._moduletype_index,
             {key: tuple(value) for key, value in self._references_by_file.items()},
             {key: tuple(value) for key, value in self._references_by_definition_key.items()},
+            tuple(self._call_signatures),
         )
 
     def _build_datatype_field_definitions(
@@ -964,6 +1084,30 @@ class _SemanticIndexBuilder:
                     continue
                 self._references_by_definition_key.setdefault(definition_key, []).append(symbol_reference)
 
+    def _record_call_signatures(
+        self,
+        node: object,
+        *,
+        module_path: tuple[str, ...],
+        source_file: str | None,
+        source_library: str | None,
+    ) -> None:
+        source_file_name = Path(str(source_file)).name if source_file is not None else None
+        for call_kind, call_name, _args in iter_call_sites(node):
+            signature = resolve_call_signature(call_name)
+            if signature is None:
+                continue
+            self._call_signatures.append(
+                CallSignatureOccurrence(
+                    name=call_name,
+                    call_kind=call_kind,
+                    module_path=module_path,
+                    source_file=source_file_name,
+                    source_library=source_library,
+                    signature=signature,
+                )
+            )
+
     def _repath_context(
         self,
         context: ScopeContext,
@@ -1015,9 +1159,21 @@ class _SemanticIndexBuilder:
                     source_file=current_origin_file,
                     source_library=current_origin_library,
                 )
+                self._record_call_signatures(
+                    module.moduledef,
+                    module_path=child_module_path,
+                    source_file=current_origin_file,
+                    source_library=current_origin_library,
+                )
                 self._record_scope_references(
                     module.modulecode,
                     context=child_context,
+                    source_file=current_origin_file,
+                    source_library=current_origin_library,
+                )
+                self._record_call_signatures(
+                    module.modulecode,
+                    module_path=child_module_path,
                     source_file=current_origin_file,
                     source_library=current_origin_library,
                 )
@@ -1085,9 +1241,21 @@ class _SemanticIndexBuilder:
                 source_file=moduletype.origin_file,
                 source_library=moduletype.origin_lib,
             )
+            self._record_call_signatures(
+                moduletype.moduledef,
+                module_path=child_module_path,
+                source_file=moduletype.origin_file,
+                source_library=moduletype.origin_lib,
+            )
             self._record_scope_references(
                 moduletype.modulecode,
                 context=typedef_context,
+                source_file=moduletype.origin_file,
+                source_library=moduletype.origin_lib,
+            )
+            self._record_call_signatures(
+                moduletype.modulecode,
+                module_path=child_module_path,
                 source_file=moduletype.origin_file,
                 source_library=moduletype.origin_lib,
             )
@@ -1142,9 +1310,21 @@ class _SemanticIndexBuilder:
                 source_file=moduletype.origin_file,
                 source_library=moduletype.origin_lib,
             )
+            self._record_call_signatures(
+                moduletype.moduledef,
+                module_path=module_path,
+                source_file=moduletype.origin_file,
+                source_library=moduletype.origin_lib,
+            )
             self._record_scope_references(
                 moduletype.modulecode,
                 context=typedef_context,
+                source_file=moduletype.origin_file,
+                source_library=moduletype.origin_lib,
+            )
+            self._record_call_signatures(
+                moduletype.modulecode,
+                module_path=module_path,
                 source_file=moduletype.origin_file,
                 source_library=moduletype.origin_lib,
             )
@@ -1318,15 +1498,42 @@ def _build_semantic_snapshot(
         base_picture,
         unavailable_libraries=project_graph.unavailable_libraries,
     )
-    (
-        symbol_table,
-        type_graph,
-        definitions,
-        definitions_by_key,
-        moduletype_index,
-        references_by_file,
-        references_by_definition_key,
-    ) = builder.build()
+    builder_result = cast(
+        tuple[
+            CanonicalSymbolTable,
+            TypeGraph,
+            tuple[SymbolDefinition, ...],
+            dict[tuple[str, ...], SymbolDefinition],
+            dict[str, list[ModuleTypeDef]],
+            dict[str, tuple[_ReferenceOccurrence, ...]],
+            dict[tuple[str, ...], tuple[SymbolReference, ...]],
+            tuple[CallSignatureOccurrence, ...],
+        ],
+        builder.build(),
+    )
+    symbol_table = builder_result[0]
+    type_graph = builder_result[1]
+    definitions = builder_result[2]
+    definitions_by_key = builder_result[3]
+    moduletype_index = builder_result[4]
+    references_by_file = builder_result[5]
+    references_by_definition_key = builder_result[6]
+    call_signatures = builder_result[7]
+
+    usage_analyzer = VariablesAnalyzer(
+        base_picture,
+        debug=debug,
+        fail_loudly=False,
+        unavailable_libraries=project_graph.unavailable_libraries,
+        include_dependency_moduletype_usage=True,
+    )
+    usage_analyzer.run()
+    accesses_by_definition_key = {
+        key: tuple(events)
+        for key, events in usage_analyzer.access_graph.by_path_key.items()
+    }
+    effect_flow_edges = usage_analyzer.effect_flow_edges
+    effect_flow_display_names = usage_analyzer.effect_flow_display_names
 
     diagnostics: tuple[VariableIssue, ...] = ()
     semantic_diagnostics_by_file: dict[str, tuple[SemanticDiagnostic, ...]] = {}
@@ -1348,10 +1555,14 @@ def _build_semantic_snapshot(
         type_graph=type_graph,
         definitions=definitions,
         diagnostics=diagnostics,
+        call_signatures=call_signatures,
         _definitions_by_key=definitions_by_key,
         _moduletype_index=moduletype_index,
         _references_by_file=references_by_file,
         _references_by_definition_key=references_by_definition_key,
+        _accesses_by_definition_key=accesses_by_definition_key,
+        _effect_flow_edges=effect_flow_edges,
+        _effect_flow_display_names=effect_flow_display_names,
         _semantic_diagnostics_by_file=semantic_diagnostics_by_file,
     )
 
@@ -1475,11 +1686,16 @@ def load_workspace_snapshot(
 
 
 __all__ = [
+    "CallSignatureOccurrence",
     "CompletionItem",
+    "DEFAULT_SAFETY_SIGNAL_KEYWORDS",
+    "SafetyPathTrace",
     "SemanticDiagnostic",
     "SemanticSnapshot",
+    "SymbolAccess",
     "SymbolDefinition",
     "SymbolReference",
+    "TaintPathTrace",
     "WorkspaceSnapshotError",
     "WorkspaceSourceDiscovery",
     "build_source_snapshot_from_basepicture",

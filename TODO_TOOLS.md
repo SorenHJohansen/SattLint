@@ -1,303 +1,56 @@
-# TODO – SattLint Tooling Roadmap
-
-Focused roadmap for analyzers, developer tooling, and pipeline maturity.
-
----
-
-## 1. Core Analyzer Capabilities (High Priority)
-
-### SattLine Semantic Analysis Layer
-
-Introduce `sattline-semantics` category with domain-aware checks:
-
-* Unused variables (SattLine-aware, not generic)
-* Read-before-write detection
-* Cross-module interface mismatches
-* Invalid module definitions
-* IEC 61131-3 structural violations
-* Dead branches / unreachable logic
-
-**Outcome:** Domain-correctness, not just syntax quality.
-
----
-
-### Lightweight Dataflow / Symbolic Execution
-
-Track variable state across branches:
-
-* Detect always-true/false conditions
-* Identify unreachable paths
-* Surface implicit logic bugs
-
-Optional:
-
-* Generate pytest cases from detected edge conditions
-
----
-
-### Structural Graph Generation
-
-Generate machine-readable artifacts:
-
-* `call_graph.json`
-* `dependency_graph.json`
-* `analyzer_registry.json` (rule → analyzer → output mapping)
-
-**Use cases:** debugging, visualization, AI-assisted reasoning
-
----
-
-### Rule Engine Standardization
-
-Unify all checks under a rule model:
-
-```
-{id, source, category, severity, applies_to}
-```
-
-**Outcome:** consistent execution, filtering, and reporting
-
----
-
-## 2. Signal Quality & Observability
-
-### Execution Tracing
-
-Track per run:
-
-* Rules executed
-* Files analyzed
-* Execution time (rule + file)
-* Findings triggered
-
-Output:
-
-* `analysis_trace.json`
-
----
-
-### Performance Profiling
-
-* Identify slow rules
-* Configurable thresholds for warnings
-
----
-
-### Semantic Coverage & Rule Effectiveness
-
-Track:
-
-* Seen vs supported SattLine constructs
-* Rule execution count vs trigger rate
-
-Outputs:
-
-* `semantic_coverage.json`
-* `rule_metrics.json`
-
----
-
-### Standardized Output Schema
-
-Unify all outputs:
-
-```
-{
-  tool,
-  summary,
-  findings: [
-    {type, file, line, symbol, message, confidence, category, impact}
-  ]
-}
-```
-
----
-
-## 3. Accuracy Improvements
-
-### Improved Dead Code Detection
-
-Replace naive detection with:
-
-```
-unused = defined - referenced - entrypoints
-```
-
-Entrypoints collected from:
-
-* CLI
-* LSP
-* Analyzer registry
-
----
-
-### Feature Exposure Validation
-
-Ensure all rules are reachable via:
-
-* CLI
-* TUI
-* LSP
-
-Output:
-
-* `missing_exposure` findings
-
----
-
-### Architecture & Boundary Checks
-
-Detect:
-
-* Circular dependencies
-* Layer violations (e.g. core used incorrectly by CLI)
-* High fan-in / fan-out
-* Overloaded modules/functions
-
----
-
-## 4. Security & Hygiene Checks
-
-### Secrets & Environment Leak Detection
-
-* Hardcoded paths (`C:\`, `/home/...`)
-* API keys, tokens, credentials
-* Machine-specific config
-
----
-
-### Public Readiness Checks
-
-* Internal URLs
-* Debug artifacts
-* Dev-only configs
-
----
-
-### Configuration Validation
-
-* Missing required fields
-* Deprecated options
-* Inconsistent config structure
-
----
-
-## 5. Developer Experience
-
-### CLI / TUI Consistency
-
-* Naming conventions
-* Command structure alignment
-* Predictable UX patterns
-
----
-
-### Logging & Observability
-
-* Ensure critical paths are logged
-* Detect missing error handling
-
----
-
-### Analyzer Coverage Checks
-
-Verify:
-
-* All rules are registered
-* All analyzers are exposed
-* No orphaned logic
-
----
-
-## 6. CI / Pipeline Integration
-
-### Pre-commit Hooks
-
-* Run fast checks locally before commit
-
----
-
-### CI Validation Pipeline
-
-* Full analysis run
-* Artifact publishing
-* Fail on critical findings
-
----
-
-### Incremental Analysis (Diff-Based)
-
-* Run only affected analyzers based on changes
-
----
-
-### Baseline & Diff System
-
-Support:
-
-```
---baseline baseline.json
-```
-
-Outputs:
-
-* `analysis_diff.json` (new / resolved / unchanged issues)
-
----
-
-## 7. Testing Strategy
-
-### Property-Based Parser Testing
-
-* Validate grammar robustness across edge cases
-
----
-
-### Fuzzing Targets
-
-* Grammar fuzzing (AFL / libFuzzer)
-* Detect crashes and hangs
-
----
-
-### Regression Suite
-
-* Lock down critical analyzer behavior
-
----
-
-### Coverage Analysis
-
-* Detect untested modules and weak tests
-
----
-
-## 8. Documentation & AI Integration
-
-### Analyzer Reference Examples
-
-* Input/output examples per rule
-* Expected findings
-
----
-
-### AI Task Templates
-
-* Reusable prompts for:
-
-  * Fixing findings
-  * Refactoring code
-  * Explaining analysis results
-
----
-
-## Suggested Execution Order
-
-1. Semantic analysis layer
-2. Dataflow tracking
-3. Dead code accuracy fix
-4. Execution tracing + output schema
-5. Feature exposure validation
-6. CI + baseline system
-7. Structural graphs
-8. Coverage + rule metrics
+# TODO - SattLint Tooling Backlog
+
+Backlog view of the tooling roadmap. Each row is a discrete feature sized against the current repo seams and test surfaces.
+
+- `ID` reflects the suggested implementation order and may be renumbered when the backlog is re-prioritized.
+- `Completed` uses `No` for open items and `Yes` for completed items.
+- Scope uses: single-file, workspace, cross-module, or LSP-only.
+- Implementation bucket uses: new analyzer, extend VariablesAnalyzer, shared semantic core, or reporting only.
+- Confidence reflects delivery confidence with the current parser, resolver, pipeline, and test scaffolding.
+- Acceptance tests name the existing suites that should be extended first.
+
+Suggested implementation order rationale:
+
+- Build shared outputs, semantic-core artifacts, and observability first so later CI, baseline, and quality gates consume stable data.
+- Add validation and regression infrastructure next so new analyzers and tooling can be shipped behind measurable safeguards.
+- Layer in higher-cost experimentation, repo-audit expansion, and documentation or AI workflows after the core tooling loop is stable.
+
+| ID | Completed | Area | Feature | Scope | Implementation bucket | Confidence | Dependencies | Acceptance tests |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | No | Signal quality and observability | Standardized output schema | workspace | reporting only | High | Shared finding serializer, stable severity and confidence fields, pipeline artifact writers, CLI summary rendering | Extend `tests/test_pipeline.py` to assert the normalized schema; extend `tests/test_app.py` for CLI-readable summaries built from the same payload |
+| 2 | No | Accuracy improvements | SattLine semantic analysis layer | cross-module | shared semantic core | High | Existing `sattline-semantics` analyzer, shared rule metadata, variable lifecycle analysis, parameter mapping resolution, IEC 61131-3 structural validation, Dv datatype tree checks, control-flow reachability, artifact writer for `sattline_semantic.json` | Extend `tests/test_sattline_semantics.py` for unused/read-before-write/cross-module mismatch/dead-branch coverage; extend `tests/test_dataflow.py` for branch-state and write-read semantics; extend `tests/test_pipeline.py` for `artifacts/analysis/sattline_semantic.json` export |
+| 3 | No | Signal quality and observability | Execution tracing | workspace | reporting only | High | Existing tracing payload model, path redaction, analyzer phase hooks, optional pipeline integration | Extend `tests/test_tracing.py` for per-rule and per-file timing plus finding counts; extend `tests/test_pipeline.py` if traces are exported from pipeline runs |
+| 4 | No | Signal quality and observability | Structural graph exports | workspace | shared semantic core | Medium | Workspace snapshot graph inputs, function or module access aggregation, dependency extraction, analyzer registry metadata, artifact writers for `call_graph.json`, `dependency_graph.json`, and `analyzer_registry.json` | Extend `tests/test_pipeline.py` for call graph, dependency graph, and analyzer registry exports; extend `tests/test_repo_audit.py` if graph outputs feed architectural findings |
+| 5 | No | Developer experience | Analyzer coverage checks | workspace | reporting only | High | Analyzer registry, rule metadata export, pipeline registry report, consistency between analyzers and outputs | Extend `tests/test_pipeline.py` to assert all analyzers are registered, exposed, and mapped to outputs |
+| 6 | No | Accuracy improvements | Feature exposure validation | workspace | reporting only | High | Analyzer registry, CLI command inventory, interactive app menu wiring, LSP diagnostics exposure map | Extend `tests/test_pipeline.py` for `missing_exposure` findings; extend `tests/test_app.py` and `tests/test_lsp_server.py` to prove analyzer reachability |
+| 7 | No | Signal quality and observability | Semantic coverage and rule effectiveness | workspace | reporting only | Medium | AST construct inventory, analyzer registry metadata, trace counters, rule-trigger aggregation | Extend `tests/test_pipeline.py` for `semantic_coverage.json` and `rule_metrics.json`; extend `tests/test_tracing.py` for rule execution counters |
+| 8 | No | CI and pipeline integration | CI validation pipeline | workspace | reporting only | High | Existing pipeline orchestration, artifact directory conventions, failure thresholds, command payload sanitization | Extend `tests/test_pipeline.py` for full-run artifact publishing and fail-on-critical behavior |
+| 9 | No | CI and pipeline integration | Baseline and diff system | workspace | reporting only | Medium | Stable finding IDs, normalized output schema, artifact comparison helpers, CLI option parsing for `--baseline` | Extend `tests/test_pipeline.py` for `analysis_diff.json`; extend `tests/test_app.py` for baseline argument handling and summary output |
+| 10 | No | CI and pipeline integration | Baseline regression enforcement | workspace | reporting only | High | Existing baseline diff payloads, CI fail-on-drift policy, explicit approval workflow, stable finding IDs, normalized path handling | Extend `tests/test_pipeline.py` for CI failure on unexpected new or missing expected findings; extend `tests/test_app.py` for approve-or-refresh baseline workflows |
+| 11 | No | CI and pipeline integration | Incremental analysis (diff-based) | workspace | reporting only | Medium | Changed-file detection, analyzer impact mapping, cache or baseline compatibility, stable path normalization | Extend `tests/test_pipeline.py` for affected-analyzer selection; extend `tests/test_cache.py` if incremental reuse is cached |
+| 12 | No | Signal quality and observability | Performance profiling | workspace | reporting only | Medium | Execution tracing timestamps, configurable thresholds, pipeline summary output, stable analyzer names | Extend `tests/test_tracing.py` for slow-rule summaries and threshold warnings; extend `tests/test_pipeline.py` for emitted profiling artifacts |
+| 13 | No | CI and pipeline integration | Performance budgets | workspace | reporting only | Medium | Existing tracing timestamps, time-per-file and time-per-rule thresholds, optional memory sampling, CI warn-or-fail policy, regression trend storage | Extend `tests/test_tracing.py` for threshold evaluation and slow-rule budget warnings; extend `tests/test_pipeline.py` for budget summaries and CI gating behavior |
+| 14 | No | Testing strategy | Ground truth corpus | workspace | reporting only | High | Versioned `valid/`, `invalid/`, and `edge_cases/` SattLine fixtures, expected finding manifests, corpus runner, artifact writer for `corpus_results.json`, CI comparison against expected outcomes | Extend `tests/test_analyzers.py` and `tests/test_sattline_semantics.py` with corpus-backed expectations; extend `tests/test_pipeline.py` for `corpus_results.json` publishing and CI enforcement |
+| 15 | No | Testing strategy | Regression suite | workspace | reporting only | High | Representative fixtures, pinned analyzer outputs, stable issue IDs, prioritized high-risk rules | Extend `tests/test_analyzers.py`, `tests/test_sfc.py`, and `tests/test_sattline_semantics.py` with lock-in cases for recently added rules |
+| 16 | No | Testing strategy | Fault injection and robustness testing | workspace | reporting only | High | Malformed-file fixtures, partial-module fixtures, invalid encoding coverage, very large input samples, crash-safe execution harness, graceful-degradation assertions for strict and workspace modes | Extend `tests/test_parser.py` for malformed and encoding-stress cases; extend `tests/test_engine.py` for graceful failure behavior; extend `tests/test_lsp_server.py` for dirty-buffer and partial-workspace robustness |
+| 17 | No | Testing strategy | Property-based parser testing | single-file | reporting only | Medium | Parser fixture builders, grammar invariants, deterministic shrink-friendly assertions, optional Hypothesis integration | Extend `tests/test_parser.py` and `tests/test_transformer.py` with generated edge-case coverage for valid and invalid syntax |
+| 18 | No | Testing strategy | Fuzzing targets | single-file | reporting only | Low | Standalone fuzz harness, parser entrypoint isolation, timeout and crash capture, corpus seeding from fixtures | Extend `tests/test_parser.py` with harness smoke tests and corpus regression checks; extend `tests/test_engine.py` if the harness is surfaced as a tool entrypoint |
+| 19 | No | Testing strategy | Coverage analysis | workspace | reporting only | Medium | Existing coverage artifacts, module inventory, threshold configuration, pipeline reporting of weak coverage areas | Extend `tests/test_pipeline.py` for coverage summary artifacts; extend `tests/test_repo_audit.py` if weak coverage is reported as an audit finding |
+| 20 | No | Testing strategy | SattLine mutation engine | workspace | shared semantic core | Medium | Mutation operators for assignments, conditions, interfaces, and variable usage, valid-program seed corpus, analyzer detection harness, artifact writer for `mutation_results.json`, per-analyzer detection metrics | Extend `tests/test_analyzers.py` for mutation kill expectations; extend `tests/test_dataflow.py` for control-flow and lifecycle mutations; extend `tests/test_pipeline.py` for mutation result summaries |
+| 21 | No | CI and pipeline integration | Rule acceptance gates | workspace | reporting only | High | Analyzer registry metadata, mandatory corpus linkage, required edge-case coverage, mutation applicability metadata, pre-merge gate that rejects under-validated rules | Extend `tests/test_pipeline.py` to assert new rules declare corpus and mutation coverage metadata; extend `tests/test_app.py` if gate failures are surfaced in CLI validation output |
+| 22 | No | Signal quality and observability | Finding validation feedback loop | workspace | reporting only | Medium | Finding identity stability, annotation storage for `correct`, `false_positive`, and `missed_issue`, precision tracking per rule, ignored-finding aggregation, artifact writer for `accuracy_metrics.json` | Extend `tests/test_pipeline.py` for precision and ignored-rule summaries; extend `tests/test_app.py` if feedback tags are imported or exported through CLI workflows |
+| 23 | No | Accuracy improvements | Core invariant checks | cross-module | shared semantic core | High | Deterministic AST serialization, stable symbol resolution snapshots, analyzer order-independence harness, invariant failure reporting, hard-fail pipeline integration | Extend `tests/test_parser.py` and `tests/test_transformer.py` for deterministic parse and transform invariants; extend `tests/test_cache.py` for stable serialization expectations; extend `tests/test_sattline_semantics.py` for analyzer order-independence checks |
+| 24 | No | Accuracy improvements | Improved dead code detection | cross-module | shared semantic core | Medium | Canonical reference tracking, entrypoint inventory from CLI and LSP, analyzer registry metadata, library-aware suppression rules | Extend `tests/test_dataflow.py` for `defined - referenced - entrypoints` behavior; extend `tests/test_lsp_server.py` for LSP-provided entrypoint context |
+| 25 | No | Accuracy improvements | Symbolic execution lite | cross-module | shared semantic core | Low | Lightweight branch-state lattice, path-sensitive variable state tracking, constant-condition detection, unreachable-code reporting, optional pytest case generation from semantic findings | Extend `tests/test_dataflow.py` for branch-state propagation and always-true or always-false conditions; extend `tests/test_sattline_semantics.py` for unreachable-code semantic findings; extend `tests/test_pipeline.py` if symbolic summaries are exported |
+| 26 | No | Security and hygiene checks | Configuration validation | workspace | reporting only | Medium | Config schema inventory, deprecated-key map, config loader behavior, repo-audit config key scans | Extend `tests/test_app.py` for invalid and deprecated config handling; extend `tests/test_repo_audit.py` for inconsistent or unused config structures |
+| 27 | No | Accuracy improvements | Architecture and boundary checks | workspace | reporting only | High | Existing repo-audit scanner, import graph extraction, layer definitions for CLI/core/LSP, threshold rules for fan-in and fan-out | Extend `tests/test_repo_audit.py` for circular dependency, layer violation, and oversized module findings; extend `tests/test_pipeline.py` if results are published as artifacts |
+| 28 | No | Security and hygiene checks | Secrets and environment leak detection | workspace | reporting only | High | Existing repo-audit line scanners, redaction helpers, suspicious identifier catalog, generated-file filtering | Extend `tests/test_repo_audit.py` for hardcoded paths, token patterns, and machine-specific config leakage |
+| 29 | No | Security and hygiene checks | Public readiness checks | workspace | reporting only | High | Repo-audit findings model, internal URL detection, debug artifact inventory, release-oriented allowlist and suppressions | Extend `tests/test_repo_audit.py` for internal URLs, debug artifacts, and dev-only config findings; extend `tests/test_pipeline.py` if public-readiness summaries are exported |
+| 30 | No | Developer experience | Logging and observability | workspace | reporting only | Medium | Repo-audit logging checks, pipeline command capture, failure-path instrumentation, missing-error-handling heuristics | Extend `tests/test_repo_audit.py` for missing logging or error-handling findings; extend `tests/test_pipeline.py` for logged command and failure summaries |
+| 31 | No | Developer experience | CLI and TUI consistency | workspace | reporting only | Medium | App menu structure, command naming inventory, shared help text, documented command extraction | Extend `tests/test_app.py` and `tests/test_cli.py` for naming and menu consistency; extend `tests/test_repo_audit.py` if docs-to-command consistency is enforced |
+| 32 | No | CI and pipeline integration | Pre-commit hooks | workspace | reporting only | High | Fast command inventory, documented local workflow, stable command entrypoints, optional hook config files | Extend `tests/test_repo_audit.py` for documented-command coverage and hook presence; extend `tests/test_app.py` if hook commands are surfaced in UX help |
+| 33 | No | Accuracy improvements | Repository maintainability and test quality checks | workspace | reporting only | Medium | Repo-audit import graph rules, fan-in and fan-out thresholds, overloaded-function heuristics, test smell detection for missing assertions and duplicate tests, edge-case coverage heuristics | Extend `tests/test_repo_audit.py` for overloaded-function and weak-test findings; extend `tests/test_pipeline.py` if maintainability findings are exported with other analysis artifacts |
+| 34 | No | CI and pipeline integration | Differential analysis | workspace | reporting only | Medium | Version-to-version comparison harness, cross-config execution matrix, baseline-compatible diffing, drift classifiers, explicit allowlist for intended behavior changes | Extend `tests/test_pipeline.py` for cross-version and cross-config drift reporting; extend `tests/test_app.py` for CLI options selecting comparison targets |
+| 35 | No | Signal quality and observability | Production code analysis | workspace | reporting only | Medium | Real SattLine repository allowlist, path redaction, findings-per-KLOC aggregation, rule frequency summaries, ignored-vs-fixed tracking, artifact export for machine-readable trend reports | Extend `tests/test_pipeline.py` for production summary artifact generation; extend `tests/test_repo_audit.py` for path redaction and external-dataset safety guards |
+| 36 | No | Documentation and AI integration | Analyzer reference examples | workspace | reporting only | High | Analyzer registry metadata, example fixture selection, doc generation templates, stable finding serialization | Extend `tests/test_docgen.py` for rendered analyzer examples and expected findings; extend `tests/test_pipeline.py` if examples are exported as machine-readable artifacts |
+| 37 | No | Documentation and AI integration | AI task templates | workspace | reporting only | Medium | Stable finding schema, documented example findings, reusable prompt templates, doc or CLI surfacing strategy | Extend `tests/test_docgen.py` for generated template sections; extend `tests/test_app.py` if templates are exposed through a CLI help or export command |

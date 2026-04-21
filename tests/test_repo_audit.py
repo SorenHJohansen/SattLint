@@ -1,4 +1,5 @@
 import subprocess
+import json
 from unittest.mock import patch
 
 from sattlint.devtools import repo_audit
@@ -179,6 +180,8 @@ def test_audit_repository_leaks_only_filters_findings_and_skips_pipeline(tmp_pat
         with patch.object(repo_audit.pipeline_module, "_run_pipeline") as run_pipeline:
             summary = repo_audit.audit_repository(
                 tmp_path,
+                profile="full",
+                fail_on="medium",
                 include_generated=False,
                 leaks_only=True,
                 suspicious_identifiers=["SQHJ"],
@@ -192,3 +195,45 @@ def test_audit_repository_leaks_only_filters_findings_and_skips_pipeline(tmp_pat
     assert summary["profile"] == "leaks"
     assert summary["pipeline_ran"] is False
     assert [finding["id"] for finding in summary["findings"]] == ["hardcoded-windows-path"]
+
+
+def test_audit_repository_writes_status_file_and_forwards_profile(tmp_path):
+    pipeline_summary = {
+        "profile": "quick",
+        "output_dir": "<external>/audit/pipeline",
+        "status": {"overall_status": "pass", "tool_statuses": {}},
+    }
+    finding = repo_audit.Finding(
+        "oversized-module",
+        "architecture",
+        "medium",
+        "high",
+        "Large module with high maintenance cost.",
+        path="src/big.py",
+    )
+
+    with patch.object(repo_audit, "collect_custom_findings", return_value=[finding]):
+        with patch.object(repo_audit, "_find_pipeline_findings", return_value=[]):
+            with patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary) as run_pipeline:
+                summary = repo_audit.audit_repository(
+                    tmp_path,
+                    profile="quick",
+                    fail_on="high",
+                    include_generated=False,
+                    leaks_only=False,
+                    suspicious_identifiers=["SQHJ"],
+                    skip_pipeline=False,
+                    skip_vulture=False,
+                    skip_bandit=False,
+                )
+
+    status_report = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+
+    assert summary["profile"] == "quick"
+    assert summary["entry_report"] == "status.json"
+    assert summary["reports"]["pipeline_status"] == "pipeline/status.json"
+    assert status_report["profile"] == "quick"
+    assert status_report["overall_status"] == "pass"
+    assert status_report["pipeline_status_report"] == f"<external>/{tmp_path.name}/pipeline/status.json"
+    run_pipeline.assert_called_once()
+    assert run_pipeline.call_args.kwargs["profile"] == "quick"

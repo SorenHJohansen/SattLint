@@ -114,3 +114,47 @@ def test_icf_validation_requires_simple_leaf_datatype():
     assert len(report.issues) == 1
     assert report.issues[0].reason == "invalid field path"
     assert report.issues[0].detail == "non-simple datatype Rec referenced without field path"
+
+
+def test_icf_validation_exposes_resolved_entries_for_reuse():
+    record = DataType(
+        name="Rec",
+        description=None,
+        datecode=None,
+        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+    )
+
+    unit = SingleModule(
+        header=_header("Unit"),
+        moduledef=None,
+        localvariables=[Variable(name="T", datatype="Rec")],
+    )
+
+    bp = BasePicture(
+        header=_header("Program"),
+        datatype_defs=[record],
+        submodules=[unit],
+    )
+
+    entries = [
+        ICFEntry(
+            file_path=Path("Program.icf"),
+            line_no=1,
+            section="JournalData_DCStoMES",
+            key="Tag1",
+            value="Program:Unit.T.FieldA",
+        ),
+    ]
+
+    report = validate_icf_entries_against_program(
+        bp,
+        entries,
+        expected_program="Program",
+    )
+
+    assert report.valid_entries == 1
+    assert len(report.resolved_entries) == 1
+    assert report.resolved_entries[0].module_path == ["Program", "Unit"]
+    assert report.resolved_entries[0].field_path == "FieldA"
+    assert report.resolved_entries[0].leaf_name == "FieldA"
+    assert report.resolved_entries[0].datatype is Simple_DataType.INTEGER

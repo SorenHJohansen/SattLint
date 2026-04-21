@@ -116,24 +116,26 @@ The first time SattLint runs, it creates a config file automatically.
 
 1. Start SattLint
 
-2. Choose `4) Edit config`
+2. Choose `3) Setup`
 
 3. Set:
 
-   * `program_dir` → your SattLine program folder
-   * `ABB_lib_dir` → shared/ABB libraries
-   * `other_lib_dirs` → any additional libraries
-   * `analyzed_programs_and_libraries` → what to analyze
+  * `program_dir` -> your SattLine program folder
+  * `ABB_lib_dir` -> shared or ABB libraries
+  * `other_lib_dirs` -> any additional libraries
+  * `analyzed_programs_and_libraries` -> what to analyze
 
-4. Save with `9) Save config`
+4. Save with `9) Save configuration`
 
-5. Run `5) Self-check diagnostics`
+5. Choose `4) Tools`
+
+6. Run `1) Self-check diagnostics`
 
 **Important:**
 Use names *without file extensions*
 
-✔ `MyProgram`
-✘ `MyProgram.s`
++ `MyProgram`
+- `MyProgram.s`
 
 ---
 
@@ -147,12 +149,13 @@ sattlint
 
 Main menu:
 
-* `1) Analyses` → run checks
-* `2) Dump outputs` → inspect parser data
-* `3) Documentation` → generate Word docs
-* `4) Edit config` → change setup
-* `5) Self-check diagnostics` → verify setup
-* `6) Force refresh cached AST` → fix stale results
+* `1) Analyze` -> run curated checks, variable reports, and registry-backed analyzers
+* `2) Documentation` -> preview unit scope and generate Word docs
+* `3) Setup` -> change paths, targets, mode, and cache settings
+* `4) Tools` -> run self-check, inspect dumps, and refresh cached ASTs
+* `5) Help` -> first-time guidance and workflow explanations
+
+Inside `Analyze`, use `Full analyzer suite` for a broad pass and the focused submenus when you want specific reports or debugging tools.
 
 ---
 
@@ -172,12 +175,22 @@ Output:
 ## Generate Word Documentation
 
 1. Start SattLint
-2. Choose `3) Documentation`
+2. Choose `2) Documentation`
 3. Choose `1) Generate documentation`
 
 You can optionally scope by units before generating.
 
 Output is a `.docx` file.
+
+---
+
+## Need Guidance In The App
+
+If you are unsure where to start:
+
+1. Open `5) Help`
+2. Follow the first-run checklist shown there
+3. Use `sattlint syntax-check /path/to/Program.s` when you only want to validate one file quickly
 
 ---
 

@@ -45,14 +45,15 @@ class UsageTracker:
         path: list[str],
         kind: AccessKind,
         syntactic_ref: str,
+        ui_read: bool = False,
     ) -> None:
         usage = self.get_usage(variable)
 
         if kind is AccessKind.READ:
             if field_path:
-                usage.mark_field_read(field_path, path)
+                usage.mark_field_read(field_path, path, ui=ui_read)
             else:
-                usage.mark_read(path)
+                usage.mark_read(path, ui=ui_read)
         else:
             if field_path:
                 usage.mark_field_written(field_path, path)
