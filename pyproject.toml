@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77.0.0", "wheel"]
+requires = ["setuptools>=82.0.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -46,8 +46,7 @@ test = [
 dev = [
     "sattlint[test,lsp]",
     "ruff>=0.1.0",      # Linting & formatting
-    "pyright>=1.1.380", # Type checking (faster than mypy)
-    "mypy>=1.0.0",     # Type checking (keep for specific workflows)
+    "pyright>=1.1.380", # Type checking
     "build>=1.2.2",    # Build frontend for release validation
     "bandit>=1.8.0",   # Security analysis
     "twine>=5.1.1",    # Package metadata validation
