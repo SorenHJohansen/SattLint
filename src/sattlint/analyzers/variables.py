@@ -1,11 +1,14 @@
 """Variable usage analysis and reporting utilities."""
 from __future__ import annotations
 from collections import Counter
+from collections import defaultdict
+from dataclasses import dataclass
 import difflib
 import re
 from typing import TYPE_CHECKING, Any, Union
 from pathlib import Path
 from .sattline_builtins import get_function_signature
+from ..call_signatures import CallParameterSignature, resolve_call_signature
 from ..grammar import constants as const
 import logging
 from ..resolution.scope import ScopeContext
@@ -53,15 +56,17 @@ from ..resolution.common import (
     resolve_moduletype_def_strict,
     varname_base,
 )
-from .validators import MinMaxValidator, StringMappingValidator
+from .validators import AnyTypeFieldContract, ContractMappingValidator, MinMaxValidator, StringMappingValidator
 from .usage_tracker import UsageTracker
 from .context_builder import ContextBuilder
-from .reset_contamination import detect_reset_contamination
+from .reset_contamination import detect_implicit_latching, detect_reset_contamination
 
 if TYPE_CHECKING:
     from ..tracing import AnalysisTraceRecorder
 
 log = logging.getLogger("SattLint")
+
+_HIGH_FAN_IN_OUT_THRESHOLD = 3
 
 _IGNORED_GRAPHICS_TAIL_BASENAMES = {
     "abs_",
@@ -86,6 +91,7 @@ def analyze_variables(
     debug: bool = False,
     unavailable_libraries: set[str] | None = None,
     analyzed_target_is_library: bool = False,
+    include_dependency_moduletype_usage: bool = False,
     trace_recorder: AnalysisTraceRecorder | None = None,
 ) -> VariablesReport:
     """
@@ -102,6 +108,7 @@ def analyze_variables(
         fail_loudly=False,
         unavailable_libraries=unavailable_libraries,
         analyzed_target_is_library=analyzed_target_is_library,
+        include_dependency_moduletype_usage=include_dependency_moduletype_usage,
         trace_recorder=trace_recorder,
     )
     issues = analyzer.run()
@@ -130,7 +137,12 @@ def filter_variable_report(
     )
 
 
-
+@dataclass(frozen=True)
+class _ProcedureStatusBinding:
+    call_name: str
+    parameter_name: str
+    channel_kind: str
+    field_path: str | None = None
 
 
 class VariablesAnalyzer:
@@ -160,15 +172,19 @@ class VariablesAnalyzer:
         fail_loudly: bool = True,
         unavailable_libraries: set[str] | None = None,
         analyzed_target_is_library: bool = False,
+        include_dependency_moduletype_usage: bool = False,
         trace_recorder: AnalysisTraceRecorder | None = None,
+        build_anytype_contracts: bool = True,
     ):
         self.bp = base_picture
         self.debug = debug
         self.fail_loudly = fail_loudly
         self._unavailable_libraries = unavailable_libraries or set()
         self._analyzed_target_is_library = analyzed_target_is_library
+        self._include_dependency_moduletype_usage = include_dependency_moduletype_usage
         self._analysis_warnings: list[str] = []
         self._trace_recorder = trace_recorder
+        self._limit_to_module_path: list[str] | None = None
 
         # Unified collection of issues
         self._issues: list[VariableIssue] = []
@@ -192,9 +208,7 @@ class VariablesAnalyzer:
             global_lookup_fn=self._lookup_global_variable
         )
 
-        self.typedef_index: dict[str, list[ModuleTypeDef]] = {
-            mt.name.lower(): [] for mt in (self.bp.moduletype_defs or [])
-        }
+        self.typedef_index: dict[str, list[ModuleTypeDef]] = {}
         for mt in self.bp.moduletype_defs or []:
             self.typedef_index.setdefault(mt.name.lower(), []).append(mt)
         self.used_params_by_typedef: dict[str, set[str]] = {}
@@ -203,6 +217,11 @@ class VariablesAnalyzer:
         self._alias_links: list[
             tuple[Variable, Variable, str]
         ] = []  # (parent_var, child_param_var, field_path_in_parent)
+        self._effect_flow_edges: dict[tuple[str, ...], set[tuple[str, ...]]] = defaultdict(set)
+        self._effect_flow_display_names: dict[tuple[str, ...], str] = {}
+        self._external_effect_sinks: set[tuple[str, ...]] = set()
+        self._effective_output_keys: set[tuple[str, ...]] = set()
+        self._procedure_status_bindings: dict[int, list[_ProcedureStatusBinding]] = defaultdict(list)
 
         # Index BasePicture/global variables (localvariables)
         self._root_env: dict[str, Variable] = {
@@ -213,10 +232,73 @@ class VariablesAnalyzer:
         self._any_var_index: dict[str, list[Variable]] = {}
         self._index_all_variables()
         self._analyzing_typedefs: set[str] = set()
+        self._anytype_field_contracts_by_owner: dict[int, dict[str, AnyTypeFieldContract]] = {}
+        if build_anytype_contracts:
+            self._anytype_field_contracts_by_owner = self._build_anytype_field_contracts()
 
         # Load dedicated validators
+        self._contract_validator = ContractMappingValidator(
+            self.type_graph,
+            anytype_field_contracts=self._anytype_field_contracts_by_owner,
+        )
         self._min_max_validator = MinMaxValidator()
         self._string_validator = StringMappingValidator()
+
+    def _build_anytype_field_contracts(self) -> dict[int, dict[str, AnyTypeFieldContract]]:
+        typedefs_with_anytype = [
+            typedef
+            for typedef in (self.bp.moduletype_defs or [])
+            if any(
+                isinstance(variable.datatype, str)
+                and variable.datatype.casefold() == "anytype"
+                for variable in (typedef.moduleparameters or [])
+            )
+        ]
+        if not typedefs_with_anytype:
+            return {}
+
+        extractor = VariablesAnalyzer(
+            self.bp,
+            debug=False,
+            fail_loudly=False,
+            unavailable_libraries=self._unavailable_libraries,
+            analyzed_target_is_library=self._analyzed_target_is_library,
+            include_dependency_moduletype_usage=self._include_dependency_moduletype_usage,
+            trace_recorder=None,
+            build_anytype_contracts=False,
+        )
+        contracts: dict[int, dict[str, AnyTypeFieldContract]] = {}
+
+        for typedef in typedefs_with_anytype:
+            extractor._analyze_typedef(
+                typedef,
+                path=[self.bp.header.name, f"TypeDef:{typedef.name}"],
+            )
+
+            parameter_contracts: dict[str, AnyTypeFieldContract] = {}
+            for variable in typedef.moduleparameters or []:
+                if not (
+                    isinstance(variable.datatype, str)
+                    and variable.datatype.casefold() == "anytype"
+                ):
+                    continue
+
+                usage = extractor._get_usage(variable)
+                field_paths = sorted(
+                    set((usage.field_reads or {}).keys())
+                    | set((usage.field_writes or {}).keys())
+                )
+                if not field_paths:
+                    continue
+
+                parameter_contracts[variable.name.casefold()] = AnyTypeFieldContract(
+                    field_paths=tuple(field_paths)
+                )
+
+            if parameter_contracts:
+                contracts[id(typedef)] = parameter_contracts
+
+        return contracts
 
     def _get_usage(self, variable: Variable) -> VariableUsage:
         return self.usage_tracker.get_usage(variable)
@@ -225,6 +307,16 @@ class VariablesAnalyzer:
     def access_graph(self) -> AccessGraph:
         return self.usage_tracker.access_graph
 
+    @property
+    def effect_flow_edges(self) -> dict[tuple[str, ...], tuple[tuple[str, ...], ...]]:
+        return {
+            source_key: tuple(sorted(target_keys))
+            for source_key, target_keys in self._effect_flow_edges.items()
+        }
+
+    @property
+    def effect_flow_display_names(self) -> dict[tuple[str, ...], str]:
+        return dict(self._effect_flow_display_names)
 
     @property
     def analysis_warnings(self) -> list[str]:
@@ -232,7 +324,8 @@ class VariablesAnalyzer:
 
     def _warn(self, message: str) -> None:
         self._analysis_warnings.append(message)
-        log.warning(message)
+        if self.debug:
+            log.warning(message)
         self._trace("warning", message=message)
 
     @property
@@ -255,6 +348,107 @@ class VariablesAnalyzer:
             field_path=issue.field_path,
             site=issue.site,
         )
+
+    def _bind_procedure_status(
+        self,
+        full_ref: str,
+        *,
+        call_name: str,
+        parameter: CallParameterSignature,
+        context: ScopeContext,
+    ) -> None:
+        resolved_var, resolved_field_path, _decl_path, _decl_display = context.resolve_variable(full_ref)
+        if resolved_var is None:
+            return
+
+        binding = _ProcedureStatusBinding(
+            call_name=call_name,
+            parameter_name=parameter.name,
+            channel_kind=parameter.channel_kind or "status",
+            field_path=resolved_field_path or None,
+        )
+        bindings = self._procedure_status_bindings[id(resolved_var)]
+        if binding not in bindings:
+            bindings.append(binding)
+
+    def _record_procedure_status_bindings(
+        self,
+        fn_name: str,
+        args: list[Any],
+        context: ScopeContext,
+    ) -> None:
+        signature = resolve_call_signature(fn_name)
+        if signature is None:
+            return
+
+        for index, parameter in enumerate(signature.parameters):
+            if not parameter.is_status_channel or index >= len(args):
+                continue
+            argument = args[index]
+            if not (isinstance(argument, dict) and const.KEY_VAR_NAME in argument):
+                continue
+            self._bind_procedure_status(
+                argument[const.KEY_VAR_NAME],
+                call_name=fn_name,
+                parameter=parameter,
+                context=context,
+            )
+
+    def _propagate_procedure_status_bindings(self) -> None:
+        for source_var, target_var, mapping_name in self._alias_links:
+            propagated: list[_ProcedureStatusBinding] = []
+            for binding in self._procedure_status_bindings.get(id(target_var), []):
+                field_path = binding.field_path
+                if mapping_name and field_path:
+                    field_path = f"{mapping_name}.{field_path}"
+                elif mapping_name:
+                    field_path = mapping_name
+                propagated.append(
+                    _ProcedureStatusBinding(
+                        call_name=binding.call_name,
+                        parameter_name=binding.parameter_name,
+                        channel_kind=binding.channel_kind,
+                        field_path=field_path,
+                    )
+                )
+
+            if not propagated:
+                continue
+
+            source_bindings = self._procedure_status_bindings[id(source_var)]
+            for binding in propagated:
+                if binding not in source_bindings:
+                    source_bindings.append(binding)
+
+    def _procedure_status_issue(
+        self,
+        variable: Variable,
+        usage: VariableUsage,
+    ) -> tuple[str, str | None] | None:
+        bindings = self._procedure_status_bindings.get(id(variable), [])
+        if not bindings or not usage.written:
+            return None
+        if usage.non_ui_read:
+            return None
+
+        binding = bindings[0]
+        channel_label = (
+            "procedure status output"
+            if binding.channel_kind == "status"
+            else "procedure async-operation handle"
+        )
+        if usage.ui_read:
+            return (
+                f"{channel_label} from {binding.call_name!r} parameter {binding.parameter_name!r} is only surfaced through UI wiring and is not checked in control logic.",
+                binding.field_path,
+            )
+        return (
+            f"{channel_label} from {binding.call_name!r} parameter {binding.parameter_name!r} is ignored after the procedure writes it.",
+            binding.field_path,
+        )
+
+    def _has_procedure_status_binding(self, variable: Variable) -> bool:
+        return bool(self._procedure_status_bindings.get(id(variable)))
 
 
     def _check_param_mappings_for_single(
@@ -292,7 +486,13 @@ class VariablesAnalyzer:
         for pm in inst.parametermappings or []:
             tgt_name = varname_base(pm.target)
             tgt_var = params_by_name.get(tgt_name) if tgt_name else None
-            self._check_param_mapping(pm, tgt_var, parent_env, parent_path)
+            self._check_param_mapping(
+                pm,
+                tgt_var,
+                parent_env,
+                parent_path,
+                owner_contract_id=id(mt),
+            )
 
     def _check_param_mapping(
         self,
@@ -300,6 +500,8 @@ class VariablesAnalyzer:
         tgt_var: Variable | None,
         parent_env: dict[str, Variable],
         path: list[str],
+        *,
+        owner_contract_id: int | None = None,
     ) -> None:
         # If we cannot resolve target variable, we cannot validate types
         if tgt_var is None:
@@ -314,6 +516,16 @@ class VariablesAnalyzer:
         if src_var is None:
             # Try resolving from root/global scope if not in parent env
             src_var = self._lookup_global_variable(varname_base(pm.source))
+
+        self._issues.extend(
+            self._contract_validator.check_contract_mapping(
+                pm,
+                tgt_var,
+                src_var,
+                path,
+                owner_contract_id=owner_contract_id,
+            )
+        )
 
         if src_var is None:
             return  # cannot validate
@@ -393,7 +605,24 @@ class VariablesAnalyzer:
         context: ScopeContext,
         path: list[str],
         kind: AccessKind,
+        *,
+        is_ui_read: bool = False,
     ) -> None:
+        base = full_ref.split(".", 1)[0].lower()
+        local_field_path = full_ref.split(".", 1)[1] if "." in full_ref else ""
+        local_var = context.env.get(base)
+        if local_var is not None and base in context.param_mappings:
+            self.usage_tracker.mark_ref_access(
+                variable=local_var,
+                field_path=local_field_path,
+                decl_module_path=context.module_path,
+                context=context,
+                path=path,
+                kind=kind,
+                syntactic_ref=full_ref,
+                ui_read=is_ui_read,
+            )
+
         var, field_path, decl_module_path, _decl_display = context.resolve_variable(full_ref)
         if var is None:
             return
@@ -406,7 +635,299 @@ class VariablesAnalyzer:
             path=path,
             kind=kind,
             syntactic_ref=full_ref,
+            ui_read=is_ui_read,
         )
+
+    def _effect_key_for_variable(
+        self,
+        variable: Variable,
+        decl_module_path: list[str],
+    ) -> tuple[str, ...]:
+        display_segments = tuple([*decl_module_path, variable.name])
+        key = tuple(segment.casefold() for segment in display_segments)
+        self._effect_flow_display_names.setdefault(key, ".".join(display_segments))
+        return key
+
+    def _resolve_effect_key(
+        self,
+        full_ref: str,
+        context: ScopeContext,
+    ) -> tuple[str, ...] | None:
+        base_name = varname_base(full_ref)
+        if base_name:
+            local_var = context.env.get(base_name.casefold())
+            if local_var is not None:
+                return self._effect_key_for_variable(local_var, context.module_path)
+        variable, _field_path, decl_module_path, _decl_display = context.resolve_variable(
+            full_ref
+        )
+        if variable is None:
+            return None
+        return self._effect_key_for_variable(variable, decl_module_path)
+
+    def _mapping_source_effect_key(
+        self,
+        pm: ParameterMapping,
+        *,
+        parent_env: dict[str, Variable],
+        parent_context: ScopeContext | None,
+    ) -> tuple[str, ...] | None:
+        if pm.is_source_global:
+            full_source = None
+            if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
+                full_source = pm.source[const.KEY_VAR_NAME]
+            elif isinstance(pm.source, str):
+                full_source = pm.source
+            if not full_source:
+                return None
+            source_base = full_source.split(".", 1)[0]
+            if parent_context is not None:
+                source_var, decl_path, _decl_display = parent_context.resolve_global_name(source_base)
+            else:
+                source_var = parent_env.get(source_base.casefold())
+                decl_path = []
+                if source_var is None:
+                    source_var = self._lookup_global_variable(source_base)
+                    decl_path = [self.bp.header.name] if source_var is not None else []
+            if source_var is None:
+                return None
+            return self._effect_key_for_variable(source_var, decl_path)
+
+        if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
+            full_source = pm.source[const.KEY_VAR_NAME]
+        elif isinstance(pm.source, str):
+            full_source = pm.source
+        else:
+            return None
+
+        if parent_context is not None:
+            return self._resolve_effect_key(full_source, parent_context)
+
+        source_base = varname_base(full_source)
+        if not source_base:
+            return None
+        source_var = parent_env.get(source_base.casefold()) or self._lookup_global_variable(source_base)
+        if source_var is None:
+            return None
+        return self._effect_key_for_variable(source_var, [self.bp.header.name])
+
+    def _resolve_local_effect_key(
+        self,
+        full_ref: str,
+        context: ScopeContext,
+    ) -> tuple[str, ...] | None:
+        base = full_ref.split(".", 1)[0].lower()
+        variable = context.env.get(base)
+        if variable is None:
+            return None
+        return self._effect_key_for_variable(variable, context.module_path)
+
+    def _resolve_mapped_effect_source_key(
+        self,
+        full_ref: str,
+        context: ScopeContext,
+    ) -> tuple[str, ...] | None:
+        base = full_ref.split(".", 1)[0].lower()
+        mapping = context.param_mappings.get(base)
+        if mapping is None:
+            return None
+        source_var, _field_prefix, source_decl_path, _source_decl_display_path = mapping
+        return self._effect_key_for_variable(source_var, source_decl_path)
+
+    def _record_effect_flow(
+        self,
+        source_key: tuple[str, ...] | None,
+        target_key: tuple[str, ...] | None,
+    ) -> None:
+        if source_key is None or target_key is None:
+            return
+        self._effect_flow_edges[source_key].add(target_key)
+
+    def _collect_function_input_effect_keys(
+        self,
+        fn_name: str | None,
+        args: list[Any],
+        context: ScopeContext,
+    ) -> set[tuple[str, ...]]:
+        if not fn_name:
+            input_sources: set[tuple[str, ...]] = set()
+            for arg in args:
+                input_sources.update(self._collect_expression_effect_sources(arg, context))
+            return input_sources
+
+        fn_key = fn_name.casefold()
+        if fn_key in {"copyvariable", "copyvarnosort"}:
+            if args and isinstance(args[0], dict) and const.KEY_VAR_NAME in args[0]:
+                key = self._resolve_effect_key(args[0][const.KEY_VAR_NAME], context)
+                return {key} if key is not None else set()
+            return set()
+
+        if fn_key == "initvariable":
+            return set()
+
+        sig = get_function_signature(fn_name)
+        if sig is None:
+            fallback_sources: set[tuple[str, ...]] = set()
+            for arg in args:
+                fallback_sources.update(self._collect_expression_effect_sources(arg, context))
+            return fallback_sources
+
+        signature_sources: set[tuple[str, ...]] = set()
+        for idx, arg in enumerate(args):
+            direction = "in"
+            if idx < len(sig.parameters):
+                direction = sig.parameters[idx].direction
+            if direction not in {"in", "in var", "inout"}:
+                continue
+            signature_sources.update(self._collect_expression_effect_sources(arg, context))
+        return signature_sources
+
+    def _collect_expression_effect_sources(
+        self,
+        obj: Any,
+        context: ScopeContext,
+    ) -> set[tuple[str, ...]]:
+        sources: set[tuple[str, ...]] = set()
+
+        if obj is None:
+            return sources
+
+        if isinstance(obj, dict):
+            if const.KEY_VAR_NAME in obj:
+                full_ref = obj[const.KEY_VAR_NAME]
+                key = self._resolve_effect_key(full_ref, context)
+                if key is not None:
+                    sources.add(key)
+                return sources
+            for value in obj.values():
+                sources.update(self._collect_expression_effect_sources(value, context))
+            return sources
+
+        if isinstance(obj, list):
+            for item in obj:
+                sources.update(self._collect_expression_effect_sources(item, context))
+            return sources
+
+        if hasattr(obj, "data"):
+            for child in getattr(obj, "children", []):
+                sources.update(self._collect_expression_effect_sources(child, context))
+            return sources
+
+        if isinstance(obj, tuple):
+            if obj and obj[0] == const.KEY_FUNCTION_CALL:
+                _, fn_name, args = obj
+                return self._collect_function_input_effect_keys(fn_name, args or [], context)
+            for item in obj[1:] if obj and isinstance(obj[0], str) else obj:
+                sources.update(self._collect_expression_effect_sources(item, context))
+            return sources
+
+        return sources
+
+    def _record_assignment_effect_flow(
+        self,
+        target_ref: str,
+        expr: Any,
+        context: ScopeContext,
+    ) -> None:
+        target_key = self._resolve_effect_key(target_ref, context)
+        for source_key in self._collect_expression_effect_sources(expr, context):
+            self._record_effect_flow(source_key, target_key)
+
+    def _record_function_call_effect_flow(
+        self,
+        fn_name: str | None,
+        args: list[Any],
+        context: ScopeContext,
+    ) -> None:
+        if not fn_name:
+            return
+
+        fn_key = fn_name.casefold()
+        if fn_key in {"copyvariable", "copyvarnosort"}:
+            if len(args) < 2:
+                return
+            if not (
+                isinstance(args[0], dict)
+                and const.KEY_VAR_NAME in args[0]
+                and isinstance(args[1], dict)
+                and const.KEY_VAR_NAME in args[1]
+            ):
+                return
+            source_key = self._resolve_effect_key(args[0][const.KEY_VAR_NAME], context)
+            target_key = self._resolve_effect_key(args[1][const.KEY_VAR_NAME], context)
+            self._record_effect_flow(source_key, target_key)
+            return
+
+        if fn_key == "initvariable":
+            return
+
+        sig = get_function_signature(fn_name)
+        if sig is None:
+            return
+
+        input_keys: set[tuple[str, ...]] = set()
+        output_keys: set[tuple[str, ...]] = set()
+        for idx, arg in enumerate(args):
+            direction = "in"
+            if idx < len(sig.parameters):
+                direction = sig.parameters[idx].direction
+
+            if direction in {"in", "in var", "inout"}:
+                input_keys.update(self._collect_expression_effect_sources(arg, context))
+
+            if (
+                direction in {"out", "inout"}
+                and isinstance(arg, dict)
+                and const.KEY_VAR_NAME in arg
+            ):
+                key = self._resolve_effect_key(arg[const.KEY_VAR_NAME], context)
+                if key is not None:
+                    output_keys.add(key)
+
+        for output_key in output_keys:
+            for input_key in input_keys:
+                self._record_effect_flow(input_key, output_key)
+
+    def _collect_effect_sink_keys(self) -> set[tuple[str, ...]]:
+        sink_keys = set(self._external_effect_sinks)
+
+        if not self._analyzed_target_is_library:
+            for variable in self.bp.localvariables or []:
+                sink_keys.add(self._effect_key_for_variable(variable, [self.bp.header.name]))
+
+        if self._analyzed_target_is_library:
+            for moduletype in self.bp.moduletype_defs or []:
+                if not self._is_from_root_origin(getattr(moduletype, "origin_file", None)):
+                    continue
+                decl_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
+                for variable in moduletype.moduleparameters or []:
+                    sink_keys.add(self._effect_key_for_variable(variable, decl_path))
+
+        return sink_keys
+
+    def _compute_effective_output_keys(self) -> set[tuple[str, ...]]:
+        sink_keys = self._collect_effect_sink_keys()
+        if not sink_keys:
+            return set()
+
+        incoming_edges: dict[tuple[str, ...], set[tuple[str, ...]]] = defaultdict(set)
+        for source_key, target_keys in self._effect_flow_edges.items():
+            for target_key in target_keys:
+                incoming_edges[target_key].add(source_key)
+
+        effective_keys = set(sink_keys)
+        pending = list(sink_keys)
+        while pending:
+            target_key = pending.pop()
+            for source_key in incoming_edges.get(target_key, set()):
+                if source_key in effective_keys:
+                    continue
+                effective_keys.add(source_key)
+                pending.append(source_key)
+        return effective_keys
+
+    def _has_output_effect(self, variable: Variable, decl_path: list[str]) -> bool:
+        return self._effect_key_for_variable(variable, decl_path) in self._effective_output_keys
 
     def _site_str(self) -> str:
         if not self._site_stack:
@@ -587,6 +1108,7 @@ class VariablesAnalyzer:
         fn_name: str,
         context: ScopeContext,
         path: list[str],
+        is_ui_read: bool = False,
     ) -> None:
         """Mark read/write for every leaf field under the resolved datatype.
 
@@ -621,13 +1143,20 @@ class VariablesAnalyzer:
 
         for leaf in leaf_paths:
             if not leaf:
-                self._mark_ref_access(syntactic_ref, context, path, kind)
+                self._mark_ref_access(
+                    syntactic_ref,
+                    context,
+                    path,
+                    kind,
+                    is_ui_read=is_ui_read,
+                )
             else:
                 self._mark_ref_access(
                     f"{syntactic_ref}.{'.'.join(leaf)}",
                     context,
                     path,
                     kind,
+                    is_ui_read=is_ui_read,
                 )
 
     def _repath_context(
@@ -650,14 +1179,17 @@ class VariablesAnalyzer:
         fn_name: str | None,
         args: list,
         context: ScopeContext,
-        path: list[str]
+        path: list[str],
+        *,
+        is_ui_read: bool = False,
     ) -> None:
         """Handle function calls with proper parameter direction tracking."""
         if not fn_name:
             for a in args or []:
-                self._walk_stmt_or_expr(a, context, path)
+                self._walk_stmt_or_expr(a, context, path, is_ui_read=is_ui_read)
             return
 
+        self._record_procedure_status_bindings(fn_name, args or [], context)
         fn_key = fn_name.casefold()
         if fn_key in ("copyvariable", "copyvarnosort"):
             # Semantics: reads every field of Source, writes every field of Destination.
@@ -677,6 +1209,7 @@ class VariablesAnalyzer:
                 fn_name=fn_name,
                 context=context,
                 path=path,
+                is_ui_read=is_ui_read,
             )
             self._mark_record_wide_builtin_access(
                 dst[const.KEY_VAR_NAME],
@@ -684,19 +1217,27 @@ class VariablesAnalyzer:
                 fn_name=fn_name,
                 context=context,
                 path=path,
+                is_ui_read=is_ui_read,
             )
 
             # Status is the 3rd arg (out) if present.
             if len(args) >= 3:
                 status = args[2]
                 if isinstance(status, dict) and const.KEY_VAR_NAME in status:
-                    self._mark_ref_access(status[const.KEY_VAR_NAME], context, path, AccessKind.WRITE)
+                    self._mark_ref_access(
+                        status[const.KEY_VAR_NAME],
+                        context,
+                        path,
+                        AccessKind.WRITE,
+                        is_ui_read=is_ui_read,
+                    )
                 else:
-                    self._walk_stmt_or_expr(status, context, path)
+                    self._walk_stmt_or_expr(status, context, path, is_ui_read=is_ui_read)
 
             # Walk any extra args conservatively
             for extra in (args[3:] if len(args) > 3 else []):
-                self._walk_stmt_or_expr(extra, context, path)
+                self._walk_stmt_or_expr(extra, context, path, is_ui_read=is_ui_read)
+            self._record_function_call_effect_flow(fn_name, args or [], context)
             return
 
         if fn_key == "initvariable":
@@ -714,6 +1255,7 @@ class VariablesAnalyzer:
                 fn_name=fn_name,
                 context=context,
                 path=path,
+                is_ui_read=is_ui_read,
             )
 
             # Skip InitRec entirely (args[1]) to avoid counting reads.
@@ -721,18 +1263,24 @@ class VariablesAnalyzer:
             if len(args) >= 3:
                 status = args[2]
                 if isinstance(status, dict) and const.KEY_VAR_NAME in status:
-                    self._mark_ref_access(status[const.KEY_VAR_NAME], context, path, AccessKind.WRITE)
+                    self._mark_ref_access(
+                        status[const.KEY_VAR_NAME],
+                        context,
+                        path,
+                        AccessKind.WRITE,
+                        is_ui_read=is_ui_read,
+                    )
                 else:
-                    self._walk_stmt_or_expr(status, context, path)
+                    self._walk_stmt_or_expr(status, context, path, is_ui_read=is_ui_read)
 
             for extra in (args[3:] if len(args) > 3 else []):
-                self._walk_stmt_or_expr(extra, context, path)
+                self._walk_stmt_or_expr(extra, context, path, is_ui_read=is_ui_read)
             return
 
         sig = get_function_signature(fn_name)
         if sig is None:
             for a in args or []:
-                self._walk_stmt_or_expr(a, context, path)
+                self._walk_stmt_or_expr(a, context, path, is_ui_read=is_ui_read)
             return
 
         for idx, arg in enumerate(args or []):
@@ -743,15 +1291,41 @@ class VariablesAnalyzer:
             if isinstance(arg, dict) and const.KEY_VAR_NAME in arg:
                 full_name = arg[const.KEY_VAR_NAME]
                 if direction == "out":
-                    self._mark_ref_access(full_name, context, path, AccessKind.WRITE)
+                    self._mark_ref_access(
+                        full_name,
+                        context,
+                        path,
+                        AccessKind.WRITE,
+                        is_ui_read=is_ui_read,
+                    )
                 elif direction == "inout":
-                    self._mark_ref_access(full_name, context, path, AccessKind.READ)
-                    self._mark_ref_access(full_name, context, path, AccessKind.WRITE)
+                    self._mark_ref_access(
+                        full_name,
+                        context,
+                        path,
+                        AccessKind.READ,
+                        is_ui_read=is_ui_read,
+                    )
+                    self._mark_ref_access(
+                        full_name,
+                        context,
+                        path,
+                        AccessKind.WRITE,
+                        is_ui_read=is_ui_read,
+                    )
                 else:
-                    self._mark_ref_access(full_name, context, path, AccessKind.READ)
+                    self._mark_ref_access(
+                        full_name,
+                        context,
+                        path,
+                        AccessKind.READ,
+                        is_ui_read=is_ui_read,
+                    )
                 continue
 
-            self._walk_stmt_or_expr(arg, context, path)
+            self._walk_stmt_or_expr(arg, context, path, is_ui_read=is_ui_read)
+
+        self._record_function_call_effect_flow(fn_name, args or [], context)
 
     def _lookup_global_variable(self, base_name: str | None) -> Variable | None:
         if not base_name:
@@ -813,7 +1387,7 @@ class VariablesAnalyzer:
         # the selected subtree.
         self._issues = []
         self.context_builder.issues = self._issues
-        self._limit_to_module_path: list[str] | None = limit_to_module_path
+        self._limit_to_module_path = limit_to_module_path
         self._trace(
             "start",
             basepicture_name=self.bp.header.name,
@@ -853,6 +1427,7 @@ class VariablesAnalyzer:
 
         if apply_alias_back_propagation:
             self._apply_alias_back_propagation()
+            self._propagate_procedure_status_bindings()
             self._trace("alias-back-propagation", alias_link_count=len(self._alias_links))
 
         self._detect_datatype_duplications()
@@ -862,6 +1437,13 @@ class VariablesAnalyzer:
             "reset-contamination-scan",
             added_issue_count=len(self._issues) - issue_count_before_reset,
         )
+        issue_count_before_latch = len(self._issues)
+        detect_implicit_latching(self.bp, self._issues, self._limit_to_module_path)
+        self._trace(
+            "implicit-latch-scan",
+            added_issue_count=len(self._issues) - issue_count_before_latch,
+        )
+        self._effective_output_keys = self._compute_effective_output_keys()
 
         # Collect issues across this file
         bp_path = [self.bp.header.name]
@@ -871,6 +1453,14 @@ class VariablesAnalyzer:
             usage = self._get_usage(v)
             if usage.is_unused:
                 self._add_issue(IssueKind.UNUSED, bp_path, v, role=role)
+                continue
+            procedure_status = self._procedure_status_issue(v, usage)
+            if procedure_status is not None:
+                status_role, field_path = procedure_status
+                self._add_issue(IssueKind.PROCEDURE_STATUS, bp_path, v, role=status_role, field_path=field_path)
+                continue
+            elif usage.is_display_only:
+                self._add_issue(IssueKind.UI_ONLY, bp_path, v, role=role)
             elif (
                 usage.is_read_only
                 and not bool(v.const)
@@ -879,6 +1469,13 @@ class VariablesAnalyzer:
                 self._add_issue(IssueKind.READ_ONLY_NON_CONST, bp_path, v, role=role)
             elif usage.written and not usage.read:
                 self._add_issue(IssueKind.NEVER_READ, bp_path, v, role=role)
+            elif (
+                usage.read
+                and usage.written
+                and not self._has_output_effect(v, bp_path)
+                and not self._has_procedure_status_binding(v)
+            ):
+                self._add_issue(IssueKind.WRITE_WITHOUT_EFFECT, bp_path, v, role=role)
 
         for mod in self.bp.submodules or []:
             self._collect_issues_from_module(mod, path=bp_path)
@@ -897,12 +1494,40 @@ class VariablesAnalyzer:
                     usage = self._get_usage(v)
                     if usage.is_unused:
                         self._add_issue(IssueKind.UNUSED, td_path, v, role=role)
+                        continue
+                    procedure_status = self._procedure_status_issue(v, usage)
+                    if procedure_status is not None:
+                        status_role, field_path = procedure_status
+                        self._add_issue(IssueKind.PROCEDURE_STATUS, td_path, v, role=status_role, field_path=field_path)
+                        continue
+                    elif usage.is_display_only:
+                        self._add_issue(IssueKind.UI_ONLY, td_path, v, role=role)
+                    elif (
+                        usage.read
+                        and usage.written
+                        and not self._has_output_effect(v, td_path)
+                        and not self._has_procedure_status_binding(v)
+                    ):
+                        self._add_issue(
+                            IssueKind.WRITE_WITHOUT_EFFECT,
+                            td_path,
+                            v,
+                            role=role,
+                        )
                 # localvariables: UNUSED / READ_ONLY_NON_CONST / NEVER_READ
                 for v in mt.localvariables or []:
                     role = "localvariable"
                     usage = self._get_usage(v)
                     if usage.is_unused:
                         self._add_issue(IssueKind.UNUSED, td_path, v, role=role)
+                        continue
+                    procedure_status = self._procedure_status_issue(v, usage)
+                    if procedure_status is not None:
+                        status_role, field_path = procedure_status
+                        self._add_issue(IssueKind.PROCEDURE_STATUS, td_path, v, role=status_role, field_path=field_path)
+                        continue
+                    elif usage.is_display_only:
+                        self._add_issue(IssueKind.UI_ONLY, td_path, v, role=role)
                     elif (
                         usage.is_read_only
                         and not bool(v.const)
@@ -913,7 +1538,22 @@ class VariablesAnalyzer:
                         )
                     elif usage.written and not usage.read:
                         self._add_issue(IssueKind.NEVER_READ, td_path, v, role=role)
+                    elif (
+                        usage.read
+                        and usage.written
+                        and not self._has_output_effect(v, td_path)
+                        and not self._has_procedure_status_binding(v)
+                    ):
+                        self._add_issue(
+                            IssueKind.WRITE_WITHOUT_EFFECT,
+                            td_path,
+                            v,
+                            role=role,
+                        )
 
+        self._add_global_scope_minimization_issues()
+        self._add_hidden_global_coupling_issues()
+        self._add_high_fan_in_out_issues()
         self._add_unused_datatype_field_issues()
         issue_counts = dict(sorted(Counter(issue.kind.value for issue in self._issues).items()))
         self._trace(
@@ -1073,6 +1713,201 @@ class VariablesAnalyzer:
                     )
                 )
 
+    def _add_hidden_global_coupling_issues(self) -> None:
+        if self._analyzed_target_is_library:
+            self._trace("hidden-global-coupling-scan", added_issue_count=0)
+            return
+
+        root_prefix = (self.bp.header.name.casefold(),)
+        added_issue_count = 0
+
+        for variable in self.bp.localvariables or []:
+            variable_prefix = root_prefix + (variable.name.casefold(),)
+            access_by_module: dict[tuple[str, ...], set[AccessKind]] = defaultdict(set)
+            display_paths: dict[tuple[str, ...], tuple[str, ...]] = {}
+
+            for event in self.access_graph.events:
+                path_key = event.canonical_path.key()
+                if len(path_key) < len(variable_prefix):
+                    continue
+                if path_key[: len(variable_prefix)] != variable_prefix:
+                    continue
+                if len(event.use_module_path) <= 1:
+                    continue
+
+                module_key = tuple(segment.casefold() for segment in event.use_module_path)
+                access_by_module[module_key].add(event.kind)
+                display_paths.setdefault(module_key, tuple(event.use_module_path))
+
+            if len(access_by_module) < 2:
+                continue
+
+            if not any(AccessKind.WRITE in kinds for kinds in access_by_module.values()):
+                continue
+
+            module_summaries: list[str] = []
+            for module_key in sorted(access_by_module):
+                kinds = access_by_module[module_key]
+                labels = "/".join(kind.value for kind in sorted(kinds, key=lambda kind: kind.value))
+                display_path = display_paths.get(module_key, module_key)
+                module_summaries.append(f"{'.'.join(display_path[1:])} ({labels})")
+
+            self._append_issue(
+                VariableIssue(
+                    kind=IssueKind.HIDDEN_GLOBAL_COUPLING,
+                    module_path=[self.bp.header.name],
+                    variable=variable,
+                    role=(
+                        "hidden global coupling across modules: "
+                        + ", ".join(module_summaries)
+                    ),
+                )
+            )
+            added_issue_count += 1
+
+        self._trace("hidden-global-coupling-scan", added_issue_count=added_issue_count)
+
+    def _add_high_fan_in_out_issues(self) -> None:
+        if self._analyzed_target_is_library:
+            self._trace("high-fan-in-out-scan", added_issue_count=0)
+            return
+
+        root_prefix = (self.bp.header.name.casefold(),)
+        added_issue_count = 0
+
+        for variable in self.bp.localvariables or []:
+            variable_prefix = root_prefix + (variable.name.casefold(),)
+            reader_modules: set[tuple[str, ...]] = set()
+            writer_modules: set[tuple[str, ...]] = set()
+            display_paths: dict[tuple[str, ...], tuple[str, ...]] = {}
+
+            for event in self.access_graph.events:
+                path_key = event.canonical_path.key()
+                if len(path_key) < len(variable_prefix):
+                    continue
+                if path_key[: len(variable_prefix)] != variable_prefix:
+                    continue
+                if len(event.use_module_path) <= 1:
+                    continue
+
+                module_key = tuple(segment.casefold() for segment in event.use_module_path)
+                display_paths.setdefault(module_key, tuple(event.use_module_path))
+                if event.kind is AccessKind.READ:
+                    reader_modules.add(module_key)
+                elif event.kind is AccessKind.WRITE:
+                    writer_modules.add(module_key)
+
+            if (
+                len(reader_modules) < _HIGH_FAN_IN_OUT_THRESHOLD
+                and len(writer_modules) < _HIGH_FAN_IN_OUT_THRESHOLD
+            ):
+                continue
+
+            role_parts: list[str] = []
+            if len(reader_modules) >= _HIGH_FAN_IN_OUT_THRESHOLD:
+                reader_labels = [
+                    ".".join(display_paths.get(module_key, module_key)[1:])
+                    for module_key in sorted(reader_modules)
+                ]
+                role_parts.append(
+                    f"high fan-in with {len(reader_modules)} readers: "
+                    + ", ".join(reader_labels)
+                )
+            if len(writer_modules) >= _HIGH_FAN_IN_OUT_THRESHOLD:
+                writer_labels = [
+                    ".".join(display_paths.get(module_key, module_key)[1:])
+                    for module_key in sorted(writer_modules)
+                ]
+                role_parts.append(
+                    f"high fan-out with {len(writer_modules)} writers: "
+                    + ", ".join(writer_labels)
+                )
+
+            self._append_issue(
+                VariableIssue(
+                    kind=IssueKind.HIGH_FAN_IN_OUT,
+                    module_path=[self.bp.header.name],
+                    variable=variable,
+                    role="; ".join(role_parts),
+                )
+            )
+            added_issue_count += 1
+
+        self._trace("high-fan-in-out-scan", added_issue_count=added_issue_count)
+
+    def _add_global_scope_minimization_issues(self) -> None:
+        if self._analyzed_target_is_library:
+            self._trace("global-scope-minimization-scan", added_issue_count=0)
+            return
+
+        root_prefix = (self.bp.header.name.casefold(),)
+        added_issue_count = 0
+
+        for variable in self.bp.localvariables or []:
+            variable_prefix = root_prefix + (variable.name.casefold(),)
+            access_module_keys: set[tuple[str, ...]] = set()
+            display_paths: dict[tuple[str, ...], tuple[str, ...]] = {}
+
+            for event in self.access_graph.events:
+                path_key = event.canonical_path.key()
+                if len(path_key) < len(variable_prefix):
+                    continue
+                if path_key[: len(variable_prefix)] != variable_prefix:
+                    continue
+
+                module_key = tuple(segment.casefold() for segment in event.use_module_path)
+                if len(module_key) <= 1:
+                    access_module_keys = set()
+                    break
+
+                access_module_keys.add(module_key)
+                display_paths.setdefault(module_key, tuple(event.use_module_path))
+
+            if not access_module_keys:
+                continue
+
+            common_prefix = list(next(iter(access_module_keys)))
+            for module_key in access_module_keys:
+                shared_len = 0
+                while (
+                    shared_len < len(common_prefix)
+                    and shared_len < len(module_key)
+                    and common_prefix[shared_len] == module_key[shared_len]
+                ):
+                    shared_len += 1
+                common_prefix = common_prefix[:shared_len]
+                if len(common_prefix) <= 1:
+                    break
+
+            if len(common_prefix) <= 1:
+                continue
+
+            candidate_scope = ".".join(
+                display_paths.get(tuple(common_prefix), tuple(common_prefix))[1:]
+            )
+            access_summaries = [
+                ".".join(display_paths.get(module_key, module_key)[1:])
+                for module_key in sorted(access_module_keys)
+            ]
+
+            self._append_issue(
+                VariableIssue(
+                    kind=IssueKind.GLOBAL_SCOPE_MINIMIZATION,
+                    module_path=[self.bp.header.name],
+                    variable=variable,
+                    role=(
+                        f"global scope can be reduced to module subtree {candidate_scope}: "
+                        + ", ".join(access_summaries)
+                    ),
+                )
+            )
+            added_issue_count += 1
+
+        self._trace(
+            "global-scope-minimization-scan",
+            added_issue_count=added_issue_count,
+        )
+
     def _add_magic_number_issue(
         self,
         path: list[str],
@@ -1101,18 +1936,60 @@ class VariablesAnalyzer:
     ) -> None:
         if isinstance(mod, SingleModule):
             my_path = path + [mod.header.name]
-            # Moduleparameters: only classify UNUSED (const does not apply to params)
+            # Moduleparameters: only classify UNUSED and write-without-effect.
             for v in mod.moduleparameters or []:
                 usage = self._get_usage(v)
                 if usage.is_unused:
                     self._add_issue(
                         IssueKind.UNUSED, my_path, v, role="moduleparameter"
                     )
-            # Localvariables: both UNUSED and READ_ONLY_NON_CONST apply
+                    continue
+                procedure_status = self._procedure_status_issue(v, usage)
+                if procedure_status is not None:
+                    status_role, field_path = procedure_status
+                    self._add_issue(
+                        IssueKind.PROCEDURE_STATUS,
+                        my_path,
+                        v,
+                        role=status_role,
+                        field_path=field_path,
+                    )
+                    continue
+                elif usage.is_display_only:
+                    self._add_issue(
+                        IssueKind.UI_ONLY, my_path, v, role="moduleparameter"
+                    )
+                elif (
+                    usage.read
+                    and usage.written
+                    and not self._has_output_effect(v, my_path)
+                    and not self._has_procedure_status_binding(v)
+                ):
+                    self._add_issue(
+                        IssueKind.WRITE_WITHOUT_EFFECT,
+                        my_path,
+                        v,
+                        role="moduleparameter",
+                    )
+            # Localvariables: UNUSED / READ_ONLY_NON_CONST / NEVER_READ / write-without-effect
             for v in mod.localvariables or []:
                 usage = self._get_usage(v)
                 if usage.is_unused:
                     self._add_issue(IssueKind.UNUSED, my_path, v, role="localvariable")
+                    continue
+                procedure_status = self._procedure_status_issue(v, usage)
+                if procedure_status is not None:
+                    status_role, field_path = procedure_status
+                    self._add_issue(
+                        IssueKind.PROCEDURE_STATUS,
+                        my_path,
+                        v,
+                        role=status_role,
+                        field_path=field_path,
+                    )
+                    continue
+                elif usage.is_display_only:
+                    self._add_issue(IssueKind.UI_ONLY, my_path, v, role="localvariable")
                 elif (
                     usage.is_read_only
                     and not bool(v.const)
@@ -1120,6 +1997,20 @@ class VariablesAnalyzer:
                 ):
                     self._add_issue(
                         IssueKind.READ_ONLY_NON_CONST, my_path, v, role="localvariable"
+                    )
+                elif usage.written and not usage.read:
+                    self._add_issue(IssueKind.NEVER_READ, my_path, v, role="localvariable")
+                elif (
+                    usage.read
+                    and usage.written
+                    and not self._has_output_effect(v, my_path)
+                    and not self._has_procedure_status_binding(v)
+                ):
+                    self._add_issue(
+                        IssueKind.WRITE_WITHOUT_EFFECT,
+                        my_path,
+                        v,
+                        role="localvariable",
                     )
             for ch in mod.submodules or []:
                 self._collect_issues_from_module(ch, my_path)
@@ -1404,6 +2295,7 @@ class VariablesAnalyzer:
                         parent_path=parent_path,
                         external_typename=None,
                         parent_context=parent_context,
+                        child_context=child_context,
                     )
 
                 # Check string type mismatches (unchanged)
@@ -1456,15 +2348,23 @@ class VariablesAnalyzer:
                 if mt is not None and not self._is_from_root_origin(
                     getattr(mt, "origin_file", None)
                 ):
-                    if not self._analyzed_target_is_library:
+                    if not self._analyzed_target_is_library and not self._include_dependency_moduletype_usage:
+                        self._check_param_mappings_for_type_instance(
+                            child,
+                            parent_env=parent_context.env,
+                            parent_path=parent_path + [child_name],
+                            current_library=parent_context.current_library,
+                        )
                         continue
                     # For library targets, dependency moduletype instances should still
                     # influence mapped variables even though we do not analyze the
                     # dependency body in detail. Treat them like external sinks/sources.
-                    mt = None
-                    external = True
+                    if self._analyzed_target_is_library and not self._include_dependency_moduletype_usage:
+                        mt = None
+                        external = True
 
                 reads, writes = None, None  # Initialize to None
+                typedef_context: ScopeContext | None = None
 
                 if mt:
                     mt_key = child.moduletype_name.lower()
@@ -1523,6 +2423,7 @@ class VariablesAnalyzer:
                         parent_path=parent_path,
                         external_typename=(child.moduletype_name if external else None),
                         parent_context=parent_context,
+                        child_context=typedef_context,
                     )
 
                 if mt is not None:
@@ -1584,11 +2485,11 @@ class VariablesAnalyzer:
         # ModuleHeader.enable_tail is a Tree(KEY_ENABLE_EXPRESSION) or Tree('InVar_') [5]
         tail = getattr(header, "enable_tail", None)
         if tail is not None:
-            self._walk_tail(tail, context, path)
+            self._walk_tail(tail, context, path, is_ui_read=True)
 
     def _walk_header_invoke_tails(self, header, context: ScopeContext, path):
         for tail in getattr(header, "invoke_coord_tails", []) or []:
-            self._walk_tail(tail, context, path)
+            self._walk_tail(tail, context, path, is_ui_read=True)
 
     def _walk_header_groupconn(self, header, context: ScopeContext, path):
         # header.groupconn is the variable_name dict
@@ -1640,55 +2541,60 @@ class VariablesAnalyzer:
 
         props = getattr(mdef, "properties", {}) or {}
         for t in props.get(const.KEY_TAILS, []) or []:
-            self._walk_tail(t, context, path)
+            self._walk_tail(t, context, path, is_ui_read=True)
 
     def _walk_graph_object(self, go, context: ScopeContext, path):
         props = getattr(go, "properties", {}) or {}
         # NEW: text_vars list -> mark each as used
         for s in props.get("text_vars", []) or []:
             base = s.split(".", 1)[0] if isinstance(s, str) else None
-            self._mark_var_by_basename(base, context.env, path)
+            self._mark_var_by_basename(base, context.env, path, is_ui_read=True)
         # Existing tails handling
         for t in props.get(const.KEY_TAILS, []) or []:
-            self._walk_tail(t, context, path)
+            self._walk_tail(t, context, path, is_ui_read=True)
 
     def _walk_interact_object(self, io, context: ScopeContext, path):
         props = getattr(io, "properties", {}) or {}
         for t in props.get(const.KEY_TAILS, []) or []:
-            self._walk_tail(t, context, path)
-        self._scan_for_varrefs(props.get(const.KEY_BODY), context, path)
+            self._walk_tail(t, context, path, is_ui_read=True)
+        self._scan_for_varrefs(props.get(const.KEY_BODY), context, path, is_ui_read=True)
 
         proc = props.get(const.KEY_PROCEDURE)
         if isinstance(proc, dict) and const.KEY_PROCEDURE_CALL in proc:
             call = proc[const.KEY_PROCEDURE_CALL]
             fn_name = call.get(const.KEY_NAME)
             args = call.get(const.KEY_ARGS) or []
-            self._handle_function_call(fn_name, args, context, path)
+            self._handle_function_call(fn_name, args, context, path, is_ui_read=True)
 
     def _scan_for_varrefs(
-        self, obj: Any, context: ScopeContext, path: list[str]
+        self,
+        obj: Any,
+        context: ScopeContext,
+        path: list[str],
+        *,
+        is_ui_read: bool = False,
     ) -> None:
         # Generic recursive scan used for interact object bodies and nested dict/tree structures
         if obj is None:
             return
         if isinstance(obj, list):
             for it in obj:
-                self._scan_for_varrefs(it, context, path)
+                self._scan_for_varrefs(it, context, path, is_ui_read=is_ui_read)
             return
         if isinstance(obj, dict):
             # enable dict
             if const.TREE_TAG_ENABLE in obj and const.KEY_TAIL in obj:
-                self._walk_tail(obj[const.KEY_TAIL], context, path)
+                self._walk_tail(obj[const.KEY_TAIL], context, path, is_ui_read=is_ui_read)
             if const.KEY_TAIL in obj and obj[const.KEY_TAIL] is not None:
-                self._walk_tail(obj[const.KEY_TAIL], context, path)
+                self._walk_tail(obj[const.KEY_TAIL], context, path, is_ui_read=is_ui_read)
             # explicit assignment dict from interact_assign_variable
             if const.KEY_ASSIGN in obj:
                 tail = (obj[const.KEY_ASSIGN] or {}).get(const.KEY_TAIL)
                 if tail is not None:
-                    self._walk_tail(tail, context, path)
+                    self._walk_tail(tail, context, path, is_ui_read=is_ui_read)
             # descend into any values
             for v in obj.values():
-                self._scan_for_varrefs(v, context, path)
+                self._scan_for_varrefs(v, context, path, is_ui_read=is_ui_read)
             return
         # Trees: enable_expression, InVar_, invar_tail
         if hasattr(obj, "data"):
@@ -1698,15 +2604,15 @@ class VariablesAnalyzer:
                 const.GRAMMAR_VALUE_INVAR_PREFIX,
                 "invar_tail",
             ):
-                self._walk_tail(obj, context, path)
+                self._walk_tail(obj, context, path, is_ui_read=is_ui_read)
                 return
             # descend into children
             for ch in getattr(obj, "children", []):
-                self._scan_for_varrefs(ch, context, path)
+                self._scan_for_varrefs(ch, context, path, is_ui_read=is_ui_read)
 
     # ---------------- Tail handlers ----------------
 
-    def _walk_tail(self, tail, context: ScopeContext, path):
+    def _walk_tail(self, tail, context: ScopeContext, path, *, is_ui_read: bool = False):
         if tail is None:
             return
 
@@ -1715,19 +2621,40 @@ class VariablesAnalyzer:
 
         # Expression tuple (from enable_expression)
         if isinstance(tail, tuple):
-            self._walk_stmt_or_expr(tail, context, path)
+            self._walk_stmt_or_expr(tail, context, path, is_ui_read=is_ui_read)
             return
 
         # InVar string result: "Allow.ProgramDebug"
         if isinstance(tail, str):
             base_name = tail.split(".", 1)[0].lower()
-            self._mark_var_by_basename(base_name, context.env, path)
+            self._mark_var_by_basename(base_name, context.env, path, is_ui_read=is_ui_read)
             return
 
         # InVar variable_name dict result
         if isinstance(tail, dict) and const.KEY_VAR_NAME in tail:
-            mapped_base = varname_base(tail)
-            self._mark_var_by_basename(mapped_base, context.env, path)
+            mapped_ref = tail[const.KEY_VAR_NAME]
+            if isinstance(mapped_ref, str):
+                self._mark_ref_access(
+                    mapped_ref,
+                    context,
+                    path,
+                    AccessKind.READ,
+                    is_ui_read=is_ui_read,
+                )
+            return
+
+        # Parser-core may preserve raw tree wrappers for tails such as
+        # InVar_ LitString "ACS" inside interact objects.
+        if hasattr(tail, "children"):
+            for base_name in self._extract_var_basenames_from_tree(
+                tail, allow_single_ident=True
+            ):
+                self._mark_var_by_basename(
+                    base_name,
+                    context.env,
+                    path,
+                    is_ui_read=is_ui_read,
+                )
             return
 
         raise ValueError(
@@ -1782,7 +2709,12 @@ class VariablesAnalyzer:
         return bool(self._VARPATH_RE.match(s))
 
     def _mark_var_by_basename(
-        self, base_name: str | None, env: dict[str, Variable], path: list[str]
+        self,
+        base_name: str | None,
+        env: dict[str, Variable],
+        path: list[str],
+        *,
+        is_ui_read: bool = False,
     ) -> None:
         if not base_name:
             return
@@ -1793,7 +2725,10 @@ class VariablesAnalyzer:
         if var is None:
             var = self._lookup_global_variable(normalized)
         if var is not None:
-            self._get_usage(var).mark_read(path)
+            if is_ui_read:
+                self._get_usage(var).mark_ui_read(path)
+            else:
+                self._get_usage(var).mark_read(path)
         else:
             if self.debug:
                 log.debug(
@@ -1814,8 +2749,23 @@ class VariablesAnalyzer:
         parent_path: list[str],
         external_typename: str | None,
         parent_context: ScopeContext | None = None,
+        child_context: ScopeContext | None = None,
     ) -> None:
         target_name = varname_base(pm.target)
+
+        if child_context is not None and target_name is not None:
+            target_var = child_context.env.get(target_name.casefold())
+            source_key = self._mapping_source_effect_key(
+                pm,
+                parent_env=parent_env,
+                parent_context=parent_context,
+            )
+            if target_var is not None and source_key is not None:
+                target_key = self._effect_key_for_variable(target_var, child_context.module_path)
+                if child_used_reads is not None and target_name in child_used_reads:
+                    self._record_effect_flow(source_key, target_key)
+                if child_used_writes is not None and target_name in child_used_writes:
+                    self._record_effect_flow(target_key, source_key)
 
         # GLOBAL: resolve by walking up scopes, and only mark if parameter is used
         if pm.is_source_global:
@@ -1844,6 +2794,10 @@ class VariablesAnalyzer:
 
             # External types: conservatively treat mapping as read+written
             if external_typename is not None:
+                if parent_context is not None:
+                    source_key = self._resolve_effect_key(full_source, parent_context)
+                    if source_key is not None:
+                        self._external_effect_sinks.add(source_key)
                 external_display_path: list[str] = []
                 if parent_path:
                     external_display_path.append(decorate_segment(parent_path[0], "BP"))
@@ -1909,6 +2863,10 @@ class VariablesAnalyzer:
 
         # External types: conservatively treat mapping as read+written
         if external_typename is not None:
+            if parent_context is not None:
+                source_key = self._resolve_effect_key(full_source, parent_context)
+                if source_key is not None:
+                    self._external_effect_sinks.add(source_key)
             external_mapping_display_path: list[str] = []
             if parent_path:
                 external_mapping_display_path.append(decorate_segment(parent_path[0], "BP"))
@@ -2094,12 +3052,14 @@ class VariablesAnalyzer:
         self,
         obj: Any,
         context: ScopeContext,
-        path: list[str]
+        path: list[str],
+        *,
+        is_ui_read: bool = False,
     ) -> None:
         # Tree wrapping for statements is present in transformer [5]; unwrap
         if hasattr(obj, "data") and getattr(obj, "data") == const.KEY_STATEMENT:
             for ch in getattr(obj, "children", []):
-                self._walk_stmt_or_expr(ch, context, path)
+                self._walk_stmt_or_expr(ch, context, path, is_ui_read=is_ui_read)
             return
 
         if isinstance(obj, (IntLiteral, FloatLiteral)):
@@ -2112,27 +3072,33 @@ class VariablesAnalyzer:
         if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
             _, branches, else_block = obj
             for cond, stmts in branches or []:
-                self._walk_stmt_or_expr(cond, context, path)
+                self._walk_stmt_or_expr(cond, context, path, is_ui_read=is_ui_read)
                 for st in stmts or []:
-                    self._walk_stmt_or_expr(st, context, path)
+                    self._walk_stmt_or_expr(st, context, path, is_ui_read=is_ui_read)
             for st in else_block or []:
-                self._walk_stmt_or_expr(st, context, path)
+                self._walk_stmt_or_expr(st, context, path, is_ui_read=is_ui_read)
             return
 
         # Ternary: (Ternary, [(cond, then_expr), ...], else_expr) [5]
         if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_TERNARY, "Ternary"):
             _, branches, else_expr = obj
             for cond, then_expr in branches or []:
-                self._walk_stmt_or_expr(cond, context, path)
-                self._walk_stmt_or_expr(then_expr, context, path)
+                self._walk_stmt_or_expr(cond, context, path, is_ui_read=is_ui_read)
+                self._walk_stmt_or_expr(then_expr, context, path, is_ui_read=is_ui_read)
             if else_expr is not None:
-                self._walk_stmt_or_expr(else_expr, context, path)
+                self._walk_stmt_or_expr(else_expr, context, path, is_ui_read=is_ui_read)
             return
 
         # Function call: (FunctionCall, name, [args...]) [5]
         if isinstance(obj, tuple) and obj and obj[0] == const.KEY_FUNCTION_CALL:
             _, fn_name, args = obj
-            self._handle_function_call(fn_name, args or [], context, path)
+            self._handle_function_call(
+                fn_name,
+                args or [],
+                context,
+                path,
+                is_ui_read=is_ui_read,
+            )
             return
 
         # Boolean OR/AND [5]
@@ -2142,28 +3108,28 @@ class VariablesAnalyzer:
             and obj[0] in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND)
         ):
             for sub in obj[1] or []:
-                self._walk_stmt_or_expr(sub, context, path)
+                self._walk_stmt_or_expr(sub, context, path, is_ui_read=is_ui_read)
             return
 
         # NOT [5]
         if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_NOT:
-            self._walk_stmt_or_expr(obj[1], context, path)
+            self._walk_stmt_or_expr(obj[1], context, path, is_ui_read=is_ui_read)
             return
 
         # Compare: (compare, left, [(sym, right), ...]) [5]
         if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_COMPARE, "compare"):
             _, left, pairs = obj
-            self._walk_stmt_or_expr(left, context, path)
+            self._walk_stmt_or_expr(left, context, path, is_ui_read=is_ui_read)
             for _sym, rhs in pairs or []:
-                self._walk_stmt_or_expr(rhs, context, path)
+                self._walk_stmt_or_expr(rhs, context, path, is_ui_read=is_ui_read)
             return
 
         # Add/Mul [5]
         if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_ADD, const.KEY_MUL):
             _, left, parts = obj
-            self._walk_stmt_or_expr(left, context, path)
+            self._walk_stmt_or_expr(left, context, path, is_ui_read=is_ui_read)
             for _opval, r in parts or []:
-                self._walk_stmt_or_expr(r, context, path)
+                self._walk_stmt_or_expr(r, context, path, is_ui_read=is_ui_read)
             return
 
         # Unary [+/- term] [5]
@@ -2180,36 +3146,42 @@ class VariablesAnalyzer:
                     value = -value
                 self._add_magic_number_issue(path, value, span)
                 return
-            self._walk_stmt_or_expr(inner, context, path)
+            self._walk_stmt_or_expr(inner, context, path, is_ui_read=is_ui_read)
             return
 
         # Interact/enable/invar tails may embed expressions/variable refs [5]
         if isinstance(obj, dict) and const.KEY_ENABLE_EXPRESSION in obj:
             tail = obj[const.KEY_ENABLE_EXPRESSION]
-            self._walk_stmt_or_expr(tail, context, path)
+            self._walk_stmt_or_expr(tail, context, path, is_ui_read=is_ui_read)
             return
 
         # Tree wrappers for enable_expression / invar tails [5]
         if hasattr(obj, "data"):
             if getattr(obj, "data") == const.KEY_ENABLE_EXPRESSION:
                 for ch in getattr(obj, "children", []):
-                    self._walk_stmt_or_expr(ch, context, path)
+                    self._walk_stmt_or_expr(ch, context, path, is_ui_read=is_ui_read)
                 return
             if getattr(obj, "data") == const.GRAMMAR_VALUE_INVAR_PREFIX:
                 for ch in getattr(obj, "children", []):
-                    self._walk_stmt_or_expr(ch, context, path)
+                    self._walk_stmt_or_expr(ch, context, path, is_ui_read=is_ui_read)
                 return
 
         # Lists of nested statements
         if isinstance(obj, list):
             for it in obj:
-                self._walk_stmt_or_expr(it, context, path)
+                self._walk_stmt_or_expr(it, context, path, is_ui_read=is_ui_read)
             return
 
         # Variable reference with scope-aware resolution
         if isinstance(obj, dict) and const.KEY_VAR_NAME in obj:
             full_name = obj[const.KEY_VAR_NAME]
-            self._mark_ref_access(full_name, context, path, AccessKind.READ)
+            self._mark_ref_access(
+                full_name,
+                context,
+                path,
+                AccessKind.READ,
+                is_ui_read=is_ui_read,
+            )
             return
 
         # Assignment with scope-aware resolution
@@ -2219,8 +3191,9 @@ class VariablesAnalyzer:
             if isinstance(target, dict) and const.KEY_VAR_NAME in target:
                 full_name = target[const.KEY_VAR_NAME]
                 self._mark_ref_access(full_name, context, path, AccessKind.WRITE)
+                self._record_assignment_effect_flow(full_name, expr, context)
 
-            self._walk_stmt_or_expr(expr, context, path)
+            self._walk_stmt_or_expr(expr, context, path, is_ui_read=is_ui_read)
             return
 
     # ------------ Var lookup helpers ------------

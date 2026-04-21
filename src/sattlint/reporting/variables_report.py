@@ -11,8 +11,15 @@ class IssueKind(Enum):
     UNUSED = "unused"
     UNUSED_DATATYPE_FIELD = "unused_datatype_field"
     READ_ONLY_NON_CONST = "read_only_non_const"
+    UI_ONLY = "ui_only"
+    PROCEDURE_STATUS = "procedure_status"
     NEVER_READ = "never_read"
+    WRITE_WITHOUT_EFFECT = "write_without_effect"
+    GLOBAL_SCOPE_MINIMIZATION = "global_scope_minimization"
+    HIDDEN_GLOBAL_COUPLING = "hidden_global_coupling"
+    HIGH_FAN_IN_OUT = "high_fan_in_out"
     UNKNOWN_PARAMETER_TARGET = "unknown_parameter_target"
+    CONTRACT_MISMATCH = "contract_mismatch"
     STRING_MAPPING_MISMATCH = "string_mapping_mismatch"
     DATATYPE_DUPLICATION = "datatype_duplication"
     NAME_COLLISION = "name_collision"
@@ -20,6 +27,7 @@ class IssueKind(Enum):
     MAGIC_NUMBER = "magic_number"
     SHADOWING = "shadowing"
     RESET_CONTAMINATION = "reset_contamination"
+    IMPLICIT_LATCH = "implicit_latch"
 
 
 DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
@@ -36,10 +44,49 @@ DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.RESET_CONTAMINATION,
 )
 
-SUMMARY_SECTION_ORDER: tuple[IssueKind, ...] = (
+LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
+    IssueKind.UI_ONLY,
+    IssueKind.PROCEDURE_STATUS,
+    IssueKind.WRITE_WITHOUT_EFFECT,
+    IssueKind.GLOBAL_SCOPE_MINIMIZATION,
+    IssueKind.HIDDEN_GLOBAL_COUPLING,
+    IssueKind.HIGH_FAN_IN_OUT,
+    IssueKind.CONTRACT_MISMATCH,
+    IssueKind.IMPLICIT_LATCH,
+)
+
+ALL_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     *DEFAULT_VARIABLE_ANALYSIS_KINDS,
+    *LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS,
+)
+
+SUMMARY_SECTION_ORDER: tuple[IssueKind, ...] = (
+    *ALL_VARIABLE_ANALYSIS_KINDS,
     IssueKind.SHADOWING,
 )
+
+SECTION_TITLES: dict[IssueKind, str] = {
+    IssueKind.UNUSED: "Unused variables",
+    IssueKind.UNUSED_DATATYPE_FIELD: "Unused fields in datatypes",
+    IssueKind.READ_ONLY_NON_CONST: "Read-only but not Const variables",
+    IssueKind.UI_ONLY: "UI/display-only variables",
+    IssueKind.PROCEDURE_STATUS: "Procedure status handling",
+    IssueKind.NEVER_READ: "Written but never read variables",
+    IssueKind.WRITE_WITHOUT_EFFECT: "Write-without-effect variables",
+    IssueKind.GLOBAL_SCOPE_MINIMIZATION: "Global scope minimization candidates",
+    IssueKind.HIDDEN_GLOBAL_COUPLING: "Hidden global coupling",
+    IssueKind.HIGH_FAN_IN_OUT: "High fan-in or fan-out variables",
+    IssueKind.UNKNOWN_PARAMETER_TARGET: "Unknown parameter mapping targets",
+    IssueKind.CONTRACT_MISMATCH: "Cross-module contract mismatches",
+    IssueKind.STRING_MAPPING_MISMATCH: "String mapping type mismatches",
+    IssueKind.DATATYPE_DUPLICATION: "Duplicated complex datatypes (should be RECORD)",
+    IssueKind.MIN_MAX_MAPPING_MISMATCH: "Min/Max mapping name mismatches",
+    IssueKind.MAGIC_NUMBER: "Magic numbers in code",
+    IssueKind.NAME_COLLISION: "Name collisions",
+    IssueKind.SHADOWING: "Variable shadowing",
+    IssueKind.RESET_CONTAMINATION: "Reset contamination (missing reset writes)",
+    IssueKind.IMPLICIT_LATCH: "Implicit latching (missing matching False writes)",
+}
 
 
 @dataclass
@@ -117,14 +164,44 @@ class VariablesReport:
         return [i for i in self.issues if i.kind is IssueKind.READ_ONLY_NON_CONST]
 
     @property
+    def ui_only(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.UI_ONLY]
+
+    @property
+    def procedure_status(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.PROCEDURE_STATUS]
+
+    @property
     def never_read(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.NEVER_READ]
+
+    @property
+    def write_without_effect(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.WRITE_WITHOUT_EFFECT]
+
+    @property
+    def global_scope_minimization(self) -> list[VariableIssue]:
+        return [
+            i for i in self.issues if i.kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION
+        ]
+
+    @property
+    def hidden_global_coupling(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.HIDDEN_GLOBAL_COUPLING]
+
+    @property
+    def high_fan_in_out(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.HIGH_FAN_IN_OUT]
 
     @property
     def unknown_parameter_targets(self) -> list[VariableIssue]:
         return [
             i for i in self.issues if i.kind is IssueKind.UNKNOWN_PARAMETER_TARGET
         ]
+
+    @property
+    def contract_mismatches(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.CONTRACT_MISMATCH]
 
     @property
     def string_mapping_mismatch(self) -> list[VariableIssue]:
@@ -154,6 +231,10 @@ class VariablesReport:
     def reset_contamination(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.RESET_CONTAMINATION]
 
+    @property
+    def implicit_latches(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.IMPLICIT_LATCH]
+
     def _summary_kinds(self) -> tuple[IssueKind, ...]:
         if self.visible_kinds is not None:
             return tuple(
@@ -165,51 +246,177 @@ class VariablesReport:
             kind for kind in SUMMARY_SECTION_ORDER if kind in present_kinds
         )
 
+    def _issues_for_kind(self, kind: IssueKind) -> list[VariableIssue]:
+        if kind is IssueKind.UNUSED:
+            return self.unused
+        if kind is IssueKind.UNUSED_DATATYPE_FIELD:
+            return self.unused_datatype_fields
+        if kind is IssueKind.READ_ONLY_NON_CONST:
+            return self.read_only_non_const
+        if kind is IssueKind.UI_ONLY:
+            return self.ui_only
+        if kind is IssueKind.PROCEDURE_STATUS:
+            return self.procedure_status
+        if kind is IssueKind.NEVER_READ:
+            return self.never_read
+        if kind is IssueKind.WRITE_WITHOUT_EFFECT:
+            return self.write_without_effect
+        if kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION:
+            return self.global_scope_minimization
+        if kind is IssueKind.HIDDEN_GLOBAL_COUPLING:
+            return self.hidden_global_coupling
+        if kind is IssueKind.HIGH_FAN_IN_OUT:
+            return self.high_fan_in_out
+        if kind is IssueKind.UNKNOWN_PARAMETER_TARGET:
+            return self.unknown_parameter_targets
+        if kind is IssueKind.CONTRACT_MISMATCH:
+            return self.contract_mismatches
+        if kind is IssueKind.STRING_MAPPING_MISMATCH:
+            return self.string_mapping_mismatch
+        if kind is IssueKind.DATATYPE_DUPLICATION:
+            return self.datatype_duplication
+        if kind is IssueKind.MIN_MAX_MAPPING_MISMATCH:
+            return self.min_max_mapping_mismatch
+        if kind is IssueKind.MAGIC_NUMBER:
+            return self.magic_numbers
+        if kind is IssueKind.NAME_COLLISION:
+            return self.name_collisions
+        if kind is IssueKind.SHADOWING:
+            return self.shadowing
+        if kind is IssueKind.RESET_CONTAMINATION:
+            return self.reset_contamination
+        if kind is IssueKind.IMPLICIT_LATCH:
+            return self.implicit_latches
+        return []
+
+    @staticmethod
+    def _section_header(title: str, count: int) -> str:
+        return f"  - {title} ({count}):"
+
+    @staticmethod
+    def _format_location(module_path: list[str]) -> str:
+        return ".".join(module_path) if module_path else "?"
+
+    @staticmethod
+    def _variable_datatype_text(variable: Variable) -> str:
+        if isinstance(variable.datatype, Simple_DataType):
+            return variable.datatype.value
+        return str(variable.datatype)
+
+    @classmethod
+    def _format_issue(cls, issue: VariableIssue) -> str:
+        location = cls._format_location(issue.module_path)
+
+        if issue.variable is None and issue.datatype_name is not None:
+            field_name = issue.field_path or "?"
+            return f"{location} :: {issue.datatype_name}.{field_name}"
+
+        if issue.variable is None and issue.literal_value is not None:
+            site = f" [{issue.site}]" if issue.site else ""
+            if issue.literal_span is not None:
+                span_text = (
+                    f"line {issue.literal_span.line}, col {issue.literal_span.column}"
+                )
+            else:
+                span_text = "line ?, col ?"
+            return f"{location}{site} :: {issue.literal_value} ({span_text})"
+
+        if issue.variable is None:
+            return f"{location} :: {issue.role or 'issue'}"
+
+        variable_name = issue.variable.name
+        if issue.field_path:
+            variable_name = f"{variable_name}.{issue.field_path}"
+        variable_text = f"{variable_name} ({cls._variable_datatype_text(issue.variable)})"
+
+        if issue.role in {"localvariable", "moduleparameter"}:
+            detail = f"{issue.role} {variable_text}"
+        elif issue.role:
+            detail = f"{variable_text} | {issue.role}"
+        else:
+            detail = variable_text
+
+        extra_parts: list[str] = []
+        if issue.sequence_name:
+            extra_parts.append(f"sequence={issue.sequence_name}")
+        if issue.reset_variable:
+            extra_parts.append(f"reset={issue.reset_variable}")
+        if extra_parts:
+            detail = f"{detail} | {' | '.join(extra_parts)}"
+
+        return f"{location} :: {detail}"
+
+    def _section_counts(self, summary_kinds: tuple[IssueKind, ...]) -> list[str]:
+        return [
+            f"  - {SECTION_TITLES[kind]}: {len(self._issues_for_kind(kind))}"
+            for kind in summary_kinds
+        ]
+
     @staticmethod
     def _append_empty_section(lines: list[str], title: str) -> None:
-        lines.append(title)
+        lines.append(VariablesReport._section_header(title, 0))
         lines.append("      none")
 
-    @staticmethod
+    @classmethod
     def _append_variable_issue_list(
-        lines: list[str], title: str, issues: list[VariableIssue]
+        cls, lines: list[str], title: str, issues: list[VariableIssue]
     ) -> None:
         if not issues:
-            VariablesReport._append_empty_section(lines, title)
+            cls._append_empty_section(lines, title)
             return
 
-        lines.append(title)
+        lines.append(cls._section_header(title, len(issues)))
         for issue in issues:
-            lines.append(f"      * {issue}")
+            lines.append(f"      * {cls._format_issue(issue)}")
 
     def _append_unused_datatype_fields(self, lines: list[str]) -> None:
-        title = "  - Unused fields in datatypes:"
+        title = SECTION_TITLES[IssueKind.UNUSED_DATATYPE_FIELD]
         if not self.unused_datatype_fields:
             self._append_empty_section(lines, title)
             return
 
-        lines.append(title)
+        lines.append(self._section_header(title, len(self.unused_datatype_fields)))
         for issue in self.unused_datatype_fields:
-            location = ".".join(issue.module_path)
+            location = self._format_location(issue.module_path)
             datatype_name = issue.datatype_name or "?"
             field_name = issue.field_path or "?"
-            lines.append(f"      * [{location}] {datatype_name}.{field_name}")
+            lines.append(f"      * {location} :: {datatype_name}.{field_name}")
 
     def _append_unknown_parameter_targets(self, lines: list[str]) -> None:
         self._append_variable_issue_list(
             lines,
-            "  - Unknown parameter mapping targets:",
+            SECTION_TITLES[IssueKind.UNKNOWN_PARAMETER_TARGET],
             self.unknown_parameter_targets,
         )
 
+    def _append_procedure_status(self, lines: list[str]) -> None:
+        self._append_variable_issue_list(
+            lines,
+            SECTION_TITLES[IssueKind.PROCEDURE_STATUS],
+            self.procedure_status,
+        )
+
+    def _append_contract_mismatches(self, lines: list[str]) -> None:
+        self._append_variable_issue_list(
+            lines,
+            SECTION_TITLES[IssueKind.CONTRACT_MISMATCH],
+            self.contract_mismatches,
+        )
+
+    def _append_high_fan_in_out(self, lines: list[str]) -> None:
+        self._append_variable_issue_list(
+            lines,
+            SECTION_TITLES[IssueKind.HIGH_FAN_IN_OUT],
+            self.high_fan_in_out,
+        )
+
     def _append_string_mapping_mismatch(self, lines: list[str]) -> None:
-        title = "  - String mapping type mismatches:"
+        title = SECTION_TITLES[IssueKind.STRING_MAPPING_MISMATCH]
         if not self.string_mapping_mismatch:
             self._append_empty_section(lines, title)
             return
 
-        lines.append(title)
-        lines.append("")
+        lines.append(self._section_header(title, len(self.string_mapping_mismatch)))
         location_w = max(
             len(".".join(issue.module_path)) for issue in self.string_mapping_mismatch
         )
@@ -252,16 +459,13 @@ class VariablesReport:
                 f"{tgt_name:<{tgt_name_w}}  {tgt_type:<{tgt_type_w}}"
             )
 
-        lines.append("")
-
     def _append_datatype_duplication(self, lines: list[str]) -> None:
-        title = "  - Duplicated complex datatypes (should be RECORD):"
+        title = SECTION_TITLES[IssueKind.DATATYPE_DUPLICATION]
         if not self.datatype_duplication:
             self._append_empty_section(lines, title)
             return
 
-        lines.append(title)
-        lines.append("")
+        lines.append(self._section_header(title, len(self.datatype_duplication)))
         for issue in sorted(
             self.datatype_duplication,
             key=lambda item: (
@@ -290,16 +494,13 @@ class VariablesReport:
                             f"          + {dup_location}: {dup_name} ({dup_role})"
                         )
 
-        lines.append("")
-
     def _append_min_max_mapping_mismatch(self, lines: list[str]) -> None:
-        title = "  - Min/Max mapping name mismatches:"
+        title = SECTION_TITLES[IssueKind.MIN_MAX_MAPPING_MISMATCH]
         if not self.min_max_mapping_mismatch:
             self._append_empty_section(lines, title)
             return
 
-        lines.append(title)
-        lines.append("")
+        lines.append(self._section_header(title, len(self.min_max_mapping_mismatch)))
         location_w = max(
             len(".".join(issue.module_path))
             for issue in self.min_max_mapping_mismatch
@@ -332,28 +533,22 @@ class VariablesReport:
             )
 
     def _append_magic_numbers(self, lines: list[str]) -> None:
-        title = "  - Magic numbers in code:"
+        title = SECTION_TITLES[IssueKind.MAGIC_NUMBER]
         if not self.magic_numbers:
             self._append_empty_section(lines, title)
             return
 
-        lines.append(title)
+        lines.append(self._section_header(title, len(self.magic_numbers)))
         for issue in self.magic_numbers:
-            location = ".".join(issue.module_path)
-            site = f" [{issue.site}]" if issue.site else ""
-            if issue.literal_span is not None:
-                span_text = (
-                    f"line {issue.literal_span.line}, col {issue.literal_span.column}"
-                )
-            else:
-                span_text = "line ?, col ?"
-            lines.append(
-                f"      * {location}{site}: {issue.literal_value} ({span_text})"
-            )
+            lines.append(f"      * {self._format_issue(issue)}")
 
     def _append_section(self, lines: list[str], kind: IssueKind) -> None:
         if kind is IssueKind.UNUSED:
-            self._append_variable_issue_list(lines, "  - Unused variables:", self.unused)
+            self._append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.UNUSED],
+                self.unused,
+            )
             return
         if kind is IssueKind.UNUSED_DATATYPE_FIELD:
             self._append_unused_datatype_fields(lines)
@@ -361,19 +556,56 @@ class VariablesReport:
         if kind is IssueKind.READ_ONLY_NON_CONST:
             self._append_variable_issue_list(
                 lines,
-                "  - Read-only but not Const variables:",
+                SECTION_TITLES[IssueKind.READ_ONLY_NON_CONST],
                 self.read_only_non_const,
             )
+            return
+        if kind is IssueKind.UI_ONLY:
+            self._append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.UI_ONLY],
+                self.ui_only,
+            )
+            return
+        if kind is IssueKind.PROCEDURE_STATUS:
+            self._append_procedure_status(lines)
             return
         if kind is IssueKind.NEVER_READ:
             self._append_variable_issue_list(
                 lines,
-                "  - written, but never read variables:",
+                SECTION_TITLES[IssueKind.NEVER_READ],
                 self.never_read,
             )
             return
+        if kind is IssueKind.WRITE_WITHOUT_EFFECT:
+            self._append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.WRITE_WITHOUT_EFFECT],
+                self.write_without_effect,
+            )
+            return
+        if kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION:
+            self._append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.GLOBAL_SCOPE_MINIMIZATION],
+                self.global_scope_minimization,
+            )
+            return
+        if kind is IssueKind.HIDDEN_GLOBAL_COUPLING:
+            self._append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.HIDDEN_GLOBAL_COUPLING],
+                self.hidden_global_coupling,
+            )
+            return
+        if kind is IssueKind.HIGH_FAN_IN_OUT:
+            self._append_high_fan_in_out(lines)
+            return
         if kind is IssueKind.UNKNOWN_PARAMETER_TARGET:
             self._append_unknown_parameter_targets(lines)
+            return
+        if kind is IssueKind.CONTRACT_MISMATCH:
+            self._append_contract_mismatches(lines)
             return
         if kind is IssueKind.STRING_MAPPING_MISMATCH:
             self._append_string_mapping_mismatch(lines)
@@ -389,20 +621,32 @@ class VariablesReport:
             return
         if kind is IssueKind.NAME_COLLISION:
             self._append_variable_issue_list(
-                lines, "  - Name collisions:", self.name_collisions
+                lines,
+                SECTION_TITLES[IssueKind.NAME_COLLISION],
+                self.name_collisions,
             )
             return
         if kind is IssueKind.SHADOWING:
             self._append_variable_issue_list(
-                lines, "  - Variable shadowing:", self.shadowing
+                lines,
+                SECTION_TITLES[IssueKind.SHADOWING],
+                self.shadowing,
             )
             return
         if kind is IssueKind.RESET_CONTAMINATION:
             self._append_variable_issue_list(
                 lines,
-                "  - Reset contamination (missing reset writes):",
+                SECTION_TITLES[IssueKind.RESET_CONTAMINATION],
                 self.reset_contamination,
             )
+            return
+        if kind is IssueKind.IMPLICIT_LATCH:
+            self._append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.IMPLICIT_LATCH],
+                self.implicit_latches,
+            )
+            return
 
     def summary(self) -> str:
         summary_kinds = self._summary_kinds()
@@ -416,6 +660,10 @@ class VariablesReport:
         status = "issues" if self.issues else "ok"
         lines = format_report_header("Variable issues", self.basepicture_name, status=status)
         lines.append(f"Issues: {len(self.issues)}")
+        if summary_kinds:
+            lines.append("Sections:")
+            lines.extend(self._section_counts(summary_kinds))
         for kind in summary_kinds:
+            lines.append("")
             self._append_section(lines, kind)
         return "\n".join(lines)

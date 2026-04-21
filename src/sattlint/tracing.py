@@ -11,19 +11,14 @@ from pathlib import Path
 import time
 from typing import Any
 
+from .analyzers.dataflow import analyze_dataflow
+from .analyzers.sfc import collect_sfc_reachability_findings
 from .analyzers.variables import analyze_variables
 from .engine import parse_source_file, validate_single_file_syntax
 from .models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleTypeInstance,
-    Sequence as SFCSequence,
-    SFCAlternative,
-    SFCBreak,
-    SFCFork,
-    SFCParallel,
-    SFCSubsequence,
-    SFCTransitionSub,
     SingleModule,
 )
 from .path_sanitizer import sanitize_path_for_report
@@ -58,14 +53,6 @@ def _module_node_label(node: object) -> str:
         return f"FrameModule:{node.header.name}"
     if isinstance(node, ModuleTypeInstance):
         return f"ModuleTypeInstance:{node.header.name}"
-    return type(node).__name__
-
-
-def _sequence_node_label(node: object) -> str:
-    if hasattr(node, "name") and getattr(node, "name", None):
-        return f"{type(node).__name__}:{getattr(node, 'name')}"
-    if isinstance(node, SFCFork):
-        return f"SFCFork:{node.target}"
     return type(node).__name__
 
 
@@ -154,71 +141,19 @@ def detect_transform_invariant_violations(base_picture: BasePicture) -> list[dic
 
 
 def detect_unreachable_sequence_logic(base_picture: BasePicture) -> list[dict[str, Any]]:
-    findings: list[dict[str, Any]] = []
-
-    def inspect_linear_nodes(
-        nodes: SequenceABC[object] | None,
-        module_path: list[str],
-        sequence_name: str,
-        branch_path: list[int] | None = None,
-    ) -> None:
-        terminated_by: dict[str, Any] | None = None
-        for index, node in enumerate(nodes or []):
-            current_branch = list(branch_path or [])
-            if terminated_by is not None:
-                findings.append(
-                    {
-                        "kind": "unreachable_sequence_node",
-                        "module_path": module_path.copy(),
-                        "sequence_name": sequence_name,
-                        "branch_path": current_branch,
-                        "node_index": index,
-                        "node_label": _sequence_node_label(node),
-                        "terminated_by": terminated_by,
-                    }
-                )
-                continue
-
-            if isinstance(node, SFCBreak):
-                terminated_by = {"kind": "SFCBreak"}
-                continue
-
-            if isinstance(node, SFCFork):
-                terminated_by = {"kind": "SFCFork", "target": node.target}
-                continue
-
-            if isinstance(node, (SFCAlternative, SFCParallel)):
-                for branch_index, branch in enumerate(node.branches or []):
-                    inspect_linear_nodes(branch, module_path, sequence_name, current_branch + [branch_index])
-                continue
-
-            if isinstance(node, (SFCSubsequence, SFCTransitionSub)):
-                inspect_linear_nodes(getattr(node, "code", None), module_path, sequence_name, current_branch)
-
-    def inspect_modulecode(modulecode: object | None, module_path: list[str]) -> None:
-        if modulecode is None:
-            return
-        for sequence in getattr(modulecode, "sequences", []) or []:
-            if isinstance(sequence, SFCSequence):
-                inspect_linear_nodes(sequence.code, module_path, sequence.name)
-
-    inspect_modulecode(base_picture.modulecode, [base_picture.header.name])
-
-    def walk_modules(modules: SequenceABC[object] | None, path: list[str]) -> None:
-        for module in modules or []:
-            if isinstance(module, SingleModule):
-                next_path = path + [module.header.name]
-                inspect_modulecode(module.modulecode, next_path)
-                walk_modules(module.submodules, next_path)
-            elif isinstance(module, FrameModule):
-                walk_modules(module.submodules, path + [module.header.name])
-
-    walk_modules(base_picture.submodules, [base_picture.header.name])
-
-    for moduletype in base_picture.moduletype_defs or []:
-        inspect_modulecode(moduletype.modulecode, [base_picture.header.name, f"TypeDef:{moduletype.name}"])
-
-    return findings
+    return [
+        {
+            "kind": "unreachable_sequence_node",
+            "module_path": list(finding.module_path),
+            "sequence_name": finding.sequence_name,
+            "branch_path": list(finding.branch_path),
+            "node_index": finding.node_index,
+            "node_label": finding.node_label,
+            "node_type": finding.node_type,
+            "terminated_by": dict(finding.terminated_by),
+        }
+        for finding in collect_sfc_reachability_findings(base_picture)
+    ]
 
 
 def trace_basepicture_analysis(
@@ -241,7 +176,9 @@ def trace_basepicture_analysis(
     trace_recorder.event("analysis", "ast-summary", **ast_summary)
 
     report = analyze_variables(base_picture, debug=debug, trace_recorder=trace_recorder)
+    dataflow_report = analyze_dataflow(base_picture)
     issue_counts = dict(sorted(Counter(issue.kind.value for issue in report.issues).items()))
+    dataflow_issue_counts = dict(sorted(Counter(issue.kind for issue in dataflow_report.issues).items()))
     unreachable_logic = detect_unreachable_sequence_logic(base_picture)
     transform_violations = detect_transform_invariant_violations(base_picture)
 
@@ -249,6 +186,7 @@ def trace_basepicture_analysis(
         "analysis",
         "completed",
         issue_count=len(report.issues),
+        dataflow_issue_count=len(dataflow_report.issues),
         unreachable_logic_count=len(unreachable_logic),
         transform_violation_count=len(transform_violations),
     )
@@ -260,6 +198,19 @@ def trace_basepicture_analysis(
         "variable_analysis": {
             "issue_count": len(report.issues),
             "issue_counts": issue_counts,
+        },
+        "dataflow_analysis": {
+            "issue_count": len(dataflow_report.issues),
+            "issue_counts": dataflow_issue_counts,
+            "findings": [
+                {
+                    "kind": issue.kind,
+                    "message": issue.message,
+                    "module_path": issue.module_path,
+                    "data": issue.data,
+                }
+                for issue in dataflow_report.issues
+            ],
         },
         "heuristics": {
             "unreachable_logic": unreachable_logic,

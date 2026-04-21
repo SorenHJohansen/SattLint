@@ -84,6 +84,7 @@ SKIP_DIRS = {
 LEAK_RELEVANT_CATEGORIES = {"portability", "secrets-pii"}
 LEAK_RELEVANT_FINDING_IDS = {"tracked-generated-artifacts"}
 SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+AUDIT_PROFILE_CHOICES = ("quick", "full")
 PLACEHOLDER_VALUES = {
     "<repo-url>",
     "<repository-url>",
@@ -1005,9 +1006,38 @@ def _should_fail(findings: Iterable[Finding], threshold: str) -> bool:
     return any(SEVERITY_RANK[finding.severity] >= minimum_rank for finding in findings)
 
 
+def _blocking_finding_count(findings: Iterable[Finding], threshold: str) -> int:
+    minimum_rank = SEVERITY_RANK[threshold]
+    return sum(1 for finding in findings if SEVERITY_RANK[finding.severity] >= minimum_rank)
+
+
+def _recommended_command(*, output_dir: str, profile: str, fail_on: str, leaks_only: bool) -> str:
+    parts = ["sattlint-repo-audit"]
+    if leaks_only:
+        parts.append("--leaks-only")
+    else:
+        parts.extend(["--profile", profile])
+    parts.extend(["--fail-on", fail_on, "--output-dir", output_dir])
+    return " ".join(parts)
+
+
+def _print_cli_summary(status_report: dict[str, Any]) -> None:
+    print(f"Audit profile: {status_report['profile']}")
+    print(f"Overall status: {status_report['overall_status']}")
+    print(
+        "Findings: "
+        f"{status_report['finding_count']} total, "
+        f"{status_report['blocking_finding_count']} blocking at fail-on {status_report['fail_on']}"
+    )
+    print(f"Status report: {status_report['status_report']}")
+    print(f"Summary report: {status_report['summary_report']}")
+
+
 def audit_repository(
     output_dir: Path,
     *,
+    profile: str,
+    fail_on: str,
     include_generated: bool,
     leaks_only: bool,
     suspicious_identifiers: Iterable[str],
@@ -1018,13 +1048,16 @@ def audit_repository(
     output_dir.mkdir(parents=True, exist_ok=True)
     pipeline_summary: dict[str, Any] | None = None
     pipeline_findings: list[Finding] = []
+    audit_profile = "leaks" if leaks_only else profile
+    sanitized_output_dir = sanitize_path_for_report(output_dir, repo_root=REPO_ROOT) or output_dir.as_posix()
     if not skip_pipeline and not leaks_only:
         pipeline_output_dir = output_dir / PIPELINE_OUTPUT_DIRNAME
         pipeline_summary = pipeline_module._run_pipeline(
             pipeline_output_dir,
             trace_target=pipeline_module.DEFAULT_TRACE_TARGET if pipeline_module.DEFAULT_TRACE_TARGET.exists() else None,
-            include_vulture=not skip_vulture,
-            include_bandit=not skip_bandit,
+            profile=profile,
+            include_vulture=False if skip_vulture else None,
+            include_bandit=False if skip_bandit else None,
         )
         pipeline_findings = _find_pipeline_findings(pipeline_output_dir)
 
@@ -1041,11 +1074,27 @@ def audit_repository(
         findings,
         key=lambda item: (-SEVERITY_RANK[item.severity], item.category, item.path or "", item.line or 0, item.id),
     )
+    blocking_count = _blocking_finding_count(findings, fail_on)
+    reports = {
+        "status": "status.json",
+        "summary": "summary.json",
+        "findings": "findings.json",
+        "pipeline_status": None if pipeline_summary is None else f"{PIPELINE_OUTPUT_DIRNAME}/status.json",
+        "pipeline_summary": None if pipeline_summary is None else f"{PIPELINE_OUTPUT_DIRNAME}/summary.json",
+    }
     summary = {
-        "output_dir": sanitize_path_for_report(output_dir, repo_root=REPO_ROOT),
-        "profile": "leaks" if leaks_only else "full",
+        "output_dir": sanitized_output_dir,
+        "profile": audit_profile,
+        "entry_report": "status.json",
+        "canonical_command": _recommended_command(
+            output_dir=sanitized_output_dir,
+            profile=profile,
+            fail_on=fail_on,
+            leaks_only=leaks_only,
+        ),
         "pipeline_ran": (not skip_pipeline and not leaks_only),
         "pipeline_summary": pipeline_summary,
+        "reports": reports,
         "finding_count": len(findings),
         "severity_counts": _severity_counts(findings),
         "category_counts": _category_counts(findings),
@@ -1055,6 +1104,32 @@ def audit_repository(
         ],
         "findings": [finding.to_dict() for finding in findings],
     }
+    status_report = {
+        "kind": "sattlint.repo_audit.status",
+        "profile": audit_profile,
+        "fail_on": fail_on,
+        "overall_status": "fail" if blocking_count else "pass",
+        "canonical_command": summary["canonical_command"],
+        "status_report": f"{sanitized_output_dir}/status.json",
+        "summary_report": f"{sanitized_output_dir}/summary.json",
+        "finding_count": summary["finding_count"],
+        "blocking_finding_count": blocking_count,
+        "max_severity": summary["max_severity"],
+        "severity_counts": summary["severity_counts"],
+        "category_counts": summary["category_counts"],
+        "pipeline_status_report": None if pipeline_summary is None else f"{sanitized_output_dir}/{PIPELINE_OUTPUT_DIRNAME}/status.json",
+        "top_findings": [
+            {
+                "id": finding.id,
+                "severity": finding.severity,
+                "path": finding.path,
+                "line": finding.line,
+                "message": finding.message,
+            }
+            for finding in findings[:5]
+        ],
+    }
+    _write_json(output_dir / "status.json", status_report)
     _write_json(output_dir / "summary.json", summary)
     _write_json(output_dir / "findings.json", {"findings": summary["findings"]})
     _write_markdown(output_dir / "summary.md", findings, summary)
@@ -1069,6 +1144,12 @@ def main(argv: list[str] | None = None) -> int:
         "--output-dir",
         default=str(DEFAULT_OUTPUT_DIR),
         help="Directory where audit reports will be written",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=AUDIT_PROFILE_CHOICES,
+        default="full",
+        help="Run the fast quick profile or the complete full profile",
     )
     parser.add_argument(
         "--fail-on",
@@ -1101,6 +1182,8 @@ def main(argv: list[str] | None = None) -> int:
     fail_on = args.fail_on or ("medium" if args.leaks_only else "high")
     summary = audit_repository(
         Path(args.output_dir).resolve(),
+        profile=args.profile,
+        fail_on=fail_on,
         include_generated=args.include_generated,
         leaks_only=args.leaks_only,
         suspicious_identifiers=suspicious_identifiers,
@@ -1108,13 +1191,17 @@ def main(argv: list[str] | None = None) -> int:
         skip_vulture=args.skip_vulture,
         skip_bandit=args.skip_bandit,
     )
-    print(json.dumps({
-        "output_dir": summary["output_dir"],
-        "profile": summary["profile"],
-        "finding_count": summary["finding_count"],
-        "severity_counts": summary["severity_counts"],
-        "max_severity": summary["max_severity"],
-    }, indent=2, sort_keys=True))
+    _print_cli_summary(
+        {
+            "profile": summary["profile"],
+            "overall_status": "fail" if _should_fail((Finding(**finding) for finding in summary["findings"]), fail_on) else "pass",
+            "finding_count": summary["finding_count"],
+            "blocking_finding_count": _blocking_finding_count((Finding(**finding) for finding in summary["findings"]), fail_on),
+            "fail_on": fail_on,
+            "status_report": f"{summary['output_dir']}/status.json",
+            "summary_report": f"{summary['output_dir']}/summary.json",
+        }
+    )
     return 1 if _should_fail((Finding(**finding) for finding in summary["findings"]), fail_on) else 0
 
 

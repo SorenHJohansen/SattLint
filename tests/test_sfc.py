@@ -88,3 +88,62 @@ def test_parallel_branch_distinct_writes_not_reported():
     report = analyze_sfc(bp)
 
     assert not report.issues
+
+
+def test_illegal_state_combination_detected_for_parallel_steps():
+    seq = _sequence(
+        [
+            SFCParallel(
+                branches=[
+                    [_step("Idle", [])],
+                    [_step("Running", [])],
+                ]
+            )
+        ]
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[],
+        modulecode=ModuleCode(sequences=[seq], equations=[]),
+    )
+
+    report = analyze_sfc(
+        bp,
+        mutually_exclusive_steps=[("Idle", "Running")],
+    )
+
+    issues = [
+        issue for issue in report.issues if issue.kind == "sfc_illegal_state_combination"
+    ]
+    assert len(issues) == 1
+    assert issues[0].data is not None
+    assert issues[0].data["conflicts"] == [["Idle", "Running"]]
+
+
+def test_valid_parallel_state_combination_not_reported():
+    seq = _sequence(
+        [
+            SFCParallel(
+                branches=[
+                    [_step("Idle", [])],
+                    [_step("Holding", [])],
+                ]
+            )
+        ]
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[],
+        modulecode=ModuleCode(sequences=[seq], equations=[]),
+    )
+
+    report = analyze_sfc(
+        bp,
+        mutually_exclusive_steps=[("Idle", "Running")],
+    )
+
+    assert not any(
+        issue.kind == "sfc_illegal_state_combination" for issue in report.issues
+    )

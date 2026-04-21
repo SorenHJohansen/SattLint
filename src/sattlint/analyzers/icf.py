@@ -19,6 +19,7 @@ from ..resolution.common import (
 from ..resolution.type_graph import TypeGraph
 from ..reporting.icf_report import (
     ICFEntry,
+    ICFResolvedEntry,
     ICFValidationIssue,
     ICFValidationReport,
 )
@@ -203,6 +204,24 @@ def _validate_field_path(
     )
 
 
+def _resolve_leaf_datatype(
+    type_graph: TypeGraph,
+    root_var: Variable,
+    field_segments: list[str],
+) -> Simple_DataType | str | None:
+    current_type: Simple_DataType | str | None = root_var.datatype
+    for field in field_segments:
+        if isinstance(current_type, Simple_DataType):
+            return None
+        if current_type is None:
+            return None
+        field_def = type_graph.field(str(current_type), field)
+        if field_def is None:
+            return None
+        current_type = field_def.datatype
+    return current_type
+
+
 def validate_icf_entries_against_program(
     base_picture: BasePicture,
     entries: list[ICFEntry],
@@ -212,6 +231,7 @@ def validate_icf_entries_against_program(
 ) -> ICFValidationReport:
     type_graph = TypeGraph.from_basepicture(base_picture)
     issues: list[ICFValidationIssue] = []
+    resolved_entries: list[ICFResolvedEntry] = []
     validated = 0
     valid = 0
     skipped = 0
@@ -260,7 +280,28 @@ def validate_icf_entries_against_program(
             )
             continue
 
+        leaf_datatype = _resolve_leaf_datatype(type_graph, var, field_segments)
+        if leaf_datatype is None:
+            issues.append(
+                ICFValidationIssue(
+                    entry=entry,
+                    reason="invalid field path",
+                    detail=detail,
+                )
+            )
+            continue
+
         valid += 1
+        resolved_entries.append(
+            ICFResolvedEntry(
+                entry=entry,
+                module_path=list(resolved.path),
+                variable_name=var.name,
+                field_path=".".join(field_segments) or None,
+                leaf_name=field_segments[-1] if field_segments else var.name,
+                datatype=leaf_datatype,
+            )
+        )
 
     return ICFValidationReport(
         icf_file=entries[0].file_path if entries else Path(""),
@@ -270,4 +311,5 @@ def validate_icf_entries_against_program(
         valid_entries=valid,
         skipped_entries=skipped,
         issues=issues,
+        resolved_entries=resolved_entries,
     )

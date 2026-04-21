@@ -13,6 +13,7 @@ def test_trace_source_file_analysis_reports_issue_counts_and_events(tmp_path):
     assert payload["source_file"] == "tests/fixtures/sample_sattline_files/LinterTestProgram.s"
     assert payload["syntax_validation"]["ok"] is True
     assert payload["variable_analysis"]["issue_count"] >= 1
+    assert payload["dataflow_analysis"]["issue_count"] >= 0
     assert payload["ast_summary"]["sequence_count"] >= 0
     assert any(event["phase"] == "variables" for event in payload["events"])
     assert any(

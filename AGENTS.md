@@ -32,6 +32,7 @@
 
 - Inspect repo structure, current implementation, tests, and existing tooling before changing behavior.
 - Reuse existing patterns, validators, analyzers, pipeline hooks, and tests before introducing new abstractions or new dependencies.
+- When creating a new unit, prefer a real copy-based scaffold from `NNEStart`: copy into a new `*Lib` file, keep as many copied modules as practical, add a named unit wrapper module, and have the program file invoke that wrapper.
 - Propose a concise plan before broad or multi-file changes.
 - Ask for clarification when intended behavior, user-facing semantics, or safety requirements are unclear.
 - Prefer incremental, reviewable changes over large rewrites.
@@ -80,6 +81,9 @@
 - Prefer focused validation first, then broader repo checks when warranted.
 - For analyzer or repo-audit work, prefer the existing JSON pipeline in `src/sattlint/devtools/pipeline.py` and its outputs under `artifacts/analysis/`.
 - Use `src/sattlint/devtools/repo_audit.py` and `artifacts/audit/` for repository-portability, PII, wiring, architecture, and public-readiness scans.
+- Canonical repo audit command: `sattlint-repo-audit --profile full --output-dir artifacts/audit`.
+- For fast iteration, prefer `sattlint-repo-audit --profile quick --output-dir artifacts/audit` before a final full pass.
+- Open `artifacts/audit/status.json` first; it is the compact machine-readable entry report for audit results.
 
 ---
 

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..analyzers.framework import format_report_header
@@ -21,6 +21,16 @@ class ICFValidationIssue:
     detail: str | None = None
 
 
+@dataclass(frozen=True)
+class ICFResolvedEntry:
+    entry: ICFEntry
+    module_path: list[str]
+    variable_name: str
+    field_path: str | None
+    leaf_name: str
+    datatype: object
+
+
 @dataclass
 class ICFValidationReport:
     icf_file: Path
@@ -30,6 +40,7 @@ class ICFValidationReport:
     valid_entries: int
     skipped_entries: int
     issues: list[ICFValidationIssue]
+    resolved_entries: list[ICFResolvedEntry] = field(default_factory=list)
 
     @property
     def name(self) -> str:

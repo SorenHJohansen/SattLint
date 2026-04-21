@@ -1,286 +1,41 @@
-# TODO – SattLint Analyzer Features
-
-Domain-specific analyzer roadmap for SattLine code. Focused on correctness, safety, and maintainability.
-
----
-
-## 1. Safety & Control-Critical Analysis (Highest Priority)
-
-### Alarm Integrity Checks
-
-* Detect never-cleared alarms
-* Identify duplicated alarm conditions
-* Flag conflicting alarm priorities across modules
-* Alarm names must be unique across the entire application. Detect if two alarms have the same tag name.
-
----
-
-### Safety-Critical Path Analysis
-
-* Trace signals affecting shutdown/emergency logic
-* Verify proper reset behavior and redundancy handling
-* Detect unsafe propagation of critical signals
-
----
-
-### Scan-Cycle Semantics Violations
-
-* Detect logic assuming immediate updates within the same scan cycle
-* Flag misuse of `:OLD` or equivalent temporal constructs
-
----
-
-### Missing Reset Symmetry / Implicit Latching
-
-* Detect signals set in some paths but not reset in all
-* Generalized latch detection across branches and SFC steps
-
----
-
-### Unsafe Default Values
-
-* Identify defaults that may trigger equipment or bypass safety checks
-
----
-
-## 2. SFC & State Machine Correctness
-
-### Dead SFC Paths & Unreachable Transitions
-
-* Graph-based reachability analysis
-* Identify transitions that can never trigger
-
----
-
-### Illegal State Combinations
-
-* Detect mutually exclusive states active at the same time
-* Validate state invariants
-
----
-
-### Parallel Branch Write Conflicts
-
-* Detect concurrent writes to the same variable in parallel SFC branches
-
----
-
-### SFC Transition Logic Validation
-
-* Flag always-true / always-false conditions
-* Detect duplicated or redundant transitions
-
----
-
-### SFC Step Entry/Exit Contracts
-
-* Ensure entry actions initialize required state
-* Ensure exit actions clean up state
-* Detect state leakage between steps
-
----
-
-### Procedure Status Handling
-
-* Ensure procedure/function status outputs are handled by callers
-
----
-
-## 4. Dataflow & Semantic Correctness
-
-### Read-Before-Write & Dead Overwrites
-
-* Detect uninitialized reads
-* Identify values overwritten before being used
-
----
-
-### Lightweight Dataflow / Behavioral Inference
-
-* Infer variable ranges and state propagation
-* Detect impossible or contradictory conditions
-
----
-
-### Dataflow Taint Tracking
-
-* Track external inputs (MES, operator, sensors)
-* Flag unsafe usage without validation in control logic
-
----
-
-### AnyType Field Compatibility
-
-* Ensure required fields exist when accessing generic structures
-
----
-
-### Write-Without-Effect Detection
-
-* Identify writes that never influence outputs
-
----
-
-## 5. Cross-Module & System-Level Consistency
-
-### Cross-Module Contract Mismatches
-
-* Detect type and semantic mismatches between connected modules
-
----
-
-### Hidden Global Coupling
-
-* Detect globals acting as implicit interfaces
-* Encourage explicit parameter mapping
-
----
-
-### Global Scope Minimization
-
-* Identify globals used in limited scope
-* Suggest localization
-
----
-
-### High Fan-In / Fan-Out Variables
-
-* Flag heavily shared variables with unclear ownership
-
----
-
-### Parameter Drift Across Instances
-
-* Detect inconsistent parameter values across module instances
-
----
-
-### Version Drift Detection
-
-* Identify near-identical modules diverging over time
-
----
-
-## 6. Structural Quality & Maintainability
-
-### Cyclomatic Complexity Analysis
-
-* Measure complexity per module / SFC step
-* Flag overly complex logic
-
----
-
-### Duplicate Logic Detection
-
-* Detect structurally identical logic blocks
-* Suggest refactoring into shared components
-
----
-
-### Resource Usage in Scan Loop
-
-* Flag heavy operations in high-frequency scan logic
-* Identify potential performance risks
-
----
-
-### Loop Output Refactoring Tool
-
-* Analyze loop outputs provided by SattLine
-* Suggest structural transformations to eliminate loops
-
----
-
-## 7. Naming & Semantic Conventions
-
-### Naming Consistency
-
-* Enforce consistent naming conventions across modules
-
----
-
-### Naming-to-Behavior Validation
-
-* `Cmd` variables not used as state
-* `Status` variables not directly written
-
----
-
-### Engineering Unit Consistency
-
-* Detect inconsistent unit usage across modules
-
----
-
-## 8. Configuration & Interface Validation
-
-### Required Parameter Connections
-
-* Flag critical parameters that must be explicitly mapped
-
----
-
-### Initial Value Validation
-
-* Detect missing defaults for recipe and engineering parameters
-
----
-
-### OPC / MES Validation
-
-* Datatype validation
-* Duplicate tag detection
-* Dead tag cleanup
-* Naming drift detection
-
----
-
-## 9. Architecture & Impact Analysis
-
-### Dependency Graph & Impact Analysis
-
-* Generate coupling diagrams
-* Provide change-impact reports
-
----
-
-### AST Diff & Upgrade Insights
-
-* Semantic diff between versions
-* Auto-generate upgrade notes for changed elements
-
----
-
-## 10. Observability & Developer Experience
-
-### Explanation & Fix Suggestions
-
-* Convert findings into actionable explanations
-* Provide suggested fixes per issue type
-
----
-
-### Confidence Scoring
-
-* Classify findings:
-
-  * Definite bug
-  * Likely issue
-  * Style suggestion
-
----
-
-### Documentation Output
-
-* Generate Markdown / HTML reports
-* Produce parameter catalogs and interface inventories
-
----
-
-### UI/Display-Only Variable Detection
-
-* Identify variables only used in UI/graphs
-* Flag unnecessary resource usage
-
----
-
+# TODO - SattLint Analyzer Backlog
+
+Backlog view of the analyzer roadmap for SattLine code. Each row is a discrete feature sized against the current repo seams.
+
+- Scope uses: single-file, workspace, cross-module, or LSP-only.
+- Implementation bucket uses: new analyzer, extend VariablesAnalyzer, shared semantic core, or reporting only.
+- Confidence is delivery confidence with the current parser, resolver, and test scaffolding.
+- Acceptance tests name the existing suites that should be extended first.
+- Status is a conservative repo review as of 2026-04-20: `Done` means implemented with concrete code and tests, `Partial` means narrower or adjacent coverage exists, and `Open` means no matching implementation was found.
+
+Repo review note as of 2026-04-20:
+
+- Already implemented or partially implemented in code: scan-cycle temporal hazards, SFC reachability and parallel-write checks, configured mutually exclusive SFC step sets, SFC step contracts and state leakage, alarm integrity, required startup-value checks, taint and safety path tracing, hidden global coupling, write-without-effect, unsafe defaults, version drift, and variable diagnostic explanations with suggested fixes.
+- Already represented elsewhere in this backlog: IDs 1, 3, 4, 6, 7, 8, and 9 cover adjacent asks from the additions below.
+
+| ID | Status | Area | Feature | Scope | Implementation bucket | Confidence | Dependencies | Acceptance tests |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | Open | Cross-module and system-level consistency | Parameter drift across instances | cross-module | new analyzer | High | Module instance inventory, normalized literal comparison, moduletype grouping | Add `tests/test_analyzers.py` cases where instances of the same moduletype diverge on important parameters and aligned instances do not report |
+| 2 | Open | Structural quality and maintainability | Cyclomatic complexity analysis | single-file | new analyzer | High | AST control-flow traversal, per-module or per-step metrics, threshold configuration and report formatting | Add `tests/test_analyzers.py` cases for low and high complexity modules or steps and verify thresholded findings |
+| 3 | Open | Structural quality and maintainability | Duplicate logic detection | workspace | new analyzer | Medium | AST normalization or hashing, expression or block comparison, duplicate grouping in reports | Add `tests/test_analyzers.py` cases for structurally identical logic blocks with renamed locals and for near-miss blocks that should not collapse |
+| 4 | Open | Structural quality and maintainability | Resource usage in scan loop | single-file | new analyzer | Medium | Builtin or procedure classification, scan-loop context detection in equations and SFC active code | Add `tests/test_analyzers.py` cases flagging heavy operations in scan-cycle code and allowing the same calls outside scan-cycle paths |
+| 5 | Open | Structural quality and maintainability | Loop output refactoring tool | single-file | reporting only | Low | Loop-output extraction, suggestion formatter, optional documentation serialization | Add `tests/test_analyzers.py` cases producing a refactor suggestion for loop outputs; add `tests/test_docgen.py` coverage if suggestions are exported in generated docs |
+| 6 | Open | Naming and semantic conventions | Naming-to-behavior and signal-role consistency | single-file | extend VariablesAnalyzer | High | Existing read or write lifecycle classification, configurable suffix or prefix rules such as Cmd, Status, Alarm, and State | Add `tests/test_analyzers.py` cases where Cmd behaves like state, Status is directly written, Alarm signals drive control logic, plus safe counterexamples |
+| 7 | Open | Naming and semantic conventions | Engineering unit consistency and propagation | cross-module | new analyzer | Low | Unit metadata source, parameter mapping comparison, range or scaling metadata, optional config catalog of allowed conversions | Add `tests/test_analyzers.py` cases for unit mismatches across connected modules, transitive propagation, and accepted conversions when configured |
+| 8 | Open | Configuration and interface validation | Required parameter connections | workspace | extend VariablesAnalyzer | High | Parameter mapping resolution, moduletype parameter metadata, dependency-aware workspace loading | Add `tests/test_analyzers.py` cases for missing required mappings and optional mappings left unset; add `tests/test_editor_api.py` coverage for required parameters defined in dependency libraries |
+| 9 | Open | Observability and developer experience | Confidence scoring | workspace | reporting only | Medium | Stable issue taxonomy, rule metadata, report or diagnostic serialization | Add `tests/test_app.py` and `tests/test_pipeline.py` coverage proving confidence labels such as definite, likely, and style are emitted consistently |
+| 10 | Partial | Timing and real-time constraints | Timing and determinism analysis | workspace | shared semantic core | Medium | Temporal access graph with scan ordering, cycle-budget config, timer semantics, latency or jitter heuristics | Add `tests/test_dataflow.py` and `tests/test_analyzers.py` cases for cycle-budget overruns, same-cycle order sensitivity, TON or TOF or PT misuse, and latency-sensitive signal chains |
+| 11 | Partial | Initialization and startup semantics | Power-up and restart correctness | workspace | shared semantic core | Medium | First-scan definite assignment, retained-state model, startup ordering graph, initial-value propagation | Add `tests/test_dataflow.py` and `tests/test_analyzers.py` cases for uninitialized first-scan reads, power-up state mismatches, cold vs warm restart behavior, and module initialization order dependencies |
+| 12 | Partial | Concurrency and execution ordering | Scan-level concurrency and arbitration analysis | cross-module | shared semantic core | Medium | Module execution order model, cross-module writer inventory, arbitration heuristics, last-writer detection | Add `tests/test_analyzers.py` cases for cross-module write collisions, read or write ordering dependencies, hidden last-write-wins behavior, and multiple writers without arbitration |
+| 13 | Open | Signal lifecycle semantics | Signal lifecycle modeling | workspace | shared semantic core | Medium | Lifecycle stages such as init, active, stale, and invalid, refresh cadence heuristics, orphan detection | Add `tests/test_analyzers.py` cases for stale-signal use, missing refresh, and signals never updated after initialization |
+| 14 | Open | Control stability and feedback | Control loop and stability heuristics | single-file | new analyzer | Medium | Feedback-loop matcher, hysteresis heuristics, threshold toggle detection, generalized runaway feedback patterns | Add `tests/test_analyzers.py` cases for flip-flop control, runaway feedback, missing hysteresis, and unstable threshold toggling |
+| 15 | Open | Fault handling and recovery | Fault handling completeness and recovery | workspace | new analyzer | Medium | Fault-state inventory, critical-path classification, safe-state recovery reachability, alarm vs fault role checks | Add `tests/test_analyzers.py` cases for missing error paths, unhandled fault states in SFC or state logic, inconsistent alarm vs fault behavior, and unreachable recovery paths |
+| 16 | Partial | Interface contracts and module boundaries | Strong semantic interface contracts | workspace | extend VariablesAnalyzer | Medium | Required or optional inference, hidden required parameter mining, partial initialization contracts, semantic role compatibility across mappings | Add `tests/test_analyzers.py` cases for hidden required parameters, optional vs required usage, partial initialization contracts, and semantic mismatches across connected modules |
+| 17 | Open | Numeric and engineering validity | Numeric and engineering constraint analysis | single-file | new analyzer | Medium | Range heuristics, divide-by-zero guard reasoning, overflow or underflow checks, scaling validation, saturation pattern detection | Add `tests/test_analyzers.py` cases for overflow or underflow risk, invalid scaling, divide-by-zero in guarded branches, and missing saturation logic |
+| 18 | Open | Configuration and code alignment | Configuration drift against code and recipes | workspace | new analyzer | Medium | Config or recipe inventory, MES or MMS or ICF crosswalk, code-to-config symbol matching, stale-field detection | Add `tests/test_analyzers.py` and `tests/test_pipeline.py` coverage for code expecting missing config parameters, unused config fields, recipe assumption mismatches, and stale config after code evolution |
+| 19 | Open | S88 control architecture | S88 control module contract analysis | workspace | new analyzer | Medium | S88 command or state inventory, control-module heuristics, reachability matrix, required transition templates | Add `tests/test_analyzers.py` cases for missing Start or Stop or Hold or Abort contracts, unreachable states, and missing control-module transitions |
+| 20 | Open | S88 control architecture | S88 phase sequencing correctness | workspace | new analyzer | Medium | Phase model extraction, legal transition matrix, phase-state reachability, exit-condition validation | Add `tests/test_analyzers.py` cases for illegal phase transitions and missing or inconsistent phase exit conditions |
+| 21 | Partial | Safety-critical semantics | Safety-path correctness beyond tracing | cross-module | shared semantic core | Low | Extend safety-path traces with reset symmetry, validation gates, redundancy expectations, and safe-state assertions | Add `tests/test_analyzers.py` cases for shutdown paths missing resets, missing redundant confirmation paths, and unsafe single-point control of emergency logic |
+| 22 | Partial | Advanced semantic inference | Lightweight behavioral range and state inference | workspace | shared semantic core | Medium | Abstract interpretation for value ranges, state propagation across branches, saturation detection, impossible-state classification | Add `tests/test_dataflow.py` and `tests/test_analyzers.py` cases for impossible conditions and saturated states not caught by current constant-condition rules |
+| 23 | Open | Analyzer ergonomics | Configurable rule profiles | workspace | reporting only | High | Profile schema, per-rule enablement or severity matrices, default plant profiles such as strict pharma and legacy plant | Add `tests/test_app.py` and `tests/test_pipeline.py` coverage for strict pharma mode and legacy plant mode emitting different rule sets |
+| 24 | Partial | Analyzer ergonomics | Issue explanations and fix suggestions across analyzers | workspace | reporting only | Medium | Shared guidance model for non-variable semantic issues, report serialization, LSP projection, issue metadata reuse | Add `tests/test_lsp_server.py` and `tests/test_pipeline.py` coverage proving semantic issues beyond variable findings include explanations and suggested fixes |

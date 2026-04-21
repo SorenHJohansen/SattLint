@@ -4,14 +4,13 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import logging
 import os
 from pathlib import Path
 import re
-import shutil
-import subprocess  # nosec B404 - clear_screen uses a fixed local command list
 import sys
-from typing import Iterator, cast
+from typing import Iterator, Sequence, cast
 from . import engine as engine_module
 from . import config as config_module
 from .analyzers.variables import (
@@ -26,10 +25,13 @@ from .analyzers.variable_usage_reporting import (
 from .analyzers.mms import analyze_mms_interface_variables
 from .analyzers.icf import parse_icf_file, validate_icf_entries_against_program
 from .analyzers.framework import AnalysisContext
-from .analyzers.registry import get_default_analyzers
+from .analyzers.registry import get_default_cli_analyzers
 from .analyzers import variable_usage_reporting as variables_reporting_module
 from .analyzers.comment_code import analyze_comment_code_files
-from .reporting.variables_report import VariablesReport
+from .reporting.variables_report import (
+    DEFAULT_VARIABLE_ANALYSIS_KINDS,
+    VariablesReport,
+)
 from .analyzers.modules import (
     debug_module_structure,
     analyze_module_duplicates,
@@ -47,7 +49,7 @@ from .models.ast_model import BasePicture
 from .models.project_graph import ProjectGraph
 
 VARIABLE_ANALYSES = {
-    "1": ("All variable analyses", None),
+    "1": ("All variable analyses (high confidence)", None),
     "2": ("Unused variables", {IssueKind.UNUSED}),
     "3": ("Unused fields in datatypes", {IssueKind.UNUSED_DATATYPE_FIELD}),
     "4": ("Read-only but not CONST", {IssueKind.READ_ONLY_NON_CONST}),
@@ -60,7 +62,41 @@ VARIABLE_ANALYSES = {
     "11": ("Name collisions", {IssueKind.NAME_COLLISION}),
     "12": ("Reset contamination", {IssueKind.RESET_CONTAMINATION}),
     "13": ("Variable shadowing", {IssueKind.SHADOWING}),
+    "14": ("UI/display-only variables", {IssueKind.UI_ONLY}),
+    "15": ("Procedure status handling", {IssueKind.PROCEDURE_STATUS}),
+    "16": ("Write-without-effect variables", {IssueKind.WRITE_WITHOUT_EFFECT}),
+    "17": ("Cross-module contract mismatches", {IssueKind.CONTRACT_MISMATCH}),
+    "18": ("Implicit latching", {IssueKind.IMPLICIT_LATCH}),
+    "19": ("Global scope minimization", {IssueKind.GLOBAL_SCOPE_MINIMIZATION}),
+    "20": ("Hidden global coupling", {IssueKind.HIDDEN_GLOBAL_COUPLING}),
+    "21": ("High fan-in or fan-out variables", {IssueKind.HIGH_FAN_IN_OUT}),
 }
+
+HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = (
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+)
+
+LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = (
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "20",
+    "21",
+)
 
 
 CONFIG_PATH = config_module.get_config_path()
@@ -70,6 +106,13 @@ _DOCUMENTATION_SCOPE_STATE = {
     "instance_paths": [],
     "moduletype_names": [],
 }
+
+
+@dataclass(frozen=True)
+class MenuOption:
+    key: str
+    label: str
+    description: str = ""
 
 
 class TargetLoadError(RuntimeError):
@@ -240,9 +283,9 @@ def self_check(cfg: dict) -> bool:
     return config_module.self_check(cfg)
 
 
-# Configure root logger so all debug messages are shown
-logging.basicConfig(format="%(message)s", level=logging.DEBUG)
-logging.getLogger().setLevel(logging.DEBUG)
+# Configure logging so normal runs stay quiet unless debug mode is enabled.
+logging.basicConfig(format="%(message)s", level=logging.INFO)
+logging.getLogger().setLevel(logging.INFO)
 
 log = logging.getLogger("SattLint")
 
@@ -250,20 +293,75 @@ log = logging.getLogger("SattLint")
 # ----------------------------
 # Helpers
 # ----------------------------
+def _clear_windows_console() -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    class _Coord(ctypes.Structure):
+        _fields_ = [("X", wintypes.SHORT), ("Y", wintypes.SHORT)]
+
+    class _SmallRect(ctypes.Structure):
+        _fields_ = [
+            ("Left", wintypes.SHORT),
+            ("Top", wintypes.SHORT),
+            ("Right", wintypes.SHORT),
+            ("Bottom", wintypes.SHORT),
+        ]
+
+    class _ConsoleScreenBufferInfo(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", _Coord),
+            ("dwCursorPosition", _Coord),
+            ("wAttributes", wintypes.WORD),
+            ("srWindow", _SmallRect),
+            ("dwMaximumWindowSize", _Coord),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    stdout_handle = kernel32.GetStdHandle(-11)
+    invalid_handle = ctypes.c_void_p(-1).value
+    if stdout_handle in (0, invalid_handle):
+        raise OSError("unable to access stdout console handle")
+
+    buffer_info = _ConsoleScreenBufferInfo()
+    if not kernel32.GetConsoleScreenBufferInfo(stdout_handle, ctypes.byref(buffer_info)):
+        raise OSError(ctypes.get_last_error(), "GetConsoleScreenBufferInfo failed")
+
+    cell_count = int(buffer_info.dwSize.X) * int(buffer_info.dwSize.Y)
+    written = wintypes.DWORD()
+    origin = _Coord(0, 0)
+
+    if not kernel32.FillConsoleOutputCharacterW(
+        stdout_handle,
+        " ",
+        cell_count,
+        origin,
+        ctypes.byref(written),
+    ):
+        raise OSError(ctypes.get_last_error(), "FillConsoleOutputCharacterW failed")
+    if not kernel32.FillConsoleOutputAttribute(
+        stdout_handle,
+        buffer_info.wAttributes,
+        cell_count,
+        origin,
+        ctypes.byref(written),
+    ):
+        raise OSError(ctypes.get_last_error(), "FillConsoleOutputAttribute failed")
+    if not kernel32.SetConsoleCursorPosition(stdout_handle, origin):
+        raise OSError(ctypes.get_last_error(), "SetConsoleCursorPosition failed")
+
+
 def clear_screen():
-    import sys
     sys.stdout.flush()
     if os.name == "nt":
         try:
-            os.system("cls")  # nosec B605 - fixed local console clear command
+            _clear_windows_console()
+            return
         except OSError:
             pass
-    else:
-        try:
-            import subprocess
-            subprocess.run(["clear"], check=False)
-        except OSError:
-            pass
+
+    sys.stdout.write("\033[2J\033[H")
+    sys.stdout.flush()
 
 
 def pause():
@@ -294,7 +392,9 @@ def target_exists(target: str, cfg: dict) -> bool:
 
 
 def apply_debug(cfg: dict):
-    log.setLevel(logging.DEBUG if cfg.get("debug") else logging.INFO)
+    level = logging.DEBUG if cfg.get("debug") else logging.INFO
+    logging.getLogger().setLevel(level)
+    log.setLevel(level)
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
@@ -359,33 +459,152 @@ def run_cli(argv: list[str]) -> int:
 # ----------------------------
 
 
+def _format_config_scalar(value: object) -> str:
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if value in (None, ""):
+        return "(not set)"
+    return str(value)
+
+
+def _print_config_section(title: str, rows: list[tuple[str, object]]) -> None:
+    print(title)
+    if not rows:
+        print("  (none)")
+        return
+
+    label_width = max(len(label) for label, _ in rows)
+    for label, value in rows:
+        print(f"  {label:<{label_width}}  {_format_config_scalar(value)}")
+
+
+def _print_config_list(title: str, items: list[object]) -> None:
+    print(title)
+    if not items:
+        print("  (none)")
+        return
+
+    for index, item in enumerate(items, 1):
+        print(f"  [{index}] {_format_config_scalar(item)}")
+
+
 def show_config(cfg: dict):
     documentation_cfg = config_module.get_documentation_config(cfg)
+    general_rows = [
+        ("mode", cfg["mode"]),
+        ("scan_root_only", cfg["scan_root_only"]),
+        ("fast_cache_validation", cfg["fast_cache_validation"]),
+        ("debug", cfg["debug"]),
+    ]
+    directory_rows = [
+        ("program_dir", cfg["program_dir"]),
+        ("ABB_lib_dir", cfg["ABB_lib_dir"]),
+        ("icf_dir", cfg["icf_dir"]),
+    ]
 
-    print("\n--- Current configuration ---")
-    print("analyzed_programs_and_libraries:")
-    for i, target in enumerate(cfg["analyzed_programs_and_libraries"], 1):
-        print(f"  {i}. {target}")
-    for k in (
-        "mode",
-        "scan_root_only",
-        "fast_cache_validation",
-        "debug",
-        "program_dir",
-        "ABB_lib_dir",
-        "icf_dir",
-    ):
-        print(f"{k:16}: {cfg[k]}")
-    print("other_lib_dirs:")
-    for i, p in enumerate(cfg["other_lib_dirs"], 1):
-        print(f"  {i}. {p}")
-    print("documentation.classifications:")
+    print("\nCurrent Configuration")
+    print("=" * 21)
+    print()
+    _print_config_list(
+        "Analyzed Programs And Libraries",
+        list(cfg["analyzed_programs_and_libraries"]),
+    )
+    print()
+    _print_config_section("General", general_rows)
+    print()
+    _print_config_section("Directories", directory_rows)
+    print()
+    _print_config_list("Other Library Directories", list(cfg["other_lib_dirs"]))
+    print()
+    print("Documentation Classifications")
     for category, rule in documentation_cfg.get("classifications", {}).items():
-        print(f"  {category}:")
-        for key, values in rule.items():
-            if values:
-                print(f"    {key}: {', '.join(str(value) for value in values)}")
-    print("-----------------------------\n")
+        active_rules = [
+            (key, ", ".join(str(value) for value in values))
+            for key, values in rule.items()
+            if values
+        ]
+        print(f"  {category}")
+        if not active_rules:
+            print("    (none)")
+            continue
+        label_width = max(len(key) for key, _ in active_rules)
+        for key, value in active_rules:
+            print(f"    {key:<{label_width}}  {value}")
+    print()
+
+
+def _print_menu(
+    title: str,
+    options: Sequence[MenuOption],
+    *,
+    intro: str | None = None,
+    note: str | None = None,
+) -> None:
+    print(f"\n--- {title} ---")
+    if intro:
+        print(intro.strip())
+        print()
+
+    label_width = max((len(option.label) for option in options), default=0)
+    for option in options:
+        if option.description:
+            print(
+                f"{option.key}) {option.label:<{label_width}}  {option.description}"
+            )
+        else:
+            print(f"{option.key}) {option.label}")
+
+    if note:
+        print()
+        print(note.strip())
+
+
+def _summarize_targets(cfg: dict) -> str:
+    targets = _get_analyzed_targets(cfg)
+    if not targets:
+        return "No analysis targets configured yet. Open Setup first."
+    if len(targets) == 1:
+        return f"1 target configured: {targets[0]}"
+    preview = ", ".join(targets[:3])
+    if len(targets) > 3:
+        preview += ", ..."
+    return f"{len(targets)} targets configured: {preview}"
+
+
+def show_help(cfg: dict) -> None:
+    clear_screen()
+    targets = _get_analyzed_targets(cfg)
+    print(
+        """
+--- Help ---
+SattLint can validate a single file quickly or analyze configured programs and
+libraries together with their dependencies.
+
+Recommended first run:
+1. Open Setup and configure program_dir, ABB_lib_dir, and any extra library folders.
+2. Add one or more analysis targets without file extensions.
+3. Save the configuration.
+4. Open Tools and run Self-check diagnostics.
+5. Open Analyze to run checks, or Documentation to build DOCX output.
+
+Main areas:
+- Analyze: run curated reports, the full analyzer suite, or registry-backed checks.
+- Documentation: preview unit candidates, choose scope, and generate DOCX output.
+- Setup: edit directories, targets, mode, caching, and debug settings.
+- Tools: self-check, dumps, and AST cache refresh for troubleshooting.
+
+Quick single-file validation:
+  sattlint syntax-check /path/to/Program.s
+
+That command is useful when you want a strict parser or transformer check for one file
+without loading a whole workspace.
+"""
+    )
+    if targets:
+        print(f"Current target status: {_summarize_targets(cfg)}")
+    else:
+        print("Current target status: no configured targets yet.")
+    pause()
 
 
 # ----------------------------
@@ -425,7 +644,7 @@ def _require_targets_for_menu_action(cfg: dict, action: str) -> bool:
         return True
     print(
         "\nNo analyzed programs/libraries configured. "
-        f"Add entries in Edit config before {action}."
+        f"Add entries in Setup before {action}."
     )
     pause()
     return False
@@ -589,18 +808,24 @@ def documentation_menu(cfg: dict) -> bool:
     while True:
         clear_screen()
         selection = _get_documentation_unit_selection()
-        print("""
---- Documentation ---
-1) Generate documentation
-2) Preview detected unit candidates
-3) Scope all units
-4) Scope by unit moduletype name(s)
-5) Scope by unit instance path(s)
-b) Back
-q) Quit
-""")
+        _print_menu(
+            "Documentation",
+            [
+                MenuOption("1", "Generate documentation", "Create DOCX output for each configured target"),
+                MenuOption("2", "Preview unit candidates", "List the detected unit roots before choosing scope"),
+                MenuOption("3", "Use all detected units", "Reset scoping and include every detected unit"),
+                MenuOption("4", "Scope by moduletype", "Filter units by moduletype name"),
+                MenuOption("5", "Scope by instance path", "Filter units by instance path"),
+                MenuOption("b", "Back"),
+                MenuOption("q", "Quit"),
+            ],
+            intro=(
+                "Generate FS-style DOCX documentation for the configured targets. "
+                "Preview candidates first if you want to scope the output to specific units."
+            ),
+        )
         print(
-            "Current scope: "
+            "\nCurrent scope: "
             + (
                 "all units"
                 if selection["mode"] == "all"
@@ -839,6 +1064,12 @@ def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
             include_empty_sections=include_empty_sections,
         )
 
+    requested_kinds = (
+        set(DEFAULT_VARIABLE_ANALYSIS_KINDS) | {IssueKind.SHADOWING}
+        if kinds is None
+        else set(kinds)
+    )
+
     produced_output = False
     for target_name, project_bp, graph in _iter_loaded_projects(cfg):
         produced_output = True
@@ -850,19 +1081,18 @@ def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
             analyzed_target_is_library=target_is_library,
         )
 
-        include_shadowing = kinds is None or IssueKind.SHADOWING in kinds
-        standard_kinds = None if kinds is None else kinds - {IssueKind.SHADOWING}
+        include_shadowing = IssueKind.SHADOWING in requested_kinds
+        standard_kinds = requested_kinds - {IssueKind.SHADOWING}
 
-        if standard_kinds is not None:
-            if standard_kinds:
-                report = filter_variable_report(report, standard_kinds)
-            else:
-                report = VariablesReport(
-                    basepicture_name=report.basepicture_name,
-                    issues=[],
-                    visible_kinds=frozenset(),
-                    include_empty_sections=False,
-                )
+        if standard_kinds:
+            report = filter_variable_report(report, standard_kinds)
+        else:
+            report = VariablesReport(
+                basepicture_name=report.basepicture_name,
+                issues=[],
+                visible_kinds=frozenset(),
+                include_empty_sections=False,
+            )
 
         if include_shadowing:
             shadowing_report = analyze_shadowing(
@@ -870,9 +1100,9 @@ def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
                 debug=cfg.get("debug", False),
                 unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
             )
-            if kinds == {IssueKind.SHADOWING}:
+            if requested_kinds == {IssueKind.SHADOWING}:
                 report = shadowing_report
-            elif kinds is None or standard_kinds:
+            elif standard_kinds:
                 report = _merge_reports(report, shadowing_report)
 
         print(f"\n=== Target: {target_name} ===")
@@ -917,14 +1147,22 @@ def variable_usage_submenu(cfg: dict):
     """Variable usage analysis submenu."""
     while True:
         clear_screen()
-        print("\n--- Variable Usage Analysis ---")
-        print("Quick reports:")
-        for k, (name, _) in VARIABLE_ANALYSES.items():
+        print("\n--- Variable issues ---")
+        print("Run focused variable reports or open the investigation tools for deeper tracing.")
+        print()
+        print("High confidence:")
+        print("1) All variable analyses (high confidence)")
+        for k in HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS:
+            name, _ = VARIABLE_ANALYSES[k]
             print(f"{k}) {name}")
-        print("\nDetailed analysis:")
-        print("14) Datatype usage analysis (by variable name)")
-        print("15) Variable usage (fields + locations)")
-        print("16) Module local variable field analysis")
+        print("\nLow confidence:")
+        for k in LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS:
+            name, _ = VARIABLE_ANALYSES[k]
+            print(f"{k}) {name}")
+        print("\nInvestigation tools:")
+        print("22) Datatype usage analysis           Trace field-level usage for one variable name")
+        print("23) Variable usage trace              Show fields and locations for one variable name")
+        print("24) Module local variable analysis    Inspect field usage inside one module path")
         print("b) Back")
         print("q) Quit")
 
@@ -933,12 +1171,11 @@ def variable_usage_submenu(cfg: dict):
             return
         if c == "q":
             quit_app()
-
-        if c == "14":
+        if c == "22":
             run_datatype_usage_analysis(cfg)
-        elif c == "15":
+        elif c == "23":
             run_debug_variable_usage(cfg)
-        elif c == "16":
+        elif c == "24":
             run_module_localvar_analysis(cfg)
         elif c in VARIABLE_ANALYSES:
             name, kinds = VARIABLE_ANALYSES[c]
@@ -955,12 +1192,17 @@ def module_analysis_submenu(cfg: dict):
     """Module analysis submenu."""
     while True:
         clear_screen()
-        print("\n--- Module Analysis ---")
-        print("1) Compare module variants by name")
-        print("2) List module instances by name")
-        print("3) Debug module tree structure")
-        print("b) Back")
-        print("q) Quit")
+        _print_menu(
+            "Structure & modules",
+            [
+                MenuOption("1", "Compare module variants", "Compare matching module names across instances"),
+                MenuOption("2", "Find module instances", "List where a module name appears in the target"),
+                MenuOption("3", "Inspect module tree", "Print the module tree for debugging structure"),
+                MenuOption("b", "Back"),
+                MenuOption("q", "Quit"),
+            ],
+            intro="Use these tools when you need to inspect module layout, duplication, or structural drift.",
+        )
 
         c = input("> ").strip().lower()
         if c == "b":
@@ -983,11 +1225,16 @@ def interface_communication_submenu(cfg: dict):
     """Interface and communication analysis submenu."""
     while True:
         clear_screen()
-        print("\n--- Interface & Communication ---")
-        print("1) MMS interface variables (WriteData/Outputvariable)")
-        print("2) Validate ICF paths (per program)")
-        print("b) Back")
-        print("q) Quit")
+        _print_menu(
+            "Interfaces & communication",
+            [
+                MenuOption("1", "MMS interface variables", "Inventory MMSWriteVar or MMSReadVar usage and related checks"),
+                MenuOption("2", "Validate ICF paths", "Validate ICF entries against each program AST"),
+                MenuOption("b", "Back"),
+                MenuOption("q", "Quit"),
+            ],
+            intro="Check external interfaces and communication-related wiring for the current targets.",
+        )
 
         c = input("> ").strip().lower()
         if c == "b":
@@ -1008,10 +1255,15 @@ def code_quality_submenu(cfg: dict):
     """Code quality analysis submenu."""
     while True:
         clear_screen()
-        print("\n--- Code Quality ---")
-        print("1) Commented-out code in comments")
-        print("b) Back")
-        print("q) Quit")
+        _print_menu(
+            "Code quality",
+            [
+                MenuOption("1", "Commented-out code", "Scan raw source comments for code-like content"),
+                MenuOption("b", "Back"),
+                MenuOption("q", "Quit"),
+            ],
+            intro="Use these checks for readability and maintainability issues rather than runtime semantics.",
+        )
 
         c = input("> ").strip().lower()
         if c == "b":
@@ -1026,17 +1278,26 @@ def code_quality_submenu(cfg: dict):
             pause()
 
 
-def analysis_menu(cfg: dict):
+def analyzer_catalog_menu(cfg: dict):
     while True:
         clear_screen()
-        print("\n--- Analyses ---")
-        print("1) Variable Usage Analysis")
-        print("2) Module Analysis")
-        print("3) Interface & Communication")
-        print("4) Code Quality")
-        print("f) Force refresh cached AST")
-        print("b) Back")
-        print("q) Quit")
+        analyzers = _get_enabled_analyzers()
+        options = [
+            MenuOption("1", "Run full analyzer suite", "Run every default analyzer in sequence"),
+        ]
+        options.extend(
+            MenuOption(str(index), spec.name, spec.description)
+            for index, spec in enumerate(analyzers, start=2)
+        )
+        options.extend([MenuOption("b", "Back"), MenuOption("q", "Quit")])
+        _print_menu(
+            "Analyzer catalog",
+            options,
+            intro=(
+                "This view exposes the registry-backed analyzers directly. "
+                "Only the default analyzer set is exposed here so low-confidence analyzers never run from the CLI suite."
+            ),
+        )
 
         c = input("> ").strip().lower()
         if c == "b":
@@ -1045,16 +1306,94 @@ def analysis_menu(cfg: dict):
             quit_app()
 
         if c == "1":
-            variable_usage_submenu(cfg)
+            _run_checks(cfg, None)
+        elif c.isdigit():
+            index = int(c) - 2
+            if 0 <= index < len(analyzers):
+                _run_checks(cfg, [analyzers[index].key])
+            else:
+                print("Invalid choice.")
+                pause()
+        else:
+            print("Invalid choice.")
+            pause()
+
+
+def advanced_analysis_menu(cfg: dict):
+    while True:
+        clear_screen()
+        _print_menu(
+            "Advanced analysis & debug",
+            [
+                MenuOption("1", "Datatype usage analysis", "Trace field-level usage for a selected variable name"),
+                MenuOption("2", "Variable usage trace", "Show fields and locations for a selected variable name"),
+                MenuOption("3", "Module local variable analysis", "Inspect field usage inside one module path"),
+                MenuOption("b", "Back"),
+                MenuOption("q", "Quit"),
+            ],
+            intro="Use these tools when the summary reports are not specific enough and you need targeted tracing.",
+        )
+
+        c = input("> ").strip().lower()
+        if c == "b":
+            return
+        if c == "q":
+            quit_app()
+
+        if c == "1":
+            run_datatype_usage_analysis(cfg)
         elif c == "2":
-            module_analysis_submenu(cfg)
+            run_debug_variable_usage(cfg)
         elif c == "3":
-            interface_communication_submenu(cfg)
+            run_module_localvar_analysis(cfg)
+        else:
+            print("Invalid choice.")
+            pause()
+
+
+def analysis_menu(cfg: dict):
+    while True:
+        clear_screen()
+        _print_menu(
+            "Analyze",
+            [
+                MenuOption("1", "Full analyzer suite", "Run every enabled registry-backed analyzer"),
+                MenuOption("2", "Variable issues", "Focused variable reports and investigation tools"),
+                MenuOption("3", "Structure & modules", "Inspect module layout, duplication, and tree structure"),
+                MenuOption("4", "Interfaces & communication", "Check MMS mappings and validate ICF paths"),
+                MenuOption("5", "Code quality", "Readability and maintainability checks"),
+                MenuOption("6", "Analyzer catalog", "Choose one registry-backed analyzer by name"),
+                MenuOption("7", "Advanced analysis & debug", "Targeted tracing for variables and module locals"),
+                MenuOption("b", "Back"),
+                MenuOption("q", "Quit"),
+            ],
+            intro=(
+                "Run checks against the configured programs or libraries. "
+                "Use the full analyzer suite for a broad pass, then drill into the focused menus if you need detail."
+            ),
+            note=_summarize_targets(cfg),
+        )
+
+        c = input("> ").strip().lower()
+        if c == "b":
+            return
+        if c == "q":
+            quit_app()
+
+        if c == "1":
+            _run_checks(cfg, None)
+        elif c == "2":
+            variable_usage_submenu(cfg)
+        elif c == "3":
+            module_analysis_submenu(cfg)
         elif c == "4":
+            interface_communication_submenu(cfg)
+        elif c == "5":
             code_quality_submenu(cfg)
-        elif c == "f":
-            if confirm("Force refresh cached AST?"):
-                force_refresh_ast(cfg)
+        elif c == "6":
+            analyzer_catalog_menu(cfg)
+        elif c == "7":
+            advanced_analysis_menu(cfg)
         else:
             print("Invalid choice.")
             pause()
@@ -1236,7 +1575,7 @@ def run_module_localvar_analysis(cfg: dict):
 
 
 def _get_enabled_analyzers():
-    return [spec for spec in get_default_analyzers() if spec.enabled]
+    return get_default_cli_analyzers()
 
 
 def _run_checks(cfg: dict, selected_keys: list[str] | None) -> None:
@@ -1257,6 +1596,7 @@ def _run_checks(cfg: dict, selected_keys: list[str] | None) -> None:
             graph=graph,
             debug=cfg.get("debug", False),
             target_is_library=_target_is_library(cfg, project_bp, graph),
+            config=cfg,
         )
         print(f"\n=== Target: {target_name} ===")
         for spec in analyzers:
@@ -1272,7 +1612,7 @@ def run_checks_menu(cfg: dict):
 
 
 def run_mms_interface_analysis(cfg: dict):
-    """List variables mapped into MMSWriteVar/MMSReadVar interface modules."""
+    """Summarize MMS interface mappings and related OPC or MES validation issues."""
     print("\n--- MMS Interface Variables ---")
 
     for target_name, project_bp, _graph in _iter_loaded_projects(cfg):
@@ -1280,6 +1620,7 @@ def run_mms_interface_analysis(cfg: dict):
             report = analyze_mms_interface_variables(
                 project_bp,
                 debug=cfg.get("debug", False),
+                config=cfg,
             )
             print(f"\n=== Target: {target_name} ===")
             print(report.summary())
@@ -1449,15 +1790,18 @@ def run_advanced_datatype_analysis(cfg: dict):
 def dump_menu(cfg: dict):
     while True:
         clear_screen()
-        print("""
---- Dump outputs ---
-1) Dump parse tree
-2) Dump AST
-3) Dump dependency graph
-4) Dump variable report
-b) Back
-q) Quit
-""")
+        _print_menu(
+            "Diagnostics & dumps",
+            [
+                MenuOption("1", "Dump parse tree", "Write the parser tree for each loaded target"),
+                MenuOption("2", "Dump AST", "Write the merged AST for each loaded target"),
+                MenuOption("3", "Dump dependency graph", "Write dependency graph output for each loaded target"),
+                MenuOption("4", "Print variable report", "Print the full variable summary without entering the variable menu"),
+                MenuOption("b", "Back"),
+                MenuOption("q", "Quit"),
+            ],
+            intro="Use these tools when you need raw diagnostics or want to inspect parser and dependency artifacts.",
+        )
         c = input("> ").strip().lower()
         if c == "b":
             return
@@ -1499,21 +1843,28 @@ def config_menu(cfg: dict) -> bool:
     while True:
         clear_screen()
         show_config(cfg)
-        print("""
-1) Add analyzed program/library
-2) Remove analyzed program/library
-3) Toggle Mode (official/draft)
-4) Toggle scan_root_only
-5) Toggle fast_cache_validation
-6) Change Program_dir
-7) Change ABB_lib_dir
-8) Add/remove other_lib_dirs
-9) Save config
-10) Change ICF_dir
-11) Toggle debug
-b) Back
-q) Quit
-""")
+        _print_menu(
+            "Setup",
+            [
+                MenuOption("1", "Add analysis target", "Add a program or library name without file extension"),
+                MenuOption("2", "Remove analysis target", "Remove one configured analysis target"),
+                MenuOption("3", "Toggle mode", "Switch between official and draft file mode"),
+                MenuOption("4", "Toggle scan_root_only", "Restrict dependency scanning to the root directory"),
+                MenuOption("5", "Toggle fast_cache_validation", "Use faster but lighter AST cache checks"),
+                MenuOption("6", "Change program_dir", "Set the main SattLine program directory"),
+                MenuOption("7", "Change ABB_lib_dir", "Set the ABB or shared library directory"),
+                MenuOption("8", "Edit other_lib_dirs", "Add or remove additional library directories"),
+                MenuOption("9", "Save configuration", "Write the current configuration to disk"),
+                MenuOption("10", "Change icf_dir", "Set the directory used for ICF validation"),
+                MenuOption("11", "Toggle debug", "Show extra debugging output while running"),
+                MenuOption("b", "Back"),
+                MenuOption("q", "Quit"),
+            ],
+            intro=(
+                "Setup controls what SattLint loads and analyzes. "
+                "Start here on first run, then save and use Tools -> Self-check diagnostics to confirm the paths."
+            ),
+        )
         c = input("> ").strip().lower()
 
         if c == "b":
@@ -1617,9 +1968,52 @@ q) Quit
         elif c == "11":
             if confirm("Toggle debug?"):
                 cfg["debug"] = not cfg["debug"]
+                apply_debug(cfg)
                 dirty = True
         else:
             print("Invalid choice.", flush=True)
+            pause()
+
+
+def tools_menu(cfg: dict) -> None:
+    while True:
+        clear_screen()
+        _print_menu(
+            "Tools",
+            [
+                MenuOption("1", "Self-check diagnostics", "Verify configuration and path setup"),
+                MenuOption("2", "Diagnostics & dumps", "Inspect parser, AST, and dependency output"),
+                MenuOption("3", "Refresh cached ASTs", "Rebuild cached ASTs when results look stale"),
+                MenuOption("b", "Back"),
+                MenuOption("q", "Quit"),
+            ],
+            intro=(
+                "These tools are mainly for setup validation and troubleshooting. "
+                "Most users only need them when paths change or results look stale."
+            ),
+        )
+
+        c = input("> ").strip().lower()
+        if c == "b":
+            return
+        if c == "q":
+            quit_app()
+
+        if c == "1":
+            clear_screen()
+            self_check(cfg)
+            pause()
+        elif c == "2":
+            if _require_targets_for_menu_action(cfg, "using diagnostics and dumps"):
+                dump_menu(cfg)
+        elif c == "3":
+            if _require_targets_for_menu_action(cfg, "refreshing cached ASTs"):
+                if confirm("Force refresh cached AST?"):
+                    force_refresh_ast(cfg)
+                    print("? AST cache refreshed")
+                    pause()
+        else:
+            print("Invalid choice.")
             pause()
 
 
@@ -1633,9 +2027,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         cfg, default_used = load_config(CONFIG_PATH)
+        apply_debug(cfg)
         if default_used:
             print(
-                "⚠ Default config created. Please edit configuration before running analysis."
+                "⚠ Default config created. Open Setup before running analysis."
             )
             pause()
         else:
@@ -1648,28 +2043,25 @@ def main(argv: list[str] | None = None) -> int:
 
         while True:
             clear_screen()
-            print("""
-How to use SattLint
-------------------
-• Navigate using the number keys shown in each menu
-• Press Enter to confirm a selection
-• Changes are NOT saved until you choose "Save config"
-• Use "Analyses" to analyze the configured programs/libraries
-• Use "Dump outputs" to inspect parse trees, ASTs, etc.
-• Use "Documentation" to generate FS-style DOCX output and control unit scope
-• Use "Edit config" to change settings
-• Use "Self-check" to check if the config is OK
-• Press 'q' at any time in the main menu to quit
-
-=== SattLint ===
-1) Analyses
-2) Dump outputs
-3) Documentation
-4) Edit config
-5) Self-check diagnostics
-6) Force refresh cached AST
-q) Quit
-""")
+            _print_menu(
+                "SattLint",
+                [
+                    MenuOption("1", "Analyze", "Run checks and reports for configured targets"),
+                    MenuOption("2", "Documentation", "Preview unit scope and generate DOCX output"),
+                    MenuOption("3", "Setup", "Configure directories, targets, mode, and cache settings"),
+                    MenuOption("4", "Tools", "Diagnostics, dumps, and cache refresh"),
+                    MenuOption("5", "Help", "First-time guidance and workflow explanations"),
+                    MenuOption("q", "Quit"),
+                ],
+                intro=(
+                    "Analyze SattLine targets, generate documentation, and troubleshoot parser state from one place. "
+                    "Start with Setup on first run."
+                ),
+                note=(
+                    _summarize_targets(cfg)
+                    + "\nChanges are not saved until you choose Save configuration in Setup."
+                ),
+            )
             c = input("> ").strip().lower()
 
             if c == "1":
@@ -1677,27 +2069,17 @@ q) Quit
                     analysis_menu(cfg)
 
             elif c == "2":
-                if _require_targets_for_menu_action(cfg, "dumping outputs"):
-                    dump_menu(cfg)
-
-            elif c == "3":
                 if _require_targets_for_menu_action(cfg, "using documentation tools"):
                     dirty |= documentation_menu(cfg)
 
-            elif c == "4":
+            elif c == "3":
                 dirty |= config_menu(cfg)
 
-            elif c == "5":
-                clear_screen()
-                self_check(cfg)
-                pause()
+            elif c == "4":
+                tools_menu(cfg)
 
-            elif c == "6":
-                if _require_targets_for_menu_action(cfg, "refreshing cached ASTs"):
-                    if confirm("Force refresh cached AST?"):
-                        force_refresh_ast(cfg)
-                        print("✔ AST cache refreshed")
-                        pause()
+            elif c == "5":
+                show_help(cfg)
 
             elif c == "q":
                 if dirty and confirm("Unsaved config changes. Save before quitting?"):

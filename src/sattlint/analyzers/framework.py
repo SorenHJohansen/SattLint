@@ -54,6 +54,7 @@ class AnalysisContext:
     graph: Any | None = None
     debug: bool = False
     target_is_library: bool = False
+    config: dict[str, Any] | None = None
 
     @property
     def unavailable_libraries(self) -> set[str]:

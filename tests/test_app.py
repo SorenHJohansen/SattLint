@@ -8,12 +8,14 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from sattline_parser import parse_source_text as parser_core_parse_source_text
 
 from sattlint import app
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers import variable_usage_reporting as variables_reporting_module
 from sattlint.models.ast_model import FrameModule, ModuleTypeInstance, SingleModule
 from sattlint.reporting.variables_report import (
+    ALL_VARIABLE_ANALYSIS_KINDS,
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
     VariablesReport,
 )
@@ -208,18 +210,39 @@ def test_save_config_rejects_none(tmp_path):
         app.save_config(config_path, cfg)
 
 
-def test_clear_screen_uses_os_system_cls_on_windows(monkeypatch):
+def test_clear_screen_uses_windows_console_helper(monkeypatch):
     calls: list[str] = []
 
     monkeypatch.setattr(app.os, "name", "nt")
-    monkeypatch.setattr(app.os, "system", lambda command: calls.append(command) or 0)
+    monkeypatch.setattr(app, "_clear_windows_console", lambda: calls.append("clear"))
     monkeypatch.setattr(
-        app.sys, "stdout", SimpleNamespace(isatty=lambda: True, flush=lambda: None)
+        app.sys,
+        "stdout",
+        SimpleNamespace(flush=lambda: None, write=lambda _text: None),
     )
 
     app.clear_screen()
 
-    assert calls == ["cls"]
+    assert calls == ["clear"]
+
+
+def test_clear_screen_falls_back_to_ansi_when_windows_clear_fails(monkeypatch):
+    writes: list[str] = []
+
+    def _raise_os_error() -> None:
+        raise OSError("clear failed")
+
+    monkeypatch.setattr(app.os, "name", "nt")
+    monkeypatch.setattr(app, "_clear_windows_console", _raise_os_error)
+    monkeypatch.setattr(
+        app.sys,
+        "stdout",
+        SimpleNamespace(flush=lambda: None, write=lambda text: writes.append(text)),
+    )
+
+    app.clear_screen()
+
+    assert writes == ["\033[2J\033[H"]
 
 
 def test_self_check_handles_paths(tmp_path, monkeypatch, capsys):
@@ -298,43 +321,12 @@ def test_legacy_documentation_rule_keys_are_normalized():
 
 
 def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_context):
-    if real_context:
-        cfg = real_context["cfg"].copy()
-        inputs = [
-            "1",
-            "1",
-            "2",
-            "3",
-            "4",
-            "5",
-            "6",
-            "7",
-            "8",
-            "9",
-            "10",
-            "11",
-            "12",
-            "13",
-            "14",
-            "15",
-            "16",
-            "b",
-            "4",
-            "1",
-            "b",
-            "f",
-            "y",
-            "b",
-        ]
-        monkeypatch.setattr(builtins, "input", make_input(inputs))
-        app.analysis_menu(cfg)
-        return
-
     calls = []
 
     def record(name):
         calls.append(name)
 
+    monkeypatch.setattr(app, "_run_checks", lambda *_: record("checks"))
     monkeypatch.setattr(app, "run_variable_analysis", lambda *_: record("variable"))
     monkeypatch.setattr(
         app, "run_datatype_usage_analysis", lambda *_: record("datatype")
@@ -343,11 +335,31 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
     monkeypatch.setattr(
         app, "run_module_localvar_analysis", lambda *_: record("module")
     )
+    monkeypatch.setattr(
+        app, "run_module_duplicates_analysis", lambda *_: record("module-compare")
+    )
+    monkeypatch.setattr(
+        app, "run_module_find_by_name", lambda *_: record("module-find")
+    )
+    monkeypatch.setattr(app, "run_module_tree_debug", lambda *_: record("module-tree"))
+    monkeypatch.setattr(app, "run_mms_interface_analysis", lambda *_: record("mms"))
+    monkeypatch.setattr(app, "run_icf_validation", lambda *_: record("icf"))
     monkeypatch.setattr(app, "run_comment_code_analysis", lambda *_: record("comment"))
-    monkeypatch.setattr(app, "force_refresh_ast", lambda *_: record("refresh"))
+    monkeypatch.setattr(
+        app,
+        "_get_enabled_analyzers",
+        lambda: [
+            SimpleNamespace(
+                key="variables",
+                name="Variable issues",
+                description="Unused and never-read variables",
+            )
+        ],
+    )
 
     inputs = [
         "1",
+        "2",
         "1",
         "2",
         "3",
@@ -364,24 +376,93 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
         "14",
         "15",
         "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "23",
+        "24",
+        "b",
+        "3",
+        "1",
+        "2",
+        "3",
         "b",
         "4",
         "1",
+        "2",
         "b",
-        "f",
-        "y",
+        "5",
+        "1",
+        "b",
+        "6",
+        "1",
+        "2",
+        "b",
+        "7",
+        "1",
+        "2",
+        "3",
+        "b",
         "b",
     ]
     monkeypatch.setattr(builtins, "input", make_input(inputs))
 
     app.analysis_menu(app.DEFAULT_CONFIG.copy())
 
-    assert calls.count("variable") == 13
+    assert calls.count("variable") == 21
+    assert calls.count("checks") == 3
     assert "datatype" in calls
     assert "debug" in calls
     assert "module" in calls
+    assert "module-compare" in calls
+    assert "module-find" in calls
+    assert "module-tree" in calls
+    assert "mms" in calls
+    assert "icf" in calls
     assert "comment" in calls
-    assert "refresh" in calls
+
+
+def test_analyzer_catalog_menu_runs_selected_checks(noop_screen, monkeypatch):
+    captured: list[object] = []
+    monkeypatch.setattr(
+        app,
+        "_get_enabled_analyzers",
+        lambda: [
+            SimpleNamespace(
+                key="variables",
+                name="Variable issues",
+                description="Unused and never-read variables",
+            ),
+            SimpleNamespace(
+                key="spec-compliance",
+                name="Engineering spec compliance",
+                description="Engineering rule checks",
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        app, "_run_checks", lambda _cfg, selected: captured.append(selected)
+    )
+    monkeypatch.setattr(builtins, "input", make_input(["2", "1", "b"]))
+
+    app.analyzer_catalog_menu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [["variables"], None]
+
+
+def test_get_enabled_analyzers_returns_default_cli_subset(monkeypatch):
+    monkeypatch.setattr(
+        app,
+        "get_default_cli_analyzers",
+        lambda: [SimpleNamespace(key="variables"), SimpleNamespace(key="sfc")],
+    )
+
+    analyzers = app._get_enabled_analyzers()
+
+    assert [spec.key for spec in analyzers] == ["variables", "sfc"]
 
 
 def test_dump_menu_all_options(noop_screen, monkeypatch, real_context):
@@ -468,6 +549,39 @@ def test_config_menu_all_options(noop_screen, monkeypatch, tmp_path):
     assert cfg["mode"] in ("official", "draft")
 
 
+def test_show_config_uses_sectioned_layout(capsys):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg.update(
+        {
+            "analyzed_programs_and_libraries": ["KaHAApplSupportLib"],
+            "mode": "draft",
+            "scan_root_only": False,
+            "fast_cache_validation": True,
+            "debug": True,
+            "program_dir": r"Projects\Program",
+            "ABB_lib_dir": r"Projects\ABB",
+            "icf_dir": r"Projects\ICF",
+            "other_lib_dirs": [r"Projects\Lib1", r"Projects\Lib2"],
+        }
+    )
+
+    app.show_config(cfg)
+
+    out = capsys.readouterr().out
+    assert "Current Configuration" in out
+    assert "Analyzed Programs And Libraries" in out
+    assert "[1] KaHAApplSupportLib" in out
+    assert "General" in out
+    assert "scan_root_only         no" in out
+    assert "fast_cache_validation  yes" in out
+    assert "Directories" in out
+    assert r"program_dir  Projects\Program" in out
+    assert "Other Library Directories" in out
+    assert r"[2] Projects\Lib2" in out
+    assert "Documentation Classifications" in out
+    assert "desc_label_equals  nnestruct:EquipModCoordinate" in out
+
+
 def test_documentation_menu_scope_by_moduletype(noop_screen, monkeypatch):
     cfg = deepcopy(app.DEFAULT_CONFIG)
     app._set_documentation_unit_selection(mode="all")
@@ -487,6 +601,7 @@ def test_documentation_menu_scope_by_moduletype(noop_screen, monkeypatch):
 
 def test_main_menu_all_options(noop_screen, monkeypatch, real_context):
     cfg = real_context["cfg"].copy() if real_context else app.DEFAULT_CONFIG.copy()
+    cfg["analyzed_programs_and_libraries"] = ["TargetA"]
 
     monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))
     monkeypatch.setattr(app, "self_check", lambda *_: True)
@@ -494,18 +609,44 @@ def test_main_menu_all_options(noop_screen, monkeypatch, real_context):
     calls = []
 
     monkeypatch.setattr(app, "analysis_menu", lambda *_: calls.append("analysis"))
-    monkeypatch.setattr(app, "dump_menu", lambda *_: calls.append("dump"))
-    monkeypatch.setattr(app, "documentation_menu", lambda *_: True)
-    monkeypatch.setattr(app, "config_menu", lambda *_: True)
+    monkeypatch.setattr(app, "documentation_menu", lambda *_: calls.append("documentation") or True)
+    monkeypatch.setattr(app, "config_menu", lambda *_: calls.append("setup") or True)
+    monkeypatch.setattr(app, "tools_menu", lambda *_: calls.append("tools"))
+    monkeypatch.setattr(app, "show_help", lambda *_: calls.append("help"))
     monkeypatch.setattr(app, "save_config", lambda *_: calls.append("save"))
-    monkeypatch.setattr(app, "force_refresh_ast", lambda *_: None)
 
-    inputs = ["1", "2", "3", "4", "5", "6", "y", "q", "y"]
+    inputs = ["1", "2", "3", "4", "5", "q", "y"]
     monkeypatch.setattr(builtins, "input", make_input(inputs))
 
     app.main()
 
-    assert calls == ["analysis", "dump", "save"]
+    assert calls == ["analysis", "documentation", "setup", "tools", "help", "save"]
+
+
+def test_tools_menu_all_options(noop_screen, monkeypatch):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg["analyzed_programs_and_libraries"] = ["TargetA"]
+    calls: list[str] = []
+
+    monkeypatch.setattr(app, "self_check", lambda *_: calls.append("self-check") or True)
+    monkeypatch.setattr(app, "dump_menu", lambda *_: calls.append("dump"))
+    monkeypatch.setattr(app, "force_refresh_ast", lambda *_: calls.append("refresh"))
+    monkeypatch.setattr(builtins, "input", make_input(["1", "2", "3", "y", "b"]))
+
+    app.tools_menu(cfg)
+
+    assert calls == ["self-check", "dump", "refresh"]
+
+
+def test_show_help_mentions_setup_and_syntax_check(noop_screen, capsys):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+
+    app.show_help(cfg)
+
+    out = capsys.readouterr().out
+    assert "Open Setup" in out
+    assert "syntax-check" in out
+    assert "Tools" in out
 
 
 def test_syntax_check_command_ok(tmp_path, capsys):
@@ -593,7 +734,7 @@ def test_main_blocks_target_dependent_menu_actions_without_targets(
         lambda *_: pytest.fail("force_refresh_ast should be blocked without analyzed targets"),
     )
     monkeypatch.setattr(app, "pause", lambda: None)
-    monkeypatch.setattr(builtins, "input", make_input(["1", "2", "3", "6", "q"]))
+    monkeypatch.setattr(builtins, "input", make_input(["1", "2", "4", "2", "3", "q", "b", "q"]))
 
     exit_code = app.main()
 
@@ -704,6 +845,29 @@ def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatc
     assert out.count("Issues: 0") == 2
 
 
+def test_run_variable_analysis_all_analyses_executes_real_analyzers(
+    noop_screen, monkeypatch, capsys
+):
+    project_bp = parser_core_parse_source_text(VALID_SINGLE_FILE)
+    graph = SimpleNamespace(
+        unavailable_libraries=set(),
+        warnings=[],
+        source_files=set(),
+    )
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("SmokeTarget", project_bp, graph)]),
+    )
+
+    app.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+
+    out = capsys.readouterr().out
+    assert "=== Target: SmokeTarget ===" in out
+    assert "Issues:" in out
+    assert "No variable analysis output was produced" not in out
+
+
 def test_run_variable_analysis_all_reports_lists_empty_categories(
     noop_screen, monkeypatch, capsys
 ):
@@ -734,10 +898,108 @@ def test_run_variable_analysis_all_reports_lists_empty_categories(
     out = capsys.readouterr().out
     assert "=== Target: ProgramA ===" in out
     assert "Issues: 0" in out
+    assert "Sections:" in out
+    assert "  - Unused variables: 0" in out
     assert "Min/Max mapping name mismatches" in out
     assert "Name collisions" in out
     assert "Reset contamination (missing reset writes)" in out
+    assert "Implicit latching (missing matching False writes)" not in out
+    assert "UI/display-only variables" not in out
     assert out.count("      none") >= 3
+
+
+def test_run_variable_analysis_all_reports_hide_low_confidence_categories(
+    noop_screen, monkeypatch, capsys
+):
+    issue = SimpleNamespace(
+        kind=app.IssueKind.UI_ONLY,
+        module_path=["ProgramA"],
+        variable=SimpleNamespace(name="DisplayValue", datatype_text="integer", datatype="integer"),
+        datatype_name=None,
+        role="localvariable",
+        source_variable=None,
+        duplicate_count=None,
+        duplicate_locations=None,
+        literal_value=None,
+        literal_span=None,
+        site=None,
+        field_path=None,
+        sequence_name=None,
+        reset_variable=None,
+    )
+    graph = SimpleNamespace(unavailable_libraries=set(), warnings=[])
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("ProgramA", "bp-a", graph)]),
+    )
+    monkeypatch.setattr(
+        app,
+        "analyze_variables",
+        lambda *_, **__: VariablesReport(
+            basepicture_name="ProgramA",
+            issues=[issue],
+            visible_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS),
+            include_empty_sections=True,
+        ),
+    )
+    monkeypatch.setattr(
+        app,
+        "analyze_shadowing",
+        lambda *_, **__: make_shadowing_report("ProgramA"),
+    )
+
+    app.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+
+    out = capsys.readouterr().out
+    assert "UI/display-only variables" not in out
+
+
+def test_run_variable_analysis_can_render_low_confidence_category_on_request(
+    noop_screen, monkeypatch, capsys
+):
+    issue = SimpleNamespace(
+        kind=app.IssueKind.UI_ONLY,
+        module_path=["ProgramA"],
+        variable=SimpleNamespace(name="DisplayValue", datatype_text="integer", datatype="integer"),
+        datatype_name=None,
+        role="localvariable",
+        source_variable=None,
+        duplicate_count=None,
+        duplicate_locations=None,
+        literal_value=None,
+        literal_span=None,
+        site=None,
+        field_path=None,
+        sequence_name=None,
+        reset_variable=None,
+    )
+    graph = SimpleNamespace(unavailable_libraries=set(), warnings=[])
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("ProgramA", "bp-a", graph)]),
+    )
+    monkeypatch.setattr(
+        app,
+        "analyze_variables",
+        lambda *_, **__: VariablesReport(
+            basepicture_name="ProgramA",
+            issues=[issue],
+            visible_kinds=frozenset(ALL_VARIABLE_ANALYSIS_KINDS),
+            include_empty_sections=True,
+        ),
+    )
+    monkeypatch.setattr(
+        app,
+        "analyze_shadowing",
+        lambda *_, **__: make_shadowing_report("ProgramA"),
+    )
+
+    app.run_variable_analysis(app.DEFAULT_CONFIG.copy(), {app.IssueKind.UI_ONLY})
+
+    out = capsys.readouterr().out
+    assert "UI/display-only variables" in out
 
 
 def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, capsys):
@@ -883,6 +1145,16 @@ def test_variable_usage_submenu_exposes_min_max_report(noop_screen, monkeypatch)
     assert captured == [{app.IssueKind.MIN_MAX_MAPPING_MISMATCH}]
 
 
+def test_variable_usage_submenu_exposes_ui_only_report(noop_screen, monkeypatch):
+    captured: list[object] = []
+    monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
+    monkeypatch.setattr(builtins, "input", make_input(["14", "b"]))
+
+    app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [{app.IssueKind.UI_ONLY}]
+
+
 def test_variable_usage_submenu_exposes_unknown_parameter_target_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
@@ -903,6 +1175,16 @@ def test_variable_usage_submenu_exposes_reset_contamination_report(noop_screen, 
     assert captured == [{app.IssueKind.RESET_CONTAMINATION}]
 
 
+def test_variable_usage_submenu_exposes_implicit_latch_report(noop_screen, monkeypatch):
+    captured: list[object] = []
+    monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
+    monkeypatch.setattr(builtins, "input", make_input(["18", "b"]))
+
+    app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [{app.IssueKind.IMPLICIT_LATCH}]
+
+
 def test_variable_usage_submenu_exposes_shadowing_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
@@ -911,3 +1193,69 @@ def test_variable_usage_submenu_exposes_shadowing_report(noop_screen, monkeypatc
     app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
 
     assert captured == [{app.IssueKind.SHADOWING}]
+
+
+def test_variable_usage_submenu_exposes_hidden_global_coupling_report(
+    noop_screen, monkeypatch
+):
+    captured: list[object] = []
+    monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
+    monkeypatch.setattr(builtins, "input", make_input(["20", "b"]))
+
+    app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [{app.IssueKind.HIDDEN_GLOBAL_COUPLING}]
+
+
+def test_variable_usage_submenu_exposes_global_scope_minimization_report(
+    noop_screen, monkeypatch
+):
+    captured: list[object] = []
+    monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
+    monkeypatch.setattr(builtins, "input", make_input(["19", "b"]))
+
+    app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [{app.IssueKind.GLOBAL_SCOPE_MINIMIZATION}]
+
+
+def test_variable_usage_submenu_exposes_high_fan_in_out_report(
+    noop_screen, monkeypatch
+):
+    captured: list[object] = []
+    monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
+    monkeypatch.setattr(builtins, "input", make_input(["21", "b"]))
+
+    app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [{app.IssueKind.HIGH_FAN_IN_OUT}]
+
+
+def test_variable_usage_submenu_exposes_procedure_status_report(noop_screen, monkeypatch):
+    captured: list[object] = []
+    monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
+    monkeypatch.setattr(builtins, "input", make_input(["15", "b"]))
+
+    app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [{app.IssueKind.PROCEDURE_STATUS}]
+
+
+def test_variable_usage_submenu_exposes_write_without_effect_report(noop_screen, monkeypatch):
+    captured: list[object] = []
+    monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
+    monkeypatch.setattr(builtins, "input", make_input(["16", "b"]))
+
+    app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [{app.IssueKind.WRITE_WITHOUT_EFFECT}]
+
+
+def test_variable_usage_submenu_exposes_contract_mismatch_report(noop_screen, monkeypatch):
+    captured: list[object] = []
+    monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
+    monkeypatch.setattr(builtins, "input", make_input(["17", "b"]))
+
+    app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [{app.IssueKind.CONTRACT_MISMATCH}]

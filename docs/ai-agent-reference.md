@@ -18,6 +18,8 @@ This file supplements `AGENTS.md` with deeper background, examples, and file ref
 - `src/sattlint_lsp/` contains the external language-server layer.
 - `vscode/sattline-vscode/` contains the no-build VS Code client.
 - `src/sattlint/devtools/pipeline.py` runs the repo-local lint, type, test, dead-code, security, and architecture checks into JSON artifacts.
+- `sattlint-repo-audit --profile full --output-dir artifacts/audit` is the canonical repository audit command.
+- Read `artifacts/audit/status.json` first for the compact status summary, then inspect `artifacts/audit/summary.json` and `artifacts/audit/pipeline/status.json` as needed.
 - `src/sattlint/tracing.py` traces parser-to-analyzer execution for a concrete SattLine file.
 
 ---
@@ -137,6 +139,25 @@ The parser retains graphics and interact structures, but most static analysis is
 - `SHADOWING`
 - `RESET_CONTAMINATION`
 
+### SattLine Semantic Aggregate
+
+- `sattline-semantics` is the top-level analyzer for domain-aware checks.
+- It aggregates variable-lifecycle findings, interface-contract mismatches, module-structure invariants, control-flow hazards, and engineering-spec compliance into one report.
+- The aggregate includes alarm-integrity findings for duplicate alarm tags, reused alarm conditions, conflicting severities or priorities, and boolean alarm variables that are never explicitly cleared.
+- The aggregate includes dataflow-backed read-before-write detection for variables that may be consumed before any definite assignment on the current path.
+- The same dataflow layer also reports dead overwrites when a write is replaced before any later read can observe it.
+- The dataflow evaluator also folds simple contradictory and tautological boolean conditions, such as `Flag AND NOT Flag` or `Flag OR NOT Flag`, into the existing always-true or always-false findings.
+- The aggregate also includes machine-readable sequence unreachable-logic and duplicate-sibling-name findings from `src/sattlint/tracing.py` so those heuristics are visible through the normal analyzer registry.
+
+### Alarm Integrity Analyzer
+
+- `alarm-integrity` is a focused analyzer for alarm-style module patterns across the analyzed target.
+- It currently detects duplicate alarm tags, duplicate alarm trigger conditions, conflicting severity or priority settings for the same logical alarm, and likely latched boolean alarm variables that are only written true.
+
+### Analysis Artifacts
+
+- `artifacts/analysis/analyzer_registry.json` records standardized analyzer metadata, semantic rule metadata, analyzer-to-rule mappings, and the summary outputs that surface each rule.
+
 ---
 
 ## Workspace, Editor, And LSP Details
@@ -201,8 +222,10 @@ sattlint-trace path/to/Program.s
 ### Run The Dev-Analysis Pipeline
 
 ```bash
-sattlint-analysis-pipeline
+sattlint-analysis-pipeline --profile full
 ```
+
+Use `--profile quick` for fast local loops. Read `artifacts/analysis/status.json` first before opening the larger report set.
 
 ---
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import TypeAlias
 
 from .. import config as config_module
@@ -24,6 +25,33 @@ DOCUMENTATION_CATEGORY_ORDER = [
     "ep",
     "up",
 ]
+_DOCUMENTATION_WRAPPER_SEGMENTS = {
+    "display",
+    "equipmodpanel",
+    "epdisp",
+    "form",
+    "l1",
+    "l2",
+    "logic",
+    "mes_statecontrol",
+    "operations",
+    "oprframe",
+    "oprmodule",
+    "panel",
+    "report",
+    "rpdisp",
+    "startupanel",
+    "statecontrol",
+    "transfersetups",
+    "trend",
+    "unitcontrol",
+    "updisp",
+}
+_DOCUMENTATION_PARAMETER_PREFIXES = {
+    "rp": ("rp_", "recpar"),
+    "ep": ("ep_", "engpar"),
+    "up": ("up_", "usrpar"),
+}
 
 
 @dataclass(frozen=True)
@@ -110,17 +138,18 @@ def classify_documentation_structure(
         base_picture,
         unavailable_libraries=unavailable_libraries,
     )
-    categories: dict[str, list[DocumentedModule]] = {name: [] for name in section_order}
+    categories = {
+        name: _collect_category_entries(
+            name,
+            rules.get(name, {}),
+            entries,
+        )
+        for name in section_order
+    }
     uncategorized: list[DocumentedModule] = []
 
     for entry in entries:
-        matched = False
-        for category in section_order:
-            rule = rules.get(category, {})
-            if _matches_rule(entry, rule, entries):
-                categories.setdefault(category, []).append(entry)
-                matched = True
-        if not matched:
+        if not any(entry.path == candidate.path for items in categories.values() for candidate in items):
             uncategorized.append(entry)
 
     classification = DocumentationClassification(
@@ -147,27 +176,27 @@ def discover_documentation_unit_candidates(
         for entry in classification.categories.get(category, [])
     }
 
-    preliminary = [
+    candidates = [
+        entry
+        for entry in classification.all_entries
+        if _looks_like_unit_root(entry, classification, categorized_paths)
+    ]
+    if candidates:
+        return candidates
+
+    fallback = [
         entry
         for entry in classification.all_entries
         if entry.path not in categorized_paths
+        and not _looks_like_wrapper_entry(entry)
         and (
             classification.descendants(entry, category="em")
             or classification.descendants(entry, category="ops")
         )
+        and entry.moduletype_name not in {"RecPar", "EngPar", "UsrPar"}
     ]
-
-    leaf_candidates = [
-        entry
-        for entry in preliminary
-        if not any(
-            candidate.path != entry.path
-            and path_startswith_casefold(list(candidate.path), list(entry.path))
-            for candidate in preliminary
-        )
-    ]
-    if leaf_candidates:
-        return leaf_candidates
+    if fallback:
+        return fallback
 
     return [
         entry
@@ -454,26 +483,7 @@ def _matches_rule(
     ):
         return True
 
-    if not descendant_name_patterns and not descendant_label_patterns:
-        return False
-
-    if not _has_descendant_marker_match(
-        entry,
-        entries,
-        name_contains=descendant_name_patterns,
-        label_equals=descendant_label_patterns,
-    ):
-        return False
-
-    for descendant in _descendants_of(entry, entries):
-        if _has_descendant_marker_match(
-            descendant,
-            entries,
-            name_contains=descendant_name_patterns,
-            label_equals=descendant_label_patterns,
-        ):
-            return False
-    return True
+    return False
 
 
 def _matches_direct(
@@ -498,8 +508,13 @@ def _contains_pattern(text: str, patterns: list[str]) -> bool:
 
 
 def _equals_pattern(text: str, patterns: list[str]) -> bool:
-    text_cf = text.casefold()
-    return any(pattern.casefold() == text_cf for pattern in patterns if pattern)
+    text_variants = _label_variants(text)
+    for pattern in patterns:
+        if not pattern:
+            continue
+        if text_variants & _label_variants(pattern):
+            return True
+    return False
 
 
 def _rule_list(rule: dict, key: str) -> list[str]:
@@ -534,3 +549,168 @@ def _has_descendant_marker_match(
         )
         for descendant in _descendants_of(entry, entries)
     )
+
+
+def _collect_category_entries(
+    category: str,
+    rule: dict,
+    entries: list[DocumentedModule],
+) -> list[DocumentedModule]:
+    direct_name_patterns = _rule_list(rule, "name_contains")
+    direct_label_patterns = _rule_list(rule, "label_equals")
+    descendant_name_patterns = _rule_list(rule, "desc_name_contains")
+    descendant_label_patterns = _rule_list(rule, "desc_label_equals")
+    entry_lookup = {entry.path: entry for entry in entries}
+
+    collected: list[DocumentedModule] = [
+        entry
+        for entry in entries
+        if _matches_direct(
+            entry,
+            name_contains=direct_name_patterns,
+            label_equals=direct_label_patterns,
+        )
+    ]
+
+    if descendant_name_patterns or descendant_label_patterns:
+        for marker in entries:
+            if not _matches_direct(
+                marker,
+                name_contains=descendant_name_patterns,
+                label_equals=descendant_label_patterns,
+            ):
+                continue
+            anchor = _marker_anchor(
+                marker,
+                entry_lookup,
+            )
+            if anchor is not None:
+                collected.append(anchor)
+
+    collected.extend(
+        entry
+        for entry in entries
+        if _matches_category_heuristic(entry, category)
+    )
+    return _unique_documented_modules(collected)
+
+
+def _marker_anchor(
+    marker: DocumentedModule,
+    entry_lookup: dict[tuple[str, ...], DocumentedModule],
+) -> DocumentedModule | None:
+    for depth in range(len(marker.path) - 1, 1, -1):
+        ancestor = entry_lookup.get(marker.path[:depth])
+        if ancestor is None:
+            continue
+        if _looks_like_wrapper_entry(ancestor):
+            continue
+        return ancestor
+    return entry_lookup.get(marker.path[:-1])
+
+
+def _matches_category_heuristic(entry: DocumentedModule, category: str) -> bool:
+    if category == "em":
+        return _looks_like_equipment_module(entry)
+    if category == "ops":
+        return _looks_like_operation(entry)
+    if category in _DOCUMENTATION_PARAMETER_PREFIXES:
+        return _looks_like_parameter(entry, prefixes=_DOCUMENTATION_PARAMETER_PREFIXES[category])
+    return False
+
+
+def _looks_like_equipment_module(entry: DocumentedModule) -> bool:
+    if _looks_like_wrapper_entry(entry):
+        return False
+    name_cf = entry.name.casefold()
+    moduletype_name = (entry.moduletype_name or "").casefold()
+    if "coordinate" in name_cf or "coordinate" in moduletype_name:
+        return False
+    if name_cf.startswith("em_"):
+        return True
+    return "equipmod" in moduletype_name
+
+
+def _looks_like_operation(entry: DocumentedModule) -> bool:
+    if _looks_like_wrapper_entry(entry):
+        return False
+    if len(entry.path) < 2:
+        return False
+    if entry.path[-2].casefold() != "oprframe":
+        return False
+    return not entry.name.casefold().startswith("mes_")
+
+
+def _looks_like_parameter(entry: DocumentedModule, *, prefixes: tuple[str, ...]) -> bool:
+    if _looks_like_wrapper_entry(entry):
+        return False
+    name_cf = entry.name.casefold()
+    moduletype_name = (entry.moduletype_name or "").casefold()
+    return any(name_cf.startswith(prefix) or prefix in moduletype_name for prefix in prefixes)
+
+
+def _looks_like_unit_root(
+    entry: DocumentedModule,
+    classification: DocumentationClassification,
+    categorized_paths: set[tuple[str, ...]],
+) -> bool:
+    if entry.path in categorized_paths:
+        return False
+    if _looks_like_wrapper_entry(entry):
+        return False
+    if not (
+        classification.descendants(entry, category="em")
+        or classification.descendants(entry, category="ops")
+    ):
+        return False
+
+    parameter_names = {variable.name.casefold() for variable in entry.moduleparameters}
+    if {"name", "medianame", "headername"} & parameter_names:
+        return True
+    if "sectionname" in parameter_names:
+        return True
+    if entry.moduletype_name and len(entry.path) <= 3:
+        return True
+    return False
+
+
+def _looks_like_wrapper_entry(entry: DocumentedModule) -> bool:
+    return any(
+        _looks_like_wrapper_name(value)
+        for value in (
+            entry.name,
+            entry.moduletype_name or "",
+            entry.moduletype_label or "",
+        )
+        if value
+    )
+
+
+def _looks_like_wrapper_name(value: str) -> bool:
+    value_cf = value.casefold()
+    if value_cf in _DOCUMENTATION_WRAPPER_SEGMENTS:
+        return True
+    if ":" in value_cf and value_cf.split(":", 1)[-1] in _DOCUMENTATION_WRAPPER_SEGMENTS:
+        return True
+    return re.fullmatch(r"l\d+", value_cf) is not None
+
+
+def _label_variants(text: str) -> set[str]:
+    text_cf = text.casefold().strip()
+    if not text_cf:
+        return set()
+    variants = {text_cf}
+    if ":" in text_cf:
+        variants.add(text_cf.split(":", 1)[-1])
+    return variants
+
+
+def _unique_documented_modules(entries: list[DocumentedModule]) -> list[DocumentedModule]:
+    unique: list[DocumentedModule] = []
+    seen_paths: set[tuple[str, ...]] = set()
+    for entry in entries:
+        if entry.path in seen_paths:
+            continue
+        unique.append(entry)
+        seen_paths.add(entry.path)
+    return unique
