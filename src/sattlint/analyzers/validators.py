@@ -12,7 +12,11 @@ from ..resolution import TypeGraph
 from ..resolution.common import varname_full
 from ..validation import (
     _assignment_type_matches,
+    _extract_time_literal,
+    _has_time_literal_marker,
     _infer_literal_datatype,
+    _is_valid_time_literal,
+    _literal_matches_expected_datatype,
     _resolve_variable_field_datatype,
     _split_dotted_name,
 )
@@ -279,7 +283,13 @@ class ContractMappingValidator:
         source_variable: Variable | None,
     ) -> tuple[Simple_DataType | str | None, str | None]:
         if mapping.source_literal is not None:
-            return _infer_literal_datatype(mapping.source_literal), repr(mapping.source_literal)
+            return (
+                _infer_literal_datatype(
+                    mapping.source_literal,
+                    is_duration=bool(mapping.is_duration),
+                ),
+                repr(mapping.source_literal),
+            )
 
         source_name = varname_full(mapping.source)
         if not source_name or source_variable is None:
@@ -333,10 +343,25 @@ class ContractMappingValidator:
                 owner_contract_id=owner_contract_id,
             )
 
+        if pm.source_literal is not None and _literal_matches_expected_datatype(
+            pm.source_literal,
+            target_datatype,
+            is_duration=bool(pm.is_duration),
+        ):
+            return issues
+
         if self._is_string_simple_type(source_datatype) and self._is_string_simple_type(target_datatype):
             return issues
 
-        if _assignment_type_matches(source_datatype, target_datatype) and source_datatype == const.GRAMMAR_VALUE_TIME_VALUE:
+        if (
+            _assignment_type_matches(source_datatype, target_datatype)
+            and source_datatype == const.GRAMMAR_VALUE_TIME_VALUE
+            and (
+                pm.source_literal is None
+                or not _has_time_literal_marker(pm.source_literal)
+                or _is_valid_time_literal(_extract_time_literal(pm.source_literal))
+            )
+        ):
             return issues
 
         issue = VariableIssue(

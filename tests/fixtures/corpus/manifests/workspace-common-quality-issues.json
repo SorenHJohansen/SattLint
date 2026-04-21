@@ -1,0 +1,32 @@
+{
+  "case_id": "workspace-common-quality-issues",
+  "target_file": "../../sample_sattline_files/CommonQualityIssues.s",
+  "mode": "workspace",
+  "expectation": {
+    "expected_finding_ids": [
+      "semantic.read-before-write",
+      "semantic.unused-variable"
+    ],
+    "artifact_fragments": {
+      "status.json": {
+        "execution_status": "ok",
+        "missing_dependency_count": 0
+      },
+      "summary.json": {
+        "rule_counts": {
+          "semantic.read-before-write": 1,
+          "semantic.unused-variable": 1
+        }
+      }
+    },
+    "forbidden_finding_ids": [
+      "corpus.execution-error",
+      "syntax.parse"
+    ]
+  },
+  "required_artifacts": [
+    "findings.json",
+    "status.json",
+    "summary.json"
+  ]
+}

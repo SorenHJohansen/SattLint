@@ -3,6 +3,7 @@ import json
 from unittest.mock import patch
 
 from sattlint.devtools import repo_audit
+from .helpers.artifact_assertions import assert_findings_collection, assert_findings_schema
 
 
 def test_extract_documented_commands_reads_script_and_subcommand(tmp_path):
@@ -197,6 +198,52 @@ def test_audit_repository_leaks_only_filters_findings_and_skips_pipeline(tmp_pat
     assert [finding["id"] for finding in summary["findings"]] == ["hardcoded-windows-path"]
 
 
+def test_find_pipeline_findings_prefers_normalized_findings_report(tmp_path):
+    findings_path = tmp_path / "findings.json"
+    findings_path.write_text(
+        json.dumps(
+            {
+                "kind": "sattlint.findings",
+                "schema_version": 1,
+                "finding_count": 1,
+                "findings": [
+                    {
+                        "id": "ruff-f401",
+                        "rule_id": "ruff.f401",
+                        "category": "style",
+                        "severity": "high",
+                        "confidence": "high",
+                        "message": "Imported but unused",
+                        "source": "ruff",
+                        "analyzer": "ruff",
+                        "artifact": "findings",
+                        "location": {
+                            "path": "src/sample.py",
+                            "line": 4,
+                            "column": 8,
+                            "symbol": None,
+                            "module_path": [],
+                        },
+                        "fingerprint": "ruff.f401|src/sample.py|4||Imported but unused",
+                        "detail": None,
+                        "suggestion": None,
+                        "data": {},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    findings = repo_audit._find_pipeline_findings(tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0].id == "ruff-f401"
+    assert findings[0].source == "ruff"
+    assert findings[0].path == "src/sample.py"
+    assert findings[0].line == 4
+
+
 def test_audit_repository_writes_status_file_and_forwards_profile(tmp_path):
     pipeline_summary = {
         "profile": "quick",
@@ -228,12 +275,114 @@ def test_audit_repository_writes_status_file_and_forwards_profile(tmp_path):
                 )
 
     status_report = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    findings_report = json.loads((tmp_path / "findings.json").read_text(encoding="utf-8"))
 
     assert summary["profile"] == "quick"
     assert summary["entry_report"] == "status.json"
     assert summary["reports"]["pipeline_status"] == "pipeline/status.json"
+    assert summary["reports"]["findings"] == "findings.json"
+    assert_findings_schema(summary)
     assert status_report["profile"] == "quick"
     assert status_report["overall_status"] == "pass"
+    assert_findings_schema(status_report)
     assert status_report["pipeline_status_report"] == f"<external>/{tmp_path.name}/pipeline/status.json"
+    assert_findings_collection(findings_report, finding_count=1)
+    assert findings_report["findings"][0]["location"] == {
+        "path": "src/big.py",
+        "line": None,
+        "column": None,
+        "symbol": None,
+        "module_path": [],
+    }
     run_pipeline.assert_called_once()
     assert run_pipeline.call_args.kwargs["profile"] == "quick"
+    assert run_pipeline.call_args.kwargs["corpus_manifest_dir"] == repo_audit.pipeline_module.DEFAULT_CORPUS_MANIFEST_DIR.resolve()
+
+
+def test_print_cli_summary_includes_findings_schema(capsys):
+    repo_audit._print_cli_summary(
+        {
+            "profile": "quick",
+            "overall_status": "pass",
+            "findings_schema": {
+                "kind": "sattlint.findings",
+                "schema_version": 1,
+            },
+            "finding_count": 2,
+            "blocking_finding_count": 1,
+            "fail_on": "medium",
+            "status_report": "<external>/audit/status.json",
+            "summary_report": "<external>/audit/summary.json",
+        }
+    )
+
+    output = capsys.readouterr().out
+
+    assert "Findings schema: sattlint.findings v1" in output
+    assert "Findings: 2 total, 1 blocking at fail-on medium" in output
+
+
+def test_default_corpus_manifest_dir_returns_none_when_empty(tmp_path):
+    manifest_dir = tmp_path / "manifests"
+    manifest_dir.mkdir()
+
+    with patch.object(repo_audit.pipeline_module, "DEFAULT_CORPUS_MANIFEST_DIR", manifest_dir):
+        assert repo_audit._default_corpus_manifest_dir() is None
+
+
+def test_default_corpus_manifest_dir_returns_resolved_manifest_root(tmp_path):
+    manifest_dir = tmp_path / "manifests"
+    manifest_dir.mkdir()
+    (manifest_dir / "case.json").write_text("{}", encoding="utf-8")
+
+    with patch.object(repo_audit.pipeline_module, "DEFAULT_CORPUS_MANIFEST_DIR", manifest_dir):
+        assert repo_audit._default_corpus_manifest_dir() == manifest_dir.resolve()
+
+
+def test_audit_repository_mirrors_latest_reports_to_stable_directory(tmp_path):
+    output_dir = tmp_path / "runs" / "audit-001"
+    latest_dir = tmp_path / "artifacts" / "audit"
+    stale_file = latest_dir / "obsolete.txt"
+    stale_file.parent.mkdir(parents=True)
+    stale_file.write_text("stale", encoding="utf-8")
+
+    finding = repo_audit.Finding(
+        "oversized-module",
+        "architecture",
+        "medium",
+        "high",
+        "Large module with high maintenance cost.",
+        path="src/big.py",
+    )
+    pipeline_summary = {
+        "profile": "quick",
+        "output_dir": "<external>/audit/pipeline",
+        "status": {"overall_status": "pass", "tool_statuses": {}},
+    }
+
+    with patch.object(repo_audit, "collect_custom_findings", return_value=[finding]):
+        with patch.object(repo_audit, "_find_pipeline_findings", return_value=[]):
+            with patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary):
+                repo_audit.audit_repository(
+                    output_dir,
+                    profile="quick",
+                    fail_on="high",
+                    include_generated=False,
+                    leaks_only=False,
+                    suspicious_identifiers=["SQHJ"],
+                    skip_pipeline=False,
+                    skip_vulture=False,
+                    skip_bandit=False,
+                    latest_output_dir=latest_dir,
+                )
+
+    latest_status = json.loads((latest_dir / "status.json").read_text(encoding="utf-8"))
+    latest_summary = json.loads((latest_dir / "summary.json").read_text(encoding="utf-8"))
+    mirrored_findings = json.loads((latest_dir / "findings.json").read_text(encoding="utf-8"))
+
+    assert stale_file.exists() is True
+    assert latest_status["latest_status_report"].endswith("/audit/status.json")
+    assert latest_status["latest_summary_report"].endswith("/audit/summary.json")
+    assert latest_summary["finding_count"] == 1
+    assert_findings_collection(mirrored_findings, finding_count=1)
+    assert mirrored_findings["findings"][0]["id"] == "oversized-module"

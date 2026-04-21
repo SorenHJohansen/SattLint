@@ -19,20 +19,45 @@ from typing import Any
 
 from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
 
-from sattlint.app import VARIABLE_ANALYSES
-from sattlint.analyzers.registry import (
-    get_default_analyzer_catalog,
-    get_default_analyzers,
+from sattlint.devtools.artifact_registry import (
+    PIPELINE_ARTIFACTS,
+    artifact_reports_map,
+    build_artifact_registry_report,
 )
-from sattlint.core.semantic import discover_workspace_sources, load_workspace_snapshot
-from sattlint.path_sanitizer import sanitize_command_for_report, sanitize_path_for_report
-from sattlint.reporting.variables_report import IssueKind, VariablesReport
-from sattlint.tracing import trace_source_file_analysis
+from sattlint.devtools.baselines import build_analysis_diff_report, load_finding_collection
+from sattlint.devtools.corpus import CORPUS_RESULTS_FILENAME, run_corpus_suite
+from sattlint.devtools.finding_exports import build_pipeline_finding_collection
+from sattlint.devtools.pipeline_artifacts import (
+    PipelineArtifactContext,
+    write_pipeline_artifacts,
+)
+from sattlint.devtools.structural_reports import (
+    StructuralReportsBundle,
+    WorkspaceGraphInputs,
+    collect_analyzer_registry_report as build_analyzer_registry_report,
+    collect_architecture_report as build_architecture_report,
+    collect_call_graph_report as build_call_graph_report,
+    collect_dependency_graph_report as build_dependency_graph_report,
+    collect_impact_analysis_report as build_impact_analysis_report,
+    collect_phase2_rule_metadata_gate as build_phase2_rule_metadata_gate,
+    collect_structural_reports as build_structural_reports,
+    collect_workspace_graph_inputs as build_workspace_graph_inputs,
+)
+from sattlint.devtools.status_reports import (
+    build_pipeline_status_report,
+    build_pipeline_summary_report,
+    build_tool_status,
+    overall_status,
+)
+from sattlint.devtools.trace_reports import collect_trace_report as build_trace_report
+from sattlint.devtools.tool_reports import build_command_report
+from sattlint.path_sanitizer import sanitize_path_for_report
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "analysis"
 DEFAULT_TRACE_TARGET = REPO_ROOT / "tests" / "fixtures" / "sample_sattline_files" / "LinterTestProgram.s"
+DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 PIPELINE_PROFILE_CHOICES = ("quick", "full")
 DEFAULT_PIPELINE_PROFILE = "full"
 
@@ -160,33 +185,38 @@ def _make_tool_status(
     note_count: int = 0,
     detail: str | None = None,
 ) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "status": status,
-        "report": report,
-        "raw_exit_code": raw_exit_code,
-        "normalized_exit_code": normalized_exit_code,
-        "finding_count": finding_count,
-    }
-    if note_count:
-        payload["note_count"] = note_count
-    if detail:
-        payload["detail"] = detail
-    return payload
+    return build_tool_status(
+        status=status,
+        report=report,
+        raw_exit_code=raw_exit_code,
+        normalized_exit_code=normalized_exit_code,
+        finding_count=finding_count,
+        note_count=note_count,
+        detail=detail,
+    )
+
+
+def _collect_phase2_rule_metadata_gate(
+    architecture_report: dict[str, Any],
+) -> dict[str, Any]:
+    return build_phase2_rule_metadata_gate(architecture_report)
 
 
 def _overall_status(tool_statuses: dict[str, dict[str, Any]]) -> str:
-    statuses = [payload["status"] for payload in tool_statuses.values()]
-    if any(status == "fail" for status in statuses):
-        return "fail"
-    if any(status == "pass_with_notes" for status in statuses):
-        return "pass_with_notes"
-    return "pass"
+    return overall_status(tool_statuses)
 
 
 def _print_cli_summary(status_report: dict[str, Any]) -> None:
     print(f"Pipeline profile: {status_report['profile']}")
     print(f"Overall status: {status_report['overall_status']}")
-    for tool_name in ("ruff", "mypy", "pytest", "vulture", "bandit"):
+    findings_schema = status_report.get("findings_schema")
+    if findings_schema:
+        print(
+            "Findings schema: "
+            f"{findings_schema.get('kind', 'unknown')} "
+            f"v{findings_schema.get('schema_version', '?')}"
+        )
+    for tool_name in ("ruff", "mypy", "pytest", "vulture", "bandit", "corpus"):
         tool_status = status_report["tool_statuses"].get(tool_name)
         if tool_status is None:
             continue
@@ -195,21 +225,26 @@ def _print_cli_summary(status_report: dict[str, Any]) -> None:
         if detail:
             line = f"{line} ({detail})"
         print(line)
+    analysis_diff_summary = status_report.get("analysis_diff_summary") or {}
+    analysis_diff_report = status_report.get("analysis_diff_report")
+    if analysis_diff_report:
+        print(
+            "Analysis diff: "
+            f"{analysis_diff_summary.get('new_count', 0)} new, "
+            f"{analysis_diff_summary.get('changed_count', 0)} changed, "
+            f"{analysis_diff_summary.get('resolved_count', 0)} resolved, "
+            f"{analysis_diff_summary.get('unchanged_count', 0)} unchanged"
+        )
+        print(f"Analysis diff report: {analysis_diff_report}")
+    corpus_results_report = status_report.get("corpus_results_report")
+    if corpus_results_report:
+        print(f"Corpus results report: {corpus_results_report}")
     print(f"Status report: {status_report['status_report']}")
     print(f"Summary report: {status_report['summary_report']}")
 
 
 def _command_payload(result: CommandResult, **extra: Any) -> dict[str, Any]:
-    payload = {
-        "tool": result.name,
-        "command": sanitize_command_for_report(result.command, repo_root=REPO_ROOT),
-        "exit_code": result.exit_code,
-        "duration_seconds": result.duration_seconds,
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-    }
-    payload.update(extra)
-    return payload
+    return build_command_report(result, repo_root=REPO_ROOT, **extra)
 
 
 def _parse_json_lines(raw_output: str) -> list[dict[str, Any]]:
@@ -306,385 +341,65 @@ def _collect_environment_report() -> dict[str, Any]:
 
 
 def _collect_architecture_report() -> dict[str, Any]:
-    cli_filter_kinds = sorted(
-        {
-            issue_kind.value
-            for _label, kinds in VARIABLE_ANALYSES.values()
-            if kinds is not None
-            for issue_kind in kinds
-        }
-    )
-    summary_supported = {
-        IssueKind.UNUSED.value: isinstance(getattr(VariablesReport, "unused", None), property),
-        IssueKind.UNUSED_DATATYPE_FIELD.value: isinstance(getattr(VariablesReport, "unused_datatype_fields", None), property),
-        IssueKind.READ_ONLY_NON_CONST.value: isinstance(getattr(VariablesReport, "read_only_non_const", None), property),
-        IssueKind.UI_ONLY.value: isinstance(getattr(VariablesReport, "ui_only", None), property),
-        IssueKind.NEVER_READ.value: isinstance(getattr(VariablesReport, "never_read", None), property),
-        IssueKind.GLOBAL_SCOPE_MINIMIZATION.value: isinstance(getattr(VariablesReport, "global_scope_minimization", None), property),
-        IssueKind.HIGH_FAN_IN_OUT.value: isinstance(getattr(VariablesReport, "high_fan_in_out", None), property),
-        IssueKind.STRING_MAPPING_MISMATCH.value: isinstance(getattr(VariablesReport, "string_mapping_mismatch", None), property),
-        IssueKind.HIDDEN_GLOBAL_COUPLING.value: isinstance(getattr(VariablesReport, "hidden_global_coupling", None), property),
-        IssueKind.DATATYPE_DUPLICATION.value: isinstance(getattr(VariablesReport, "datatype_duplication", None), property),
-        IssueKind.MIN_MAX_MAPPING_MISMATCH.value: isinstance(getattr(VariablesReport, "min_max_mapping_mismatch", None), property),
-        IssueKind.MAGIC_NUMBER.value: isinstance(getattr(VariablesReport, "magic_numbers", None), property),
-        IssueKind.NAME_COLLISION.value: isinstance(getattr(VariablesReport, "name_collisions", None), property),
-        IssueKind.SHADOWING.value: isinstance(getattr(VariablesReport, "shadowing", None), property),
-        IssueKind.RESET_CONTAMINATION.value: isinstance(getattr(VariablesReport, "reset_contamination", None), property),
-        IssueKind.IMPLICIT_LATCH.value: isinstance(getattr(VariablesReport, "implicit_latches", None), property),
-    }
-
-    analyzer_specs = get_default_analyzers()
-    registry_keys = [spec.key for spec in analyzer_specs]
-    live_diagnostic_analyzers = [spec.key for spec in analyzer_specs if spec.supports_live_diagnostics]
-    server_source = (REPO_ROOT / "src" / "sattlint_lsp" / "server.py").read_text(encoding="utf-8")
-
-    findings: list[dict[str, Any]] = []
-    missing_cli_filters = sorted(kind for kind, supported in summary_supported.items() if supported and kind not in cli_filter_kinds)
-    if missing_cli_filters:
-        findings.append(
-            {
-                "id": "cli-variable-filter-gap",
-                "severity": "medium",
-                "message": "Some variable issue kinds are rendered in reports but not exposed as CLI quick filters.",
-                "missing_issue_kinds": missing_cli_filters,
-            }
-        )
-
-    semantic_source = (REPO_ROOT / "src" / "sattlint" / "core" / "semantic.py").read_text(encoding="utf-8")
-    unresolved_live_diagnostics = [key for key in live_diagnostic_analyzers if key != "variables"]
-    if unresolved_live_diagnostics and "collect_project_variable_diagnostics" in semantic_source and "enable_variable_diagnostics" in server_source:
-        findings.append(
-            {
-                "id": "lsp-variable-only-diagnostics",
-                "severity": "medium",
-                "message": "The semantic snapshot layer only projects variable diagnostics; some analyzers marked as live-diagnostic capable are not surfaced in the editor.",
-                "registered_analyzers_not_in_lsp": unresolved_live_diagnostics,
-            }
-        )
-
-    return {
-        "registered_analyzers": registry_keys,
-        "live_diagnostic_analyzers": live_diagnostic_analyzers,
-        "cli_variable_filter_issue_kinds": cli_filter_kinds,
-        "variables_report_summary_support": summary_supported,
-        "findings": findings,
-    }
+    return build_architecture_report()
 
 
 def _collect_analyzer_registry_report() -> dict[str, Any]:
-    catalog = get_default_analyzer_catalog()
-    return catalog.to_report(generated_by="sattlint.devtools.pipeline")
+    return build_analyzer_registry_report()
 
 
 def _collect_workspace_graph_inputs(
     workspace_root: Path = REPO_ROOT,
-) -> tuple[Any, list[Any], list[dict[str, Any]]]:
-    discovery = discover_workspace_sources(workspace_root)
-    snapshots: list[Any] = []
-    failures: list[dict[str, Any]] = []
-
-    for entry_file in discovery.program_files:
-        try:
-            snapshot = load_workspace_snapshot(
-                entry_file,
-                workspace_root=workspace_root,
-                collect_variable_diagnostics=False,
-            )
-        except Exception as exc:
-            failures.append(
-                {
-                    "entry_file": sanitize_path_for_report(entry_file, repo_root=workspace_root),
-                    "error": str(exc),
-                    "error_type": type(exc).__name__,
-                }
-            )
-            continue
-        snapshots.append(snapshot)
-
-    return discovery, snapshots, failures
+) -> WorkspaceGraphInputs:
+    return build_workspace_graph_inputs(workspace_root)
 
 
 def _collect_dependency_graph_report(
     workspace_root: Path = REPO_ROOT,
     *,
-    graph_inputs: tuple[Any, list[Any], list[dict[str, Any]]] | None = None,
+    graph_inputs: WorkspaceGraphInputs | tuple[Any, list[Any], list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
-    discovery, snapshots, failures = (
-        graph_inputs if graph_inputs is not None else _collect_workspace_graph_inputs(workspace_root)
-    )
-
-    node_index: dict[str, dict[str, Any]] = {}
-    edge_index: dict[tuple[str, str], dict[str, Any]] = {}
-
-    for snapshot in snapshots:
-        entry_file = sanitize_path_for_report(snapshot.entry_file, repo_root=workspace_root)
-        for source, targets in sorted(snapshot.project_graph.library_dependencies.items()):
-            node_index.setdefault(source, {"id": source, "kind": "library"})
-            for target in sorted(targets):
-                node_index.setdefault(target, {"id": target, "kind": "library"})
-                key = (source.casefold(), target.casefold())
-                edge = edge_index.setdefault(
-                    key,
-                    {
-                        "source": source,
-                        "target": target,
-                        "kind": "depends_on",
-                        "entries": set(),
-                    },
-                )
-                edge["entries"].add(entry_file)
-
-    edges = [
-        {
-            "source": edge["source"],
-            "target": edge["target"],
-            "kind": edge["kind"],
-            "entries": sorted(edge["entries"]),
-        }
-        for edge in sorted(
-            edge_index.values(),
-            key=lambda item: (item["source"].casefold(), item["target"].casefold()),
-        )
-    ]
-
-    return {
-        "generated_by": "sattlint.devtools.pipeline",
-        "workspace_root": sanitize_path_for_report(workspace_root, repo_root=workspace_root),
-        "source_files": {
-            "program_files": [
-                sanitize_path_for_report(path, repo_root=workspace_root)
-                for path in discovery.program_files
-            ],
-            "dependency_files": [
-                sanitize_path_for_report(path, repo_root=workspace_root)
-                for path in discovery.dependency_files
-            ],
-        },
-        "nodes": sorted(node_index.values(), key=lambda item: item["id"].casefold()),
-        "edges": edges,
-        "snapshot_count": len(snapshots),
-        "snapshot_failures": failures,
-    }
+    if graph_inputs is None:
+        graph_inputs = _collect_workspace_graph_inputs(workspace_root)
+    return build_dependency_graph_report(workspace_root, graph_inputs=graph_inputs)
 
 
 def _collect_call_graph_report(
     workspace_root: Path = REPO_ROOT,
     *,
-    graph_inputs: tuple[Any, list[Any], list[dict[str, Any]]] | None = None,
+    graph_inputs: WorkspaceGraphInputs | tuple[Any, list[Any], list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
-    _discovery, snapshots, failures = (
-        graph_inputs if graph_inputs is not None else _collect_workspace_graph_inputs(workspace_root)
-    )
-
-    node_index: dict[str, dict[str, Any]] = {}
-    edge_index: dict[tuple[str, str], dict[str, Any]] = {}
-
-    for snapshot in snapshots:
-        entry_file = sanitize_path_for_report(snapshot.entry_file, repo_root=workspace_root)
-        root_module = getattr(snapshot.base_picture, "name", snapshot.entry_file.stem)
-        for definition in snapshot.definitions:
-            if definition.field_path is not None:
-                continue
-
-            target_path = definition.declaration_module_path or (root_module,)
-            target_module = ".".join(target_path)
-            node_index.setdefault(target_module.casefold(), {"id": target_module, "kind": "module"})
-
-            for access in snapshot.find_accesses_to(definition):
-                source_path = access.use_module_path or (root_module,)
-                source_module = ".".join(source_path)
-                node_index.setdefault(source_module.casefold(), {"id": source_module, "kind": "module"})
-
-                key = (source_module.casefold(), target_module.casefold())
-                edge = edge_index.setdefault(
-                    key,
-                    {
-                        "source": source_module,
-                        "target": target_module,
-                        "kind": "module-access",
-                        "reads": 0,
-                        "writes": 0,
-                        "symbols": set(),
-                        "entries": set(),
-                    },
-                )
-                if access.kind == "read":
-                    edge["reads"] += 1
-                elif access.kind == "write":
-                    edge["writes"] += 1
-                edge["symbols"].add(definition.canonical_path)
-                edge["entries"].add(entry_file)
-
-    edges = [
-        {
-            "source": edge["source"],
-            "target": edge["target"],
-            "kind": edge["kind"],
-            "reads": edge["reads"],
-            "writes": edge["writes"],
-            "access_count": edge["reads"] + edge["writes"],
-            "symbol_count": len(edge["symbols"]),
-            "symbols": sorted(edge["symbols"]),
-            "entries": sorted(edge["entries"]),
-        }
-        for edge in sorted(
-            edge_index.values(),
-            key=lambda item: (item["source"].casefold(), item["target"].casefold()),
-        )
-    ]
-
-    return {
-        "generated_by": "sattlint.devtools.pipeline",
-        "workspace_root": sanitize_path_for_report(workspace_root, repo_root=workspace_root),
-        "graph_kind": "module-access",
-        "nodes": sorted(node_index.values(), key=lambda item: item["id"].casefold()),
-        "edges": edges,
-        "snapshot_count": len(snapshots),
-        "snapshot_failures": failures,
-    }
-
-
-def _dedupe_snapshot_failures(*failure_lists: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen: set[str] = set()
-    failures: list[dict[str, Any]] = []
-    for items in failure_lists:
-        for item in items:
-            marker = json.dumps(item, sort_keys=True)
-            if marker in seen:
-                continue
-            seen.add(marker)
-            failures.append(item)
-    return failures
-
-
-def _collect_reverse_impact(
-    node_id: str,
-    incoming_edges: dict[str, list[dict[str, Any]]],
-    *,
-    list_fields: tuple[str, ...] = (),
-    count_fields: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    direct_dependents: set[str] = set()
-    direct_entry_files: set[str] = set()
-    direct_list_values: dict[str, set[str]] = {field: set() for field in list_fields}
-    direct_count_values = {field: 0 for field in count_fields}
-
-    for edge in incoming_edges.get(node_id, []):
-        direct_dependents.add(edge["source"])
-        direct_entry_files.update(edge.get("entries", []))
-        for field in list_fields:
-            direct_list_values[field].update(edge.get(field, []))
-        for field in count_fields:
-            direct_count_values[field] += int(edge.get(field, 0))
-
-    transitive_dependents: set[str] = set()
-    transitive_entry_files: set[str] = set()
-    transitive_list_values: dict[str, set[str]] = {field: set() for field in list_fields}
-    transitive_count_values = {field: 0 for field in count_fields}
-    pending = [node_id]
-    visited_targets: set[str] = set()
-
-    while pending:
-        target = pending.pop()
-        target_key = target.casefold()
-        if target_key in visited_targets:
-            continue
-        visited_targets.add(target_key)
-        for edge in incoming_edges.get(target, []):
-            source = edge["source"]
-            transitive_dependents.add(source)
-            transitive_entry_files.update(edge.get("entries", []))
-            for field in list_fields:
-                transitive_list_values[field].update(edge.get(field, []))
-            for field in count_fields:
-                transitive_count_values[field] += int(edge.get(field, 0))
-            pending.append(source)
-
-    impact = {
-        "direct_dependents": sorted(direct_dependents, key=str.casefold),
-        "transitive_dependents": sorted(transitive_dependents, key=str.casefold),
-        "direct_entry_files": sorted(direct_entry_files, key=str.casefold),
-        "transitive_entry_files": sorted(transitive_entry_files, key=str.casefold),
-        "direct_dependent_count": len(direct_dependents),
-        "transitive_dependent_count": len(transitive_dependents),
-    }
-    for field in list_fields:
-        direct_values = sorted(direct_list_values[field], key=str.casefold)
-        transitive_values = sorted(transitive_list_values[field], key=str.casefold)
-        impact[f"direct_{field}"] = direct_values
-        impact[f"transitive_{field}"] = transitive_values
-        impact[f"direct_{field[:-1]}_count"] = len(direct_values)
-        impact[f"transitive_{field[:-1]}_count"] = len(transitive_values)
-    for field in count_fields:
-        impact[f"direct_{field}"] = direct_count_values[field]
-        impact[f"transitive_{field}"] = transitive_count_values[field]
-    return impact
+    if graph_inputs is None:
+        graph_inputs = _collect_workspace_graph_inputs(workspace_root)
+    return build_call_graph_report(workspace_root, graph_inputs=graph_inputs)
 
 
 def _collect_impact_analysis_report(
     workspace_root: Path = REPO_ROOT,
     *,
-    graph_inputs: tuple[Any, list[Any], list[dict[str, Any]]] | None = None,
+    graph_inputs: WorkspaceGraphInputs | tuple[Any, list[Any], list[dict[str, Any]]] | None = None,
     dependency_graph_report: dict[str, Any] | None = None,
     call_graph_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    resolved_dependency_graph = dependency_graph_report or _collect_dependency_graph_report(
+    if graph_inputs is None:
+        graph_inputs = _collect_workspace_graph_inputs(workspace_root)
+    return build_impact_analysis_report(
         workspace_root,
         graph_inputs=graph_inputs,
-    )
-    resolved_call_graph = call_graph_report or _collect_call_graph_report(
-        workspace_root,
-        graph_inputs=graph_inputs,
+        dependency_graph_report=dependency_graph_report,
+        call_graph_report=call_graph_report,
     )
 
-    dependency_incoming: dict[str, list[dict[str, Any]]] = {}
-    for edge in resolved_dependency_graph.get("edges", []):
-        dependency_incoming.setdefault(edge["target"], []).append(edge)
 
-    module_incoming: dict[str, list[dict[str, Any]]] = {}
-    for edge in resolved_call_graph.get("edges", []):
-        if edge["source"].casefold() == edge["target"].casefold():
-            continue
-        module_incoming.setdefault(edge["target"], []).append(edge)
+def _collect_structural_report_bundle(
+    workspace_root: Path = REPO_ROOT,
+) -> StructuralReportsBundle:
+    graph_inputs = _collect_workspace_graph_inputs(workspace_root)
+    return build_structural_reports(workspace_root, graph_inputs=graph_inputs)
 
-    library_impacts = []
-    for node in resolved_dependency_graph.get("nodes", []):
-        impact = _collect_reverse_impact(node["id"], dependency_incoming)
-        library_impacts.append(
-            {
-                "id": node["id"],
-                "kind": node.get("kind", "library"),
-                **impact,
-            }
-        )
 
-    module_impacts = []
-    for node in resolved_call_graph.get("nodes", []):
-        impact = _collect_reverse_impact(
-            node["id"],
-            module_incoming,
-            list_fields=("symbols",),
-            count_fields=("reads", "writes", "access_count"),
-        )
-        module_impacts.append(
-            {
-                "id": node["id"],
-                "kind": node.get("kind", "module"),
-                **impact,
-            }
-        )
-
-    return {
-        "generated_by": "sattlint.devtools.pipeline",
-        "report_kind": "impact-analysis",
-        "workspace_root": sanitize_path_for_report(workspace_root, repo_root=workspace_root),
-        "library_impacts": library_impacts,
-        "module_impacts": module_impacts,
-        "snapshot_failures": _dedupe_snapshot_failures(
-            resolved_dependency_graph.get("snapshot_failures", []),
-            resolved_call_graph.get("snapshot_failures", []),
-        ),
-    }
+def _collect_trace_report(trace_target: Path) -> dict[str, Any]:
+    return build_trace_report(trace_target)
 
 
 def _run_pipeline(
@@ -694,18 +409,50 @@ def _run_pipeline(
     profile: str = DEFAULT_PIPELINE_PROFILE,
     include_vulture: bool | None = None,
     include_bandit: bool | None = None,
+    baseline_findings: Path | None = None,
+    corpus_manifest_dir: Path | None = None,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    if baseline_findings is not None and not baseline_findings.exists():
+        raise FileNotFoundError(f"Baseline findings file does not exist: {baseline_findings}")
     python_cmd = [_resolve_python_executable()]
     settings = _profile_settings(profile)
     run_vulture = settings["include_vulture"] if include_vulture is None else include_vulture
     run_bandit = settings["include_bandit"] if include_bandit is None else include_bandit
     run_structural_reports = settings["include_structural_reports"]
     run_trace = settings["include_trace"] and trace_target is not None and trace_target.exists()
+    resolved_corpus_manifest_dir = corpus_manifest_dir.resolve() if corpus_manifest_dir is not None else None
+    run_corpus = bool(resolved_corpus_manifest_dir and resolved_corpus_manifest_dir.exists())
     sanitized_output_dir = sanitize_path_for_report(output_dir, repo_root=REPO_ROOT) or output_dir.as_posix()
 
+    enabled_artifacts: set[str] = {"status", "summary", "findings", "artifact_registry", "environment", "ruff", "mypy", "pytest"}
+    if baseline_findings is not None:
+        enabled_artifacts.add("analysis_diff")
+    if run_corpus:
+        enabled_artifacts.add("corpus_results")
+    if run_vulture:
+        enabled_artifacts.add("vulture")
+    if run_bandit:
+        enabled_artifacts.add("bandit")
+    if run_structural_reports:
+        enabled_artifacts.update({
+            "architecture",
+            "analyzer_registry",
+            "dependency_graph",
+            "call_graph",
+            "impact_analysis",
+        })
+    if run_trace:
+        enabled_artifacts.add("trace")
+
+    artifact_registry_report = build_artifact_registry_report(
+        PIPELINE_ARTIFACTS,
+        generated_by="sattlint.devtools.pipeline",
+        profile=profile,
+        enabled_artifact_ids=enabled_artifacts,
+    )
+
     environment_report = _collect_environment_report()
-    _write_json(output_dir / "environment.json", environment_report)
 
     ruff_result = _run_command(
         "ruff",
@@ -713,7 +460,6 @@ def _run_pipeline(
     )
     ruff_findings = json.loads(ruff_result.stdout or "[]")
     ruff_report = _command_payload(ruff_result, finding_count=len(ruff_findings), findings=ruff_findings)
-    _write_json(output_dir / "ruff.json", ruff_report)
 
     mypy_result = _run_command(
         "mypy",
@@ -741,7 +487,6 @@ def _run_pipeline(
         effective_exit_code=0 if mypy_error_count == 0 else mypy_result.exit_code,
         findings=mypy_findings,
     )
-    _write_json(output_dir / "mypy.json", mypy_report)
 
     junit_path = output_dir / "pytest.junit.xml"
     pytest_result = _run_command(
@@ -750,7 +495,6 @@ def _run_pipeline(
     )
     pytest_parsed = _parse_pytest_junit(junit_path)
     pytest_report = _command_payload(pytest_result, **pytest_parsed)
-    _write_json(output_dir / "pytest.json", pytest_report)
 
     if run_vulture:
         vulture_result = _run_command(
@@ -759,7 +503,6 @@ def _run_pipeline(
         )
         vulture_findings = _parse_vulture_output(vulture_result.stdout)
         vulture_report = _command_payload(vulture_result, finding_count=len(vulture_findings), findings=vulture_findings)
-        _write_json(output_dir / "vulture.json", vulture_report)
     else:
         vulture_report = {"tool": "vulture", "skipped": True}
 
@@ -775,7 +518,6 @@ def _run_pipeline(
             findings=bandit_findings.get("results", []),
             errors=bandit_findings.get("errors", []),
         )
-        _write_json(output_dir / "bandit.json", bandit_report)
     else:
         bandit_report = {"tool": "bandit", "skipped": True}
 
@@ -788,34 +530,65 @@ def _run_pipeline(
         "module_impacts": [],
         "skipped": not run_structural_reports,
     }
-    workspace_graph_inputs: tuple[Any, Any, list[dict[str, Any]]] | None = None
+    workspace_graph_inputs: WorkspaceGraphInputs | None = None
     if run_structural_reports:
-        architecture_report = _collect_architecture_report()
-        _write_json(output_dir / "architecture.json", architecture_report)
-
-        analyzer_registry_report = _collect_analyzer_registry_report()
-        _write_json(output_dir / "analyzer_registry.json", analyzer_registry_report)
-
-        workspace_graph_inputs = _collect_workspace_graph_inputs()
-
-        dependency_graph_report = _collect_dependency_graph_report(graph_inputs=workspace_graph_inputs)
-        _write_json(output_dir / "dependency_graph.json", dependency_graph_report)
-
-        call_graph_report = _collect_call_graph_report(graph_inputs=workspace_graph_inputs)
-        _write_json(output_dir / "call_graph.json", call_graph_report)
-
-        impact_analysis_report = _collect_impact_analysis_report(
-            graph_inputs=workspace_graph_inputs,
-            dependency_graph_report=dependency_graph_report,
-            call_graph_report=call_graph_report,
-        )
-        _write_json(output_dir / "impact_analysis.json", impact_analysis_report)
+        structural_reports = _collect_structural_report_bundle()
+        architecture_report = structural_reports.architecture_report
+        analyzer_registry_report = structural_reports.analyzer_registry_report
+        workspace_graph_inputs = structural_reports.graph_inputs
+        dependency_graph_report = structural_reports.dependency_graph_report
+        call_graph_report = structural_reports.call_graph_report
+        impact_analysis_report = structural_reports.impact_analysis_report
 
     trace_report: dict[str, Any] | None = None
     if run_trace:
-        trace_output_path = output_dir / "trace.json"
         assert trace_target is not None
-        trace_report = trace_source_file_analysis(trace_target, output_path=trace_output_path)
+        trace_report = _collect_trace_report(trace_target)
+
+    corpus_results_report: dict[str, Any] | None = None
+    if run_corpus:
+        corpus_results_report = run_corpus_suite(
+            output_dir,
+            manifest_dir=resolved_corpus_manifest_dir,
+            repo_root=REPO_ROOT,
+            write_results=False,
+        ).to_dict()
+
+    phase2_rule_metadata_gate = {
+        "status": "skipped",
+        "enforced_fields": ["acceptance_tests", "mutation_applicability"],
+        "advisory_fields": ["corpus_cases"],
+        "blocking_finding_ids": [],
+        "advisory_finding_ids": [],
+        "blocking_rule_ids": [],
+        "advisory_rule_ids": [],
+    }
+    if run_structural_reports:
+        phase2_rule_metadata_gate = architecture_report.get(
+            "phase2_rule_metadata_gate",
+            phase2_rule_metadata_gate,
+        )
+
+    finding_collection = build_pipeline_finding_collection(
+        repo_root=REPO_ROOT,
+        ruff_findings=ruff_findings,
+        mypy_findings=mypy_findings,
+        pytest_report=pytest_report,
+        vulture_findings=[] if vulture_report.get("skipped") else list(vulture_report.get("findings", [])),
+        bandit_findings=[] if bandit_report.get("skipped") else list(bandit_report.get("findings", [])),
+        architecture_findings=list(architecture_report.get("findings", [])),
+    )
+
+    analysis_diff_report: dict[str, Any] | None = None
+    if baseline_findings is not None:
+        analysis_diff_report = build_analysis_diff_report(
+            baseline=load_finding_collection(baseline_findings),
+            current=finding_collection,
+            baseline_label=sanitize_path_for_report(baseline_findings, repo_root=REPO_ROOT) or baseline_findings.as_posix(),
+            current_label="findings.json",
+        )
+
+    findings_schema = finding_collection.schema_metadata
 
     tool_statuses = {
         "ruff": _make_tool_status(
@@ -887,6 +660,58 @@ def _run_pipeline(
             finding_count=len(bandit_report.get("findings", [])),
             detail=("skipped by profile" if bandit_report.get("skipped") else f"{len(bandit_report.get('findings', []))} findings"),
         ),
+        "corpus": _make_tool_status(
+            status=(
+                "skipped"
+                if corpus_results_report is None
+                else "fail"
+                if corpus_results_report["summary"]["failed_count"] > 0
+                else "pass"
+            ),
+            report=None if corpus_results_report is None else CORPUS_RESULTS_FILENAME,
+            raw_exit_code=None,
+            normalized_exit_code=(
+                None
+                if corpus_results_report is None
+                else 1
+                if corpus_results_report["summary"]["failed_count"] > 0
+                else 0
+            ),
+            finding_count=(
+                0 if corpus_results_report is None else corpus_results_report["summary"]["failed_count"]
+            ),
+            detail=(
+                "skipped because no manifest directory was provided"
+                if corpus_results_report is None
+                else f"{corpus_results_report['summary']['case_count']} cases, {corpus_results_report['summary']['failed_count']} failed"
+            ),
+        ),
+        "rule_metadata": _make_tool_status(
+            status=(
+                "skipped"
+                if not run_structural_reports
+                else "fail"
+                if phase2_rule_metadata_gate["status"] == "fail"
+                else "pass"
+            ),
+            report=None if not run_structural_reports else "architecture.json",
+            raw_exit_code=None,
+            normalized_exit_code=(
+                None
+                if not run_structural_reports
+                else 1
+                if phase2_rule_metadata_gate["status"] == "fail"
+                else 0
+            ),
+            finding_count=len(phase2_rule_metadata_gate["blocking_rule_ids"]),
+            detail=(
+                "skipped by profile"
+                if not run_structural_reports
+                else f"{len(phase2_rule_metadata_gate['blocking_rule_ids'])} rules missing enforced metadata"
+                if phase2_rule_metadata_gate["status"] == "fail"
+                else None
+            ),
+        ),
     }
     overall_status = _overall_status(tool_statuses)
     failing_tools = [name for name, payload in tool_statuses.items() if payload["status"] == "fail"]
@@ -894,54 +719,63 @@ def _run_pipeline(
         name for name, payload in tool_statuses.items() if payload["status"] == "pass_with_notes"
     ]
 
-    reports = {
-        "status": "status.json",
-        "summary": "summary.json",
-        "environment": "environment.json",
-        "ruff": "ruff.json",
-        "mypy": "mypy.json",
-        "pytest": "pytest.json",
-        "architecture": None if not run_structural_reports else "architecture.json",
-        "analyzer_registry": None if not run_structural_reports else "analyzer_registry.json",
-        "dependency_graph": None if not run_structural_reports else "dependency_graph.json",
-        "call_graph": None if not run_structural_reports else "call_graph.json",
-        "impact_analysis": None if not run_structural_reports else "impact_analysis.json",
-        "vulture": None if not run_vulture else "vulture.json",
-        "bandit": None if not run_bandit else "bandit.json",
-        "trace": None if trace_report is None else "trace.json",
-    }
+    reports = artifact_reports_map(
+        PIPELINE_ARTIFACTS,
+        profile=profile,
+        enabled_artifact_ids=enabled_artifacts,
+    )
 
-    status_report = {
-        "kind": "sattlint.pipeline.status",
-        "profile": profile,
-        "overall_status": overall_status,
-        "canonical_command": f"sattlint-analysis-pipeline --profile {profile} --output-dir {sanitized_output_dir}",
-        "status_report": f"{sanitized_output_dir}/status.json",
-        "summary_report": f"{sanitized_output_dir}/summary.json",
-        "tool_statuses": tool_statuses,
-        "failing_tools": failing_tools,
-        "non_blocking_tools": non_blocking_tools,
-    }
-    _write_json(output_dir / "status.json", status_report)
+    status_report = build_pipeline_status_report(
+        profile=profile,
+        sanitized_output_dir=sanitized_output_dir,
+        overall_status_value=overall_status,
+        tool_statuses=tool_statuses,
+        failing_tools=failing_tools,
+        non_blocking_tools=non_blocking_tools,
+        findings_schema=findings_schema,
+    )
 
-    summary = {
-        "output_dir": sanitized_output_dir,
-        "profile": profile,
-        "entry_report": "status.json",
-        "canonical_command": f"sattlint-analysis-pipeline --profile {profile} --output-dir {sanitized_output_dir}",
-        "reports": reports,
-        "status": {
-            "overall_status": overall_status,
-            "tool_statuses": tool_statuses,
-            "failing_tools": failing_tools,
-            "non_blocking_tools": non_blocking_tools,
-            "ruff_exit_code": ruff_report["exit_code"],
-            "mypy_exit_code": mypy_report["effective_exit_code"],
-            "pytest_exit_code": pytest_report["exit_code"],
-            "vulture_exit_code": vulture_report.get("exit_code"),
-            "bandit_exit_code": bandit_report.get("exit_code"),
+    summary = build_pipeline_summary_report(
+        profile=profile,
+        sanitized_output_dir=sanitized_output_dir,
+        reports=reports,
+        overall_status_value=overall_status,
+        tool_statuses=tool_statuses,
+        failing_tools=failing_tools,
+        non_blocking_tools=non_blocking_tools,
+        tool_exit_codes={
+            "ruff": ruff_report["exit_code"],
+            "mypy": mypy_report["effective_exit_code"],
+            "pytest": pytest_report["exit_code"],
+            "vulture": vulture_report.get("exit_code"),
+            "bandit": bandit_report.get("exit_code"),
+            "corpus": (
+                None
+                if corpus_results_report is None
+                else 1
+                if corpus_results_report["summary"]["failed_count"] > 0
+                else 0
+            ),
+            "rule_metadata": (
+                None
+                if not run_structural_reports
+                else 1
+                if phase2_rule_metadata_gate["status"] == "fail"
+                else 0
+            ),
         },
-        "counts": {
+        artifact_registry_report=artifact_registry_report,
+        findings_schema=findings_schema,
+        counts={
+            "baseline_new_findings": 0 if analysis_diff_report is None else analysis_diff_report["summary"]["new_count"],
+            "baseline_resolved_findings": 0 if analysis_diff_report is None else analysis_diff_report["summary"]["resolved_count"],
+            "baseline_changed_findings": 0 if analysis_diff_report is None else analysis_diff_report["summary"]["changed_count"],
+            "baseline_unchanged_findings": 0 if analysis_diff_report is None else analysis_diff_report["summary"]["unchanged_count"],
+            "normalized_findings": len(finding_collection.findings),
+            "corpus_case_count": 0 if corpus_results_report is None else corpus_results_report["summary"]["case_count"],
+            "corpus_passed_case_count": 0 if corpus_results_report is None else corpus_results_report["summary"]["passed_count"],
+            "corpus_failed_case_count": 0 if corpus_results_report is None else corpus_results_report["summary"]["failed_count"],
+            "corpus_execution_error_count": 0 if corpus_results_report is None else corpus_results_report["summary"]["execution_error_count"],
             "ruff_findings": ruff_report.get("finding_count", 0),
             "mypy_errors": mypy_report.get("error_count", 0),
             "mypy_notes": mypy_report.get("note_count", 0),
@@ -951,17 +785,49 @@ def _run_pipeline(
             "bandit_findings": len(bandit_report.get("findings", [])),
             "architecture_findings": len(architecture_report["findings"]),
             "semantic_rule_count": len(analyzer_registry_report["rules"]),
+            "phase2_rule_metadata_blocking_gaps": len(phase2_rule_metadata_gate["blocking_rule_ids"]),
+            "phase2_rule_metadata_advisory_gaps": len(phase2_rule_metadata_gate["advisory_rule_ids"]),
             "dependency_graph_edges": len(dependency_graph_report["edges"]),
             "call_graph_edges": len(call_graph_report["edges"]),
             "impact_analysis_library_nodes": len(impact_analysis_report["library_impacts"]),
             "impact_analysis_module_nodes": len(impact_analysis_report["module_impacts"]),
-            "workspace_graph_snapshot_failures": 0 if workspace_graph_inputs is None else len(workspace_graph_inputs[2]),
+            "workspace_graph_snapshot_failures": 0 if workspace_graph_inputs is None else len(workspace_graph_inputs.snapshot_failures),
             "trace_dataflow_issues": 0 if trace_report is None else trace_report.get("dataflow_analysis", {}).get("issue_count", 0),
             "trace_unreachable_logic": 0 if trace_report is None else len(trace_report.get("heuristics", {}).get("unreachable_logic", [])),
             "trace_transform_violations": 0 if trace_report is None else len(trace_report.get("heuristics", {}).get("transform_invariant_violations", [])),
         },
-    }
-    _write_json(output_dir / "summary.json", summary)
+    )
+
+    artifact_context = PipelineArtifactContext(
+        payloads={
+            "artifact_registry": artifact_registry_report,
+            "environment": environment_report,
+            "ruff": ruff_report,
+            "mypy": mypy_report,
+            "pytest": pytest_report,
+            "vulture": None if vulture_report.get("skipped") else vulture_report,
+            "bandit": None if bandit_report.get("skipped") else bandit_report,
+            "architecture": None if architecture_report.get("skipped") else architecture_report,
+            "analyzer_registry": None if analyzer_registry_report.get("skipped") else analyzer_registry_report,
+            "dependency_graph": None if dependency_graph_report.get("skipped") else dependency_graph_report,
+            "call_graph": None if call_graph_report.get("skipped") else call_graph_report,
+            "impact_analysis": None if impact_analysis_report.get("skipped") else impact_analysis_report,
+            "trace": trace_report,
+            "findings": finding_collection.to_dict(),
+            "analysis_diff": analysis_diff_report,
+            "corpus_results": corpus_results_report,
+            "status": status_report,
+            "summary": summary,
+        }
+    )
+    write_pipeline_artifacts(
+        output_dir,
+        artifacts=PIPELINE_ARTIFACTS,
+        profile=profile,
+        enabled_artifact_ids=enabled_artifacts,
+        context=artifact_context,
+        write_json=_write_json,
+    )
     return summary
 
 
@@ -983,25 +849,56 @@ def main(argv: list[str] | None = None) -> int:
         default=str(DEFAULT_TRACE_TARGET) if DEFAULT_TRACE_TARGET.exists() else "",
         help="Optional SattLine source fixture to trace into trace.json",
     )
+    parser.add_argument(
+        "--baseline-findings",
+        default="",
+        help="Optional normalized findings.json file used to emit analysis_diff.json",
+    )
+    parser.add_argument(
+        "--corpus-manifest-dir",
+        default="",
+        help="Optional directory of corpus manifests used to emit corpus_results.json",
+    )
     parser.add_argument("--skip-vulture", action="store_true", help="Skip the Vulture dead-code scan")
     parser.add_argument("--skip-bandit", action="store_true", help="Skip the Bandit security scan")
     args = parser.parse_args(argv)
 
     trace_target = Path(args.trace_target).resolve() if args.trace_target else None
+    baseline_findings = Path(args.baseline_findings).resolve() if args.baseline_findings else None
+    corpus_manifest_dir = Path(args.corpus_manifest_dir).resolve() if args.corpus_manifest_dir else None
     summary = _run_pipeline(
         Path(args.output_dir).resolve(),
         trace_target=trace_target,
         profile=args.profile,
         include_vulture=False if args.skip_vulture else None,
         include_bandit=False if args.skip_bandit else None,
+        baseline_findings=baseline_findings,
+        corpus_manifest_dir=corpus_manifest_dir,
     )
     _print_cli_summary(
         {
             "profile": summary["profile"],
             "overall_status": summary["status"]["overall_status"],
             "tool_statuses": summary["status"]["tool_statuses"],
+            "findings_schema": summary.get("findings_schema"),
             "status_report": f"{summary['output_dir']}/status.json",
             "summary_report": f"{summary['output_dir']}/summary.json",
+            "corpus_results_report": (
+                None
+                if summary["reports"].get("corpus_results") is None
+                else f"{summary['output_dir']}/corpus_results.json"
+            ),
+            "analysis_diff_report": (
+                None
+                if summary["reports"].get("analysis_diff") is None
+                else f"{summary['output_dir']}/analysis_diff.json"
+            ),
+            "analysis_diff_summary": {
+                "new_count": summary["counts"]["baseline_new_findings"],
+                "resolved_count": summary["counts"]["baseline_resolved_findings"],
+                "changed_count": summary["counts"]["baseline_changed_findings"],
+                "unchanged_count": summary["counts"]["baseline_unchanged_findings"],
+            },
         }
     )
     return 1 if summary["status"]["overall_status"] == "fail" else 0

@@ -14,7 +14,7 @@ from sattline_parser.transformer.sl_transformer import SLTransformer
 from sattline_parser.utils.text_processing import strip_sl_comments
 from sattlint.core.ast_tools import iter_variable_refs
 from sattlint.core.document import LineIndex
-from sattlint.core.semantic import SemanticSnapshot, build_source_snapshot_from_basepicture
+from sattlint.editor_api import SemanticSnapshot, build_source_snapshot_from_basepicture
 from sattlint.models.ast_model import (
     BasePicture,
     FrameModule,

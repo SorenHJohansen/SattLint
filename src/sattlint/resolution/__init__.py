@@ -4,6 +4,7 @@ from .paths import CanonicalPath, ModuleSegment, decorate_segment
 from .type_graph import TypeGraph
 from .symbol_table import CanonicalSymbolTable, SymbolDef, SymbolKind
 from .access_graph import AccessGraph, AccessEvent, AccessKind
+from .context_builder import ContextBuilder
 
 __all__ = [
     "CanonicalPath",
@@ -16,4 +17,5 @@ __all__ = [
     "AccessGraph",
     "AccessEvent",
     "AccessKind",
+    "ContextBuilder",
 ]

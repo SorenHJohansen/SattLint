@@ -293,6 +293,41 @@ log = logging.getLogger("SattLint")
 # ----------------------------
 # Helpers
 # ----------------------------
+def _configure_windows_console_api(kernel32, coord_type, buffer_info_type):
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32.GetStdHandle.argtypes = [wintypes.DWORD]
+    kernel32.GetStdHandle.restype = wintypes.HANDLE
+
+    kernel32.GetConsoleScreenBufferInfo.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(buffer_info_type),
+    ]
+    kernel32.GetConsoleScreenBufferInfo.restype = wintypes.BOOL
+
+    kernel32.FillConsoleOutputCharacterW.argtypes = [
+        wintypes.HANDLE,
+        wintypes.WCHAR,
+        wintypes.DWORD,
+        coord_type,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel32.FillConsoleOutputCharacterW.restype = wintypes.BOOL
+
+    kernel32.FillConsoleOutputAttribute.argtypes = [
+        wintypes.HANDLE,
+        wintypes.WORD,
+        wintypes.DWORD,
+        coord_type,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel32.FillConsoleOutputAttribute.restype = wintypes.BOOL
+
+    kernel32.SetConsoleCursorPosition.argtypes = [wintypes.HANDLE, coord_type]
+    kernel32.SetConsoleCursorPosition.restype = wintypes.BOOL
+
+
 def _clear_windows_console() -> None:
     import ctypes
     from ctypes import wintypes
@@ -318,9 +353,12 @@ def _clear_windows_console() -> None:
         ]
 
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    stdout_handle = kernel32.GetStdHandle(-11)
+    _configure_windows_console_api(kernel32, _Coord, _ConsoleScreenBufferInfo)
+
+    std_output_handle = wintypes.DWORD(-11).value
+    stdout_handle = kernel32.GetStdHandle(std_output_handle)
     invalid_handle = ctypes.c_void_p(-1).value
-    if stdout_handle in (0, invalid_handle):
+    if stdout_handle in (None, 0, invalid_handle):
         raise OSError("unable to access stdout console handle")
 
     buffer_info = _ConsoleScreenBufferInfo()
@@ -358,7 +396,8 @@ def clear_screen():
             _clear_windows_console()
             return
         except OSError:
-            pass
+            if os.system("cls") == 0:
+                return
 
     sys.stdout.write("\033[2J\033[H")
     sys.stdout.flush()
@@ -424,6 +463,10 @@ def _format_syntax_error(result: engine_module.SyntaxValidationResult) -> str:
     return f"ERROR [{result.stage}] {result.file_path}{location}: {detail}"
 
 
+def _format_syntax_warning(file_path: Path, message: str) -> str:
+    return f"WARNING [validation] {file_path}: {message}"
+
+
 def run_syntax_check_command(file_path: str) -> int:
     target_path = Path(file_path)
     if not target_path.exists() or not target_path.is_file():
@@ -432,6 +475,8 @@ def run_syntax_check_command(file_path: str) -> int:
 
     result = engine_module.validate_single_file_syntax(target_path)
     if result.ok:
+        for warning in result.warnings:
+            print(_format_syntax_warning(result.file_path, warning), file=sys.stderr)
         print("OK")
         return 0
 
@@ -909,6 +954,7 @@ def load_project(
     target_name: str | None = None,
     *,
     use_cache: bool = True,
+    use_file_ast_cache: bool = True,
 ) -> tuple[BasePicture, ProjectGraph]:
     targets = _require_analyzed_targets(cfg)
     selected_target = target_name or targets[0]
@@ -929,6 +975,7 @@ def load_project(
         mode=engine_module.CodeMode(cfg["mode"]),
         scan_root_only=cfg["scan_root_only"],
         debug=cfg["debug"],
+        use_file_ast_cache=use_file_ast_cache,
     )
 
     graph = loader.resolve(selected_target, strict=False)
@@ -995,7 +1042,12 @@ def force_refresh_ast(cfg: dict):
     result = None
     for target_name in targets:
         cache.clear(_cache_key_for_target(cfg, target_name))
-        result = load_project(cfg, target_name=target_name, use_cache=False)
+        result = load_project(
+            cfg,
+            target_name=target_name,
+            use_cache=False,
+            use_file_ast_cache=False,
+        )
     log.debug("✔ AST caches cleared")
     return result
 

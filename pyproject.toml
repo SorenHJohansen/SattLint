@@ -82,6 +82,7 @@ markers = [
 sattlint = "sattlint.app:cli"
 sattlint-lsp = "sattlint_lsp.server:cli"
 sattlint-analysis-pipeline = "sattlint.devtools.pipeline:main"
+sattlint-corpus-runner = "sattlint.devtools.corpus:main"
 sattlint-repo-audit = "sattlint.devtools.repo_audit:main"
 sattlint-trace = "sattlint.tracing:cli"
 

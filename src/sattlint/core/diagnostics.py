@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ..analyzers.variables import VariablesAnalyzer
-from ..models.ast_model import BasePicture
 from ..reporting.variables_report import IssueKind, VariableIssue
 
 
@@ -202,18 +200,3 @@ def project_variable_issues_by_file(
     }
 
 
-def collect_project_variable_diagnostics(
-    base_picture: BasePicture,
-    unavailable_libraries: set[str],
-    *,
-    debug: bool,
-    definitions_by_key: dict[tuple[str, ...], Any],
-) -> tuple[tuple[VariableIssue, ...], dict[str, tuple[SemanticDiagnostic, ...]]]:
-    analyzer = VariablesAnalyzer(
-        base_picture,
-        debug=debug,
-        fail_loudly=False,
-        unavailable_libraries=unavailable_libraries,
-    )
-    diagnostics = tuple(analyzer.run())
-    return diagnostics, project_variable_issues_by_file(diagnostics, definitions_by_key)

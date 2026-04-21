@@ -9,6 +9,7 @@ from sattline_parser import strip_sl_comments
 from sattlint import constants as const
 from sattlint.engine import (
 	StructuralValidationError,
+	_load_source_text,
 	create_sl_parser,
 	parse_source_file,
 	validate_transformed_basepicture,
@@ -22,6 +23,10 @@ def _parse_to_basepicture(text: str):
 	parser = create_sl_parser()
 	tree = parser.parse(strip_sl_comments(text))
 	return SLTransformer().transform(tree)
+
+
+def _repo_path(*parts: str) -> Path:
+	return Path(__file__).resolve().parents[1].joinpath(*parts)
 
 
 def test_ternary_if_has_lowest_precedence():
@@ -562,6 +567,40 @@ ENDDEF (*BasePicture*);
 	assert "without an intervening transition" in result.message
 
 
+def test_validate_single_file_syntax_warns_for_legacy_sequence_without_leading_initstep(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	SEQUENCE DeleteListContent COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+		SEQSTEP PutArray
+		SEQTRANSITION WAIT_FOR True
+		SEQSTEP ExtraScan
+		ALTERNATIVESEQ
+			SEQTRANSITION WAIT_FOR DeleteLineNumber <= ArrayLength
+		ALTERNATIVEBRANCH
+			SEQTRANSITION WAIT_FOR DeleteLineNumber > ArrayLength
+			SEQINITSTEP standBy
+			SEQTRANSITION WAIT_FOR DeleteListContent
+		ENDALTERNATIVE
+	ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "LegacySequenceWarning.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
+	assert any("must start with exactly one SEQINITSTEP" in warning for warning in result.warnings)
+	assert any("outside the first position" in warning for warning in result.warnings)
+
+
 def test_validate_transformed_basepicture_rejects_long_identifier():
 	bp = BasePicture(
 		header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
@@ -646,6 +685,196 @@ ENDDEF (*BasePicture*);
 	assert result.message is not None
 	assert "has init value 'bad'" in result.message
 	assert "declared datatype is 'integer'" in result.message
+
+
+def test_validate_single_file_syntax_accepts_duration_value_init_literals(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	Dur5min: Duration OpSave := Duration_Value "0d0h5m0s0ms";
+	DurMinus5min: Duration := Duration_Value "-0d0h5m0s0ms";
+	Dur1Hour: Duration := "1h";
+	Dur4Min: Duration := "4m";
+	DurCombo: Duration := "7m6s123ms";
+	DurFractionalSeconds: Duration := "5d5h3m6.5s";
+	DurPlainSeconds: Duration := "12.345";
+	DurZero: Duration := "0";
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "DurationInitOk.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_accepts_duration_shaped_string_init_for_string_datatype(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	DurationText: String := "1h";
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "DurationStringValueOk.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_rejects_invalid_bare_duration_string(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	DurBad: Duration := "bad";
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "DurationInitMissingKeyword.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is False
+	assert result.stage == "validation"
+	assert result.line == 7
+	assert result.message is not None
+	assert "has init value 'bad'" in result.message
+	assert "declared datatype is 'duration'" in result.message
+
+
+def test_validate_single_file_syntax_rejects_invalid_duration_value_literal(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	DurBad: Duration := Duration_Value "bad";
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "DurationInitInvalidKeywordLiteral.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is False
+	assert result.stage == "validation"
+	assert result.line == 7
+	assert result.message is not None
+	assert "invalid duration literal 'bad'" in result.message
+
+
+def test_validate_single_file_syntax_accepts_bare_time_init_literals(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	StartTime: Time := "1984-01-01-00:00:00.000";
+	StopTime: Time := "2099-01-01-00:00:00.000";
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "TimeInitOk.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_accepts_time_shaped_string_init_for_string_datatype(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	TimeText: String := "1984-01-01-00:00:00.000";
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "TimeStringValueOk.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_rejects_invalid_bare_time_string(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	BadTime: Time := "bad";
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "TimeInitInvalidBare.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is False
+	assert result.stage == "validation"
+	assert result.line == 7
+	assert result.message is not None
+	assert "has init value 'bad'" in result.message
+	assert "declared datatype is 'time'" in result.message
+
+
+def test_validate_single_file_syntax_rejects_invalid_time_value_literal(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+	BadTime: Time := Time_Value "bad";
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "TimeInitInvalidKeywordLiteral.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is False
+	assert result.stage == "validation"
+	assert result.line == 7
+	assert result.message is not None
+	assert "invalid time literal 'bad'" in result.message
 
 
 def test_validate_single_file_syntax_rejects_const_write(tmp_path):
@@ -872,6 +1101,42 @@ ENDDEF (*BasePicture*);
 	)
 
 
+def test_validate_transformed_basepicture_workspace_mode_warns_incompatible_parameter_mapping():
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+	ChildType = MODULEDEFINITION DateCode_ 2
+	MODULEPARAMETERS
+		Value: integer;
+	ModuleDef
+	ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+	ENDDEF (*ChildType*);
+LOCALVARIABLES
+	Flag: boolean := False;
+SUBMODULES
+	Child Invocation (0.0,0.0,0.0,1.0,1.0) : ChildType (
+		Value => Flag
+	);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+	bp = _parse_to_basepicture(code)
+	warnings: list[str] = []
+
+	validate_transformed_basepicture(
+		bp,
+		warn_incompatible_parameter_mappings=True,
+		warning_sink=warnings.append,
+	)
+
+	assert len(warnings) == 1
+	assert "maps 'Flag' with datatype 'boolean' to parameter target 'Value' with datatype 'integer'" in warnings[0]
+
+
 def test_validate_single_file_syntax_rejects_duplicate_parameter_mapping_targets(tmp_path):
 	code = """
 "SyntaxVersion"
@@ -1083,6 +1348,169 @@ ENDDEF (*BasePicture*);
 	assert result.stage == "validation"
 	assert result.message is not None
 	assert "uses OLD on non-STATE variable 'Counter'" in result.message
+
+
+def test_validate_single_file_syntax_accepts_old_on_state_record_field(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+	CmdType = RECORD DateCode_ 1
+		WaterPipeFull: boolean State;
+		Other: boolean;
+	ENDDEF (*CmdType*);
+LOCALVARIABLES
+	CMD: CmdType;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+		IF CMD.WaterPipeFull:Old THEN
+			CMD.Other = True;
+		ENDIF;
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "OldOnStateRecordField.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is True
+	assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_rejects_old_on_non_state_record_field(tmp_path):
+	code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+	CmdType = RECORD DateCode_ 1
+		WaterPipeFull: boolean State;
+		Other: boolean;
+	ENDDEF (*CmdType*);
+LOCALVARIABLES
+	CMD: CmdType;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+		IF CMD.Other:Old THEN
+			CMD.Other = True;
+		ENDIF;
+ENDDEF (*BasePicture*);
+"""
+	source_file = tmp_path / "OldOnNonStateRecordField.s"
+	source_file.write_text(code, encoding="utf-8")
+
+	result = validate_single_file_syntax(source_file)
+
+	assert result.ok is False
+	assert result.stage == "validation"
+	assert result.message is not None
+	assert "uses OLD on non-STATE variable 'CMD.Other'" in result.message
+
+
+def test_load_source_text_preserves_state_markers_in_compressed_libraries():
+	cases = [
+		("SupportLib.x", "GetRemoteFile", "ExecuteLocal"),
+		("NSupportLib.x", "zRestoreStringList", "ExecuteState"),
+		("EventLib.x", "EventLogger2", "CurrentEventFinished"),
+		("MmsVarLib.x", "MMSWriteVar", "Rdy"),
+		("ReportLib.x", "ReportGeneralTable", "Ready"),
+	]
+
+	for file_name, moduletype_name, variable_name in cases:
+		source_path = _repo_path("Libs", "HA", "ABBLib", file_name)
+		src = _load_source_text(source_path)
+		basepicture = parser_core_parse_source_text(src)
+		moduletype = next(
+			(
+				item
+				for item in (basepicture.moduletype_defs or [])
+				if item.name.casefold() == moduletype_name.casefold()
+			),
+			None,
+		)
+
+		assert moduletype is not None, f"missing moduletype {moduletype_name} in {file_name}"
+
+		variable = next(
+			(
+				item
+				for item in [*(moduletype.moduleparameters or []), *(moduletype.localvariables or [])]
+				if item.name.casefold() == variable_name.casefold()
+			),
+			None,
+		)
+
+		assert variable is not None, f"missing variable {variable_name} in {file_name}"
+		assert variable.state is True, f"expected {file_name}:{moduletype_name}.{variable_name} to decode as State"
+
+
+def test_load_source_text_preserves_duration_value_in_compressed_libraries():
+	journal_path = _repo_path("Libs", "HA", "ABBLib", "JournalLib.x")
+	journal_src = _load_source_text(journal_path)
+	assert 'Duration_Value "1h"' in journal_src
+	assert 'Time_Value "1984-01-01-00:00:00.000"' in journal_src
+
+	journal_basepicture = parser_core_parse_source_text(journal_src)
+	curve_type = next(
+		(
+			item
+			for item in (journal_basepicture.datatype_defs or [])
+			if item.name.casefold() == "Curve4Par".casefold()
+		),
+		None,
+	)
+	assert curve_type is not None
+
+	field = next(
+		(item for item in (curve_type.var_list or []) if item.name.casefold() == "TimeRange".casefold()),
+		None,
+	)
+	assert field is not None
+	assert field.init_value == "1h"
+	assert field.init_is_duration is True
+
+	jou_read_tag_type = next(
+		(
+			item
+			for item in (journal_basepicture.datatype_defs or [])
+			if item.name.casefold() == "JouReadTagType".casefold()
+		),
+		None,
+	)
+	assert jou_read_tag_type is not None
+
+	start_time = next(
+		(item for item in (jou_read_tag_type.var_list or []) if item.name.casefold() == "StartTime".casefold()),
+		None,
+	)
+	assert start_time is not None
+	assert isinstance(start_time.init_value, dict)
+	assert start_time.init_value.get("Time_Value") == "1984-01-01-00:00:00.000"
+
+	event_path = _repo_path("Libs", "HA", "ABBLib", "EventLib.x")
+	event_src = _load_source_text(event_path)
+	assert 'Duration_Value "590ms"' in event_src
+
+
+def test_validate_single_file_syntax_accepts_reported_compressed_library_files():
+	for file_name in [
+		"SupportLib.x",
+		"NSupportLib.x",
+		"JournalLib.x",
+		"EventLib.x",
+		"MmsVarLib.x",
+		"ReportLib.x",
+		"SLIoUnitLib.x",
+	]:
+		result = validate_single_file_syntax(_repo_path("Libs", "HA", "ABBLib", file_name))
+		assert result.ok is True, f"{file_name}: {result.stage} {result.message}"
 
 
 def test_validate_single_file_syntax_rejects_string_literal_in_call_argument(tmp_path):

@@ -7,11 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, cast
 
-from ..analyzers.variables import VariablesAnalyzer
-from ..analyzers.context_builder import ContextBuilder
 from ..call_signatures import CallSignatureOccurrence, resolve_call_signature
 from .ast_tools import iter_call_sites, iter_variable_refs
-from .diagnostics import SemanticDiagnostic, collect_project_variable_diagnostics
+from .diagnostics import SemanticDiagnostic
 from .safety_paths import (
     DEFAULT_SAFETY_SIGNAL_KEYWORDS,
     SafetyPathTrace,
@@ -41,7 +39,7 @@ from ..models.ast_model import (
 from ..models.project_graph import ProjectGraph
 from ..reporting.variables_report import VariableIssue
 from ..resolution.access_graph import AccessEvent
-from ..resolution import CanonicalPath, CanonicalSymbolTable, SymbolKind, TypeGraph, decorate_segment
+from ..resolution import CanonicalPath, CanonicalSymbolTable, ContextBuilder, SymbolKind, TypeGraph, decorate_segment
 from ..resolution.common import resolve_moduletype_def_strict, resolve_module_by_strict_path
 from ..resolution.scope import ScopeContext
 from sattline_parser import parse_source_text as parser_core_parse_source_text
@@ -455,6 +453,27 @@ class CompletionItem:
     kind: str
     detail: str | None = None
     declaration_module_path: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticAnalysisArtifacts:
+    diagnostics: tuple[VariableIssue, ...] = ()
+    accesses_by_definition_key: dict[tuple[str, ...], tuple[AccessEvent, ...]] = field(
+        default_factory=dict
+    )
+    effect_flow_edges: dict[tuple[str, ...], tuple[tuple[str, ...], ...]] = field(
+        default_factory=dict
+    )
+    effect_flow_display_names: dict[tuple[str, ...], str] = field(default_factory=dict)
+    semantic_diagnostics_by_file: dict[str, tuple[SemanticDiagnostic, ...]] = field(
+        default_factory=dict
+    )
+
+
+SemanticAnalysisProvider = Callable[
+    [BasePicture, ProjectGraph, bool, bool, dict[tuple[str, ...], "SymbolDefinition"]],
+    SemanticAnalysisArtifacts,
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1493,6 +1512,7 @@ def _build_semantic_snapshot(
     project_graph: ProjectGraph,
     collect_variable_diagnostics: bool,
     debug: bool,
+    analysis_provider: SemanticAnalysisProvider | None = None,
 ) -> SemanticSnapshot:
     builder = _SemanticIndexBuilder(
         base_picture,
@@ -1520,29 +1540,14 @@ def _build_semantic_snapshot(
     references_by_definition_key = builder_result[6]
     call_signatures = builder_result[7]
 
-    usage_analyzer = VariablesAnalyzer(
-        base_picture,
-        debug=debug,
-        fail_loudly=False,
-        unavailable_libraries=project_graph.unavailable_libraries,
-        include_dependency_moduletype_usage=True,
-    )
-    usage_analyzer.run()
-    accesses_by_definition_key = {
-        key: tuple(events)
-        for key, events in usage_analyzer.access_graph.by_path_key.items()
-    }
-    effect_flow_edges = usage_analyzer.effect_flow_edges
-    effect_flow_display_names = usage_analyzer.effect_flow_display_names
-
-    diagnostics: tuple[VariableIssue, ...] = ()
-    semantic_diagnostics_by_file: dict[str, tuple[SemanticDiagnostic, ...]] = {}
-    if collect_variable_diagnostics:
-        diagnostics, semantic_diagnostics_by_file = collect_project_variable_diagnostics(
+    analysis = SemanticAnalysisArtifacts()
+    if analysis_provider is not None:
+        analysis = analysis_provider(
             base_picture,
-            unavailable_libraries=project_graph.unavailable_libraries,
-            debug=debug,
-            definitions_by_key=definitions_by_key,
+            project_graph,
+            collect_variable_diagnostics,
+            debug,
+            definitions_by_key,
         )
 
     return SemanticSnapshot(
@@ -1554,16 +1559,16 @@ def _build_semantic_snapshot(
         symbol_table=symbol_table,
         type_graph=type_graph,
         definitions=definitions,
-        diagnostics=diagnostics,
+        diagnostics=analysis.diagnostics,
         call_signatures=call_signatures,
         _definitions_by_key=definitions_by_key,
         _moduletype_index=moduletype_index,
         _references_by_file=references_by_file,
         _references_by_definition_key=references_by_definition_key,
-        _accesses_by_definition_key=accesses_by_definition_key,
-        _effect_flow_edges=effect_flow_edges,
-        _effect_flow_display_names=effect_flow_display_names,
-        _semantic_diagnostics_by_file=semantic_diagnostics_by_file,
+        _accesses_by_definition_key=analysis.accesses_by_definition_key,
+        _effect_flow_edges=analysis.effect_flow_edges,
+        _effect_flow_display_names=analysis.effect_flow_display_names,
+        _semantic_diagnostics_by_file=analysis.semantic_diagnostics_by_file,
     )
 
 
@@ -1574,6 +1579,7 @@ def load_source_snapshot(
     workspace_root: Path | None = None,
     collect_variable_diagnostics: bool = False,
     debug: bool = False,
+    _analysis_provider: SemanticAnalysisProvider | None = None,
 ) -> SemanticSnapshot:
     base_picture = parser_core_parse_source_text(source_text, debug=(print if debug else None))
     return build_source_snapshot_from_basepicture(
@@ -1582,6 +1588,7 @@ def load_source_snapshot(
         workspace_root=workspace_root,
         collect_variable_diagnostics=collect_variable_diagnostics,
         debug=debug,
+        _analysis_provider=_analysis_provider,
     )
 
 
@@ -1592,6 +1599,7 @@ def build_source_snapshot_from_basepicture(
     workspace_root: Path | None = None,
     collect_variable_diagnostics: bool = False,
     debug: bool = False,
+    _analysis_provider: SemanticAnalysisProvider | None = None,
 ) -> SemanticSnapshot:
     entry_path = Path(source_file).resolve()
     root = Path(workspace_root).resolve() if workspace_root else entry_path.parent
@@ -1612,6 +1620,7 @@ def build_source_snapshot_from_basepicture(
         project_graph=project_graph,
         collect_variable_diagnostics=collect_variable_diagnostics,
         debug=debug,
+        analysis_provider=_analysis_provider,
     )
 
 
@@ -1626,6 +1635,7 @@ def load_workspace_snapshot(
     scan_root_only: bool = False,
     debug: bool = False,
     collect_variable_diagnostics: bool = True,
+    _analysis_provider: SemanticAnalysisProvider | None = None,
 ) -> SemanticSnapshot:
     entry_path = Path(entry_file).resolve()
     if not entry_path.exists():
@@ -1682,6 +1692,7 @@ def load_workspace_snapshot(
         project_graph=graph,
         collect_variable_diagnostics=collect_variable_diagnostics,
         debug=debug,
+        analysis_provider=_analysis_provider,
     )
 
 

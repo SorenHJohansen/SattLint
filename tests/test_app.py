@@ -2,6 +2,7 @@
 
 import builtins
 from copy import deepcopy
+import ctypes
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -233,6 +234,7 @@ def test_clear_screen_falls_back_to_ansi_when_windows_clear_fails(monkeypatch):
         raise OSError("clear failed")
 
     monkeypatch.setattr(app.os, "name", "nt")
+    monkeypatch.setattr(app.os, "system", lambda _command: 1)
     monkeypatch.setattr(app, "_clear_windows_console", _raise_os_error)
     monkeypatch.setattr(
         app.sys,
@@ -243,6 +245,59 @@ def test_clear_screen_falls_back_to_ansi_when_windows_clear_fails(monkeypatch):
     app.clear_screen()
 
     assert writes == ["\033[2J\033[H"]
+
+
+def test_clear_screen_falls_back_to_cls_before_ansi(monkeypatch):
+    writes: list[str] = []
+    calls: list[str] = []
+
+    def _raise_os_error() -> None:
+        raise OSError("clear failed")
+
+    monkeypatch.setattr(app.os, "name", "nt")
+    monkeypatch.setattr(app, "_clear_windows_console", _raise_os_error)
+    monkeypatch.setattr(
+        app.os,
+        "system",
+        lambda command: calls.append(command) or 0,
+    )
+    monkeypatch.setattr(
+        app.sys,
+        "stdout",
+        SimpleNamespace(flush=lambda: None, write=lambda text: writes.append(text)),
+    )
+
+    app.clear_screen()
+
+    assert calls == ["cls"]
+    assert writes == []
+
+
+def test_configure_windows_console_api_sets_wide_char_signature():
+    class _FakeCall:
+        argtypes = None
+        restype = None
+
+    class _FakeKernel32:
+        GetStdHandle = _FakeCall()
+        GetConsoleScreenBufferInfo = _FakeCall()
+        FillConsoleOutputCharacterW = _FakeCall()
+        FillConsoleOutputAttribute = _FakeCall()
+        SetConsoleCursorPosition = _FakeCall()
+
+    class _Coord(ctypes.Structure):
+        _fields_ = []
+
+    class _BufferInfo(ctypes.Structure):
+        _fields_ = []
+
+    kernel32 = _FakeKernel32()
+
+    app._configure_windows_console_api(kernel32, _Coord, _BufferInfo)
+
+    assert kernel32.FillConsoleOutputCharacterW.argtypes[1] is ctypes.wintypes.WCHAR
+    assert kernel32.FillConsoleOutputCharacterW.restype is ctypes.wintypes.BOOL
+    assert kernel32.SetConsoleCursorPosition.argtypes == [ctypes.wintypes.HANDLE, _Coord]
 
 
 def test_self_check_handles_paths(tmp_path, monkeypatch, capsys):
@@ -638,6 +693,43 @@ def test_tools_menu_all_options(noop_screen, monkeypatch):
     assert calls == ["self-check", "dump", "refresh"]
 
 
+def test_force_refresh_ast_bypasses_file_ast_cache(monkeypatch):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg["analyzed_programs_and_libraries"] = ["TargetA", "TargetB"]
+    cleared: list[str] = []
+    load_calls: list[tuple[str | None, bool, bool]] = []
+
+    class _FakeCache:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def clear(self, key: str) -> None:
+            cleared.append(key)
+
+    def fake_load_project(
+        _cfg,
+        target_name=None,
+        *,
+        use_cache=True,
+        use_file_ast_cache=True,
+    ):
+        load_calls.append((target_name, use_cache, use_file_ast_cache))
+        return ("bp", "graph")
+
+    monkeypatch.setattr(app, "ASTCache", _FakeCache)
+    monkeypatch.setattr(app, "get_cache_dir", lambda: Path("/tmp/cache"))
+    monkeypatch.setattr(app, "load_project", fake_load_project)
+
+    result = app.force_refresh_ast(cfg)
+
+    assert len(cleared) == 2
+    assert load_calls == [
+        ("TargetA", False, False),
+        ("TargetB", False, False),
+    ]
+    assert result == ("bp", "graph")
+
+
 def test_show_help_mentions_setup_and_syntax_check(noop_screen, capsys):
     cfg = deepcopy(app.DEFAULT_CONFIG)
 
@@ -755,6 +847,43 @@ def test_syntax_check_command_reports_parse_error(tmp_path, capsys):
     assert str(source_file) in captured.err
     assert "Expected one of:" in captured.err
     assert "^" in captured.err
+
+
+def test_syntax_check_command_prints_warning_for_legacy_sequence_initstep(tmp_path, capsys):
+    source_file = tmp_path / "LegacySequenceWarning.s"
+    source_file.write_text(
+        """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+	SEQUENCE DeleteListContent COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+		SEQSTEP PutArray
+		SEQTRANSITION WAIT_FOR True
+		SEQSTEP ExtraScan
+		ALTERNATIVESEQ
+			SEQTRANSITION WAIT_FOR DeleteLineNumber <= ArrayLength
+		ALTERNATIVEBRANCH
+			SEQTRANSITION WAIT_FOR DeleteLineNumber > ArrayLength
+			SEQINITSTEP standBy
+			SEQTRANSITION WAIT_FOR DeleteListContent
+		ENDALTERNATIVE
+	ENDSEQUENCE
+ENDDEF (*BasePicture*);
+""",
+        encoding="utf-8",
+    )
+
+    exit_code = app.main(["syntax-check", str(source_file)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.strip() == "OK"
+    assert "WARNING [validation]" in captured.err
+    assert "must start with exactly one SEQINITSTEP" in captured.err
 
 
 def test_syntax_check_command_rejects_missing_file(tmp_path, capsys):

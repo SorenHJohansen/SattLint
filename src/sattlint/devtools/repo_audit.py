@@ -19,6 +19,8 @@ from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
 
 from sattlint import app as app_module
 from sattlint import config as config_module
+from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
+from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS, artifact_reports_map
 from sattlint.path_sanitizer import sanitize_path_for_report
 
 from . import pipeline as pipeline_module
@@ -102,6 +104,7 @@ ALLOWED_PRINT_MODULES = {
     "src/sattlint/docgenerator/configgen.py",
     "src/sattlint/engine.py",
     "src/sattlint/tracing.py",
+    "src/sattlint/devtools/corpus.py",
     "src/sattlint/devtools/pipeline.py",
     "src/sattlint/devtools/repo_audit.py",
 }
@@ -133,6 +136,25 @@ class Finding:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def to_record(self, *, artifact: str = "findings") -> FindingRecord:
+        return FindingRecord(
+            id=self.id,
+            rule_id=self.id,
+            category=self.category,
+            severity=self.severity,
+            confidence=self.confidence,
+            message=self.message,
+            source=self.source,
+            analyzer="repo-audit",
+            artifact=artifact,
+            location=FindingLocation(path=self.path, line=self.line),
+            detail=self.detail,
+            suggestion=self.suggestion,
+            data={
+                "history_cleanup_recommended": self.history_cleanup_recommended,
+            },
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +196,22 @@ def _write_markdown(path: Path, findings: list[Finding], summary: dict[str, Any]
                 lines.append(f"  Detail: {finding.detail}")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _mirror_latest_reports(source_dir: Path, latest_output_dir: Path | None) -> None:
+    if latest_output_dir is None:
+        return
+    if source_dir.resolve() == latest_output_dir.resolve():
+        return
+    latest_output_dir.mkdir(parents=True, exist_ok=True)
+    for source_path in source_dir.rglob("*"):
+        relative_path = source_path.relative_to(source_dir)
+        target_path = latest_output_dir / relative_path
+        if source_path.is_dir():
+            target_path.mkdir(parents=True, exist_ok=True)
+            continue
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, target_path)
 
 
 def _read_text(path: Path) -> str:
@@ -873,6 +911,28 @@ def _find_public_readiness_findings(root: Path) -> list[Finding]:
 
 
 def _find_pipeline_findings(output_dir: Path) -> list[Finding]:
+    findings_path = output_dir / "findings.json"
+    if findings_path.exists():
+        payload = json.loads(findings_path.read_text(encoding="utf-8"))
+        normalized_findings: list[Finding] = []
+        for entry in payload.get("findings", []):
+            location = entry.get("location") or {}
+            normalized_findings.append(
+                Finding(
+                    id=str(entry.get("id") or entry.get("rule_id") or "pipeline-finding"),
+                    category=str(entry.get("category") or "unknown"),
+                    severity=str(entry.get("severity") or "medium"),
+                    confidence=str(entry.get("confidence") or "medium"),
+                    message=str(entry.get("message") or "Pipeline reported a finding."),
+                    path=location.get("path"),
+                    line=location.get("line"),
+                    detail=entry.get("detail"),
+                    suggestion=entry.get("suggestion"),
+                    source=str(entry.get("source") or "pipeline"),
+                )
+            )
+        return normalized_findings
+
     findings: list[Finding] = []
     vulture_path = output_dir / "vulture.json"
     if vulture_path.exists():
@@ -1024,6 +1084,13 @@ def _recommended_command(*, output_dir: str, profile: str, fail_on: str, leaks_o
 def _print_cli_summary(status_report: dict[str, Any]) -> None:
     print(f"Audit profile: {status_report['profile']}")
     print(f"Overall status: {status_report['overall_status']}")
+    findings_schema = status_report.get("findings_schema")
+    if findings_schema:
+        print(
+            "Findings schema: "
+            f"{findings_schema.get('kind', 'unknown')} "
+            f"v{findings_schema.get('schema_version', '?')}"
+        )
     print(
         "Findings: "
         f"{status_report['finding_count']} total, "
@@ -1031,6 +1098,20 @@ def _print_cli_summary(status_report: dict[str, Any]) -> None:
     )
     print(f"Status report: {status_report['status_report']}")
     print(f"Summary report: {status_report['summary_report']}")
+    latest_status_report = status_report.get("latest_status_report")
+    latest_summary_report = status_report.get("latest_summary_report")
+    if latest_status_report and latest_summary_report:
+        print(f"Latest status report: {latest_status_report}")
+        print(f"Latest summary report: {latest_summary_report}")
+
+
+def _default_corpus_manifest_dir() -> Path | None:
+    manifest_dir = pipeline_module.DEFAULT_CORPUS_MANIFEST_DIR.resolve()
+    if not manifest_dir.exists():
+        return None
+    if not any(manifest_dir.rglob("*.json")):
+        return None
+    return manifest_dir
 
 
 def audit_repository(
@@ -1044,20 +1125,28 @@ def audit_repository(
     skip_pipeline: bool,
     skip_vulture: bool,
     skip_bandit: bool,
+    latest_output_dir: Path | None = None,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     pipeline_summary: dict[str, Any] | None = None
     pipeline_findings: list[Finding] = []
     audit_profile = "leaks" if leaks_only else profile
     sanitized_output_dir = sanitize_path_for_report(output_dir, repo_root=REPO_ROOT) or output_dir.as_posix()
+    sanitized_latest_output_dir = (
+        None
+        if latest_output_dir is None
+        else sanitize_path_for_report(latest_output_dir, repo_root=REPO_ROOT) or latest_output_dir.as_posix()
+    )
     if not skip_pipeline and not leaks_only:
         pipeline_output_dir = output_dir / PIPELINE_OUTPUT_DIRNAME
+        corpus_manifest_dir = _default_corpus_manifest_dir()
         pipeline_summary = pipeline_module._run_pipeline(
             pipeline_output_dir,
             trace_target=pipeline_module.DEFAULT_TRACE_TARGET if pipeline_module.DEFAULT_TRACE_TARGET.exists() else None,
             profile=profile,
             include_vulture=False if skip_vulture else None,
             include_bandit=False if skip_bandit else None,
+            corpus_manifest_dir=corpus_manifest_dir,
         )
         pipeline_findings = _find_pipeline_findings(pipeline_output_dir)
 
@@ -1075,13 +1164,14 @@ def audit_repository(
         key=lambda item: (-SEVERITY_RANK[item.severity], item.category, item.path or "", item.line or 0, item.id),
     )
     blocking_count = _blocking_finding_count(findings, fail_on)
-    reports = {
-        "status": "status.json",
-        "summary": "summary.json",
-        "findings": "findings.json",
-        "pipeline_status": None if pipeline_summary is None else f"{PIPELINE_OUTPUT_DIRNAME}/status.json",
-        "pipeline_summary": None if pipeline_summary is None else f"{PIPELINE_OUTPUT_DIRNAME}/summary.json",
-    }
+    reports = artifact_reports_map(
+        AUDIT_ARTIFACTS,
+        profile=audit_profile,
+        enabled_artifact_ids={"status", "summary", "findings", "summary_markdown"},
+    )
+    reports["pipeline_status"] = None if pipeline_summary is None else f"{PIPELINE_OUTPUT_DIRNAME}/status.json"
+    reports["pipeline_summary"] = None if pipeline_summary is None else f"{PIPELINE_OUTPUT_DIRNAME}/summary.json"
+    finding_collection = FindingCollection(tuple(finding.to_record() for finding in findings))
     summary = {
         "output_dir": sanitized_output_dir,
         "profile": audit_profile,
@@ -1099,6 +1189,7 @@ def audit_repository(
         "severity_counts": _severity_counts(findings),
         "category_counts": _category_counts(findings),
         "max_severity": _max_severity(findings),
+        "findings_schema": finding_collection.schema_metadata,
         "history_cleanup_findings": [
             finding.to_dict() for finding in findings if finding.history_cleanup_recommended
         ],
@@ -1117,7 +1208,10 @@ def audit_repository(
         "max_severity": summary["max_severity"],
         "severity_counts": summary["severity_counts"],
         "category_counts": summary["category_counts"],
+        "findings_schema": summary["findings_schema"],
         "pipeline_status_report": None if pipeline_summary is None else f"{sanitized_output_dir}/{PIPELINE_OUTPUT_DIRNAME}/status.json",
+        "latest_status_report": None if sanitized_latest_output_dir is None else f"{sanitized_latest_output_dir}/status.json",
+        "latest_summary_report": None if sanitized_latest_output_dir is None else f"{sanitized_latest_output_dir}/summary.json",
         "top_findings": [
             {
                 "id": finding.id,
@@ -1131,8 +1225,9 @@ def audit_repository(
     }
     _write_json(output_dir / "status.json", status_report)
     _write_json(output_dir / "summary.json", summary)
-    _write_json(output_dir / "findings.json", {"findings": summary["findings"]})
+    _write_json(output_dir / "findings.json", finding_collection.to_dict())
     _write_markdown(output_dir / "summary.md", findings, summary)
+    _mirror_latest_reports(output_dir, latest_output_dir)
     return summary
 
 
@@ -1190,16 +1285,20 @@ def main(argv: list[str] | None = None) -> int:
         skip_pipeline=args.skip_pipeline,
         skip_vulture=args.skip_vulture,
         skip_bandit=args.skip_bandit,
+        latest_output_dir=DEFAULT_OUTPUT_DIR.resolve(),
     )
     _print_cli_summary(
         {
             "profile": summary["profile"],
             "overall_status": "fail" if _should_fail((Finding(**finding) for finding in summary["findings"]), fail_on) else "pass",
+            "findings_schema": summary.get("findings_schema"),
             "finding_count": summary["finding_count"],
             "blocking_finding_count": _blocking_finding_count((Finding(**finding) for finding in summary["findings"]), fail_on),
             "fail_on": fail_on,
             "status_report": f"{summary['output_dir']}/status.json",
             "summary_report": f"{summary['output_dir']}/summary.json",
+            "latest_status_report": None if Path(args.output_dir).resolve() == DEFAULT_OUTPUT_DIR.resolve() else f"{(sanitize_path_for_report(DEFAULT_OUTPUT_DIR.resolve(), repo_root=REPO_ROOT) or DEFAULT_OUTPUT_DIR.resolve().as_posix())}/status.json",
+            "latest_summary_report": None if Path(args.output_dir).resolve() == DEFAULT_OUTPUT_DIR.resolve() else f"{(sanitize_path_for_report(DEFAULT_OUTPUT_DIR.resolve(), repo_root=REPO_ROOT) or DEFAULT_OUTPUT_DIR.resolve().as_posix())}/summary.json",
         }
     )
     return 1 if _should_fail((Finding(**finding) for finding in summary["findings"]), fail_on) else 0
