@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from sattline_parser.api import build_lark_parser
@@ -129,10 +129,7 @@ def _has_code_syntax_hints(comment_text: str) -> bool:
         return True
 
     # Without semicolons, need stronger evidence
-    if has_strong:
-        return True
-
-    return False
+    return bool(has_strong)
 
 
 def _extract_code_candidates(comment_text: str) -> list[str]:
@@ -179,7 +176,7 @@ def _extract_code_candidates(comment_text: str) -> list[str]:
         # Simple statements separated by semicolons
         # Split by semicolons but keep the semicolon with each part
         parts = text.split(";")
-        for i, part in enumerate(parts[:-1]):
+        for _i, part in enumerate(parts[:-1]):
             candidate = part.strip() + ";"
             if len(candidate) > 5:  # Minimum length for valid code
                 candidates.append(candidate)

@@ -29,7 +29,6 @@ from ..resolution.common import (
 )
 from .framework import Issue, format_report_header
 
-
 _TAG_PARAMETER_NAMES: tuple[str, ...] = (
     "tag",
     "alarmtag",
@@ -177,7 +176,7 @@ class AlarmIntegrityAnalyzer:
         root_path: list[str],
         base_env: dict[str, Variable],
     ) -> None:
-        path = root_path + [f"TypeDef:{moduletype.name}"]
+        path = [*root_path, f"TypeDef:{moduletype.name}"]
         env = self._merge_env(base_env, moduletype.moduleparameters)
         env = self._merge_env(env, moduletype.localvariables)
         self._check_module_code(moduletype.modulecode, path, env)
@@ -196,7 +195,7 @@ class AlarmIntegrityAnalyzer:
         current_library: str | None,
     ) -> None:
         for child in children:
-            child_path = parent_path + [child.header.name]
+            child_path = [*parent_path, child.header.name]
             if isinstance(child, SingleModule):
                 child_env = self._merge_env(env, child.moduleparameters)
                 child_env = self._merge_env(child_env, child.localvariables)
@@ -627,7 +626,7 @@ class AlarmIntegrityAnalyzer:
         if obj is None:
             return
 
-        if hasattr(obj, "data") and getattr(obj, "data") == const.KEY_STATEMENT:
+        if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
             for child in getattr(obj, "children", []):
                 self._collect_boolean_writes(child, env, writes)
             return

@@ -6,10 +6,10 @@ from sattlint.models.ast_model import (
     BasePicture,
     ModuleCode,
     ModuleHeader,
+    Sequence,
     SFCCodeBlocks,
     SFCParallel,
     SFCStep,
-    Sequence,
     Simple_DataType,
     Variable,
 )

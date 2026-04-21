@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-import re
 from typing import Any
 
 from ..models.ast_model import (
@@ -241,7 +241,7 @@ class NamingConsistencyAnalyzer:
         parent_path: list[str],
     ) -> None:
         for module in modules:
-            child_path = parent_path + [module.header.name]
+            child_path = [*parent_path, module.header.name]
             if isinstance(module, SingleModule):
                 self._collect_module_name(module.header.name, child_path)
                 self._collect_variables(

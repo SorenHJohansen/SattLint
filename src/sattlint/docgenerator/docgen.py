@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
 import pathlib
 import re
 import typing as t
+from dataclasses import dataclass
 
 from docx import Document as DocumentFactory
 from docx.document import Document as DocClass
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.style import WD_STYLE_TYPE
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
+
 from sattline_parser.utils.formatter import format_expr
 
 from .. import config as config_module

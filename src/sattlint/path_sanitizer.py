@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path, PureWindowsPath
 import re
+from pathlib import Path, PureWindowsPath
 
 _WINDOWS_ABSOLUTE_RE = re.compile(r"^[A-Za-z]:[\\/]")
 _OPTION_PATH_PREFIXES = (

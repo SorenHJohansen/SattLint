@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import json
+import re
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-import json
 from pathlib import Path
-import re
 from typing import Any
 
 from sattlint import engine as engine_module
 from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, analyze_sattline_semantics
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
 from sattlint.path_sanitizer import sanitize_path_for_report
-
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "analysis"
@@ -181,7 +180,7 @@ def evaluate_finding_ids(
     manifest: CorpusCaseManifest,
     actual_finding_ids: list[str] | tuple[str, ...],
 ) -> CorpusEvaluation:
-    actual = {finding_id for finding_id in actual_finding_ids}
+    actual = set(actual_finding_ids)
     expected = set(manifest.expectation.expected_finding_ids)
     forbidden = set(manifest.expectation.forbidden_finding_ids)
 

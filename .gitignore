@@ -197,6 +197,9 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
+# pyright
+.pyright/
+
 # Pyre type checker
 .pyre/
 

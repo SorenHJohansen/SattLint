@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import threading
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass, field
 from pathlib import Path
-import threading
 from time import monotonic
 from typing import Any
 

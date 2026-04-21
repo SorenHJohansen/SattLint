@@ -1,9 +1,13 @@
 """Post-transform structural validation for SattLine ASTs."""
 from __future__ import annotations
-from collections.abc import Callable, Sequence as AbcSequence
+
 import re
+from collections.abc import Callable
+from collections.abc import Sequence as AbcSequence
+
 from lark import Tree
 
+from .analyzers.sattline_builtins import SATTLINE_BUILTINS
 from .grammar import constants as const
 from .models.ast_model import (
     BasePicture,
@@ -31,7 +35,6 @@ from .models.ast_model import (
     Variable,
 )
 from .resolution.type_graph import TypeGraph
-from .analyzers.sattline_builtins import SATTLINE_BUILTINS
 
 
 class StructuralValidationError(ValueError):
@@ -408,13 +411,7 @@ def _ensure_unique_names(names: list[str], context: str, kind: str) -> None:
 def _collect_sequence_labels(nodes: list[object], labels: dict[str, str], context: str) -> None:
     for node in nodes:
         label: str | None = None
-        if isinstance(node, SFCStep):
-            label = node.name
-        elif isinstance(node, SFCTransition) and node.name:
-            label = node.name
-        elif isinstance(node, SFCSubsequence):
-            label = node.name
-        elif isinstance(node, SFCTransitionSub):
+        if isinstance(node, SFCStep) or (isinstance(node, SFCTransition) and node.name) or isinstance(node, (SFCSubsequence, SFCTransitionSub)):
             label = node.name
 
         if label:
@@ -425,15 +422,10 @@ def _collect_sequence_labels(nodes: list[object], labels: dict[str, str], contex
                 )
             labels[folded] = label
 
-        if isinstance(node, SFCAlternative):
+        if isinstance(node, (SFCAlternative, SFCParallel)):
             for branch in node.branches:
                 _collect_sequence_labels(branch, labels, context)
-        elif isinstance(node, SFCParallel):
-            for branch in node.branches:
-                _collect_sequence_labels(branch, labels, context)
-        elif isinstance(node, SFCSubsequence):
-            _collect_sequence_labels(node.body, labels, context)
-        elif isinstance(node, SFCTransitionSub):
+        elif isinstance(node, (SFCSubsequence, SFCTransitionSub)):
             _collect_sequence_labels(node.body, labels, context)
 
 
@@ -666,14 +658,7 @@ def _builtin_type_matches(
         if _is_string_simple_type(actual) and _is_string_simple_type(expected):
             return True
 
-        if (
-            direction == "in"
-            and expected == Simple_DataType.REAL
-            and actual == Simple_DataType.INTEGER
-        ):
-            return True
-
-        return False
+        return bool(direction == "in" and expected == Simple_DataType.REAL and actual == Simple_DataType.INTEGER)
 
     if isinstance(actual, str):
         return actual.casefold() == expected.casefold()
@@ -893,13 +878,12 @@ def _validate_sequence_nodes(
     init_steps = 0
     missing_initial_init_step = False
 
-    if require_init_step:
-        if not nodes or not isinstance(nodes[0], SFCStep) or nodes[0].kind != "init":
-            missing_initial_init_step = True
-            _warn_or_raise(
-                f"{context} must start with exactly one SEQINITSTEP",
-                warning_sink=warning_sink,
-            )
+    if require_init_step and (not nodes or not isinstance(nodes[0], SFCStep) or nodes[0].kind != "init"):
+        missing_initial_init_step = True
+        _warn_or_raise(
+            f"{context} must start with exactly one SEQINITSTEP",
+            warning_sink=warning_sink,
+        )
 
     for index, node in enumerate(nodes):
         if isinstance(node, SFCStep):
@@ -977,12 +961,11 @@ def _validate_sequence_nodes(
         elif isinstance(node, SFCBreak):
             continue
 
-    if require_init_step and init_steps != 1:
-        if not (missing_initial_init_step and init_steps == 0):
-            _warn_or_raise(
-                f"{context} must contain exactly one SEQINITSTEP",
-                warning_sink=warning_sink,
-            )
+    if require_init_step and init_steps != 1 and not (missing_initial_init_step and init_steps == 0):
+        _warn_or_raise(
+            f"{context} must contain exactly one SEQINITSTEP",
+            warning_sink=warning_sink,
+        )
 
 
 def _validate_module_code(
@@ -1103,7 +1086,7 @@ def _validate_parameter_mappings(
         if not hasattr(mapping, "target"):
             continue
 
-        target = getattr(mapping, "target")
+        target = mapping.target
         target_name = (
             str(target.get(const.KEY_VAR_NAME))
             if isinstance(target, dict) and const.KEY_VAR_NAME in target
@@ -1458,5 +1441,3 @@ def validate_transformed_basepicture(
             warn_incompatible_parameter_mappings,
             warning_sink,
         )
-
-

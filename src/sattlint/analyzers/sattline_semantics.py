@@ -1,21 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
 from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from sattlint.analyzers.initial_values import analyze_initial_values
 
-from .alarm_integrity import analyze_alarm_integrity
-from .dataflow import analyze_dataflow
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..tracing import (
     detect_transform_invariant_violations,
 )
+from .alarm_integrity import analyze_alarm_integrity
+from .dataflow import analyze_dataflow
 from .framework import Issue, format_report_header
 from .safety_paths import analyze_safety_paths
-from .shadowing import analyze_shadowing
 from .sfc import analyze_sfc
+from .shadowing import analyze_shadowing
 from .spec_compliance import analyze_spec_compliance
 from .taint_paths import analyze_taint_paths
 from .unsafe_defaults import analyze_unsafe_defaults
@@ -85,7 +85,7 @@ def _rule_contract_entries(
     contract: SemanticRuleContract,
     *rule_ids: str,
 ) -> dict[str, SemanticRuleContract]:
-    return {rule_id: contract for rule_id in rule_ids}
+    return dict.fromkeys(rule_ids, contract)
 
 
 def _attach_rule_contract(

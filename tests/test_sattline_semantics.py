@@ -1,5 +1,4 @@
 from sattline_parser import parse_source_text as parser_core_parse_source_text
-
 from sattlint import constants as const
 from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.analyzers.sattline_semantics import (
@@ -15,13 +14,13 @@ from sattlint.models.ast_model import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
+    Sequence,
     SFCBreak,
     SFCCodeBlocks,
     SFCParallel,
     SFCStep,
     SFCSubsequence,
     SFCTransition,
-    Sequence,
     Simple_DataType,
     SingleModule,
     Variable,

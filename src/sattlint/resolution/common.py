@@ -1,17 +1,18 @@
 from __future__ import annotations
+
 import difflib
 from dataclasses import dataclass
 from typing import Any
 
+from ..grammar import constants as const
 from ..models.ast_model import (
     BasePicture,
-    SingleModule,
     FrameModule,
-    ModuleTypeInstance,
     ModuleTypeDef,
+    ModuleTypeInstance,
+    SingleModule,
     Variable,
 )
-from ..grammar import constants as const
 
 
 @dataclass(frozen=True)
@@ -24,10 +25,7 @@ class ResolvedModulePath:
 def path_startswith_casefold(location: list[str], prefix: list[str]) -> bool:
     if len(location) < len(prefix):
         return False
-    for i, seg in enumerate(prefix):
-        if location[i].casefold() != seg.casefold():
-            return False
-    return True
+    return all(location[i].casefold() == seg.casefold() for i, seg in enumerate(prefix))
 
 
 def format_moduletype_label(mt: ModuleTypeDef) -> str:
@@ -257,7 +255,7 @@ def get_module_path(bp: BasePicture, target_module) -> list[str]:
     # Otherwise search in submodules
     def search(modules, path):
         for mod in modules or []:
-            current_path = path + [mod.header.name]
+            current_path = [*path, mod.header.name]
             if mod is target_module:
                 return current_path
             if hasattr(mod, 'submodules'):
@@ -293,11 +291,7 @@ def is_external_to_module(location_path: list[str], module_path: list[str]) -> b
         return True
 
     # Check if location_path starts with module_path
-    for i, segment in enumerate(module_path):
-        if i >= len(location_path) or location_path[i] != segment:
-            return True
-
-    return False
+    return any(i >= len(location_path) or location_path[i] != segment for i, segment in enumerate(module_path))
 
 
 def find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str) -> Variable | None:

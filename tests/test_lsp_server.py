@@ -2,38 +2,39 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-from lsprotocol.types import CompletionItem as LspCompletionItem, CompletionItemKind, Position, Range
+from lsprotocol.types import CompletionItem as LspCompletionItem
+from lsprotocol.types import CompletionItemKind, Position, Range
 
 from sattlint.editor_api import load_workspace_snapshot
 from sattlint_lsp.document_state import DocumentState, apply_content_changes
 from sattlint_lsp.local_parser import DocumentParseResult, FullDocumentParserAdapter, IncrementalParseState
 from sattlint_lsp.server import (
-    _load_snapshot_bundle,
+    LspSettings,
+    SattLineLanguageServer,
+    SnapshotBundle,
+    _get_or_build_local_snapshot,
     _invalidate_cached_entries_for_path,
+    _load_snapshot_bundle,
+    _overlay_definition_candidates,
     _publish_closed_document_diagnostics,
+    _publish_diagnostics,
     _publish_workspace_diagnostics_for_paths,
     _semantic_diagnostics_for_path,
-    _get_or_build_local_snapshot,
-    _overlay_definition_candidates,
-    _publish_diagnostics,
-    on_completion,
-    on_did_close,
-    on_definition,
-    on_hover,
-    on_references,
-    on_rename,
+    build_source_path_index,
     collect_completion_candidates,
     collect_local_completion_candidates,
     collect_local_definition_locations,
     collect_semantic_diagnostics,
     collect_syntax_diagnostics,
-    build_source_path_index,
     infer_module_path_from_source,
-    resolve_entry_file,
+    on_completion,
+    on_definition,
+    on_did_close,
+    on_hover,
+    on_references,
+    on_rename,
     resolve_definition_path,
-    LspSettings,
-    SattLineLanguageServer,
-    SnapshotBundle,
+    resolve_entry_file,
 )
 
 

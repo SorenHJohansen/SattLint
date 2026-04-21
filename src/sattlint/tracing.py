@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence as SequenceABC
-from collections import Counter
-from dataclasses import dataclass, field
 import json
-from pathlib import Path
 import time
+from collections import Counter
+from collections.abc import Sequence as SequenceABC
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from .analyzers.dataflow import analyze_dataflow
@@ -22,7 +22,6 @@ from .models.ast_model import (
     SingleModule,
 )
 from .path_sanitizer import sanitize_path_for_report
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -295,10 +294,10 @@ def cli(argv: list[str] | None = None) -> int:
 
 __all__ = [
     "AnalysisTraceRecorder",
+    "cli",
     "collect_ast_summary",
     "detect_transform_invariant_violations",
     "detect_unreachable_sequence_logic",
     "trace_basepicture_analysis",
     "trace_source_file_analysis",
-    "cli",
 ]

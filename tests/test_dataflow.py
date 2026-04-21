@@ -3,7 +3,6 @@ from __future__ import annotations
 import textwrap
 
 from sattline_parser import strip_sl_comments
-
 from sattlint import constants as const
 from sattlint.analyzers.dataflow import analyze_dataflow
 from sattlint.analyzers.registry import get_default_analyzers
@@ -13,10 +12,10 @@ from sattlint.models.ast_model import (
     Equation,
     ModuleCode,
     ModuleHeader,
+    Sequence,
     SFCBreak,
     SFCCodeBlocks,
     SFCStep,
-    Sequence,
     Simple_DataType,
     Variable,
 )

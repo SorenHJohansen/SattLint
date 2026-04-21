@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import importlib.metadata as metadata
 import json
 import os
-from pathlib import Path
 import platform
 import re
 import shutil
@@ -15,6 +13,8 @@ import subprocess  # nosec B404 - pipeline intentionally executes trusted local 
 import sys
 import time
 import tomllib
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
@@ -31,26 +31,42 @@ from sattlint.devtools.pipeline_artifacts import (
     PipelineArtifactContext,
     write_pipeline_artifacts,
 )
-from sattlint.devtools.structural_reports import (
-    StructuralReportsBundle,
-    WorkspaceGraphInputs,
-    collect_analyzer_registry_report as build_analyzer_registry_report,
-    collect_architecture_report as build_architecture_report,
-    collect_call_graph_report as build_call_graph_report,
-    collect_dependency_graph_report as build_dependency_graph_report,
-    collect_impact_analysis_report as build_impact_analysis_report,
-    collect_phase2_rule_metadata_gate as build_phase2_rule_metadata_gate,
-    collect_structural_reports as build_structural_reports,
-    collect_workspace_graph_inputs as build_workspace_graph_inputs,
-)
 from sattlint.devtools.status_reports import (
     build_pipeline_status_report,
     build_pipeline_summary_report,
     build_tool_status,
     overall_status,
 )
-from sattlint.devtools.trace_reports import collect_trace_report as build_trace_report
+from sattlint.devtools.structural_reports import (
+    StructuralReportsBundle,
+    WorkspaceGraphInputs,
+)
+from sattlint.devtools.structural_reports import (
+    collect_analyzer_registry_report as build_analyzer_registry_report,
+)
+from sattlint.devtools.structural_reports import (
+    collect_architecture_report as build_architecture_report,
+)
+from sattlint.devtools.structural_reports import (
+    collect_call_graph_report as build_call_graph_report,
+)
+from sattlint.devtools.structural_reports import (
+    collect_dependency_graph_report as build_dependency_graph_report,
+)
+from sattlint.devtools.structural_reports import (
+    collect_impact_analysis_report as build_impact_analysis_report,
+)
+from sattlint.devtools.structural_reports import (
+    collect_phase2_rule_metadata_gate as build_phase2_rule_metadata_gate,
+)
+from sattlint.devtools.structural_reports import (
+    collect_structural_reports as build_structural_reports,
+)
+from sattlint.devtools.structural_reports import (
+    collect_workspace_graph_inputs as build_workspace_graph_inputs,
+)
 from sattlint.devtools.tool_reports import build_command_report
+from sattlint.devtools.trace_reports import collect_trace_report as build_trace_report
 from sattlint.path_sanitizer import sanitize_path_for_report
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -91,6 +107,10 @@ def _tool_version(package_name: str) -> str | None:
 
 def _resolve_python_executable() -> str:
     candidates: list[Path] = []
+
+    venv_python = Path(".venv/bin/python")
+    if venv_python.exists():
+        return str(venv_python.resolve())
 
     override = os.environ.get("SATTLINT_PYTHON")
     if override:
@@ -216,7 +236,7 @@ def _print_cli_summary(status_report: dict[str, Any]) -> None:
             f"{findings_schema.get('kind', 'unknown')} "
             f"v{findings_schema.get('schema_version', '?')}"
         )
-    for tool_name in ("ruff", "mypy", "pytest", "vulture", "bandit", "corpus"):
+    for tool_name in ("ruff", "pyright", "pytest", "vulture", "bandit", "corpus"):
         tool_status = status_report["tool_statuses"].get(tool_name)
         if tool_status is None:
             continue
@@ -335,7 +355,7 @@ def _collect_environment_report() -> dict[str, Any]:
         },
         "installed_tool_versions": {
             name: _tool_version(name)
-            for name in ("ruff", "mypy", "pytest", "bandit", "vulture", "types-openpyxl")
+            for name in ("ruff", "pyright", "pytest", "bandit", "vulture", "types-openpyxl")
         },
     }
 
@@ -425,7 +445,7 @@ def _run_pipeline(
     run_corpus = bool(resolved_corpus_manifest_dir and resolved_corpus_manifest_dir.exists())
     sanitized_output_dir = sanitize_path_for_report(output_dir, repo_root=REPO_ROOT) or output_dir.as_posix()
 
-    enabled_artifacts: set[str] = {"status", "summary", "findings", "artifact_registry", "environment", "ruff", "mypy", "pytest"}
+    enabled_artifacts: set[str] = {"status", "summary", "findings", "artifact_registry", "environment", "ruff", "pyright", "pytest"}
     if baseline_findings is not None:
         enabled_artifacts.add("analysis_diff")
     if run_corpus:
@@ -454,38 +474,55 @@ def _run_pipeline(
 
     environment_report = _collect_environment_report()
 
-    ruff_result = _run_command(
-        "ruff",
-        python_cmd + ["-m", "ruff", "check", "src", "tests", "--output-format", "json"],
-    )
+    ruff_binary = shutil.which("ruff")
+    ruff_venv_binary = Path(".venv/bin/ruff")
+    if ruff_venv_binary.exists():
+        ruff_result = _run_command(
+            "ruff",
+            [str(ruff_venv_binary), "check", "src", "tests", "--output-format", "json"],
+        )
+    elif ruff_binary:
+        ruff_result = _run_command(
+            "ruff",
+            [ruff_binary, "check", "src", "tests", "--output-format", "json"],
+        )
+    else:
+        ruff_result = _run_command(
+            "ruff",
+            [*python_cmd, "-m", "ruff", "check", "src", "tests", "--output-format", "json"],
+        )
     ruff_findings = json.loads(ruff_result.stdout or "[]")
     ruff_report = _command_payload(ruff_result, finding_count=len(ruff_findings), findings=ruff_findings)
 
-    mypy_result = _run_command(
-        "mypy",
-        python_cmd
-        + [
-            "-m",
-            "mypy",
-            "src",
-            "tests",
-            "--show-error-codes",
-            "--hide-error-context",
-            "--show-column-numbers",
-            "--output",
-            "json",
-        ],
-    )
-    mypy_findings = _parse_json_lines(mypy_result.stdout)
-    mypy_error_count = sum(1 for finding in mypy_findings if finding.get("severity") == "error")
-    mypy_note_count = sum(1 for finding in mypy_findings if finding.get("severity") == "note")
-    mypy_report = _command_payload(
-        mypy_result,
-        finding_count=len(mypy_findings),
-        error_count=mypy_error_count,
-        note_count=mypy_note_count,
-        effective_exit_code=0 if mypy_error_count == 0 else mypy_result.exit_code,
-        findings=mypy_findings,
+    pyright_binary = shutil.which("pyright")
+    pyright_venv_binary = Path(".venv/bin/pyright")
+    if pyright_venv_binary.exists():
+        pyright_result = _run_command(
+            "pyright",
+            [str(pyright_venv_binary), "--outputjson", "src", "tests"],
+        )
+    elif pyright_binary:
+        pyright_result = _run_command(
+            "pyright",
+            [pyright_binary, "--outputjson", "src", "tests"],
+        )
+    else:
+        pyright_result = _run_command(
+            "pyright",
+            [*python_cmd, "-m", "pyright", "--outputjson", "src", "tests"],
+        )
+    pyright_data = json.loads(pyright_result.stdout or "{}")
+    pyright_findings = pyright_data.get("generalDiagnostics", [])
+    pyright_summary = pyright_data.get("summary", {})
+    pyright_error_count = pyright_summary.get("errorCount", 0)
+    pyright_warning_count = pyright_summary.get("warningCount", 0)
+    pyright_report = _command_payload(
+        pyright_result,
+        finding_count=len(pyright_findings),
+        error_count=pyright_error_count,
+        warning_count=pyright_warning_count,
+        effective_exit_code=0 if pyright_error_count == 0 else pyright_result.exit_code,
+        findings=pyright_findings,
     )
 
     junit_path = output_dir / "pytest.junit.xml"
@@ -493,13 +530,20 @@ def _run_pipeline(
         "pytest",
         _build_pytest_command(python_cmd, junit_path, profile=profile),
     )
-    pytest_parsed = _parse_pytest_junit(junit_path)
+    try:
+        pytest_parsed = _parse_pytest_junit(junit_path)
+    except FileNotFoundError:
+        pytest_parsed = {
+            "testcases": [],
+            "summary": {"tests": 0, "failures": 0, "errors": 1, "skipped": 0},
+            "errors": [{"message": f"JUnit XML not generated: {pytest_result.stderr}"}],
+        }
     pytest_report = _command_payload(pytest_result, **pytest_parsed)
 
     if run_vulture:
         vulture_result = _run_command(
             "vulture",
-            python_cmd + ["-m", "vulture", "src", "--min-confidence", "80"],
+            [*python_cmd, "-m", "vulture", "src", "--min-confidence", "80"],
         )
         vulture_findings = _parse_vulture_output(vulture_result.stdout)
         vulture_report = _command_payload(vulture_result, finding_count=len(vulture_findings), findings=vulture_findings)
@@ -509,7 +553,7 @@ def _run_pipeline(
     if run_bandit:
         bandit_result = _run_command(
             "bandit",
-            python_cmd + ["-m", "bandit", "-r", "src", "-f", "json", "-q"],
+            [*python_cmd, "-m", "bandit", "-r", "src", "-f", "json", "-q"],
         )
         bandit_findings = json.loads(bandit_result.stdout or "{}")
         bandit_report = _command_payload(
@@ -572,7 +616,7 @@ def _run_pipeline(
     finding_collection = build_pipeline_finding_collection(
         repo_root=REPO_ROOT,
         ruff_findings=ruff_findings,
-        mypy_findings=mypy_findings,
+        pyright_findings=pyright_findings,
         pytest_report=pytest_report,
         vulture_findings=[] if vulture_report.get("skipped") else list(vulture_report.get("findings", [])),
         bandit_findings=[] if bandit_report.get("skipped") else list(bandit_report.get("findings", [])),
@@ -599,21 +643,21 @@ def _run_pipeline(
             finding_count=ruff_report.get("finding_count", 0),
             detail=f"{ruff_report.get('finding_count', 0)} findings",
         ),
-        "mypy": _make_tool_status(
+        "pyright": _make_tool_status(
             status=(
                 "fail"
-                if mypy_report.get("error_count", 0) > 0
-                else "pass_with_notes"
-                if mypy_report.get("note_count", 0) > 0
+                if pyright_report.get("error_count", 0) > 0
+                else "pass_with_warnings"
+                if pyright_report.get("warning_count", 0) > 0
                 else "pass"
             ),
-            report="mypy.json",
-            raw_exit_code=mypy_report["exit_code"],
-            normalized_exit_code=mypy_report["effective_exit_code"],
-            finding_count=mypy_report.get("error_count", 0),
-            note_count=mypy_report.get("note_count", 0),
+            report="pyright.json",
+            raw_exit_code=pyright_report["exit_code"],
+            normalized_exit_code=pyright_report["effective_exit_code"],
+            finding_count=pyright_report.get("error_count", 0),
+            note_count=pyright_report.get("warning_count", 0),
             detail=(
-                f"{mypy_report.get('error_count', 0)} errors, {mypy_report.get('note_count', 0)} notes"
+                f"{pyright_report.get('error_count', 0)} errors, {pyright_report.get('warning_count', 0)} warnings"
             ),
         ),
         "pytest": _make_tool_status(
@@ -745,7 +789,7 @@ def _run_pipeline(
         non_blocking_tools=non_blocking_tools,
         tool_exit_codes={
             "ruff": ruff_report["exit_code"],
-            "mypy": mypy_report["effective_exit_code"],
+            "pyright": pyright_report["effective_exit_code"],
             "pytest": pytest_report["exit_code"],
             "vulture": vulture_report.get("exit_code"),
             "bandit": bandit_report.get("exit_code"),
@@ -777,8 +821,8 @@ def _run_pipeline(
             "corpus_failed_case_count": 0 if corpus_results_report is None else corpus_results_report["summary"]["failed_count"],
             "corpus_execution_error_count": 0 if corpus_results_report is None else corpus_results_report["summary"]["execution_error_count"],
             "ruff_findings": ruff_report.get("finding_count", 0),
-            "mypy_errors": mypy_report.get("error_count", 0),
-            "mypy_notes": mypy_report.get("note_count", 0),
+            "pyright_errors": pyright_report.get("error_count", 0),
+            "pyright_warnings": pyright_report.get("warning_count", 0),
             "pytest_failures": pytest_report["summary"]["failures"],
             "pytest_errors": pytest_report["summary"]["errors"],
             "vulture_findings": vulture_report.get("finding_count", 0),
@@ -803,7 +847,7 @@ def _run_pipeline(
             "artifact_registry": artifact_registry_report,
             "environment": environment_report,
             "ruff": ruff_report,
-            "mypy": mypy_report,
+            "pyright": pyright_report,
             "pytest": pytest_report,
             "vulture": None if vulture_report.get("skipped") else vulture_report,
             "bandit": None if bandit_report.get("skipped") else bandit_report,

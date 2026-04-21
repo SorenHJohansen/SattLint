@@ -21,7 +21,6 @@ from ..resolution.common import (
 )
 from .framework import Issue, format_report_header
 
-
 _PARAMETER_CATEGORY_MARKERS = {
     "recipe": ("recpar",),
     "engineering": ("engpar",),
@@ -173,7 +172,7 @@ class InitialValueAnalyzer:
         root_path: list[str],
         base_env: dict[str, Variable],
     ) -> None:
-        path = root_path + [f"TypeDef:{moduletype.name}"]
+        path = [*root_path, f"TypeDef:{moduletype.name}"]
         env = self._merge_env(base_env, moduletype.moduleparameters)
         env = self._merge_env(env, moduletype.localvariables)
         self._walk_modules(
@@ -191,7 +190,7 @@ class InitialValueAnalyzer:
         current_library: str | None,
     ) -> None:
         for child in children:
-            child_path = parent_path + [child.header.name]
+            child_path = [*parent_path, child.header.name]
             if isinstance(child, SingleModule):
                 child_env = self._merge_env(env, child.moduleparameters)
                 child_env = self._merge_env(child_env, child.localvariables)

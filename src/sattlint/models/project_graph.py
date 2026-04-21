@@ -1,8 +1,9 @@
 """Project graph and indexing helpers for SattLine projects."""
 
-from .ast_model import BasePicture, DataType, ModuleTypeDef
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from .ast_model import BasePicture, DataType, ModuleTypeDef
 
 
 @dataclass(frozen=True)

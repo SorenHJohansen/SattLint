@@ -6,10 +6,11 @@ paths. This means the variable can retain stale state across equipment resets.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from itertools import product
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from ..grammar import constants as const
 from ..models.ast_model import (
@@ -30,7 +31,6 @@ from ..models.ast_model import (
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution.common import path_startswith_casefold
 from .sattline_builtins import get_function_signature
-
 
 WriteKey = tuple[str, str]
 WriteEntry = tuple[Variable, str]
@@ -143,13 +143,13 @@ def _collect_from_module(
     check_fn: Callable,
 ) -> None:
     if isinstance(mod, SingleModule):
-        mod_path = path + [mod.header.name]
+        mod_path = [*path, mod.header.name]
         if _should_analyze_path(mod_path, limit_to_module_path):
             _check_for_single(mod, mod_path, issues, check_fn=check_fn)
         for child in mod.submodules or []:
             _collect_from_module(child, mod_path, issues, limit_to_module_path, check_fn=check_fn)
     elif isinstance(mod, FrameModule):
-        mod_path = path + [mod.header.name]
+        mod_path = [*path, mod.header.name]
         for child in mod.submodules or []:
             _collect_from_module(child, mod_path, issues, limit_to_module_path, check_fn=check_fn)
 
@@ -363,7 +363,7 @@ def _scan_stmt_for_latching(
 ) -> None:
     if obj is None:
         return
-    if hasattr(obj, "data") and getattr(obj, "data") == const.KEY_STATEMENT:
+    if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
         for child in getattr(obj, "children", []):
             _scan_stmt_for_latching(
                 child,
@@ -648,7 +648,7 @@ def _collect_boolean_stmt_paths(
 ) -> list[_BooleanPathState]:
     if obj is None:
         return states
-    if hasattr(obj, "data") and getattr(obj, "data") == const.KEY_STATEMENT:
+    if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
         next_states = states
         for child in getattr(obj, "children", []):
             next_states = _collect_boolean_stmt_paths(child, env, next_states)
@@ -826,7 +826,7 @@ def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[st
     def visit(obj: Any) -> None:
         if obj is None:
             return
-        if hasattr(obj, "data") and getattr(obj, "data") == const.KEY_STATEMENT:
+        if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
             for child in getattr(obj, "children", []):
                 visit(child)
             return
@@ -837,11 +837,10 @@ def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[st
                 and const.KEY_VAR_NAME in expr
                 and isinstance(expr[const.KEY_VAR_NAME], str)
                 and expr[const.KEY_VAR_NAME].casefold() == reset_ref_cf
-            ):
-                if isinstance(target, dict) and const.KEY_VAR_NAME in target:
-                    target_name = target[const.KEY_VAR_NAME]
-                    if isinstance(target_name, str) and target_name:
-                        reset_old_vars.add(target_name)
+            ) and isinstance(target, dict) and const.KEY_VAR_NAME in target:
+                target_name = target[const.KEY_VAR_NAME]
+                if isinstance(target_name, str) and target_name:
+                    reset_old_vars.add(target_name)
             visit(expr)
             return
         if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
@@ -1060,7 +1059,7 @@ def _collect_stmt_paths(
 ) -> list[_PathState]:
     if obj is None:
         return states
-    if hasattr(obj, "data") and getattr(obj, "data") == const.KEY_STATEMENT:
+    if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
         next_states = states
         for child in getattr(obj, "children", []):
             next_states = _collect_stmt_paths(
