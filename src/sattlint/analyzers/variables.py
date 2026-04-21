@@ -1,17 +1,63 @@
 """Variable usage analysis and reporting utilities."""
 from __future__ import annotations
-from collections import Counter
-from collections import defaultdict
-from dataclasses import dataclass
+
 import difflib
-from typing import TYPE_CHECKING, Any, Union
+import logging
+from collections import Counter, defaultdict
+from dataclasses import dataclass
 from pathlib import Path
-from .sattline_builtins import get_function_signature
+from typing import TYPE_CHECKING, Any
+
 from ..call_signatures import CallParameterSignature, resolve_call_signature
 from ..grammar import constants as const
-import logging
+from ..models.ast_model import (
+    BasePicture,
+    FrameModule,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    Simple_DataType,
+    SingleModule,
+    Variable,
+)
+from ..models.usage import VariableUsage
+from ..reporting.variables_report import (
+    DEFAULT_VARIABLE_ANALYSIS_KINDS,
+    IssueKind,
+    VariableIssue,
+    VariablesReport,
+)
+from ..resolution import (
+    AccessGraph,
+    AccessKind,
+    CanonicalPath,
+    CanonicalSymbolTable,
+    TypeGraph,
+    decorate_segment,
+)
+from ..resolution.common import (
+    path_startswith_casefold,
+    resolve_moduletype_def_strict,
+    varname_base,
+)
+from ..resolution.context_builder import ContextBuilder
 from ..resolution.scope import ScopeContext
+from .reset_contamination import detect_implicit_latching, detect_reset_contamination
+from .sattline_builtins import get_function_signature
+from .usage_tracker import UsageTracker
+from .validators import AnyTypeFieldContract, ContractMappingValidator, MinMaxValidator, StringMappingValidator
+from .variable_issue_collection import (
+    _add_global_scope_minimization_issues,
+    _add_hidden_global_coupling_issues,
+    _add_high_fan_in_out_issues,
+    _add_issue,
+    _add_magic_number_issue,
+    _add_unused_datatype_field_issues,
+    _collect_issues_from_module,
+    _iter_variables_for_datatype_field_analysis,
+)
 from .variable_traversal import (
+    _extract_var_basenames_from_tree,
     _handle_function_call,
     _mark_var_by_basename,
     _repath_context,
@@ -28,52 +74,7 @@ from .variable_traversal import (
     _walk_stmt_or_expr,
     _walk_tail,
     _walk_typedef_groupconn,
-    _extract_var_basenames_from_tree,
 )
-from .variable_issue_collection import (
-    _add_global_scope_minimization_issues,
-    _add_hidden_global_coupling_issues,
-    _add_high_fan_in_out_issues,
-    _add_issue,
-    _add_magic_number_issue,
-    _add_unused_datatype_field_issues,
-    _collect_issues_from_module,
-    _iter_variables_for_datatype_field_analysis,
-)
-from ..reporting.variables_report import (
-    DEFAULT_VARIABLE_ANALYSIS_KINDS,
-    IssueKind,
-    VariableIssue,
-    VariablesReport,
-)
-from ..resolution import (
-    AccessGraph,
-    AccessKind,
-    CanonicalPath,
-    CanonicalSymbolTable,
-    TypeGraph,
-    decorate_segment,
-)
-from ..models.ast_model import (
-    BasePicture,
-    SingleModule,
-    FrameModule,
-    ModuleTypeInstance,
-    ModuleTypeDef,
-    Variable,
-    ParameterMapping,
-    Simple_DataType,
-)
-from ..models.usage import VariableUsage
-from ..resolution.common import (
-    path_startswith_casefold,
-    resolve_moduletype_def_strict,
-    varname_base,
-)
-from .validators import AnyTypeFieldContract, ContractMappingValidator, MinMaxValidator, StringMappingValidator
-from .usage_tracker import UsageTracker
-from ..resolution.context_builder import ContextBuilder
-from .reset_contamination import detect_implicit_latching, detect_reset_contamination
 
 if TYPE_CHECKING:
     from ..tracing import AnalysisTraceRecorder
@@ -604,7 +605,7 @@ class VariablesAnalyzer:
         variable: Variable,
         field_path: str | None,
     ) -> CanonicalPath:
-        segs = list(module_path) + [variable.name]
+        segs = [*list(module_path), variable.name]
         if field_path:
             segs.extend([p for p in field_path.split(".") if p])
         return CanonicalPath(tuple(segs))
@@ -667,7 +668,7 @@ class VariablesAnalyzer:
         variable: Variable,
         decl_module_path: list[str],
     ) -> tuple[str, ...]:
-        display_segments = tuple([*decl_module_path, variable.name])
+        display_segments = (*decl_module_path, variable.name)
         key = tuple(segment.casefold() for segment in display_segments)
         self._effect_flow_display_names.setdefault(key, ".".join(display_segments))
         return key
@@ -1114,9 +1115,9 @@ class VariablesAnalyzer:
                 results.append(prefix)
                 continue
 
-            next_chain = chain + (type_name,)
+            next_chain = (*chain, type_name)
             for field in rec.fields_by_key.values():
-                new_prefix = prefix + (field.name,)
+                new_prefix = (*prefix, field.name)
                 if isinstance(field.datatype, Simple_DataType):
                     results.append(new_prefix)
                 else:
@@ -1493,12 +1494,12 @@ class VariablesAnalyzer:
             self._walk_typedef_groupconn(mt, context, path)
 
             # Track per-parameter read/write usage
-            used_reads: set[str] = set(
+            used_reads: set[str] = {
                 v.name.lower() for v in (mt.moduleparameters or []) if self._get_usage(v).read
-            )
-            used_writes: set[str] = set(
+            }
+            used_writes: set[str] = {
                 v.name.lower() for v in (mt.moduleparameters or []) if self._get_usage(v).written
-            )
+            }
 
             # Preserve existing "used" union for any other consumers
             used_params: set[str] = used_reads | used_writes
@@ -1575,7 +1576,7 @@ class VariablesAnalyzer:
 
     def _walk_submodules(
         self,
-        children: list[Union[SingleModule, FrameModule, ModuleTypeInstance]],
+        children: list[SingleModule | FrameModule | ModuleTypeInstance],
         parent_context: ScopeContext,
         parent_path: list[str],
     ) -> None:
@@ -1583,7 +1584,7 @@ class VariablesAnalyzer:
 
         for child in children:
             child_name = child.header.name
-            child_path = parent_path + [child_name]
+            child_path = [*parent_path, child_name]
 
             if self._limit_to_module_path is not None:
                 # Only traverse:
@@ -1596,19 +1597,13 @@ class VariablesAnalyzer:
                     continue
 
             if isinstance(child, SingleModule):
-                child_display_path = parent_context.display_module_path + [
-                    decorate_segment(child_name, "SM")
-                ]
+                child_display_path = [*parent_context.display_module_path, decorate_segment(child_name, "SM")]
             elif isinstance(child, FrameModule):
-                child_display_path = parent_context.display_module_path + [
-                    decorate_segment(child_name, "FM")
-                ]
+                child_display_path = [*parent_context.display_module_path, decorate_segment(child_name, "FM")]
             elif isinstance(child, ModuleTypeInstance):
-                child_display_path = parent_context.display_module_path + [
-                    decorate_segment(child_name, "MT", moduletype_name=child.moduletype_name)
-                ]
+                child_display_path = [*parent_context.display_module_path, decorate_segment(child_name, "MT", moduletype_name=child.moduletype_name)]
             else:
-                child_display_path = parent_context.display_module_path + [child_name]
+                child_display_path = [*parent_context.display_module_path, child_name]
 
             inst_context = self._repath_context(
                 parent_context,
@@ -1652,12 +1647,12 @@ class VariablesAnalyzer:
                 )
 
                 # Track parameter usage for propagation (unchanged logic)
-                used_reads: set[str] = set(
+                used_reads: set[str] = {
                     v.name.lower() for v in (child.moduleparameters or []) if self._get_usage(v).read
-                )
-                used_writes: set[str] = set(
+                }
+                used_writes: set[str] = {
                     v.name.lower() for v in (child.moduleparameters or []) if self._get_usage(v).written
-                )
+                }
 
                 # Create alias links with field path information
                 for pm in child.parametermappings or []:
@@ -1755,7 +1750,7 @@ class VariablesAnalyzer:
                         self._check_param_mappings_for_type_instance(
                             child,
                             parent_env=parent_context.env,
-                            parent_path=parent_path + [child_name],
+                            parent_path=[*parent_path, child_name],
                             current_library=parent_context.current_library,
                         )
                         continue
@@ -1833,7 +1828,7 @@ class VariablesAnalyzer:
                     self._check_param_mappings_for_type_instance(
                         child,
                         parent_env=parent_context.env,
-                        parent_path=parent_path + [child_name],
+                        parent_path=[*parent_path, child_name],
                         current_library=parent_context.current_library,
                     )
 
@@ -1846,12 +1841,12 @@ class VariablesAnalyzer:
         self._walk_module_code(mod.modulecode, context, path)
         self._walk_submodules(mod.submodules or [], parent_context=context, parent_path=path)
 
-        used_reads: set[str] = set(
+        used_reads: set[str] = {
             v.name.lower() for v in (mod.moduleparameters or []) if self._get_usage(v).read
-        )
-        used_writes: set[str] = set(
+        }
+        used_writes: set[str] = {
             v.name.lower() for v in (mod.moduleparameters or []) if self._get_usage(v).written
-        )
+        }
         return used_reads, used_writes
 
     def _analyze_typedef_with_context(
@@ -1870,12 +1865,12 @@ class VariablesAnalyzer:
             self._walk_submodules(mt.submodules or [], parent_context=context, parent_path=path)
             self._walk_typedef_groupconn(mt, context, path)
 
-            used_reads: set[str] = set(
+            used_reads: set[str] = {
                 v.name.lower() for v in (mt.moduleparameters or []) if self._get_usage(v).read
-            )
-            used_writes: set[str] = set(
+            }
+            used_writes: set[str] = {
                 v.name.lower() for v in (mt.moduleparameters or []) if self._get_usage(v).written
-            )
+            }
 
             self.used_params_by_typedef[mt.name] = used_reads | used_writes
             self.param_reads_by_typedef[mt_key] = used_reads
@@ -2092,10 +2087,10 @@ class VariablesAnalyzer:
 
         # Recursively collect from modules
         def _collect_from_module(
-            mod: Union[SingleModule, FrameModule, ModuleTypeInstance], path: list[str]
+            mod: SingleModule | FrameModule | ModuleTypeInstance, path: list[str]
         ):
             if isinstance(mod, SingleModule):
-                my_path = path + [mod.header.name]
+                my_path = [*path, mod.header.name]
                 for v in mod.moduleparameters or []:
                     var_locations.append((v, my_path.copy(), "moduleparameter"))
                 for v in mod.localvariables or []:
@@ -2103,7 +2098,7 @@ class VariablesAnalyzer:
                 for ch in mod.submodules or []:
                     _collect_from_module(ch, my_path)
             elif isinstance(mod, FrameModule):
-                my_path = path + [mod.header.name]
+                my_path = [*path, mod.header.name]
                 for ch in mod.submodules or []:
                     _collect_from_module(ch, my_path)
 
@@ -2165,4 +2160,3 @@ class VariablesAnalyzer:
                     duplicate_locations=duplicate_locs,
                 )
             )
-

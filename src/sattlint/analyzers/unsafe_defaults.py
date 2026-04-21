@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 from ..models.ast_model import BasePicture, FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, Variable
 from .framework import Issue, format_report_header
-
 
 _IDENTIFIER_TOKEN_RE = re.compile(
     r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+"
@@ -59,7 +58,7 @@ class UnsafeDefaultsAnalyzer:
         moduletype: ModuleTypeDef,
         root_path: list[str],
     ) -> None:
-        module_path = root_path + [f"TypeDef:{moduletype.name}"]
+        module_path = [*root_path, f"TypeDef:{moduletype.name}"]
         self._check_variables(module_path, moduletype.moduleparameters)
         self._check_variables(module_path, moduletype.localvariables)
         self._walk_modules(moduletype.submodules or [], module_path)
@@ -70,7 +69,7 @@ class UnsafeDefaultsAnalyzer:
         parent_path: list[str],
     ) -> None:
         for child in children:
-            child_path = parent_path + [child.header.name]
+            child_path = [*parent_path, child.header.name]
             if isinstance(child, SingleModule):
                 self._check_variables(child_path, child.moduleparameters)
                 self._check_variables(child_path, child.localvariables)

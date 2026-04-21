@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import argparse
 import ast
-from collections import Counter
-from dataclasses import asdict, dataclass
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess  # nosec B404 - audit intentionally executes trusted local developer tools
 import tomllib
-from typing import Any, Iterable
+from collections import Counter
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
 
 from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
 
@@ -664,7 +665,7 @@ def _find_import_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
         if node in visiting:
             if node in stack:
                 start = stack.index(node)
-                cycles.append(stack[start:] + [node])
+                cycles.append([*stack[start:], node])
             return
         visiting.add(node)
         stack.append(node)

@@ -6,19 +6,20 @@ in normalized long format with Excel Tables and an interactive Dashboard.
 """
 
 import argparse
-from pathlib import Path
-import re
-from openpyxl import Workbook
-from openpyxl.worksheet.worksheet import Worksheet
-from openpyxl.worksheet.table import Table, TableStyleInfo
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
-from openpyxl.worksheet.datavalidation import DataValidation
 import logging
+import re
+import sys
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Optional
-import sys
+from pathlib import Path
+from typing import Any
+
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl.worksheet.worksheet import Worksheet
 
 log = logging.getLogger("SattLint")
 
@@ -73,7 +74,7 @@ class ConfigurationFileParser:
             re.DOTALL
         )
 
-    def parse_configuration_file(self, config_file: Path) -> Optional[ConfigurationFileInfo]:
+    def parse_configuration_file(self, config_file: Path) -> ConfigurationFileInfo | None:
         """Parse a configuration file and extract all programs and libraries."""
         try:
             text = read_text_with_fallback(config_file)
@@ -94,10 +95,7 @@ class ConfigurationFileParser:
             for match in self.program_pattern.finditer(text):
                 program_name_raw = match.group(1)
                 # Only remove .z extension if it exists
-                if program_name_raw.endswith('.z'):
-                    program_name = program_name_raw[:-2]
-                else:
-                    program_name = program_name_raw
+                program_name = program_name_raw[:-2] if program_name_raw.endswith('.z') else program_name_raw
 
                 directory = match.group(2)
                 main_program = match.group(3) == 'True'
@@ -113,10 +111,7 @@ class ConfigurationFileParser:
             for match in self.library_pattern.finditer(text):
                 library_name_raw = match.group(1)
                 # Only remove .z extension if it exists
-                if library_name_raw.endswith('.z'):
-                    library_name = library_name_raw[:-2]
-                else:
-                    library_name = library_name_raw
+                library_name = library_name_raw[:-2] if library_name_raw.endswith('.z') else library_name_raw
 
                 directory = match.group(2)
 

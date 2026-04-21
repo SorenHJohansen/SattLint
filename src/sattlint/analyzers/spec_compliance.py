@@ -23,7 +23,6 @@ from ..models.ast_model import (
 from ..resolution.common import format_moduletype_label, resolve_moduletype_def_strict, varname_base, varname_full
 from .framework import Issue, SimpleReport
 
-
 _OPMESSAGE_NAME = "OPMessage"
 _OPMESSAGE_LIB = "NNESystem"
 _MES_BATCH_CONTROL_NAME = "MES_BatchControl"
@@ -115,7 +114,7 @@ class SpecComplianceAnalyzer:
         root_path: list[str],
         base_env: dict[str, Variable],
     ) -> None:
-        path = root_path + [moduletype.name]
+        path = [*root_path, moduletype.name]
         env = self._merge_env(base_env, moduletype.moduleparameters)
         env = self._merge_env(env, moduletype.localvariables)
         self._check_module_code(moduletype.modulecode, path)
@@ -134,7 +133,7 @@ class SpecComplianceAnalyzer:
         current_library: str | None,
     ) -> None:
         for child in children:
-            child_path = parent_path + [child.header.name]
+            child_path = [*parent_path, child.header.name]
             if isinstance(child, SingleModule):
                 child_env = self._merge_env(env, child.moduleparameters)
                 child_env = self._merge_env(child_env, child.localvariables)
@@ -215,9 +214,7 @@ class SpecComplianceAnalyzer:
             if isinstance(node, (SFCAlternative, SFCParallel)):
                 for branch in node.branches or []:
                     yield from self._iter_sequence_nodes(branch)
-            elif isinstance(node, SFCSubsequence):
-                yield from self._iter_sequence_nodes(node.body or [])
-            elif isinstance(node, SFCTransitionSub):
+            elif isinstance(node, (SFCSubsequence, SFCTransitionSub)):
                 yield from self._iter_sequence_nodes(node.body or [])
 
     def _check_instance_contracts(

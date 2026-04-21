@@ -30,6 +30,12 @@
 
 ## Agent Workflow
 
+- **Communication style:** Respond terse. Drop articles (a/an/the), filler (just/really/basically), pleasantries, hedging. Fragments OK. Short synonyms. Technical terms exact. Code unchanged.
+- Pattern: [thing] [action] [reason]. [next step].
+- Not: "Sure! I'd be happy to help you with that."
+- Yes: "Bug in auth middleware. Fix:"
+- Auto-clarity: Drop terse mode for security warnings, irreversible actions, user confused. Resume after.
+- Boundaries: Code, commits, PRs written normal.
 - Inspect repo structure, current implementation, tests, and existing tooling before changing behavior.
 - Reuse existing patterns, validators, analyzers, pipeline hooks, and tests before introducing new abstractions or new dependencies.
 - Prefer repo-local commands over IDE abstractions. In this repo, the VS Code Testing UI or generic test runner is unreliable and can use the wrong interpreter or report zero collected tests.

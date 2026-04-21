@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .sattline_builtins import get_function_signature
 from ..grammar import constants as const
 from ..models.ast_model import (
     FloatLiteral,
@@ -25,6 +24,7 @@ from ..models.ast_model import (
 from ..resolution import AccessKind, decorate_segment
 from ..resolution.common import varname_base
 from ..resolution.scope import ScopeContext
+from .sattline_builtins import get_function_signature
 
 log = logging.getLogger("SattLint")
 
@@ -317,7 +317,7 @@ def _scan_for_varrefs(
             self._scan_for_varrefs(value, context, path, is_ui_read=is_ui_read)
         return
     if hasattr(obj, "data"):
-        data = getattr(obj, "data")
+        data = obj.data
         if data in (
             const.KEY_ENABLE_EXPRESSION,
             const.GRAMMAR_VALUE_INVAR_PREFIX,
@@ -579,15 +579,10 @@ def _walk_seq_nodes(
                 self._walk_stmt_or_expr(stmt, context, path)
         elif isinstance(node, SFCTransition):
             self._walk_stmt_or_expr(node.condition, context, path)
-        elif isinstance(node, SFCAlternative):
+        elif isinstance(node, (SFCAlternative, SFCParallel)):
             for branch in node.branches:
                 self._walk_seq_nodes(branch, env, path)
-        elif isinstance(node, SFCParallel):
-            for branch in node.branches:
-                self._walk_seq_nodes(branch, env, path)
-        elif isinstance(node, SFCSubsequence):
-            self._walk_seq_nodes(node.body, env, path)
-        elif isinstance(node, SFCTransitionSub):
+        elif isinstance(node, (SFCSubsequence, SFCTransitionSub)):
             self._walk_seq_nodes(node.body, env, path)
 
 
@@ -599,7 +594,7 @@ def _walk_stmt_or_expr(
     *,
     is_ui_read: bool = False,
 ) -> None:
-    if hasattr(obj, "data") and getattr(obj, "data") == const.KEY_STATEMENT:
+    if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
         for child in getattr(obj, "children", []):
             self._walk_stmt_or_expr(child, context, path, is_ui_read=is_ui_read)
         return
@@ -688,13 +683,13 @@ def _walk_stmt_or_expr(
         self._walk_stmt_or_expr(tail, context, path, is_ui_read=is_ui_read)
         return
 
-    if hasattr(obj, "data"):
-        if getattr(obj, "data") == const.KEY_ENABLE_EXPRESSION:
-            for child in getattr(obj, "children", []):
+    if hasattr(obj, "data"):  # type: ignore[reportAttributeAccessIssue]
+        if obj.data == const.KEY_ENABLE_EXPRESSION:  # type: ignore[reportAttributeAccessIssue]
+            for child in getattr(obj, "children", []):  # type: ignore[reportAttributeAccessIssue]
                 self._walk_stmt_or_expr(child, context, path, is_ui_read=is_ui_read)
             return
-        if getattr(obj, "data") == const.GRAMMAR_VALUE_INVAR_PREFIX:
-            for child in getattr(obj, "children", []):
+        if obj.data == const.GRAMMAR_VALUE_INVAR_PREFIX:  # type: ignore[reportAttributeAccessIssue]
+            for child in getattr(obj, "children", []):  # type: ignore[reportAttributeAccessIssue]
                 self._walk_stmt_or_expr(child, context, path, is_ui_read=is_ui_read)
             return
 

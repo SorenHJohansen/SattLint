@@ -1,8 +1,8 @@
 """Variable shadowing analysis (locals hiding outer/global vars)."""
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from ..models.ast_model import (
     BasePicture,
@@ -67,7 +67,7 @@ class ShadowingAnalyzer:
         current_library: str | None,
     ) -> None:
         for child in children:
-            child_path = parent_path + [child.header.name]
+            child_path = [*parent_path, child.header.name]
 
             if isinstance(child, SingleModule):
                 child_locals = list(child.localvariables or [])

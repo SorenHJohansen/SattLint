@@ -47,7 +47,7 @@ PIPELINE_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
     ArtifactDefinition("artifact_registry", "artifact_registry.json", "artifact_registry", "sattlint.artifact_registry", 1, profiles=("quick", "full")),
     ArtifactDefinition("environment", "environment.json", "environment", "sattlint.environment", 1, profiles=("quick", "full")),
     ArtifactDefinition("ruff", "ruff.json", "ruff", "sattlint.tool_report", 1, profiles=("quick", "full"), blocking=True),
-    ArtifactDefinition("mypy", "mypy.json", "mypy", "sattlint.tool_report", 1, profiles=("quick", "full"), blocking=True),
+    ArtifactDefinition("pyright", "pyright.json", "pyright", "sattlint.tool_report", 1, profiles=("quick", "full"), blocking=True),
     ArtifactDefinition("pytest", "pytest.json", "pytest", "sattlint.tool_report", 1, profiles=("quick", "full"), blocking=True),
     ArtifactDefinition("vulture", "vulture.json", "vulture", "sattlint.tool_report", 1, profiles=("full",), optional=True),
     ArtifactDefinition("bandit", "bandit.json", "bandit", "sattlint.tool_report", 1, profiles=("full",), optional=True),

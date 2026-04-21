@@ -1,36 +1,40 @@
 """Lark transformer that builds the SattLine AST."""
 from __future__ import annotations
-from lark import Transformer, Token, Tree, v_args
+
+import contextlib
 from typing import Any, Literal, cast
+
+from lark import Token, Transformer, Tree, v_args
+
 from ..grammar import constants as const
 from ..models.ast_model import (
     BasePicture,
     DataType,
-    ModuleTypeDef,
-    ModuleHeader,
-    SingleModule,
+    Equation,
+    FloatLiteral,
     FrameModule,
-    ModuleTypeInstance,
-    Variable,
-    ParameterMapping,
-    ModuleDef,
     GraphObject,
     InteractObject,
-    ModuleCode,
-    Sequence,
-    Equation,
-    SFCCodeBlocks,
-    SFCStep,
-    SFCTransition,
-    SFCAlternative,
-    SFCParallel,
-    SFCSubsequence,
-    SFCTransitionSub,
-    SFCFork,
-    SFCBreak,
-    SourceSpan,
     IntLiteral,
-    FloatLiteral,
+    ModuleCode,
+    ModuleDef,
+    ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    Sequence,
+    SFCAlternative,
+    SFCBreak,
+    SFCCodeBlocks,
+    SFCFork,
+    SFCParallel,
+    SFCStep,
+    SFCSubsequence,
+    SFCTransition,
+    SFCTransitionSub,
+    SingleModule,
+    SourceSpan,
+    Variable,
 )
 
 DEFAULT_INIT = object()
@@ -46,10 +50,7 @@ def _meta_span(meta: Any) -> SourceSpan | None:
 
 def _strip_quoted(s: str) -> str:
     # Lark STRING includes quotes; "" inside is an escaped quote
-    if len(s) >= 2 and s[0] == '"' and s[-1] == '"':
-        inner = s[1:-1]
-    else:
-        inner = s
+    inner = s[1:-1] if len(s) >= 2 and s[0] == '"' and s[-1] == '"' else s
     return inner.replace('""', '"').rstrip("\n")
 
 
@@ -78,8 +79,7 @@ def _is_tree(node: Any) -> bool:
 
 def _iter_tree_children(node: Any):
     if _is_tree(node):
-        for ch in getattr(node, "children", []):
-            yield ch
+        yield from getattr(node, "children", [])
 
 
 class SLTransformer(Transformer):
@@ -666,10 +666,7 @@ class SLTransformer(Transformer):
 
         if idx < len(items):
             src = items[idx]
-            if isinstance(src, (int, float, str, bool)):
-                source_literal = src
-                source_type = const.KEY_VALUE
-            elif isinstance(src, dict) and const.GRAMMAR_VALUE_TIME_VALUE in src:
+            if isinstance(src, (int, float, str, bool)) or (isinstance(src, dict) and const.GRAMMAR_VALUE_TIME_VALUE in src):
                 source_literal = src
                 source_type = const.KEY_VALUE
             elif isinstance(src, dict):
@@ -1285,7 +1282,7 @@ class SLTransformer(Transformer):
         for it in items:
             if isinstance(it, dict):
                 for k in ("enter", "active", "exit"):
-                    if k in it and it[k]:
+                    if it.get(k):
                         blocks[k].extend(it[k])
         return SFCCodeBlocks(
             enter=blocks["enter"],
@@ -1508,7 +1505,7 @@ class SLTransformer(Transformer):
         props = {}
         coords = []
         proc = None
-        coord_payloads, coord_tails = self._extract_coord_payloads(items)
+        _coord_payloads, coord_tails = self._extract_coord_payloads(items)
         for it in items:
             if isinstance(it, tuple):
                 coords.append(it)
@@ -1643,7 +1640,7 @@ class SLTransformer(Transformer):
         return {const.KEY_NAME: name, const.KEY_EXTRA: extra, const.KEY_TAIL: tail}
 
     def interact_value_line(self, items):
-        return [it for it in items]
+        return list(items)
 
     def or_expression(self, items):
         exprs = [it for it in items if not isinstance(it, Token)]
@@ -1698,10 +1695,8 @@ class SLTransformer(Transformer):
             if isinstance(it, (int, float)):
                 val = float(it)
             elif isinstance(it, Token):
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     val = float(it.value)
-                except (TypeError, ValueError):
-                    pass
 
         if val is None:
             types = ", ".join(
@@ -1837,27 +1832,11 @@ class SLTransformer(Transformer):
         i = 0
         while i < len(items):
             tok = items[i]
-            if isinstance(tok, Token) and tok.type == const.GRAMMAR_VALUE_IF:
+            if (isinstance(tok, Token) and tok.type == const.GRAMMAR_VALUE_IF) or (isinstance(tok, Token) and tok.type == const.GRAMMAR_VALUE_ELSIF):
                 cond = items[i + 1]
                 i += 2  # now at THEN
                 # skip THEN
                 i += 1
-                stmts = []
-                while i < len(items):
-                    t = items[i]
-                    if isinstance(t, Token) and t.type in (
-                        const.GRAMMAR_VALUE_ELSIF,
-                        const.GRAMMAR_VALUE_ELSE,
-                        const.GRAMMAR_VALUE_ENDIF,
-                    ):
-                        break
-                    stmts.append(t)
-                    i += 1
-                branches.append((cond, stmts))
-            elif isinstance(tok, Token) and tok.type == const.GRAMMAR_VALUE_ELSIF:
-                cond = items[i + 1]
-                i += 2  # now at THEN
-                i += 1  # skip THEN
                 stmts = []
                 while i < len(items):
                     t = items[i]

@@ -7,9 +7,9 @@ batch analysis, and editor helpers share a single semantic pipeline.
 from pathlib import Path
 
 from .core.semantic import (
+    DEFAULT_SAFETY_SIGNAL_KEYWORDS,
     CallSignatureOccurrence,
     CompletionItem,
-    DEFAULT_SAFETY_SIGNAL_KEYWORDS,
     SafetyPathTrace,
     SemanticDiagnostic,
     SemanticSnapshot,
@@ -18,9 +18,15 @@ from .core.semantic import (
     SymbolReference,
     WorkspaceSnapshotError,
     WorkspaceSourceDiscovery,
-    build_source_snapshot_from_basepicture as _build_source_snapshot_from_basepicture,
     discover_workspace_sources,
+)
+from .core.semantic import (
+    build_source_snapshot_from_basepicture as _build_source_snapshot_from_basepicture,
+)
+from .core.semantic import (
     load_source_snapshot as _load_source_snapshot,
+)
+from .core.semantic import (
     load_workspace_snapshot as _load_workspace_snapshot,
 )
 from .engine import CodeMode
@@ -90,9 +96,9 @@ def load_workspace_snapshot(
     )
 
 __all__ = [
+    "DEFAULT_SAFETY_SIGNAL_KEYWORDS",
     "CallSignatureOccurrence",
     "CompletionItem",
-    "DEFAULT_SAFETY_SIGNAL_KEYWORDS",
     "SafetyPathTrace",
     "SemanticDiagnostic",
     "SemanticSnapshot",

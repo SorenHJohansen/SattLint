@@ -1,21 +1,23 @@
 """Analyzer registry for CLI entrypoints."""
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from functools import lru_cache
-import json
 from pathlib import Path
 
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.initial_values import analyze_initial_values
 from sattlint.analyzers.modules import analyze_version_drift
 from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
-from sattlint.analyzers.spec_compliance import analyze_spec_compliance
 from sattlint.analyzers.safety_paths import analyze_safety_paths
+from sattlint.analyzers.spec_compliance import analyze_spec_compliance
 from sattlint.analyzers.taint_paths import analyze_taint_paths
 
+from .comment_code import analyze_comment_code
 from .dataflow import analyze_dataflow
 from .framework import AnalysisContext, AnalyzerSpec
+from .mms import analyze_mms_interface_variables
 from .sattline_semantics import (
     SemanticRule,
     SemanticRuleGroup,
@@ -27,12 +29,9 @@ from .sfc import (
     get_configured_mutually_exclusive_step_sets,
     get_configured_step_contracts,
 )
+from .shadowing import analyze_shadowing
 from .unsafe_defaults import analyze_unsafe_defaults
 from .variables import analyze_variables
-from .shadowing import analyze_shadowing
-from .comment_code import analyze_comment_code
-from .mms import analyze_mms_interface_variables
-
 
 SEMANTIC_LAYER_ANALYZER_KEY = "sattline-semantics"
 DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (

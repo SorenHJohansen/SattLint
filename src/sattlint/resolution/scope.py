@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
+
 from ..models.ast_model import Variable
+
 
 @dataclass
 class ScopeContext:

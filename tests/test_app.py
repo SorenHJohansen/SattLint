@@ -1,26 +1,25 @@
 """Tests for the interactive CLI application helpers."""
 
 import builtins
-from copy import deepcopy
-import ctypes
 import os
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
 import pytest
-from sattline_parser import parse_source_text as parser_core_parse_source_text
 
+from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattlint import app
-from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers import variable_usage_reporting as variables_reporting_module
+from sattlint.analyzers import variables as variables_module
 from sattlint.models.ast_model import FrameModule, ModuleTypeInstance, SingleModule
 from sattlint.reporting.variables_report import (
     ALL_VARIABLE_ANALYSIS_KINDS,
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
+    VariableIssue,
     VariablesReport,
 )
-
 
 VALID_SINGLE_FILE = """
 "SyntaxVersion"
@@ -103,7 +102,7 @@ def _find_module_with_localvar(base_picture):
         for mod in mods or []:
             if not hasattr(mod, "header"):
                 continue
-            mod_path = path + [mod.header.name]
+            mod_path = [*path, mod.header.name]
 
             if isinstance(mod, SingleModule):
                 if mod.localvariables:
@@ -273,7 +272,13 @@ def test_clear_screen_falls_back_to_cls_before_ansi(monkeypatch):
     assert writes == []
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows-specific")
 def test_configure_windows_console_api_sets_wide_char_signature():
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        import ctypes
+
     class _FakeCall:
         argtypes = None
         restype = None
@@ -285,19 +290,19 @@ def test_configure_windows_console_api_sets_wide_char_signature():
         FillConsoleOutputAttribute = _FakeCall()
         SetConsoleCursorPosition = _FakeCall()
 
-    class _Coord(ctypes.Structure):
+    class _Coord(ctypes.Structure):  # type: ignore[misc]
         _fields_ = []
 
-    class _BufferInfo(ctypes.Structure):
+    class _BufferInfo(ctypes.Structure):  # type: ignore[misc]
         _fields_ = []
 
     kernel32 = _FakeKernel32()
 
     app._configure_windows_console_api(kernel32, _Coord, _BufferInfo)
 
-    assert kernel32.FillConsoleOutputCharacterW.argtypes[1] is ctypes.wintypes.WCHAR
-    assert kernel32.FillConsoleOutputCharacterW.restype is ctypes.wintypes.BOOL
-    assert kernel32.SetConsoleCursorPosition.argtypes == [ctypes.wintypes.HANDLE, _Coord]
+    assert kernel32.FillConsoleOutputCharacterW.argtypes[1] is ctypes.wintypes.WCHAR  # type: ignore[union-attr]
+    assert kernel32.FillConsoleOutputCharacterW.restype is ctypes.wintypes.BOOL  # type: ignore[union-attr]
+    assert kernel32.SetConsoleCursorPosition.argtypes == [ctypes.wintypes.HANDLE, _Coord]  # type: ignore[union-attr]
 
 
 def test_self_check_handles_paths(tmp_path, monkeypatch, capsys):
@@ -1040,21 +1045,13 @@ def test_run_variable_analysis_all_reports_lists_empty_categories(
 def test_run_variable_analysis_all_reports_hide_low_confidence_categories(
     noop_screen, monkeypatch, capsys
 ):
-    issue = SimpleNamespace(
+    from sattlint.models.ast_model import Variable
+
+    issue = VariableIssue(
         kind=app.IssueKind.UI_ONLY,
         module_path=["ProgramA"],
-        variable=SimpleNamespace(name="DisplayValue", datatype_text="integer", datatype="integer"),
-        datatype_name=None,
+        variable=Variable(name="DisplayValue", datatype="integer"),
         role="localvariable",
-        source_variable=None,
-        duplicate_count=None,
-        duplicate_locations=None,
-        literal_value=None,
-        literal_span=None,
-        site=None,
-        field_path=None,
-        sequence_name=None,
-        reset_variable=None,
     )
     graph = SimpleNamespace(unavailable_libraries=set(), warnings=[])
     monkeypatch.setattr(
@@ -1087,21 +1084,13 @@ def test_run_variable_analysis_all_reports_hide_low_confidence_categories(
 def test_run_variable_analysis_can_render_low_confidence_category_on_request(
     noop_screen, monkeypatch, capsys
 ):
-    issue = SimpleNamespace(
+    from sattlint.models.ast_model import Variable
+
+    issue = VariableIssue(
         kind=app.IssueKind.UI_ONLY,
         module_path=["ProgramA"],
-        variable=SimpleNamespace(name="DisplayValue", datatype_text="integer", datatype="integer"),
-        datatype_name=None,
+        variable=Variable(name="DisplayValue", datatype="integer"),
         role="localvariable",
-        source_variable=None,
-        duplicate_count=None,
-        duplicate_locations=None,
-        literal_value=None,
-        literal_span=None,
-        site=None,
-        field_path=None,
-        sequence_name=None,
-        reset_variable=None,
     )
     graph = SimpleNamespace(unavailable_libraries=set(), warnings=[])
     monkeypatch.setattr(

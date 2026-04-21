@@ -3,8 +3,8 @@ from typing import Any, cast
 
 from docx import Document
 from docx.document import Document as DocClass
-from sattline_parser.grammar import constants as const
 
+from sattline_parser.grammar import constants as const
 from sattlint import config as config_module
 from sattlint.docgenerator.classification import (
     classify_documentation_structure,
@@ -16,14 +16,14 @@ from sattlint.models.ast_model import (
     Equation,
     ModuleCode,
     ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
     ParameterMapping,
+    Sequence,
     SFCCodeBlocks,
     SFCStep,
     SFCTransition,
     SingleModule,
-    ModuleTypeDef,
-    ModuleTypeInstance,
-    Sequence,
     Variable,
 )
 

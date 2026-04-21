@@ -158,7 +158,7 @@ def project_variable_issues_by_file(
         if issue.variable is None:
             continue
 
-        base_query_segments = list(issue.module_path) + [issue.variable.name]
+        base_query_segments = [*list(issue.module_path), issue.variable.name]
         query_segments = list(base_query_segments)
         if issue.field_path:
             query_segments.extend(segment for segment in issue.field_path.split(".") if segment)
@@ -198,5 +198,3 @@ def project_variable_issues_by_file(
         )
         for file_key, diagnostics in by_file.items()
     }
-
-

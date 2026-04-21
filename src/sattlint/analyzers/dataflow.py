@@ -152,7 +152,7 @@ class DataflowAnalyzer:
     ) -> StateMap:
         current_state = state
         for child in children:
-            child_path = parent_path + [child.header.name]
+            child_path = [*parent_path, child.header.name]
             if isinstance(child, SingleModule):
                 child_context = self._build_single_context(child, parent_context, child_path)
                 child_state = self._seed_state(
@@ -380,7 +380,7 @@ class DataflowAnalyzer:
                                 module_path,
                                 current_state.copy(),
                                 sequence_name=sequence_name,
-                                branch_path=branch_path + (branch_index,),
+                                branch_path=(*branch_path, branch_index),
                             )
                         )
                     finally:
@@ -400,7 +400,7 @@ class DataflowAnalyzer:
                                 module_path,
                                 current_state.copy(),
                                 sequence_name=sequence_name,
-                                branch_path=branch_path + (branch_index,),
+                                branch_path=(*branch_path, branch_index),
                             )
                         )
                     finally:
@@ -496,7 +496,7 @@ class DataflowAnalyzer:
         module_path: list[str],
         state: StateMap,
     ) -> StateMap:
-        if hasattr(obj, "data") and getattr(obj, "data") == const.KEY_STATEMENT:
+        if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
             current_state = state
             for child in getattr(obj, "children", []):
                 current_state = self._analyze_stmt_or_expr(child, context, module_path, current_state)
@@ -873,7 +873,7 @@ class DataflowAnalyzer:
         module_path: list[str],
         state: StateMap,
     ) -> ScalarValue | object:
-        if hasattr(expr, "data") and getattr(expr, "data") == const.KEY_STATEMENT:
+        if hasattr(expr, "data") and expr.data == const.KEY_STATEMENT:
             children = getattr(expr, "children", [])
             if children:
                 return self._evaluate_expression(children[0], context, module_path, state)
@@ -1240,8 +1240,8 @@ class DataflowAnalyzer:
                     collected.append(resolved)
                 return
 
-            if hasattr(node, "data") and getattr(node, "data") == const.KEY_STATEMENT:
-                for child in getattr(node, "children", []):
+            if hasattr(node, "data") and node.data == const.KEY_STATEMENT:  # type: ignore[reportAttributeAccessIssue]
+                for child in getattr(node, "children", []):  # type: ignore[reportAttributeAccessIssue]
                     visit(child)
                 return
 
@@ -1355,7 +1355,7 @@ class DataflowAnalyzer:
     ) -> StateMap:
         next_state = state.copy()
 
-        if hasattr(condition, "data") and getattr(condition, "data") == const.KEY_STATEMENT:
+        if hasattr(condition, "data") and condition.data == const.KEY_STATEMENT:
             children = getattr(condition, "children", [])
             if children:
                 return self._assume(children[0], truth, next_state, context, module_path)
@@ -1485,7 +1485,7 @@ class DataflowAnalyzer:
             *(
                 {
                     key
-                    for key in state.keys()
+                    for key in state
                     if not self._is_pending_state_key(key)
                 }
                 for state in states
@@ -1494,7 +1494,7 @@ class DataflowAnalyzer:
         pending_keys_per_state = [
             {
                 key
-                for key in state.keys()
+                for key in state
                 if self._is_pending_state_key(key)
             }
             for state in states
@@ -1622,8 +1622,8 @@ class DataflowAnalyzer:
         return format_expr(expr).replace("\n", " ").strip()
 
     def _sequence_node_label(self, node: object) -> str:
-        if hasattr(node, "name") and getattr(node, "name", None):
-            return f"{type(node).__name__}:{getattr(node, 'name')}"
+        if hasattr(node, "name") and getattr(node, "name", None):  # type: ignore[reportAttributeAccessIssue]
+            return f"{type(node).__name__}:{node.name}"  # type: ignore[reportAttributeAccessIssue]
         if isinstance(node, SFCFork):
             return f"SFCFork:{node.target}"
         return type(node).__name__
