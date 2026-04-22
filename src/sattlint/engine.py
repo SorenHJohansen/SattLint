@@ -1,4 +1,5 @@
 """Parsing and project-loading engine for SattLine sources."""
+
 import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from sattline_parser.api import describe_parse_error
 
 from .cache import FileASTCache, FileLookupCache, get_cache_dir
 from .grammar.parser_decode import is_compressed, preprocess_sl_text
+from .graphics_validation import validate_graphics_file
 from .models.ast_model import (
     BasePicture,
     DataType,
@@ -49,7 +51,6 @@ def is_expected_unavailable_library(name: str) -> bool:
     return name.casefold() in _EXPECTED_UNAVAILABLE_LIBRARY_REASONS
 
 
-
 def expected_unavailable_library_reason(name: str) -> str | None:
     return _EXPECTED_UNAVAILABLE_LIBRARY_REASONS.get(name.casefold())
 
@@ -76,6 +77,77 @@ def code_ext(mode: CodeMode) -> str:
 
 def deps_ext(mode: CodeMode) -> str:
     return ".z" if mode is CodeMode.OFFICIAL else ".l"
+
+
+def graphics_ext(mode: CodeMode) -> str:
+    return ".y" if mode is CodeMode.OFFICIAL else ".g"
+
+
+def graphics_ext_candidates(mode: CodeMode) -> tuple[str, ...]:
+    return (".y",) if mode is CodeMode.OFFICIAL else (".g", ".y")
+
+
+def _normalize_code_mode(mode: CodeMode | str | None) -> CodeMode | None:
+    if mode is None:
+        return None
+    if isinstance(mode, CodeMode):
+        return mode
+    raw_mode = str(mode).strip().lower()
+    if not raw_mode:
+        return None
+    return CodeMode(raw_mode)
+
+
+def resolve_graphics_companion_path(
+    source_path: Path,
+    *,
+    mode: CodeMode | str | None = None,
+) -> Path | None:
+    target_path = Path(source_path)
+    if target_path.suffix.lower() in {".g", ".y"}:
+        return target_path
+
+    resolved_mode = _normalize_code_mode(mode)
+    if resolved_mode is not None:
+        candidate_extensions = graphics_ext_candidates(resolved_mode)
+    elif target_path.suffix.lower() == ".x":
+        candidate_extensions = (".y",)
+    else:
+        candidate_extensions = (".g", ".y")
+
+    for extension in candidate_extensions:
+        candidate = target_path.with_suffix(extension)
+        if candidate.exists():
+            return candidate
+
+    return None
+
+
+def _graphics_validation_to_syntax_result(
+    file_path: Path,
+    result,
+    *,
+    warnings: Iterable[str] = (),
+) -> SyntaxValidationResult:
+    combined_warnings = [*warnings, *(message.message for message in result.warnings)]
+    if result.errors:
+        first_error = result.errors[0]
+        return SyntaxValidationResult(
+            file_path=file_path,
+            ok=False,
+            stage="graphics",
+            message=first_error.message,
+            line=first_error.line,
+            column=first_error.column,
+            warnings=tuple(combined_warnings),
+        )
+
+    return SyntaxValidationResult(
+        file_path=file_path,
+        ok=True,
+        stage="ok",
+        warnings=tuple(combined_warnings),
+    )
 
 
 def _record_project_failure(graph: ProjectGraph, name: str, exception: Exception) -> None:
@@ -225,8 +297,16 @@ def _extract_error_position(exc: Exception) -> tuple[int | None, int | None]:
     return line, column
 
 
-def validate_single_file_syntax(code_path: Path) -> SyntaxValidationResult:
+def validate_single_file_syntax(
+    code_path: Path,
+    *,
+    mode: CodeMode | str | None = None,
+) -> SyntaxValidationResult:
     target_path = Path(code_path)
+    if target_path.suffix.lower() in {".g", ".y"}:
+        result = validate_graphics_file(target_path)
+        return _graphics_validation_to_syntax_result(target_path, result)
+
     src = ""
     validation_warnings: list[str] = []
     try:
@@ -287,6 +367,15 @@ def validate_single_file_syntax(code_path: Path) -> SyntaxValidationResult:
             column=column,
         )
 
+    companion_path = resolve_graphics_companion_path(target_path, mode=mode)
+    if companion_path is not None and companion_path != target_path:
+        graphics_result = validate_graphics_file(companion_path)
+        return _graphics_validation_to_syntax_result(
+            companion_path,
+            graphics_result,
+            warnings=validation_warnings,
+        )
+
     return SyntaxValidationResult(
         file_path=target_path,
         ok=True,
@@ -325,9 +414,7 @@ class SattLineProjectLoader(DebugMixin):
         self._ast_cache = FileASTCache(get_cache_dir())
         self._base_indexes: dict[Path, dict[str, dict[str, Path]]] = {}
         self._lib_by_name: dict[str, str] = {}
-        self.dbg(
-            f"Selected mode={mode.value}, code_ext={code_ext(mode)}, deps_ext={deps_ext(mode)}"
-        )
+        self.dbg(f"Selected mode={mode.value}, code_ext={code_ext(mode)}, deps_ext={deps_ext(mode)}")
         self.dbg(f"Programs dir: {self.program_dir}")
         for i, ld in enumerate(self.other_lib_dirs, start=1):
             self.dbg(f"Lib {i}: {ld}")
@@ -448,8 +535,7 @@ class SattLineProjectLoader(DebugMixin):
             resolved = self.contextual_lookup(name, extensions, requester_dir, "code")
             if resolved is not None:
                 self.dbg(
-                    f"Using contextual code file: {resolved} "
-                    f"(requested by {requester_dir or self.program_dir})"
+                    f"Using contextual code file: {resolved} " f"(requested by {requester_dir or self.program_dir})"
                 )
                 return resolved
 
@@ -472,9 +558,7 @@ class SattLineProjectLoader(DebugMixin):
             )
             if indexed is not None:
                 self.dbg(f"Using code file: {indexed}")
-                self._lookup_cache.set(
-                    "code", name, self.mode.value, base, indexed.suffix.lower()
-                )
+                self._lookup_cache.set("code", name, self.mode.value, base, indexed.suffix.lower())
                 return indexed
 
             for ext in extensions:
@@ -509,8 +593,7 @@ class SattLineProjectLoader(DebugMixin):
             resolved = self.contextual_lookup(name, extensions, requester_dir, "deps")
             if resolved is not None:
                 self.dbg(
-                    f"Using contextual deps file: {resolved} "
-                    f"(requested by {requester_dir or self.program_dir})"
+                    f"Using contextual deps file: {resolved} " f"(requested by {requester_dir or self.program_dir})"
                 )
                 return resolved
 
@@ -533,9 +616,7 @@ class SattLineProjectLoader(DebugMixin):
             )
             if indexed is not None:
                 self.dbg(f"Using deps file: {indexed}")
-                self._lookup_cache.set(
-                    "deps", name, self.mode.value, base, indexed.suffix.lower()
-                )
+                self._lookup_cache.set("deps", name, self.mode.value, base, indexed.suffix.lower())
                 return indexed
 
             for ext in extensions:
@@ -644,7 +725,12 @@ class SattLineProjectLoader(DebugMixin):
             return self._resolve_root_only(root_name, strict)
         self.dbg(f"Resolving root: {root_name}")
         graph = ProjectGraph()
-        self._visit(root_name, graph, strict, requester_dir=self.program_dir)
+        previous_root_key = getattr(self, "_active_root_key", None)
+        self._active_root_key = root_name.casefold()
+        try:
+            self._visit(root_name, graph, strict, requester_dir=self.program_dir)
+        finally:
+            self._active_root_key = previous_root_key
         self.dbg(_format_debug_list("Resolved ASTs", graph.ast_by_name.keys()))
         if graph.missing:
             self.dbg(_format_debug_missing_entries(graph.missing))
@@ -706,6 +792,7 @@ class SattLineProjectLoader(DebugMixin):
         requester_dir: Path | None,
     ) -> None:
         key = name.lower()
+        root_key = getattr(self, "_active_root_key", None)
         if key in self._visited or key in self._stack:
             return
         self._stack.add(key)
@@ -751,6 +838,8 @@ class SattLineProjectLoader(DebugMixin):
                             warning_sink=validation_warnings.append,
                         )
                     except StructuralValidationError as ex:
+                        if key == root_key:
+                            raise
                         _record_project_warning(graph, name, f"validation warning: {ex}")
                     for warning in validation_warnings:
                         _record_project_warning(graph, name, warning)
@@ -803,10 +892,7 @@ def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> Base
     merged_datatypes: list[DataType] = list(graph.datatype_defs.values())
     merged_modtypes: list[ModuleTypeDef] = list(graph.moduletype_defs.values())
 
-    lib_deps = {
-        lib: sorted(deps)
-        for lib, deps in (graph.library_dependencies or {}).items()
-    }
+    lib_deps = {lib: sorted(deps) for lib, deps in (graph.library_dependencies or {}).items()}
 
     return BasePicture(
         header=root_bp.header,
@@ -835,6 +921,7 @@ def _get_dump_dir() -> Path:
 def dump_parse_tree(project: tuple[BasePicture, ProjectGraph]) -> None:
     """Save the parse tree from the root BasePicture to a file."""
     from datetime import datetime
+
     project_bp, _graph = project
 
     if project_bp.parse_tree is None:
@@ -855,6 +942,7 @@ def dump_parse_tree(project: tuple[BasePicture, ProjectGraph]) -> None:
 def dump_ast(project: tuple[BasePicture, ProjectGraph]) -> None:
     """Save the AST (BasePicture) structure to a file."""
     from datetime import datetime
+
     project_bp, _graph = project
 
     dump_dir = _get_dump_dir()
@@ -871,6 +959,7 @@ def dump_ast(project: tuple[BasePicture, ProjectGraph]) -> None:
 def dump_dependency_graph(project: tuple[BasePicture, ProjectGraph]) -> None:
     """Save the dependency graph to a file."""
     from datetime import datetime
+
     project_bp, graph = project
 
     dump_dir = _get_dump_dir()

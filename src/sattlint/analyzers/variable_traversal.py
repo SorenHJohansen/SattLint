@@ -1,4 +1,5 @@
 """Traversal helpers for the variable usage analyzer."""
+
 from __future__ import annotations
 
 import logging
@@ -117,7 +118,7 @@ def _handle_function_call(
             else:
                 self._walk_stmt_or_expr(status, context, path, is_ui_read=is_ui_read)
 
-        for extra in (args[3:] if len(args) > 3 else []):
+        for extra in args[3:] if len(args) > 3 else []:
             self._walk_stmt_or_expr(extra, context, path, is_ui_read=is_ui_read)
         self._record_function_call_effect_flow(fn_name, args or [], context)
         return
@@ -152,7 +153,7 @@ def _handle_function_call(
             else:
                 self._walk_stmt_or_expr(status, context, path, is_ui_read=is_ui_read)
 
-        for extra in (args[3:] if len(args) > 3 else []):
+        for extra in args[3:] if len(args) > 3 else []:
             self._walk_stmt_or_expr(extra, context, path, is_ui_read=is_ui_read)
         return
 
@@ -340,7 +341,7 @@ def _walk_tail(
     if tail is None:
         return
 
-    if isinstance(tail, (IntLiteral, FloatLiteral, int, float, bool)):
+    if isinstance(tail, IntLiteral | FloatLiteral | int | float | bool):
         return
 
     if isinstance(tail, tuple):
@@ -365,9 +366,7 @@ def _walk_tail(
         return
 
     if hasattr(tail, "children"):
-        for base_name in self._extract_var_basenames_from_tree(
-            tail, allow_single_ident=True
-        ):
+        for base_name in self._extract_var_basenames_from_tree(tail, allow_single_ident=True):
             self._mark_var_by_basename(
                 base_name,
                 context.env,
@@ -376,9 +375,7 @@ def _walk_tail(
             )
         return
 
-    raise ValueError(
-        f"_walk_tail: unexpected tail type {type(tail).__name__}: {tail}"
-    )
+    raise ValueError(f"_walk_tail: unexpected tail type {type(tail).__name__}: {tail}")
 
 
 def _extract_var_basenames_from_tree(
@@ -548,7 +545,7 @@ def _walk_sequence(
             finally:
                 self._pop_site()
 
-        elif isinstance(node, (SFCFork, SFCBreak)):
+        elif isinstance(node, SFCFork | SFCBreak):
             continue
 
 
@@ -579,10 +576,10 @@ def _walk_seq_nodes(
                 self._walk_stmt_or_expr(stmt, context, path)
         elif isinstance(node, SFCTransition):
             self._walk_stmt_or_expr(node.condition, context, path)
-        elif isinstance(node, (SFCAlternative, SFCParallel)):
+        elif isinstance(node, SFCAlternative | SFCParallel):
             for branch in node.branches:
                 self._walk_seq_nodes(branch, env, path)
-        elif isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+        elif isinstance(node, SFCSubsequence | SFCTransitionSub):
             self._walk_seq_nodes(node.body, env, path)
 
 
@@ -599,7 +596,7 @@ def _walk_stmt_or_expr(
             self._walk_stmt_or_expr(child, context, path, is_ui_read=is_ui_read)
         return
 
-    if isinstance(obj, (IntLiteral, FloatLiteral)):
+    if isinstance(obj, IntLiteral | FloatLiteral):
         span = getattr(obj, "span", None)
         value = int(obj) if isinstance(obj, IntLiteral) else float(obj)
         self._add_magic_number_issue(path, value, span)
@@ -635,11 +632,7 @@ def _walk_stmt_or_expr(
         )
         return
 
-    if (
-        isinstance(obj, tuple)
-        and obj
-        and obj[0] in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND)
-    ):
+    if isinstance(obj, tuple) and obj and obj[0] in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND):
         for sub in obj[1] or []:
             self._walk_stmt_or_expr(sub, context, path, is_ui_read=is_ui_read)
         return
@@ -662,13 +655,9 @@ def _walk_stmt_or_expr(
             self._walk_stmt_or_expr(rhs, context, path, is_ui_read=is_ui_read)
         return
 
-    if (
-        isinstance(obj, tuple)
-        and obj
-        and obj[0] in (const.KEY_PLUS, const.KEY_MINUS)
-    ):
+    if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_PLUS, const.KEY_MINUS):
         _, inner = obj
-        if isinstance(inner, (IntLiteral, FloatLiteral)):
+        if isinstance(inner, IntLiteral | FloatLiteral):
             span = getattr(inner, "span", None)
             value = int(inner) if isinstance(inner, IntLiteral) else float(inner)
             if obj[0] == const.KEY_MINUS:

@@ -1,4 +1,5 @@
 """Post-transform structural validation for SattLine ASTs."""
+
 from __future__ import annotations
 
 import re
@@ -88,9 +89,7 @@ def _validate_identifier(name: str | None, context: str) -> None:
     if not name:
         return
     if _identifier_length(name) > 20:
-        raise StructuralValidationError(
-            f"{context} name {name!r} exceeds 20 characters"
-        )
+        raise StructuralValidationError(f"{context} name {name!r} exceeds 20 characters")
 
 
 def _span_kwargs(span: SourceSpan | None) -> dict[str, int]:
@@ -267,9 +266,9 @@ def _infer_literal_datatype(
 ) -> Simple_DataType | str | None:
     if isinstance(value, bool):
         return Simple_DataType.BOOLEAN
-    if isinstance(value, (IntLiteral, int)) and not isinstance(value, bool):
+    if isinstance(value, IntLiteral | int) and not isinstance(value, bool):
         return Simple_DataType.INTEGER
-    if isinstance(value, (FloatLiteral, float)):
+    if isinstance(value, FloatLiteral | float):
         return Simple_DataType.REAL
     if is_duration and isinstance(value, str) and _is_valid_duration_literal(value):
         return Simple_DataType.DURATION
@@ -293,14 +292,8 @@ def _literal_matches_expected_datatype(
     if _assignment_type_matches(actual, expected):
         return True
 
-    return (
-        isinstance(literal, str)
-        and _is_duration_datatype(expected)
-        and _is_valid_duration_literal(literal)
-    ) or (
-        isinstance(literal, str)
-        and _is_time_datatype(expected)
-        and _is_valid_time_literal(literal)
+    return (isinstance(literal, str) and _is_duration_datatype(expected) and _is_valid_duration_literal(literal)) or (
+        isinstance(literal, str) and _is_time_datatype(expected) and _is_valid_time_literal(literal)
     )
 
 
@@ -340,11 +333,7 @@ def _validate_declared_variable(
         if _is_anytype_datatype(variable.datatype):
             pass
         elif not type_graph.has_record(variable.datatype):
-            suggestion_candidates = (
-                _BUILTIN_DATATYPE_NAMES
-                if allow_unresolved_external_datatypes
-                else known_datatypes
-            )
+            suggestion_candidates = _BUILTIN_DATATYPE_NAMES if allow_unresolved_external_datatypes else known_datatypes
             suggestion = _suggest_datatype_name(variable.datatype, suggestion_candidates)
             if suggestion is not None:
                 raise StructuralValidationError(
@@ -402,16 +391,18 @@ def _ensure_unique_names(names: list[str], context: str, kind: str) -> None:
     for name in names:
         folded = name.casefold()
         if folded in seen:
-            raise StructuralValidationError(
-                f"{context} has duplicate {kind} names {seen[folded]!r} and {name!r}"
-            )
+            raise StructuralValidationError(f"{context} has duplicate {kind} names {seen[folded]!r} and {name!r}")
         seen[folded] = name
 
 
 def _collect_sequence_labels(nodes: list[object], labels: dict[str, str], context: str) -> None:
     for node in nodes:
         label: str | None = None
-        if isinstance(node, SFCStep) or (isinstance(node, SFCTransition) and node.name) or isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+        if (
+            isinstance(node, SFCStep)
+            or (isinstance(node, SFCTransition) and node.name)
+            or isinstance(node, SFCSubsequence | SFCTransitionSub)
+        ):
             label = node.name
 
         if label:
@@ -422,10 +413,10 @@ def _collect_sequence_labels(nodes: list[object], labels: dict[str, str], contex
                 )
             labels[folded] = label
 
-        if isinstance(node, (SFCAlternative, SFCParallel)):
+        if isinstance(node, SFCAlternative | SFCParallel):
             for branch in node.branches:
                 _collect_sequence_labels(branch, labels, context)
-        elif isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+        elif isinstance(node, SFCSubsequence | SFCTransitionSub):
             _collect_sequence_labels(node.body, labels, context)
 
 
@@ -589,9 +580,9 @@ def _infer_expression_datatype(
 ) -> Simple_DataType | str | None:
     if isinstance(node, bool):
         return Simple_DataType.BOOLEAN
-    if isinstance(node, (IntLiteral, int)) and not isinstance(node, bool):
+    if isinstance(node, IntLiteral | int) and not isinstance(node, bool):
         return Simple_DataType.INTEGER
-    if isinstance(node, (FloatLiteral, float)):
+    if isinstance(node, FloatLiteral | float):
         return Simple_DataType.REAL
     if isinstance(node, str):
         return Simple_DataType.STRING
@@ -1296,10 +1287,7 @@ def _validate_module(
         matches = moduletype_index.get(module.moduletype_name.casefold(), [])
         expected_parameters = None
         if len(matches) == 1:
-            expected_parameters = {
-                variable.name.casefold(): variable
-                for variable in matches[0].moduleparameters or []
-            }
+            expected_parameters = {variable.name.casefold(): variable for variable in matches[0].moduleparameters or []}
         _validate_parameter_mappings(
             module.parametermappings,
             f"{context} module instance {module.header.name!r}",
@@ -1341,8 +1329,7 @@ def validate_transformed_basepicture(
 
     type_graph = TypeGraph.from_datatypes(available_datatypes)
     known_datatypes = tuple(
-        [datatype.value for datatype in Simple_DataType]
-        + [datatype.name for datatype in available_datatypes]
+        [datatype.value for datatype in Simple_DataType] + [datatype.name for datatype in available_datatypes]
     )
     moduletype_index: dict[str, list[ModuleTypeDef]] = {}
     for moduletype in available_moduletype_defs:

@@ -112,12 +112,8 @@ class MMSInterfaceReport:
                     continue
 
                 top_fields = sorted(field_totals.items(), key=lambda item: (-item[1], item[0]))[:3]
-                top_fields_str = ", ".join(
-                    f"{field} ({count}x)" for field, count in top_fields
-                )
-                lines.append(
-                    f"  - {display_name}: {total} writes (top fields: {top_fields_str})"
-                )
+                top_fields_str = ", ".join(f"{field} ({count}x)" for field, count in top_fields)
+                lines.append(f"  - {display_name}: {total} writes (top fields: {top_fields_str})")
 
             lines.append("")
             lines.append("Details by MMS variable:")
@@ -134,9 +130,7 @@ class MMSInterfaceReport:
                     key=lambda h: (".".join(h.module_path), h.parameter_name.casefold()),
                 ):
                     location = ".".join(hit.module_path)
-                    lines.append(
-                        f"      - {location} | {hit.moduletype_name}.{hit.parameter_name}"
-                    )
+                    lines.append(f"      - {location} | {hit.moduletype_name}.{hit.parameter_name}")
 
                 if dedup:
                     lines.append("    Field writes:")
@@ -150,9 +144,7 @@ class MMSInterfaceReport:
                         write_parts = []
                         for path, count in locations:
                             path_str = ".".join(path)
-                            write_parts.append(
-                                f"{path_str} ({count}x)" if count > 1 else path_str
-                            )
+                            write_parts.append(f"{path_str} ({count}x)" if count > 1 else path_str)
                         lines.append(f"      - {field_label} => {', '.join(write_parts)}")
                 else:
                     note = next((h.write_note for h in var_hits if h.write_note), None)

@@ -6,8 +6,8 @@
  -3
  2
  Lit 0 1 0  None -1     0
- 0 -*Display 
- Lit  True  4 True 
+ 0 -*Display
+ Lit  True  4 True
 t
            0
 
@@ -17,8 +17,8 @@ t
  -3
  2
  Lit 0 1 0  None -1     0
- 0 -*Display 
- Lit  True  4 True 
+ 0 -*Display
+ Lit  True  4 True
 t
            0
 
@@ -28,8 +28,8 @@ t
  -3
  2
  Lit 0 1 0  None -1     0
- 0 -*Display 
- Lit  True  4 True 
+ 0 -*Display
+ Lit  True  4 True
 t
            0
 
@@ -39,8 +39,8 @@ t
  -3
  2
  Lit 0 1 0  None -1     0
- 0 -*Display 
- Lit  True  4 True 
+ 0 -*Display
+ Lit  True  4 True
 t
            0
 
@@ -50,8 +50,8 @@ t
  -3
  2
  Lit 0 1 0  None -1     0
- 0 -*Display 
- Lit  True  4 True 
+ 0 -*Display
+ Lit  True  4 True
 t
            0
 
@@ -64,8 +64,8 @@ Activity
 
 1
 1
- Var 0 23 OpRecipeStatus.Activity 
- None -3 
+ Var 0 23 OpRecipeStatus.Activity
+ None -3
 5
 0
 No operation recipe
@@ -88,8 +88,8 @@ Activity
 
 1
 1
- Var 0 21 RecipeStatus.Activity 
- None -3 
+ Var 0 21 RecipeStatus.Activity
+ None -3
 7
 0
 No recipe
@@ -116,8 +116,8 @@ Status
 Index not in table.
 7
 2
- Var 0 46 RecipeStatus.NextOperation1.AllocationActivity 
- None 0 
+ Var 0 46 RecipeStatus.NextOperation1.AllocationActivity
+ None 0
 5
 0
 
@@ -140,8 +140,8 @@ Status
 Index not in table.
 7
 2
- Var 0 46 RecipeStatus.NextOperation2.AllocationActivity 
- None 0 
+ Var 0 46 RecipeStatus.NextOperation2.AllocationActivity
+ None 0
 5
 0
 
@@ -164,8 +164,8 @@ Status
 Index not in table.
 7
 2
- Var 0 46 RecipeStatus.NextOperation3.AllocationActivity 
- None 0 
+ Var 0 46 RecipeStatus.NextOperation3.AllocationActivity
+ None 0
 5
 0
 
@@ -188,8 +188,8 @@ Status
 Index not in table.
 7
 2
- Var 0 46 RecipeStatus.NextOperation4.AllocationActivity 
- None 0 
+ Var 0 46 RecipeStatus.NextOperation4.AllocationActivity
+ None 0
 5
 0
 
@@ -212,8 +212,8 @@ Status
 Index not in table.
 7
 2
- Var 0 46 RecipeStatus.NextOperation5.AllocationActivity 
- None 0 
+ Var 0 46 RecipeStatus.NextOperation5.AllocationActivity
+ None 0
 5
 0
 
@@ -236,8 +236,8 @@ Status
 Index not in table.
 7
 2
- Var 0 45 RecipeStatus.JumpOperation.AllocationActivity 
- None 0 
+ Var 0 45 RecipeStatus.JumpOperation.AllocationActivity
+ None 0
 5
 0
 
@@ -257,8 +257,8 @@ Omitted
  0
  2
  None 0  Lit 0 2 -1     0
- 0 -+UnitAllocator2 
- None  True  
+ 0 -+UnitAllocator2
+ None  True
 t
            0
 
@@ -268,8 +268,8 @@ t
  0
  2
  None 0  Lit 0 2 -1     0
- 0 -+UnitAllocator3 
- None  True  
+ 0 -+UnitAllocator3
+ None  True
 t
            0
 
@@ -279,8 +279,8 @@ t
  0
  2
  None 0  Lit 0 2 -1     0
- 0 -+UnitAllocator4 
- None  True  
+ 0 -+UnitAllocator4
+ None  True
 t
            0
 
@@ -290,8 +290,8 @@ t
  0
  2
  None 0  Lit 0 2 -1     0
- 0 -+UnitAllocator5 
- None  True  
+ 0 -+UnitAllocator5
+ None  True
 t
            0
 
@@ -301,8 +301,8 @@ t
  0
  2
  None 0  Lit 0 2 -1     0
- 0 -+UnitAllocator0 
- None  True  
+ 0 -+UnitAllocator0
+ None  True
 t
            0
 
@@ -312,8 +312,8 @@ t
  0
  2
  None 0  Lit 0 2 -1     0
- 0 -+UnitAllocator1 
- None  True  
+ 0 -+UnitAllocator1
+ None  True
 t
            0
 
@@ -323,8 +323,8 @@ t
  0
  2
  None 0  Lit 0 2 -1     0
- 0 UnitAllocator1 
- None  True  
+ 0 UnitAllocator1
+ None  True
 t
            0
 
@@ -334,8 +334,8 @@ t
  0
  2
  None 0  Lit 0 2 -1     0
- 0 UnitAllocator2 
- None  True  
+ 0 UnitAllocator2
+ None  True
 t
            0
 
@@ -345,8 +345,8 @@ t
  0
  2
  None 0  Lit 0 2 -1     0
- 0 UnitAllocator3 
- None  True  
+ 0 UnitAllocator3
+ None  True
 t
            0
 
@@ -356,8 +356,8 @@ t
  0
  2
  None 0  Lit 0 2 -1     0
- 0 UnitAllocator4 
- None  True  
+ 0 UnitAllocator4
+ None  True
 t
            0
 
@@ -370,8 +370,8 @@ t
 
 1
 1
- Var 0 13 InfoTextIndex 
- None -3 
+ Var 0 13 InfoTextIndex
+ None -3
 5
 2
 Check from start of list
@@ -394,8 +394,8 @@ Continue with next unit in list
 
 1
 1
- Var 0 13 InfoTextIndex 
- None -3 
+ Var 0 13 InfoTextIndex
+ None -3
 15
 0
 

@@ -1,4 +1,3 @@
-
 from typing import Any, cast
 
 from docx import Document
@@ -48,7 +47,9 @@ def _table_headers(document: DocClass) -> list[list[str]]:
 
 
 def _table_text(document: DocClass) -> list[str]:
-    return [cell.text.strip() for table in document.tables for row in table.rows for cell in row.cells if cell.text.strip()]
+    return [
+        cell.text.strip() for table in document.tables for row in table.rows for cell in row.cells if cell.text.strip()
+    ]
 
 
 def _build_documentation_fixture() -> BasePicture:
@@ -302,9 +303,7 @@ def _build_sequence_doc_fixture() -> BasePicture:
                         SFCStep(
                             kind="init",
                             name="Init",
-                            code=SFCCodeBlocks(
-                                exit=[("assign", {"var_name": "p.GotoRunDone"}, True)]
-                            ),
+                            code=SFCCodeBlocks(exit=[("assign", {"var_name": "p.GotoRunDone"}, True)]),
                         ),
                         SFCTransition(
                             name="Tr1",
@@ -596,7 +595,16 @@ def test_generate_docx_uses_template_shaped_front_matter_and_tables(tmp_path):
     assert ["NNE Author", "NNE Author", "NNE Author"] in headers
     assert ["", "Document", "NN Doc. no."] in headers
     assert ["Unit", "Unit Class", "Danish Description", "Unit Definition"] in headers
-    assert ["Measurement", "Tag", "Min", "Max", "Eng. Unit", "Log interval\n(Max)", "Dead-band\nrelative", "Log interval \n(Min)"] in headers
+    assert [
+        "Measurement",
+        "Tag",
+        "Min",
+        "Max",
+        "Eng. Unit",
+        "Log interval\n(Max)",
+        "Dead-band\nrelative",
+        "Log interval \n(Min)",
+    ] in headers
     assert ["From", "Comment"] in headers
 
 
@@ -633,7 +641,9 @@ def test_generate_docx_renders_sfc_sequences_as_tables(tmp_path):
     table_text = _table_text(document)
 
     assert ["Type", "Name", "Condition / Detail", "Enter", "Active", "Exit"] in headers
-    assert "Sub sequence - MainSequence" in [paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()]
+    assert "Sub sequence - MainSequence" in [
+        paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()
+    ]
     assert "Init step" in table_text
     assert "Init" in table_text
     assert "p.GotoRunDone = True" in table_text

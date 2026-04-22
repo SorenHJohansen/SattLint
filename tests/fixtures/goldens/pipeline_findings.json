@@ -28,28 +28,29 @@
             "suggestion": null
         },
         {
-            "analyzer": "mypy",
+            "analyzer": "pyright",
             "artifact": "findings",
             "category": "typing",
             "confidence": "high",
             "data": {
                 "code": "assignment",
+                "rule": "",
                 "severity": "error"
             },
             "detail": null,
-            "fingerprint": "mypy.error.assignment|src/typed.py|9||Incompatible types in assignment",
-            "id": "mypy-error-assignment",
+            "fingerprint": "pyright.assignment|src/typed.py|||Incompatible types in assignment",
+            "id": "pyright-error-assignment",
             "location": {
-                "column": 3,
-                "line": 9,
+                "column": null,
+                "line": null,
                 "module_path": [],
                 "path": "src/typed.py",
                 "symbol": null
             },
             "message": "Incompatible types in assignment",
-            "rule_id": "mypy.error.assignment",
+            "rule_id": "pyright.assignment",
             "severity": "high",
-            "source": "mypy",
+            "source": "pyright",
             "suggestion": null
         },
         {

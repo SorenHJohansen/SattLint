@@ -33,7 +33,9 @@ def _source_file_key(path: Path) -> tuple[str, str]:
     return (path.name.casefold(), path.parent.name.casefold())
 
 
-def _build_source_path_index(paths: tuple[Path, ...]) -> tuple[dict[str, tuple[Path, ...]], dict[tuple[str, str], Path]]:
+def _build_source_path_index(
+    paths: tuple[Path, ...],
+) -> tuple[dict[str, tuple[Path, ...]], dict[tuple[str, str], Path]]:
     by_name: dict[str, list[Path]] = {}
     by_key: dict[tuple[str, str], Path] = {}
     for path in sorted((item.resolve() for item in paths), key=_path_key):
@@ -57,11 +59,7 @@ def _workspace_entry_files(discovery: WorkspaceSourceDiscovery) -> tuple[Path, .
     for dependency_path in discovery.dependency_files:
         referenced_names.update(_read_dependency_names(dependency_path))
 
-    candidates = [
-        path.resolve()
-        for path in discovery.program_files
-        if path.stem.casefold() not in referenced_names
-    ]
+    candidates = [path.resolve() for path in discovery.program_files if path.stem.casefold() not in referenced_names]
     if candidates:
         return tuple(sorted(set(candidates), key=_path_key))
     return tuple(sorted((path.resolve() for path in discovery.program_files), key=_path_key))
@@ -75,7 +73,9 @@ class SnapshotBundle:
     entry_file: Path
     cache_key: str
     source_files: tuple[Path, ...]
-    semantic_diagnostics_by_path: dict[Path, tuple[Diagnostic, ...]] = field(default_factory=dict, repr=False, compare=False)
+    semantic_diagnostics_by_path: dict[Path, tuple[Diagnostic, ...]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
     semantic_diagnostics_lock: threading.RLock = field(default_factory=threading.RLock, repr=False, compare=False)
 
 
@@ -116,11 +116,7 @@ class WorkspaceSnapshotStore:
                 self._config_version += 1
                 return False
 
-            if (
-                self._workspace_root == normalized_root
-                and self._settings == settings
-                and self._discovery is not None
-            ):
+            if self._workspace_root == normalized_root and self._settings == settings and self._discovery is not None:
                 return True
 
             self._workspace_root = normalized_root
@@ -311,6 +307,7 @@ class WorkspaceSnapshotStore:
             discovery,
         )
         state.future = future
+
         def _complete_snapshot(completed: Future[SnapshotBundle]) -> None:
             self._finalize_future(
                 state.cache_key,

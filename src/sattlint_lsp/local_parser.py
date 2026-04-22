@@ -15,6 +15,7 @@ from sattline_parser.utils.text_processing import strip_sl_comments
 from sattlint.core.ast_tools import iter_variable_refs
 from sattlint.core.document import LineIndex
 from sattlint.editor_api import SemanticSnapshot, build_source_snapshot_from_basepicture
+from sattlint.graphics_validation import validate_graphics_text
 from sattlint.models.ast_model import (
     BasePicture,
     FrameModule,
@@ -56,12 +57,14 @@ def _diagnostic_from_message(
     line: int | None,
     column: int | None,
     length: int = 1,
+    *,
+    severity: DiagnosticSeverity = DiagnosticSeverity.Error,
 ) -> Diagnostic:
     if line is None or column is None:
         range_ = Range(start=Position(line=0, character=0), end=Position(line=0, character=1))
     else:
         range_ = _range_from_position(line, column, length)
-    return Diagnostic(range=range_, message=message, severity=DiagnosticSeverity.Error, source="sattlint")
+    return Diagnostic(range=range_, message=message, severity=severity, source="sattlint")
 
 
 def _append_unique_diagnostic(
@@ -116,7 +119,7 @@ def _collect_sequence_step_features(
                 feature_set.add("t")
             continue
 
-        if isinstance(node, (SFCAlternative, SFCParallel)):
+        if isinstance(node, SFCAlternative | SFCParallel):
             for branch in node.branches or []:
                 _collect_sequence_step_features(
                     branch,
@@ -127,7 +130,7 @@ def _collect_sequence_step_features(
                 )
             continue
 
-        if isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+        if isinstance(node, SFCSubsequence | SFCTransitionSub):
             _collect_sequence_step_features(
                 node.body,
                 seqcontrol=seqcontrol,
@@ -181,23 +184,15 @@ def _collect_step_auto_variable_diagnostics_for_modulecode(
 
         step_name = known_steps.get(base_name.casefold())
         if step_name is None:
-            message = (
-                f"{full_name!r} is not available: no sequence step named {base_name!r} exists in this module"
-            )
+            message = f"{full_name!r} is not available: no sequence step named {base_name!r} exists in this module"
         else:
             feature_set = available_features.get(base_name.casefold(), set())
             if suffix == "hold" and "hold" not in feature_set:
-                message = (
-                    f"{full_name!r} is not available: step {step_name!r} only exposes .Hold when its sequence enables SeqControl"
-                )
+                message = f"{full_name!r} is not available: step {step_name!r} only exposes .Hold when its sequence enables SeqControl"
             elif suffix == "reset" and "reset" not in feature_set:
-                message = (
-                    f"{full_name!r} is not available: step {step_name!r} only exposes .Reset when its sequence enables SeqControl"
-                )
+                message = f"{full_name!r} is not available: step {step_name!r} only exposes .Reset when its sequence enables SeqControl"
             elif suffix == "t" and "t" not in feature_set:
-                message = (
-                    f"{full_name!r} is not available: step {step_name!r} only exposes .T when its sequence enables SeqTimer"
-                )
+                message = f"{full_name!r} is not available: step {step_name!r} only exposes .T when its sequence enables SeqTimer"
             else:
                 continue
 
@@ -393,9 +388,9 @@ class IncrementalDocumentParserAdapter:
         # Adaptive checkpoint interval: cap total checkpoints to ~10 regardless of file size.
         # Each checkpoint deep-copies Lark's value_stack (which grows as the file is parsed),
         # making per-line checkpointing prohibitively expensive for files >1000 lines.
-        _MAX_DESIRED_CHECKPOINTS = 10
+        max_desired_checkpoints = 10
         clean_lines = cleaned_text.count("\n") + 1
-        checkpoint_line_interval = max(1, clean_lines // _MAX_DESIRED_CHECKPOINTS)
+        checkpoint_line_interval = max(1, clean_lines // max_desired_checkpoints)
         lexer = self._cursor_lexer(cursor)
 
         for token in lexer.lex(cursor.parser_state):
@@ -426,6 +421,24 @@ class IncrementalDocumentParserAdapter:
     ) -> DocumentParseResult:
         diagnostics: list[Diagnostic] = []
         seen: set[tuple[int, int, str]] = set()
+
+        if document_path.suffix.lower() == ".g":
+            result = validate_graphics_text(text, document_path)
+            for message in result.messages:
+                _append_unique_diagnostic(
+                    diagnostics,
+                    seen,
+                    _diagnostic_from_message(
+                        message.message,
+                        message.line,
+                        message.column,
+                        message.length,
+                        severity=(
+                            DiagnosticSeverity.Warning if message.severity == "warning" else DiagnosticSeverity.Error
+                        ),
+                    ),
+                )
+            return DocumentParseResult(syntax_diagnostics=tuple(diagnostics), local_snapshot=None)
 
         if include_comment_validation:
             violations = find_disallowed_comments(text)

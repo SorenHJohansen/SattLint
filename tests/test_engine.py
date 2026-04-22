@@ -9,11 +9,7 @@ from sattlint import engine
 def test_format_debug_list_renders_multiline_bullets() -> None:
     formatted = engine._format_debug_list("Resolved ASTs", ["iconlib", "configlib"])
 
-    assert formatted == (
-        "Resolved ASTs (2):\n"
-        "  - iconlib\n"
-        "  - configlib"
-    )
+    assert formatted == ("Resolved ASTs (2):\n" "  - iconlib\n" "  - configlib")
 
 
 def test_format_debug_missing_entries_splits_parse_failures() -> None:
@@ -145,10 +141,10 @@ def test_loader_keeps_dependency_ast_when_validation_warns(monkeypatch, tmp_path
             '"SyntaxVersion"',
             '"OriginalFileDate"',
             '"ProgramDate"',
-            'BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1',
-            'ModuleDef',
-            'ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )',
-            'ENDDEF (*BasePicture*);',
+            "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1",
+            "ModuleDef",
+            "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )",
+            "ENDDEF (*BasePicture*);",
         ]
     )
     root_file = tmp_path / "Root.s"

@@ -347,9 +347,7 @@ def test_whole_record_access_does_not_report_unused_leaf_fields():
     analyzer.run()
 
     assert not any(
-        issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
-        and issue.datatype_name == "RecType"
-        for issue in analyzer.issues
+        issue.kind is IssueKind.UNUSED_DATATYPE_FIELD and issue.datatype_name == "RecType" for issue in analyzer.issues
     )
 
 
@@ -632,10 +630,7 @@ def test_anytype_contract_reports_missing_nested_required_field():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    issues = [
-        issue for issue in analyzer.issues
-        if issue.kind is IssueKind.CONTRACT_MISMATCH
-    ]
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.CONTRACT_MISMATCH]
     assert len(issues) == 1
     assert issues[0].field_path == "Inner.Value"
     assert "missing required field 'Inner.Value'" in (issues[0].role or "")

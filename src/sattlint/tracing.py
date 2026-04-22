@@ -107,7 +107,7 @@ def detect_transform_invariant_violations(base_picture: BasePicture) -> list[dic
     def walk_modules(modules: SequenceABC[object] | None, path: list[str]) -> None:
         seen_names: set[str] = set()
         for module in modules or []:
-            if not isinstance(module, (SingleModule, FrameModule, ModuleTypeInstance)):
+            if not isinstance(module, SingleModule | FrameModule | ModuleTypeInstance):
                 violations.append(
                     {
                         "kind": "unexpected_submodule_type",
@@ -131,7 +131,7 @@ def detect_transform_invariant_violations(base_picture: BasePicture) -> list[dic
                     )
                 seen_names.add(module_key)
 
-            if isinstance(module, (SingleModule, FrameModule)):
+            if isinstance(module, SingleModule | FrameModule):
                 next_path = path + ([module_name] if module_name else [_module_node_label(module)])
                 walk_modules(module.submodules, next_path)
 

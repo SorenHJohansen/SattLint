@@ -95,6 +95,7 @@ def load_workspace_snapshot(
         _analysis_provider=build_variable_semantic_artifacts,
     )
 
+
 __all__ = [
     "DEFAULT_SAFETY_SIGNAL_KEYWORDS",
     "CallSignatureOccurrence",

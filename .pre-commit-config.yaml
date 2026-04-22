@@ -3,13 +3,16 @@ repos:
     rev: v0.8.0
     hooks:
       - id: ruff
-        args: [--fix]
+        args: [--fix, --unsafe-fixes]
       - id: ruff-format
 
-  - repo: https://github.com/RobertCraigie/pyright-python
-    rev: v1.1.380
+  - repo: local
     hooks:
       - id: pyright
+        name: pyright
+        entry: .venv/Scripts/python.exe -m pyright
+        language: system
+        pass_filenames: false
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

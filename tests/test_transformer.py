@@ -23,9 +23,7 @@ def test_seqstep_uses_name_token(transformer):
 
 def test_seqinitstep_uses_name_token(transformer):
     blocks = SFCCodeBlocks()
-    step = transformer.seqinitstep(
-        [_tok("SEQINITSTEP", "SEQINITSTEP"), _tok("NAME", "Init"), blocks]
-    )
+    step = transformer.seqinitstep([_tok("SEQINITSTEP", "SEQINITSTEP"), _tok("NAME", "Init"), blocks])
     assert step.name == "Init"
 
 
@@ -41,9 +39,7 @@ def test_seqtransition_uses_optional_name_token(transformer):
     assert tr_named.name == "T1"
     assert tr_named.condition == 123
 
-    tr_unnamed = transformer.seqtransition(
-        [_tok("SEQTRANSITION", "SEQTRANSITION"), _tok("WAIT_FOR", "WAIT_FOR"), 123]
-    )
+    tr_unnamed = transformer.seqtransition([_tok("SEQTRANSITION", "SEQTRANSITION"), _tok("WAIT_FOR", "WAIT_FOR"), 123])
     assert tr_unnamed.name is None
     assert tr_unnamed.condition == 123
 

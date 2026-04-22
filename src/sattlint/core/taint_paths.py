@@ -116,27 +116,17 @@ def build_taint_path_traces(
     display_names_by_key: dict[tuple[str, ...], str] | None = None,
 ) -> list[TaintPathTrace]:
     normalized_edges: dict[tuple[str, ...], tuple[tuple[str, ...], ...]] = {
-        source_key: tuple(target_keys)
-        for source_key, target_keys in effect_flow_edges.items()
+        source_key: tuple(target_keys) for source_key, target_keys in effect_flow_edges.items()
     }
-    incoming_keys = {
-        target_key
-        for target_keys in normalized_edges.values()
-        for target_key in target_keys
-    }
+    incoming_keys = {target_key for target_keys in normalized_edges.values() for target_key in target_keys}
 
     all_keys: set[tuple[str, ...]] = set(accesses_by_key)
     for source_key, target_keys in normalized_edges.items():
         all_keys.add(source_key)
         all_keys.update(target_keys)
 
-    display_names = {
-        key: _display_canonical_path(key, accesses_by_key, display_names_by_key)
-        for key in all_keys
-    }
-    runtime_keys = {
-        key for key, canonical_path in display_names.items() if _is_runtime_canonical_path(canonical_path)
-    }
+    display_names = {key: _display_canonical_path(key, accesses_by_key, display_names_by_key) for key in all_keys}
+    runtime_keys = {key for key, canonical_path in display_names.items() if _is_runtime_canonical_path(canonical_path)}
     source_keys = [
         key
         for key in runtime_keys
@@ -144,9 +134,7 @@ def build_taint_path_traces(
         if classify_taint_source_path(display_names[key], source_keywords=source_keywords) is not None
     ]
     sink_keys = {
-        key
-        for key in runtime_keys
-        if is_critical_sink_path(display_names[key], keywords=critical_sink_keywords)
+        key for key in runtime_keys if is_critical_sink_path(display_names[key], keywords=critical_sink_keywords)
     }
 
     traces: list[TaintPathTrace] = []
@@ -157,25 +145,19 @@ def build_taint_path_traces(
         if source_kind is None:
             continue
 
-        pending: deque[tuple[tuple[str, ...], tuple[tuple[str, ...], ...]]] = deque(
-            [(source_key, (source_key,))]
-        )
+        pending: deque[tuple[tuple[str, ...], tuple[tuple[str, ...], ...]]] = deque([(source_key, (source_key,))])
         visited: set[tuple[str, ...]] = {source_key}
 
         while pending:
             current_key, current_path = pending.popleft()
             for target_key in sorted(
-                tuple(
-                    target_key
-                    for target_key in normalized_edges.get(current_key, ())
-                    if target_key in runtime_keys
-                ),
+                (target_key for target_key in normalized_edges.get(current_key, ()) if target_key in runtime_keys),
                 key=lambda item: display_names.get(item, ".".join(item)).casefold(),
             ):
                 if target_key in visited:
                     continue
                 visited.add(target_key)
-                next_path = current_path + (target_key,)
+                next_path = (*current_path, target_key)
 
                 if target_key in sink_keys and len(next_path) > 1:
                     pair = (source_key, target_key)

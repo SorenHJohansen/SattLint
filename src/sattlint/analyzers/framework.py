@@ -1,4 +1,5 @@
 """Shared analysis framework primitives."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -20,6 +21,11 @@ class Issue:
     message: str
     module_path: list[str] | None = None
     data: dict[str, Any] | None = None
+    rule_id: str | None = None
+    severity: str | None = None
+    confidence: str | None = None
+    explanation: str | None = None
+    suggestion: str | None = None
 
 
 def format_report_header(report_type: str, target: str, status: str | None = None) -> list[str]:
@@ -46,6 +52,33 @@ class SimpleReport:
             return "\n".join(lines)
         lines = format_report_header("Simple", self.name, status="issues")
         lines.append(f"Issues: {len(self.issues)}")
+        lines.append("")
+        lines.append("Findings:")
+        from .rule_profiles import materialize_issue_metadata
+
+        for issue in sorted(
+            [materialize_issue_metadata(issue) for issue in self.issues],
+            key=lambda item: (
+                item.severity or "",
+                item.kind,
+                item.module_path or [],
+                item.message,
+            ),
+        ):
+            location = ".".join(issue.module_path or [self.name])
+            metadata: list[str] = []
+            if issue.severity:
+                metadata.append(issue.severity)
+            if issue.confidence:
+                metadata.append(issue.confidence)
+            if issue.rule_id:
+                metadata.append(issue.rule_id)
+            metadata_text = f" [{' | '.join(metadata)}]" if metadata else ""
+            lines.append(f"  - [{location}] {issue.message}{metadata_text}")
+            if issue.explanation:
+                lines.append(f"      Why it matters: {issue.explanation}")
+            if issue.suggestion:
+                lines.append(f"      Suggested fix: {issue.suggestion}")
         return "\n".join(lines)
 
 

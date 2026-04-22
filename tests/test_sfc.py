@@ -113,9 +113,7 @@ def test_illegal_state_combination_detected_for_parallel_steps():
         mutually_exclusive_steps=[("Idle", "Running")],
     )
 
-    issues = [
-        issue for issue in report.issues if issue.kind == "sfc_illegal_state_combination"
-    ]
+    issues = [issue for issue in report.issues if issue.kind == "sfc_illegal_state_combination"]
     assert len(issues) == 1
     assert issues[0].data is not None
     assert issues[0].data["conflicts"] == [["Idle", "Running"]]
@@ -144,6 +142,4 @@ def test_valid_parallel_state_combination_not_reported():
         mutually_exclusive_steps=[("Idle", "Running")],
     )
 
-    assert not any(
-        issue.kind == "sfc_illegal_state_combination" for issue in report.issues
-    )
+    assert not any(issue.kind == "sfc_illegal_state_combination" for issue in report.issues)

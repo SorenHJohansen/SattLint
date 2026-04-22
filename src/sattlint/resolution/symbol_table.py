@@ -1,4 +1,5 @@
 """Canonical symbol table for case-insensitive lookups."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

@@ -80,10 +80,7 @@ class SafetyPathAnalyzer:
         )
         variable_analyzer.run()
         self._traces = build_safety_path_traces(
-            {
-                key: tuple(events)
-                for key, events in variable_analyzer.access_graph.by_path_key.items()
-            }
+            {key: tuple(events) for key, events in variable_analyzer.access_graph.by_path_key.items()}
         )
 
         for trace in self._traces:

@@ -1,4 +1,5 @@
 """Reporting utilities for variable usage analysis."""
+
 from __future__ import annotations
 
 import logging
@@ -20,6 +21,7 @@ from ..resolution.common import (
 from .variables import VariablesAnalyzer
 
 log = logging.getLogger("SattLint")
+
 
 def debug_variable_usage(
     base_picture: BasePicture,
@@ -44,16 +46,12 @@ def debug_variable_usage(
         return f"No variables named {var_name!r} found."
 
     lines: list[str] = []
-    lines.append(
-        f"Usage report for variable name {var_name!r} ({len(matches)} declaration(s)):"
-    )
+    lines.append(f"Usage report for variable name {var_name!r} ({len(matches)} declaration(s)):")
 
     for idx, v in enumerate(matches, start=1):
         usage = analyzer._get_usage(v)
         dt = v.datatype_text
-        lines.append(
-            f"[{idx}] {dt} | R:{bool(usage.read)} W:{bool(usage.written)}"
-        )
+        lines.append(f"[{idx}] {dt} | R:{bool(usage.read)} W:{bool(usage.written)}")
 
         # List field-level reads (deduplicated).
         if usage.field_reads:
@@ -85,10 +83,7 @@ def debug_variable_usage(
                     lines.append(f"      {path_label}{count_str}")
 
         # List whole-variable accesses (deduplicated by path/kind).
-        whole_var_locs = [
-            (path, kind) for path, kind in usage.usage_locations
-            if kind in ("read", "write")
-        ]
+        whole_var_locs = [(path, kind) for path, kind in usage.usage_locations if kind in ("read", "write")]
         if whole_var_locs:
             lines.append("  Whole variable:")
             # Aggregate by path.
@@ -158,13 +153,12 @@ def analyze_datatype_usage(
                 else:
                     access = "WRITE"
 
-                lines.append(
-                    f"      • {field}: {access} (R:{read_count}, W:{write_count})"
-                )
+                lines.append(f"      • {field}: {access} (R:{read_count}, W:{write_count})")
         else:
             lines.append("    No field-level accesses tracked")
 
     return "\n".join(lines)
+
 
 def analyze_module_localvar_fields(
     base_picture: BasePicture,
@@ -302,7 +296,7 @@ def analyze_module_localvar_fields(
             all_field_writes.setdefault(full_field_path_lower, []).extend(locations)
 
         # Merge whole-variable accesses.
-        for loc, kind in (usage.usage_locations or []):
+        for loc, kind in usage.usage_locations or []:
             if kind == "read":
                 whole_var_reads.append(loc)
             elif kind == "write":
@@ -362,13 +356,17 @@ def analyze_module_localvar_fields(
             lines.append(f"\n  • {var_name}.{field} [{'/'.join(access_type)}]")
 
             if unique_read_locs:
-                lines.append(f"    Reads ({sum(unique_read_locs.values())} total, {len(unique_read_locs)} unique location(s)):")
+                lines.append(
+                    f"    Reads ({sum(unique_read_locs.values())} total, {len(unique_read_locs)} unique location(s)):"
+                )
                 for loc_str, count in sorted(unique_read_locs.items()):
                     count_str = f" ({count}x)" if count > 1 else ""
                     lines.append(f"      - {loc_str}{count_str}")
 
             if unique_write_locs:
-                lines.append(f"    Writes ({sum(unique_write_locs.values())} total, {len(unique_write_locs)} unique location(s)):")
+                lines.append(
+                    f"    Writes ({sum(unique_write_locs.values())} total, {len(unique_write_locs)} unique location(s)):"
+                )
                 for loc_str, count in sorted(unique_write_locs.items()):
                     count_str = f" ({count}x)" if count > 1 else ""
                     lines.append(f"      - {loc_str}{count_str}")
@@ -433,20 +431,19 @@ def _find_module_instances(bp: BasePicture, typedef_name: str):
     # Helper: find where a typedef is used within another typedef's structure
     def find_in_typedef_tree(typedef: ModuleTypeDef, path: list[str]):
         """Search within a typedef's submodules for our target."""
+
         def search_subs(modules, current_path):
             for mod in modules or []:
                 mod_path = [*current_path, mod.header.name]
 
                 # Check if this matches our target
-                if isinstance(mod, ModuleTypeInstance):
-                    if mod.moduletype_name.lower() == typedef_name_lower:
-                        results.append((mod, mod_path, typedef.name))  # Also track parent typedef
-                elif isinstance(mod, (SingleModule, FrameModule)):
-                    if mod.header.name.lower() == typedef_name_lower:
-                        results.append((mod, mod_path, typedef.name))
+                if isinstance(mod, ModuleTypeInstance) and mod.moduletype_name.lower() == typedef_name_lower:
+                    results.append((mod, mod_path, typedef.name))  # Also track parent typedef
+                elif isinstance(mod, SingleModule | FrameModule) and mod.header.name.lower() == typedef_name_lower:
+                    results.append((mod, mod_path, typedef.name))
 
                 # Recurse
-                if isinstance(mod, (SingleModule, FrameModule)):
+                if isinstance(mod, SingleModule | FrameModule):
                     search_subs(mod.submodules or [], mod_path)
 
         search_subs(typedef.submodules or [], path)
@@ -468,7 +465,7 @@ def _find_module_instances(bp: BasePicture, typedef_name: str):
             if isinstance(mod, ModuleTypeInstance) and mod.moduletype_name.lower() == typedef_name_lower:
                 direct_instances.append((mod, current_path))
 
-            if isinstance(mod, (SingleModule, FrameModule)):
+            if isinstance(mod, SingleModule | FrameModule):
                 search_project_tree(mod.submodules or [], current_path)
 
     search_project_tree(bp.submodules, [bp.header.name])
@@ -478,15 +475,20 @@ def _find_module_instances(bp: BasePicture, typedef_name: str):
     for mod, typedef_path, parent_typedef_name in results:
         # Find instances of the parent typedef
         parent_instances = []
+        parent_typedef_name_lower = parent_typedef_name.lower()
 
-        def find_parent_instances(modules, path):
+        def find_parent_instances(
+            modules,
+            path,
+            expected_typedef_name=parent_typedef_name_lower,
+            collected_paths=parent_instances,
+        ):
             for m in modules or []:
                 p = [*path, m.header.name]
-                if isinstance(m, ModuleTypeInstance):
-                    if m.moduletype_name.lower() == parent_typedef_name.lower():
-                        parent_instances.append(p)
-                if isinstance(m, (SingleModule, FrameModule)):
-                    find_parent_instances(m.submodules or [], p)
+                if isinstance(m, ModuleTypeInstance) and m.moduletype_name.lower() == expected_typedef_name:
+                    collected_paths.append(p)
+                if isinstance(m, SingleModule | FrameModule):
+                    find_parent_instances(m.submodules or [], p, expected_typedef_name, collected_paths)
 
         find_parent_instances(bp.submodules, [bp.header.name])
 

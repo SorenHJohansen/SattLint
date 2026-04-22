@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from ..analyzers.framework import Issue
+from ..models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
 from ..reporting.variables_report import IssueKind, VariableIssue
 
 
@@ -16,12 +18,22 @@ class SemanticDiagnostic:
     column: int
     length: int
     message: str
+    analyzer_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class DiagnosticGuidance:
     explanation: str
     suggestion: str
+
+
+@dataclass(frozen=True, slots=True)
+class _DiagnosticSite:
+    source_file: str
+    source_library: str | None
+    line: int
+    column: int
+    length: int
 
 
 _ISSUE_LABELS = {
@@ -34,6 +46,7 @@ _ISSUE_LABELS = {
     IssueKind.WRITE_WITHOUT_EFFECT: "Variable write has no observable output effect",
     IssueKind.GLOBAL_SCOPE_MINIMIZATION: "Root global can be localized",
     IssueKind.HIDDEN_GLOBAL_COUPLING: "Root global creates hidden coupling",
+    IssueKind.REQUIRED_PARAMETER_CONNECTION: "Required parameter connection missing",
     IssueKind.CONTRACT_MISMATCH: "Cross-module contract mismatch",
     IssueKind.STRING_MAPPING_MISMATCH: "String mapping datatype mismatch",
     IssueKind.DATATYPE_DUPLICATION: "Datatype duplication",
@@ -81,6 +94,10 @@ _ISSUE_GUIDANCE = {
     IssueKind.HIDDEN_GLOBAL_COUPLING: DiagnosticGuidance(
         explanation="When multiple modules share a root global directly, the dependency bypasses the explicit parameter contract and becomes harder to trace safely.",
         suggestion="Replace the shared global access with explicit parameter mappings or local coordination state so the interface stays visible in the module wiring.",
+    ),
+    IssueKind.REQUIRED_PARAMETER_CONNECTION: DiagnosticGuidance(
+        explanation="A parameter that the moduletype actively reads or writes is part of the module contract and should be wired explicitly by each instance.",
+        suggestion="Add a parameter mapping for the required parameter, or make the parameter optional by removing the internal dependency on it.",
     ),
     IssueKind.CONTRACT_MISMATCH: DiagnosticGuidance(
         explanation="Incompatible parameter datatypes across module boundaries can break the interface contract or force unsafe coercions.",
@@ -149,6 +166,181 @@ def _format_semantic_diagnostic_message(issue: VariableIssue) -> str:
     )
 
 
+def _format_issue_diagnostic_message(issue: Issue) -> str:
+    from ..analyzers.rule_profiles import materialize_issue_metadata
+
+    materialized = materialize_issue_metadata(issue)
+    lines = [materialized.message]
+    if materialized.explanation:
+        lines.append(f"Why it matters: {materialized.explanation}")
+    if materialized.suggestion:
+        lines.append(f"Suggested fix: {materialized.suggestion}")
+    return "\n".join(lines)
+
+
+def _sorted_semantic_diagnostics(
+    diagnostics_by_file: dict[str, list[SemanticDiagnostic]],
+) -> dict[str, tuple[SemanticDiagnostic, ...]]:
+    result: dict[str, tuple[SemanticDiagnostic, ...]] = {}
+    for file_key, diagnostics in diagnostics_by_file.items():
+        unique = {
+            (
+                diagnostic.source_file.casefold(),
+                diagnostic.source_library.casefold() if diagnostic.source_library is not None else None,
+                diagnostic.line,
+                diagnostic.column,
+                diagnostic.length,
+                diagnostic.message,
+                diagnostic.analyzer_key,
+            ): diagnostic
+            for diagnostic in diagnostics
+        }
+        result[file_key] = tuple(
+            sorted(
+                unique.values(),
+                key=lambda diagnostic: (
+                    diagnostic.line,
+                    diagnostic.column,
+                    diagnostic.analyzer_key or "",
+                    diagnostic.message,
+                ),
+            )
+        )
+    return result
+
+
+def _register_site(
+    sites_by_path: dict[tuple[str, ...], _DiagnosticSite],
+    module_path: list[str],
+    *,
+    source_file: str | None,
+    source_library: str | None,
+    line: int | None,
+    column: int | None,
+    label: str,
+) -> None:
+    if source_file is None or line is None or column is None:
+        return
+    sites_by_path[tuple(_cf(segment) for segment in module_path)] = _DiagnosticSite(
+        source_file=source_file,
+        source_library=source_library,
+        line=line,
+        column=column,
+        length=max(len(label), 1),
+    )
+
+
+def build_module_diagnostic_sites(base_picture: BasePicture) -> dict[tuple[str, ...], _DiagnosticSite]:
+    sites_by_path: dict[tuple[str, ...], _DiagnosticSite] = {}
+    root_path = [base_picture.header.name]
+    _register_site(
+        sites_by_path,
+        root_path,
+        source_file=getattr(base_picture, "origin_file", None),
+        source_library=getattr(base_picture, "origin_lib", None),
+        line=getattr(getattr(base_picture.header, "declaration_span", None), "line", None),
+        column=getattr(getattr(base_picture.header, "declaration_span", None), "column", None),
+        label=base_picture.header.name,
+    )
+
+    def walk_modules(
+        children: list[SingleModule | FrameModule | ModuleTypeInstance],
+        parent_paths: tuple[list[str], ...],
+        *,
+        current_file: str | None,
+        current_library: str | None,
+    ) -> None:
+        for child in children or []:
+            child_paths = tuple([*path, child.header.name] for path in parent_paths)
+            for child_path in child_paths:
+                _register_site(
+                    sites_by_path,
+                    child_path,
+                    source_file=current_file,
+                    source_library=current_library,
+                    line=getattr(getattr(child.header, "declaration_span", None), "line", None),
+                    column=getattr(getattr(child.header, "declaration_span", None), "column", None),
+                    label=child.header.name,
+                )
+            if isinstance(child, SingleModule | FrameModule):
+                walk_modules(
+                    child.submodules or [],
+                    child_paths,
+                    current_file=current_file,
+                    current_library=current_library,
+                )
+
+    walk_modules(
+        base_picture.submodules or [],
+        (root_path,),
+        current_file=getattr(base_picture, "origin_file", None),
+        current_library=getattr(base_picture, "origin_lib", None),
+    )
+
+    for moduletype in base_picture.moduletype_defs or []:
+        source_file = getattr(moduletype, "origin_file", None) or getattr(base_picture, "origin_file", None)
+        source_library = getattr(moduletype, "origin_lib", None) or getattr(base_picture, "origin_lib", None)
+        moduletype_paths = (
+            [base_picture.header.name, moduletype.name],
+            [base_picture.header.name, f"TypeDef:{moduletype.name}"],
+        )
+        for moduletype_path in moduletype_paths:
+            _register_site(
+                sites_by_path,
+                moduletype_path,
+                source_file=source_file,
+                source_library=source_library,
+                line=getattr(getattr(moduletype, "declaration_span", None), "line", None),
+                column=getattr(getattr(moduletype, "declaration_span", None), "column", None),
+                label=moduletype.name,
+            )
+        walk_modules(
+            moduletype.submodules or [],
+            tuple(list(path) for path in moduletype_paths),
+            current_file=source_file,
+            current_library=source_library,
+        )
+
+    return sites_by_path
+
+
+def project_report_issues_by_file(
+    issues: tuple[Issue, ...],
+    module_sites_by_path: dict[tuple[str, ...], _DiagnosticSite],
+    *,
+    analyzer_key: str,
+) -> dict[str, tuple[SemanticDiagnostic, ...]]:
+    by_file: dict[str, list[SemanticDiagnostic]] = {}
+    for issue in issues:
+        if not issue.module_path:
+            continue
+        site = module_sites_by_path.get(tuple(_cf(segment) for segment in issue.module_path))
+        if site is None:
+            continue
+        by_file.setdefault(site.source_file.casefold(), []).append(
+            SemanticDiagnostic(
+                source_file=site.source_file,
+                source_library=site.source_library,
+                line=site.line,
+                column=site.column,
+                length=site.length,
+                message=_format_issue_diagnostic_message(issue),
+                analyzer_key=analyzer_key,
+            )
+        )
+    return _sorted_semantic_diagnostics(by_file)
+
+
+def merge_semantic_diagnostics_by_file(
+    *diagnostic_maps: dict[str, tuple[SemanticDiagnostic, ...]],
+) -> dict[str, tuple[SemanticDiagnostic, ...]]:
+    merged: dict[str, list[SemanticDiagnostic]] = {}
+    for diagnostic_map in diagnostic_maps:
+        for file_key, diagnostics in diagnostic_map.items():
+            merged.setdefault(file_key, []).extend(diagnostics)
+    return _sorted_semantic_diagnostics(merged)
+
+
 def project_variable_issues_by_file(
     issues: tuple[VariableIssue, ...],
     definitions_by_key: dict[tuple[str, ...], Any],
@@ -164,14 +356,8 @@ def project_variable_issues_by_file(
             query_segments.extend(segment for segment in issue.field_path.split(".") if segment)
         definition = definitions_by_key.get(tuple(_cf(segment) for segment in query_segments))
         if definition is None and issue.field_path:
-            definition = definitions_by_key.get(
-                tuple(_cf(segment) for segment in base_query_segments)
-            )
-        if (
-            definition is None
-            or definition.source_file is None
-            or definition.declaration_span is None
-        ):
+            definition = definitions_by_key.get(tuple(_cf(segment) for segment in base_query_segments))
+        if definition is None or definition.source_file is None or definition.declaration_span is None:
             continue
 
         by_file.setdefault(definition.source_file.casefold(), []).append(
@@ -182,19 +368,8 @@ def project_variable_issues_by_file(
                 column=definition.declaration_span.column,
                 length=_definition_label_length(definition),
                 message=_format_semantic_diagnostic_message(issue),
+                analyzer_key="variables",
             )
         )
 
-    return {
-        file_key: tuple(
-            sorted(
-                diagnostics,
-                key=lambda diagnostic: (
-                    diagnostic.line,
-                    diagnostic.column,
-                    diagnostic.message,
-                ),
-            )
-        )
-        for file_key, diagnostics in by_file.items()
-    }
+    return _sorted_semantic_diagnostics(by_file)

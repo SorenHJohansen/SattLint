@@ -233,10 +233,9 @@ def _extract_external_tag(
     inst: ModuleTypeInstance,
     mt_def: ModuleTypeDef | None,
 ) -> str | None:
-    available_names = {
-        variable.name.casefold()
-        for variable in (mt_def.moduleparameters or [])
-    } if mt_def is not None else set()
+    available_names = (
+        {variable.name.casefold() for variable in (mt_def.moduleparameters or [])} if mt_def is not None else set()
+    )
     for mapping in inst.parametermappings or []:
         target_name = varname_base(mapping.target)
         if target_name:
@@ -307,10 +306,7 @@ def _best_icf_validation_report(
         if candidate.valid_entries > best_report.valid_entries:
             best_report = candidate
             continue
-        if (
-            candidate.valid_entries == best_report.valid_entries
-            and len(candidate.issues) < len(best_report.issues)
-        ):
+        if candidate.valid_entries == best_report.valid_entries and len(candidate.issues) < len(best_report.issues):
             best_report = candidate
     return best_report
 
@@ -362,11 +358,7 @@ def _emit_datatype_mismatch_issues(
     issues: list[Issue] = []
     for (source_kind, _tag_key), group in grouped.items():
         datatypes = sorted(
-            {
-                datatype
-                for datatype in (entry.source_datatype for entry in group)
-                if datatype is not None
-            }
+            {datatype for datatype in (entry.source_datatype for entry in group) if datatype is not None}
         )
         if len(datatypes) < 2:
             continue
@@ -523,7 +515,7 @@ def analyze_mms_interface_variables(
 
                 field_writes.setdefault(full_field.casefold(), []).extend(locs)
 
-            for loc, kind in (usage.usage_locations or []):
+            for loc, kind in usage.usage_locations or []:
                 if kind == "write":
                     whole_var_writes.append(loc)
 
@@ -544,16 +536,14 @@ def analyze_mms_interface_variables(
                 field_writes.setdefault(full_field.casefold(), []).extend(locs)
 
             if not strip_prefix:
-                for loc, kind in (usage.usage_locations or []):
+                for loc, kind in usage.usage_locations or []:
                     if kind == "write":
                         whole_var_writes.append(loc)
 
         if field_path:
             prefix = field_path.casefold()
             matched_fields = {
-                field: locs
-                for field, locs in field_writes.items()
-                if field == prefix or field.startswith(prefix + ".")
+                field: locs for field, locs in field_writes.items() if field == prefix or field.startswith(prefix + ".")
             }
             if not matched_fields:
                 return ()
@@ -564,9 +554,7 @@ def analyze_mms_interface_variables(
                 for loc in locs:
                     key = tuple(loc)
                     matched_counts[key] = matched_counts.get(key, 0) + 1
-                results.append(
-                    (field, tuple(sorted(matched_counts.items(), key=lambda item: ".".join(item[0]))))
-                )
+                results.append((field, tuple(sorted(matched_counts.items(), key=lambda item: ".".join(item[0])))))
             return tuple(results)
 
         if not field_writes and not whole_var_writes:
@@ -578,18 +566,14 @@ def analyze_mms_interface_variables(
             for loc in locs:
                 key = tuple(loc)
                 counts[key] = counts.get(key, 0) + 1
-            results.append(
-                (field, tuple(sorted(counts.items(), key=lambda item: ".".join(item[0]))))
-            )
+            results.append((field, tuple(sorted(counts.items(), key=lambda item: ".".join(item[0])))))
 
         if whole_var_writes:
             whole_counts: dict[tuple[str, ...], int] = {}
             for loc in whole_var_writes:
                 key = tuple(loc)
                 whole_counts[key] = whole_counts.get(key, 0) + 1
-            results.append(
-                ("", tuple(sorted(whole_counts.items(), key=lambda item: ".".join(item[0]))))
-            )
+            results.append(("", tuple(sorted(whole_counts.items(), key=lambda item: ".".join(item[0])))))
 
         return tuple(results)
 
@@ -710,7 +694,7 @@ def analyze_mms_interface_variables(
                     visited_types,
                 )
                 visited_types.remove(mt_key)
-            elif isinstance(mod, (SingleModule, FrameModule)):
+            elif isinstance(mod, SingleModule | FrameModule):
                 _walk_typedef(
                     mod.submodules,
                     [*path, mod.header.name],
@@ -724,7 +708,7 @@ def analyze_mms_interface_variables(
         param_map: dict[str, str],
     ) -> None:
         for mod in modules or []:
-            if isinstance(mod, (SingleModule, FrameModule)):
+            if isinstance(mod, SingleModule | FrameModule):
                 next_path = [*path, mod.header.name]
                 _walk_modules(mod.submodules, next_path, param_map)
             elif isinstance(mod, ModuleTypeInstance):
@@ -802,9 +786,13 @@ def analyze_mms_interface_variables(
 
     _walk_modules(base_picture.submodules, [base_picture.header.name], {})
 
-    active_icf_entries = icf_entries if icf_entries is not None else _load_icf_entries_from_config(
-        base_picture,
-        config,
+    active_icf_entries = (
+        icf_entries
+        if icf_entries is not None
+        else _load_icf_entries_from_config(
+            base_picture,
+            config,
+        )
     )
     if active_icf_entries:
         icf_report = _best_icf_validation_report(

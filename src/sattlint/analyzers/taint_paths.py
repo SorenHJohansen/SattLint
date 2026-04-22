@@ -87,10 +87,7 @@ class TaintPathAnalyzer:
         variable_analyzer.run()
         self._traces = build_taint_path_traces(
             variable_analyzer.effect_flow_edges,
-            {
-                key: tuple(events)
-                for key, events in variable_analyzer.access_graph.by_path_key.items()
-            },
+            {key: tuple(events) for key, events in variable_analyzer.access_graph.by_path_key.items()},
             display_names_by_key=variable_analyzer.effect_flow_display_names,
         )
 

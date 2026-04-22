@@ -1,4 +1,5 @@
 """Tracks variable usage and access events."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -9,6 +10,7 @@ from ..resolution import AccessEvent, AccessGraph, AccessKind, CanonicalPath
 if TYPE_CHECKING:
     from ..models.ast_model import Variable
     from ..resolution.scope import ScopeContext
+
 
 class UsageTracker:
     def __init__(self):

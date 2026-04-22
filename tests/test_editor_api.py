@@ -34,7 +34,7 @@ def _minimal_moduledef() -> str:
 
 
 def _record_library_source(record_name: str, field_name: str) -> str:
-    return f'''
+    return f"""
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -46,11 +46,11 @@ TYPEDEFINITIONS
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _contract_library_source() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -65,10 +65,11 @@ TYPEDEFINITIONS
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
+
 
 def _anytype_contract_library_source() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -94,11 +95,11 @@ TYPEDEFINITIONS
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _program_with_contract_mismatch_dependency() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -112,10 +113,11 @@ SUBMODULES
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
+
 
 def _program_with_anytype_contract_dependency() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -129,7 +131,46 @@ SUBMODULES
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
+
+
+def _required_parameter_contract_library_source() -> str:
+    return """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+    RequiredConsumer = MODULEDEFINITION DateCode_ 2
+    MODULEPARAMETERS
+        RequiredValue: integer;
+    LOCALVARIABLES
+        Mirror: integer := 0;
+    ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    ModuleCode
+        EQUATIONBLOCK UseParam COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+            Mirror = RequiredValue;
+    ENDDEF (*RequiredConsumer*);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+""".strip()
+
+
+def _program_with_required_parameter_dependency() -> str:
+    return """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+SUBMODULES
+    Consumer Invocation
+       ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0 ) : RequiredConsumer;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+""".strip()
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -141,7 +182,7 @@ def _varref(name: str) -> dict[str, str]:
 
 
 def _program_with_dependency(record_name: str) -> str:
-    return f'''
+    return f"""
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -151,11 +192,11 @@ LOCALVARIABLES
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _guard_library_source() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -175,11 +216,11 @@ TYPEDEFINITIONS
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _program_with_guard_dependency() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -196,11 +237,11 @@ ModuleCode
     EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
         EmergencyShutdown = True;
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _taint_guard_library_source() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -220,11 +261,11 @@ TYPEDEFINITIONS
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _program_with_taint_guard_dependency() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -241,11 +282,11 @@ ModuleCode
     EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
         OperatorCommand = True;
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _output_library_source() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -267,11 +308,11 @@ TYPEDEFINITIONS
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _program_with_output_dependency() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -290,11 +331,11 @@ ModuleCode
     EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
         InternalSignal = 7;
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _status_signature_library_source() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -315,11 +356,11 @@ TYPEDEFINITIONS
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _program_with_status_signature_dependency() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -333,7 +374,7 @@ SUBMODULES
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _line_col_for(source: str, needle: str, *, occurrence: int = 1) -> tuple[int, int]:
@@ -626,6 +667,7 @@ def test_load_workspace_snapshot_keeps_contract_mismatch_diagnostics_for_depende
         for diagnostic in diagnostics
     )
 
+
 def test_load_workspace_snapshot_reports_anytype_required_field_mismatch_from_dependency(tmp_path):
     entry_file = tmp_path / "Program" / "Main.s"
     library_file = tmp_path / "Libs" / "GenericSupport.s"
@@ -747,6 +789,28 @@ def test_load_workspace_snapshot_reports_anytype_required_field_mismatch_from_de
     )
 
 
+def test_load_workspace_snapshot_reports_required_parameter_connection_from_dependency(tmp_path):
+    entry_file = tmp_path / "Program" / "Main.s"
+    library_file = tmp_path / "Libs" / "RequiredConsumer.s"
+    _write_text(entry_file, _program_with_required_parameter_dependency())
+    _write_text(entry_file.with_suffix(".l"), "RequiredConsumer\n")
+    _write_text(library_file, _required_parameter_contract_library_source())
+
+    snapshot = load_workspace_snapshot(
+        entry_file,
+        workspace_root=tmp_path,
+        collect_variable_diagnostics=True,
+    )
+
+    diagnostics = snapshot.semantic_diagnostics_for_path(library_file)
+
+    assert diagnostics
+    assert any(
+        "Required parameter connection missing" in diagnostic.message and "RequiredValue" in diagnostic.message
+        for diagnostic in diagnostics
+    )
+
+
 def test_load_workspace_snapshot_tracks_dependency_mediated_output_accesses(tmp_path):
     entry_file = tmp_path / "Program" / "Main.s"
     _write_text(entry_file, _program_with_output_dependency())
@@ -839,20 +903,22 @@ def test_load_workspace_snapshot_reports_root_parse_failure_detail(tmp_path):
                 '"SyntaxVersion"',
                 '"OriginalFileDate"',
                 '"ProgramDate"',
-                'BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1',
-                'LOCALVARIABLES',
-                '    ExecuteLocal: boolean := False;',
-                'ModuleDef',
-                'ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )',
-                'ModuleCode',
-                '    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :',
-                '        ExecuteLocal = ExecuteLocal:Old;',
-                'ENDDEF (*BasePicture*);',
+                "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1",
+                "LOCALVARIABLES",
+                "    ExecuteLocal: boolean := False;",
+                "ModuleDef",
+                "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )",
+                "ModuleCode",
+                "    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :",
+                "        ExecuteLocal = ExecuteLocal:Old;",
+                "ENDDEF (*BasePicture*);",
             ]
         ),
     )
 
-    with pytest.raises(RuntimeError, match="Target 'Main' failed parse/transform:.*uses OLD on non-STATE variable 'ExecuteLocal'") as exc_info:
+    with pytest.raises(
+        RuntimeError, match=r"Target 'Main' failed parse/transform:.*uses OLD on non-STATE variable 'ExecuteLocal'"
+    ) as exc_info:
         load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=False)
 
     assert getattr(exc_info.value, "line", None) == 11
@@ -869,14 +935,14 @@ def test_load_workspace_snapshot_treats_controllib_as_expected_unavailable(tmp_p
                 '"SyntaxVersion"',
                 '"OriginalFileDate"',
                 '"ProgramDate"',
-                'BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1',
-                'ModuleDef',
-                'ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )',
-                'ENDDEF (*BasePicture*);',
+                "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1",
+                "ModuleDef",
+                "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )",
+                "ENDDEF (*BasePicture*);",
             ]
         ),
     )
-    _write_text(entry_file.with_suffix('.l'), 'ControlLib\n')
+    _write_text(entry_file.with_suffix(".l"), "ControlLib\n")
 
     snapshot = load_workspace_snapshot(
         entry_file,
@@ -884,7 +950,7 @@ def test_load_workspace_snapshot_treats_controllib_as_expected_unavailable(tmp_p
         collect_variable_diagnostics=False,
     )
 
-    assert 'controllib' in snapshot.project_graph.unavailable_libraries
+    assert "controllib" in snapshot.project_graph.unavailable_libraries
     assert snapshot.project_graph.missing == []
 
 
@@ -898,14 +964,14 @@ def test_load_workspace_snapshot_indexes_library_dependencies_for_graph_inputs(t
                 '"SyntaxVersion"',
                 '"OriginalFileDate"',
                 '"ProgramDate"',
-                'BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1',
-                'ModuleDef',
-                'ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )',
-                'ENDDEF (*BasePicture*);',
+                "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1",
+                "ModuleDef",
+                "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )",
+                "ENDDEF (*BasePicture*);",
             ]
         ),
     )
-    _write_text(entry_file.with_suffix('.l'), 'Support\nControlLib\n')
+    _write_text(entry_file.with_suffix(".l"), "Support\nControlLib\n")
     _write_text(
         support_file,
         "\n".join(
@@ -913,10 +979,10 @@ def test_load_workspace_snapshot_indexes_library_dependencies_for_graph_inputs(t
                 '"SyntaxVersion"',
                 '"OriginalFileDate"',
                 '"ProgramDate"',
-                'BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1',
-                'ModuleDef',
-                'ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )',
-                'ENDDEF (*BasePicture*);',
+                "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1",
+                "ModuleDef",
+                "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )",
+                "ENDDEF (*BasePicture*);",
             ]
         ),
     )
@@ -928,10 +994,10 @@ def test_load_workspace_snapshot_indexes_library_dependencies_for_graph_inputs(t
     )
 
     assert snapshot.project_graph.library_dependencies == {
-        'program': {'libraries'},
-        'libraries': set(),
+        "program": {"libraries"},
+        "libraries": set(),
     }
-    assert 'controllib' in snapshot.project_graph.unavailable_libraries
+    assert "controllib" in snapshot.project_graph.unavailable_libraries
     assert support_file in snapshot.project_graph.source_files
 
 
@@ -944,17 +1010,17 @@ def test_load_workspace_snapshot_indexes_transitive_library_dependencies_for_gra
             '"SyntaxVersion"',
             '"OriginalFileDate"',
             '"ProgramDate"',
-            'BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1',
-            'ModuleDef',
-            'ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )',
-            'ENDDEF (*BasePicture*);',
+            "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1",
+            "ModuleDef",
+            "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )",
+            "ENDDEF (*BasePicture*);",
         ]
     )
 
     _write_text(entry_file, source_text)
-    _write_text(entry_file.with_suffix('.l'), 'Support\n')
+    _write_text(entry_file.with_suffix(".l"), "Support\n")
     _write_text(support_file, source_text)
-    _write_text(support_file.with_suffix('.l'), 'Shared\n')
+    _write_text(support_file.with_suffix(".l"), "Shared\n")
     _write_text(shared_file, source_text)
 
     snapshot = load_workspace_snapshot(
@@ -964,9 +1030,9 @@ def test_load_workspace_snapshot_indexes_transitive_library_dependencies_for_gra
     )
 
     assert snapshot.project_graph.library_dependencies == {
-        'program': {'libraries'},
-        'libraries': {'sharedlib'},
-        'sharedlib': set(),
+        "program": {"libraries"},
+        "libraries": {"sharedlib"},
+        "sharedlib": set(),
     }
     assert support_file in snapshot.project_graph.source_files
     assert shared_file in snapshot.project_graph.source_files
@@ -981,35 +1047,35 @@ def test_load_workspace_snapshot_formats_dependency_issues_readably(tmp_path):
                 '"SyntaxVersion"',
                 '"OriginalFileDate"',
                 '"ProgramDate"',
-                'BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1',
-                'LOCALVARIABLES',
-                '    ExecuteLocal: boolean := False;',
-                'ModuleDef',
-                'ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )',
-                'ModuleCode',
-                '    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :',
-                '        ExecuteLocal = ExecuteLocal:Old;',
-                'ENDDEF (*BasePicture*);',
+                "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1",
+                "LOCALVARIABLES",
+                "    ExecuteLocal: boolean := False;",
+                "ModuleDef",
+                "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )",
+                "ModuleCode",
+                "    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :",
+                "        ExecuteLocal = ExecuteLocal:Old;",
+                "ENDDEF (*BasePicture*);",
             ]
         ),
     )
-    _write_text(entry_file.with_suffix('.l'), 'ControlLib\nSupport\n')
+    _write_text(entry_file.with_suffix(".l"), "ControlLib\nSupport\n")
     _write_text(
-        entry_file.parent / 'Support.s',
+        entry_file.parent / "Support.s",
         "\n".join(
             [
                 '"SyntaxVersion"',
                 '"OriginalFileDate"',
                 '"ProgramDate"',
-                'BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1',
-                'LOCALVARIABLES',
-                '    ExecuteLocal: boolean := False;',
-                'ModuleDef',
-                'ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )',
-                'ModuleCode',
-                '    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :',
-                '        ExecuteLocal = ExecuteLocal:Old;',
-                'ENDDEF (*BasePicture*);',
+                "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1",
+                "LOCALVARIABLES",
+                "    ExecuteLocal: boolean := False;",
+                "ModuleDef",
+                "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )",
+                "ModuleCode",
+                "    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :",
+                "        ExecuteLocal = ExecuteLocal:Old;",
+                "ENDDEF (*BasePicture*);",
             ]
         ),
     )
@@ -1018,9 +1084,15 @@ def test_load_workspace_snapshot_formats_dependency_issues_readably(tmp_path):
         load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=False)
 
     message = str(exc_info.value)
-    assert "Target 'Main' failed parse/transform: BasePicture equation 'Main' uses OLD on non-STATE variable 'ExecuteLocal'" in message
-    assert 'Unavailable libraries (1):' in message
-    assert '- controllib (expected proprietary dependency)' in message
-    assert 'Other dependency issues (1):' in message
-    assert "Support parse/transform error: BasePicture equation 'Main' uses OLD on non-STATE variable 'ExecuteLocal'" in message
-    assert 'Missing: [' not in message
+    assert (
+        "Target 'Main' failed parse/transform: BasePicture equation 'Main' uses OLD on non-STATE variable 'ExecuteLocal'"
+        in message
+    )
+    assert "Unavailable libraries (1):" in message
+    assert "- controllib (expected proprietary dependency)" in message
+    assert "Validation warnings (1):" in message
+    assert (
+        "Support: validation warning: BasePicture equation 'Main' uses OLD on non-STATE variable 'ExecuteLocal'"
+        in message
+    )
+    assert "Missing: [" not in message

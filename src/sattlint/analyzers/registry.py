@@ -1,16 +1,21 @@
 """Analyzer registry for CLI entrypoints."""
+
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
+from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
 from sattlint.analyzers.initial_values import analyze_initial_values
+from sattlint.analyzers.loop_output_refactor import analyze_loop_output_refactor
 from sattlint.analyzers.modules import analyze_version_drift
 from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
+from sattlint.analyzers.parameter_drift import analyze_parameter_drift
 from sattlint.analyzers.safety_paths import analyze_safety_paths
+from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage
 from sattlint.analyzers.spec_compliance import analyze_spec_compliance
 from sattlint.analyzers.taint_paths import analyze_taint_paths
 
@@ -18,6 +23,7 @@ from .comment_code import analyze_comment_code
 from .dataflow import analyze_dataflow
 from .framework import AnalysisContext, AnalyzerSpec
 from .mms import analyze_mms_interface_variables
+from .rule_profiles import get_default_rule_profile_report
 from .sattline_semantics import (
     SemanticRule,
     SemanticRuleGroup,
@@ -41,6 +47,7 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "comment-code",
     "shadowing",
     "spec-compliance",
+    "loop-output-refactor",
 )
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
@@ -82,9 +89,11 @@ class AnalyzerDeliveryMetadata:
 class AnalyzerMetadata:
     spec: AnalyzerSpec
     rule_ids: tuple[str, ...] = ()
-    delivery: AnalyzerDeliveryMetadata = AnalyzerDeliveryMetadata(
-        scope="workspace",
-        implementation_bucket="analyzers",
+    delivery: AnalyzerDeliveryMetadata = field(
+        default_factory=lambda: AnalyzerDeliveryMetadata(
+            scope="workspace",
+            implementation_bucket="analyzers",
+        )
     )
 
     @property
@@ -111,8 +120,11 @@ class RuleMetadata:
     source: str
     category: str
     severity: str
+    confidence: str
     applies_to: str
     description: str
+    explanation: str | None
+    suggestion: str | None
     analyzers: tuple[str, ...]
     outputs: tuple[str, ...]
     acceptance_tests: tuple[str, ...] | None = None
@@ -127,8 +139,11 @@ class RuleMetadata:
             "source": self.source,
             "category": self.category,
             "severity": self.severity,
+            "confidence": self.confidence,
             "applies_to": self.applies_to,
             "description": self.description,
+            "explanation": self.explanation,
+            "suggestion": self.suggestion,
             "analyzers": list(self.analyzers),
             "outputs": list(self.outputs),
             "acceptance_tests": list(self.acceptance_tests or ()),
@@ -156,13 +171,42 @@ class AnalyzerCatalog:
             "semantic_layer": {
                 "analyzer_key": self.semantic_layer_analyzer_key,
                 "sources": [group.source for group in self.semantic_rule_groups],
-                "source_rule_counts": {
-                    group.source: len(group.rules)
-                    for group in self.semantic_rule_groups
-                },
+                "source_rule_counts": {group.source: len(group.rules) for group in self.semantic_rule_groups},
             },
+            "rule_profiles": get_default_rule_profile_report(),
             "rules": [rule.to_dict() for rule in self.rules],
         }
+
+
+def get_declared_cli_analyzer_keys() -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            analyzer.spec.key for analyzer in get_default_analyzer_catalog().analyzers if analyzer.delivery.cli_exposed
+        )
+    )
+
+
+def get_actual_cli_analyzer_keys() -> tuple[str, ...]:
+    return tuple(spec.key for spec in get_default_cli_analyzers())
+
+
+def get_declared_lsp_analyzer_keys() -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            analyzer.spec.key for analyzer in get_default_analyzer_catalog().analyzers if analyzer.delivery.lsp_exposed
+        )
+    )
+
+
+def get_actual_lsp_analyzer_keys() -> tuple[str, ...]:
+    catalog = get_default_analyzer_catalog()
+    registry_keys = {analyzer.spec.key for analyzer in catalog.analyzers}
+    return tuple(
+        sorted(
+            ({catalog.semantic_layer_analyzer_key} | {group.source for group in catalog.semantic_rule_groups})
+            & registry_keys
+        )
+    )
 
 
 def _summary_output_for_analyzer(analyzer_key: str) -> str:
@@ -251,6 +295,16 @@ def _base_delivery_metadata_by_analyzer() -> dict[str, AnalyzerDeliveryMetadata]
             ),
             min_fixture_set=shared_fixtures,
         ),
+        "loop-output-refactor": AnalyzerDeliveryMetadata(
+            scope="single-file",
+            implementation_bucket="engineering-rules",
+            cli_exposed=True,
+            acceptance_tests=(
+                "tests/test_analyzers.py",
+                "tests/test_app.py",
+            ),
+            min_fixture_set=shared_fixtures,
+        ),
         "alarm-integrity": AnalyzerDeliveryMetadata(
             scope="cross-module",
             implementation_bucket="shared-semantic-core",
@@ -272,6 +326,24 @@ def _base_delivery_metadata_by_analyzer() -> dict[str, AnalyzerDeliveryMetadata]
         ),
         "naming-consistency": AnalyzerDeliveryMetadata(
             scope="workspace",
+            implementation_bucket="engineering-rules",
+            acceptance_tests=("tests/test_analyzers.py",),
+            min_fixture_set=shared_fixtures,
+        ),
+        "cyclomatic-complexity": AnalyzerDeliveryMetadata(
+            scope="single-file",
+            implementation_bucket="engineering-rules",
+            acceptance_tests=("tests/test_analyzers.py",),
+            min_fixture_set=shared_fixtures,
+        ),
+        "parameter-drift": AnalyzerDeliveryMetadata(
+            scope="cross-module",
+            implementation_bucket="engineering-rules",
+            acceptance_tests=("tests/test_analyzers.py",),
+            min_fixture_set=shared_fixtures,
+        ),
+        "scan-loop-resource-usage": AnalyzerDeliveryMetadata(
+            scope="single-file",
             implementation_bucket="engineering-rules",
             acceptance_tests=("tests/test_analyzers.py",),
             min_fixture_set=shared_fixtures,
@@ -352,11 +424,7 @@ def _build_delivery_metadata(
 
     output_artifacts = [_summary_output_for_analyzer(spec.key)]
     semantic_summary = _summary_output_for_analyzer(SEMANTIC_LAYER_ANALYZER_KEY)
-    if (
-        spec.key != SEMANTIC_LAYER_ANALYZER_KEY
-        and rule_ids
-        and semantic_summary not in output_artifacts
-    ):
+    if spec.key != SEMANTIC_LAYER_ANALYZER_KEY and rule_ids and semantic_summary not in output_artifacts:
         output_artifacts.append(semantic_summary)
 
     return AnalyzerDeliveryMetadata(
@@ -378,11 +446,7 @@ def _build_delivery_metadata(
 def _iter_semantic_rules(
     semantic_rule_groups: tuple[SemanticRuleGroup, ...],
 ) -> tuple[SemanticRule, ...]:
-    return tuple(
-        rule
-        for group in semantic_rule_groups
-        for rule in group.rules
-    )
+    return tuple(rule for group in semantic_rule_groups for rule in group.rules)
 
 
 @lru_cache(maxsize=1)
@@ -401,10 +465,7 @@ def _rule_corpus_cases_by_rule_id() -> dict[str, tuple[str, ...]]:
         for rule_id in expectation.get("expected_finding_ids", []):
             linked_cases.setdefault(str(rule_id), set()).add(case_id)
 
-    return {
-        rule_id: tuple(sorted(case_ids))
-        for rule_id, case_ids in linked_cases.items()
-    }
+    return {rule_id: tuple(sorted(case_ids)) for rule_id, case_ids in linked_cases.items()}
 
 
 def _build_rule_metadata(
@@ -413,19 +474,17 @@ def _build_rule_metadata(
     mapped_analyzers: tuple[str, ...],
     analyzer_metadata_by_key: dict[str, AnalyzerMetadata],
 ) -> RuleMetadata:
-    corpus_cases = tuple(
-        sorted(
-            set(rule.corpus_cases)
-            | set(_rule_corpus_cases_by_rule_id().get(rule.id, ()))
-        )
-    )
+    corpus_cases = tuple(sorted(set(rule.corpus_cases) | set(_rule_corpus_cases_by_rule_id().get(rule.id, ()))))
     return RuleMetadata(
         id=rule.id,
         source=rule.source,
         category=rule.category,
         severity=rule.severity,
+        confidence=rule.confidence,
         applies_to=rule.applies_to,
         description=rule.description,
+        explanation=rule.explanation or rule.description,
+        suggestion=rule.suggestion,
         analyzers=mapped_analyzers,
         outputs=tuple(
             analyzer_metadata_by_key[analyzer_key].summary_output
@@ -433,18 +492,10 @@ def _build_rule_metadata(
             else _summary_output_for_analyzer(analyzer_key)
             for analyzer_key in mapped_analyzers
         ),
-        acceptance_tests=(
-            None
-            if rule.acceptance_tests is None
-            else tuple(sorted(rule.acceptance_tests))
-        ),
+        acceptance_tests=(None if rule.acceptance_tests is None else tuple(sorted(rule.acceptance_tests))),
         corpus_cases=corpus_cases,
         mutation_applicability=rule.mutation_applicability,
-        suppression_modes=(
-            None
-            if rule.suppression_modes is None
-            else tuple(sorted(rule.suppression_modes))
-        ),
+        suppression_modes=(None if rule.suppression_modes is None else tuple(sorted(rule.suppression_modes))),
         incremental_safe=rule.incremental_safe,
     )
 
@@ -499,15 +550,8 @@ def get_enabled_analyzers() -> list[AnalyzerSpec]:
 
 
 def get_default_cli_analyzers() -> list[AnalyzerSpec]:
-    enabled_by_key = {
-        spec.key.casefold(): spec
-        for spec in get_enabled_analyzers()
-    }
-    return [
-        enabled_by_key[key]
-        for key in DEFAULT_CLI_ANALYZER_KEYS
-        if key in enabled_by_key
-    ]
+    enabled_by_key = {spec.key.casefold(): spec for spec in get_enabled_analyzers()}
+    return [enabled_by_key[key] for key in DEFAULT_CLI_ANALYZER_KEYS if key in enabled_by_key]
 
 
 def get_default_analyzers() -> list[AnalyzerSpec]:
@@ -517,6 +561,7 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
             debug=context.debug,
             unavailable_libraries=context.unavailable_libraries,
             analyzed_target_is_library=context.target_is_library,
+            config=context.config,
         )
 
     def _run_sattline_semantics(context: AnalysisContext):
@@ -525,10 +570,9 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
             debug=context.debug,
             unavailable_libraries=context.unavailable_libraries,
             analyzed_target_is_library=context.target_is_library,
-            sfc_mutually_exclusive_steps=get_configured_mutually_exclusive_step_sets(
-                context.config
-            ),
+            sfc_mutually_exclusive_steps=get_configured_mutually_exclusive_step_sets(context.config),
             sfc_step_contracts=get_configured_step_contracts(context.config),
+            config=context.config,
         )
 
     def _run_mms_interface(context: AnalysisContext):
@@ -541,9 +585,7 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
     def _run_sfc_checks(context: AnalysisContext):
         return analyze_sfc(
             context.base_picture,
-            mutually_exclusive_steps=get_configured_mutually_exclusive_step_sets(
-                context.config
-            ),
+            mutually_exclusive_steps=get_configured_mutually_exclusive_step_sets(context.config),
             step_contracts=get_configured_step_contracts(context.config),
         )
 
@@ -560,6 +602,9 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
             debug=context.debug,
             unavailable_libraries=context.unavailable_libraries,
         )
+
+    def _run_loop_output_refactor(context: AnalysisContext):
+        return analyze_loop_output_refactor(context.base_picture)
 
     def _run_alarm_integrity(context: AnalysisContext):
         return analyze_alarm_integrity(
@@ -580,6 +625,18 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
             context.base_picture,
             rules=get_configured_naming_rules(context.config),
         )
+
+    def _run_cyclomatic_complexity(context: AnalysisContext):
+        return analyze_cyclomatic_complexity(context.base_picture)
+
+    def _run_parameter_drift(context: AnalysisContext):
+        return analyze_parameter_drift(
+            context.base_picture,
+            unavailable_libraries=context.unavailable_libraries,
+        )
+
+    def _run_scan_loop_resource_usage(context: AnalysisContext):
+        return analyze_scan_loop_resource_usage(context.base_picture)
 
     def _run_version_drift(context: AnalysisContext):
         return analyze_version_drift(
@@ -665,6 +722,13 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
             enabled=True,
         ),
         AnalyzerSpec(
+            key="loop-output-refactor",
+            name="Loop output refactor",
+            description="Detect dependency loops across sorted equation blocks and active step code",
+            run=_run_loop_output_refactor,
+            enabled=True,
+        ),
+        AnalyzerSpec(
             key="alarm-integrity",
             name="Alarm integrity",
             description="Cross-module duplicate tag, duplicate condition, priority, and latch-style alarm checks",
@@ -683,6 +747,27 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
             name="Naming consistency",
             description="Detect inconsistent naming styles for variables, modules, and instances across the analyzed target",
             run=_run_naming_consistency,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="cyclomatic-complexity",
+            name="Cyclomatic complexity",
+            description="Detect modules and SFC steps whose control-flow complexity exceeds default thresholds",
+            run=_run_cyclomatic_complexity,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="parameter-drift",
+            name="Parameter drift",
+            description="Detect moduletype instances whose resolved literal parameter values drift across the analyzed target",
+            run=_run_parameter_drift,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="scan-loop-resource-usage",
+            name="Scan-loop resource usage",
+            description="Detect non precision-scan-safe builtin calls inside equation blocks and SFC active code",
+            run=_run_scan_loop_resource_usage,
             enabled=True,
         ),
         AnalyzerSpec(

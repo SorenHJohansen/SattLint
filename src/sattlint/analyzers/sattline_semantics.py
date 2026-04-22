@@ -30,6 +30,9 @@ class SemanticRule:
     severity: str
     applies_to: str
     description: str
+    confidence: str = "likely"
+    explanation: str | None = None
+    suggestion: str | None = None
     acceptance_tests: tuple[str, ...] | None = None
     corpus_cases: tuple[str, ...] = ()
     mutation_applicability: str | None = None
@@ -110,6 +113,7 @@ _SEMANTIC_LAYER_ACCEPTANCE_TESTS = (
 _VARIABLE_SOURCE_ACCEPTANCE_TESTS = (
     "tests/test_analyzers.py",
     "tests/test_app.py",
+    "tests/test_editor_api.py",
     "tests/test_sattline_semantics.py",
 )
 _SFC_SOURCE_ACCEPTANCE_TESTS = (
@@ -268,6 +272,14 @@ _VARIABLE_RULES: dict[IssueKind, SemanticRule] = {
         applies_to="variable",
         description="Writable declarations that are only ever read.",
     ),
+    IssueKind.NAMING_ROLE_MISMATCH: SemanticRule(
+        id="semantic.naming-role-mismatch",
+        source="variables",
+        category="engineering-spec",
+        severity="warning",
+        applies_to="variable",
+        description="Role-bearing variable prefixes or suffixes such as Cmd, Status, and Alarm should align with observed read and write behavior.",
+    ),
     IssueKind.UI_ONLY: SemanticRule(
         id="semantic.ui-only-variable",
         source="variables",
@@ -331,6 +343,14 @@ _VARIABLE_RULES: dict[IssueKind, SemanticRule] = {
         severity="error",
         applies_to="parameter-mapping",
         description="Parameter mappings that target undeclared module parameters.",
+    ),
+    IssueKind.REQUIRED_PARAMETER_CONNECTION: SemanticRule(
+        id="semantic.required-parameter-connection",
+        source="variables",
+        category="interface-contracts",
+        severity="error",
+        applies_to="parameter-mapping",
+        description="Module instances that leave internally used moduletype parameters unmapped.",
     ),
     IssueKind.CONTRACT_MISMATCH: SemanticRule(
         id="semantic.cross-module-contract-mismatch",
@@ -679,6 +699,7 @@ _RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
         "semantic.unused-variable",
         "semantic.unused-datatype-field",
         "semantic.read-only-non-const",
+        "semantic.naming-role-mismatch",
         "semantic.ui-only-variable",
         "semantic.procedure-status-handling",
         "semantic.never-read-write",
@@ -687,6 +708,7 @@ _RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
         "semantic.hidden-global-coupling",
         "semantic.high-fan-in-out-variable",
         "semantic.unknown-parameter-target",
+        "semantic.required-parameter-connection",
         "semantic.cross-module-contract-mismatch",
         "semantic.string-mapping-mismatch",
         "semantic.duplicated-datatype-layout",
@@ -754,58 +776,64 @@ _RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
 }
 
 _VARIABLE_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
-    for kind, rule in _VARIABLE_RULES.items()
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _VARIABLE_RULES.items()
 }
 _SFC_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
-    for kind, rule in _SFC_RULES.items()
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _SFC_RULES.items()
 }
 _ALARM_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
-    for kind, rule in _ALARM_RULES.items()
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _ALARM_RULES.items()
 }
 _INITIAL_VALUE_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
-    for kind, rule in _INITIAL_VALUE_RULES.items()
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _INITIAL_VALUE_RULES.items()
 }
 _SAFETY_PATH_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
-    for kind, rule in _SAFETY_PATH_RULES.items()
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _SAFETY_PATH_RULES.items()
 }
 _TRACE_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
-    for kind, rule in _TRACE_RULES.items()
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _TRACE_RULES.items()
 }
 _DATAFLOW_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
-    for kind, rule in _DATAFLOW_RULES.items()
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _DATAFLOW_RULES.items()
 }
 _TAINT_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
-    for kind, rule in _TAINT_RULES.items()
+    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _TAINT_RULES.items()
 }
 _UNSAFE_DEFAULT_RULES = {
     kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
     for kind, rule in _UNSAFE_DEFAULT_RULES.items()
 }
+_SPEC_FRAMEWORK_RULES = {
+    rule_id: _attach_rule_contract(
+        SemanticRule(
+            id=rule_id,
+            source="spec-compliance",
+            category="engineering-spec",
+            severity="warning",
+            confidence="style",
+            applies_to="sattline-construct",
+            description=description,
+            explanation=description,
+            suggestion="Rename, reconnect, or restructure the affected construct so it matches the engineering specification.",
+        ),
+        _RULE_CONTRACTS_BY_ID.get(rule_id),
+    )
+    for rule_id, description in sorted(_SPEC_RULE_DESCRIPTIONS.items())
+}
+_FRAMEWORK_RULES_BY_KIND: dict[str, SemanticRule] = {
+    **_SFC_RULES,
+    **_ALARM_RULES,
+    **_INITIAL_VALUE_RULES,
+    **_SAFETY_PATH_RULES,
+    **_TAINT_RULES,
+    **_DATAFLOW_RULES,
+    **_UNSAFE_DEFAULT_RULES,
+    **_SPEC_FRAMEWORK_RULES,
+}
 
 
 def get_sattline_semantic_rule_groups() -> tuple[SemanticRuleGroup, ...]:
-    spec_rules = tuple(
-        _attach_rule_contract(
-            SemanticRule(
-                id=rule_id,
-                source="spec-compliance",
-                category="engineering-spec",
-                severity="warning",
-                applies_to="sattline-construct",
-                description=description,
-            ),
-            _RULE_CONTRACTS_BY_ID.get(rule_id),
-        )
-        for rule_id, description in sorted(_SPEC_RULE_DESCRIPTIONS.items())
-    )
+    spec_rules = tuple(_SPEC_FRAMEWORK_RULES.values())
 
     return (
         SemanticRuleGroup(source="variables", rules=tuple(_VARIABLE_RULES.values())),
@@ -822,11 +850,11 @@ def get_sattline_semantic_rule_groups() -> tuple[SemanticRuleGroup, ...]:
 
 
 def get_sattline_semantic_rules() -> tuple[SemanticRule, ...]:
-    return tuple(
-        rule
-        for group in get_sattline_semantic_rule_groups()
-        for rule in group.rules
-    )
+    return tuple(rule for group in get_sattline_semantic_rule_groups() for rule in group.rules)
+
+
+def get_rule_for_framework_issue_kind(issue_kind: str) -> SemanticRule | None:
+    return _FRAMEWORK_RULES_BY_KIND.get(issue_kind)
 
 
 @dataclass
@@ -863,9 +891,7 @@ class SattLineSemanticsReport:
                 ),
             ):
                 location = ".".join(issue.module_path or [self.basepicture_name])
-                lines.append(
-                    f"      * [{location}] {issue.rule.id}: {issue.message}"
-                )
+                lines.append(f"      * [{location}] {issue.rule.id}: {issue.message}")
 
         return "\n".join(lines)
 
@@ -877,6 +903,7 @@ def analyze_sattline_semantics(
     analyzed_target_is_library: bool = False,
     sfc_mutually_exclusive_steps: list[tuple[str, ...]] | tuple[tuple[str, ...], ...] | None = None,
     sfc_step_contracts: Mapping[str, object] | None = None,
+    config: dict[str, object] | None = None,
 ) -> SattLineSemanticsReport:
     issues: list[SemanticIssue] = []
 
@@ -885,6 +912,7 @@ def analyze_sattline_semantics(
         debug=debug,
         unavailable_libraries=unavailable_libraries,
         analyzed_target_is_library=analyzed_target_is_library,
+        config=config,
     )
     shadowing_report = analyze_shadowing(
         base_picture,
@@ -986,7 +1014,10 @@ def _describe_variable_issue(issue: VariableIssue) -> str:
     if issue.kind is IssueKind.HIGH_FAN_IN_OUT:
         return issue.role or "Variable has high fan-in or fan-out across module boundaries."
     if issue.kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION and variable_name is not None:
-        return issue.role or f"Global variable {variable_name!r} is only used inside one module subtree and can be localized."
+        return (
+            issue.role
+            or f"Global variable {variable_name!r} is only used inside one module subtree and can be localized."
+        )
     if issue.kind is IssueKind.HIDDEN_GLOBAL_COUPLING and variable_name is not None:
         return issue.role or f"Global variable {variable_name!r} acts as an implicit interface across multiple modules."
     if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET:
@@ -996,9 +1027,7 @@ def _describe_variable_issue(issue: VariableIssue) -> str:
     if issue.kind is IssueKind.STRING_MAPPING_MISMATCH:
         source_name = issue.source_variable.name if issue.source_variable is not None else "<unknown source>"
         target_name = variable_name or "<unknown target>"
-        return (
-            f"Parameter mapping from {source_name!r} to {target_name!r} uses incompatible string-like datatypes."
-        )
+        return f"Parameter mapping from {source_name!r} to {target_name!r} uses incompatible string-like datatypes."
     if issue.kind is IssueKind.DATATYPE_DUPLICATION:
         datatype_name = issue.datatype_name or "<unknown datatype>"
         duplicates = issue.duplicate_count or 0
@@ -1090,9 +1119,7 @@ def _describe_trace_finding(finding: dict[str, Any]) -> str:
             terminator = f"{terminator} targeting {terminated_by['target']!r}"
         node_label = finding.get("node_label", "<unknown node>")
         sequence_name = finding.get("sequence_name", "<unnamed>")
-        return (
-            f"Sequence {sequence_name!r} contains unreachable node {node_label!r} after {terminator}."
-        )
+        return f"Sequence {sequence_name!r} contains unreachable node {node_label!r} after {terminator}."
     return kind or "Unknown trace finding."
 
 

@@ -91,9 +91,7 @@ class FindingRecord:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> FindingRecord:
         location_payload = payload.get("location")
-        location = FindingLocation.from_mapping(
-            location_payload if isinstance(location_payload, Mapping) else payload
-        )
+        location = FindingLocation.from_mapping(location_payload if isinstance(location_payload, Mapping) else payload)
         rule_id = _coerce_str(payload.get("rule_id") or payload.get("id")) or "unknown"
         return cls(
             id=_coerce_str(payload.get("id")) or rule_id,
@@ -122,9 +120,7 @@ class FindingRecord:
         artifact: str | None = None,
     ) -> FindingRecord:
         location_payload = payload.get("location")
-        location = FindingLocation.from_mapping(
-            location_payload if isinstance(location_payload, Mapping) else payload
-        )
+        location = FindingLocation.from_mapping(location_payload if isinstance(location_payload, Mapping) else payload)
         rule_id = _coerce_str(payload.get("rule_id") or payload.get("id")) or "unknown"
         return cls(
             id=_coerce_str(payload.get("id")) or rule_id,
@@ -197,6 +193,6 @@ def _coerce_str(value: Any) -> str | None:
 def _coerce_module_path(value: Any) -> tuple[str, ...]:
     if value is None:
         return ()
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return tuple(str(item) for item in value)
     return (str(value),)

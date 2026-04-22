@@ -44,7 +44,9 @@ def _group_by_fingerprint(findings: tuple[FindingRecord, ...]) -> dict[str, list
     return grouped
 
 
-def _group_by_anchor(findings: list[FindingRecord]) -> dict[tuple[str, str | None, int | None, str | None], list[FindingRecord]]:
+def _group_by_anchor(
+    findings: list[FindingRecord],
+) -> dict[tuple[str, str | None, int | None, str | None], list[FindingRecord]]:
     grouped: dict[tuple[str, str | None, int | None, str | None], list[FindingRecord]] = {}
     for finding in sorted(findings, key=_finding_sort_key):
         grouped.setdefault(_finding_anchor(finding), []).append(finding)

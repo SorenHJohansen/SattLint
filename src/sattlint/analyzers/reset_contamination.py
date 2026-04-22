@@ -4,6 +4,7 @@ A variable is 'reset contaminated' when it is written during a run condition
 (i.e. when a sequence's .Reset flag is False) but not reset across all reset
 paths. This means the variable can retain stale state across equipment resets.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -119,19 +120,13 @@ def _is_from_root_origin(origin_file: str | None, root_origin: str | None) -> bo
     try:
         return Path(origin_file).stem.lower() == Path(root_origin).stem.lower()
     except Exception:
-        return (
-            origin_file.rsplit(".", 1)[0].lower()
-            == root_origin.rsplit(".", 1)[0].lower()
-        )
+        return origin_file.rsplit(".", 1)[0].lower() == root_origin.rsplit(".", 1)[0].lower()
 
 
 def _should_analyze_path(path: list[str], limit_to_module_path: list[str] | None) -> bool:
     if limit_to_module_path is None:
         return True
-    return (
-        path_startswith_casefold(limit_to_module_path, path)
-        or path_startswith_casefold(path, limit_to_module_path)
-    )
+    return path_startswith_casefold(limit_to_module_path, path) or path_startswith_casefold(path, limit_to_module_path)
 
 
 def _collect_from_module(
@@ -166,18 +161,14 @@ def _build_local_env(
     return env
 
 
-def _check_for_single(
-    mod: SingleModule, path: list[str], issues: list[VariableIssue], *, check_fn: Callable
-) -> None:
+def _check_for_single(mod: SingleModule, path: list[str], issues: list[VariableIssue], *, check_fn: Callable) -> None:
     if mod.modulecode is None:
         return
     env = _build_local_env(mod.moduleparameters, mod.localvariables)
     check_fn(mod.modulecode, env, path, issues)
 
 
-def _check_for_typedef(
-    mt: ModuleTypeDef, path: list[str], issues: list[VariableIssue], *, check_fn: Callable
-) -> None:
+def _check_for_typedef(mt: ModuleTypeDef, path: list[str], issues: list[VariableIssue], *, check_fn: Callable) -> None:
     if mt.modulecode is None:
         return
     env = _build_local_env(mt.moduleparameters, mt.localvariables)
@@ -222,9 +213,7 @@ def _check_for_modulecode(
 
         reset_paths = [state for state in path_states if state.reset_state == "reset"]
 
-        for key, (var, field_path) in sorted(
-            run_writes.items(), key=lambda item: (item[0][0], item[0][1])
-        ):
+        for key, (var, field_path) in sorted(run_writes.items(), key=lambda item: (item[0][0], item[0][1])):
             var_key, _field_key = key
             if var_key in reset_old_cf:
                 continue
@@ -302,12 +291,12 @@ def _collect_var_refs(modulecode: ModuleCode) -> set[str]:
         if isinstance(obj, SFCTransition):
             visit(obj.condition)
             return
-        if isinstance(obj, (SFCAlternative, SFCParallel)):
+        if isinstance(obj, SFCAlternative | SFCParallel):
             for branch in obj.branches or []:
                 for item in branch or []:
                     visit(item)
             return
-        if isinstance(obj, (SFCSubsequence, SFCTransitionSub)):
+        if isinstance(obj, SFCSubsequence | SFCTransitionSub):
             for item in obj.body or []:
                 visit(item)
             return
@@ -570,7 +559,7 @@ def _scan_seq_nodes_for_latching(
                     sequence_name=sequence_name,
                 )
             continue
-        if isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+        if isinstance(node, SFCSubsequence | SFCTransitionSub):
             _scan_seq_nodes_for_latching(
                 node.body or [],
                 env,
@@ -597,9 +586,7 @@ def _emit_branch_latch_issues(
     for state in branch_states:
         true_writes.update(state.true_writes)
 
-    for key, (var, field_path) in sorted(
-        true_writes.items(), key=lambda item: (item[0][0], item[0][1])
-    ):
+    for key, (var, field_path) in sorted(true_writes.items(), key=lambda item: (item[0][0], item[0][1])):
         if _all_boolean_paths_cover_false(alternative_states, key):
             continue
         issue_key = (tuple(path), key[0], site.casefold())
@@ -619,9 +606,7 @@ def _emit_branch_latch_issues(
         )
 
 
-def _all_boolean_paths_cover_false(
-    states: list[_BooleanPathState], key: WriteKey
-) -> bool:
+def _all_boolean_paths_cover_false(states: list[_BooleanPathState], key: WriteKey) -> bool:
     return bool(states) and all(_boolean_path_covers_false(state.false_writes, key) for state in states)
 
 
@@ -766,7 +751,7 @@ def _collect_boolean_seq_node_paths(
             parallel_states.extend(_merge_boolean_parallel_branch_results(branch_results))
         return parallel_states or states
 
-    if isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+    if isinstance(node, SFCSubsequence | SFCTransitionSub):
         return _collect_boolean_seq_block_paths(node.body or [], env, states)
 
     return states
@@ -833,11 +818,15 @@ def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[st
         if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
             _, target, expr = obj
             if (
-                isinstance(expr, dict)
-                and const.KEY_VAR_NAME in expr
-                and isinstance(expr[const.KEY_VAR_NAME], str)
-                and expr[const.KEY_VAR_NAME].casefold() == reset_ref_cf
-            ) and isinstance(target, dict) and const.KEY_VAR_NAME in target:
+                (
+                    isinstance(expr, dict)
+                    and const.KEY_VAR_NAME in expr
+                    and isinstance(expr[const.KEY_VAR_NAME], str)
+                    and expr[const.KEY_VAR_NAME].casefold() == reset_ref_cf
+                )
+                and isinstance(target, dict)
+                and const.KEY_VAR_NAME in target
+            ):
                 target_name = target[const.KEY_VAR_NAME]
                 if isinstance(target_name, str) and target_name:
                     reset_old_vars.add(target_name)
@@ -867,12 +856,12 @@ def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[st
         if isinstance(obj, SFCTransition):
             visit(obj.condition)
             return
-        if isinstance(obj, (SFCAlternative, SFCParallel)):
+        if isinstance(obj, SFCAlternative | SFCParallel):
             for branch in obj.branches or []:
                 for item in branch or []:
                     visit(item)
             return
-        if isinstance(obj, (SFCSubsequence, SFCTransitionSub)):
+        if isinstance(obj, SFCSubsequence | SFCTransitionSub):
             for item in obj.body or []:
                 visit(item)
             return
@@ -1282,9 +1271,7 @@ def _collect_stmt_paths(
     return states
 
 
-def _classify_reset_condition(
-    cond: Any, reset_ref_cf: str, reset_old_vars_cf: set[str]
-) -> dict[str, bool]:
+def _classify_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: set[str]) -> dict[str, bool]:
     positives: set[str] = set()
     negatives: set[str] = set()
 
@@ -1335,9 +1322,7 @@ def _is_exact_run_condition(cond: Any, reset_ref_cf: str) -> bool:
     )
 
 
-def _is_exact_reset_condition(
-    cond: Any, reset_ref_cf: str, reset_old_vars_cf: set[str]
-) -> bool:
+def _is_exact_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: set[str]) -> bool:
     if _varref_casefold(cond) == reset_ref_cf:
         return True
     return (
@@ -1357,9 +1342,7 @@ def _varref_casefold(obj: Any) -> str | None:
     return full.casefold()
 
 
-def _take_condition_branch(
-    state: _PathState, cond_flags: dict[str, bool]
-) -> list[_PathState]:
+def _take_condition_branch(state: _PathState, cond_flags: dict[str, bool]) -> list[_PathState]:
     if cond_flags["run"] and not cond_flags["reset"]:
         return _clone_with_reset_state(state, "run")
     if cond_flags["reset"] and not cond_flags["run"]:

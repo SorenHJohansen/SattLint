@@ -10,6 +10,7 @@ def _distinct_location_count(paths: list[list[str]]) -> int:
 @dataclass
 class VariableUsage:
     """Mutable state for variable usage analysis."""
+
     read: bool = False
     written: bool = False
     ui_read: bool = False

@@ -1,4 +1,5 @@
 """Issue collection helpers for the variable usage analyzer."""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -86,9 +87,7 @@ def _add_unused_datatype_field_issues(self) -> None:
         if not self._is_from_root_origin(getattr(datatype, "origin_file", None)):
             continue
         leaf_paths = {
-            ".".join(field_path)
-            for field_path in self.type_graph.iter_leaf_field_paths(datatype.name)
-            if field_path
+            ".".join(field_path) for field_path in self.type_graph.iter_leaf_field_paths(datatype.name) if field_path
         }
         if not leaf_paths:
             continue
@@ -126,12 +125,8 @@ def _add_unused_datatype_field_issues(self) -> None:
         if usage.usage_locations:
             state["has_whole_access"] = True
 
-        for field_path in list((usage.field_reads or {}).keys()) + list(
-            (usage.field_writes or {}).keys()
-        ):
-            normalized = ".".join(
-                segment for segment in field_path.split(".") if segment
-            )
+        for field_path in list((usage.field_reads or {}).keys()) + list((usage.field_writes or {}).keys()):
+            normalized = ".".join(segment for segment in field_path.split(".") if segment)
             if normalized:
                 state["accessed_prefixes"].add(normalized.casefold())
 
@@ -146,8 +141,7 @@ def _add_unused_datatype_field_issues(self) -> None:
         for leaf_path in sorted(state["leaf_paths"]):
             leaf_key = leaf_path.casefold()
             if any(
-                leaf_key == accessed_prefix
-                or leaf_key.startswith(f"{accessed_prefix}.")
+                leaf_key == accessed_prefix or leaf_key.startswith(f"{accessed_prefix}.")
                 for accessed_prefix in accessed_prefixes
             ):
                 continue
@@ -208,10 +202,7 @@ def _add_hidden_global_coupling_issues(self) -> None:
                 kind=IssueKind.HIDDEN_GLOBAL_COUPLING,
                 module_path=[self.bp.header.name],
                 variable=variable,
-                role=(
-                    "hidden global coupling across modules: "
-                    + ", ".join(module_summaries)
-                ),
+                role=("hidden global coupling across modules: " + ", ".join(module_summaries)),
             )
         )
         added_issue_count += 1
@@ -249,31 +240,20 @@ def _add_high_fan_in_out_issues(self) -> None:
             elif event.kind is AccessKind.WRITE:
                 writer_modules.add(module_key)
 
-        if (
-            len(reader_modules) < _HIGH_FAN_IN_OUT_THRESHOLD
-            and len(writer_modules) < _HIGH_FAN_IN_OUT_THRESHOLD
-        ):
+        if len(reader_modules) < _HIGH_FAN_IN_OUT_THRESHOLD and len(writer_modules) < _HIGH_FAN_IN_OUT_THRESHOLD:
             continue
 
         role_parts: list[str] = []
         if len(reader_modules) >= _HIGH_FAN_IN_OUT_THRESHOLD:
             reader_labels = [
-                ".".join(display_paths.get(module_key, module_key)[1:])
-                for module_key in sorted(reader_modules)
+                ".".join(display_paths.get(module_key, module_key)[1:]) for module_key in sorted(reader_modules)
             ]
-            role_parts.append(
-                f"high fan-in with {len(reader_modules)} readers: "
-                + ", ".join(reader_labels)
-            )
+            role_parts.append(f"high fan-in with {len(reader_modules)} readers: " + ", ".join(reader_labels))
         if len(writer_modules) >= _HIGH_FAN_IN_OUT_THRESHOLD:
             writer_labels = [
-                ".".join(display_paths.get(module_key, module_key)[1:])
-                for module_key in sorted(writer_modules)
+                ".".join(display_paths.get(module_key, module_key)[1:]) for module_key in sorted(writer_modules)
             ]
-            role_parts.append(
-                f"high fan-out with {len(writer_modules)} writers: "
-                + ", ".join(writer_labels)
-            )
+            role_parts.append(f"high fan-out with {len(writer_modules)} writers: " + ", ".join(writer_labels))
 
         self._append_issue(
             VariableIssue(
@@ -340,12 +320,9 @@ def _add_global_scope_minimization_issues(self) -> None:
         if len(common_prefix) <= 1:
             continue
 
-        candidate_scope = ".".join(
-            display_paths.get(tuple(common_prefix), tuple(common_prefix))[1:]
-        )
+        candidate_scope = ".".join(display_paths.get(tuple(common_prefix), tuple(common_prefix))[1:])
         access_summaries = [
-            ".".join(display_paths.get(module_key, module_key)[1:])
-            for module_key in sorted(access_module_keys)
+            ".".join(display_paths.get(module_key, module_key)[1:]) for module_key in sorted(access_module_keys)
         ]
 
         self._append_issue(
@@ -354,8 +331,7 @@ def _add_global_scope_minimization_issues(self) -> None:
                 module_path=[self.bp.header.name],
                 variable=variable,
                 role=(
-                    f"global scope can be reduced to module subtree {candidate_scope}: "
-                    + ", ".join(access_summaries)
+                    f"global scope can be reduced to module subtree {candidate_scope}: " + ", ".join(access_summaries)
                 ),
             )
         )
@@ -399,9 +375,7 @@ def _collect_issues_from_module(
         for variable in mod.moduleparameters or []:
             usage = self._get_usage(variable)
             if usage.is_unused:
-                self._add_issue(
-                    IssueKind.UNUSED, my_path, variable, role="moduleparameter"
-                )
+                self._add_issue(IssueKind.UNUSED, my_path, variable, role="moduleparameter")
                 continue
             procedure_status = self._procedure_status_issue(variable, usage)
             if procedure_status is not None:
@@ -415,9 +389,7 @@ def _collect_issues_from_module(
                 )
                 continue
             elif usage.is_display_only:
-                self._add_issue(
-                    IssueKind.UI_ONLY, my_path, variable, role="moduleparameter"
-                )
+                self._add_issue(IssueKind.UI_ONLY, my_path, variable, role="moduleparameter")
             elif (
                 usage.read
                 and usage.written
@@ -448,14 +420,8 @@ def _collect_issues_from_module(
                 continue
             elif usage.is_display_only:
                 self._add_issue(IssueKind.UI_ONLY, my_path, variable, role="localvariable")
-            elif (
-                usage.is_read_only
-                and not bool(variable.const)
-                and self._is_const_candidate(variable)
-            ):
-                self._add_issue(
-                    IssueKind.READ_ONLY_NON_CONST, my_path, variable, role="localvariable"
-                )
+            elif usage.is_read_only and not bool(variable.const) and self._is_const_candidate(variable):
+                self._add_issue(IssueKind.READ_ONLY_NON_CONST, my_path, variable, role="localvariable")
             elif usage.written and not usage.read:
                 self._add_issue(IssueKind.NEVER_READ, my_path, variable, role="localvariable")
             elif (

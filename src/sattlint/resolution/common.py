@@ -55,13 +55,8 @@ def resolve_moduletype_def_strict(
         available = sorted({mt.name for mt in (bp.moduletype_defs or [])})
         note = ""
         if unavailable_libraries:
-            note = (
-                " Note: Some libraries are unavailable (e.g., proprietary): "
-                f"{sorted(unavailable_libraries)[:10]}"
-            )
-        raise ValueError(
-            f"Unknown moduletype {moduletype_name!r}.{note} Available moduletype defs: {available[:50]}"
-        )
+            note = " Note: Some libraries are unavailable (e.g., proprietary): " f"{sorted(unavailable_libraries)[:10]}"
+        raise ValueError(f"Unknown moduletype {moduletype_name!r}.{note} Available moduletype defs: {available[:50]}")
     matches = dedupe_moduletype_defs(matches)
     if len(matches) > 1:
         if current_library is None and bp.origin_lib:
@@ -69,29 +64,21 @@ def resolve_moduletype_def_strict(
 
         if current_library:
             current_lib_cf = current_library.casefold()
-            local_matches = [
-                mt for mt in matches if (mt.origin_lib or "").casefold() == current_lib_cf
-            ]
+            local_matches = [mt for mt in matches if (mt.origin_lib or "").casefold() == current_lib_cf]
             if len(local_matches) == 1:
                 return local_matches[0]
             if len(local_matches) > 1:
                 labels = sorted(format_moduletype_label(mt) for mt in local_matches)
-                raise ValueError(
-                    f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}"
-                )
+                raise ValueError(f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}")
 
             deps = (bp.library_dependencies or {}).get(current_lib_cf, [])
             dep_candidates: list[ModuleTypeDef] = []
             for dep in deps:
                 dep_cf = dep.casefold()
-                dep_matches = [
-                    mt for mt in matches if (mt.origin_lib or "").casefold() == dep_cf
-                ]
+                dep_matches = [mt for mt in matches if (mt.origin_lib or "").casefold() == dep_cf]
                 if len(dep_matches) > 1:
                     labels = sorted(format_moduletype_label(mt) for mt in dep_matches)
-                    raise ValueError(
-                        f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}"
-                    )
+                    raise ValueError(f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}")
                 if len(dep_matches) == 1:
                     dep_candidates.append(dep_matches[0])
 
@@ -99,14 +86,10 @@ def resolve_moduletype_def_strict(
                 return dep_candidates[0]
             if len(dep_candidates) > 1:
                 labels = sorted(format_moduletype_label(mt) for mt in dep_candidates)
-                raise ValueError(
-                    f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}"
-                )
+                raise ValueError(f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}")
 
         labels = sorted(format_moduletype_label(mt) for mt in matches)
-        raise ValueError(
-            f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}"
-        )
+        raise ValueError(f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}")
     return matches[0]
 
 
@@ -156,15 +139,13 @@ def resolve_module_by_strict_path(
                 return matches[0]
             if len(matches) > 1:
                 labels = sorted(format_moduletype_label(mt) for mt in matches)
-                raise ValueError(
-                    f"Ambiguous moduletype {node.moduletype_name!r} (multiple definitions): {labels}"
-                )
+                raise ValueError(f"Ambiguous moduletype {node.moduletype_name!r} (multiple definitions): {labels}")
         return resolve_moduletype_def_strict(bp, node.moduletype_name)
 
     def children_of(node: Any) -> list[Any]:
         if isinstance(node, BasePicture):
             return list(node.submodules or [])
-        if isinstance(node, (SingleModule, FrameModule, ModuleTypeDef)):
+        if isinstance(node, SingleModule | FrameModule | ModuleTypeDef):
             return list(node.submodules or [])
         if isinstance(node, ModuleTypeInstance):
             mt = resolve_moduletype(node)
@@ -234,9 +215,9 @@ def find_module_by_name(bp: BasePicture, name: str):
     # Then search in submodules (instances)
     def search(modules):
         for mod in modules or []:
-            if hasattr(mod, 'header') and mod.header.name.lower() == name_lower:
+            if hasattr(mod, "header") and mod.header.name.lower() == name_lower:
                 return mod
-            if hasattr(mod, 'submodules'):
+            if hasattr(mod, "submodules"):
                 result = search(mod.submodules)
                 if result:
                     return result
@@ -258,7 +239,7 @@ def get_module_path(bp: BasePicture, target_module) -> list[str]:
             current_path = [*path, mod.header.name]
             if mod is target_module:
                 return current_path
-            if hasattr(mod, 'submodules'):
+            if hasattr(mod, "submodules"):
                 result = search(mod.submodules, current_path)
                 if result:
                     return result
@@ -323,16 +304,11 @@ def find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str) 
                 # First level: check if it's a TypeDef or submodule
                 if segment.startswith("TypeDef:"):
                     typedef_name = segment.split(":", 1)[1]
-                    current = next(
-                        (mt for mt in bp.moduletype_defs or []
-                         if mt.name == typedef_name),
-                        None
-                    )
+                    current = next((mt for mt in bp.moduletype_defs or [] if mt.name == typedef_name), None)
                 else:
                     current = next(
-                        (mod for mod in bp.submodules or []
-                         if hasattr(mod, 'header') and mod.header.name == segment),
-                        None
+                        (mod for mod in bp.submodules or [] if hasattr(mod, "header") and mod.header.name == segment),
+                        None,
                     )
             else:
                 # Navigate deeper
@@ -344,11 +320,14 @@ def find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str) 
                     # but let's handle it
                     break
                 else:
-                    if isinstance(current, (SingleModule, FrameModule)):
+                    if isinstance(current, SingleModule | FrameModule):
                         current = next(
-                            (mod for mod in current.submodules or []
-                             if hasattr(mod, 'header') and mod.header.name == segment),
-                            None
+                            (
+                                mod
+                                for mod in current.submodules or []
+                                if hasattr(mod, "header") and mod.header.name == segment
+                            ),
+                            None,
                         )
                     else:
                         break
@@ -357,7 +336,7 @@ def find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str) 
             continue
 
         # Check variables at this level
-        if isinstance(current, (SingleModule, ModuleTypeDef)):
+        if isinstance(current, SingleModule | ModuleTypeDef):
             # Check localvariables
             for v in current.localvariables or []:
                 if v.name.lower() == var_name_lower:

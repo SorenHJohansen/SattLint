@@ -96,18 +96,10 @@ def build_safety_path_traces(
 
         accesses = build_symbol_accesses(events)
         writer_module_paths = tuple(
-            dict.fromkeys(
-                access.use_module_path
-                for access in accesses
-                if access.kind == "write"
-            )
+            dict.fromkeys(access.use_module_path for access in accesses if access.kind == "write")
         )
         reader_module_paths = tuple(
-            dict.fromkeys(
-                access.use_module_path
-                for access in accesses
-                if access.kind == "read"
-            )
+            dict.fromkeys(access.use_module_path for access in accesses if access.kind == "read")
         )
         module_paths = tuple(dict.fromkeys(access.use_module_path for access in accesses))
 

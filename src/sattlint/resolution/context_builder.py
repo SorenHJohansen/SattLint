@@ -112,8 +112,7 @@ class ContextBuilder:
                 continue
             target_display_name = (
                 parameter_mapping.target[const.KEY_VAR_NAME]
-                if isinstance(parameter_mapping.target, dict)
-                and const.KEY_VAR_NAME in parameter_mapping.target
+                if isinstance(parameter_mapping.target, dict) and const.KEY_VAR_NAME in parameter_mapping.target
                 else str(parameter_mapping.target)
             )
             target_key = target_name.casefold()
@@ -124,10 +123,7 @@ class ContextBuilder:
                         kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
                         module_path=module_path.copy(),
                         variable=None,
-                        role=(
-                            f"unknown parameter mapping target "
-                            f"{target_display_name!r}"
-                        ),
+                        role=(f"unknown parameter mapping target " f"{target_display_name!r}"),
                     )
                 )
                 continue
@@ -139,7 +135,9 @@ class ContextBuilder:
             else:
                 continue
 
-            source_var, source_field_prefix, source_decl_path, source_decl_display_path = parent_context.resolve_variable(full_source)
+            source_var, source_field_prefix, source_decl_path, source_decl_display_path = (
+                parent_context.resolve_variable(full_source)
+            )
 
             if source_var:
                 param_mappings[target_key] = (
@@ -214,8 +212,7 @@ class ContextBuilder:
                 continue
             target_display_name = (
                 parameter_mapping.target[const.KEY_VAR_NAME]
-                if isinstance(parameter_mapping.target, dict)
-                and const.KEY_VAR_NAME in parameter_mapping.target
+                if isinstance(parameter_mapping.target, dict) and const.KEY_VAR_NAME in parameter_mapping.target
                 else str(parameter_mapping.target)
             )
             target_key = target_name.casefold()
@@ -226,10 +223,7 @@ class ContextBuilder:
                         kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
                         module_path=module_path.copy(),
                         variable=None,
-                        role=(
-                            f"unknown parameter mapping target "
-                            f"{target_display_name!r}"
-                        ),
+                        role=(f"unknown parameter mapping target " f"{target_display_name!r}"),
                     )
                 )
                 continue
@@ -244,7 +238,9 @@ class ContextBuilder:
             else:
                 continue
 
-            source_var, source_field_prefix, source_decl_path, source_decl_display_path = parent_context.resolve_variable(full_source)
+            source_var, source_field_prefix, source_decl_path, source_decl_display_path = (
+                parent_context.resolve_variable(full_source)
+            )
             if source_var:
                 param_mappings[target_key] = (
                     source_var,

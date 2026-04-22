@@ -161,6 +161,4 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
     analyzer = VariablesAnalyzer(bp, debug=False, fail_loudly=False)
     analyzer.run()
 
-    assert not any(
-        "unknown field 'Active'" in warning for warning in analyzer.analysis_warnings
-    )
+    assert not any("unknown field 'Active'" in warning for warning in analyzer.analysis_warnings)

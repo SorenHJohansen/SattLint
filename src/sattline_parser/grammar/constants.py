@@ -61,8 +61,6 @@ KEY_ENABLE_EXPRESSION = "enable_expression"
 KEY_VAR_NAME = "var_name"
 
 
-
-
 GRAMMAR_VALUE_ASSIGN_INIT_VALUE = ":="
 GRAMMAR_VALUE_CLIPPINGBOUNDS = "ClippingBounds"
 GRAMMAR_VALUE_MODULEDEF = "ModuleDef"
@@ -225,4 +223,3 @@ GRAMMAR_REGEX_NAME = (
     r"(?![\p{L}\p{Nl}\p{M}\p{Nd}_'])/"
 )
 GRAMMAR_REGEX_STRING_CRLF = r"/\"([^\"\n]|\"\")*\n/"
-

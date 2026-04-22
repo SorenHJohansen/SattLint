@@ -1,6 +1,6 @@
 # SattLine LSP VS Code Client
 
-This extension launches the Python `sattlint_lsp` server over stdio, associates `.s`, `.x`, `.l`, and `.z` files with the `sattline` language, and provides built-in TextMate syntax highlighting for SattLine source.
+This extension launches the Python `sattlint_lsp` server over stdio, associates `.s`, `.x`, `.l`, `.z`, and `.g` files with the `sattline` language, and provides built-in TextMate syntax highlighting for SattLine source.
 
 It is implemented as a plain JavaScript VS Code extension, so there is no npm or TypeScript build step.
 

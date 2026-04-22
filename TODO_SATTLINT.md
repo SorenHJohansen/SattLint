@@ -6,24 +6,17 @@ Backlog view of the analyzer roadmap for SattLine code. Each row is a discrete f
 - Implementation bucket uses: new analyzer, extend VariablesAnalyzer, shared semantic core, or reporting only.
 - Confidence is delivery confidence with the current parser, resolver, and test scaffolding.
 - Acceptance tests name the existing suites that should be extended first.
-- Status is a conservative repo review as of 2026-04-20: `Done` means implemented with concrete code and tests, `Partial` means narrower or adjacent coverage exists, and `Open` means no matching implementation was found.
+- Status is a conservative repo review as of 2026-04-22: `Partial` means narrower or adjacent coverage exists, and `Open` means no matching implementation was found. Fully completed items are intentionally removed from this active backlog.
 
-Repo review note as of 2026-04-20:
+Repo review note as of 2026-04-22:
 
-- Already implemented or partially implemented in code: scan-cycle temporal hazards, SFC reachability and parallel-write checks, configured mutually exclusive SFC step sets, SFC step contracts and state leakage, alarm integrity, required startup-value checks, taint and safety path tracing, hidden global coupling, write-without-effect, unsafe defaults, version drift, and variable diagnostic explanations with suggested fixes.
-- Already represented elsewhere in this backlog: IDs 1, 3, 4, 6, 7, 8, and 9 cover adjacent asks from the additions below.
+- Active backlog below excludes fully completed rows and keeps only remaining `Open` and `Partial` work.
+- Several active rows remain `Partial` because narrower adjacent coverage already exists in the semantic core, VariablesAnalyzer, or reporting pipeline.
 
 | ID | Status | Area | Feature | Scope | Implementation bucket | Confidence | Dependencies | Acceptance tests |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Open | Cross-module and system-level consistency | Parameter drift across instances | cross-module | new analyzer | High | Module instance inventory, normalized literal comparison, moduletype grouping | Add `tests/test_analyzers.py` cases where instances of the same moduletype diverge on important parameters and aligned instances do not report |
-| 2 | Open | Structural quality and maintainability | Cyclomatic complexity analysis | single-file | new analyzer | High | AST control-flow traversal, per-module or per-step metrics, threshold configuration and report formatting | Add `tests/test_analyzers.py` cases for low and high complexity modules or steps and verify thresholded findings |
 | 3 | Open | Structural quality and maintainability | Duplicate logic detection | workspace | new analyzer | Medium | AST normalization or hashing, expression or block comparison, duplicate grouping in reports | Add `tests/test_analyzers.py` cases for structurally identical logic blocks with renamed locals and for near-miss blocks that should not collapse |
-| 4 | Open | Structural quality and maintainability | Resource usage in scan loop | single-file | new analyzer | Medium | Builtin or procedure classification, scan-loop context detection in equations and SFC active code | Add `tests/test_analyzers.py` cases flagging heavy operations in scan-cycle code and allowing the same calls outside scan-cycle paths |
-| 5 | Open | Structural quality and maintainability | Loop output refactoring tool | single-file | reporting only | Low | Loop-output extraction, suggestion formatter, optional documentation serialization | Add `tests/test_analyzers.py` cases producing a refactor suggestion for loop outputs; add `tests/test_docgen.py` coverage if suggestions are exported in generated docs |
-| 6 | Open | Naming and semantic conventions | Naming-to-behavior and signal-role consistency | single-file | extend VariablesAnalyzer | High | Existing read or write lifecycle classification, configurable suffix or prefix rules such as Cmd, Status, Alarm, and State | Add `tests/test_analyzers.py` cases where Cmd behaves like state, Status is directly written, Alarm signals drive control logic, plus safe counterexamples |
 | 7 | Open | Naming and semantic conventions | Engineering unit consistency and propagation | cross-module | new analyzer | Low | Unit metadata source, parameter mapping comparison, range or scaling metadata, optional config catalog of allowed conversions | Add `tests/test_analyzers.py` cases for unit mismatches across connected modules, transitive propagation, and accepted conversions when configured |
-| 8 | Open | Configuration and interface validation | Required parameter connections | workspace | extend VariablesAnalyzer | High | Parameter mapping resolution, moduletype parameter metadata, dependency-aware workspace loading | Add `tests/test_analyzers.py` cases for missing required mappings and optional mappings left unset; add `tests/test_editor_api.py` coverage for required parameters defined in dependency libraries |
-| 9 | Open | Observability and developer experience | Confidence scoring | workspace | reporting only | Medium | Stable issue taxonomy, rule metadata, report or diagnostic serialization | Add `tests/test_app.py` and `tests/test_pipeline.py` coverage proving confidence labels such as definite, likely, and style are emitted consistently |
 | 10 | Partial | Timing and real-time constraints | Timing and determinism analysis | workspace | shared semantic core | Medium | Temporal access graph with scan ordering, cycle-budget config, timer semantics, latency or jitter heuristics | Add `tests/test_dataflow.py` and `tests/test_analyzers.py` cases for cycle-budget overruns, same-cycle order sensitivity, TON or TOF or PT misuse, and latency-sensitive signal chains |
 | 11 | Partial | Initialization and startup semantics | Power-up and restart correctness | workspace | shared semantic core | Medium | First-scan definite assignment, retained-state model, startup ordering graph, initial-value propagation | Add `tests/test_dataflow.py` and `tests/test_analyzers.py` cases for uninitialized first-scan reads, power-up state mismatches, cold vs warm restart behavior, and module initialization order dependencies |
 | 12 | Partial | Concurrency and execution ordering | Scan-level concurrency and arbitration analysis | cross-module | shared semantic core | Medium | Module execution order model, cross-module writer inventory, arbitration heuristics, last-writer detection | Add `tests/test_analyzers.py` cases for cross-module write collisions, read or write ordering dependencies, hidden last-write-wins behavior, and multiple writers without arbitration |
@@ -37,5 +30,156 @@ Repo review note as of 2026-04-20:
 | 20 | Open | S88 control architecture | S88 phase sequencing correctness | workspace | new analyzer | Medium | Phase model extraction, legal transition matrix, phase-state reachability, exit-condition validation | Add `tests/test_analyzers.py` cases for illegal phase transitions and missing or inconsistent phase exit conditions |
 | 21 | Partial | Safety-critical semantics | Safety-path correctness beyond tracing | cross-module | shared semantic core | Low | Extend safety-path traces with reset symmetry, validation gates, redundancy expectations, and safe-state assertions | Add `tests/test_analyzers.py` cases for shutdown paths missing resets, missing redundant confirmation paths, and unsafe single-point control of emergency logic |
 | 22 | Partial | Advanced semantic inference | Lightweight behavioral range and state inference | workspace | shared semantic core | Medium | Abstract interpretation for value ranges, state propagation across branches, saturation detection, impossible-state classification | Add `tests/test_dataflow.py` and `tests/test_analyzers.py` cases for impossible conditions and saturated states not caught by current constant-condition rules |
-| 23 | Open | Analyzer ergonomics | Configurable rule profiles | workspace | reporting only | High | Profile schema, per-rule enablement or severity matrices, default plant profiles such as strict pharma and legacy plant | Add `tests/test_app.py` and `tests/test_pipeline.py` coverage for strict pharma mode and legacy plant mode emitting different rule sets |
-| 24 | Partial | Analyzer ergonomics | Issue explanations and fix suggestions across analyzers | workspace | reporting only | Medium | Shared guidance model for non-variable semantic issues, report serialization, LSP projection, issue metadata reuse | Add `tests/test_lsp_server.py` and `tests/test_pipeline.py` coverage proving semantic issues beyond variable findings include explanations and suggested fixes |
+
+## AI Execution Plan
+
+Execution plan converts backlog into AI-sized waves that fit current repo seams and avoid overlapping semantic-core work.
+
+Wave 1 and Wave 2 are complete. Active implementation work now starts at Wave 3.
+
+### Operating Rules
+
+- One AI task should target one backlog ID or one tightly coupled prerequisite slice.
+- Default implementation order per feature: metadata or contract first, focused tests second, analyzer logic third, shared machine-readable output fourth, CLI or pipeline or LSP exposure last.
+- Do not run multiple AI tasks in parallel against `src/sattlint/analyzers/dataflow.py`, `src/sattlint/core/semantic.py`, or `src/sattlint/analyzers/sattline_semantics.py` unless they are explicitly coordinated under same wave.
+- Prefer checked-in fixtures and targeted pytest modules before broader pipeline validation.
+- Treat `tests/test_analyzers.py` as a starting point, not a dumping ground. Create or extend narrower suites when a feature introduces a distinct seam.
+
+### Definition Of Done Per Backlog Item
+
+- Rule or analyzer metadata added in analyzer registry and semantic-layer metadata where applicable.
+- Acceptance tests from the backlog row are added or updated first.
+- Findings flow through normalized contracts when the feature emits machine-readable results.
+- CLI or LSP exposure is added only after tests and finding shape are stable.
+- Validation uses the smallest relevant command first, then widens only if needed.
+
+Recommended focused validation commands:
+
+- Parser or strict-validation slices: `& ".venv/Scripts/sattlint.exe" syntax-check <target>`
+- Analyzer or CLI slices: `& ".venv/Scripts/python.exe" -m pytest tests/test_analyzers.py tests/test_app.py -q`
+- Semantic-core slices: `& ".venv/Scripts/python.exe" -m pytest tests/test_dataflow.py tests/test_sattline_semantics.py tests/test_analyzers.py -q`
+- Pipeline or artifact slices: `& ".venv/Scripts/python.exe" -m pytest tests/test_pipeline.py tests/test_artifact_contracts.py -q`
+- Editor or LSP slices: `& ".venv/Scripts/python.exe" -m pytest tests/test_editor_api.py tests/test_lsp_server.py -q`
+
+### Wave 3: Standalone Heuristic Analyzers
+
+Goal: deliver medium-risk analyzers that mostly consume existing AST and resolution data without requiring new abstract interpretation.
+
+Items:
+
+- `3` Duplicate logic detection
+- `14` Control loop and stability heuristics
+- `15` Fault handling completeness and recovery
+- `17` Numeric and engineering constraint analysis
+
+Why here:
+
+- These are feature-rich but can still be built as analyzers on top of current AST, call-signature, and workspace-resolution seams.
+- They are easier to review once reporting and profile infrastructure from Wave 2 exists.
+
+Risk note:
+
+- `3` needs aggressive counterexamples to avoid false positives.
+- `15` should not guess plant semantics beyond evidence in code or config.
+
+### Wave 4: Contract And Cross-Module Semantics Expansion
+
+Goal: extend interface and lifecycle analysis where current variables and semantic layers already have partial coverage.
+
+Items:
+
+- `16` Strong semantic interface contracts
+- `13` Signal lifecycle modeling
+- `18` Configuration drift against code and recipes
+
+Why here:
+
+- `16` extends existing contract checks and should sharpen the VariablesAnalyzer path before deeper shared-semantic changes.
+- `13` and `18` benefit from stronger shared metadata, confidence labels, and rule-profile controls.
+
+Parallelization:
+
+- `16` should go first.
+- `13` and `18` can follow once contract and finding-shape conventions are stable.
+
+### Wave 5: Shared Semantic-Core Expansion
+
+Goal: tackle features that require changes to shared execution-state, ordering, and inference models.
+
+Items:
+
+- `10` Timing and determinism analysis
+- `11` Power-up and restart correctness
+- `12` Scan-level concurrency and arbitration analysis
+- `21` Safety-path correctness beyond tracing
+- `22` Lightweight behavioral range and state inference
+
+Why late:
+
+- These features are not isolated analyzers. They depend on shared temporal, ordering, and state-propagation machinery.
+- Running them too early invites duplicated heuristics and incompatible local fixes.
+
+Execution constraint:
+
+- Treat this wave as a coordinated program, not five independent AI tasks.
+- Start with `22` and shared state machinery, then layer `10`, `11`, and `12`, then extend safety behavior in `21`.
+
+Suggested order inside wave:
+
+1. `22` lightweight behavioral range and state inference
+2. `10` timing and determinism analysis
+3. `11` power-up and restart correctness
+4. `12` scan-level concurrency and arbitration analysis
+5. `21` safety-path correctness beyond tracing
+
+### Wave 6: Domain-Specific Integration Features
+
+Goal: finish features that need external metadata catalogs, stronger domain conventions, or explicit plant semantics.
+
+Items:
+
+- `7` Engineering unit consistency and propagation
+- `19` S88 control module contract analysis
+- `20` S88 phase sequencing correctness
+
+Why last:
+
+- These need agreed source-of-truth metadata and domain rules before coding starts.
+- Without that contract, AI will fill gaps with heuristics that are hard to review and harder to trust.
+
+Required preparation before implementation:
+
+- Decide where engineering-unit metadata lives.
+- Decide what counts as authoritative S88 commands, states, and legal transitions.
+- Add small gold fixtures that represent intended plant conventions.
+
+### Parallel Work Matrix
+
+Safe to parallelize from the current active backlog:
+
+- `14`, `17`
+
+Should be serialized or tightly coordinated:
+
+- `16`
+- `10`, `11`, `12`, `21`, `22`
+- `7`, `19`, `20`
+
+### Suggested Next 10 AI Tasks
+
+1. Implement `3` duplicate logic detection with strong counterexamples.
+2. Implement `14` control loop and stability heuristics.
+3. Implement `17` numeric and engineering constraint analysis.
+4. Sharpen `16` strong semantic interface contracts.
+5. Implement `13` signal lifecycle modeling.
+6. Implement `18` configuration drift against code and recipes.
+7. Start `22` lightweight behavioral range and state inference.
+8. Layer `10` timing and determinism analysis on top of the `22` state machinery.
+9. Extend `11` power-up and restart correctness on the same state model.
+10. Add `12` scan-level concurrency and arbitration analysis once ordering data is stable.
+
+### Release Strategy
+
+- Ship each wave behind existing analyzer metadata and finding contracts.
+- Prefer small reviewable merges over one analyzer mega-branch.
+- After each wave, rerun focused tests first, then a quick pipeline profile, then update backlog status from `Open` or `Partial` only when feature logic, exposure, and named acceptance tests all land.

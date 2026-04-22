@@ -1,8 +1,19 @@
 import json
 from types import SimpleNamespace
 
+from sattlint.analyzers.registry import (
+    get_actual_cli_analyzer_keys,
+    get_actual_lsp_analyzer_keys,
+    get_declared_cli_analyzer_keys,
+    get_declared_lsp_analyzer_keys,
+)
+from sattlint.analyzers.sattline_semantics import (
+    SattLineSemanticsReport,
+    SemanticIssue,
+    SemanticRule,
+)
 from sattlint.contracts import FindingCollection, FindingRecord
-from sattlint.devtools import corpus, pipeline
+from sattlint.devtools import corpus, pipeline, structural_reports
 from sattlint.devtools.artifact_registry import ArtifactDefinition
 from sattlint.devtools.baselines import build_analysis_diff_report
 from sattlint.devtools.finding_exports import build_pipeline_finding_collection
@@ -11,6 +22,15 @@ from sattlint.devtools.pipeline_artifacts import (
     PipelineArtifactProducer,
     validate_pipeline_artifact_producers,
     write_pipeline_artifacts,
+)
+from sattlint.devtools.progress_reporting import ProgressReporter
+from sattlint.models.ast_model import (
+    BasePicture,
+    ModuleDef,
+    ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    SingleModule,
 )
 from sattlint.reporting.variables_report import IssueKind
 
@@ -25,11 +45,7 @@ from .helpers.artifact_assertions import (
 
 def test_command_payload_sanitizes_absolute_command_paths():
     windows_python = "C:" + r"\Users\Example\Workspace\SattLint\.venv\Scripts\python.exe"
-    junit_path = (
-        "--junitxml="
-        + "C:"
-        + r"\Users\Example\Workspace\SattLint\artifacts\analysis\pytest.junit.xml"
-    )
+    junit_path = "--junitxml=" + "C:" + r"\Users\Example\Workspace\SattLint\artifacts\analysis\pytest.junit.xml"
     result = pipeline.CommandResult(
         name="pytest",
         command=[
@@ -59,17 +75,29 @@ def test_collect_environment_report_has_python_executable(monkeypatch):
 def test_collect_architecture_report_includes_shadowing_cli_filter():
     report = pipeline._collect_architecture_report()
     phase2_gate = report["phase2_rule_metadata_gate"]
+    finding_ids = {finding["id"] for finding in report["findings"]}
 
     assert "dataflow" in report["registered_analyzers"]
+    assert report["declared_cli_analyzers"] == list(get_declared_cli_analyzer_keys())
+    assert report["actual_cli_analyzers"] == sorted(get_actual_cli_analyzer_keys())
+    assert report["declared_lsp_analyzers"] == list(get_declared_lsp_analyzer_keys())
+    assert report["actual_lsp_analyzers"] == list(get_actual_lsp_analyzer_keys())
     assert report["declared_cli_analyzers"] == report["actual_cli_analyzers"]
     assert report["declared_lsp_analyzers"] == report["actual_lsp_analyzers"]
-    assert report["analyzers_missing_exposure"] == ["naming-consistency"]
+    assert report["analyzers_missing_exposure"] == [
+        "cyclomatic-complexity",
+        "naming-consistency",
+        "parameter-drift",
+        "scan-loop-resource-usage",
+    ]
     assert report["analyzers_missing_acceptance_tests"] == []
     assert report["rules_missing_acceptance_tests"] == []
     assert report["rules_missing_mutation_applicability"] == []
     assert report["rules_missing_suppression_modes"] == []
     assert report["rules_missing_incremental_safety_markers"] == []
     assert "semantic.duplicate-alarm-tag" in report["rules_missing_corpus_links"]
+    assert "semantic.naming-role-mismatch" in report["rules_missing_corpus_links"]
+    assert "semantic.required-parameter-connection" in report["rules_missing_corpus_links"]
     assert IssueKind.SHADOWING.value in report["cli_variable_filter_issue_kinds"]
     assert IssueKind.UI_ONLY.value in report["cli_variable_filter_issue_kinds"]
     assert IssueKind.GLOBAL_SCOPE_MINIMIZATION.value in report["cli_variable_filter_issue_kinds"]
@@ -83,15 +111,22 @@ def test_collect_architecture_report_includes_shadowing_cli_filter():
     assert phase2_gate["status"] == "pass"
     assert phase2_gate["blocking_finding_ids"] == []
     assert phase2_gate["advisory_finding_ids"] == ["rule-corpus-link-gap"]
+    assert "cli-analyzer-metadata-drift" not in finding_ids
+    assert "lsp-analyzer-metadata-drift" not in finding_ids
     assert "semantic.duplicate-alarm-tag" in phase2_gate["advisory_rule_ids"]
-    exposure_gap = next(
-        finding for finding in report["findings"] if finding["id"] == "analyzer-exposure-gap"
-    )
-    corpus_gap = next(
-        finding for finding in report["findings"] if finding["id"] == "rule-corpus-link-gap"
-    )
-    assert exposure_gap["missing_analyzers"] == ["naming-consistency"]
+    assert "semantic.naming-role-mismatch" in phase2_gate["advisory_rule_ids"]
+    assert "semantic.required-parameter-connection" in phase2_gate["advisory_rule_ids"]
+    exposure_gap = next(finding for finding in report["findings"] if finding["id"] == "analyzer-exposure-gap")
+    corpus_gap = next(finding for finding in report["findings"] if finding["id"] == "rule-corpus-link-gap")
+    assert exposure_gap["missing_analyzers"] == [
+        "cyclomatic-complexity",
+        "naming-consistency",
+        "parameter-drift",
+        "scan-loop-resource-usage",
+    ]
     assert "semantic.duplicate-alarm-tag" in corpus_gap["missing_rule_ids"]
+    assert "semantic.naming-role-mismatch" in corpus_gap["missing_rule_ids"]
+    assert "semantic.required-parameter-connection" in corpus_gap["missing_rule_ids"]
 
 
 def test_collect_phase2_rule_metadata_gate_fails_on_enforced_gaps():
@@ -134,37 +169,19 @@ def test_collect_phase2_rule_metadata_gate_fails_on_enforced_gaps():
 
 def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
     report = pipeline._collect_analyzer_registry_report()
-    sattline_semantics = next(
-        analyzer for analyzer in report["analyzers"] if analyzer["key"] == "sattline-semantics"
-    )
-    dataflow = next(
-        analyzer for analyzer in report["analyzers"] if analyzer["key"] == "dataflow"
-    )
-    mms_interface = next(
-        analyzer for analyzer in report["analyzers"] if analyzer["key"] == "mms-interface"
-    )
-    naming_consistency = next(
-        analyzer for analyzer in report["analyzers"] if analyzer["key"] == "naming-consistency"
-    )
+    sattline_semantics = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "sattline-semantics")
+    dataflow = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "dataflow")
+    mms_interface = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "mms-interface")
+    naming_consistency = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "naming-consistency")
 
-    duplicate_alarm_tag = next(
-        rule for rule in report["rules"] if rule["id"] == "semantic.duplicate-alarm-tag"
-    )
-    read_before_write = next(
-        rule for rule in report["rules"] if rule["id"] == "semantic.read-before-write"
-    )
-    dead_overwrite = next(
-        rule for rule in report["rules"] if rule["id"] == "semantic.dead-overwrite"
-    )
-    scan_cycle_stale_read = next(
-        rule for rule in report["rules"] if rule["id"] == "semantic.scan-cycle-stale-read"
-    )
+    duplicate_alarm_tag = next(rule for rule in report["rules"] if rule["id"] == "semantic.duplicate-alarm-tag")
+    read_before_write = next(rule for rule in report["rules"] if rule["id"] == "semantic.read-before-write")
+    dead_overwrite = next(rule for rule in report["rules"] if rule["id"] == "semantic.dead-overwrite")
+    scan_cycle_stale_read = next(rule for rule in report["rules"] if rule["id"] == "semantic.scan-cycle-stale-read")
     unconsumed_safety_signal = next(
         rule for rule in report["rules"] if rule["id"] == "semantic.unconsumed-safety-signal"
     )
-    unsafe_default = next(
-        rule for rule in report["rules"] if rule["id"] == "semantic.unsafe-default-true"
-    )
+    unsafe_default = next(rule for rule in report["rules"] if rule["id"] == "semantic.unsafe-default-true")
 
     assert report["generated_by"] == "sattlint.devtools.pipeline"
     assert sattline_semantics["summary_output"] == "sattline-semantics.summary"
@@ -188,8 +205,11 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
         "source",
         "category",
         "severity",
+        "confidence",
         "applies_to",
         "description",
+        "explanation",
+        "suggestion",
         "analyzers",
         "outputs",
         "acceptance_tests",
@@ -199,6 +219,8 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
         "incremental_safe",
     }
     assert duplicate_alarm_tag["source"] == "alarm-integrity"
+    assert duplicate_alarm_tag["confidence"] == "likely"
+    assert duplicate_alarm_tag["explanation"] == duplicate_alarm_tag["description"]
     assert "alarm-integrity" in duplicate_alarm_tag["analyzers"]
     assert "alarm-integrity.summary" in duplicate_alarm_tag["outputs"]
     assert "tests/test_analyzers.py" in duplicate_alarm_tag["acceptance_tests"]
@@ -225,6 +247,12 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
     assert "unsafe-defaults" in unsafe_default["analyzers"]
     assert "unsafe-defaults.summary" in unsafe_default["outputs"]
     assert unsafe_default["mutation_applicability"] == "required"
+    assert report["rule_profiles"]["active"] == "default"
+    assert [profile["name"] for profile in report["rule_profiles"]["profiles"]] == [
+        "default",
+        "legacy-plant",
+        "strict-pharma",
+    ]
 
 
 def test_collect_analyzer_registry_report_exposes_semantic_layer_sources():
@@ -244,13 +272,40 @@ def test_collect_analyzer_registry_report_exposes_semantic_layer_sources():
     assert sum(semantic_layer["source_rule_counts"].values()) == len(report["rules"])
 
 
+def test_corpus_semantic_findings_include_guidance_fields(tmp_path):
+    findings = corpus._build_semantic_finding_collection(
+        SattLineSemanticsReport(
+            basepicture_name="Program",
+            issues=[
+                SemanticIssue(
+                    rule=SemanticRule(
+                        id="semantic.read-before-write",
+                        source="dataflow",
+                        category="variable-lifecycle",
+                        severity="warning",
+                        applies_to="variable",
+                        description="Read before write.",
+                        explanation="The read can observe undefined state on some control paths.",
+                        suggestion="Initialize the variable before the first possible read.",
+                    ),
+                    message="Variable 'PumpStart' is read before it is written.",
+                    module_path=["Program", "UnitA"],
+                )
+            ],
+        ),
+        target_path=tmp_path / "Program.s",
+        repo_root=tmp_path,
+    ).to_dict()
+
+    assert_findings_collection(findings, finding_count=1, rule_ids=("semantic.read-before-write",))
+    assert findings["findings"][0]["detail"] == "The read can observe undefined state on some control paths."
+    assert findings["findings"][0]["suggestion"] == "Initialize the variable before the first possible read."
+
+
 def test_collect_analyzer_registry_report_maps_rule_ids_back_to_analyzers():
     report = pipeline._collect_analyzer_registry_report()
 
-    analyzer_rule_ids = {
-        analyzer["key"]: set(analyzer["rule_ids"])
-        for analyzer in report["analyzers"]
-    }
+    analyzer_rule_ids = {analyzer["key"]: set(analyzer["rule_ids"]) for analyzer in report["analyzers"]}
 
     for rule in report["rules"]:
         for analyzer_key in rule["analyzers"]:
@@ -329,7 +384,9 @@ def test_collect_call_graph_report_aggregates_module_access_edges(monkeypatch, t
             SimpleNamespace(kind="read", use_module_path=("Main", "Guard"), syntactic_ref="ExecuteLocal"),
         ]
     }
-    snapshot.find_accesses_to = lambda item: list(accesses[item.canonical_path])
+    snapshot.iter_access_events_by_definition = lambda roots_only=False: (
+        (definition, tuple(accesses[definition.canonical_path])),
+    )
 
     monkeypatch.setattr(
         pipeline,
@@ -372,6 +429,141 @@ def test_collect_call_graph_report_aggregates_module_access_edges(monkeypatch, t
             "entries": ["Program/Main.s"],
         },
     ]
+
+
+def test_collect_structural_reports_streams_snapshots_once(monkeypatch, tmp_path):
+    entry_files = (
+        tmp_path / "Program" / "Main.s",
+        tmp_path / "Program" / "Support.s",
+    )
+    discovery = SimpleNamespace(program_files=entry_files, dependency_files=())
+    definition = SimpleNamespace(
+        canonical_path="Main.ExecuteLocal",
+        declaration_module_path=("Main",),
+        field_path=None,
+    )
+    loaded_entries: list[str] = []
+    progress_messages: list[str] = []
+
+    def fake_load_workspace_snapshot(
+        entry_file,
+        *,
+        workspace_root=None,
+        discovery=None,
+        collect_variable_diagnostics=False,
+    ):
+        loaded_entries.append(entry_file.name)
+        return SimpleNamespace(
+            entry_file=entry_file,
+            project_graph=SimpleNamespace(library_dependencies={entry_file.stem.lower(): {"support"}}),
+            base_picture=SimpleNamespace(name="Main"),
+            iter_access_events_by_definition=lambda roots_only=False: (
+                (
+                    definition,
+                    (SimpleNamespace(kind="read", use_module_path=("Main", "Guard"), syntactic_ref="ExecuteLocal"),),
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(structural_reports, "discover_workspace_sources", lambda workspace_root: discovery)
+    monkeypatch.setattr(structural_reports, "load_workspace_snapshot", fake_load_workspace_snapshot)
+    monkeypatch.setattr(structural_reports, "collect_architecture_report", lambda: {"findings": []})
+    monkeypatch.setattr(structural_reports, "collect_analyzer_registry_report", lambda: {"rules": []})
+
+    bundle = structural_reports.collect_structural_reports(
+        tmp_path,
+        progress_callback=progress_messages.append,
+    )
+
+    assert loaded_entries == ["Main.s", "Support.s"]
+    assert bundle.graph_inputs.snapshots == []
+    assert bundle.dependency_graph_report["snapshot_count"] == 2
+    assert bundle.call_graph_report["snapshot_count"] == 2
+    assert bundle.dependency_graph_report["edges"] == [
+        {
+            "source": "main",
+            "target": "support",
+            "kind": "depends_on",
+            "entries": ["Program/Main.s"],
+        },
+        {
+            "source": "support",
+            "target": "support",
+            "kind": "depends_on",
+            "entries": ["Program/Support.s"],
+        },
+    ]
+    assert any(message.startswith("Structural: loading 1/2") for message in progress_messages)
+    assert any(message.startswith("Structural: loading 2/2") for message in progress_messages)
+
+
+def test_collect_structural_reports_limits_entries_to_fixture_programs(monkeypatch, tmp_path):
+    fixture_entry = tmp_path / "tests" / "fixtures" / "sample_sattline_files" / "Main.s"
+    template_entry = tmp_path / "DocTemplates" / "KaGCUF.x"
+    discovery = SimpleNamespace(
+        workspace_root=tmp_path,
+        source_dirs=(fixture_entry.parent, template_entry.parent),
+        program_files=(fixture_entry, template_entry),
+        dependency_files=(),
+        abb_lib_dir=None,
+        program_files_by_stem={},
+        dependency_files_by_stem={},
+    )
+    definition = SimpleNamespace(
+        canonical_path="Main.ExecuteLocal",
+        declaration_module_path=("Main",),
+        field_path=None,
+    )
+    loaded_entries: list[str] = []
+
+    def fake_load_workspace_snapshot(
+        entry_file,
+        *,
+        workspace_root=None,
+        discovery=None,
+        collect_variable_diagnostics=False,
+    ):
+        loaded_entries.append(entry_file.as_posix())
+        return SimpleNamespace(
+            entry_file=entry_file,
+            project_graph=SimpleNamespace(library_dependencies={entry_file.stem.lower(): {"support"}}),
+            base_picture=SimpleNamespace(name="Main"),
+            iter_access_events_by_definition=lambda roots_only=False: (
+                (
+                    definition,
+                    (SimpleNamespace(kind="read", use_module_path=("Main",), syntactic_ref="ExecuteLocal"),),
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(structural_reports, "discover_workspace_sources", lambda workspace_root: discovery)
+    monkeypatch.setattr(structural_reports, "load_workspace_snapshot", fake_load_workspace_snapshot)
+    monkeypatch.setattr(structural_reports, "collect_architecture_report", lambda: {"findings": []})
+    monkeypatch.setattr(structural_reports, "collect_analyzer_registry_report", lambda: {"rules": []})
+
+    bundle = structural_reports.collect_structural_reports(tmp_path)
+
+    assert loaded_entries == [fixture_entry.as_posix()]
+    assert bundle.graph_inputs.discovery.program_files == (fixture_entry,)
+    assert bundle.dependency_graph_report["source_files"]["program_files"] == [
+        "tests/fixtures/sample_sattline_files/Main.s"
+    ]
+
+
+def test_progress_reporter_log_emits_stdout(capsys, tmp_path):
+    reporter = ProgressReporter(
+        kind="sattlint.test.progress",
+        title="Test",
+        output_dir=tmp_path,
+        write_json=lambda path, payload: None,
+        stages=[("one", "Stage one")],
+    )
+
+    reporter.log("structural snapshot 1/3")
+
+    output = capsys.readouterr().out
+
+    assert "structural snapshot 1/3" in output
 
 
 def test_build_pipeline_finding_collection_normalizes_tool_payloads(tmp_path):
@@ -443,7 +635,10 @@ def test_build_pipeline_finding_collection_normalizes_tool_payloads(tmp_path):
     assert any(item["rule_id"] == "pytest.failures" for item in payload["findings"])
     assert any(item["rule_id"] == "vulture.dead-code" and item["confidence"] == "high" for item in payload["findings"])
     assert any(item["rule_id"] == "bandit.b101" and item["category"] == "security" for item in payload["findings"])
-    assert any(item["rule_id"] == "analyzer-exposure-gap" and item["category"] == "architecture" for item in payload["findings"])
+    assert any(
+        item["rule_id"] == "analyzer-exposure-gap" and item["category"] == "architecture"
+        for item in payload["findings"]
+    )
 
 
 def test_build_analysis_diff_report_classifies_changes():
@@ -643,9 +838,7 @@ def test_write_pipeline_artifacts_requires_producer_for_enabled_artifact(tmp_pat
             enabled_artifact_ids={"status"},
             context=context,
             write_json=lambda path, payload: None,
-            producers=(
-                PipelineArtifactProducer("summary", lambda artifact_context: {"kind": "summary"}),
-            ),
+            producers=(PipelineArtifactProducer("summary", lambda artifact_context: {"kind": "summary"}),),
         )
     except ValueError as exc:
         assert "status" in str(exc)
@@ -666,7 +859,146 @@ def test_validate_pipeline_artifact_producers_covers_quick_and_full_profiles():
     assert "status" in quick_artifacts
     assert "summary" in quick_artifacts
     assert "trace" in full_artifacts
+    assert "graphics_layout" in full_artifacts
     assert "impact_analysis" in full_artifacts
+
+
+def test_collect_graphics_layout_report_resolves_moduletype_moduledefs(tmp_path):
+    entry_file = tmp_path / "Program" / "Main.s"
+    panel_type = ModuleTypeDef(
+        name="PanelType",
+        moduledef=ModuleDef(
+            clipping_bounds=((0.0, 0.0), (1.0, 0.5)),
+            zoom_limits=(0.9, 0.1),
+            grid=0.01,
+            zoomable=True,
+        ),
+        submodules=[
+            SingleModule(
+                header=ModuleHeader(
+                    name="UnitControl",
+                    invoke_coord=(1.43, 1.35, 0.0, 0.56, 0.56),
+                    invocation_arguments=("LayerModule",),
+                ),
+                moduledef=ModuleDef(
+                    clipping_bounds=((0.0, 0.0), (1.0, 0.21429)),
+                    zoom_limits=(0.83738, 0.01),
+                    grid=0.01,
+                    zoomable=True,
+                ),
+            )
+        ],
+    )
+    bp = BasePicture(
+        header=ModuleHeader(name="Program", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        name="Program",
+        moduletype_defs=[panel_type],
+        submodules=[
+            SingleModule(
+                header=ModuleHeader(name="Area", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                moduledef=ModuleDef(clipping_bounds=((0.0, 0.0), (1.0, 1.0))),
+                submodules=[
+                    ModuleTypeInstance(
+                        header=ModuleHeader(
+                            name="Panel",
+                            invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0),
+                            invocation_arguments=("IgnoreMaxModule",),
+                        ),
+                        moduletype_name="PanelType",
+                    )
+                ],
+            )
+        ],
+    )
+    snapshot = SimpleNamespace(
+        entry_file=entry_file,
+        base_picture=bp,
+        project_graph=SimpleNamespace(unavailable_libraries=set()),
+    )
+    graph_inputs = structural_reports.WorkspaceGraphInputs(
+        discovery=SimpleNamespace(program_files=(entry_file,), dependency_files=()),
+        snapshots=[snapshot],
+        snapshot_failures=[],
+    )
+
+    report = structural_reports.collect_graphics_layout_report(tmp_path, graph_inputs=graph_inputs)
+
+    panel_entry = next(entry for entry in report["entries"] if entry["module_path"] == "Program.Area.Panel")
+    unit_control_entry = next(
+        entry for entry in report["entries"] if entry["module_path"] == "Program.Area.Panel.UnitControl"
+    )
+
+    assert panel_entry["module_kind"] == "moduletype-instance"
+    assert panel_entry["moduledef_origin_kind"] == "moduletype-definition"
+    assert panel_entry["invocation"]["arguments"] == ["IgnoreMaxModule"]
+    assert panel_entry["moduledef"]["clipping_size"] == [1.0, 0.5]
+    assert unit_control_entry["definition_scope"] == "moduletype:PanelType"
+    assert unit_control_entry["invocation"]["arguments"] == ["LayerModule"]
+    assert unit_control_entry["moduledef"]["clipping_size"] == [1.0, 0.21429]
+
+
+def test_collect_graphics_layout_report_flags_repeated_module_name_drift(tmp_path):
+    entry_file = tmp_path / "Program" / "Main.s"
+    bp = BasePicture(
+        header=ModuleHeader(name="Program", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        name="Program",
+        submodules=[
+            SingleModule(
+                header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                moduledef=ModuleDef(clipping_bounds=((0.0, 0.0), (1.0, 1.0))),
+                submodules=[
+                    SingleModule(
+                        header=ModuleHeader(
+                            name="UnitControl",
+                            invoke_coord=(1.43, 1.35, 0.0, 0.56, 0.56),
+                        ),
+                        moduledef=ModuleDef(
+                            clipping_bounds=((0.0, 0.0), (1.0, 0.21429)),
+                            zoom_limits=(0.83738, 0.01),
+                            grid=0.01,
+                            zoomable=True,
+                        ),
+                    )
+                ],
+            ),
+            SingleModule(
+                header=ModuleHeader(name="L2", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                moduledef=ModuleDef(clipping_bounds=((0.0, 0.0), (1.0, 1.0))),
+                submodules=[
+                    SingleModule(
+                        header=ModuleHeader(
+                            name="UnitControl",
+                            invoke_coord=(1.5, 1.4, 0.0, 0.56, 0.56),
+                        ),
+                        moduledef=ModuleDef(
+                            clipping_bounds=((0.0, 0.0), (1.0, 0.25)),
+                            zoom_limits=(0.83738, 0.01),
+                            grid=0.01,
+                            zoomable=True,
+                        ),
+                    )
+                ],
+            ),
+        ],
+    )
+    snapshot = SimpleNamespace(
+        entry_file=entry_file,
+        base_picture=bp,
+        project_graph=SimpleNamespace(unavailable_libraries=set()),
+    )
+    graph_inputs = structural_reports.WorkspaceGraphInputs(
+        discovery=SimpleNamespace(program_files=(entry_file,), dependency_files=()),
+        snapshots=[snapshot],
+        snapshot_failures=[],
+    )
+
+    report = structural_reports.collect_graphics_layout_report(tmp_path, graph_inputs=graph_inputs)
+
+    assert len(report["findings"]) == 1
+    assert report["findings"][0]["id"] == "graphics-layout-drift"
+    assert report["findings"][0]["module_name"] == "UnitControl"
+    assert "invocation.coords" in report["findings"][0]["differing_fields"]
+    assert "moduledef.clipping_size" in report["findings"][0]["differing_fields"]
 
 
 def test_validate_pipeline_artifact_producers_rejects_duplicate_producer_ids():
@@ -800,7 +1132,7 @@ def test_run_pipeline_serializes_structural_graph_reports(monkeypatch, tmp_path)
     monkeypatch.setattr(
         pipeline,
         "_collect_structural_report_bundle",
-        lambda workspace_root=pipeline.REPO_ROOT: pipeline.StructuralReportsBundle(
+        lambda workspace_root=pipeline.REPO_ROOT, progress_callback=None: pipeline.StructuralReportsBundle(
             architecture_report={"findings": []},
             analyzer_registry_report={"rules": []},
             graph_inputs=pipeline.WorkspaceGraphInputs(
@@ -810,6 +1142,7 @@ def test_run_pipeline_serializes_structural_graph_reports(monkeypatch, tmp_path)
             ),
             dependency_graph_report={"edges": [{"source": "main", "target": "support"}]},
             call_graph_report={"edges": [{"source": "Main", "target": "Main"}]},
+            graphics_layout_report={"entries": [{"module_path": "Main.Panel"}], "groups": [], "findings": []},
             impact_analysis_report={
                 "library_impacts": [{"id": "support"}],
                 "module_impacts": [{"id": "Main"}, {"id": "Main.Guard"}],
@@ -856,6 +1189,7 @@ def test_run_pipeline_serializes_structural_graph_reports(monkeypatch, tmp_path)
     assert (tmp_path / "artifact_registry.json").exists()
     assert (tmp_path / "dependency_graph.json").exists()
     assert (tmp_path / "call_graph.json").exists()
+    assert (tmp_path / "graphics_layout.json").exists()
     assert (tmp_path / "impact_analysis.json").exists()
     assert summary["profile"] == "full"
     assert summary["entry_report"] == "status.json"
@@ -863,6 +1197,7 @@ def test_run_pipeline_serializes_structural_graph_reports(monkeypatch, tmp_path)
     assert summary["reports"]["artifact_registry"] == "artifact_registry.json"
     assert summary["reports"]["dependency_graph"] == "dependency_graph.json"
     assert summary["reports"]["call_graph"] == "call_graph.json"
+    assert summary["reports"]["graphics_layout"] == "graphics_layout.json"
     assert summary["reports"]["impact_analysis"] == "impact_analysis.json"
     assert_findings_schema(summary)
     assert_findings_collection(findings_report, finding_count=0, rule_ids=())
@@ -879,6 +1214,7 @@ def test_run_pipeline_serializes_structural_graph_reports(monkeypatch, tmp_path)
     assert status_report["tool_statuses"]["rule_metadata"]["status"] == "pass"
     assert summary["counts"]["dependency_graph_edges"] == 1
     assert summary["counts"]["call_graph_edges"] == 1
+    assert summary["counts"]["graphics_layout_entries"] == 1
     assert summary["counts"]["impact_analysis_library_nodes"] == 1
     assert summary["counts"]["impact_analysis_module_nodes"] == 2
     assert summary["counts"]["workspace_graph_snapshot_failures"] == 0
@@ -896,7 +1232,7 @@ def test_run_pipeline_fails_when_enforced_rule_metadata_is_missing(monkeypatch, 
     monkeypatch.setattr(
         pipeline,
         "_collect_structural_report_bundle",
-        lambda workspace_root=pipeline.REPO_ROOT: pipeline.StructuralReportsBundle(
+        lambda workspace_root=pipeline.REPO_ROOT, progress_callback=None: pipeline.StructuralReportsBundle(
             architecture_report={
                 "findings": [
                     {
@@ -924,6 +1260,7 @@ def test_run_pipeline_fails_when_enforced_rule_metadata_is_missing(monkeypatch, 
             ),
             dependency_graph_report={"edges": []},
             call_graph_report={"edges": []},
+            graphics_layout_report={"entries": [], "groups": [], "findings": []},
             impact_analysis_report={"library_impacts": [], "module_impacts": []},
         ),
     )

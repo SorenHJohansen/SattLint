@@ -96,10 +96,7 @@ class InitialValueReport:
         lines.append(f"Issues: {len(self.issues)}")
         lines.append("")
         lines.append("Kinds:")
-        counts = Counter(
-            str((issue.data or {}).get("parameter_category", "unknown"))
-            for issue in self.issues
-        )
+        counts = Counter(str((issue.data or {}).get("parameter_category", "unknown")) for issue in self.issues)
         for category in ("recipe", "engineering"):
             count = counts.get(category, 0)
             if count:
@@ -151,10 +148,7 @@ class InitialValueAnalyzer:
         root_origin = getattr(self.bp, "origin_file", None)
         if not root_origin:
             return False
-        return (
-            origin_file.rsplit(".", 1)[0].casefold()
-            == root_origin.rsplit(".", 1)[0].casefold()
-        )
+        return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
 
     def _merge_env(
         self,
@@ -325,11 +319,7 @@ class InitialValueAnalyzer:
             names.append(target_name)
             seen.add(normalized)
 
-        return [
-            name
-            for name in names
-            if self._looks_like_required_value_parameter(name)
-        ]
+        return [name for name in names if self._looks_like_required_value_parameter(name)]
 
     def _looks_like_required_value_parameter(self, name: str) -> bool:
         normalized = name.casefold()
