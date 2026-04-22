@@ -9,12 +9,7 @@ from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resour
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.engine import parse_source_file
 
-FIXTURE_DIR = (
-    Path(__file__).parent
-    / "fixtures"
-    / "sample_sattline_files"
-    / "phase0_guardrails"
-)
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "sample_sattline_files" / "phase0_guardrails"
 
 
 def _fixture(name: str) -> Path:
@@ -42,10 +37,7 @@ def test_phase0_required_parameter_fixture_triggers_required_mapping_issue():
 
     issues = VariablesAnalyzer(bp).run()
 
-    assert any(
-        issue.kind is IssueKind.REQUIRED_PARAMETER_CONNECTION
-        for issue in issues
-    )
+    assert any(issue.kind is IssueKind.REQUIRED_PARAMETER_CONNECTION for issue in issues)
 
 
 def test_phase0_scan_loop_fixture_triggers_resource_usage_issue():

@@ -78,9 +78,7 @@ class GraphicsRulesCheckReport:
                 f"{mismatch.field_path}: expected {mismatch.expected!r}, got {mismatch.actual!r}"
                 for mismatch in finding.mismatches
             )
-            lines.append(
-                f"- {finding.module_path} [{finding.module_kind}] failed {finding.rule_name}: {mismatch_text}"
-            )
+            lines.append(f"- {finding.module_path} [{finding.module_kind}] failed {finding.rule_name}: {mismatch_text}")
 
         return "\n".join(lines)
 
@@ -90,8 +88,7 @@ def _normalize_module_kind(value: Any) -> str:
     normalized = _MODULE_KIND_ALIASES.get(raw)
     if normalized is None:
         raise ValueError(
-            "Unsupported graphics rule module_kind "
-            f"{raw!r}; expected one of {sorted(_ALLOWED_MODULE_KINDS)}"
+            "Unsupported graphics rule module_kind " f"{raw!r}; expected one of {sorted(_ALLOWED_MODULE_KINDS)}"
         )
     return normalized
 
@@ -151,9 +148,7 @@ def _normalize_rule(rule: Any) -> dict[str, Any]:
     module_name = str(rule.get("module_name") or rule.get("name") or "").strip()
     relative_module_path = str(rule.get("relative_module_path") or "").strip()
     unit_structure_path = str(rule.get("unit_structure_path") or "").strip()
-    equipment_module_structure_path = str(
-        rule.get("equipment_module_structure_path") or ""
-    ).strip()
+    equipment_module_structure_path = str(rule.get("equipment_module_structure_path") or "").strip()
     moduletype_name = str(rule.get("moduletype_name") or "").strip()
     module_kind = _normalize_module_kind(rule.get("module_kind") or "any")
     populated_selectors = _populated_path_selectors(
@@ -165,18 +160,13 @@ def _normalize_rule(rule: Any) -> dict[str, Any]:
     )
     if len(populated_selectors) > 1:
         selector_names = ", ".join(name for name, _value in populated_selectors)
-        raise ValueError(
-            "Graphics rule must use only one selector path field; got: "
-            f"{selector_names}"
-        )
+        raise ValueError("Graphics rule must use only one selector path field; got: " f"{selector_names}")
 
     if module_kind == "moduletype":
         if not moduletype_name:
             raise ValueError("Graphics moduletype rule is missing moduletype_name")
     elif module_kind != "any" and not populated_selectors and not module_name:
-        raise ValueError(
-            "Graphics single/frame rule must declare a selector path or module_name"
-        )
+        raise ValueError("Graphics single/frame rule must declare a selector path or module_name")
 
     if not module_name:
         selector_value = populated_selectors[0][1] if populated_selectors else ""
@@ -290,12 +280,9 @@ def _rule_matches_entry(rule: dict[str, Any], entry: dict[str, Any]) -> bool:
     if unit_structure_path and entry.get("unit_structure_path", "").casefold() != unit_structure_path.casefold():
         return False
 
-    equipment_module_structure_path = str(
-        rule.get("equipment_module_structure_path") or ""
-    ).strip()
+    equipment_module_structure_path = str(rule.get("equipment_module_structure_path") or "").strip()
     if equipment_module_structure_path and (
-        entry.get("equipment_module_structure_path", "").casefold()
-        != equipment_module_structure_path.casefold()
+        entry.get("equipment_module_structure_path", "").casefold() != equipment_module_structure_path.casefold()
     ):
         return False
 
@@ -304,9 +291,7 @@ def _rule_matches_entry(rule: dict[str, Any], entry: dict[str, Any]) -> bool:
         if not expected_moduletype:
             return False
         actual_moduletype = str(
-            entry.get("moduletype_name")
-            or entry.get("resolved_moduletype", {}).get("name")
-            or ""
+            entry.get("moduletype_name") or entry.get("resolved_moduletype", {}).get("name") or ""
         ).strip()
         return actual_moduletype.casefold() == expected_moduletype.casefold()
 
@@ -383,11 +368,7 @@ def validate_graphics_layout_entries(
                 field_path="",
                 mismatches=mismatches,
             )
-            mismatches = [
-                mismatch
-                for mismatch in mismatches
-                if mismatch.field_path
-            ]
+            mismatches = [mismatch for mismatch in mismatches if mismatch.field_path]
             if not mismatches:
                 continue
 

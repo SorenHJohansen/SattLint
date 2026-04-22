@@ -122,10 +122,7 @@ class ParameterDriftAnalyzer:
         for parameter in mt_def.moduleparameters if mt_def is not None else []:
             if parameter.init_value is not None:
                 names_by_key.setdefault(parameter.name.casefold(), parameter.name)
-        return tuple(
-            names_by_key[key]
-            for key in sorted(names_by_key)
-        )
+        return tuple(names_by_key[key] for key in sorted(names_by_key))
 
     def _get_parameter_value(
         self,

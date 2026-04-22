@@ -36,9 +36,7 @@ class GraphicsValidationResult:
 
 def _nonempty_record_lines(lines: list[str], start_index: int, end_index: int) -> list[tuple[int, str]]:
     return [
-        (line_index, lines[line_index])
-        for line_index in range(start_index, end_index)
-        if lines[line_index].strip()
+        (line_index, lines[line_index]) for line_index in range(start_index, end_index) if lines[line_index].strip()
     ]
 
 
