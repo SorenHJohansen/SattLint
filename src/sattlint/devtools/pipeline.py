@@ -31,6 +31,7 @@ from sattlint.devtools.pipeline_artifacts import (
     PipelineArtifactContext,
     write_pipeline_artifacts,
 )
+from sattlint.devtools.progress_reporting import ProgressReporter
 from sattlint.devtools.structural_reports import (
     StructuralReportsBundle,
     WorkspaceGraphInputs,
@@ -60,6 +61,11 @@ DEFAULT_TRACE_TARGET = REPO_ROOT / "tests" / "fixtures" / "sample_sattline_files
 DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 PIPELINE_PROFILE_CHOICES = ("quick", "full")
 DEFAULT_PIPELINE_PROFILE = "full"
+DEFAULT_QUICK_PYTEST_TARGETS = (
+    "tests/test_pipeline.py",
+    "tests/test_repo_audit.py",
+    "tests/test_corpus.py",
+)
 
 
 @dataclass(slots=True)
@@ -171,6 +177,8 @@ def _build_pytest_command(python_cmd: list[str], junit_path: Path, *, profile: s
     addopts_override = settings.get("pytest_addopts_override")
     if addopts_override:
         command.extend(["-o", f"addopts={addopts_override}"])
+    if profile == "quick":
+        command.extend(DEFAULT_QUICK_PYTEST_TARGETS)
     command.append(f"--junitxml={junit_path}")
     return command
 
@@ -424,8 +432,29 @@ def _run_pipeline(
     resolved_corpus_manifest_dir = corpus_manifest_dir.resolve() if corpus_manifest_dir is not None else None
     run_corpus = bool(resolved_corpus_manifest_dir and resolved_corpus_manifest_dir.exists())
     sanitized_output_dir = sanitize_path_for_report(output_dir, repo_root=REPO_ROOT) or output_dir.as_posix()
+    canonical_command = f"sattlint-analysis-pipeline --profile {profile} --output-dir {sanitized_output_dir}"
+    progress = ProgressReporter(
+        kind="sattlint.pipeline.progress",
+        title="Pipeline",
+        output_dir=output_dir,
+        write_json=_write_json,
+        stages=[
+            ("environment", "Collect environment"),
+            ("ruff", "Run Ruff"),
+            ("mypy", "Run mypy"),
+            ("pytest", "Run pytest"),
+            ("vulture", "Run Vulture"),
+            ("bandit", "Run Bandit"),
+            ("structural_reports", "Collect structural reports"),
+            ("trace", "Collect trace report"),
+            ("corpus", "Run corpus suite"),
+            ("findings", "Normalize findings"),
+            ("write_artifacts", "Write artifacts"),
+        ],
+        canonical_command=canonical_command,
+    )
 
-    enabled_artifacts: set[str] = {"status", "summary", "findings", "artifact_registry", "environment", "ruff", "mypy", "pytest"}
+    enabled_artifacts: set[str] = {"progress", "status", "summary", "findings", "artifact_registry", "environment", "ruff", "mypy", "pytest"}
     if baseline_findings is not None:
         enabled_artifacts.add("analysis_diff")
     if run_corpus:
@@ -452,15 +481,20 @@ def _run_pipeline(
         enabled_artifact_ids=enabled_artifacts,
     )
 
+    progress.start_stage("environment")
     environment_report = _collect_environment_report()
+    progress.complete_stage("environment")
 
+    progress.start_stage("ruff")
     ruff_result = _run_command(
         "ruff",
         python_cmd + ["-m", "ruff", "check", "src", "tests", "--output-format", "json"],
     )
     ruff_findings = json.loads(ruff_result.stdout or "[]")
     ruff_report = _command_payload(ruff_result, finding_count=len(ruff_findings), findings=ruff_findings)
+    progress.complete_stage("ruff", detail=f"{len(ruff_findings)} findings")
 
+    progress.start_stage("mypy")
     mypy_result = _run_command(
         "mypy",
         python_cmd
@@ -487,26 +521,43 @@ def _run_pipeline(
         effective_exit_code=0 if mypy_error_count == 0 else mypy_result.exit_code,
         findings=mypy_findings,
     )
+    progress.complete_stage(
+        "mypy",
+        detail=f"{mypy_error_count} errors, {mypy_note_count} notes",
+    )
 
     junit_path = output_dir / "pytest.junit.xml"
+    progress.start_stage("pytest")
     pytest_result = _run_command(
         "pytest",
         _build_pytest_command(python_cmd, junit_path, profile=profile),
     )
     pytest_parsed = _parse_pytest_junit(junit_path)
     pytest_report = _command_payload(pytest_result, **pytest_parsed)
+    progress.complete_stage(
+        "pytest",
+        detail=(
+            f"{pytest_report['summary']['tests']} tests, "
+            f"{pytest_report['summary']['failures']} failures, "
+            f"{pytest_report['summary']['errors']} errors"
+        ),
+    )
 
     if run_vulture:
+        progress.start_stage("vulture")
         vulture_result = _run_command(
             "vulture",
             python_cmd + ["-m", "vulture", "src", "--min-confidence", "80"],
         )
         vulture_findings = _parse_vulture_output(vulture_result.stdout)
         vulture_report = _command_payload(vulture_result, finding_count=len(vulture_findings), findings=vulture_findings)
+        progress.complete_stage("vulture", detail=f"{len(vulture_findings)} findings")
     else:
         vulture_report = {"tool": "vulture", "skipped": True}
+        progress.skip_stage("vulture", detail="skipped by profile")
 
     if run_bandit:
+        progress.start_stage("bandit")
         bandit_result = _run_command(
             "bandit",
             python_cmd + ["-m", "bandit", "-r", "src", "-f", "json", "-q"],
@@ -518,8 +569,13 @@ def _run_pipeline(
             findings=bandit_findings.get("results", []),
             errors=bandit_findings.get("errors", []),
         )
+        progress.complete_stage(
+            "bandit",
+            detail=f"{len(bandit_report.get('findings', []))} findings",
+        )
     else:
         bandit_report = {"tool": "bandit", "skipped": True}
+        progress.skip_stage("bandit", detail="skipped by profile")
 
     architecture_report: dict[str, Any] = {"findings": [], "skipped": not run_structural_reports}
     analyzer_registry_report: dict[str, Any] = {"rules": [], "skipped": not run_structural_reports}
@@ -532,6 +588,7 @@ def _run_pipeline(
     }
     workspace_graph_inputs: WorkspaceGraphInputs | None = None
     if run_structural_reports:
+        progress.start_stage("structural_reports")
         structural_reports = _collect_structural_report_bundle()
         architecture_report = structural_reports.architecture_report
         analyzer_registry_report = structural_reports.analyzer_registry_report
@@ -539,20 +596,47 @@ def _run_pipeline(
         dependency_graph_report = structural_reports.dependency_graph_report
         call_graph_report = structural_reports.call_graph_report
         impact_analysis_report = structural_reports.impact_analysis_report
+        progress.complete_stage(
+            "structural_reports",
+            detail=(
+                f"{len(dependency_graph_report['edges'])} dependency edges, "
+                f"{len(call_graph_report['edges'])} call edges"
+            ),
+        )
+    else:
+        progress.skip_stage("structural_reports", detail="skipped by profile")
 
     trace_report: dict[str, Any] | None = None
     if run_trace:
         assert trace_target is not None
+        trace_target_label = sanitize_path_for_report(trace_target, repo_root=REPO_ROOT) or trace_target.as_posix()
+        progress.start_stage("trace", detail=trace_target_label)
         trace_report = _collect_trace_report(trace_target)
+        progress.complete_stage(
+            "trace",
+            detail=trace_target_label,
+        )
+    else:
+        progress.skip_stage("trace", detail="skipped by profile")
 
     corpus_results_report: dict[str, Any] | None = None
     if run_corpus:
+        progress.start_stage("corpus")
         corpus_results_report = run_corpus_suite(
             output_dir,
             manifest_dir=resolved_corpus_manifest_dir,
             repo_root=REPO_ROOT,
             write_results=False,
         ).to_dict()
+        progress.complete_stage(
+            "corpus",
+            detail=(
+                f"{corpus_results_report['summary']['case_count']} cases, "
+                f"{corpus_results_report['summary']['failed_count']} failed"
+            ),
+        )
+    else:
+        progress.skip_stage("corpus", detail="no manifest directory")
 
     phase2_rule_metadata_gate = {
         "status": "skipped",
@@ -569,6 +653,7 @@ def _run_pipeline(
             phase2_rule_metadata_gate,
         )
 
+    progress.start_stage("findings")
     finding_collection = build_pipeline_finding_collection(
         repo_root=REPO_ROOT,
         ruff_findings=ruff_findings,
@@ -578,6 +663,7 @@ def _run_pipeline(
         bandit_findings=[] if bandit_report.get("skipped") else list(bandit_report.get("findings", [])),
         architecture_findings=list(architecture_report.get("findings", [])),
     )
+    progress.complete_stage("findings", detail=f"{len(finding_collection.findings)} normalized findings")
 
     analysis_diff_report: dict[str, Any] | None = None
     if baseline_findings is not None:
@@ -732,6 +818,7 @@ def _run_pipeline(
         tool_statuses=tool_statuses,
         failing_tools=failing_tools,
         non_blocking_tools=non_blocking_tools,
+        progress_report=f"{sanitized_output_dir}/progress.json",
         findings_schema=findings_schema,
     )
 
@@ -765,6 +852,7 @@ def _run_pipeline(
             ),
         },
         artifact_registry_report=artifact_registry_report,
+        progress_report=f"{sanitized_output_dir}/progress.json",
         findings_schema=findings_schema,
         counts={
             "baseline_new_findings": 0 if analysis_diff_report is None else analysis_diff_report["summary"]["new_count"],
@@ -800,6 +888,7 @@ def _run_pipeline(
 
     artifact_context = PipelineArtifactContext(
         payloads={
+            "progress": progress.to_dict(),
             "artifact_registry": artifact_registry_report,
             "environment": environment_report,
             "ruff": ruff_report,
@@ -820,6 +909,7 @@ def _run_pipeline(
             "summary": summary,
         }
     )
+    progress.start_stage("write_artifacts")
     write_pipeline_artifacts(
         output_dir,
         artifacts=PIPELINE_ARTIFACTS,
@@ -828,6 +918,8 @@ def _run_pipeline(
         context=artifact_context,
         write_json=_write_json,
     )
+    progress.complete_stage("write_artifacts")
+    progress.finalize(overall_status=overall_status)
     return summary
 
 

@@ -279,12 +279,14 @@ def test_audit_repository_writes_status_file_and_forwards_profile(tmp_path):
 
     assert summary["profile"] == "quick"
     assert summary["entry_report"] == "status.json"
+    assert summary["reports"]["progress"] == "progress.json"
     assert summary["reports"]["pipeline_status"] == "pipeline/status.json"
     assert summary["reports"]["findings"] == "findings.json"
     assert_findings_schema(summary)
     assert status_report["profile"] == "quick"
     assert status_report["overall_status"] == "pass"
     assert_findings_schema(status_report)
+    assert status_report["progress_report"] == f"<external>/{tmp_path.name}/progress.json"
     assert status_report["pipeline_status_report"] == f"<external>/{tmp_path.name}/pipeline/status.json"
     assert_findings_collection(findings_report, finding_count=1)
     assert findings_report["findings"][0]["location"] == {

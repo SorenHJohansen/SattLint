@@ -1193,9 +1193,11 @@ def test_run_pipeline_quick_profile_skips_optional_reports(monkeypatch, tmp_path
     pytest_command = next(command for name, command in commands if name == "pytest")
     assert "-o" in pytest_command
     assert any(part.startswith("addopts=--strict-markers --strict-config") for part in pytest_command)
+    assert all(target in pytest_command for target in pipeline.DEFAULT_QUICK_PYTEST_TARGETS)
     assert summary["profile"] == "quick"
     assert summary["reports"]["findings"] == "findings.json"
     assert summary["reports"]["artifact_registry"] == "artifact_registry.json"
+    assert summary["reports"]["progress"] == "progress.json"
     assert summary["reports"]["vulture"] is None
     assert summary["reports"]["bandit"] is None
     assert summary["reports"]["architecture"] is None
@@ -1212,6 +1214,7 @@ def test_run_pipeline_quick_profile_skips_optional_reports(monkeypatch, tmp_path
     assert summary["counts"]["normalized_findings"] == 0
     assert summary["counts"]["baseline_changed_findings"] == 0
     assert status_report["overall_status"] == "pass"
+    assert status_report["progress_report"] == f"<external>/{tmp_path.name}/progress.json"
     assert_findings_schema(status_report)
     assert status_report["tool_statuses"]["vulture"]["status"] == "skipped"
     assert status_report["tool_statuses"]["bandit"]["status"] == "skipped"

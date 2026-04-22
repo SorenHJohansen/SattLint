@@ -21,6 +21,7 @@ from sattlint import app as app_module
 from sattlint import config as config_module
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
 from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS, artifact_reports_map
+from sattlint.devtools.progress_reporting import ProgressReporter
 from sattlint.path_sanitizer import sanitize_path_for_report
 
 from . import pipeline as pipeline_module
@@ -106,6 +107,7 @@ ALLOWED_PRINT_MODULES = {
     "src/sattlint/tracing.py",
     "src/sattlint/devtools/corpus.py",
     "src/sattlint/devtools/pipeline.py",
+    "src/sattlint/devtools/progress_reporting.py",
     "src/sattlint/devtools/repo_audit.py",
 }
 WINDOWS_PATH_RE = re.compile(r"(?<![\w/])(?:[A-Za-z]:[\\/][^\s'\">|]+)")
@@ -163,6 +165,13 @@ class DocumentedCommand:
     subcommand: str | None
     path: str
     line: int
+
+
+@dataclass(frozen=True, slots=True)
+class PythonSourceScanContext:
+    source_root: Path
+    texts: dict[Path, str]
+    asts: dict[Path, ast.AST]
 
 
 def _relative_path(path: Path, root: Path = REPO_ROOT) -> str:
@@ -232,7 +241,7 @@ def _should_skip_dir(dirname: str) -> bool:
     return dirname.startswith(".venv")
 
 
-def _iter_repo_text_files(root: Path, *, include_generated: bool) -> Iterable[Path]:
+def _iter_repo_file_candidates(root: Path, *, include_generated: bool) -> Iterable[Path]:
     for current_root, dirs, files in os.walk(root, topdown=True):
         current_path = Path(current_root)
         rel_dir = _relative_path(current_path, root)
@@ -257,17 +266,13 @@ def _iter_repo_text_files(root: Path, *, include_generated: bool) -> Iterable[Pa
                 continue
             if path.stat().st_size > 2_000_000:
                 continue
-            try:
-                _read_text(path)
-            except ValueError:
-                continue
             yield path
 
 
-def _iter_tracked_repo_text_files(root: Path, *, include_generated: bool) -> Iterable[Path]:
+def _iter_tracked_repo_file_candidates(root: Path, *, include_generated: bool) -> Iterable[Path]:
     git_executable = shutil.which("git")
     if git_executable is None:
-        yield from _iter_repo_text_files(root, include_generated=include_generated)
+        yield from _iter_repo_file_candidates(root, include_generated=include_generated)
         return
 
     try:
@@ -278,11 +283,11 @@ def _iter_tracked_repo_text_files(root: Path, *, include_generated: bool) -> Ite
             check=False,
         )
     except OSError:
-        yield from _iter_repo_text_files(root, include_generated=include_generated)
+        yield from _iter_repo_file_candidates(root, include_generated=include_generated)
         return
 
     if completed.returncode != 0:
-        yield from _iter_repo_text_files(root, include_generated=include_generated)
+        yield from _iter_repo_file_candidates(root, include_generated=include_generated)
         return
 
     for raw_rel_path in completed.stdout.decode("utf-8", errors="replace").split("\x00"):
@@ -305,11 +310,44 @@ def _iter_tracked_repo_text_files(root: Path, *, include_generated: bool) -> Ite
             continue
         if path.stat().st_size > 2_000_000:
             continue
+        yield path
+
+
+def _iter_repo_text_files(root: Path, *, include_generated: bool) -> Iterable[Path]:
+    for path in _iter_repo_file_candidates(root, include_generated=include_generated):
         try:
             _read_text(path)
         except ValueError:
             continue
         yield path
+
+
+def _iter_tracked_repo_text_files(root: Path, *, include_generated: bool) -> Iterable[Path]:
+    for path in _iter_tracked_repo_file_candidates(root, include_generated=include_generated):
+        try:
+            _read_text(path)
+        except ValueError:
+            continue
+        yield path
+
+
+def _iter_repo_text_entries(
+    root: Path,
+    *,
+    include_generated: bool,
+    tracked_only: bool,
+) -> Iterable[tuple[Path, str]]:
+    candidates = (
+        _iter_tracked_repo_file_candidates(root, include_generated=include_generated)
+        if tracked_only
+        else _iter_repo_file_candidates(root, include_generated=include_generated)
+    )
+    for path in candidates:
+        try:
+            text = _read_text(path)
+        except ValueError:
+            continue
+        yield path, text
 
 
 def _redact_value(value: str) -> str:
@@ -556,12 +594,18 @@ def _find_documentation_command_gaps(
     return findings
 
 
-def _find_unused_config_keys(source_root: Path, default_keys: Iterable[str]) -> list[Finding]:
-    content_by_file: dict[Path, str] = {}
-    for path in source_root.rglob("*.py"):
-        if path.name == "repo_audit.py":
-            continue
-        content_by_file[path] = _read_text(path)
+def _find_unused_config_keys(
+    source_root: Path,
+    default_keys: Iterable[str],
+    *,
+    content_by_file: dict[Path, str] | None = None,
+) -> list[Finding]:
+    if content_by_file is None:
+        content_by_file = {}
+        for path in source_root.rglob("*.py"):
+            if path.name == "repo_audit.py":
+                continue
+            content_by_file[path] = _read_text(path)
 
     findings: list[Finding] = []
     for key in default_keys:
@@ -603,15 +647,24 @@ def _resolve_import(module_name: str, imported: str | None, level: int) -> str |
     return ".".join(part for part in prefix if part)
 
 
-def _build_local_import_graph(source_root: Path) -> dict[str, set[str]]:
+def _build_local_import_graph(
+    source_root: Path,
+    *,
+    content_by_file: dict[Path, str] | None = None,
+    ast_by_file: dict[Path, ast.AST] | None = None,
+) -> dict[str, set[str]]:
     graph: dict[str, set[str]] = {}
     known_modules: dict[str, Path] = {}
-    for path in source_root.rglob("*.py"):
+    module_paths = list((content_by_file or {}).keys()) or list(source_root.rglob("*.py"))
+    for path in module_paths:
         module_name = _module_name_from_path(path, source_root)
         known_modules[module_name] = path
 
     for module_name, path in known_modules.items():
-        tree = ast.parse(_read_text(path), filename=str(path))
+        if ast_by_file is not None and path in ast_by_file:
+            tree = ast_by_file[path]
+        else:
+            tree = ast.parse((content_by_file or {}).get(path) or _read_text(path), filename=str(path))
         imports: set[str] = set()
         type_checking_lines: set[int] = set()
         for node in ast.walk(tree):
@@ -680,9 +733,18 @@ def _find_import_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
     return cycles
 
 
-def _find_architecture_findings(source_root: Path) -> list[Finding]:
+def _find_architecture_findings(
+    source_root: Path,
+    *,
+    content_by_file: dict[Path, str] | None = None,
+    ast_by_file: dict[Path, ast.AST] | None = None,
+) -> list[Finding]:
     findings: list[Finding] = []
-    graph = _build_local_import_graph(source_root)
+    graph = _build_local_import_graph(
+        source_root,
+        content_by_file=content_by_file,
+        ast_by_file=ast_by_file,
+    )
     cycles = _find_import_cycles(graph)
     for cycle in cycles:
         findings.append(
@@ -697,9 +759,12 @@ def _find_architecture_findings(source_root: Path) -> list[Finding]:
             )
         )
 
-    for path in source_root.rglob("*.py"):
+    file_iterable = list((content_by_file or {}).items()) or [
+        (path, _read_text(path)) for path in source_root.rglob("*.py")
+    ]
+    for path, text in file_iterable:
         rel_path = _relative_path(path)
-        lines = _read_text(path).splitlines()
+        lines = text.splitlines()
         non_empty_lines = [line for line in lines if line.strip() and not line.strip().startswith("#")]
         if len(non_empty_lines) >= OVERSIZED_MODULE_LINE_LIMIT and not rel_path.endswith("_builtins.py"):
             findings.append(
@@ -717,7 +782,7 @@ def _find_architecture_findings(source_root: Path) -> list[Finding]:
 
     semantic_path = source_root / "sattlint" / "core" / "semantic.py"
     if semantic_path.exists():
-        semantic_text = _read_text(semantic_path)
+        semantic_text = (content_by_file or {}).get(semantic_path) or _read_text(semantic_path)
         if (
             "from ..analyzers.variables import VariablesAnalyzer" in semantic_text
             or "from sattlint.analyzers.variables import VariablesAnalyzer" in semantic_text
@@ -769,11 +834,17 @@ def _find_cli_findings() -> list[Finding]:
     return findings
 
 
-def _find_logging_findings(source_root: Path) -> list[Finding]:
+def _find_logging_findings(
+    source_root: Path,
+    *,
+    content_by_file: dict[Path, str] | None = None,
+) -> list[Finding]:
     findings: list[Finding] = []
-    for path in source_root.rglob("*.py"):
+    file_iterable = list((content_by_file or {}).items()) or [
+        (path, _read_text(path)) for path in source_root.rglob("*.py")
+    ]
+    for path, text in file_iterable:
         rel_path = _relative_path(path)
-        text = _read_text(path)
         if PRINT_CALL_RE.search(text) and rel_path not in ALLOWED_PRINT_MODULES:
             findings.append(
                 Finding(
@@ -787,6 +858,19 @@ def _find_logging_findings(source_root: Path) -> list[Finding]:
                 )
             )
     return findings
+
+
+def _build_python_source_scan_context(source_root: Path) -> PythonSourceScanContext:
+    texts: dict[Path, str] = {}
+    asts: dict[Path, ast.AST] = {}
+    for path in source_root.rglob("*.py"):
+        text = _read_text(path)
+        texts[path] = text
+        try:
+            asts[path] = ast.parse(text, filename=str(path))
+        except SyntaxError:
+            continue
+    return PythonSourceScanContext(source_root=source_root, texts=texts, asts=asts)
 
 
 def _parse_coverage_findings(root: Path) -> list[Finding]:
@@ -1023,13 +1107,14 @@ def collect_custom_findings(
     findings: list[Finding] = []
     suspicious_set = {identifier.strip() for identifier in suspicious_identifiers if identifier.strip()}
     docs_to_scan = [root / "README.md", root / "CONTRIBUTING.md", root / "vscode" / "sattline-vscode" / "README.md"]
-    text_files = list(
-        _iter_tracked_repo_text_files(root, include_generated=include_generated)
-        if tracked_only
-        else _iter_repo_text_files(root, include_generated=include_generated)
-    )
-    for path in text_files:
-        findings.extend(_line_findings(path, _read_text(path), suspicious_set, root=root))
+    for path, text in _iter_repo_text_entries(
+        root,
+        include_generated=include_generated,
+        tracked_only=tracked_only,
+    ):
+        findings.extend(_line_findings(path, text, suspicious_set, root=root))
+
+    source_context = _build_python_source_scan_context(root / "src")
 
     scripts, subcommands = _collect_cli_metadata()
     documented_commands = _extract_documented_commands(
@@ -1037,10 +1122,26 @@ def collect_custom_findings(
         root=root,
     )
     findings.extend(_find_documentation_command_gaps(documented_commands, scripts, subcommands))
-    findings.extend(_find_unused_config_keys(root / "src" / "sattlint", config_module.DEFAULT_CONFIG.keys()))
-    findings.extend(_find_architecture_findings(root / "src"))
+    findings.extend(
+        _find_unused_config_keys(
+            root / "src" / "sattlint",
+            config_module.DEFAULT_CONFIG.keys(),
+            content_by_file={
+                path: text
+                for path, text in source_context.texts.items()
+                if path.is_relative_to(root / "src" / "sattlint") and path.name != "repo_audit.py"
+            },
+        )
+    )
+    findings.extend(
+        _find_architecture_findings(
+            root / "src",
+            content_by_file=source_context.texts,
+            ast_by_file=source_context.asts,
+        )
+    )
     findings.extend(_find_cli_findings())
-    findings.extend(_find_logging_findings(root / "src"))
+    findings.extend(_find_logging_findings(root / "src", content_by_file=source_context.texts))
     findings.extend(_parse_coverage_findings(root))
     findings.extend(_find_public_readiness_findings(root))
     return _dedupe_findings(findings)
@@ -1137,9 +1238,28 @@ def audit_repository(
         if latest_output_dir is None
         else sanitize_path_for_report(latest_output_dir, repo_root=REPO_ROOT) or latest_output_dir.as_posix()
     )
+    progress = ProgressReporter(
+        kind="sattlint.repo_audit.progress",
+        title="Repository audit",
+        output_dir=output_dir,
+        write_json=_write_json,
+        stages=[
+            ("pipeline", "Run shared pipeline"),
+            ("custom_scan", "Run repository-specific checks"),
+            ("merge_findings", "Merge and normalize findings"),
+            ("write_reports", "Write audit reports"),
+        ],
+        canonical_command=_recommended_command(
+            output_dir=sanitized_output_dir,
+            profile=profile,
+            fail_on=fail_on,
+            leaks_only=leaks_only,
+        ),
+    )
     if not skip_pipeline and not leaks_only:
         pipeline_output_dir = output_dir / PIPELINE_OUTPUT_DIRNAME
         corpus_manifest_dir = _default_corpus_manifest_dir()
+        progress.start_stage("pipeline")
         pipeline_summary = pipeline_module._run_pipeline(
             pipeline_output_dir,
             trace_target=pipeline_module.DEFAULT_TRACE_TARGET if pipeline_module.DEFAULT_TRACE_TARGET.exists() else None,
@@ -1149,13 +1269,25 @@ def audit_repository(
             corpus_manifest_dir=corpus_manifest_dir,
         )
         pipeline_findings = _find_pipeline_findings(pipeline_output_dir)
+        progress.complete_stage(
+            "pipeline",
+            detail=f"{len(pipeline_findings)} pipeline findings",
+        )
+    else:
+        progress.skip_stage(
+            "pipeline",
+            detail="skipped by flags" if skip_pipeline or leaks_only else None,
+        )
 
+    progress.start_stage("custom_scan")
     custom_findings = collect_custom_findings(
         REPO_ROOT,
         include_generated=(include_generated or leaks_only),
         tracked_only=leaks_only,
         suspicious_identifiers=suspicious_identifiers,
     )
+    progress.complete_stage("custom_scan", detail=f"{len(custom_findings)} custom findings")
+    progress.start_stage("merge_findings")
     findings = _dedupe_findings([*pipeline_findings, *custom_findings])
     if leaks_only:
         findings = [finding for finding in findings if _is_leak_finding(finding)]
@@ -1167,11 +1299,13 @@ def audit_repository(
     reports = artifact_reports_map(
         AUDIT_ARTIFACTS,
         profile=audit_profile,
-        enabled_artifact_ids={"status", "summary", "findings", "summary_markdown"},
+        enabled_artifact_ids={"progress", "status", "summary", "findings", "summary_markdown"},
     )
+    progress.complete_stage("merge_findings", detail=f"{len(findings)} total findings")
     reports["pipeline_status"] = None if pipeline_summary is None else f"{PIPELINE_OUTPUT_DIRNAME}/status.json"
     reports["pipeline_summary"] = None if pipeline_summary is None else f"{PIPELINE_OUTPUT_DIRNAME}/summary.json"
     finding_collection = FindingCollection(tuple(finding.to_record() for finding in findings))
+    overall_status_value = "fail" if blocking_count else "pass"
     summary = {
         "output_dir": sanitized_output_dir,
         "profile": audit_profile,
@@ -1199,10 +1333,11 @@ def audit_repository(
         "kind": "sattlint.repo_audit.status",
         "profile": audit_profile,
         "fail_on": fail_on,
-        "overall_status": "fail" if blocking_count else "pass",
+        "overall_status": overall_status_value,
         "canonical_command": summary["canonical_command"],
         "status_report": f"{sanitized_output_dir}/status.json",
         "summary_report": f"{sanitized_output_dir}/summary.json",
+        "progress_report": f"{sanitized_output_dir}/progress.json",
         "finding_count": summary["finding_count"],
         "blocking_finding_count": blocking_count,
         "max_severity": summary["max_severity"],
@@ -1223,11 +1358,14 @@ def audit_repository(
             for finding in findings[:5]
         ],
     }
+    progress.start_stage("write_reports")
     _write_json(output_dir / "status.json", status_report)
     _write_json(output_dir / "summary.json", summary)
     _write_json(output_dir / "findings.json", finding_collection.to_dict())
     _write_markdown(output_dir / "summary.md", findings, summary)
     _mirror_latest_reports(output_dir, latest_output_dir)
+    progress.complete_stage("write_reports")
+    progress.finalize(overall_status=overall_status_value)
     return summary
 
 
