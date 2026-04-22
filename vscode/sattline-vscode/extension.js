@@ -7,7 +7,7 @@ const LANGUAGE_ID = 'sattline';
 const RESTART_COMMAND = 'sattlineLsp.restartServer';
 const STOPPED_BEFORE_REPLYING_MESSAGE = 'Language server stopped before replying.';
 const DID_CHANGE_DEBOUNCE_MS = 250;
-const PROGRAM_EXTENSIONS = new Set(['.s', '.x']);
+const DIAGNOSTIC_EXTENSIONS = new Set(['.s', '.x', '.g']);
 
 function getErrorMessage(error) {
     if (error instanceof Error && error.message) {
@@ -45,13 +45,14 @@ function isSattlineDocument(document) {
     if (!document || document.uri.scheme !== 'file') {
         return false;
     }
-    return PROGRAM_EXTENSIONS.has(path.extname(document.uri.fsPath || '').toLowerCase());
+    return DIAGNOSTIC_EXTENSIONS.has(path.extname(document.uri.fsPath || '').toLowerCase());
 }
 
 function createDocumentSelector() {
     return [
         { scheme: 'file', pattern: '**/*.s' },
         { scheme: 'file', pattern: '**/*.x' },
+        { scheme: 'file', pattern: '**/*.g' },
     ];
 }
 
@@ -159,7 +160,7 @@ function buildInitializationOptions(folder) {
         mode: config.get('mode') || 'draft',
         scanRootOnly: config.get('scanRootOnly') || false,
         enableVariableDiagnostics: config.get('enableVariableDiagnostics', true),
-        workspaceDiagnosticsMode: config.get('workspaceDiagnosticsMode', 'background'),
+        workspaceDiagnosticsMode: config.get('workspaceDiagnosticsMode', 'off'),
         maxCompletionItems: config.get('maxCompletionItems', 100),
     };
 }

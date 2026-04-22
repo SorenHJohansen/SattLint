@@ -1,4 +1,5 @@
 """Cache helpers for parsed ASTs and file manifests."""
+
 from __future__ import annotations
 
 import hashlib

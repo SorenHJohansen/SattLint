@@ -1,4 +1,5 @@
 """Variable shadowing analysis (locals hiding outer/global vars)."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -38,10 +39,7 @@ class ShadowingAnalyzer:
 
     def run(self) -> list[VariableIssue]:
         root_path = [self.bp.header.name]
-        parent_locals = {
-            v.name.casefold(): ShadowedVar(v, root_path)
-            for v in (self.bp.localvariables or [])
-        }
+        parent_locals = {v.name.casefold(): ShadowedVar(v, root_path) for v in (self.bp.localvariables or [])}
         self._walk_submodules(
             self.bp.submodules or [],
             parent_path=root_path,
@@ -72,9 +70,7 @@ class ShadowingAnalyzer:
             if isinstance(child, SingleModule):
                 child_locals = list(child.localvariables or [])
                 self._check_shadowing(child_locals, parent_locals, child_path)
-                next_locals = self._extend_locals(
-                    parent_locals, child_locals, child_path
-                )
+                next_locals = self._extend_locals(parent_locals, child_locals, child_path)
                 self._walk_submodules(
                     child.submodules or [],
                     parent_path=child_path,
@@ -97,9 +93,7 @@ class ShadowingAnalyzer:
 
                 child_locals = list(mt.localvariables or [])
                 self._check_shadowing(child_locals, parent_locals, child_path)
-                next_locals = self._extend_locals(
-                    parent_locals, child_locals, child_path
-                )
+                next_locals = self._extend_locals(parent_locals, child_locals, child_path)
                 self._walk_submodules(
                     mt.submodules or [],
                     parent_path=child_path,

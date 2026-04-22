@@ -42,7 +42,8 @@
           ".s",
           ".x",
           ".l",
-          ".z"
+          ".z",
+          ".g"
         ],
         "configuration": "./language-configuration.json"
       }
@@ -98,8 +99,8 @@
             "background",
             "off"
           ],
-          "default": "background",
-          "description": "Whether the language server should keep workspace-wide semantic diagnostics warm in the background after startup and save operations."
+          "default": "off",
+          "description": "Whether the language server should keep workspace-wide semantic diagnostics warm in the background after startup and save operations. Disable to reduce memory use in large workspaces."
         },
         "sattlineLsp.maxCompletionItems": {
           "type": "number",

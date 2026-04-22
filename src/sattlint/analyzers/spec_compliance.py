@@ -211,10 +211,10 @@ class SpecComplianceAnalyzer:
     def _iter_sequence_nodes(self, nodes: list[object]):
         for node in nodes:
             yield node
-            if isinstance(node, (SFCAlternative, SFCParallel)):
+            if isinstance(node, SFCAlternative | SFCParallel):
                 for branch in node.branches or []:
                     yield from self._iter_sequence_nodes(branch)
-            elif isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+            elif isinstance(node, SFCSubsequence | SFCTransitionSub):
                 yield from self._iter_sequence_nodes(node.body or [])
 
     def _check_instance_contracts(
@@ -248,9 +248,7 @@ class SpecComplianceAnalyzer:
             self._issues.append(
                 Issue(
                     kind="spec.mes_batch_control_name",
-                    message=(
-                        "NNEMESIFLib:MES_BatchControl instance name must be exactly 'MES_BatchControl'."
-                    ),
+                    message=("NNEMESIFLib:MES_BatchControl instance name must be exactly 'MES_BatchControl'."),
                     module_path=module_path.copy(),
                     data={"instance": inst.header.name},
                 )

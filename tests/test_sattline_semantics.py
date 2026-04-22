@@ -49,9 +49,7 @@ def _sequence(*nodes: object) -> Sequence:
 def test_sattline_semantics_aggregates_domain_checks():
     typedef = ModuleTypeDef(
         name="ChildType",
-        moduleparameters=[
-            Variable(name="DeclaredValue", datatype=Simple_DataType.INTEGER)
-        ],
+        moduleparameters=[Variable(name="DeclaredValue", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
         moduledef=None,
@@ -62,9 +60,7 @@ def test_sattline_semantics_aggregates_domain_checks():
         header=_hdr("Parent"),
         moduledef=None,
         moduleparameters=[],
-        localvariables=[
-            Variable(name="SourceValue", datatype=Simple_DataType.INTEGER)
-        ],
+        localvariables=[Variable(name="SourceValue", datatype=Simple_DataType.INTEGER)],
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("Child"),
@@ -147,9 +143,7 @@ def test_sattline_semantics_includes_read_before_write_rule():
 def test_sattline_semantics_includes_cross_module_contract_mismatch_rule():
     typedef = ModuleTypeDef(
         name="ChildType",
-        moduleparameters=[
-            Variable(name="ExpectedValue", datatype=Simple_DataType.INTEGER)
-        ],
+        moduleparameters=[Variable(name="ExpectedValue", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
         moduledef=None,
@@ -158,9 +152,7 @@ def test_sattline_semantics_includes_cross_module_contract_mismatch_rule():
     )
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[
-            Variable(name="SourceFlag", datatype=Simple_DataType.BOOLEAN)
-        ],
+        localvariables=[Variable(name="SourceFlag", datatype=Simple_DataType.BOOLEAN)],
         moduletype_defs=[typedef],
         submodules=[
             ModuleTypeInstance(
@@ -184,10 +176,7 @@ def test_sattline_semantics_includes_cross_module_contract_mismatch_rule():
 
     report = analyze_sattline_semantics(bp)
 
-    assert any(
-        issue.rule.id == "semantic.cross-module-contract-mismatch"
-        for issue in report.issues
-    )
+    assert any(issue.rule.id == "semantic.cross-module-contract-mismatch" for issue in report.issues)
 
 
 def test_sattline_semantics_includes_dead_overwrite_rule():
@@ -334,9 +323,7 @@ def test_sattline_semantics_includes_parallel_write_race_rule():
 
     report = analyze_sattline_semantics(bp)
 
-    issues = [
-        issue for issue in report.issues if issue.rule.id == "semantic.parallel-write-race"
-    ]
+    issues = [issue for issue in report.issues if issue.rule.id == "semantic.parallel-write-race"]
     assert len(issues) == 1
     assert issues[0].data["conflicts"] == ["Root.Rec"]
 
@@ -392,9 +379,7 @@ def test_sattline_semantics_includes_step_state_leakage_rule():
         },
     )
 
-    issues = [
-        issue for issue in report.issues if issue.rule.id == "semantic.step-state-leakage"
-    ]
+    issues = [issue for issue in report.issues if issue.rule.id == "semantic.step-state-leakage"]
     assert len(issues) == 1
     assert issues[0].data["leaked_state"] == ["StepValue"]
 
@@ -581,7 +566,6 @@ def test_sattline_semantics_includes_unreachable_transition_rule():
         and issue.data.get("node_label") == "SFCTransition:NeverFires"
         for issue in report.issues
     )
-
 
     def test_sattline_semantics_includes_duplicate_transition_guard_rule():
         bp = BasePicture(

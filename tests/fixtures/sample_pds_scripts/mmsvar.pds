@@ -30,4 +30,3 @@ table mmsvar
     varvalue    :Error
   end module
 end table
-

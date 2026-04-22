@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-import time
-from typing import Any, Callable
+from typing import Any
 
 
 @dataclass(slots=True)
@@ -116,6 +117,10 @@ class ProgressReporter:
             suffix = f" ({stage.detail})" if stage.detail else ""
             print(f"    failed {stage.label}{suffix}", flush=True)
         self._write()
+
+    def log(self, message: str) -> None:
+        if self._emit_stdout:
+            print(f"    {message}", flush=True)
 
     def finalize(self, *, overall_status: str) -> None:
         self._completed_at = time.time()

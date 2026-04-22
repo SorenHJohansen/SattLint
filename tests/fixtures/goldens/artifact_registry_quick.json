@@ -1,6 +1,22 @@
 {
     "artifacts": [
         {
+            "artifact_id": "progress",
+            "blocking": false,
+            "depends_on": [],
+            "enabled": false,
+            "filename": "progress.json",
+            "optional": false,
+            "producer": "progress",
+            "profiles": [
+                "quick",
+                "full"
+            ],
+            "schema_kind": "sattlint.pipeline.progress",
+            "schema_version": 1,
+            "used_by": []
+        },
+        {
             "artifact_id": "status",
             "blocking": true,
             "depends_on": [],
@@ -131,13 +147,13 @@
             "used_by": []
         },
         {
-            "artifact_id": "mypy",
+            "artifact_id": "pyright",
             "blocking": true,
             "depends_on": [],
             "enabled": false,
-            "filename": "mypy.json",
+            "filename": "pyright.json",
             "optional": false,
-            "producer": "mypy",
+            "producer": "pyright",
             "profiles": [
                 "quick",
                 "full"

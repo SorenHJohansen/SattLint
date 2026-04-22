@@ -41,6 +41,7 @@ DEFAULT_PIPELINE_ARTIFACT_PRODUCERS: tuple[PipelineArtifactProducer, ...] = (
     PipelineArtifactProducer("analyzer_registry", payload_from_context("analyzer_registry")),
     PipelineArtifactProducer("dependency_graph", payload_from_context("dependency_graph")),
     PipelineArtifactProducer("call_graph", payload_from_context("call_graph")),
+    PipelineArtifactProducer("graphics_layout", payload_from_context("graphics_layout")),
     PipelineArtifactProducer("impact_analysis", payload_from_context("impact_analysis")),
     PipelineArtifactProducer("trace", payload_from_context("trace")),
     PipelineArtifactProducer("findings", payload_from_context("findings")),
@@ -59,17 +60,10 @@ def validate_pipeline_artifact_producers(
 ) -> tuple[str, ...]:
     producer_ids: list[str] = [producer.producer_id for producer in producers]
     duplicate_producer_ids = sorted(
-        {
-            producer_id
-            for producer_id in producer_ids
-            if producer_ids.count(producer_id) > 1
-        }
+        {producer_id for producer_id in producer_ids if producer_ids.count(producer_id) > 1}
     )
     if duplicate_producer_ids:
-        raise ValueError(
-            "Duplicate pipeline artifact producers registered: "
-            + ", ".join(duplicate_producer_ids)
-        )
+        raise ValueError("Duplicate pipeline artifact producers registered: " + ", ".join(duplicate_producer_ids))
 
     producers_by_id = {producer.producer_id: producer for producer in producers}
     missing_producers = [
@@ -79,15 +73,10 @@ def validate_pipeline_artifact_producers(
     ]
     if missing_producers:
         raise ValueError(
-            "Pipeline artifact registry entries are missing producers: "
-            + ", ".join(sorted(missing_producers))
+            "Pipeline artifact registry entries are missing producers: " + ", ".join(sorted(missing_producers))
         )
 
-    return tuple(
-        artifact.artifact_id
-        for artifact in artifacts
-        if profile in artifact.profiles
-    )
+    return tuple(artifact.artifact_id for artifact in artifacts if profile in artifact.profiles)
 
 
 def write_pipeline_artifacts(
@@ -105,10 +94,7 @@ def write_pipeline_artifacts(
         profile=profile,
         producers=producers,
     )
-    producers_by_id = {
-        producer.producer_id: producer
-        for producer in producers
-    }
+    producers_by_id = {producer.producer_id: producer for producer in producers}
 
     written_artifacts: list[str] = []
     for artifact in artifacts:

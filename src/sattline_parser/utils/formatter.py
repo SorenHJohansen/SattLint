@@ -1,4 +1,5 @@
 """formatting helpers for AST models."""
+
 from __future__ import annotations
 
 import textwrap
@@ -78,7 +79,7 @@ def format_expr(expr, indent="    "):
         return expr[const.KEY_VAR_NAME]
 
     # 2) Literals
-    if isinstance(expr, (int, float, bool, str)):
+    if isinstance(expr, int | float | bool | str):
         return repr(expr) if isinstance(expr, str) else str(expr)
 
     # 3) Lists = block of expressions/statements
@@ -93,9 +94,7 @@ def format_expr(expr, indent="    "):
         if op == const.KEY_ASSIGN:
             _, target, value = expr
             lhs = (
-                target[const.KEY_VAR_NAME]
-                if isinstance(target, dict) and const.KEY_VAR_NAME in target
-                else str(target)
+                target[const.KEY_VAR_NAME] if isinstance(target, dict) and const.KEY_VAR_NAME in target else str(target)
             )
             rhs = format_expr(value, indent)
             return f"{lhs} = {rhs}"
@@ -128,14 +127,10 @@ def format_expr(expr, indent="    "):
                 head = "IF" if i == 0 else "ELSIF"
                 out_lines.append(f"{head} {format_expr(cond, indent)}")
                 out_lines.append("THEN")
-                out_lines.append(
-                    textwrap.indent(format_expr(then_expr, indent), indent)
-                )
+                out_lines.append(textwrap.indent(format_expr(then_expr, indent), indent))
             if else_expr is not None:
                 out_lines.append("ELSE")
-                out_lines.append(
-                    textwrap.indent(format_expr(else_expr, indent), indent)
-                )
+                out_lines.append(textwrap.indent(format_expr(else_expr, indent), indent))
             out_lines.append("ENDIF")
             return "\n".join(out_lines)
 
@@ -159,9 +154,7 @@ def format_expr(expr, indent="    "):
             left_str = format_expr(left, indent)
             if not pairs:
                 return left_str
-            parts = [
-                f"{left_str} {sym} {format_expr(rhs, indent)}" for sym, rhs in pairs
-            ]
+            parts = [f"{left_str} {sym} {format_expr(rhs, indent)}" for sym, rhs in pairs]
             return " AND ".join(parts)
 
         # add: ('add', left, [(op, right), ...])

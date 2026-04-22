@@ -111,9 +111,7 @@ def test_line_findings_flag_secret_assignment_suffix_names(tmp_path):
 
 def test_load_pyproject_accepts_cp1252_toml(tmp_path):
     pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_bytes(
-        '[project]\nname = "demo"\nauthors = [{ name = "Søren" }]\n'.encode("cp1252")
-    )
+    pyproject.write_bytes('[project]\nname = "demo"\nauthors = [{ name = "Søren" }]\n'.encode("cp1252"))
 
     payload = repo_audit._load_pyproject(tmp_path)
 
@@ -149,15 +147,70 @@ def test_iter_tracked_repo_text_files_includes_tracked_generated_files(tmp_path)
         stderr=b"",
     )
 
-    with patch("sattlint.devtools.repo_audit.shutil.which", return_value="git"):
-        with patch("sattlint.devtools.repo_audit.subprocess.run", return_value=completed):
-            files = {
-                _path.relative_to(tmp_path).as_posix()
-                for _path in repo_audit._iter_tracked_repo_text_files(tmp_path, include_generated=True)
-            }
+    with (
+        patch("sattlint.devtools.repo_audit.shutil.which", return_value="git"),
+        patch("sattlint.devtools.repo_audit.subprocess.run", return_value=completed),
+    ):
+        files = {
+            _path.relative_to(tmp_path).as_posix()
+            for _path in repo_audit._iter_tracked_repo_text_files(tmp_path, include_generated=True)
+        }
 
     assert "artifacts/audit/pipeline/trace.json" in files
     assert "src/sample.py" in files
+
+
+def test_build_python_source_scan_context_uses_tracked_files_only(tmp_path):
+    tracked_file = tmp_path / "src" / "tracked.py"
+    tracked_file.parent.mkdir(parents=True)
+    tracked_file.write_text("VALUE = 1\n", encoding="utf-8")
+    untracked_file = tmp_path / "src" / "generated.py"
+    untracked_file.write_text("VALUE = 2\n", encoding="utf-8")
+
+    context = repo_audit._build_python_source_scan_context(
+        tmp_path / "src",
+        root=tmp_path,
+        tracked_paths=("src/tracked.py",),
+    )
+
+    assert {path.relative_to(tmp_path).as_posix() for path in context.texts} == {"src/tracked.py"}
+
+
+def test_parse_coverage_findings_ignores_untracked_coverage_xml(tmp_path):
+    coverage_path = tmp_path / "coverage.xml"
+    coverage_path.write_text(
+        """
+<coverage>
+    <packages>
+        <package>
+            <classes>
+                <class filename="src/sample.py" line-rate="0.05" />
+            </classes>
+        </package>
+    </packages>
+</coverage>
+""".strip(),
+        encoding="utf-8",
+    )
+
+    findings = repo_audit._parse_coverage_findings(tmp_path, tracked_paths=("README.md",))
+
+    assert findings == []
+
+
+def test_find_public_readiness_findings_ignores_untracked_workflow(tmp_path):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text('[project]\nname = "demo"\nversion = "0.1.0"\n', encoding="utf-8")
+    workflow_path = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow_path.parent.mkdir(parents=True)
+    workflow_path.write_text("name: CI\n", encoding="utf-8")
+
+    findings = repo_audit._find_public_readiness_findings(
+        tmp_path,
+        tracked_paths=("README.md", "LICENSE", "CONTRIBUTING.md", ".gitignore", "pyproject.toml"),
+    )
+
+    assert any(finding.id == "missing-ci-workflow" for finding in findings)
 
 
 def test_audit_repository_leaks_only_filters_findings_and_skips_pipeline(tmp_path):
@@ -178,19 +231,21 @@ def test_audit_repository_leaks_only_filters_findings_and_skips_pipeline(tmp_pat
         path="src/big.py",
     )
 
-    with patch.object(repo_audit, "collect_custom_findings", return_value=[leak_finding, non_leak_finding]):
-        with patch.object(repo_audit.pipeline_module, "_run_pipeline") as run_pipeline:
-            summary = repo_audit.audit_repository(
-                tmp_path,
-                profile="full",
-                fail_on="medium",
-                include_generated=False,
-                leaks_only=True,
-                suspicious_identifiers=["SQHJ"],
-                skip_pipeline=False,
-                skip_vulture=False,
-                skip_bandit=False,
-            )
+    with (
+        patch.object(repo_audit, "collect_custom_findings", return_value=[leak_finding, non_leak_finding]),
+        patch.object(repo_audit.pipeline_module, "_run_pipeline") as run_pipeline,
+    ):
+        summary = repo_audit.audit_repository(
+            tmp_path,
+            profile="full",
+            fail_on="medium",
+            include_generated=False,
+            leaks_only=True,
+            suspicious_identifiers=["SQHJ"],
+            skip_pipeline=False,
+            skip_vulture=False,
+            skip_bandit=False,
+        )
 
     run_pipeline.assert_not_called()
     assert summary["output_dir"] == f"<external>/{tmp_path.name}"
@@ -260,20 +315,22 @@ def test_audit_repository_writes_status_file_and_forwards_profile(tmp_path):
         path="src/big.py",
     )
 
-    with patch.object(repo_audit, "collect_custom_findings", return_value=[finding]):
-        with patch.object(repo_audit, "_find_pipeline_findings", return_value=[]):
-            with patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary) as run_pipeline:
-                summary = repo_audit.audit_repository(
-                    tmp_path,
-                    profile="quick",
-                    fail_on="high",
-                    include_generated=False,
-                    leaks_only=False,
-                    suspicious_identifiers=["SQHJ"],
-                    skip_pipeline=False,
-                    skip_vulture=False,
-                    skip_bandit=False,
-                )
+    with (
+        patch.object(repo_audit, "collect_custom_findings", return_value=[finding]),
+        patch.object(repo_audit, "_find_pipeline_findings", return_value=[]),
+        patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary) as run_pipeline,
+    ):
+        summary = repo_audit.audit_repository(
+            tmp_path,
+            profile="quick",
+            fail_on="high",
+            include_generated=False,
+            leaks_only=False,
+            suspicious_identifiers=["SQHJ"],
+            skip_pipeline=False,
+            skip_vulture=False,
+            skip_bandit=False,
+        )
 
     status_report = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
     findings_report = json.loads((tmp_path / "findings.json").read_text(encoding="utf-8"))
@@ -299,7 +356,37 @@ def test_audit_repository_writes_status_file_and_forwards_profile(tmp_path):
     }
     run_pipeline.assert_called_once()
     assert run_pipeline.call_args.kwargs["profile"] == "quick"
-    assert run_pipeline.call_args.kwargs["corpus_manifest_dir"] == repo_audit.pipeline_module.DEFAULT_CORPUS_MANIFEST_DIR.resolve()
+    assert (
+        run_pipeline.call_args.kwargs["corpus_manifest_dir"]
+        == repo_audit.pipeline_module.DEFAULT_CORPUS_MANIFEST_DIR.resolve()
+    )
+
+
+def test_audit_repository_collects_custom_findings_from_tracked_files(tmp_path):
+    pipeline_summary = {
+        "profile": "quick",
+        "output_dir": "<external>/audit/pipeline",
+        "status": {"overall_status": "pass", "tool_statuses": {}},
+    }
+
+    with (
+        patch.object(repo_audit, "collect_custom_findings", return_value=[]) as collect_custom_findings,
+        patch.object(repo_audit, "_find_pipeline_findings", return_value=[]),
+        patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary),
+    ):
+        repo_audit.audit_repository(
+            tmp_path,
+            profile="quick",
+            fail_on="high",
+            include_generated=False,
+            leaks_only=False,
+            suspicious_identifiers=["SQHJ"],
+            skip_pipeline=False,
+            skip_vulture=False,
+            skip_bandit=False,
+        )
+
+    assert collect_custom_findings.call_args.kwargs["tracked_only"] is True
 
 
 def test_print_cli_summary_includes_findings_schema(capsys):
@@ -363,21 +450,23 @@ def test_audit_repository_mirrors_latest_reports_to_stable_directory(tmp_path):
         "status": {"overall_status": "pass", "tool_statuses": {}},
     }
 
-    with patch.object(repo_audit, "collect_custom_findings", return_value=[finding]):
-        with patch.object(repo_audit, "_find_pipeline_findings", return_value=[]):
-            with patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary):
-                repo_audit.audit_repository(
-                    output_dir,
-                    profile="quick",
-                    fail_on="high",
-                    include_generated=False,
-                    leaks_only=False,
-                    suspicious_identifiers=["SQHJ"],
-                    skip_pipeline=False,
-                    skip_vulture=False,
-                    skip_bandit=False,
-                    latest_output_dir=latest_dir,
-                )
+    with (
+        patch.object(repo_audit, "collect_custom_findings", return_value=[finding]),
+        patch.object(repo_audit, "_find_pipeline_findings", return_value=[]),
+        patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary),
+    ):
+        repo_audit.audit_repository(
+            output_dir,
+            profile="quick",
+            fail_on="high",
+            include_generated=False,
+            leaks_only=False,
+            suspicious_identifiers=["SQHJ"],
+            skip_pipeline=False,
+            skip_vulture=False,
+            skip_bandit=False,
+            latest_output_dir=latest_dir,
+        )
 
     latest_status = json.loads((latest_dir / "status.json").read_text(encoding="utf-8"))
     latest_summary = json.loads((latest_dir / "summary.json").read_text(encoding="utf-8"))

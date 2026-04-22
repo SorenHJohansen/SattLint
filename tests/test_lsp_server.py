@@ -5,6 +5,8 @@ from typing import Any, cast
 from lsprotocol.types import CompletionItem as LspCompletionItem
 from lsprotocol.types import CompletionItemKind, Position, Range
 
+from sattlint.analyzers.registry import get_declared_lsp_analyzer_keys
+from sattlint.core.diagnostics import SemanticDiagnostic
 from sattlint.editor_api import load_workspace_snapshot
 from sattlint_lsp.document_state import DocumentState, apply_content_changes
 from sattlint_lsp.local_parser import DocumentParseResult, FullDocumentParserAdapter, IncrementalParseState
@@ -44,7 +46,12 @@ def _write_text(path: Path, content: str) -> None:
 
 
 def _snapshot_bundle(snapshot, entry_file: Path) -> SnapshotBundle:
-    source_files = tuple(sorted((path.resolve() for path in snapshot.project_graph.source_files), key=lambda path: path.as_posix().casefold()))
+    source_files = tuple(
+        sorted(
+            (path.resolve() for path in snapshot.project_graph.source_files),
+            key=lambda path: path.as_posix().casefold(),
+        )
+    )
     by_name, by_key = build_source_path_index(source_files)
     return SnapshotBundle(
         snapshot=snapshot,
@@ -57,7 +64,7 @@ def _snapshot_bundle(snapshot, entry_file: Path) -> SnapshotBundle:
 
 
 def _record_library_source(record_name: str, field_name: str) -> str:
-    return f'''
+    return f"""
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -69,11 +76,11 @@ TYPEDEFINITIONS
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _program_with_dependency(record_name: str) -> str:
-    return f'''
+    return f"""
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -83,11 +90,11 @@ LOCALVARIABLES
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _source_with_unused_variable(variable_name: str = "UnusedVar") -> str:
-    return f'''
+    return f"""
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -97,11 +104,11 @@ LOCALVARIABLES
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _contract_library_source() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -116,11 +123,11 @@ TYPEDEFINITIONS
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
 
 
 def _program_with_contract_mismatch_dependency() -> str:
-    return '''
+    return """
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
@@ -134,7 +141,24 @@ SUBMODULES
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''.strip()
+""".strip()
+
+
+def _source_with_basepicture_direct_code() -> str:
+    return """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Dv: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Dv = 1;
+ENDDEF (*BasePicture*);
+""".strip()
 
 
 def test_resolve_entry_file_prefers_program_document(tmp_path):
@@ -326,8 +350,13 @@ ENDDEF (*BasePicture*);
 """.strip()
 
     diagnostics = collect_syntax_diagnostics(tmp_path / "Program.s", source)
-
     assert len(diagnostics) == 0
+
+
+def test_lsp_settings_defaults_workspace_diagnostics_off():
+    settings = LspSettings.from_initialization_options({})
+
+    assert settings.workspace_diagnostics_mode == "off"
 
 
 def test_collect_syntax_diagnostics_reports_invalid_sequence_auto_variables(tmp_path):
@@ -364,10 +393,17 @@ ENDDEF (*BasePicture*);
     diagnostics = collect_syntax_diagnostics(tmp_path / "Program.s", source)
 
     assert len(diagnostics) == 4
-    assert any("no sequence step named 'CompareGoldens' exists in this module" in diagnostic.message for diagnostic in diagnostics)
+    assert any(
+        "no sequence step named 'CompareGoldens' exists in this module" in diagnostic.message
+        for diagnostic in diagnostics
+    )
     assert any("only exposes .T when its sequence enables SeqTimer" in diagnostic.message for diagnostic in diagnostics)
-    assert any("only exposes .Reset when its sequence enables SeqControl" in diagnostic.message for diagnostic in diagnostics)
-    assert any("only exposes .Hold when its sequence enables SeqControl" in diagnostic.message for diagnostic in diagnostics)
+    assert any(
+        "only exposes .Reset when its sequence enables SeqControl" in diagnostic.message for diagnostic in diagnostics
+    )
+    assert any(
+        "only exposes .Hold when its sequence enables SeqControl" in diagnostic.message for diagnostic in diagnostics
+    )
 
 
 def test_collect_syntax_diagnostics_allows_valid_sequence_auto_variables(tmp_path):
@@ -480,7 +516,9 @@ ENDDEF (*BasePicture*);
     snapshot = load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=False)
 
     line_index = editing_source.splitlines().index("            Lo")
-    items = collect_completion_candidates(snapshot, editing_source, line=line_index, column=len("            Lo"), limit=20)
+    items = collect_completion_candidates(
+        snapshot, editing_source, line=line_index, column=len("            Lo"), limit=20
+    )
     labels = {item.label for item in items}
 
     assert "LocalVar" in labels
@@ -521,7 +559,9 @@ ENDDEF (*BasePicture*);
     monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", fail_if_called)
     monkeypatch.setattr(
         "sattlint_lsp.local_parser.build_source_snapshot_from_basepicture",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("syntax-only didChange should not build a local snapshot")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("syntax-only didChange should not build a local snapshot")
+        ),
     )
 
     _publish_diagnostics(cast(Any, fake_ls), cast(Any, fake_document), include_semantic=False)
@@ -686,14 +726,44 @@ ENDDEF (*BasePicture*);
     snapshot = load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=True)
     bundle = _snapshot_bundle(snapshot, entry_file)
 
-    diagnostics = collect_semantic_diagnostics(bundle, entry_file)
+    diagnostics = collect_semantic_diagnostics(cast(Any, bundle), entry_file)
     target = next(d for d in diagnostics if d.message.startswith("Unused variable"))
 
     assert target.range.start.line == 5
     assert target.range.start.character == 4
+    assert target.code == "variables"
     assert "Why it matters:" in target.message
     assert "Suggested fix:" in target.message
     assert "Delete the declaration" in target.message
+
+
+def test_collect_semantic_diagnostics_preserves_declared_lsp_analyzer_identity(tmp_path):
+    entry_file = tmp_path / "Program" / "Main.s"
+    _write_text(entry_file, _source_with_unused_variable())
+    expected = tuple(
+        SemanticDiagnostic(
+            source_file=entry_file.name,
+            source_library=entry_file.parent.name,
+            line=index,
+            column=1,
+            length=1,
+            message=f"diagnostic from {analyzer_key}",
+            analyzer_key=analyzer_key,
+        )
+        for index, analyzer_key in enumerate(get_declared_lsp_analyzer_keys(), start=1)
+    )
+    bundle = SimpleNamespace(
+        snapshot=SimpleNamespace(
+            semantic_diagnostics_for_path=lambda resolved_path: (
+                expected if resolved_path == entry_file.resolve() else ()
+            )
+        )
+    )
+
+    diagnostics = collect_semantic_diagnostics(cast(Any, bundle), entry_file)
+
+    assert [diagnostic.code for diagnostic in diagnostics] == list(get_declared_lsp_analyzer_keys())
+    assert all(diagnostic.source == "sattlint" for diagnostic in diagnostics)
 
 
 def test_collect_semantic_diagnostics_include_actionable_guidance_for_contract_mismatch(tmp_path):
@@ -714,6 +784,22 @@ def test_collect_semantic_diagnostics_include_actionable_guidance_for_contract_m
     assert "Why it matters:" in target.message
     assert "Suggested fix:" in target.message
     assert "Align the source and target datatypes" in target.message
+
+
+def test_collect_semantic_diagnostics_include_actionable_guidance_for_spec_compliance_issue(tmp_path):
+    entry_file = tmp_path / "Program" / "Main.s"
+    _write_text(entry_file, _source_with_basepicture_direct_code())
+
+    snapshot = load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=True)
+    bundle = _snapshot_bundle(snapshot, entry_file)
+
+    diagnostics = collect_semantic_diagnostics(bundle, entry_file)
+    target = next(d for d in diagnostics if d.code == "spec-compliance")
+
+    assert target.message.startswith("BasePicture contains direct code")
+    assert "Why it matters:" in target.message
+    assert "Suggested fix:" in target.message
+    assert "BasePicture code must stay inside frame modules" in target.message
 
 
 def test_resolve_definition_path_prefers_loaded_source_index(tmp_path):
@@ -955,7 +1041,9 @@ ENDDEF (*BasePicture*);
 
         return real_build_source_snapshot(*args, **kwargs)
 
-    monkeypatch.setattr("sattlint_lsp.local_parser.build_source_snapshot_from_basepicture", wrapped_build_source_snapshot)
+    monkeypatch.setattr(
+        "sattlint_lsp.local_parser.build_source_snapshot_from_basepicture", wrapped_build_source_snapshot
+    )
     fake_ls.local_parser = FullDocumentParserAdapter()
 
     first = _get_or_build_local_snapshot(cast(Any, fake_ls), cast(Any, document), entry_file)
@@ -1000,7 +1088,9 @@ def test_get_or_build_local_snapshot_upgrades_prior_syntax_only_analysis(tmp_pat
         text_document_publish_diagnostics=lambda params: None,
     )
 
-    _publish_diagnostics(cast(Any, fake_ls), cast(Any, document), include_semantic=False, include_comment_validation=False)
+    _publish_diagnostics(
+        cast(Any, fake_ls), cast(Any, document), include_semantic=False, include_comment_validation=False
+    )
     syntax_only_result = fake_ls.document_states[uri].analysis_result
     snapshot = _get_or_build_local_snapshot(cast(Any, fake_ls), cast(Any, document), entry_file)
 
@@ -1523,7 +1613,9 @@ ENDDEF (*BasePicture*);
 
     entry_file = tmp_path / "Program" / "Main.s"
     _write_text(entry_file, source)
-    workspace_snapshot = load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=False)
+    workspace_snapshot = load_workspace_snapshot(
+        entry_file, workspace_root=tmp_path, collect_variable_diagnostics=False
+    )
     bundle = _snapshot_bundle(workspace_snapshot, entry_file)
 
     from sattlint.editor_api import load_source_snapshot
@@ -1578,7 +1670,9 @@ ENDDEF (*BasePicture*);
         ),
     )
 
-    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", lambda ls, path: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        "sattlint_lsp.server._load_snapshot_bundle", lambda ls, path: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
 
     locations = on_definition(cast(Any, fake_ls), cast(Any, params))
 
@@ -1650,7 +1744,9 @@ ENDDEF (*BasePicture*);
             LspCompletionItem(label="Dv", kind=CompletionItemKind.Variable),
         ],
     )
-    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", lambda ls, path: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        "sattlint_lsp.server._load_snapshot_bundle", lambda ls, path: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
 
     result = on_completion(cast(Any, fake_ls), cast(Any, params))
 

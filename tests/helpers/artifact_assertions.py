@@ -107,10 +107,7 @@ def assert_artifact_registry_report(
     enabled_artifact_ids: Sequence[str] | None = None,
     disabled_artifact_ids: Sequence[str] | None = None,
 ) -> None:
-    artifact_by_id = {
-        artifact["artifact_id"]: artifact
-        for artifact in payload["artifacts"]
-    }
+    artifact_by_id = {artifact["artifact_id"]: artifact for artifact in payload["artifacts"]}
     if generated_by is not None:
         assert payload["generated_by"] == generated_by
     if profile is not None:

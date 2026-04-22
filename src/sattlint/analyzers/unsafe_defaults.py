@@ -6,9 +6,7 @@ from dataclasses import dataclass
 from ..models.ast_model import BasePicture, FrameModule, ModuleTypeDef, ModuleTypeInstance, SingleModule, Variable
 from .framework import Issue, format_report_header
 
-_IDENTIFIER_TOKEN_RE = re.compile(
-    r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+"
-)
+_IDENTIFIER_TOKEN_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+")
 
 
 @dataclass

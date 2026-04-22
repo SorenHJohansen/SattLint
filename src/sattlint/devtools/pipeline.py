@@ -13,11 +13,12 @@ import subprocess  # nosec B404 - pipeline intentionally executes trusted local 
 import sys
 import time
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
+from defusedxml import ElementTree  # type: ignore[import-untyped]
 
 from sattlint.devtools.artifact_registry import (
     PIPELINE_ARTIFACTS,
@@ -32,23 +33,42 @@ from sattlint.devtools.pipeline_artifacts import (
     write_pipeline_artifacts,
 )
 from sattlint.devtools.progress_reporting import ProgressReporter
-from sattlint.devtools.structural_reports import (
-    StructuralReportsBundle,
-    WorkspaceGraphInputs,
-    collect_analyzer_registry_report as build_analyzer_registry_report,
-    collect_architecture_report as build_architecture_report,
-    collect_call_graph_report as build_call_graph_report,
-    collect_dependency_graph_report as build_dependency_graph_report,
-    collect_impact_analysis_report as build_impact_analysis_report,
-    collect_phase2_rule_metadata_gate as build_phase2_rule_metadata_gate,
-    collect_structural_reports as build_structural_reports,
-    collect_workspace_graph_inputs as build_workspace_graph_inputs,
-)
 from sattlint.devtools.status_reports import (
     build_pipeline_status_report,
     build_pipeline_summary_report,
     build_tool_status,
     overall_status,
+)
+from sattlint.devtools.structural_reports import (
+    StructuralReportsBundle,
+    WorkspaceGraphInputs,
+)
+from sattlint.devtools.structural_reports import (
+    collect_analyzer_registry_report as build_analyzer_registry_report,
+)
+from sattlint.devtools.structural_reports import (
+    collect_architecture_report as build_architecture_report,
+)
+from sattlint.devtools.structural_reports import (
+    collect_call_graph_report as build_call_graph_report,
+)
+from sattlint.devtools.structural_reports import (
+    collect_dependency_graph_report as build_dependency_graph_report,
+)
+from sattlint.devtools.structural_reports import (
+    collect_graphics_layout_report as build_graphics_layout_report,
+)
+from sattlint.devtools.structural_reports import (
+    collect_impact_analysis_report as build_impact_analysis_report,
+)
+from sattlint.devtools.structural_reports import (
+    collect_phase2_rule_metadata_gate as build_phase2_rule_metadata_gate,
+)
+from sattlint.devtools.structural_reports import (
+    collect_structural_reports as build_structural_reports,
+)
+from sattlint.devtools.structural_reports import (
+    collect_workspace_graph_inputs as build_workspace_graph_inputs,
 )
 from sattlint.devtools.tool_reports import build_command_report
 from sattlint.devtools.trace_reports import collect_trace_report as build_trace_report
@@ -98,10 +118,7 @@ def _tool_version(package_name: str) -> str | None:
 def _resolve_python_executable() -> str:
     candidates: list[Path] = []
 
-    if os.name == "nt":
-        venv_python = Path(".venv") / "Scripts" / "python.exe"
-    else:
-        venv_python = Path(".venv") / "bin" / "python"
+    venv_python = Path(".venv") / "Scripts" / "python.exe" if os.name == "nt" else Path(".venv") / "bin" / "python"
     if venv_python.exists():
         return str(venv_python.resolve())
 
@@ -287,9 +304,7 @@ def _parse_json_lines(raw_output: str) -> list[dict[str, Any]]:
 
 
 def _parse_vulture_output(raw_output: str) -> list[dict[str, Any]]:
-    pattern = re.compile(
-        r"^(?P<file>.*?):(?P<line>\d+): (?P<message>.*) \((?P<confidence>\d+)% confidence\)$"
-    )
+    pattern = re.compile(r"^(?P<file>.*?):(?P<line>\d+): (?P<message>.*) \((?P<confidence>\d+)% confidence\)$")
     findings: list[dict[str, Any]] = []
     for line in raw_output.splitlines():
         match = pattern.match(line.strip())
@@ -307,7 +322,7 @@ def _parse_vulture_output(raw_output: str) -> list[dict[str, Any]]:
 
 
 def _parse_pytest_junit(xml_path: Path) -> dict[str, Any]:
-    root = ET.fromstring(xml_path.read_text(encoding="utf-8"))
+    root = ElementTree.fromstring(xml_path.read_text(encoding="utf-8"))
     suites = root.findall("testsuite") if root.tag == "testsuites" else [root]
     testcases: list[dict[str, Any]] = []
     summary = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
@@ -363,8 +378,7 @@ def _collect_environment_report() -> dict[str, Any]:
             "optional": optional_deps,
         },
         "installed_tool_versions": {
-            name: _tool_version(name)
-            for name in ("ruff", "pyright", "pytest", "bandit", "vulture", "types-openpyxl")
+            name: _tool_version(name) for name in ("ruff", "pyright", "pytest", "bandit", "vulture", "types-openpyxl")
         },
     }
 
@@ -420,11 +434,22 @@ def _collect_impact_analysis_report(
     )
 
 
+def _collect_graphics_layout_report(
+    workspace_root: Path = REPO_ROOT,
+    *,
+    graph_inputs: WorkspaceGraphInputs | tuple[Any, list[Any], list[dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
+    if graph_inputs is None:
+        graph_inputs = _collect_workspace_graph_inputs(workspace_root)
+    return build_graphics_layout_report(workspace_root, graph_inputs=graph_inputs)
+
+
 def _collect_structural_report_bundle(
     workspace_root: Path = REPO_ROOT,
+    *,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> StructuralReportsBundle:
-    graph_inputs = _collect_workspace_graph_inputs(workspace_root)
-    return build_structural_reports(workspace_root, graph_inputs=graph_inputs)
+    return build_structural_reports(workspace_root, progress_callback=progress_callback)
 
 
 def _collect_trace_report(trace_target: Path) -> dict[str, Any]:
@@ -495,13 +520,16 @@ def _run_pipeline(
     if run_bandit:
         enabled_artifacts.add("bandit")
     if run_structural_reports:
-        enabled_artifacts.update({
-            "architecture",
-            "analyzer_registry",
-            "dependency_graph",
-            "call_graph",
-            "impact_analysis",
-        })
+        enabled_artifacts.update(
+            {
+                "architecture",
+                "analyzer_registry",
+                "dependency_graph",
+                "call_graph",
+                "graphics_layout",
+                "impact_analysis",
+            }
+        )
     if run_trace:
         enabled_artifacts.add("trace")
 
@@ -593,7 +621,9 @@ def _run_pipeline(
             [*python_cmd, "-m", "vulture", "src", "--min-confidence", "80"],
         )
         vulture_findings = _parse_vulture_output(vulture_result.stdout)
-        vulture_report = _command_payload(vulture_result, finding_count=len(vulture_findings), findings=vulture_findings)
+        vulture_report = _command_payload(
+            vulture_result, finding_count=len(vulture_findings), findings=vulture_findings
+        )
         progress.complete_stage("vulture", detail=f"{len(vulture_findings)} findings")
     else:
         vulture_report = {"tool": "vulture", "skipped": True}
@@ -624,6 +654,12 @@ def _run_pipeline(
     analyzer_registry_report: dict[str, Any] = {"rules": [], "skipped": not run_structural_reports}
     dependency_graph_report: dict[str, Any] = {"edges": [], "skipped": not run_structural_reports}
     call_graph_report: dict[str, Any] = {"edges": [], "skipped": not run_structural_reports}
+    graphics_layout_report: dict[str, Any] = {
+        "entries": [],
+        "groups": [],
+        "findings": [],
+        "skipped": not run_structural_reports,
+    }
     impact_analysis_report: dict[str, Any] = {
         "library_impacts": [],
         "module_impacts": [],
@@ -632,12 +668,13 @@ def _run_pipeline(
     workspace_graph_inputs: WorkspaceGraphInputs | None = None
     if run_structural_reports:
         progress.start_stage("structural_reports")
-        structural_reports = _collect_structural_report_bundle()
+        structural_reports = _collect_structural_report_bundle(progress_callback=progress.log)
         architecture_report = structural_reports.architecture_report
         analyzer_registry_report = structural_reports.analyzer_registry_report
         workspace_graph_inputs = structural_reports.graph_inputs
         dependency_graph_report = structural_reports.dependency_graph_report
         call_graph_report = structural_reports.call_graph_report
+        graphics_layout_report = structural_reports.graphics_layout_report
         impact_analysis_report = structural_reports.impact_analysis_report
         progress.complete_stage(
             "structural_reports",
@@ -651,7 +688,8 @@ def _run_pipeline(
 
     trace_report: dict[str, Any] | None = None
     if run_trace:
-        assert trace_target is not None
+        if trace_target is None:
+            raise ValueError("trace_target is required when run_trace is enabled")
         trace_target_label = sanitize_path_for_report(trace_target, repo_root=REPO_ROOT) or trace_target.as_posix()
         progress.start_stage("trace", detail=trace_target_label)
         trace_report = _collect_trace_report(trace_target)
@@ -713,7 +751,8 @@ def _run_pipeline(
         analysis_diff_report = build_analysis_diff_report(
             baseline=load_finding_collection(baseline_findings),
             current=finding_collection,
-            baseline_label=sanitize_path_for_report(baseline_findings, repo_root=REPO_ROOT) or baseline_findings.as_posix(),
+            baseline_label=sanitize_path_for_report(baseline_findings, repo_root=REPO_ROOT)
+            or baseline_findings.as_posix(),
             current_label="findings.json",
         )
 
@@ -746,11 +785,7 @@ def _run_pipeline(
             ),
         ),
         "pytest": _make_tool_status(
-            status=(
-                "fail"
-                if pytest_report["summary"]["failures"] or pytest_report["summary"]["errors"]
-                else "pass"
-            ),
+            status=("fail" if pytest_report["summary"]["failures"] or pytest_report["summary"]["errors"] else "pass"),
             report="pytest.json",
             raw_exit_code=pytest_report["exit_code"],
             normalized_exit_code=pytest_report["exit_code"],
@@ -773,21 +808,31 @@ def _run_pipeline(
             raw_exit_code=vulture_report.get("exit_code"),
             normalized_exit_code=(0 if vulture_report.get("skipped") else vulture_report.get("exit_code")),
             finding_count=vulture_report.get("finding_count", 0),
-            detail=("skipped by profile" if vulture_report.get("skipped") else f"{vulture_report.get('finding_count', 0)} findings"),
+            detail=(
+                "skipped by profile"
+                if vulture_report.get("skipped")
+                else f"{vulture_report.get('finding_count', 0)} findings"
+            ),
         ),
         "bandit": _make_tool_status(
             status=(
                 "skipped"
                 if bandit_report.get("skipped")
                 else "fail"
-                if bandit_report.get("findings") or bandit_report.get("errors") or bandit_report.get("exit_code", 0) != 0
+                if bandit_report.get("findings")
+                or bandit_report.get("errors")
+                or bandit_report.get("exit_code", 0) != 0
                 else "pass"
             ),
             report=None if bandit_report.get("skipped") else "bandit.json",
             raw_exit_code=bandit_report.get("exit_code"),
             normalized_exit_code=(0 if bandit_report.get("skipped") else bandit_report.get("exit_code")),
             finding_count=len(bandit_report.get("findings", [])),
-            detail=("skipped by profile" if bandit_report.get("skipped") else f"{len(bandit_report.get('findings', []))} findings"),
+            detail=(
+                "skipped by profile"
+                if bandit_report.get("skipped")
+                else f"{len(bandit_report.get('findings', []))} findings"
+            ),
         ),
         "corpus": _make_tool_status(
             status=(
@@ -806,9 +851,7 @@ def _run_pipeline(
                 if corpus_results_report["summary"]["failed_count"] > 0
                 else 0
             ),
-            finding_count=(
-                0 if corpus_results_report is None else corpus_results_report["summary"]["failed_count"]
-            ),
+            finding_count=(0 if corpus_results_report is None else corpus_results_report["summary"]["failed_count"]),
             detail=(
                 "skipped because no manifest directory was provided"
                 if corpus_results_report is None
@@ -826,11 +869,7 @@ def _run_pipeline(
             report=None if not run_structural_reports else "architecture.json",
             raw_exit_code=None,
             normalized_exit_code=(
-                None
-                if not run_structural_reports
-                else 1
-                if phase2_rule_metadata_gate["status"] == "fail"
-                else 0
+                None if not run_structural_reports else 1 if phase2_rule_metadata_gate["status"] == "fail" else 0
             ),
             finding_count=len(phase2_rule_metadata_gate["blocking_rule_ids"]),
             detail=(
@@ -844,9 +883,7 @@ def _run_pipeline(
     }
     overall_status = _overall_status(tool_statuses)
     failing_tools = [name for name, payload in tool_statuses.items() if payload["status"] == "fail"]
-    non_blocking_tools = [
-        name for name, payload in tool_statuses.items() if payload["status"] == "pass_with_notes"
-    ]
+    non_blocking_tools = [name for name, payload in tool_statuses.items() if payload["status"] == "pass_with_notes"]
 
     reports = artifact_reports_map(
         PIPELINE_ARTIFACTS,
@@ -887,26 +924,36 @@ def _run_pipeline(
                 else 0
             ),
             "rule_metadata": (
-                None
-                if not run_structural_reports
-                else 1
-                if phase2_rule_metadata_gate["status"] == "fail"
-                else 0
+                None if not run_structural_reports else 1 if phase2_rule_metadata_gate["status"] == "fail" else 0
             ),
         },
         artifact_registry_report=artifact_registry_report,
         progress_report=f"{sanitized_output_dir}/progress.json",
         findings_schema=findings_schema,
         counts={
-            "baseline_new_findings": 0 if analysis_diff_report is None else analysis_diff_report["summary"]["new_count"],
-            "baseline_resolved_findings": 0 if analysis_diff_report is None else analysis_diff_report["summary"]["resolved_count"],
-            "baseline_changed_findings": 0 if analysis_diff_report is None else analysis_diff_report["summary"]["changed_count"],
-            "baseline_unchanged_findings": 0 if analysis_diff_report is None else analysis_diff_report["summary"]["unchanged_count"],
+            "baseline_new_findings": 0
+            if analysis_diff_report is None
+            else analysis_diff_report["summary"]["new_count"],
+            "baseline_resolved_findings": 0
+            if analysis_diff_report is None
+            else analysis_diff_report["summary"]["resolved_count"],
+            "baseline_changed_findings": 0
+            if analysis_diff_report is None
+            else analysis_diff_report["summary"]["changed_count"],
+            "baseline_unchanged_findings": 0
+            if analysis_diff_report is None
+            else analysis_diff_report["summary"]["unchanged_count"],
             "normalized_findings": len(finding_collection.findings),
             "corpus_case_count": 0 if corpus_results_report is None else corpus_results_report["summary"]["case_count"],
-            "corpus_passed_case_count": 0 if corpus_results_report is None else corpus_results_report["summary"]["passed_count"],
-            "corpus_failed_case_count": 0 if corpus_results_report is None else corpus_results_report["summary"]["failed_count"],
-            "corpus_execution_error_count": 0 if corpus_results_report is None else corpus_results_report["summary"]["execution_error_count"],
+            "corpus_passed_case_count": 0
+            if corpus_results_report is None
+            else corpus_results_report["summary"]["passed_count"],
+            "corpus_failed_case_count": 0
+            if corpus_results_report is None
+            else corpus_results_report["summary"]["failed_count"],
+            "corpus_execution_error_count": 0
+            if corpus_results_report is None
+            else corpus_results_report["summary"]["execution_error_count"],
             "ruff_findings": ruff_report.get("finding_count", 0),
             "pyright_errors": pyright_report.get("error_count", 0),
             "pyright_warnings": pyright_report.get("warning_count", 0),
@@ -920,12 +967,23 @@ def _run_pipeline(
             "phase2_rule_metadata_advisory_gaps": len(phase2_rule_metadata_gate["advisory_rule_ids"]),
             "dependency_graph_edges": len(dependency_graph_report["edges"]),
             "call_graph_edges": len(call_graph_report["edges"]),
+            "graphics_layout_entries": len(graphics_layout_report["entries"]),
+            "graphics_layout_groups": len(graphics_layout_report["groups"]),
+            "graphics_layout_findings": len(graphics_layout_report["findings"]),
             "impact_analysis_library_nodes": len(impact_analysis_report["library_impacts"]),
             "impact_analysis_module_nodes": len(impact_analysis_report["module_impacts"]),
-            "workspace_graph_snapshot_failures": 0 if workspace_graph_inputs is None else len(workspace_graph_inputs.snapshot_failures),
-            "trace_dataflow_issues": 0 if trace_report is None else trace_report.get("dataflow_analysis", {}).get("issue_count", 0),
-            "trace_unreachable_logic": 0 if trace_report is None else len(trace_report.get("heuristics", {}).get("unreachable_logic", [])),
-            "trace_transform_violations": 0 if trace_report is None else len(trace_report.get("heuristics", {}).get("transform_invariant_violations", [])),
+            "workspace_graph_snapshot_failures": 0
+            if workspace_graph_inputs is None
+            else len(workspace_graph_inputs.snapshot_failures),
+            "trace_dataflow_issues": 0
+            if trace_report is None
+            else trace_report.get("dataflow_analysis", {}).get("issue_count", 0),
+            "trace_unreachable_logic": 0
+            if trace_report is None
+            else len(trace_report.get("heuristics", {}).get("unreachable_logic", [])),
+            "trace_transform_violations": 0
+            if trace_report is None
+            else len(trace_report.get("heuristics", {}).get("transform_invariant_violations", [])),
         },
     )
 
@@ -943,6 +1001,7 @@ def _run_pipeline(
             "analyzer_registry": None if analyzer_registry_report.get("skipped") else analyzer_registry_report,
             "dependency_graph": None if dependency_graph_report.get("skipped") else dependency_graph_report,
             "call_graph": None if call_graph_report.get("skipped") else call_graph_report,
+            "graphics_layout": None if graphics_layout_report.get("skipped") else graphics_layout_report,
             "impact_analysis": None if impact_analysis_report.get("skipped") else impact_analysis_report,
             "trace": trace_report,
             "findings": finding_collection.to_dict(),

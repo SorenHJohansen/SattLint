@@ -35,6 +35,7 @@ class Parameter:
     sorting: Literal["RS", "WS", "RS/WS", "NoS"]
     ownership: Literal["RO", "WO", "RO/WO", "NoO"]
 
+
 @dataclass
 class BuiltinFunction:
     name: str
@@ -43,16 +44,15 @@ class BuiltinFunction:
     parameters: list[Parameter]
     precision_scangroup: bool  # (PS) flag
 
+
 # Define all built-ins
 SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
     "abs": BuiltinFunction(
         name="abs",
         type="Function",
         return_type="AnyType",
-        parameters=[
-            Parameter(name="Argument", datatype="AnyType", direction="in", sorting="RS", ownership="RO")
-        ],
-        precision_scangroup=True
+        parameters=[Parameter(name="Argument", datatype="AnyType", direction="in", sorting="RS", ownership="RO")],
+        precision_scangroup=True,
     ),
     "acof1": BuiltinFunction(
         name="acof1",
@@ -64,9 +64,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="OC", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="O", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="C", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO")
+            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "acof2": BuiltinFunction(
         name="acof2",
@@ -77,9 +77,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="OO", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="O", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="C", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO")
+            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "acof3": BuiltinFunction(
         name="acof3",
@@ -89,9 +89,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Acof", datatype="AcofType", direction="inout", sorting="RS/WS", ownership="RO/WO"),
             Parameter(name="OO", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="O", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO")
+            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "acof4": BuiltinFunction(
         name="acof4",
@@ -103,9 +103,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="OH", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="O", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="C", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO")
+            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "acof5": BuiltinFunction(
         name="acof5",
@@ -115,9 +115,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Acof", datatype="AcofType", direction="inout", sorting="RS/WS", ownership="RO/WO"),
             Parameter(name="OO", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="C", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO")
+            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "acof8": BuiltinFunction(
         name="acof8",
@@ -128,9 +128,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="OO", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="OC", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="O", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO")
+            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "acof9": BuiltinFunction(
         name="acof9",
@@ -141,9 +141,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="OO", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="OC", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="C", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO")
+            Parameter(name="Time", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "adddurations": BuiltinFunction(
         name="adddurations",
@@ -153,9 +153,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Duration", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Duration", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="DurationSum", datatype="Duration", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "addtimeandduration": BuiltinFunction(
         name="addtimeandduration",
@@ -165,18 +165,16 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Time", datatype="Time", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Duration", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Time", datatype="Time", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "arctan": BuiltinFunction(
         name="arctan",
         type="Function",
         return_type="Real",
-        parameters=[
-            Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")
-        ],
-        precision_scangroup=True
+        parameters=[Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")],
+        precision_scangroup=True,
     ),
     "asciirecordtostring": BuiltinFunction(
         name="asciirecordtostring",
@@ -187,9 +185,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="NoOfCharacters", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="NoOfCharsPerInteger", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="String", datatype="String", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "assignsystemboolean": BuiltinFunction(
         name="assignsystemboolean",
@@ -198,9 +196,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="SysVarId", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="SystemVarBoolVal", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "assignsysteminteger": BuiltinFunction(
         name="assignsysteminteger",
@@ -209,9 +207,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="SysVarId", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="SystemVarIntVal", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "assignsystemreal": BuiltinFunction(
         name="assignsystemreal",
@@ -220,9 +218,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="SysVarId", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="SystemVarRealVal", datatype="Real", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "assignsystemstring": BuiltinFunction(
         name="assignsystemstring",
@@ -231,9 +229,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="SysVarId", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="SystemVarStringVal", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "bcdtointeger": BuiltinFunction(
         name="bcdtointeger",
@@ -242,9 +240,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="BCD", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Int", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "boolean16tointeger": BuiltinFunction(
         name="boolean16tointeger",
@@ -253,9 +251,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="BooleanRecord", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Int", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "boolean32tointeger": BuiltinFunction(
         name="boolean32tointeger",
@@ -264,9 +262,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="BooleanRecord", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Int", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "checksum": BuiltinFunction(
         name="checksum",
@@ -278,9 +276,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="StopPos", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Type", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Result", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "clearqueue": BuiltinFunction(
         name="clearqueue",
@@ -288,18 +286,16 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="Queue", datatype="QueueObject", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "clearstring": BuiltinFunction(
         name="clearstring",
         type="Procedure",
         return_type=None,
-        parameters=[
-            Parameter(name="String", datatype="String", direction="out", sorting="WS", ownership="WO")
-        ],
-        precision_scangroup=False
+        parameters=[Parameter(name="String", datatype="String", direction="out", sorting="WS", ownership="WO")],
+        precision_scangroup=False,
     ),
     "closedevice": BuiltinFunction(
         name="closedevice",
@@ -307,10 +303,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="DeviceRef", datatype="tObject", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "closefile": BuiltinFunction(
         name="closefile",
@@ -318,10 +316,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="FileRef", datatype="tObject", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "comlidial": BuiltinFunction(
         name="comlidial",
@@ -330,10 +330,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="ComliMaster", datatype="tObject", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="TelePhoneNo", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "comlihangup": BuiltinFunction(
         name="comlihangup",
@@ -341,10 +343,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="ComliMaster", datatype="tObject", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "concatenate": BuiltinFunction(
         name="concatenate",
@@ -354,9 +358,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="String1", datatype="String", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="String2", datatype="String", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Result", datatype="String", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "copyduration": BuiltinFunction(
         name="copyduration",
@@ -364,9 +368,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="Source", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Destination", datatype="Duration", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Destination", datatype="Duration", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "copystring": BuiltinFunction(
         name="copystring",
@@ -375,9 +379,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Source", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Destination", datatype="String", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "copystringnosort": BuiltinFunction(
         name="copystringnosort",
@@ -386,9 +390,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Source", datatype="String", direction="in var", sorting="NoS", ownership="RO"),
             Parameter(name="Destination", datatype="String", direction="out", sorting="NoS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "copytime": BuiltinFunction(
         name="copytime",
@@ -396,9 +400,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="Source", datatype="Time", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Destination", datatype="Time", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Destination", datatype="Time", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "copyvariable": BuiltinFunction(
         name="copyvariable",
@@ -407,9 +411,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Source", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Destination", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "copyvarnosort": BuiltinFunction(
         name="copyvarnosort",
@@ -418,18 +422,16 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Source", datatype="AnyType", direction="in var", sorting="NoS", ownership="RO"),
             Parameter(name="Destination", datatype="AnyType", direction="out", sorting="NoS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "cos": BuiltinFunction(
         name="cos",
         type="Function",
         return_type="Real",
-        parameters=[
-            Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")
-        ],
-        precision_scangroup=True
+        parameters=[Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")],
+        precision_scangroup=True,
     ),
     "createarray": BuiltinFunction(
         name="createarray",
@@ -440,9 +442,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="FirstIndex", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="LastIndex", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="ArrayElement", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "createdevice": BuiltinFunction(
         name="createdevice",
@@ -450,9 +452,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="Device", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "createqueue": BuiltinFunction(
         name="createqueue",
@@ -462,9 +464,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Queue", datatype="QueueObject", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="Size", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="QueueElement", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "createwritefile": BuiltinFunction(
         name="createwritefile",
@@ -473,10 +475,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="FileRef", datatype="tObject", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="FileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "currentqueuesize": BuiltinFunction(
         name="currentqueuesize",
@@ -484,9 +488,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type="Integer",
         parameters=[
             Parameter(name="Queue", datatype="QueueObject", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "currentuser": BuiltinFunction(
         name="currentuser",
@@ -494,9 +498,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="UserName", datatype="String", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="UserClassName", datatype="String", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="UserClassName", datatype="String", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "cutstring": BuiltinFunction(
         name="cutstring",
@@ -505,9 +509,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="String", datatype="String", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="Length", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "definestaticrouting": BuiltinFunction(
         name="definestaticrouting",
@@ -518,9 +522,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="RemoteSystem", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="LocalPort", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="PortInNextSystem", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "deletearray": BuiltinFunction(
         name="deletearray",
@@ -528,9 +532,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="Array", datatype="ArrayObject", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "deleteeditfile": BuiltinFunction(
         name="deleteeditfile",
@@ -538,9 +542,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="FileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "deletefile": BuiltinFunction(
         name="deletefile",
@@ -548,10 +552,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="FileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "deletequeue": BuiltinFunction(
         name="deletequeue",
@@ -559,9 +565,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="Queue", datatype="QueueObject", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "deletewindow": BuiltinFunction(
         name="deletewindow",
@@ -570,9 +576,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="ModulePath", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="SelectClass", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "durationgreaterthan": BuiltinFunction(
         name="durationgreaterthan",
@@ -581,9 +587,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Duration", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Duration", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "durationtodurrec": BuiltinFunction(
         name="durationtodurrec",
@@ -592,9 +598,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Duration", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="DurationRecord", datatype="DurationRecord", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "durationtostring": BuiltinFunction(
         name="durationtostring",
@@ -603,29 +609,29 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Duration", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="DurationString", datatype="String", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "durrectoduration": BuiltinFunction(
         name="durrectoduration",
         type="Procedure",
         return_type=None,
         parameters=[
-            Parameter(name="DurationRecord", datatype="DurationRecord", direction="in var", sorting="RS", ownership="RO"),
+            Parameter(
+                name="DurationRecord", datatype="DurationRecord", direction="in var", sorting="RS", ownership="RO"
+            ),
             Parameter(name="Duration", datatype="Duration", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "elapsed": BuiltinFunction(
         name="elapsed",
         type="Function",
         return_type="Integer",
-        parameters=[
-            Parameter(name="Timer", datatype="Timer", direction="in var", sorting="RS", ownership="RO")
-        ],
-        precision_scangroup=True
+        parameters=[Parameter(name="Timer", datatype="Timer", direction="in var", sorting="RS", ownership="RO")],
+        precision_scangroup=True,
     ),
     "equal": BuiltinFunction(
         name="equal",
@@ -633,9 +639,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type="Boolean",
         parameters=[
             Parameter(name="Variable", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Variable", datatype="AnyType", direction="in var", sorting="RS", ownership="RO")
+            Parameter(name="Variable", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "equalstrings": BuiltinFunction(
         name="equalstrings",
@@ -644,9 +650,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="String1", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="String2", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="CaseSensitive", datatype="Boolean", direction="in", sorting="RS", ownership="RO")
+            Parameter(name="CaseSensitive", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "equalvariables": BuiltinFunction(
         name="equalvariables",
@@ -655,18 +661,16 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Variable", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Variable", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "exp": BuiltinFunction(
         name="exp",
         type="Function",
         return_type="Real",
-        parameters=[
-            Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")
-        ],
-        precision_scangroup=True
+        parameters=[Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")],
+        precision_scangroup=True,
     ),
     "extractstring": BuiltinFunction(
         name="extractstring",
@@ -676,9 +680,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="String", datatype="String", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="String2", datatype="String", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Length", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "fdurationtostring": BuiltinFunction(
         name="fdurationtostring",
@@ -688,9 +692,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Duration", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="DurationFormat", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="DurationString", datatype="String", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "fileexists": BuiltinFunction(
         name="fileexists",
@@ -698,10 +702,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="FileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "getarray": BuiltinFunction(
         name="getarray",
@@ -711,9 +717,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Array", datatype="ArrayObject", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Index", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="ArrayElement", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "getascii": BuiltinFunction(
         name="getascii",
@@ -721,9 +727,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type="Integer",
         parameters=[
             Parameter(name="Str", datatype="String", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "getfirstqueue": BuiltinFunction(
         name="getfirstqueue",
@@ -732,9 +738,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Queue", datatype="QueueObject", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="QueueElement", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "getlastqueue": BuiltinFunction(
         name="getlastqueue",
@@ -743,9 +749,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Queue", datatype="QueueObject", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="QueueElement", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "getrecordcompnosort": BuiltinFunction(
         name="getrecordcompnosort",
@@ -755,9 +761,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Rec", datatype="AnyType", direction="in var", sorting="NoS", ownership="RO"),
             Parameter(name="ComponentIndex", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="ResultRec", datatype="AnyType", direction="out", sorting="NoS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="NoS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="NoS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "getrecordcomponent": BuiltinFunction(
         name="getrecordcomponent",
@@ -767,9 +773,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Rec", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="ComponentIndex", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="ResultRec", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "getremotefile": BuiltinFunction(
         name="getremotefile",
@@ -779,10 +785,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="RemoteSystemIdentity", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="RemoteFileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="LocalFileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "getremotesinglefile": BuiltinFunction(
         name="getremotesinglefile",
@@ -792,26 +800,22 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="RemoteSystemIdentity", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="RemoteFileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="LocalFileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "getstringpos": BuiltinFunction(
         name="getstringpos",
         type="Function",
         return_type="Integer",
-        parameters=[
-            Parameter(name="String", datatype="String", direction="inout", sorting="NoS", ownership="NoO")
-        ],
-        precision_scangroup=False
+        parameters=[Parameter(name="String", datatype="String", direction="inout", sorting="NoS", ownership="NoO")],
+        precision_scangroup=False,
     ),
     "getsystemtype": BuiltinFunction(
-        name="getsystemtype",
-        type="Function",
-        return_type="Integer",
-        parameters=[],
-        precision_scangroup=False
+        name="getsystemtype", type="Function", return_type="Integer", parameters=[], precision_scangroup=False
     ),
     "gettime": BuiltinFunction(
         name="gettime",
@@ -819,9 +823,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="Time", datatype="Time", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "getuserfullname": BuiltinFunction(
         name="getuserfullname",
@@ -830,16 +834,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="UserName", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="FullName", datatype="String", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "getuseridletime": BuiltinFunction(
-        name="getuseridletime",
-        type="Function",
-        return_type="Integer",
-        parameters=[],
-        precision_scangroup=False
+        name="getuseridletime", type="Function", return_type="Integer", parameters=[], precision_scangroup=False
     ),
     "graycodetointeger": BuiltinFunction(
         name="graycodetointeger",
@@ -847,9 +847,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="BooleanRecord", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Int", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Int", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "initvariable": BuiltinFunction(
         name="initvariable",
@@ -858,9 +858,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Rec", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="InitRec", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "insertarray": BuiltinFunction(
         name="insertarray",
@@ -870,9 +870,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Array", datatype="ArrayObject", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Index", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="ArrayElement", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "insertascii": BuiltinFunction(
         name="insertascii",
@@ -881,9 +881,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="ASCII", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Str", datatype="String", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "insertstring": BuiltinFunction(
         name="insertstring",
@@ -893,9 +893,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="String", datatype="String", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="String2", datatype="String", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Length", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "integertobcd": BuiltinFunction(
         name="integertobcd",
@@ -904,9 +904,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Int", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="BCD", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "integertoboolean16": BuiltinFunction(
         name="integertoboolean16",
@@ -915,9 +915,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Int", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="BooleanRecord", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "integertoboolean32": BuiltinFunction(
         name="integertoboolean32",
@@ -926,9 +926,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Int", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="BooleanRecord", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "integertograycode": BuiltinFunction(
         name="integertograycode",
@@ -936,9 +936,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="Int", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="BooleanRecord", datatype="AnyType", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="BooleanRecord", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "integertooctalstring": BuiltinFunction(
         name="integertooctalstring",
@@ -948,9 +948,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="String", datatype="String", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="Value", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Width", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "integertostring": BuiltinFunction(
         name="integertostring",
@@ -960,16 +960,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="String", datatype="String", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="Value", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Width", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "isinsimulate": BuiltinFunction(
-        name="isinsimulate",
-        type="Function",
-        return_type="Boolean",
-        parameters=[],
-        precision_scangroup=False
+        name="isinsimulate", type="Function", return_type="Boolean", parameters=[], precision_scangroup=False
     ),
     "limit": BuiltinFunction(
         name="limit",
@@ -977,27 +973,23 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type="Boolean",
         parameters=[
             Parameter(name="Timer", datatype="Timer", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Value", datatype="Integer", direction="in", sorting="RS", ownership="RO")
+            Parameter(name="Value", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "ln": BuiltinFunction(
         name="ln",
         type="Function",
         return_type="Real",
-        parameters=[
-            Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")
-        ],
-        precision_scangroup=True
+        parameters=[Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")],
+        precision_scangroup=True,
     ),
     "loggedin": BuiltinFunction(
         name="loggedin",
         type="Function",
         return_type="Boolean",
-        parameters=[
-            Parameter(name="UserSign", datatype="String", direction="in", sorting="RS", ownership="RO")
-        ],
-        precision_scangroup=False
+        parameters=[Parameter(name="UserSign", datatype="String", direction="in", sorting="RS", ownership="RO")],
+        precision_scangroup=False,
     ),
     "maxlim": BuiltinFunction(
         name="maxlim",
@@ -1007,18 +999,16 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="In", datatype="Real", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="OnLim", datatype="Real", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Hyst", datatype="Real", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Q", datatype="Boolean", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Q", datatype="Boolean", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "maxstringlength": BuiltinFunction(
         name="maxstringlength",
         type="Function",
         return_type="Integer",
-        parameters=[
-            Parameter(name="String", datatype="String", direction="in var", sorting="NoS", ownership="RO")
-        ],
-        precision_scangroup=False
+        parameters=[Parameter(name="String", datatype="String", direction="in var", sorting="NoS", ownership="RO")],
+        precision_scangroup=False,
     ),
     "minlim": BuiltinFunction(
         name="minlim",
@@ -1028,9 +1018,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="In", datatype="Real", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="OnLim", datatype="Real", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Hyst", datatype="Real", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Q", datatype="Boolean", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Q", datatype="Boolean", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "mod": BuiltinFunction(
         name="mod",
@@ -1038,9 +1028,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type="Integer",
         parameters=[
             Parameter(name="Argument", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Argument", datatype="Integer", direction="in", sorting="RS", ownership="RO")
+            Parameter(name="Argument", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "movefile": BuiltinFunction(
         name="movefile",
@@ -1050,10 +1040,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="FileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="FileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Delete", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "nationallowercase": BuiltinFunction(
         name="nationallowercase",
@@ -1063,9 +1055,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="SourceString", datatype="String", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="DestinationString", datatype="String", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="NationCode", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "nationaluppercase": BuiltinFunction(
         name="nationaluppercase",
@@ -1075,9 +1067,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="SourceString", datatype="String", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="DestinationString", datatype="String", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="NationCode", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "neweditfile": BuiltinFunction(
         name="neweditfile",
@@ -1093,9 +1085,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="NoOfColumns", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="FontKind", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="FontSize", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "newwindow": BuiltinFunction(
         name="newwindow",
@@ -1113,9 +1105,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="SelectClass", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="TimeOut", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="WindowDisplayed", datatype="Boolean", direction="out", sorting="NoS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "octalstringtointeger": BuiltinFunction(
         name="octalstringtointeger",
@@ -1123,9 +1115,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type="Integer",
         parameters=[
             Parameter(name="String", datatype="String", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "offtimer": BuiltinFunction(
         name="offtimer",
@@ -1134,9 +1126,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Timer", datatype="OnOffTimerType", direction="inout", sorting="RS/WS", ownership="RO/WO"),
             Parameter(name="Enable", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="PresetTime", datatype="Duration", direction="in var", sorting="RS", ownership="RO")
+            Parameter(name="PresetTime", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "ontimer": BuiltinFunction(
         name="ontimer",
@@ -1145,9 +1137,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Timer", datatype="OnOffTimerType", direction="inout", sorting="RS/WS", ownership="RO/WO"),
             Parameter(name="Enable", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="PresetTime", datatype="Duration", direction="in var", sorting="RS", ownership="RO")
+            Parameter(name="PresetTime", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "opendevice": BuiltinFunction(
         name="opendevice",
@@ -1156,10 +1148,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Device", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="DeviceRef", datatype="tObject", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "openreadfile": BuiltinFunction(
         name="openreadfile",
@@ -1168,10 +1162,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="FileRef", datatype="tObject", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="FileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "openwritefile": BuiltinFunction(
         name="openwritefile",
@@ -1180,10 +1176,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="FileRef", datatype="tObject", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="FileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "operatorinteraction": BuiltinFunction(
         name="operatorinteraction",
@@ -1196,9 +1194,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Description", datatype="String", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="OldValue", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="NewValue", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "printfile": BuiltinFunction(
         name="printfile",
@@ -1210,10 +1208,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="RemoteFileNameSave", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="LocalFileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="LocalFileDelete", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "pulsetimer": BuiltinFunction(
         name="pulsetimer",
@@ -1222,9 +1222,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Timer", datatype="OnOffTimerType", direction="inout", sorting="RS/WS", ownership="RO/WO"),
             Parameter(name="PeriodTime", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="OnTime", datatype="Integer", direction="in", sorting="RS", ownership="RO")
+            Parameter(name="OnTime", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "putarray": BuiltinFunction(
         name="putarray",
@@ -1234,9 +1234,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Array", datatype="ArrayObject", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Index", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="ArrayElement", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "putblanks": BuiltinFunction(
         name="putblanks",
@@ -1245,9 +1245,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="String", datatype="String", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="NumberOfSpaces", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "putfirstqueue": BuiltinFunction(
         name="putfirstqueue",
@@ -1256,9 +1256,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Queue", datatype="QueueObject", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="QueueElement", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "putlastqueue": BuiltinFunction(
         name="putlastqueue",
@@ -1267,9 +1267,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Queue", datatype="QueueObject", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="QueueElement", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "putrecordcompnosort": BuiltinFunction(
         name="putrecordcompnosort",
@@ -1279,9 +1279,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Rec", datatype="AnyType", direction="out", sorting="NoS", ownership="WO"),
             Parameter(name="ComponentIndex", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="InputRec", datatype="AnyType", direction="in var", sorting="NoS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="NoS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="NoS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "putrecordcomponent": BuiltinFunction(
         name="putrecordcomponent",
@@ -1291,9 +1291,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Rec", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="ComponentIndex", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="InputRec", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "putremotefile": BuiltinFunction(
         name="putremotefile",
@@ -1303,10 +1303,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="RemoteSystemIdentity", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="RemoteFileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="LocalFileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "putremotesinglefile": BuiltinFunction(
         name="putremotesinglefile",
@@ -1316,37 +1318,57 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="RemoteSystemIdentity", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="RemoteFileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="LocalFileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "randomnorm": BuiltinFunction(
         name="randomnorm",
         type="Function",
         return_type="Real",
         parameters=[
-            Parameter(name="RandomGenerator", datatype="RandomGenerator", direction="inout", sorting="RS/WS", ownership="RO/WO")
+            Parameter(
+                name="RandomGenerator",
+                datatype="RandomGenerator",
+                direction="inout",
+                sorting="RS/WS",
+                ownership="RO/WO",
+            )
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "randomrect": BuiltinFunction(
         name="randomrect",
         type="Function",
         return_type="Real",
         parameters=[
-            Parameter(name="RandomGenerator", datatype="RandomGenerator", direction="inout", sorting="RS/WS", ownership="RO/WO")
+            Parameter(
+                name="RandomGenerator",
+                datatype="RandomGenerator",
+                direction="inout",
+                sorting="RS/WS",
+                ownership="RO/WO",
+            )
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "randomseed": BuiltinFunction(
         name="randomseed",
         type="Procedure",
         return_type=None,
         parameters=[
-            Parameter(name="RandomGenerator", datatype="RandomGenerator", direction="inout", sorting="RS/WS", ownership="RO/WO")
+            Parameter(
+                name="RandomGenerator",
+                datatype="RandomGenerator",
+                direction="inout",
+                sorting="RS/WS",
+                ownership="RO/WO",
+            )
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "readline": BuiltinFunction(
         name="readline",
@@ -1355,10 +1377,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="FileRef", datatype="tObject", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="String", datatype="String", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "readlinedevice": BuiltinFunction(
         name="readlinedevice",
@@ -1367,10 +1391,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="DeviceRef", datatype="tObject", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Data", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "readqueue": BuiltinFunction(
         name="readqueue",
@@ -1380,9 +1406,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Queue", datatype="QueueObject", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Number", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="QueueElement", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "readstringdevice": BuiltinFunction(
         name="readstringdevice",
@@ -1391,10 +1417,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="DeviceRef", datatype="tObject", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Data", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "readsystemstring": BuiltinFunction(
         name="readsystemstring",
@@ -1403,9 +1431,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="SystemVarId", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="SystemVarStringVal", datatype="String", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "readvar": BuiltinFunction(
         name="readvar",
@@ -1414,10 +1442,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="RemoteVariable", datatype="AnyType", direction="inout", sorting="NoS", ownership="NoO"),
             Parameter(name="LocalVariable", datatype="AnyType", direction="out", sorting="NoS", ownership="WO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "realtostring": BuiltinFunction(
         name="realtostring",
@@ -1428,9 +1458,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Value", datatype="Real", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Width", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Fraction", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "removestaticrouting": BuiltinFunction(
         name="removestaticrouting",
@@ -1439,7 +1469,7 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="RedundantRoutingInfo", datatype="Boolean", direction="in", sorting="RS", ownership="RO")
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "restorevariable": BuiltinFunction(
         name="restorevariable",
@@ -1448,9 +1478,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Variable", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="RestoreFile", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "restorevariablematch": BuiltinFunction(
         name="restorevariablematch",
@@ -1459,18 +1489,16 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Variable", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="RestoreFile", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "round": BuiltinFunction(
         name="round",
         type="Function",
         return_type="Integer",
-        parameters=[
-            Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")
-        ],
-        precision_scangroup=True
+        parameters=[Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")],
+        precision_scangroup=True,
     ),
     "savetovss": BuiltinFunction(
         name="savetovss",
@@ -1479,10 +1507,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="FileName", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Comment", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "savevariable": BuiltinFunction(
         name="savevariable",
@@ -1491,9 +1521,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Variable", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="SaveFile", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "savevariablecoded": BuiltinFunction(
         name="savevariablecoded",
@@ -1502,9 +1532,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Variable", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="SaveFile", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "searcharray": BuiltinFunction(
         name="searcharray",
@@ -1517,9 +1547,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="SearchElement", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="SearchComponent", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="FoundElement", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "searchreccomponent": BuiltinFunction(
         name="searchreccomponent",
@@ -1532,9 +1562,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="SearchRecord", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="SearchComponent", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="FoundRec", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "setbooleanvalue": BuiltinFunction(
         name="SetBooleanValue",
@@ -1542,9 +1572,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="Variable", datatype="Boolean", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Value", datatype="Boolean", direction="in", sorting="RS", ownership="RO")
+            Parameter(name="Value", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "setseed": BuiltinFunction(
         name="setseed",
@@ -1552,18 +1582,18 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="Seed", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="RandomGenerator", datatype="RandomGenerator", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="RandomGenerator", datatype="RandomGenerator", direction="out", sorting="WS", ownership="WO"
+            ),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "setshowprogram": BuiltinFunction(
         name="setshowprogram",
         type="Procedure",
         return_type=None,
-        parameters=[
-            Parameter(name="Enable", datatype="Boolean", direction="in", sorting="RS", ownership="RO")
-        ],
-        precision_scangroup=False
+        parameters=[Parameter(name="Enable", datatype="Boolean", direction="in", sorting="RS", ownership="RO")],
+        precision_scangroup=False,
     ),
     "setstringpos": BuiltinFunction(
         name="setstringpos",
@@ -1572,9 +1602,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="String", datatype="String", direction="inout", sorting="NoS", ownership="NoO"),
             Parameter(name="Position", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "settime": BuiltinFunction(
         name="settime",
@@ -1582,9 +1612,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="Time", datatype="Time", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "setupdevice": BuiltinFunction(
         name="setupdevice",
@@ -1593,27 +1623,23 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Device", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Values", datatype="AnyType", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "sin": BuiltinFunction(
         name="sin",
         type="Function",
         return_type="Real",
-        parameters=[
-            Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")
-        ],
-        precision_scangroup=True
+        parameters=[Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")],
+        precision_scangroup=True,
     ),
     "sqrt": BuiltinFunction(
         name="sqrt",
         type="Function",
         return_type="Real",
-        parameters=[
-            Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")
-        ],
-        precision_scangroup=True
+        parameters=[Parameter(name="Argument", datatype="Real", direction="in", sorting="RS", ownership="RO")],
+        precision_scangroup=True,
     ),
     "standalonewindow": BuiltinFunction(
         name="standalonewindow",
@@ -1630,18 +1656,16 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="SelectClass", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="TimeOut", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="WindowDisplayed", datatype="Boolean", direction="out", sorting="NoS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "stringlength": BuiltinFunction(
         name="stringlength",
         type="Function",
         return_type="Integer",
-        parameters=[
-            Parameter(name="String", datatype="String", direction="in var", sorting="NoS", ownership="RO")
-        ],
-        precision_scangroup=False
+        parameters=[Parameter(name="String", datatype="String", direction="in var", sorting="NoS", ownership="RO")],
+        precision_scangroup=False,
     ),
     "stringmatch": BuiltinFunction(
         name="stringmatch",
@@ -1651,9 +1675,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Pattern", datatype="String", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Searchstring", datatype="String", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="CaseSensitive", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "stringtoasciirecord": BuiltinFunction(
         name="stringtoasciirecord",
@@ -1663,9 +1687,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="String", datatype="String", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="NoOfCharsPerInteger", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="IntegerRecord", datatype="AnyType", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "stringtoduration": BuiltinFunction(
         name="stringtoduration",
@@ -1674,9 +1698,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="DurationString", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Duration", datatype="Duration", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "stringtointeger": BuiltinFunction(
         name="stringtointeger",
@@ -1684,9 +1708,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type="Integer",
         parameters=[
             Parameter(name="String", datatype="String", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "stringtoreal": BuiltinFunction(
         name="stringtoreal",
@@ -1694,9 +1718,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type="Real",
         parameters=[
             Parameter(name="String", datatype="String", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "stringtotime": BuiltinFunction(
         name="stringtotime",
@@ -1706,9 +1730,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="TimeString", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="TimeFormat", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Time", datatype="Time", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "stringtotimerecord": BuiltinFunction(
         name="stringtotimerecord",
@@ -1718,9 +1742,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="TimeString", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="TimeFormat", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="TimeRecord", datatype="TimeRecord", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "subdurationfromtime": BuiltinFunction(
         name="subdurationfromtime",
@@ -1730,9 +1754,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Time", datatype="Time", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Duration", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Time", datatype="Time", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "subdurations": BuiltinFunction(
         name="subdurations",
@@ -1742,9 +1766,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Duration", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Duration", datatype="Duration", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="DurationSum", datatype="Duration", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "subtimerecords": BuiltinFunction(
         name="subtimerecords",
@@ -1754,9 +1778,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="TimeRecord", datatype="TimeRecord", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="TimeRecord", datatype="TimeRecord", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Duration", datatype="Duration", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "subtimes": BuiltinFunction(
         name="subtimes",
@@ -1766,9 +1790,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Time", datatype="Time", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Time", datatype="Time", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Duration", datatype="Duration", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "systemboolean": BuiltinFunction(
         name="systemboolean",
@@ -1776,9 +1800,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type="Boolean",
         parameters=[
             Parameter(name="SystemVarId", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "systemcommand": BuiltinFunction(
         name="systemcommand",
@@ -1786,10 +1810,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="Command", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "systeminteger": BuiltinFunction(
         name="systeminteger",
@@ -1797,9 +1823,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type="Integer",
         parameters=[
             Parameter(name="SystemVarId", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "systemreal": BuiltinFunction(
         name="systemreal",
@@ -1807,9 +1833,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type="Real",
         parameters=[
             Parameter(name="SystemVarId", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "timebefore": BuiltinFunction(
         name="timebefore",
@@ -1818,9 +1844,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Time", datatype="Time", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Time", datatype="Time", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "timer": BuiltinFunction(
         name="timer",
@@ -1829,18 +1855,16 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Timer", datatype="Timer", direction="out", sorting="WS", ownership="WO"),
             Parameter(name="Enable", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Hold", datatype="Boolean", direction="in", sorting="RS", ownership="RO")
+            Parameter(name="Hold", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "timerclear": BuiltinFunction(
         name="timerclear",
         type="Procedure",
         return_type=None,
-        parameters=[
-            Parameter(name="Timer", datatype="Timer", direction="out", sorting="WS", ownership="WO")
-        ],
-        precision_scangroup=True
+        parameters=[Parameter(name="Timer", datatype="Timer", direction="out", sorting="WS", ownership="WO")],
+        precision_scangroup=True,
     ),
     "timerecordbefore": BuiltinFunction(
         name="timerecordbefore",
@@ -1849,9 +1873,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="TimeRecord", datatype="TimeRecord", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="TimeRecord", datatype="TimeRecord", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "timerecordtostring": BuiltinFunction(
         name="timerecordtostring",
@@ -1861,9 +1885,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="TimeRecord", datatype="TimeRecord", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="TimeFormat", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="TimeString", datatype="String", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "timerecordtotime": BuiltinFunction(
         name="timerecordtotime",
@@ -1872,27 +1896,23 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="TimeRecord", datatype="TimeRecord", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="Time", datatype="Time", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "timerstart": BuiltinFunction(
         name="timerstart",
         type="Procedure",
         return_type=None,
-        parameters=[
-            Parameter(name="Timer", datatype="Timer", direction="out", sorting="WS", ownership="WO")
-        ],
-        precision_scangroup=True
+        parameters=[Parameter(name="Timer", datatype="Timer", direction="out", sorting="WS", ownership="WO")],
+        precision_scangroup=True,
     ),
     "timerstop": BuiltinFunction(
         name="timerstop",
         type="Procedure",
         return_type=None,
-        parameters=[
-            Parameter(name="Timer", datatype="Timer", direction="out", sorting="WS", ownership="WO")
-        ],
-        precision_scangroup=True
+        parameters=[Parameter(name="Timer", datatype="Timer", direction="out", sorting="WS", ownership="WO")],
+        precision_scangroup=True,
     ),
     "timetocalendarrecord": BuiltinFunction(
         name="timetocalendarrecord",
@@ -1901,9 +1921,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Time", datatype="Time", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="CalendarRecord", datatype="CalendarRecord", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "timetostring": BuiltinFunction(
         name="timetostring",
@@ -1913,9 +1933,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="Time", datatype="Time", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="TimeFormat", datatype="String", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="TimeString", datatype="String", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "timetotimerecord": BuiltinFunction(
         name="timetotimerecord",
@@ -1924,9 +1944,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="Time", datatype="Time", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="TimeRecord", datatype="TimeRecord", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=True
+        precision_scangroup=True,
     ),
     "toggleeditfile": BuiltinFunction(
         name="toggleeditfile",
@@ -1942,9 +1962,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="NoOfColumns", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="FontKind", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="FontSize", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "togglewindow": BuiltinFunction(
         name="togglewindow",
@@ -1962,9 +1982,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="SelectClass", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="TimeOut", datatype="Integer", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="WindowDisplayed", datatype="Boolean", direction="out", sorting="NoS", ownership="WO"),
-            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="Status", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "vssgetlasterror": BuiltinFunction(
         name="vssgetlasterror",
@@ -1972,9 +1992,9 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         return_type=None,
         parameters=[
             Parameter(name="ErrorCode", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
-            Parameter(name="ErrorText", datatype="String", direction="out", sorting="WS", ownership="WO")
+            Parameter(name="ErrorText", datatype="String", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "writeline": BuiltinFunction(
         name="writeline",
@@ -1983,10 +2003,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="FileRef", datatype="tObject", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="String", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "writelinedevice": BuiltinFunction(
         name="writelinedevice",
@@ -1996,10 +2018,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="DeviceRef", datatype="tObject", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Data", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="EndOfSection", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "writelongvar": BuiltinFunction(
         name="writelongvar",
@@ -2008,10 +2032,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="RemoteVariable", datatype="AnyType", direction="inout", sorting="NoS", ownership="NoO"),
             Parameter(name="LocalVariable", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "writestring": BuiltinFunction(
         name="writestring",
@@ -2020,10 +2046,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="FileRef", datatype="tObject", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="String", datatype="String", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "writestringdevice": BuiltinFunction(
         name="writestringdevice",
@@ -2033,10 +2061,12 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
             Parameter(name="DeviceRef", datatype="tObject", direction="in", sorting="RS", ownership="RO"),
             Parameter(name="Data", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
             Parameter(name="EndOfSection", datatype="Boolean", direction="in", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
     "writevar": BuiltinFunction(
         name="writevar",
@@ -2045,16 +2075,20 @@ SATTLINE_BUILTINS: dict[str, BuiltinFunction] = {
         parameters=[
             Parameter(name="RemoteVariable", datatype="AnyType", direction="inout", sorting="NoS", ownership="NoO"),
             Parameter(name="LocalVariable", datatype="AnyType", direction="in var", sorting="RS", ownership="RO"),
-            Parameter(name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"),
-            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO")
+            Parameter(
+                name="AsyncOperation", datatype="AsyncOperation", direction="inout", sorting="RS/WS", ownership="RO/WO"
+            ),
+            Parameter(name="DebugStatus", datatype="Integer", direction="out", sorting="WS", ownership="WO"),
         ],
-        precision_scangroup=False
+        precision_scangroup=False,
     ),
 }
+
 
 def is_builtin_function(name: str) -> bool:
     """Check if a function name is a built-in"""
     return name.lower() in SATTLINE_BUILTINS
+
 
 def get_function_signature(name: str) -> BuiltinFunction | None:
     """Get function signature for validation"""

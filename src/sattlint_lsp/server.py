@@ -56,6 +56,7 @@ from .local_parser import IncrementalDocumentParserAdapter
 from .workspace_store import SnapshotBundle, WorkspaceSnapshotStore
 
 _PROGRAM_SUFFIXES = {".s", ".x"}
+_DIAGNOSTIC_SUFFIXES = {".s", ".x", ".g"}
 _NAME_PATTERN = r"[0-9A-Za-z_'\u00C0-\u024F]+"
 _REFERENCE_EXPR_RE = re.compile(rf"{_NAME_PATTERN}(?:\.{_NAME_PATTERN})*")
 _BASE_COMPLETION_RE = re.compile(rf"(?P<base>{_NAME_PATTERN}(?:\.{_NAME_PATTERN})*)\.(?P<prefix>{_NAME_PATTERN})?$")
@@ -77,6 +78,10 @@ _DEFAULT_LOCAL_PARSER = IncrementalDocumentParserAdapter()
 
 def _is_program_path(path: Path) -> bool:
     return path.suffix.lower() in _PROGRAM_SUFFIXES
+
+
+def _is_diagnostic_path(path: Path) -> bool:
+    return path.suffix.lower() in _DIAGNOSTIC_SUFFIXES
 
 
 def _cf(value: str) -> str:
@@ -157,7 +162,7 @@ class LspSettings:
     mode: str = CodeMode.DRAFT.value
     scan_root_only: bool = False
     enable_variable_diagnostics: bool = True
-    workspace_diagnostics_mode: str = "background"
+    workspace_diagnostics_mode: str = "off"
     max_completion_items: int = 100
 
     @classmethod
@@ -177,7 +182,7 @@ class LspSettings:
             scan_root_only=bool(data.get("scanRootOnly", False)),
             enable_variable_diagnostics=bool(data.get("enableVariableDiagnostics", True)),
             workspace_diagnostics_mode=_normalize_workspace_diagnostics_mode(
-                data.get("workspaceDiagnosticsMode", "background")
+                data.get("workspaceDiagnosticsMode", "off")
             ),
             max_completion_items=limit,
         )
@@ -251,10 +256,7 @@ def _ensure_document_paths(ls: SattLineLanguageServer) -> dict[Path, str]:
 
 
 def _background_workspace_diagnostics_enabled(ls: SattLineLanguageServer) -> bool:
-    return (
-        ls.settings.enable_variable_diagnostics
-        and ls.settings.workspace_diagnostics_mode == "background"
-    )
+    return ls.settings.enable_variable_diagnostics and ls.settings.workspace_diagnostics_mode == "background"
 
 
 def resolve_entry_file(
@@ -328,13 +330,13 @@ def _filter_visible_definitions(
         return definitions
     current_path = tuple(segment for segment in module_path.split(".") if segment)
     visible = [
-        definition
-        for definition in definitions
-        if _path_startswith(current_path, definition.declaration_module_path)
+        definition for definition in definitions if _path_startswith(current_path, definition.declaration_module_path)
     ]
     if not visible:
         return definitions
-    visible.sort(key=lambda definition: (-len(definition.declaration_module_path), definition.canonical_path.casefold()))
+    visible.sort(
+        key=lambda definition: (-len(definition.declaration_module_path), definition.canonical_path.casefold())
+    )
     return visible
 
 
@@ -393,7 +395,9 @@ def collect_completion_candidates(
                     LspCompletionItem(
                         label=field.name,
                         kind=CompletionItemKind.Field,
-                        detail=str(field.datatype.value if isinstance(field.datatype, Simple_DataType) else field.datatype),
+                        detail=str(
+                            field.datatype.value if isinstance(field.datatype, Simple_DataType) else field.datatype
+                        ),
                     ),
                 )
         return list(items_by_label.values())[:limit]
@@ -411,7 +415,9 @@ def collect_completion_candidates(
     ]
 
 
-def build_source_path_index(paths: set[Path] | tuple[Path, ...]) -> tuple[dict[str, tuple[Path, ...]], dict[tuple[str, str], Path]]:
+def build_source_path_index(
+    paths: set[Path] | tuple[Path, ...],
+) -> tuple[dict[str, tuple[Path, ...]], dict[tuple[str, str], Path]]:
     by_name: dict[str, list[Path]] = {}
     by_key: dict[tuple[str, str], Path] = {}
     for path in sorted((item.resolve() for item in paths), key=lambda item: item.as_posix().casefold()):
@@ -421,7 +427,9 @@ def build_source_path_index(paths: set[Path] | tuple[Path, ...]) -> tuple[dict[s
     return ({name: tuple(items) for name, items in by_name.items()}, by_key)
 
 
-def _resolve_bundle_source_path(bundle: SnapshotBundle, source_file: str | None, source_library: str | None) -> Path | None:
+def _resolve_bundle_source_path(
+    bundle: SnapshotBundle, source_file: str | None, source_library: str | None
+) -> Path | None:
     if not source_file:
         return None
     file_key = source_file.casefold()
@@ -702,6 +710,7 @@ def collect_semantic_diagnostics(bundle: SnapshotBundle, document_path: Path) ->
             message=item.message,
             severity=DiagnosticSeverity.Warning,
             source="sattlint",
+            code=item.analyzer_key,
         )
         for item in bundle.snapshot.semantic_diagnostics_for_path(document_path.resolve())
     ]
@@ -890,7 +899,7 @@ def _publish_diagnostics(
     include_comment_validation: bool = True,
 ) -> None:
     document_path = _document_path(document)
-    if not _is_program_path(document_path):
+    if not _is_diagnostic_path(document_path):
         state = ls.document_states.pop(document.uri, None)
         state_path = getattr(state, "path", None)
         if state_path is not None:
@@ -910,7 +919,7 @@ def _publish_diagnostics(
         ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=document.uri, diagnostics=syntax_diagnostics))
         return
 
-    if not include_semantic or not ls.settings.enable_variable_diagnostics:
+    if not include_semantic or not _is_program_path(document_path) or not ls.settings.enable_variable_diagnostics:
         ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=document.uri, diagnostics=[]))
         return
 
@@ -954,7 +963,9 @@ def _publish_diagnostics(
         return
 
     ls.text_document_publish_diagnostics(
-        PublishDiagnosticsParams(uri=document.uri, diagnostics=list(_semantic_diagnostics_for_path(bundle, document_path)))
+        PublishDiagnosticsParams(
+            uri=document.uri, diagnostics=list(_semantic_diagnostics_for_path(bundle, document_path))
+        )
     )
 
 
@@ -1283,7 +1294,7 @@ def on_initialize(ls: SattLineLanguageServer, params: InitializeParams) -> None:
 def on_did_open(ls: SattLineLanguageServer, params: DidOpenTextDocumentParams) -> None:
     document = ls.workspace.get_text_document(params.text_document.uri)
     document_path = _document_path(document)
-    if not _is_program_path(document_path):
+    if not _is_diagnostic_path(document_path):
         state = ls.document_states.pop(document.uri, None)
         if state is not None:
             _ensure_document_paths(ls).pop(state.path.resolve(), None)
@@ -1304,7 +1315,7 @@ def on_did_open(ls: SattLineLanguageServer, params: DidOpenTextDocumentParams) -
 def on_did_change(ls: SattLineLanguageServer, params: DidChangeTextDocumentParams) -> None:
     document = ls.workspace.get_text_document(params.text_document.uri)
     document_path = _document_path(document)
-    if not _is_program_path(document_path):
+    if not _is_diagnostic_path(document_path):
         state = ls.document_states.pop(document.uri, None)
         if state is not None:
             _ensure_document_paths(ls).pop(state.path.resolve(), None)
@@ -1326,7 +1337,7 @@ def on_did_change(ls: SattLineLanguageServer, params: DidChangeTextDocumentParam
 def on_did_save(ls: SattLineLanguageServer, params: DidSaveTextDocumentParams) -> None:
     document = ls.workspace.get_text_document(params.text_document.uri)
     document_path = _document_path(document)
-    if not _is_program_path(document_path):
+    if not _is_diagnostic_path(document_path):
         state = ls.document_states.pop(document.uri, None)
         if state is not None:
             ls.document_paths.pop(state.path.resolve(), None)
@@ -1348,8 +1359,14 @@ def on_did_save(ls: SattLineLanguageServer, params: DidSaveTextDocumentParams) -
 @server.feature("textDocument/didClose")
 def on_did_close(ls: SattLineLanguageServer, params: DidCloseTextDocumentParams) -> None:
     state = ls.document_states.pop(params.text_document.uri, None)
-    document_path = state.path if state is not None else Path(uris.to_fs_path(params.text_document.uri) or params.text_document.uri)
+    document_path = (
+        state.path if state is not None else Path(uris.to_fs_path(params.text_document.uri) or params.text_document.uri)
+    )
     _ensure_document_paths(ls).pop(document_path.resolve(), None)
+    if not _is_diagnostic_path(document_path):
+        ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=params.text_document.uri, diagnostics=[]))
+        return
+
     if not _is_program_path(document_path):
         ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=params.text_document.uri, diagnostics=[]))
         return

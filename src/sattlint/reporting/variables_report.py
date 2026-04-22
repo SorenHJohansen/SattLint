@@ -11,6 +11,7 @@ class IssueKind(Enum):
     UNUSED = "unused"
     UNUSED_DATATYPE_FIELD = "unused_datatype_field"
     READ_ONLY_NON_CONST = "read_only_non_const"
+    NAMING_ROLE_MISMATCH = "naming_role_mismatch"
     UI_ONLY = "ui_only"
     PROCEDURE_STATUS = "procedure_status"
     NEVER_READ = "never_read"
@@ -19,6 +20,7 @@ class IssueKind(Enum):
     HIDDEN_GLOBAL_COUPLING = "hidden_global_coupling"
     HIGH_FAN_IN_OUT = "high_fan_in_out"
     UNKNOWN_PARAMETER_TARGET = "unknown_parameter_target"
+    REQUIRED_PARAMETER_CONNECTION = "required_parameter_connection"
     CONTRACT_MISMATCH = "contract_mismatch"
     STRING_MAPPING_MISMATCH = "string_mapping_mismatch"
     DATATYPE_DUPLICATION = "datatype_duplication"
@@ -36,6 +38,7 @@ DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.READ_ONLY_NON_CONST,
     IssueKind.NEVER_READ,
     IssueKind.UNKNOWN_PARAMETER_TARGET,
+    IssueKind.REQUIRED_PARAMETER_CONNECTION,
     IssueKind.STRING_MAPPING_MISMATCH,
     IssueKind.DATATYPE_DUPLICATION,
     IssueKind.MIN_MAX_MAPPING_MISMATCH,
@@ -45,6 +48,7 @@ DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
 )
 
 LOW_CONFIDENCE_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
+    IssueKind.NAMING_ROLE_MISMATCH,
     IssueKind.UI_ONLY,
     IssueKind.PROCEDURE_STATUS,
     IssueKind.WRITE_WITHOUT_EFFECT,
@@ -69,6 +73,7 @@ SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.UNUSED: "Unused variables",
     IssueKind.UNUSED_DATATYPE_FIELD: "Unused fields in datatypes",
     IssueKind.READ_ONLY_NON_CONST: "Read-only but not Const variables",
+    IssueKind.NAMING_ROLE_MISMATCH: "Naming-to-behavior mismatches",
     IssueKind.UI_ONLY: "UI/display-only variables",
     IssueKind.PROCEDURE_STATUS: "Procedure status handling",
     IssueKind.NEVER_READ: "Written but never read variables",
@@ -77,6 +82,7 @@ SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.HIDDEN_GLOBAL_COUPLING: "Hidden global coupling",
     IssueKind.HIGH_FAN_IN_OUT: "High fan-in or fan-out variables",
     IssueKind.UNKNOWN_PARAMETER_TARGET: "Unknown parameter mapping targets",
+    IssueKind.REQUIRED_PARAMETER_CONNECTION: "Missing required parameter connections",
     IssueKind.CONTRACT_MISMATCH: "Cross-module contract mismatches",
     IssueKind.STRING_MAPPING_MISMATCH: "String mapping type mismatches",
     IssueKind.DATATYPE_DUPLICATION: "Duplicated complex datatypes (should be RECORD)",
@@ -125,13 +131,8 @@ class VariableIssue:
         role_txt = f"{self.role} "
         field_txt = f".{self.field_path}" if self.field_path else ""
         seq_txt = f" seq={self.sequence_name!r}" if self.sequence_name else ""
-        reset_txt = (
-            f" reset={self.reset_variable!r}" if self.reset_variable else ""
-        )
-        return (
-            f"[{mp}] {role_txt} {self.variable.name!r}{field_txt} ({dt})"
-            f"{seq_txt}{reset_txt}"
-        )
+        reset_txt = f" reset={self.reset_variable!r}" if self.reset_variable else ""
+        return f"[{mp}] {role_txt} {self.variable.name!r}{field_txt} ({dt})" f"{seq_txt}{reset_txt}"
 
 
 @dataclass
@@ -142,9 +143,7 @@ class VariablesReport:
     include_empty_sections: bool = False
 
     def __post_init__(self) -> None:
-        if self.visible_kinds is not None and not isinstance(
-            self.visible_kinds, frozenset
-        ):
+        if self.visible_kinds is not None and not isinstance(self.visible_kinds, frozenset):
             self.visible_kinds = frozenset(self.visible_kinds)
 
     @property
@@ -164,6 +163,10 @@ class VariablesReport:
         return [i for i in self.issues if i.kind is IssueKind.READ_ONLY_NON_CONST]
 
     @property
+    def naming_role_mismatch(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.NAMING_ROLE_MISMATCH]
+
+    @property
     def ui_only(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.UI_ONLY]
 
@@ -181,9 +184,7 @@ class VariablesReport:
 
     @property
     def global_scope_minimization(self) -> list[VariableIssue]:
-        return [
-            i for i in self.issues if i.kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION
-        ]
+        return [i for i in self.issues if i.kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION]
 
     @property
     def hidden_global_coupling(self) -> list[VariableIssue]:
@@ -195,9 +196,11 @@ class VariablesReport:
 
     @property
     def unknown_parameter_targets(self) -> list[VariableIssue]:
-        return [
-            i for i in self.issues if i.kind is IssueKind.UNKNOWN_PARAMETER_TARGET
-        ]
+        return [i for i in self.issues if i.kind is IssueKind.UNKNOWN_PARAMETER_TARGET]
+
+    @property
+    def required_parameter_connections(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.REQUIRED_PARAMETER_CONNECTION]
 
     @property
     def contract_mismatches(self) -> list[VariableIssue]:
@@ -237,14 +240,10 @@ class VariablesReport:
 
     def _summary_kinds(self) -> tuple[IssueKind, ...]:
         if self.visible_kinds is not None:
-            return tuple(
-                kind for kind in SUMMARY_SECTION_ORDER if kind in self.visible_kinds
-            )
+            return tuple(kind for kind in SUMMARY_SECTION_ORDER if kind in self.visible_kinds)
 
         present_kinds = {issue.kind for issue in self.issues}
-        return tuple(
-            kind for kind in SUMMARY_SECTION_ORDER if kind in present_kinds
-        )
+        return tuple(kind for kind in SUMMARY_SECTION_ORDER if kind in present_kinds)
 
     def _issues_for_kind(self, kind: IssueKind) -> list[VariableIssue]:
         if kind is IssueKind.UNUSED:
@@ -253,6 +252,8 @@ class VariablesReport:
             return self.unused_datatype_fields
         if kind is IssueKind.READ_ONLY_NON_CONST:
             return self.read_only_non_const
+        if kind is IssueKind.NAMING_ROLE_MISMATCH:
+            return self.naming_role_mismatch
         if kind is IssueKind.UI_ONLY:
             return self.ui_only
         if kind is IssueKind.PROCEDURE_STATUS:
@@ -269,6 +270,8 @@ class VariablesReport:
             return self.high_fan_in_out
         if kind is IssueKind.UNKNOWN_PARAMETER_TARGET:
             return self.unknown_parameter_targets
+        if kind is IssueKind.REQUIRED_PARAMETER_CONNECTION:
+            return self.required_parameter_connections
         if kind is IssueKind.CONTRACT_MISMATCH:
             return self.contract_mismatches
         if kind is IssueKind.STRING_MAPPING_MISMATCH:
@@ -314,9 +317,7 @@ class VariablesReport:
         if issue.variable is None and issue.literal_value is not None:
             site = f" [{issue.site}]" if issue.site else ""
             if issue.literal_span is not None:
-                span_text = (
-                    f"line {issue.literal_span.line}, col {issue.literal_span.column}"
-                )
+                span_text = f"line {issue.literal_span.line}, col {issue.literal_span.column}"
             else:
                 span_text = "line ?, col ?"
             return f"{location}{site} :: {issue.literal_value} ({span_text})"
@@ -347,10 +348,7 @@ class VariablesReport:
         return f"{location} :: {detail}"
 
     def _section_counts(self, summary_kinds: tuple[IssueKind, ...]) -> list[str]:
-        return [
-            f"  - {SECTION_TITLES[kind]}: {len(self._issues_for_kind(kind))}"
-            for kind in summary_kinds
-        ]
+        return [f"  - {SECTION_TITLES[kind]}: {len(self._issues_for_kind(kind))}" for kind in summary_kinds]
 
     @staticmethod
     def _append_empty_section(lines: list[str], title: str) -> None:
@@ -358,9 +356,7 @@ class VariablesReport:
         lines.append("      none")
 
     @classmethod
-    def _append_variable_issue_list(
-        cls, lines: list[str], title: str, issues: list[VariableIssue]
-    ) -> None:
+    def _append_variable_issue_list(cls, lines: list[str], title: str, issues: list[VariableIssue]) -> None:
         if not issues:
             cls._append_empty_section(lines, title)
             return
@@ -387,6 +383,13 @@ class VariablesReport:
             lines,
             SECTION_TITLES[IssueKind.UNKNOWN_PARAMETER_TARGET],
             self.unknown_parameter_targets,
+        )
+
+    def _append_required_parameter_connections(self, lines: list[str]) -> None:
+        self._append_variable_issue_list(
+            lines,
+            SECTION_TITLES[IssueKind.REQUIRED_PARAMETER_CONNECTION],
+            self.required_parameter_connections,
         )
 
     def _append_procedure_status(self, lines: list[str]) -> None:
@@ -417,24 +420,17 @@ class VariablesReport:
             return
 
         lines.append(self._section_header(title, len(self.string_mapping_mismatch)))
-        location_w = max(
-            len(".".join(issue.module_path)) for issue in self.string_mapping_mismatch
-        )
+        location_w = max(len(".".join(issue.module_path)) for issue in self.string_mapping_mismatch)
         src_name_w = max(
-            len(issue.source_variable.name) if issue.source_variable else 0
-            for issue in self.string_mapping_mismatch
+            len(issue.source_variable.name) if issue.source_variable else 0 for issue in self.string_mapping_mismatch
         )
         src_type_w = max(
             len(issue.source_variable.datatype_text) if issue.source_variable else 0
             for issue in self.string_mapping_mismatch
         )
-        tgt_name_w = max(
-            len(issue.variable.name) if issue.variable else 0
-            for issue in self.string_mapping_mismatch
-        )
+        tgt_name_w = max(len(issue.variable.name) if issue.variable else 0 for issue in self.string_mapping_mismatch)
         tgt_type_w = max(
-            len(issue.variable.datatype_text) if issue.variable else 0
-            for issue in self.string_mapping_mismatch
+            len(issue.variable.datatype_text) if issue.variable else 0 for issue in self.string_mapping_mismatch
         )
 
         header = (
@@ -448,9 +444,7 @@ class VariablesReport:
         for issue in self.string_mapping_mismatch:
             location = ".".join(issue.module_path)
             src_name = issue.source_variable.name if issue.source_variable else "?"
-            src_type = (
-                issue.source_variable.datatype_text if issue.source_variable else "?"
-            )
+            src_type = issue.source_variable.datatype_text if issue.source_variable else "?"
             tgt_name = issue.variable.name if issue.variable else "?"
             tgt_type = issue.variable.datatype_text if issue.variable else "?"
             lines.append(
@@ -477,12 +471,8 @@ class VariablesReport:
             datatype_name = issue.variable.datatype_text if issue.variable else "?"
             location = ".".join(issue.module_path)
             count = issue.duplicate_count or 0
-            lines.append(
-                f"      Datatype '{datatype_name}' declared {count} times in {location}:"
-            )
-            lines.append(
-                f"        - {issue.variable.name if issue.variable else '?'} ({issue.role})"
-            )
+            lines.append(f"      Datatype '{datatype_name}' declared {count} times in {location}:")
+            lines.append(f"        - {issue.variable.name if issue.variable else '?'} ({issue.role})")
 
             if issue.duplicate_locations:
                 for dup_path, dup_role, dup_name in issue.duplicate_locations:
@@ -490,9 +480,7 @@ class VariablesReport:
                     if dup_location == location:
                         lines.append(f"          + {dup_name} ({dup_role})")
                     else:
-                        lines.append(
-                            f"          + {dup_location}: {dup_name} ({dup_role})"
-                        )
+                        lines.append(f"          + {dup_location}: {dup_name} ({dup_role})")
 
     def _append_min_max_mapping_mismatch(self, lines: list[str]) -> None:
         title = SECTION_TITLES[IssueKind.MIN_MAX_MAPPING_MISMATCH]
@@ -501,23 +489,14 @@ class VariablesReport:
             return
 
         lines.append(self._section_header(title, len(self.min_max_mapping_mismatch)))
-        location_w = max(
-            len(".".join(issue.module_path))
-            for issue in self.min_max_mapping_mismatch
-        )
+        location_w = max(len(".".join(issue.module_path)) for issue in self.min_max_mapping_mismatch)
         src_name_w = max(
-            len(issue.source_variable.name) if issue.source_variable else 0
-            for issue in self.min_max_mapping_mismatch
+            len(issue.source_variable.name) if issue.source_variable else 0 for issue in self.min_max_mapping_mismatch
         )
-        tgt_name_w = max(
-            len(issue.variable.name) if issue.variable else 0
-            for issue in self.min_max_mapping_mismatch
-        )
+        tgt_name_w = max(len(issue.variable.name) if issue.variable else 0 for issue in self.min_max_mapping_mismatch)
 
         header = (
-            f"      {'Location':<{location_w}}  "
-            f"{'Source Var':<{src_name_w}}  =>  "
-            f"{'Target Var':<{tgt_name_w}}"
+            f"      {'Location':<{location_w}}  " f"{'Source Var':<{src_name_w}}  =>  " f"{'Target Var':<{tgt_name_w}}"
         )
         lines.append(header)
         lines.append("      " + "-" * len(header.strip()))
@@ -527,9 +506,7 @@ class VariablesReport:
             src_name = issue.source_variable.name if issue.source_variable else "?"
             tgt_name = issue.variable.name if issue.variable else "?"
             lines.append(
-                f"      {location:<{location_w}}  "
-                f"{src_name:<{src_name_w}}  =>  "
-                f"{tgt_name:<{tgt_name_w}}"
+                f"      {location:<{location_w}}  " f"{src_name:<{src_name_w}}  =>  " f"{tgt_name:<{tgt_name_w}}"
             )
 
     def _append_magic_numbers(self, lines: list[str]) -> None:
@@ -558,6 +535,13 @@ class VariablesReport:
                 lines,
                 SECTION_TITLES[IssueKind.READ_ONLY_NON_CONST],
                 self.read_only_non_const,
+            )
+            return
+        if kind is IssueKind.NAMING_ROLE_MISMATCH:
+            self._append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.NAMING_ROLE_MISMATCH],
+                self.naming_role_mismatch,
             )
             return
         if kind is IssueKind.UI_ONLY:
@@ -603,6 +587,9 @@ class VariablesReport:
             return
         if kind is IssueKind.UNKNOWN_PARAMETER_TARGET:
             self._append_unknown_parameter_targets(lines)
+            return
+        if kind is IssueKind.REQUIRED_PARAMETER_CONNECTION:
+            self._append_required_parameter_connections(lines)
             return
         if kind is IssueKind.CONTRACT_MISMATCH:
             self._append_contract_mismatches(lines)
@@ -651,9 +638,7 @@ class VariablesReport:
     def summary(self) -> str:
         summary_kinds = self._summary_kinds()
         if not self.issues and not summary_kinds:
-            lines = format_report_header(
-                "Variable issues", self.basepicture_name, status="ok"
-            )
+            lines = format_report_header("Variable issues", self.basepicture_name, status="ok")
             lines.append("No issues found.")
             return "\n".join(lines)
 

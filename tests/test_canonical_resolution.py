@@ -1,6 +1,5 @@
 """Tests for canonical path resolution across parameter mappings."""
 
-
 from sattlint import constants as const
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.models.ast_model import (

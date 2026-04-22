@@ -11,7 +11,7 @@ A **module** is a container for graphical objects that behaves as a single objec
 - Move, resize, reshape, rotate, flip
 - Duplicate and delete
 - Stack order can be changed relative to other modules
-- All contained objects follow transformations  
+- All contained objects follow transformations
   - **Exception:** text never rotates
 
 ### Duplication Behavior
@@ -187,6 +187,8 @@ Used to open runtime text editors.
 ---
 
 ## 10. Composite Objects
+
+Serialized `.g` and `.y` record notes live in [sattline_serialized_composite_reference.md](sattline_serialized_composite_reference.md).
 
 ### 10.1 Picture Display
 

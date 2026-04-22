@@ -49,9 +49,7 @@ def build_pipeline_status_report(
     progress_report: str | None = None,
     findings_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    canonical_command = (
-        f"sattlint-analysis-pipeline --profile {profile} --output-dir {sanitized_output_dir}"
-    )
+    canonical_command = f"sattlint-analysis-pipeline --profile {profile} --output-dir {sanitized_output_dir}"
     payload = {
         "kind": "sattlint.pipeline.status",
         "profile": profile,
@@ -85,9 +83,7 @@ def build_pipeline_summary_report(
     progress_report: str | None = None,
     findings_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    canonical_command = (
-        f"sattlint-analysis-pipeline --profile {profile} --output-dir {sanitized_output_dir}"
-    )
+    canonical_command = f"sattlint-analysis-pipeline --profile {profile} --output-dir {sanitized_output_dir}"
     status_payload: dict[str, Any] = {
         "overall_status": overall_status_value,
         "tool_statuses": tool_statuses,

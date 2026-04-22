@@ -5,7 +5,7 @@ import os
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, ClassVar, cast
 
 import pytest
 
@@ -13,7 +13,10 @@ from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattlint import app
 from sattlint.analyzers import variable_usage_reporting as variables_reporting_module
 from sattlint.analyzers import variables as variables_module
-from sattlint.models.ast_model import FrameModule, ModuleTypeInstance, SingleModule
+from sattlint.analyzers.framework import AnalyzerSpec, Issue, SimpleReport
+from sattlint.analyzers.registry import get_actual_cli_analyzer_keys
+from sattlint.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
+from sattlint.models.project_graph import ProjectGraph
 from sattlint.reporting.variables_report import (
     ALL_VARIABLE_ANALYSIS_KINDS,
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
@@ -58,10 +61,10 @@ ENDDEF (*BasePicture*);
 
 
 class DummyReport:
-    basepicture_name = "Dummy"
-    issues: list[object] = []
-    visible_kinds = frozenset(DEFAULT_VARIABLE_ANALYSIS_KINDS)
-    include_empty_sections = True
+    basepicture_name: ClassVar[str] = "Dummy"
+    issues: ClassVar[list[object]] = []
+    visible_kinds: ClassVar[frozenset[app.IssueKind]] = frozenset(DEFAULT_VARIABLE_ANALYSIS_KINDS)
+    include_empty_sections: ClassVar[bool] = True
 
     def summary(self):
         return "summary"
@@ -274,10 +277,7 @@ def test_clear_screen_falls_back_to_cls_before_ansi(monkeypatch):
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows-specific")
 def test_configure_windows_console_api_sets_wide_char_signature():
-    from typing import TYPE_CHECKING
-
-    if TYPE_CHECKING:
-        import ctypes
+    import ctypes
 
     class _FakeCall:
         argtypes = None
@@ -291,10 +291,10 @@ def test_configure_windows_console_api_sets_wide_char_signature():
         SetConsoleCursorPosition = _FakeCall()
 
     class _Coord(ctypes.Structure):  # type: ignore[misc]
-        _fields_ = []
+        _fields_ = []  # noqa: RUF012
 
     class _BufferInfo(ctypes.Structure):  # type: ignore[misc]
-        _fields_ = []
+        _fields_ = []  # noqa: RUF012
 
     kernel32 = _FakeKernel32()
 
@@ -340,44 +340,26 @@ def test_self_check_allows_empty_analyzed_target_list(capsys):
 def test_documentation_config_defaults_are_merged(tmp_path):
     config_path = tmp_path / "config.toml"
     cfg, _created = app.load_config(config_path)
-    cfg["documentation"] = {
-        "classifications": {
-            "ops": {
-                "desc_label_equals": ["CustomLib:CustomOperation"]
-            }
-        }
-    }
+    cfg["documentation"] = {"classifications": {"ops": {"desc_label_equals": ["CustomLib:CustomOperation"]}}}
 
     app.save_config(config_path, cfg)
     loaded, _created = app.load_config(config_path)
 
     documentation_cfg = app.config_module.get_documentation_config(loaded)
-    assert documentation_cfg["classifications"]["ops"]["desc_label_equals"] == [
-        "CustomLib:CustomOperation"
-    ]
-    assert documentation_cfg["classifications"]["em"]["desc_label_equals"] == [
-        "nnestruct:EquipModCoordinate"
-    ]
+    assert documentation_cfg["classifications"]["ops"]["desc_label_equals"] == ["CustomLib:CustomOperation"]
+    assert documentation_cfg["classifications"]["em"]["desc_label_equals"] == ["nnestruct:EquipModCoordinate"]
 
 
 def test_legacy_documentation_rule_keys_are_normalized():
     documentation_cfg = app.config_module.get_documentation_config(
         {
             "documentation": {
-                "classifications": {
-                    "ops": {
-                        "descendant_moduletype_label_equals": [
-                            "CustomLib:LegacyOperation"
-                        ]
-                    }
-                }
+                "classifications": {"ops": {"descendant_moduletype_label_equals": ["CustomLib:LegacyOperation"]}}
             }
         }
     )
 
-    assert documentation_cfg["classifications"]["ops"]["desc_label_equals"] == [
-        "CustomLib:LegacyOperation"
-    ]
+    assert documentation_cfg["classifications"]["ops"]["desc_label_equals"] == ["CustomLib:LegacyOperation"]
 
 
 def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_context):
@@ -388,19 +370,11 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
 
     monkeypatch.setattr(app, "_run_checks", lambda *_: record("checks"))
     monkeypatch.setattr(app, "run_variable_analysis", lambda *_: record("variable"))
-    monkeypatch.setattr(
-        app, "run_datatype_usage_analysis", lambda *_: record("datatype")
-    )
+    monkeypatch.setattr(app, "run_datatype_usage_analysis", lambda *_: record("datatype"))
     monkeypatch.setattr(app, "run_debug_variable_usage", lambda *_: record("debug"))
-    monkeypatch.setattr(
-        app, "run_module_localvar_analysis", lambda *_: record("module")
-    )
-    monkeypatch.setattr(
-        app, "run_module_duplicates_analysis", lambda *_: record("module-compare")
-    )
-    monkeypatch.setattr(
-        app, "run_module_find_by_name", lambda *_: record("module-find")
-    )
+    monkeypatch.setattr(app, "run_module_localvar_analysis", lambda *_: record("module"))
+    monkeypatch.setattr(app, "run_module_duplicates_analysis", lambda *_: record("module-compare"))
+    monkeypatch.setattr(app, "run_module_find_by_name", lambda *_: record("module-find"))
     monkeypatch.setattr(app, "run_module_tree_debug", lambda *_: record("module-tree"))
     monkeypatch.setattr(app, "run_mms_interface_analysis", lambda *_: record("mms"))
     monkeypatch.setattr(app, "run_icf_validation", lambda *_: record("icf"))
@@ -503,9 +477,7 @@ def test_analyzer_catalog_menu_runs_selected_checks(noop_screen, monkeypatch):
             ),
         ],
     )
-    monkeypatch.setattr(
-        app, "_run_checks", lambda _cfg, selected: captured.append(selected)
-    )
+    monkeypatch.setattr(app, "_run_checks", lambda _cfg, selected: captured.append(selected))
     monkeypatch.setattr(builtins, "input", make_input(["2", "1", "b"]))
 
     app.analyzer_catalog_menu(app.DEFAULT_CONFIG.copy())
@@ -523,6 +495,80 @@ def test_get_enabled_analyzers_returns_default_cli_subset(monkeypatch):
     analyzers = app._get_enabled_analyzers()
 
     assert [spec.key for spec in analyzers] == ["variables", "sfc"]
+
+
+def test_run_checks_reaches_every_default_cli_analyzer(noop_screen, monkeypatch):
+    invoked: list[str] = []
+    analyzer_specs = [
+        AnalyzerSpec(
+            key=key,
+            name=f"Analyzer {index}",
+            description=f"Reachability probe for {key}",
+            run=lambda _context, analyzer_key=key: (
+                invoked.append(analyzer_key),
+                SimpleReport(name=analyzer_key),
+            )[1],
+        )
+        for index, key in enumerate(get_actual_cli_analyzer_keys(), start=1)
+    ]
+    monkeypatch.setattr(app, "_get_enabled_analyzers", lambda: analyzer_specs)
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("ProgramA", "bp-a", SimpleNamespace(unavailable_libraries=set()))]),
+    )
+
+    app._run_checks(app.DEFAULT_CONFIG.copy(), None)
+
+    assert invoked == list(get_actual_cli_analyzer_keys())
+
+
+def test_run_checks_applies_rule_profiles_to_simple_reports(noop_screen, monkeypatch, capsys):
+    target = SimpleNamespace(header=SimpleNamespace(name="Program"))
+
+    def _run_profiled_report(_context):
+        return SimpleReport(
+            name="Profiled",
+            issues=[
+                Issue(kind="naming.inconsistent_style", message="Name drift"),
+                Issue(kind="sorting.loop_output_refactor", message="Loop output refactor candidate"),
+            ],
+        )
+
+    monkeypatch.setattr(
+        app,
+        "_get_enabled_analyzers",
+        lambda: [
+            AnalyzerSpec(
+                key="profiled",
+                name="Profiled",
+                description="Synthetic analyzer for rule-profile coverage",
+                run=_run_profiled_report,
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        app, "_iter_loaded_projects", lambda *_args, **_kwargs: iter([("Program", target, SimpleNamespace())])
+    )
+
+    strict_cfg = deepcopy(app.DEFAULT_CONFIG)
+    strict_cfg["analysis"]["rule_profiles"]["active"] = "strict-pharma"
+    app._run_checks(strict_cfg, None)
+    strict_out = capsys.readouterr().out
+
+    assert "semantic.naming-inconsistent-style" in strict_out
+    assert "[error | style | semantic.naming-inconsistent-style]" in strict_out
+    assert "Suggested fix:" in strict_out
+    assert "semantic.loop-output-refactor" in strict_out
+
+    legacy_cfg = deepcopy(app.DEFAULT_CONFIG)
+    legacy_cfg["analysis"]["rule_profiles"]["active"] = "legacy-plant"
+    app._run_checks(legacy_cfg, None)
+    legacy_out = capsys.readouterr().out
+
+    assert "semantic.naming-inconsistent-style" not in legacy_out
+    assert "semantic.loop-output-refactor" not in legacy_out
+    assert "No issues found." in legacy_out
 
 
 def test_dump_menu_all_options(noop_screen, monkeypatch, real_context):
@@ -544,13 +590,9 @@ def test_dump_menu_all_options(noop_screen, monkeypatch, real_context):
     def record(name):
         dump_calls.append(name)
 
-    monkeypatch.setattr(
-        app.engine_module, "dump_parse_tree", lambda *_: record("parse")
-    )
+    monkeypatch.setattr(app.engine_module, "dump_parse_tree", lambda *_: record("parse"))
     monkeypatch.setattr(app.engine_module, "dump_ast", lambda *_: record("ast"))
-    monkeypatch.setattr(
-        app.engine_module, "dump_dependency_graph", lambda *_: record("deps")
-    )
+    monkeypatch.setattr(app.engine_module, "dump_dependency_graph", lambda *_: record("deps"))
     monkeypatch.setattr(app, "analyze_variables", lambda *_, **__: DummyReport())
 
     inputs = ["1", "y", "2", "y", "3", "y", "4", "y", "b"]
@@ -609,7 +651,7 @@ def test_config_menu_all_options(noop_screen, monkeypatch, tmp_path):
     assert cfg["mode"] in ("official", "draft")
 
 
-def test_show_config_uses_sectioned_layout(capsys):
+def test_show_config_uses_sectioned_layout(capsys, monkeypatch, tmp_path):
     cfg = deepcopy(app.DEFAULT_CONFIG)
     cfg.update(
         {
@@ -625,6 +667,33 @@ def test_show_config_uses_sectioned_layout(capsys):
         }
     )
 
+    monkeypatch.setattr(app, "get_graphics_rules_path", lambda: tmp_path / "graphics_rules.json")
+    monkeypatch.setattr(
+        app,
+        "load_graphics_rules",
+        lambda _path=None: (
+            {
+                "schema_version": 1,
+                "rules": [
+                    {
+                        "module_kind": "frame",
+                        "unit_structure_path": "L1.L2.UnitControl",
+                        "description": "Unit shell",
+                        "expected": {"moduledef": {"clipping_size": [1.0, 1.0]}},
+                    },
+                    {
+                        "module_kind": "moduletype",
+                        "moduletype_name": "EquipModPanelShort",
+                        "equipment_module_structure_path": "L1.L2.EquipModPanelShort",
+                        "expected": {"moduledef": {"clipping_size": [1.0, 1.0]}},
+                    },
+                ],
+            },
+            False,
+        ),
+    )
+    (tmp_path / "graphics_rules.json").write_text("{}", encoding="utf-8")
+
     app.show_config(cfg)
 
     out = capsys.readouterr().out
@@ -638,8 +707,301 @@ def test_show_config_uses_sectioned_layout(capsys):
     assert r"program_dir  Projects\Program" in out
     assert "Other Library Directories" in out
     assert r"[2] Projects\Lib2" in out
+    assert "Graphics Rules" in out
+    assert "graphics_rules_path" in out
+    assert "Configured Graphics Rule Selectors" in out
+    assert "unit_structure_path=L1.L2.UnitControl" in out
+    assert "equipment_module_structure_path=L1.L2.EquipModPanelShort" in out
     assert "Documentation Classifications" in out
     assert "desc_label_equals  nnestruct:EquipModCoordinate" in out
+
+
+def test_module_analysis_submenu_runs_graphics_rules_check(noop_screen, monkeypatch):
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        app,
+        "run_module_duplicates_analysis",
+        lambda *_: calls.append("compare"),
+    )
+    monkeypatch.setattr(
+        app,
+        "run_module_find_by_name",
+        lambda *_: calls.append("find"),
+    )
+    monkeypatch.setattr(
+        app,
+        "run_module_tree_debug",
+        lambda *_: calls.append("tree"),
+    )
+    monkeypatch.setattr(
+        app,
+        "run_graphics_rules_validation",
+        lambda *_: calls.append("graphics"),
+    )
+    monkeypatch.setattr(builtins, "input", make_input(["1", "2", "3", "4", "b"]))
+
+    app.module_analysis_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert calls == ["compare", "find", "tree", "graphics"]
+
+
+def test_graphics_rules_menu_adds_and_saves_rule(noop_screen, monkeypatch, tmp_path):
+    rules_path = tmp_path / "graphics_rules.json"
+    rules = {"schema_version": 1, "rules": []}
+    saved_rules: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(app, "get_graphics_rules_path", lambda: rules_path)
+    monkeypatch.setattr(app, "load_graphics_rules", lambda _path=None: (rules, False))
+    monkeypatch.setattr(
+        app,
+        "save_graphics_rules",
+        lambda _path, payload: saved_rules.append(deepcopy(payload)),
+    )
+    monkeypatch.setattr(
+        app,
+        "_prompt_graphics_rule_definition_with_config",
+        lambda _cfg=None: {
+            "module_name": "L1",
+            "module_kind": "frame",
+            "relative_module_path": "Equipmentmoduler.Stop.L1",
+            "moduletype_name": "",
+            "description": "House rule",
+            "expected": {
+                "invocation": {"coords": [1.43, 1.35, 0.0, 0.56, 0.56]},
+                "moduledef": {"clipping_size": [1.0, 0.21429]},
+            },
+        },
+    )
+    monkeypatch.setattr(builtins, "input", make_input(["1", "", "3", "", "b"]))
+
+    app.graphics_rules_menu()
+
+    assert len(saved_rules) == 1
+    assert saved_rules[0]["rules"][0]["relative_module_path"] == "Equipmentmoduler.Stop.L1"
+
+
+def test_pick_or_prompt_graphics_rule_selector_value_picks_discovered_option(monkeypatch):
+    monkeypatch.setattr(
+        app,
+        "_discover_graphics_rule_selector_options",
+        lambda *_args, **_kwargs: [
+            {
+                "selector_value": "L1.L2.UnitControl",
+                "count": 2,
+                "target_count": 1,
+                "sample_module_path": "TargetA.UnitA.L1.L2.UnitControl",
+            }
+        ],
+    )
+    monkeypatch.setattr(builtins, "input", make_input(["1"]))
+
+    selected = app._pick_or_prompt_graphics_rule_selector_value(
+        "unit_structure_path",
+        "single",
+        cfg=app.DEFAULT_CONFIG.copy(),
+    )
+
+    assert selected == "L1.L2.UnitControl"
+
+
+def test_discover_graphics_rule_selector_options_deduplicates_selectors(monkeypatch):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg["analyzed_programs_and_libraries"] = ["TargetA"]
+    graph = SimpleNamespace(unavailable_libraries=set())
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("TargetA", SimpleNamespace(), graph)]),
+    )
+    monkeypatch.setattr(
+        app,
+        "_collect_graphics_layout_entries_for_target",
+        lambda *_args, **_kwargs: [
+            {
+                "module_path": "TargetA.UnitA.L1.L2.UnitControl",
+                "unit_root_path": "TargetA.UnitA",
+                "unit_structure_path": "L1.L2.UnitControl",
+                "module_kind": "module",
+            },
+            {
+                "module_path": "TargetA.UnitB.L1.L2.UnitControl",
+                "unit_root_path": "TargetA.UnitB",
+                "unit_structure_path": "L1.L2.UnitControl",
+                "module_kind": "module",
+            },
+        ],
+    )
+
+    options = app._discover_graphics_rule_selector_options(
+        cfg,
+        selector_field="unit_structure_path",
+        module_kind="single",
+    )
+
+    assert options == [
+        {
+            "selector_value": "L1.L2.UnitControl",
+            "count": 2,
+            "target_count": 1,
+            "sample_module_path": "TargetA.UnitA.L1.L2.UnitControl",
+        }
+    ]
+
+
+def test_run_graphics_rules_validation_reports_not_to_spec(noop_screen, monkeypatch, capsys):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg["analyzed_programs_and_libraries"] = ["TargetA"]
+    graph = SimpleNamespace(unavailable_libraries=set())
+
+    monkeypatch.setattr(
+        app,
+        "load_graphics_rules",
+        lambda _path=None: (
+            {
+                "schema_version": 1,
+                "rules": [
+                    {
+                        "module_name": "L1",
+                        "module_kind": "frame",
+                        "relative_module_path": "Equipmentmoduler.Stop.L1",
+                        "expected": {
+                            "invocation": {"coords": [1.43, 1.35, 0.0, 0.56, 0.56]},
+                        },
+                    }
+                ],
+            },
+            False,
+        ),
+    )
+    monkeypatch.setattr(
+        app,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("TargetA", SimpleNamespace(), graph)]),
+    )
+    monkeypatch.setattr(
+        app,
+        "_collect_graphics_layout_entries_for_target",
+        lambda *_args, **_kwargs: [
+            {
+                "module_path": "TargetA.Equipmentmoduler.Stop.L1",
+                "relative_module_path": "Equipmentmoduler.Stop.L1",
+                "module_name": "L1",
+                "module_kind": "frame",
+                "invocation": {"coords": [1.5, 1.35, 0.0, 0.56, 0.56]},
+                "moduledef": {},
+            }
+        ],
+    )
+
+    app.run_graphics_rules_validation(cfg)
+
+    out = capsys.readouterr().out
+    assert "=== Target: TargetA ===" in out
+    assert "Not to spec      : 1" in out
+    assert "TargetA.Equipmentmoduler.Stop.L1" in out
+
+
+def test_print_graphics_rules_summary_shows_table(capsys):
+    app._print_graphics_rules_summary(
+        Path("graphics_rules.json"),
+        {
+            "schema_version": 1,
+            "rules": [
+                {
+                    "module_kind": "frame",
+                    "module_name": "L1",
+                    "relative_module_path": "Equipmentmoduler.Stop.L1",
+                    "moduletype_name": "",
+                    "description": "Stop state layout",
+                    "expected": {
+                        "moduledef": {"clipping_size": [1.0, 0.14286]},
+                    },
+                }
+            ],
+        },
+        dirty=False,
+    )
+
+    out = capsys.readouterr().out
+    assert "Selector" in out
+    assert "Fields" in out
+    assert "Description" in out
+    assert "Equipmentmoduler.Stop.L1" in out
+
+
+def test_annotate_graphics_entries_with_structure_paths_adds_unit_and_equipment_paths(monkeypatch):
+    documented_unit = SimpleNamespace(path=("TargetA", "KaHA221A"), name="KaHA221A")
+    monkeypatch.setattr(app, "classify_documentation_structure", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        app,
+        "discover_documentation_unit_candidates",
+        lambda _classification: [documented_unit],
+    )
+
+    entries = [
+        {
+            "module_path": "TargetA.KaHA221A.L1",
+            "module_name": "L1",
+            "module_kind": "frame",
+        },
+        {
+            "module_path": "TargetA.KaHA221A.L1.L2.UnitControl",
+            "module_name": "UnitControl",
+            "module_kind": "module",
+        },
+        {
+            "module_path": "TargetA.KaHA221A.L1.L2.Empty.L1.L2.EquipModPanel",
+            "module_name": "EquipModPanel",
+            "module_kind": "moduletype-instance",
+            "moduletype_name": "EquipModPanelShort",
+        },
+    ]
+
+    annotated = app._annotate_graphics_entries_with_structure_paths(
+        entries,
+        cast(BasePicture, SimpleNamespace()),
+        cast(ProjectGraph, SimpleNamespace(unavailable_libraries=set())),
+    )
+
+    assert annotated[0]["unit_structure_path"] == "L1"
+    assert annotated[1]["unit_structure_path"] == "L1.L2.UnitControl"
+    assert annotated[2]["unit_structure_path"] == "L1.L2.Empty.L1.L2.EquipModPanelShort"
+    assert annotated[2]["equipment_module_structure_path"] == "L1.L2.EquipModPanelShort"
+
+
+def test_annotate_graphics_entries_with_structure_paths_ignores_wrapper_candidate_without_unitcontrol(
+    monkeypatch,
+):
+    wrapper_candidate = SimpleNamespace(path=("BasePicture", "L1"), name="L1")
+    monkeypatch.setattr(app, "classify_documentation_structure", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        app,
+        "discover_documentation_unit_candidates",
+        lambda _classification: [wrapper_candidate],
+    )
+
+    entries = [
+        {
+            "module_path": "BasePicture.L1.Changelog",
+            "module_name": "Changelog",
+            "module_kind": "module",
+        },
+        {
+            "module_path": "BasePicture.L1.LoadPanel_Frame",
+            "module_name": "LoadPanel_Frame",
+            "module_kind": "frame",
+        },
+    ]
+
+    annotated = app._annotate_graphics_entries_with_structure_paths(
+        entries,
+        cast(BasePicture, SimpleNamespace()),
+        cast(ProjectGraph, SimpleNamespace(unavailable_libraries=set())),
+    )
+
+    assert all("unit_root_path" not in entry for entry in annotated)
+    assert all("unit_structure_path" not in entry for entry in annotated)
 
 
 def test_documentation_menu_scope_by_moduletype(noop_screen, monkeypatch):
@@ -758,9 +1120,7 @@ def test_syntax_check_command_ok(tmp_path, capsys):
     assert captured.err == ""
 
 
-def test_cli_entry_point_forwards_sys_argv_without_loading_ast(
-    tmp_path, capsys, monkeypatch
-):
+def test_cli_entry_point_forwards_sys_argv_without_loading_ast(tmp_path, capsys, monkeypatch):
     source_file = tmp_path / "ValidProgram.s"
     source_file.write_text(VALID_SINGLE_FILE, encoding="utf-8")
 
@@ -797,9 +1157,7 @@ def test_main_starts_without_targets_and_skips_ast_cache(noop_screen, monkeypatc
     assert calls == ["self_check"]
 
 
-def test_main_blocks_target_dependent_menu_actions_without_targets(
-    noop_screen, monkeypatch, capsys
-):
+def test_main_blocks_target_dependent_menu_actions_without_targets(noop_screen, monkeypatch, capsys):
     cfg = deepcopy(app.DEFAULT_CONFIG)
     cfg["analyzed_programs_and_libraries"] = []
 
@@ -940,12 +1298,8 @@ def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_conte
         "_iter_loaded_projects",
         lambda *_args, **_kwargs: iter([("TargetA", "project", SimpleNamespace(unavailable_libraries=set()))]),
     )
-    monkeypatch.setattr(
-        variables_reporting_module, "analyze_datatype_usage", lambda *_, **__: "report"
-    )
-    monkeypatch.setattr(
-        variables_reporting_module, "debug_variable_usage", lambda *_, **__: "report"
-    )
+    monkeypatch.setattr(variables_reporting_module, "analyze_datatype_usage", lambda *_, **__: "report")
+    monkeypatch.setattr(variables_reporting_module, "debug_variable_usage", lambda *_, **__: "report")
 
     monkeypatch.setattr(builtins, "input", make_input(["1", "VarName"]))
     app.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())
@@ -979,9 +1333,7 @@ def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatc
     assert out.count("Issues: 0") == 2
 
 
-def test_run_variable_analysis_all_analyses_executes_real_analyzers(
-    noop_screen, monkeypatch, capsys
-):
+def test_run_variable_analysis_all_analyses_executes_real_analyzers(noop_screen, monkeypatch, capsys):
     project_bp = parser_core_parse_source_text(VALID_SINGLE_FILE)
     graph = SimpleNamespace(
         unavailable_libraries=set(),
@@ -1002,9 +1354,7 @@ def test_run_variable_analysis_all_analyses_executes_real_analyzers(
     assert "No variable analysis output was produced" not in out
 
 
-def test_run_variable_analysis_all_reports_lists_empty_categories(
-    noop_screen, monkeypatch, capsys
-):
+def test_run_variable_analysis_all_reports_lists_empty_categories(noop_screen, monkeypatch, capsys):
     graph = SimpleNamespace(unavailable_libraries=set(), warnings=[])
     monkeypatch.setattr(
         app,
@@ -1042,9 +1392,7 @@ def test_run_variable_analysis_all_reports_lists_empty_categories(
     assert out.count("      none") >= 3
 
 
-def test_run_variable_analysis_all_reports_hide_low_confidence_categories(
-    noop_screen, monkeypatch, capsys
-):
+def test_run_variable_analysis_all_reports_hide_low_confidence_categories(noop_screen, monkeypatch, capsys):
     from sattlint.models.ast_model import Variable
 
     issue = VariableIssue(
@@ -1081,9 +1429,7 @@ def test_run_variable_analysis_all_reports_hide_low_confidence_categories(
     assert "UI/display-only variables" not in out
 
 
-def test_run_variable_analysis_can_render_low_confidence_category_on_request(
-    noop_screen, monkeypatch, capsys
-):
+def test_run_variable_analysis_can_render_low_confidence_category_on_request(noop_screen, monkeypatch, capsys):
     from sattlint.models.ast_model import Variable
 
     issue = VariableIssue(
@@ -1195,9 +1541,7 @@ def test_run_variable_analysis_prints_validation_warnings(noop_screen, monkeypat
     assert "Issues: 0" in out
 
 
-def test_run_variable_analysis_hides_dependency_validation_warnings(
-    noop_screen, monkeypatch, capsys
-):
+def test_run_variable_analysis_hides_dependency_validation_warnings(noop_screen, monkeypatch, capsys):
     graph = SimpleNamespace(
         unavailable_libraries=set(),
         warnings=["dep_a: warning one", "dep_b: warning two"],
@@ -1313,9 +1657,7 @@ def test_variable_usage_submenu_exposes_shadowing_report(noop_screen, monkeypatc
     assert captured == [{app.IssueKind.SHADOWING}]
 
 
-def test_variable_usage_submenu_exposes_hidden_global_coupling_report(
-    noop_screen, monkeypatch
-):
+def test_variable_usage_submenu_exposes_hidden_global_coupling_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
     monkeypatch.setattr(builtins, "input", make_input(["20", "b"]))
@@ -1325,9 +1667,7 @@ def test_variable_usage_submenu_exposes_hidden_global_coupling_report(
     assert captured == [{app.IssueKind.HIDDEN_GLOBAL_COUPLING}]
 
 
-def test_variable_usage_submenu_exposes_global_scope_minimization_report(
-    noop_screen, monkeypatch
-):
+def test_variable_usage_submenu_exposes_global_scope_minimization_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
     monkeypatch.setattr(builtins, "input", make_input(["19", "b"]))
@@ -1337,9 +1677,7 @@ def test_variable_usage_submenu_exposes_global_scope_minimization_report(
     assert captured == [{app.IssueKind.GLOBAL_SCOPE_MINIMIZATION}]
 
 
-def test_variable_usage_submenu_exposes_high_fan_in_out_report(
-    noop_screen, monkeypatch
-):
+def test_variable_usage_submenu_exposes_high_fan_in_out_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
     monkeypatch.setattr(builtins, "input", make_input(["21", "b"]))

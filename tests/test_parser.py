@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from lark.exceptions import UnexpectedCharacters
 
 from sattline_parser import api as parser_api
 from sattline_parser import parse_source_text as parser_core_parse_source_text
@@ -16,7 +17,13 @@ from sattlint.engine import (
     validate_single_file_syntax,
     validate_transformed_basepicture,
 )
-from sattlint.models.ast_model import BasePicture, ModuleHeader, Simple_DataType, Variable
+from sattlint.models.ast_model import (
+    BasePicture,
+    ModuleHeader,
+    ModuleTypeInstance,
+    Simple_DataType,
+    Variable,
+)
 from sattlint.transformer.sl_transformer import SLTransformer
 
 
@@ -80,7 +87,7 @@ ModuleCode
 ENDDEF (*BasePicture*);
 """
     parser = create_sl_parser()
-    with pytest.raises(Exception):
+    with pytest.raises(UnexpectedCharacters):
         parser.parse(strip_sl_comments(code))
 
 
@@ -109,6 +116,28 @@ ENDDEF (*BasePicture*);
     bp = parse_source_file(source_file)
 
     assert bp.name == "BasePicture"
+
+
+def test_parser_core_preserves_invocation_argument_flags():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0 IgnoreMaxModule) : MODULEDEFINITION DateCode_ 1
+SUBMODULES
+    Child Invocation (0.0,0.0,0.0,1.0,1.0 LayerModule) : ChildType;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+
+    assert bp.header.invocation_arguments == ("IgnoreMaxModule",)
+    assert len(bp.submodules) == 1
+    child = bp.submodules[0]
+    assert isinstance(child, ModuleTypeInstance)
+    assert child.header.invocation_arguments == ("LayerModule",)
 
 
 def test_parser_core_reuses_default_parser(monkeypatch):
@@ -370,13 +399,13 @@ ENDDEF (*BasePicture*);
 
     assert declared.declaration_span is not None
     assert declared.declaration_span.line == 6
-    assert declared.declaration_span.column == 2
+    assert declared.declaration_span.column == 5
     assert bp.header.declaration_span is not None
     assert bp.header.declaration_span.line == 4
     assert target["span"].line == 11
-    assert target["span"].column == 3
+    assert target["span"].column == 9
     assert value_ref["span"].line == 11
-    assert value_ref["span"].column == 13
+    assert value_ref["span"].column == 19
 
 
 def test_parser_core_preserves_invar_tails_in_invoke_coords_and_clipping_bounds():
@@ -429,7 +458,7 @@ ENDDEF (*BasePicture*);
     assert result.ok is False
     assert result.stage == "validation"
     assert result.line == 11
-    assert result.column == 2
+    assert result.column == 5
     assert result.message is not None
     assert "only allowed inside EQUATIONBLOCK or SEQUENCE/OPENSEQUENCE blocks" in result.message
 
@@ -605,9 +634,7 @@ ENDDEF (*BasePicture*);
 def test_validate_transformed_basepicture_rejects_long_identifier():
     bp = BasePicture(
         header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        localvariables=[
-            Variable(name="IdentifierLengthOver20", datatype=Simple_DataType.INTEGER)
-        ],
+        localvariables=[Variable(name="IdentifierLengthOver20", datatype=Simple_DataType.INTEGER)],
     )
 
     with pytest.raises(StructuralValidationError, match="exceeds 20 characters"):
@@ -1460,11 +1487,7 @@ def test_load_source_text_preserves_duration_value_in_compressed_libraries():
 
     journal_basepicture = parser_core_parse_source_text(journal_src)
     curve_type = next(
-        (
-            item
-            for item in (journal_basepicture.datatype_defs or [])
-            if item.name.casefold() == "Curve4Par".casefold()
-        ),
+        (item for item in (journal_basepicture.datatype_defs or []) if item.name.casefold() == "Curve4Par".casefold()),
         None,
     )
     assert curve_type is not None

@@ -43,7 +43,7 @@ _OLD_PREFIX = ("__old__",)
 
 
 def _is_scalar_value(value: ScalarValue | object) -> TypeGuard[ScalarValue]:
-    return isinstance(value, (bool, int, float, str))
+    return isinstance(value, bool | int | float | str)
 
 
 @dataclass(frozen=True)
@@ -679,10 +679,7 @@ class DataflowAnalyzer:
         if operator in (const.GRAMMAR_VALUE_AND, const.GRAMMAR_VALUE_OR):
             facts = [
                 fact
-                for fact in (
-                    self._condition_fact(part, context)
-                    for part in (condition[1] or [])
-                )
+                for fact in (self._condition_fact(part, context) for part in (condition[1] or []))
                 if fact is not None
             ]
             if operator == const.GRAMMAR_VALUE_AND:
@@ -980,7 +977,7 @@ class DataflowAnalyzer:
 
             if operator in (const.KEY_PLUS, const.KEY_MINUS):
                 inner = self._evaluate_expression(expr[1], context, module_path, state)
-                if not isinstance(inner, (int, float)) or isinstance(inner, bool):
+                if not isinstance(inner, int | float) or isinstance(inner, bool):
                     return _UNKNOWN
                 return inner if operator == const.KEY_PLUS else -inner
 
@@ -1077,9 +1074,7 @@ class DataflowAnalyzer:
         self._reported_read_before_write.add(dedupe_key)
         self._add_issue(
             kind="dataflow.read_before_write",
-            message=(
-                f"Variable reference {resolved.display_name!r} may be read before it is assigned on this path."
-            ),
+            message=(f"Variable reference {resolved.display_name!r} may be read before it is assigned on this path."),
             module_path=module_path,
             data={
                 "symbol": resolved.display_name,
@@ -1100,9 +1095,7 @@ class DataflowAnalyzer:
         self._reported_dead_overwrite.add(dedupe_key)
         self._add_issue(
             kind="dataflow.dead_overwrite",
-            message=(
-                f"Variable reference {pending.display_name!r} is overwritten before its previous value is read."
-            ),
+            message=(f"Variable reference {pending.display_name!r} is overwritten before its previous value is read."),
             module_path=module_path,
             data={
                 "symbol": pending.display_name,
@@ -1321,9 +1314,7 @@ class DataflowAnalyzer:
         for pending_key in [
             key
             for key, pending in state.items()
-            if self._is_pending_state_key(key)
-            and isinstance(pending, _PendingWrite)
-            and pending.root_key == root_key
+            if self._is_pending_state_key(key) and isinstance(pending, _PendingWrite) and pending.root_key == root_key
         ]:
             state.pop(pending_key, None)
 
@@ -1336,9 +1327,7 @@ class DataflowAnalyzer:
         for pending_key in [
             key
             for key, pending in state.items()
-            if self._is_pending_state_key(key)
-            and isinstance(pending, _PendingWrite)
-            and pending.root_key == root_key
+            if self._is_pending_state_key(key) and isinstance(pending, _PendingWrite) and pending.root_key == root_key
         ]:
             pending = state.pop(pending_key, None)
             if isinstance(pending, _PendingWrite):
@@ -1404,17 +1393,23 @@ class DataflowAnalyzer:
         left_value = self._evaluate_expression(left_expr, context, module_path, state)
         right_value = self._evaluate_expression(right_expr, context, module_path, state)
 
-        if resolved_left is not None and right_value is not _UNKNOWN:
-            if (truth and operator == "==") or (not truth and operator == "<>"):
-                next_state = self._invalidate_symbol(state.copy(), resolved_left.key)
-                next_state[resolved_left.key] = right_value
-                return next_state
+        if (
+            resolved_left is not None
+            and right_value is not _UNKNOWN
+            and ((truth and operator == "==") or (not truth and operator == "<>"))
+        ):
+            next_state = self._invalidate_symbol(state.copy(), resolved_left.key)
+            next_state[resolved_left.key] = right_value
+            return next_state
 
-        if resolved_right is not None and left_value is not _UNKNOWN:
-            if (truth and operator == "==") or (not truth and operator == "<>"):
-                next_state = self._invalidate_symbol(state.copy(), resolved_right.key)
-                next_state[resolved_right.key] = left_value
-                return next_state
+        if (
+            resolved_right is not None
+            and left_value is not _UNKNOWN
+            and ((truth and operator == "==") or (not truth and operator == "<>"))
+        ):
+            next_state = self._invalidate_symbol(state.copy(), resolved_right.key)
+            next_state[resolved_right.key] = left_value
+            return next_state
 
         return None
 
@@ -1482,23 +1477,9 @@ class DataflowAnalyzer:
             return {}
         merged: StateMap = {}
         value_keys: set[tuple[str, ...]] = set().union(
-            *(
-                {
-                    key
-                    for key in state
-                    if not self._is_pending_state_key(key)
-                }
-                for state in states
-            )
+            *({key for key in state if not self._is_pending_state_key(key)} for state in states)
         )
-        pending_keys_per_state = [
-            {
-                key
-                for key in state
-                if self._is_pending_state_key(key)
-            }
-            for state in states
-        ]
+        pending_keys_per_state = [{key for key in state if self._is_pending_state_key(key)} for state in states]
         for key in value_keys:
             values = [state.get(key, _UNKNOWN) for state in states]
             first = values[0]
@@ -1522,12 +1503,7 @@ class DataflowAnalyzer:
                 display_name=first_pending.display_name,
                 sites=tuple(
                     sorted(
-                        {
-                            site
-                            for value in pending_values
-                            if isinstance(value, _PendingWrite)
-                            for site in value.sites
-                        }
+                        {site for value in pending_values if isinstance(value, _PendingWrite) for site in value.sites}
                     )
                 ),
             )
@@ -1568,7 +1544,7 @@ class DataflowAnalyzer:
     ) -> ScalarValue | object:
         if isinstance(left, bool) or isinstance(right, bool):
             return _UNKNOWN
-        if not isinstance(left, (int, float)) or not isinstance(right, (int, float)):
+        if not isinstance(left, int | float) or not isinstance(right, int | float):
             return _UNKNOWN
         if operator == "+":
             return left + right

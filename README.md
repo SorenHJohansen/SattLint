@@ -124,6 +124,7 @@ The first time SattLint runs, it creates a config file automatically.
   * `ABB_lib_dir` -> shared or ABB libraries
   * `other_lib_dirs` -> any additional libraries
   * `analyzed_programs_and_libraries` -> what to analyze
+  * `12) Edit graphics rules` -> define expected module invocation or clipping rules saved in JSON
 
 4. Save with `9) Save configuration`
 
@@ -157,6 +158,16 @@ Main menu:
 
 Inside `Analyze`, use `Full analyzer suite` for a broad pass and the focused submenus when you want specific reports or debugging tools.
 
+Graphics layout specification workflow:
+
+* `3) Setup` -> `12) Edit graphics rules` to add or update expected invocation coordinates, invocation flags, and clipping-related values
+* Use `unit:` selectors when a module should look the same in every detected unit, for example `unit:L1` or `unit:L1.L2.UnitControl`
+* Use `equipment:` selectors when a module should look the same inside every equipment module, for example `equipment:L1.L2.EquipModPanelShort`
+* Exact relative paths are still available for one-off cases, but the normalized `unit:` and `equipment:` selectors avoid hardcoding unit names such as `ApplTank` or equipment-module names such as `Empty`
+* Moduletype rules still identify modules by resolved `ModuleType` name and can optionally be narrowed with `unit:`, `equipment:`, or exact-path selectors
+* `1) Analyze` -> `3) Structure & modules` -> `4) Validate graphics rules` to report modules that are not to spec
+* `4) Tools` -> `1) Self-check diagnostics` to confirm the graphics rules JSON path and whether the file is valid
+
 ---
 
 ## Check One File Quickly
@@ -164,6 +175,8 @@ Inside `Analyze`, use `Full analyzer suite` for a broad pass and the focused sub
 ```bash
 sattlint syntax-check /path/to/Program.s
 ```
+
+`syntax-check` also accepts `.g` and `.y` graphics files and validates literal `PictureDisplay` targets. When you validate a `.s` or `.x` source file, SattLint also checks the matching graphics sidecar when present: official mode uses `.y`, while draft-mode lookup prefers `.g` and falls back to `.y`.
 
 Output:
 

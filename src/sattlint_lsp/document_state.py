@@ -138,7 +138,9 @@ class DocumentState:
     def remember_local_snapshot(self, snapshot: SemanticSnapshot) -> None:
         self.local_snapshot = snapshot
         self.local_snapshot_version = self.version
-        self.analysis_result = DocumentParseResult(syntax_diagnostics=tuple(self.syntax_diagnostics), local_snapshot=snapshot)
+        self.analysis_result = DocumentParseResult(
+            syntax_diagnostics=tuple(self.syntax_diagnostics), local_snapshot=snapshot
+        )
         self.analysis_version = self.version
         self.analysis_has_snapshot = True
 

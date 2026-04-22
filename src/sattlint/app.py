@@ -11,10 +11,12 @@ import sys
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from types import SimpleNamespace
+from typing import Any, ClassVar, cast
 
 from . import config as config_module
 from . import engine as engine_module
+from . import graphics_rules as graphics_rules_module
 from .analyzers import variable_usage_reporting as variables_reporting_module
 from .analyzers.comment_code import analyze_comment_code_files
 from .analyzers.framework import AnalysisContext
@@ -27,6 +29,7 @@ from .analyzers.modules import (
     find_modules_by_name,
 )
 from .analyzers.registry import get_default_cli_analyzers
+from .analyzers.rule_profiles import apply_rule_profile_to_report
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variable_usage_reporting import (
     debug_variable_usage,
@@ -219,17 +222,11 @@ class TargetLoadError(RuntimeError):
             lines.extend(f"  - {item}" for item in direct_warnings)
 
         if transitive_failures:
-            lines.append(
-                f"Transitive dependency failures ({len(transitive_failures)}):"
-            )
-            lines.extend(
-                f"  - {self._format_missing_item(item)}" for item in transitive_failures
-            )
+            lines.append(f"Transitive dependency failures ({len(transitive_failures)}):")
+            lines.extend(f"  - {self._format_missing_item(item)}" for item in transitive_failures)
 
         if transitive_warnings:
-            lines.append(
-                f"Transitive dependency warnings ({len(transitive_warnings)}):"
-            )
+            lines.append(f"Transitive dependency warnings ({len(transitive_warnings)}):")
             lines.extend(f"  - {item}" for item in transitive_warnings)
 
         if other_failures:
@@ -267,8 +264,7 @@ def _target_validation_warnings(target_name: str, warnings: list[str]) -> list[s
     return [
         item
         for item in warnings
-        if (warning_name := _extract_warning_name(item)) is None
-        or warning_name.casefold() == target_name.casefold()
+        if (warning_name := _extract_warning_name(item)) is None or warning_name.casefold() == target_name.casefold()
     ]
 
 
@@ -279,6 +275,19 @@ def load_config(path: Path):
 def save_config(path: Path, cfg: dict) -> None:
     config_module.save_config(path, cfg)
     print("Config saved")
+
+
+def get_graphics_rules_path() -> Path:
+    return graphics_rules_module.get_graphics_rules_path(CONFIG_PATH)
+
+
+def load_graphics_rules(path: Path | None = None):
+    return graphics_rules_module.load_graphics_rules(path or get_graphics_rules_path())
+
+
+def save_graphics_rules(path: Path, rules: dict[str, Any]) -> None:
+    graphics_rules_module.save_graphics_rules(path, rules)
+    print("Graphics rules saved")
 
 
 def self_check(cfg: dict) -> bool:
@@ -335,10 +344,10 @@ def _clear_windows_console() -> None:
     from ctypes import wintypes
 
     class _Coord(ctypes.Structure):
-        _fields_ = [("X", wintypes.SHORT), ("Y", wintypes.SHORT)]
+        _fields_: ClassVar[Any] = [("X", wintypes.SHORT), ("Y", wintypes.SHORT)]
 
     class _SmallRect(ctypes.Structure):
-        _fields_ = [
+        _fields_: ClassVar[Any] = [
             ("Left", wintypes.SHORT),
             ("Top", wintypes.SHORT),
             ("Right", wintypes.SHORT),
@@ -346,7 +355,7 @@ def _clear_windows_console() -> None:
         ]
 
     class _ConsoleScreenBufferInfo(ctypes.Structure):
-        _fields_ = [
+        _fields_: ClassVar[Any] = [
             ("dwSize", _Coord),
             ("dwCursorPosition", _Coord),
             ("wAttributes", wintypes.WORD),
@@ -398,7 +407,7 @@ def clear_screen():
             _clear_windows_console()
             return
         except OSError:
-            if os.system("cls") == 0:
+            if os.system("cls") == 0:  # nosec B605 B607 - fixed built-in command used as Windows console fallback
                 return
 
     sys.stdout.write("\033[2J\033[H")
@@ -409,13 +418,13 @@ def pause():
     input("\nPress Enter to continue...")
 
 
-class QuitApp(Exception):
+class QuitAppError(Exception):
     pass
 
 
 def quit_app() -> None:
     clear_screen()
-    raise QuitApp()
+    raise QuitAppError()
 
 
 def confirm(msg: str) -> bool:
@@ -537,6 +546,17 @@ def _print_config_list(title: str, items: list[object]) -> None:
 
 def show_config(cfg: dict):
     documentation_cfg = config_module.get_documentation_config(cfg)
+    graphics_rules_path = get_graphics_rules_path()
+    graphics_rule_count: object = 0
+    graphics_rules_payload: dict[str, Any] | None = None
+    if graphics_rules_path.exists():
+        try:
+            graphics_rules, _created = load_graphics_rules(graphics_rules_path)
+        except Exception as exc:
+            graphics_rule_count = f"invalid ({exc})"
+        else:
+            graphics_rules_payload = graphics_rules
+            graphics_rule_count = len(graphics_rules.get("rules", []))
     general_rows = [
         ("mode", cfg["mode"]),
         ("scan_root_only", cfg["scan_root_only"]),
@@ -563,13 +583,21 @@ def show_config(cfg: dict):
     print()
     _print_config_list("Other Library Directories", list(cfg["other_lib_dirs"]))
     print()
+    _print_config_section(
+        "Graphics Rules",
+        [
+            ("graphics_rules_path", graphics_rules_path),
+            ("graphics_rule_count", graphics_rule_count),
+        ],
+    )
+    if graphics_rules_payload and graphics_rules_payload.get("rules"):
+        print("Configured Graphics Rule Selectors")
+        for index, rule in enumerate(graphics_rules_payload.get("rules", []), start=1):
+            print(f"  [{index}] {_graphics_rule_config_line(rule)}")
+    print()
     print("Documentation Classifications")
     for category, rule in documentation_cfg.get("classifications", {}).items():
-        active_rules = [
-            (key, ", ".join(str(value) for value in values))
-            for key, values in rule.items()
-            if values
-        ]
+        active_rules = [(key, ", ".join(str(value) for value in values)) for key, values in rule.items() if values]
         print(f"  {category}")
         if not active_rules:
             print("    (none)")
@@ -595,9 +623,7 @@ def _print_menu(
     label_width = max((len(option.label) for option in options), default=0)
     for option in options:
         if option.description:
-            print(
-                f"{option.key}) {option.label:<{label_width}}  {option.description}"
-            )
+            print(f"{option.key}) {option.label:<{label_width}}  {option.description}")
         else:
             print(f"{option.key}) {option.label}")
 
@@ -676,8 +702,7 @@ def _require_analyzed_targets(cfg: dict) -> list[str]:
     targets = _get_analyzed_targets(cfg)
     if not targets:
         raise RuntimeError(
-            "No analyzed programs/libraries configured. "
-            "Add entries to 'analyzed_programs_and_libraries' first."
+            "No analyzed programs/libraries configured. " "Add entries to 'analyzed_programs_and_libraries' first."
         )
     return targets
 
@@ -689,10 +714,7 @@ def _has_analyzed_targets(cfg: dict) -> bool:
 def _require_targets_for_menu_action(cfg: dict, action: str) -> bool:
     if _has_analyzed_targets(cfg):
         return True
-    print(
-        "\nNo analyzed programs/libraries configured. "
-        f"Add entries in Setup before {action}."
-    )
+    print("\nNo analyzed programs/libraries configured. " f"Add entries in Setup before {action}.")
     pause()
     return False
 
@@ -705,6 +727,662 @@ def _cache_key_for_target(cfg: dict, target_name: str) -> str:
 
 def _split_csv_values(raw: str) -> list[str]:
     return [value.strip() for value in raw.split(",") if value.strip()]
+
+
+def _flatten_graphics_expected_fields(
+    payload: dict[str, Any],
+    *,
+    prefix: str = "",
+) -> list[str]:
+    fields: list[str] = []
+    for key, value in payload.items():
+        field_name = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict):
+            fields.extend(_flatten_graphics_expected_fields(value, prefix=field_name))
+        else:
+            fields.append(field_name)
+    return fields
+
+
+def _truncate_table_cell(value: object, width: int) -> str:
+    text = str(value)
+    if len(text) <= width:
+        return text
+    if width <= 3:
+        return text[:width]
+    return text[: width - 3] + "..."
+
+
+def _graphics_rule_selector_text(rule: dict[str, Any]) -> str:
+    module_kind = str(rule.get("module_kind") or "")
+    relative_module_path = str(rule.get("relative_module_path") or "").strip()
+    unit_structure_path = str(rule.get("unit_structure_path") or "").strip()
+    equipment_module_structure_path = str(rule.get("equipment_module_structure_path") or "").strip()
+    if unit_structure_path:
+        return f"unit:{unit_structure_path}"
+    if equipment_module_structure_path:
+        return f"equipment:{equipment_module_structure_path}"
+    if module_kind == "moduletype":
+        moduletype_name = str(rule.get("moduletype_name") or "").strip()
+        if relative_module_path:
+            return f"{moduletype_name} @ path:{relative_module_path}"
+        return moduletype_name or "(missing moduletype name)"
+    if relative_module_path:
+        return f"path:{relative_module_path}"
+    return str(rule.get("module_name") or "(missing module name)")
+
+
+def _graphics_rule_label(rule: dict[str, Any]) -> str:
+    return f"{rule['module_kind']}:{_graphics_rule_selector_text(rule)}"
+
+
+def _graphics_rule_scope_text(rule: dict[str, Any]) -> str:
+    if str(rule.get("unit_structure_path") or "").strip():
+        return "unit"
+    if str(rule.get("equipment_module_structure_path") or "").strip():
+        return "equipment"
+    if str(rule.get("relative_module_path") or "").strip():
+        return "path"
+    if str(rule.get("moduletype_name") or "").strip():
+        return "moduletype"
+    return "name"
+
+
+def _graphics_rule_config_line(rule: dict[str, Any]) -> str:
+    parts = [
+        str(rule.get("module_kind") or ""),
+        f"scope={_graphics_rule_scope_text(rule)}",
+    ]
+    unit_structure_path = str(rule.get("unit_structure_path") or "").strip()
+    equipment_module_structure_path = str(rule.get("equipment_module_structure_path") or "").strip()
+    relative_module_path = str(rule.get("relative_module_path") or "").strip()
+    moduletype_name = str(rule.get("moduletype_name") or "").strip()
+    description = str(rule.get("description") or "").strip()
+
+    if unit_structure_path:
+        parts.append(f"unit_structure_path={unit_structure_path}")
+    if equipment_module_structure_path:
+        parts.append(f"equipment_module_structure_path={equipment_module_structure_path}")
+    if relative_module_path:
+        parts.append(f"relative_module_path={relative_module_path}")
+    if moduletype_name:
+        parts.append(f"moduletype_name={moduletype_name}")
+    if description:
+        parts.append(f"description={description}")
+    return " | ".join(part for part in parts if part)
+
+
+def _print_graphics_rules_summary(path: Path, rules: dict[str, Any], *, dirty: bool) -> None:
+    print(f"\nGraphics rules file: {path}")
+    print(f"Configured rules: {len(rules.get('rules', []))}")
+    if dirty:
+        print("Unsaved graphics rule changes")
+
+    if not rules.get("rules"):
+        print("  (no graphics rules configured)")
+        return
+
+    columns = (
+        ("#", 3),
+        ("Kind", 10),
+        ("Selector", 52),
+        ("Fields", 36),
+        ("Description", 24),
+    )
+    header = "  " + "  ".join(f"{label:<{width}}" for label, width in columns)
+    print()
+    print(header)
+    print("  " + "  ".join("-" * width for _label, width in columns))
+
+    for index, rule in enumerate(rules.get("rules", []), start=1):
+        fields = ", ".join(_flatten_graphics_expected_fields(rule.get("expected", {}))) or "(none)"
+        row = (
+            _truncate_table_cell(index, 3),
+            _truncate_table_cell(rule.get("module_kind", ""), 10),
+            _truncate_table_cell(_graphics_rule_selector_text(rule), 52),
+            _truncate_table_cell(fields, 36),
+            _truncate_table_cell(rule.get("description", ""), 24),
+        )
+        print("  " + "  ".join(f"{value:<{width}}" for value, (_label, width) in zip(row, columns, strict=False)))
+
+
+def _prompt_optional_float_list(label: str, expected_count: int) -> list[float] | None:
+    while True:
+        raw = input(f"{label} ({expected_count} comma-separated numbers, blank to skip): ").strip()
+        if not raw:
+            return None
+        parts = [part.strip() for part in raw.split(",") if part.strip()]
+        if len(parts) != expected_count:
+            print(f"? Expected {expected_count} values")
+            continue
+        try:
+            return [float(part) for part in parts]
+        except ValueError:
+            print("? Enter numeric values only")
+
+
+def _prompt_optional_text_list(label: str) -> list[str] | None:
+    raw = input(f"{label} (comma-separated, blank to skip): ").strip()
+    if not raw:
+        return None
+    return _split_csv_values(raw)
+
+
+def _prompt_optional_bool(label: str) -> bool | None:
+    while True:
+        raw = input(f"{label} [y/n, blank to skip]: ").strip().lower()
+        if not raw:
+            return None
+        if raw in ("y", "yes"):
+            return True
+        if raw in ("n", "no"):
+            return False
+        print("? Enter y, n, or leave blank")
+
+
+def _prompt_graphics_rule_kind() -> str:
+    options = {
+        "1": "single",
+        "2": "frame",
+        "3": "moduletype",
+        "single": "single",
+        "frame": "frame",
+        "moduletype": "moduletype",
+    }
+    while True:
+        print("\nSelect module kind:")
+        print("  1) single")
+        print("  2) frame")
+        print("  3) moduletype")
+        raw = input("> ").strip().lower()
+        module_kind = options.get(raw)
+        if module_kind is not None:
+            return module_kind
+        print("? Choose single, frame, or moduletype")
+
+
+def _prompt_graphics_rule_selector(
+    module_kind: str,
+    cfg: dict | None = None,
+) -> tuple[str, str]:
+    allow_blank = module_kind == "moduletype"
+    options = {
+        "1": "unit_structure_path",
+        "2": "equipment_module_structure_path",
+        "3": "relative_module_path",
+    }
+    while True:
+        print("\nSelect selector scope:")
+        print("  1) unit structure path")
+        print("  2) equipment module structure path")
+        print("  3) exact relative module path")
+        if allow_blank:
+            print("  Enter blank to match all instances of the selected ModuleType")
+        raw = input("> ").strip().lower()
+        if not raw and allow_blank:
+            return "", ""
+        selector_field = options.get(raw)
+        if selector_field is None:
+            print("? Choose 1, 2, or 3")
+            continue
+        selector_value = _pick_or_prompt_graphics_rule_selector_value(
+            selector_field,
+            module_kind,
+            cfg=cfg,
+        )
+        if not selector_value:
+            if allow_blank and selector_field == "":
+                return "", ""
+            continue
+        return selector_field, selector_value
+
+
+def _graphics_rule_target_kind_matches(module_kind: str, entry: dict[str, Any]) -> bool:
+    entry_kind = str(entry.get("module_kind") or "").strip().lower()
+    if module_kind == "single":
+        return entry_kind == "module"
+    if module_kind == "frame":
+        return entry_kind == "frame"
+    if module_kind == "moduletype":
+        return entry_kind == "moduletype-instance"
+    return False
+
+
+def _selector_prompt_text(selector_field: str) -> str:
+    return {
+        "unit_structure_path": "Unit structure path",
+        "equipment_module_structure_path": "Equipment module structure path",
+        "relative_module_path": "Exact relative module path",
+    }[selector_field]
+
+
+def _discover_graphics_rule_selector_options(
+    cfg: dict | None,
+    *,
+    selector_field: str,
+    module_kind: str,
+) -> list[dict[str, Any]]:
+    if cfg is None or not _has_analyzed_targets(cfg):
+        return []
+
+    discovered: dict[str, dict[str, Any]] = {}
+    for target_name, project_bp, graph in _iter_loaded_projects(cfg):
+        try:
+            entries = _collect_graphics_layout_entries_for_target(
+                target_name,
+                project_bp,
+                graph,
+            )
+        except Exception:
+            continue
+
+        for entry in entries:
+            if not _graphics_rule_target_kind_matches(module_kind, entry):
+                continue
+            selector_value = str(entry.get(selector_field) or "").strip()
+            if not selector_value:
+                continue
+            if not str(entry.get("unit_root_path") or "").strip():
+                continue
+
+            key = selector_value.casefold()
+            bucket = discovered.setdefault(
+                key,
+                {
+                    "selector_value": selector_value,
+                    "count": 0,
+                    "targets": set(),
+                    "sample_module_path": str(entry.get("module_path") or ""),
+                },
+            )
+            bucket["count"] += 1
+            cast(set[str], bucket["targets"]).add(target_name)
+
+    return sorted(
+        [
+            {
+                "selector_value": item["selector_value"],
+                "count": item["count"],
+                "target_count": len(cast(set[str], item["targets"])),
+                "sample_module_path": item["sample_module_path"],
+            }
+            for item in discovered.values()
+        ],
+        key=lambda item: (str(item["selector_value"]).casefold(), str(item["sample_module_path"]).casefold()),
+    )
+
+
+def _pick_or_prompt_graphics_rule_selector_value(
+    selector_field: str,
+    module_kind: str,
+    *,
+    cfg: dict | None = None,
+) -> str:
+    options = _discover_graphics_rule_selector_options(
+        cfg,
+        selector_field=selector_field,
+        module_kind=module_kind,
+    )
+    prompt_text = _selector_prompt_text(selector_field)
+
+    if options:
+        print(f"\nAvailable {prompt_text.lower()} values:")
+        for index, option in enumerate(options, start=1):
+            print(
+                f"  {index}) {option['selector_value']} "
+                f"[{option['count']} matches across {option['target_count']} targets]"
+            )
+        print("  m) Enter manually")
+
+        while True:
+            raw = input("> ").strip().lower()
+            if raw == "m":
+                break
+            try:
+                selected_index = int(raw) - 1
+            except ValueError:
+                print("? Choose an index or 'm'")
+                continue
+            if 0 <= selected_index < len(options):
+                return str(options[selected_index]["selector_value"])
+            print("? Invalid index")
+
+    selector_value = input(f"{prompt_text}: ").strip()
+    if not selector_value:
+        print("? Selector path is required")
+    return selector_value
+
+
+def _path_startswith_casefold(path: Sequence[str], prefix: Sequence[str]) -> bool:
+    if len(prefix) > len(path):
+        return False
+    return all(part.casefold() == other.casefold() for part, other in zip(path, prefix, strict=False))
+
+
+def _graphics_entry_canonical_segment(entry: dict[str, Any]) -> str:
+    moduletype_name = str(
+        entry.get("moduletype_name") or entry.get("resolved_moduletype", {}).get("name") or ""
+    ).strip()
+    if moduletype_name:
+        return moduletype_name
+    return str(entry.get("module_name") or "").strip()
+
+
+def _looks_like_graphics_unit_root(
+    candidate_path: Sequence[str],
+    entries: Sequence[dict[str, Any]],
+) -> bool:
+    for entry in entries:
+        module_path = tuple(
+            segment.strip() for segment in str(entry.get("module_path") or "").split(".") if segment.strip()
+        )
+        if not module_path or not _path_startswith_casefold(module_path, candidate_path):
+            continue
+        relative_segments = module_path[len(candidate_path) :]
+        if len(relative_segments) < 3:
+            continue
+        if (
+            relative_segments[0].casefold() == "l1"
+            and relative_segments[1].casefold() == "l2"
+            and relative_segments[2].casefold() == "unitcontrol"
+        ):
+            return True
+    return False
+
+
+def _annotate_graphics_entries_with_structure_paths(
+    entries: list[dict[str, Any]],
+    project_bp: BasePicture,
+    graph: ProjectGraph,
+) -> list[dict[str, Any]]:
+    classification = classify_documentation_structure(
+        project_bp,
+        unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+    )
+    unit_candidates = sorted(
+        discover_documentation_unit_candidates(classification),
+        key=lambda entry: len(entry.path),
+        reverse=True,
+    )
+    candidate_paths = [
+        tuple(candidate.path)
+        for candidate in unit_candidates
+        if _looks_like_graphics_unit_root(tuple(candidate.path), entries)
+    ]
+
+    for entry in entries:
+        module_path = tuple(
+            segment.strip() for segment in str(entry.get("module_path") or "").split(".") if segment.strip()
+        )
+        if not module_path:
+            continue
+
+        unit_root_path = next(
+            (
+                candidate_path
+                for candidate_path in candidate_paths
+                if _path_startswith_casefold(module_path, candidate_path)
+            ),
+            None,
+        )
+        if unit_root_path is None:
+            continue
+
+        unit_segments = list(module_path[len(unit_root_path) :])
+        if not unit_segments:
+            continue
+
+        canonical_segments = [*unit_segments[:-1], _graphics_entry_canonical_segment(entry)]
+        entry["unit_root_path"] = ".".join(unit_root_path)
+        entry["unit_structure_path"] = ".".join(canonical_segments)
+
+        if (
+            len(canonical_segments) >= 5
+            and canonical_segments[0].casefold() == "l1"
+            and canonical_segments[1].casefold() == "l2"
+            and canonical_segments[3].casefold() == "l1"
+            and canonical_segments[4].casefold() == "l2"
+        ):
+            entry["equipment_module_name"] = unit_segments[2]
+            entry["equipment_module_structure_path"] = ".".join(canonical_segments[3:])
+
+    return entries
+
+
+def _prompt_graphics_rule_definition() -> dict[str, Any] | None:
+    return _prompt_graphics_rule_definition_with_config(None)
+
+
+def graphics_rules_menu(cfg: dict | None = None) -> None:
+    rules_path = get_graphics_rules_path()
+    rules, _created = load_graphics_rules(rules_path)
+    dirty = False
+
+    while True:
+        clear_screen()
+        _print_graphics_rules_summary(rules_path, rules, dirty=dirty)
+        print()
+        _print_menu(
+            "Graphics rules",
+            [
+                MenuOption("1", "Add or replace rule", "Prompt for one module graphics rule"),
+                MenuOption("2", "Remove rule", "Delete one configured graphics rule by index"),
+                MenuOption("3", "Save rules", "Write graphics rules to the JSON file"),
+                MenuOption("b", "Back"),
+                MenuOption("q", "Quit"),
+            ],
+            intro=(
+                "Graphics rules are user-defined expected invocation and ModuleDef settings. "
+                "Use unit structure paths, equipment module structure paths, exact relative module paths, "
+                "or ModuleType names depending on the rule scope."
+            ),
+        )
+        c = input("> ").strip().lower()
+
+        if c == "b":
+            if dirty and confirm("Unsaved graphics rule changes. Save before leaving?"):
+                save_graphics_rules(rules_path, rules)
+            return
+        if c == "q":
+            if dirty and confirm("Unsaved graphics rule changes. Save before quitting?"):
+                save_graphics_rules(rules_path, rules)
+            quit_app()
+
+        if c == "1":
+            rule = _prompt_graphics_rule_definition_with_config(cfg)
+            if rule is None:
+                continue
+            updated = graphics_rules_module.upsert_graphics_rule(rules, rule)
+            print("Updated existing graphics rule" if updated else "Added graphics rule")
+            dirty = True
+            pause()
+        elif c == "2":
+            if not rules.get("rules"):
+                print("? No graphics rules configured")
+                pause()
+                continue
+            idx_text = prompt("Index to remove")
+            try:
+                idx = int(idx_text) - 1
+                removed = graphics_rules_module.remove_graphics_rule(rules, idx)
+            except (ValueError, IndexError):
+                print("? Invalid index")
+                pause()
+                continue
+            print(f"Removed {_graphics_rule_label(removed)}")
+            dirty = True
+            pause()
+        elif c == "3":
+            save_graphics_rules(rules_path, rules)
+            dirty = False
+            pause()
+        else:
+            print("Invalid choice.")
+            pause()
+
+
+def _prompt_graphics_rule_definition_with_config(cfg: dict | None) -> dict[str, Any] | None:
+    print("\nEnter graphics rule values. Leave optional fields blank to skip them.")
+    module_kind = _prompt_graphics_rule_kind()
+
+    module_name = ""
+    relative_module_path = ""
+    unit_structure_path = ""
+    equipment_module_structure_path = ""
+    moduletype_name = ""
+
+    if module_kind == "moduletype":
+        moduletype_name = prompt("ModuleType name")
+        if not moduletype_name:
+            print("? ModuleType name is required")
+            pause()
+            return None
+        selector_field, selector_value = _prompt_graphics_rule_selector(module_kind, cfg=cfg)
+    else:
+        selector_field, selector_value = _prompt_graphics_rule_selector(module_kind, cfg=cfg)
+
+    if selector_field == "relative_module_path":
+        relative_module_path = selector_value
+    elif selector_field == "unit_structure_path":
+        unit_structure_path = selector_value
+    elif selector_field == "equipment_module_structure_path":
+        equipment_module_structure_path = selector_value
+
+    selector_name = relative_module_path or unit_structure_path or equipment_module_structure_path
+    if selector_name:
+        module_name = selector_name.split(".")[-1].strip()
+
+    description = input("Description (optional): ").strip()
+    invocation: dict[str, Any] = {}
+    moduledef: dict[str, Any] = {}
+
+    invocation_coords = _prompt_optional_float_list("Invocation coords", 5)
+    if invocation_coords is not None:
+        invocation["coords"] = invocation_coords
+
+    invocation_arguments = _prompt_optional_text_list("Invocation arguments")
+    if invocation_arguments is not None:
+        invocation["arguments"] = invocation_arguments
+
+    invocation_layer = input("Invocation layer (blank to skip): ").strip()
+    if invocation_layer:
+        invocation["layer"] = invocation_layer
+
+    invocation_zoom_limits = _prompt_optional_float_list(
+        "Invocation zoom limits",
+        2,
+    )
+    if invocation_zoom_limits is not None:
+        invocation["zoom_limits"] = invocation_zoom_limits
+
+    invocation_zoomable = _prompt_optional_bool("Invocation zoomable")
+    if invocation_zoomable is not None:
+        invocation["zoomable"] = invocation_zoomable
+
+    clipping_origin = _prompt_optional_float_list("Clipping origin", 2)
+    if clipping_origin is not None:
+        moduledef["clipping_origin"] = clipping_origin
+
+    clipping_size = _prompt_optional_float_list("Clipping size", 2)
+    if clipping_size is not None:
+        moduledef["clipping_size"] = clipping_size
+
+    moduledef_zoom_limits = _prompt_optional_float_list("ModuleDef zoom limits", 2)
+    if moduledef_zoom_limits is not None:
+        moduledef["zoom_limits"] = moduledef_zoom_limits
+
+    moduledef_grid = input("ModuleDef grid (blank to skip): ").strip()
+    if moduledef_grid:
+        try:
+            moduledef["grid"] = float(moduledef_grid)
+        except ValueError:
+            print("? ModuleDef grid must be numeric")
+            pause()
+            return None
+
+    moduledef_zoomable = _prompt_optional_bool("ModuleDef zoomable")
+    if moduledef_zoomable is not None:
+        moduledef["zoomable"] = moduledef_zoomable
+
+    expected: dict[str, Any] = {}
+    if invocation:
+        expected["invocation"] = invocation
+    if moduledef:
+        expected["moduledef"] = moduledef
+
+    if not expected:
+        print("? At least one expected graphics field is required")
+        pause()
+        return None
+
+    return {
+        "module_name": module_name,
+        "module_kind": module_kind,
+        "relative_module_path": relative_module_path,
+        "unit_structure_path": unit_structure_path,
+        "equipment_module_structure_path": equipment_module_structure_path,
+        "moduletype_name": moduletype_name,
+        "description": description,
+        "expected": expected,
+    }
+
+
+def _collect_graphics_layout_entries_for_target(
+    target_name: str,
+    project_bp: BasePicture,
+    graph: ProjectGraph,
+) -> list[dict[str, Any]]:
+    from .devtools import structural_reports as structural_reports_module
+
+    synthetic_entry_file = Path.cwd() / f"{target_name}.s"
+    snapshot = SimpleNamespace(
+        entry_file=synthetic_entry_file,
+        base_picture=project_bp,
+        project_graph=graph,
+    )
+    discovery = SimpleNamespace(
+        program_files=(synthetic_entry_file,),
+        dependency_files=(),
+    )
+    report = structural_reports_module.collect_graphics_layout_report(
+        workspace_root=Path.cwd(),
+        graph_inputs=(discovery, [snapshot], []),
+    )
+    return _annotate_graphics_entries_with_structure_paths(
+        list(report.get("entries", [])),
+        project_bp,
+        graph,
+    )
+
+
+def run_graphics_rules_validation(cfg: dict) -> None:
+    print("\n--- Validate Graphics Rules ---")
+    rules_path = get_graphics_rules_path()
+    rules, _created = load_graphics_rules(rules_path)
+    if not rules.get("rules"):
+        print("? No graphics rules configured. Open Setup -> Edit graphics rules to add rules first.")
+        pause()
+        return
+
+    for target_name, project_bp, graph in _iter_loaded_projects(cfg):
+        try:
+            entries = _collect_graphics_layout_entries_for_target(
+                target_name,
+                project_bp,
+                graph,
+            )
+            report = graphics_rules_module.validate_graphics_layout_entries(
+                entries,
+                rules,
+                target_name=target_name,
+                rules_path=rules_path,
+            )
+            print(f"\n=== Target: {target_name} ===")
+            print(report.summary())
+        except Exception as exc:
+            print(f"? Error during graphics rules validation for {target_name}: {exc}")
+
+    pause()
 
 
 def _get_documentation_unit_selection() -> dict:
@@ -836,10 +1514,7 @@ def run_generate_documentation(cfg: dict) -> None:
         default_name = f"{target_name}_FS.docx"
         out_name = prompt(f"Output DOCX for {target_name}", default_name)
         if scope and scope.roots:
-            print(
-                f"Selected units for {target_name}: "
-                + ", ".join(entry.short_path for entry in scope.roots)
-            )
+            print(f"Selected units for {target_name}: " + ", ".join(entry.short_path for entry in scope.roots))
         generate_docx(
             project_bp,
             out_name,
@@ -925,9 +1600,7 @@ def _source_paths_for_current_target(project_bp, graph) -> set[Path]:
     source_files: set[Path] = getattr(graph, "source_files", set())
     origin_file = getattr(project_bp, "origin_file", None)
     if origin_file:
-        matches = {
-            path for path in source_files if path.name.casefold() == origin_file.casefold()
-        }
+        matches = {path for path in source_files if path.name.casefold() == origin_file.casefold()}
         if matches:
             return matches
 
@@ -945,10 +1618,7 @@ def _target_is_library(cfg: dict, project_bp, graph) -> bool:
         return False
 
     program_path = Path(program_dir)
-    return all(
-        not engine_module._is_within_directory(path, program_path)
-        for path in source_paths
-    )
+    return all(not engine_module._is_within_directory(path, program_path) for path in source_paths)
 
 
 def load_project(
@@ -1026,9 +1696,7 @@ def load_program_ast(cfg: dict, program_name: str):
     graph = loader.resolve(program_name, strict=False)
     root_bp = graph.ast_by_name.get(program_name)
     if not root_bp:
-        raise RuntimeError(
-            f"Program '{program_name}' not parsed. Resolved: {list(graph.ast_by_name.keys())}"
-        )
+        raise RuntimeError(f"Program '{program_name}' not parsed. Resolved: {list(graph.ast_by_name.keys())}")
 
     return root_bp, graph
 
@@ -1080,9 +1748,7 @@ def ensure_ast_cache(cfg: dict) -> bool:
             if has_manifest:
                 print("⚠ AST cache stale; rebuilding (this may take a while)...")
             else:
-                print(
-                    "⚠ AST cache missing file manifest; rebuilding (this may take a while)..."
-                )
+                print("⚠ AST cache missing file manifest; rebuilding (this may take a while)...")
         else:
             print("⚠ AST cache missing; building (this may take a while)...")
 
@@ -1107,9 +1773,7 @@ def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
             issues.extend(report.issues)
             if report.visible_kinds is not None:
                 visible_kinds.update(report.visible_kinds)
-            include_empty_sections = (
-                include_empty_sections or report.include_empty_sections
-            )
+            include_empty_sections = include_empty_sections or report.include_empty_sections
 
         return VariablesReport(
             basepicture_name=basepicture_name,
@@ -1118,11 +1782,7 @@ def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
             include_empty_sections=include_empty_sections,
         )
 
-    requested_kinds = (
-        set(DEFAULT_VARIABLE_ANALYSIS_KINDS) | {IssueKind.SHADOWING}
-        if kinds is None
-        else set(kinds)
-    )
+    requested_kinds = set(DEFAULT_VARIABLE_ANALYSIS_KINDS) | {IssueKind.SHADOWING} if kinds is None else set(kinds)
 
     produced_output = False
     for target_name, project_bp, graph in _iter_loaded_projects(cfg):
@@ -1133,6 +1793,7 @@ def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
             debug=cfg.get("debug", False),
             unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
             analyzed_target_is_library=target_is_library,
+            config=cfg,
         )
 
         include_shadowing = IssueKind.SHADOWING in requested_kinds
@@ -1160,9 +1821,7 @@ def run_variable_analysis(cfg: dict, kinds: set[IssueKind] | None):
                 report = _merge_reports(report, shadowing_report)
 
         print(f"\n=== Target: {target_name} ===")
-        _print_validation_warnings(
-            _target_validation_warnings(target_name, getattr(graph, "warnings", []))
-        )
+        _print_validation_warnings(_target_validation_warnings(target_name, getattr(graph, "warnings", [])))
         print(report.summary())
     if not produced_output:
         print("\nNo variable analysis output was produced because no target loaded successfully.")
@@ -1234,9 +1893,7 @@ def variable_usage_submenu(cfg: dict):
         elif c in VARIABLE_ANALYSES:
             name, kinds = VARIABLE_ANALYSES[c]
             # kinds is either a set[IssueKind] or None at this point
-            run_variable_analysis(
-                cfg, kinds if isinstance(kinds, (set, type(None))) else None
-            )
+            run_variable_analysis(cfg, kinds if isinstance(kinds, set | type(None)) else None)
         else:
             print("Invalid choice.")
             pause()
@@ -1252,6 +1909,7 @@ def module_analysis_submenu(cfg: dict):
                 MenuOption("1", "Compare module variants", "Compare matching module names across instances"),
                 MenuOption("2", "Find module instances", "List where a module name appears in the target"),
                 MenuOption("3", "Inspect module tree", "Print the module tree for debugging structure"),
+                MenuOption("4", "Validate graphics rules", "Check configured graphics rules against loaded modules"),
                 MenuOption("b", "Back"),
                 MenuOption("q", "Quit"),
             ],
@@ -1270,6 +1928,8 @@ def module_analysis_submenu(cfg: dict):
             run_module_find_by_name(cfg)
         elif c == "3":
             run_module_tree_debug(cfg)
+        elif c == "4":
+            run_graphics_rules_validation(cfg)
         else:
             print("Invalid choice.")
             pause()
@@ -1282,7 +1942,9 @@ def interface_communication_submenu(cfg: dict):
         _print_menu(
             "Interfaces & communication",
             [
-                MenuOption("1", "MMS interface variables", "Inventory MMSWriteVar or MMSReadVar usage and related checks"),
+                MenuOption(
+                    "1", "MMS interface variables", "Inventory MMSWriteVar or MMSReadVar usage and related checks"
+                ),
                 MenuOption("2", "Validate ICF paths", "Validate ICF entries against each program AST"),
                 MenuOption("b", "Back"),
                 MenuOption("q", "Quit"),
@@ -1340,8 +2002,7 @@ def analyzer_catalog_menu(cfg: dict):
             MenuOption("1", "Run full analyzer suite", "Run every default analyzer in sequence"),
         ]
         options.extend(
-            MenuOption(str(index), spec.name, spec.description)
-            for index, spec in enumerate(analyzers, start=2)
+            MenuOption(str(index), spec.name, spec.description) for index, spec in enumerate(analyzers, start=2)
         )
         options.extend([MenuOption("b", "Back"), MenuOption("q", "Quit")])
         _print_menu(
@@ -1468,9 +2129,7 @@ def run_module_duplicates_analysis(cfg: dict):
         print(f"\n=== Target: {target_name} ===")
         for module_name in module_names:
             try:
-                matches = find_modules_by_name(
-                    project_bp, module_name, debug=cfg.get("debug", False)
-                )
+                matches = find_modules_by_name(project_bp, module_name, debug=cfg.get("debug", False))
                 if not matches:
                     print(f"\n⚠ No modules found with name {module_name!r}.")
                     continue
@@ -1493,9 +2152,7 @@ def run_module_duplicates_analysis(cfg: dict):
                     selected = [matches[i - 1] for i in indices]
                     result = compare_modules(selected)
                 else:
-                    result = analyze_module_duplicates(
-                        project_bp, module_name, debug=cfg.get("debug", False)
-                    )
+                    result = analyze_module_duplicates(project_bp, module_name, debug=cfg.get("debug", False))
 
                 print("\n" + result.summary())
             except Exception as e:
@@ -1519,9 +2176,7 @@ def run_module_find_by_name(cfg: dict):
         for target_name, project_bp, _graph in _iter_loaded_projects(cfg):
             print(f"\n=== Target: {target_name} ===")
             for module_name in module_names:
-                matches = find_modules_by_name(
-                    project_bp, module_name, debug=cfg.get("debug", False)
-                )
+                matches = find_modules_by_name(project_bp, module_name, debug=cfg.get("debug", False))
                 if not matches:
                     print(f"\nNo modules found with name {module_name!r}.")
                     continue
@@ -1656,6 +2311,7 @@ def _run_checks(cfg: dict, selected_keys: list[str] | None) -> None:
         for spec in analyzers:
             print(f"\n=== {spec.name} ({spec.key}) ===")
             report = spec.run(context)
+            report = apply_rule_profile_to_report(spec.key, report, cfg)
             print(report.summary())
 
     pause()
@@ -1688,9 +2344,7 @@ def run_icf_validation(cfg: dict):
     """Validate ICF paths against per-program ASTs (non-recursive, report-only)."""
     icf_dir_raw = cfg.get("icf_dir", "")
     if not icf_dir_raw:
-        print(
-            "❌ icf_dir is not set in the config. Set it before running ICF validation."
-        )
+        print("❌ icf_dir is not set in the config. Set it before running ICF validation.")
         pause()
         return
 
@@ -1700,9 +2354,7 @@ def run_icf_validation(cfg: dict):
         pause()
         return
 
-    icf_files = sorted(
-        p for p in icf_dir.iterdir() if p.is_file() and p.suffix.lower() == ".icf"
-    )
+    icf_files = sorted(p for p in icf_dir.iterdir() if p.is_file() and p.suffix.lower() == ".icf")
     if not icf_files:
         print(f"⚠ No .icf files found in {icf_dir}")
         pause()
@@ -1776,9 +2428,7 @@ def run_debug_variable_usage(cfg: dict):
 
     for target_name, project_bp, _graph in _iter_loaded_projects(cfg):
         try:
-            report = debug_variable_usage(
-                project_bp, var_name, debug=cfg.get("debug", False)
-            )
+            report = debug_variable_usage(project_bp, var_name, debug=cfg.get("debug", False))
             print(f"\n=== Target: {target_name} ===")
             print(report)
         except Exception as e:
@@ -1850,7 +2500,9 @@ def dump_menu(cfg: dict):
                 MenuOption("1", "Dump parse tree", "Write the parser tree for each loaded target"),
                 MenuOption("2", "Dump AST", "Write the merged AST for each loaded target"),
                 MenuOption("3", "Dump dependency graph", "Write dependency graph output for each loaded target"),
-                MenuOption("4", "Print variable report", "Print the full variable summary without entering the variable menu"),
+                MenuOption(
+                    "4", "Print variable report", "Print the full variable summary without entering the variable menu"
+                ),
                 MenuOption("b", "Back"),
                 MenuOption("q", "Quit"),
             ],
@@ -1878,9 +2530,8 @@ def dump_menu(cfg: dict):
                     analyze_variables(
                         project_bp,
                         debug=cfg.get("debug", False),
-                        unavailable_libraries=getattr(
-                            graph, "unavailable_libraries", set()
-                        ),
+                        unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+                        config=cfg,
                     ).summary()
                 )
         else:
@@ -1911,6 +2562,7 @@ def config_menu(cfg: dict) -> bool:
                 MenuOption("9", "Save configuration", "Write the current configuration to disk"),
                 MenuOption("10", "Change icf_dir", "Set the directory used for ICF validation"),
                 MenuOption("11", "Toggle debug", "Show extra debugging output while running"),
+                MenuOption("12", "Edit graphics rules", "Manage the JSON graphics rules used by the graphics check"),
                 MenuOption("b", "Back"),
                 MenuOption("q", "Quit"),
             ],
@@ -1934,10 +2586,7 @@ def config_menu(cfg: dict) -> bool:
             if not target_exists(new, cfg):
                 print("❌ Target not found in configured directories")
                 pause()
-            elif any(
-                str(existing).casefold() == new.casefold()
-                for existing in cfg["analyzed_programs_and_libraries"]
-            ):
+            elif any(str(existing).casefold() == new.casefold() for existing in cfg["analyzed_programs_and_libraries"]):
                 print("⚠ Target already listed")
                 pause()
             elif confirm(f"Add '{new}' to analyzed_programs_and_libraries?"):
@@ -1963,9 +2612,7 @@ def config_menu(cfg: dict) -> bool:
                 pause()
                 continue
 
-            if 0 <= idx < len(targets) and confirm(
-                f"Remove '{targets[idx]}' from analyzed_programs_and_libraries?"
-            ):
+            if 0 <= idx < len(targets) and confirm(f"Remove '{targets[idx]}' from analyzed_programs_and_libraries?"):
                 targets.pop(idx)
                 dirty = True
 
@@ -2024,6 +2671,8 @@ def config_menu(cfg: dict) -> bool:
                 cfg["debug"] = not cfg["debug"]
                 apply_debug(cfg)
                 dirty = True
+        elif c == "12":
+            graphics_rules_menu(cfg)
         else:
             print("Invalid choice.", flush=True)
             pause()
@@ -2061,11 +2710,10 @@ def tools_menu(cfg: dict) -> None:
             if _require_targets_for_menu_action(cfg, "using diagnostics and dumps"):
                 dump_menu(cfg)
         elif c == "3":
-            if _require_targets_for_menu_action(cfg, "refreshing cached ASTs"):
-                if confirm("Force refresh cached AST?"):
-                    force_refresh_ast(cfg)
-                    print("? AST cache refreshed")
-                    pause()
+            if _require_targets_for_menu_action(cfg, "refreshing cached ASTs") and confirm("Force refresh cached AST?"):
+                force_refresh_ast(cfg)
+                print("? AST cache refreshed")
+                pause()
         else:
             print("Invalid choice.")
             pause()
@@ -2083,9 +2731,7 @@ def main(argv: list[str] | None = None) -> int:
         cfg, default_used = load_config(CONFIG_PATH)
         apply_debug(cfg)
         if default_used:
-            print(
-                "⚠ Default config created. Open Setup before running analysis."
-            )
+            print("⚠ Default config created. Open Setup before running analysis.")
             pause()
         else:
             if not self_check(cfg) and not confirm("Self-check failed. Continue?"):
@@ -2111,8 +2757,7 @@ def main(argv: list[str] | None = None) -> int:
                     "Start with Setup on first run."
                 ),
                 note=(
-                    _summarize_targets(cfg)
-                    + "\nChanges are not saved until you choose Save configuration in Setup."
+                    _summarize_targets(cfg) + "\nChanges are not saved until you choose Save configuration in Setup."
                 ),
             )
             c = input("> ").strip().lower()
@@ -2141,7 +2786,7 @@ def main(argv: list[str] | None = None) -> int:
 
             else:
                 print("Invalid choice.", flush=True)
-    except QuitApp:
+    except QuitAppError:
         return 0
 
 

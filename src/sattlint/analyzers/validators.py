@@ -1,11 +1,12 @@
 """Dedicated validator classes for variable analysis."""
+
 from __future__ import annotations
 
 import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 
 from ..grammar import constants as const
 from ..models.ast_model import ParameterMapping, Simple_DataType, Variable
@@ -42,14 +43,14 @@ class Validator(Protocol):
 class StringMappingValidator:
     """Validates string variable mapping types."""
 
-    _STRING_LIMITS: dict[Simple_DataType, int] = {
+    _STRING_LIMITS: ClassVar[dict[Simple_DataType, int]] = {
         Simple_DataType.IDENTSTRING: 15,
         Simple_DataType.TAGSTRING: 30,
         Simple_DataType.STRING: 40,
         Simple_DataType.LINESTRING: 80,
         Simple_DataType.MAXSTRING: 140,
     }
-    _STRING_TYPES: set[Simple_DataType] = set(_STRING_LIMITS.keys())
+    _STRING_TYPES: ClassVar[set[Simple_DataType]] = set(_STRING_LIMITS.keys())
 
     def _is_string_simple_type(self, dt: Simple_DataType | str | None) -> bool:
         return isinstance(dt, Simple_DataType) and dt in self._STRING_TYPES
@@ -68,8 +69,11 @@ class StringMappingValidator:
         issues: list[VariableIssue] = []
 
         # Only check when both are built-in string types
-        if self._is_string_simple_type(tgt_var.datatype) and \
-           self._is_string_simple_type(src_var.datatype) and tgt_var.datatype is not src_var.datatype:
+        if (
+            self._is_string_simple_type(tgt_var.datatype)
+            and self._is_string_simple_type(src_var.datatype)
+            and tgt_var.datatype is not src_var.datatype
+        ):
             issue = VariableIssue(
                 kind=IssueKind.STRING_MAPPING_MISMATCH,
                 module_path=list(path),
@@ -80,11 +84,13 @@ class StringMappingValidator:
             issues.append(issue)
 
         return issues
+
+
 class MinMaxValidator:
     """Validates min/max naming conventions in parameter mappings."""
 
-    _MIN_NAME_TOKENS: set[str] = {"min", "minimum"}
-    _MAX_NAME_TOKENS: set[str] = {"max", "maximum"}
+    _MIN_NAME_TOKENS: ClassVar[set[str]] = {"min", "minimum"}
+    _MAX_NAME_TOKENS: ClassVar[set[str]] = {"max", "maximum"}
 
     def _mapping_name_text(self, value: Any) -> str | None:
         if isinstance(value, dict) and const.KEY_VAR_NAME in value:
@@ -166,8 +172,7 @@ class ContractMappingValidator:
     ):
         self._type_graph = type_graph
         self._anytype_field_contracts = {
-            owner_id: dict(contracts)
-            for owner_id, contracts in (anytype_field_contracts or {}).items()
+            owner_id: dict(contracts) for owner_id, contracts in (anytype_field_contracts or {}).items()
         }
 
     def _datatype_key(self, datatype: Simple_DataType | str | None) -> str | None:

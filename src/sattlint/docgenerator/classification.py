@@ -118,8 +118,7 @@ class DocumentationClassification:
         return [
             candidate
             for candidate in pool
-            if candidate.path != entry.path
-            and path_startswith_casefold(list(candidate.path), list(entry.path))
+            if candidate.path != entry.path and path_startswith_casefold(list(candidate.path), list(entry.path))
         ]
 
 
@@ -176,9 +175,7 @@ def discover_documentation_unit_candidates(
     }
 
     candidates = [
-        entry
-        for entry in classification.all_entries
-        if _looks_like_unit_root(entry, classification, categorized_paths)
+        entry for entry in classification.all_entries if _looks_like_unit_root(entry, classification, categorized_paths)
     ]
     if candidates:
         return candidates
@@ -188,10 +185,7 @@ def discover_documentation_unit_candidates(
         for entry in classification.all_entries
         if entry.path not in categorized_paths
         and not _looks_like_wrapper_entry(entry)
-        and (
-            classification.descendants(entry, category="em")
-            or classification.descendants(entry, category="ops")
-        )
+        and (classification.descendants(entry, category="em") or classification.descendants(entry, category="ops"))
         and entry.moduletype_name not in {"RecPar", "EngPar", "UsrPar"}
     ]
     if fallback:
@@ -226,10 +220,7 @@ def _apply_documentation_scope(
         return classification
 
     def in_scope(entry: DocumentedModule) -> bool:
-        return any(
-            path_startswith_casefold(list(entry.path), list(root.path))
-            for root in scope.roots or []
-        )
+        return any(path_startswith_casefold(list(entry.path), list(root.path)) for root in scope.roots or [])
 
     root_paths = {root.path for root in scope.roots or []}
     filtered_categories = {
@@ -237,9 +228,7 @@ def _apply_documentation_scope(
         for category, entries in classification.categories.items()
     }
     filtered_uncategorized = [
-        entry
-        for entry in classification.uncategorized
-        if in_scope(entry) and entry.path not in root_paths
+        entry for entry in classification.uncategorized if in_scope(entry) and entry.path not in root_paths
     ]
     filtered_all_entries = [entry for entry in classification.all_entries if in_scope(entry)]
 
@@ -279,17 +268,9 @@ def _resolve_documentation_scope(
     if mode == "moduletype_names":
         requested_values = _normalize_requested_values(units.get("moduletype_names", []))
         requested_cf = {value.casefold() for value in requested_values}
-        roots = [
-            candidate
-            for candidate in candidates
-            if (candidate.moduletype_name or "").casefold() in requested_cf
-        ]
+        roots = [candidate for candidate in candidates if (candidate.moduletype_name or "").casefold() in requested_cf]
         matched_types = {(candidate.moduletype_name or "").casefold() for candidate in roots}
-        unmatched = [
-            value
-            for value in requested_values
-            if value.casefold() not in matched_types
-        ]
+        unmatched = [value for value in requested_values if value.casefold() not in matched_types]
         return DocumentationScope(
             mode=mode,
             roots=roots,
@@ -310,14 +291,8 @@ def _resolve_scope_paths(
     candidates: list[DocumentedModule],
     requested_values: list[str],
 ) -> tuple[list[DocumentedModule], list[str]]:
-    exact_path_map = {
-        ".".join(candidate.path).casefold(): candidate
-        for candidate in candidates
-    }
-    short_path_map = {
-        candidate.short_path.casefold(): candidate
-        for candidate in candidates
-    }
+    exact_path_map = {".".join(candidate.path).casefold(): candidate for candidate in candidates}
+    short_path_map = {candidate.short_path.casefold(): candidate for candidate in candidates}
     by_name: dict[str, list[DocumentedModule]] = {}
     for documented in candidates:
         by_name.setdefault(documented.name.casefold(), []).append(documented)
@@ -519,8 +494,7 @@ def _descendants_of(
     return [
         candidate
         for candidate in entries
-        if candidate.path != entry.path
-        and path_startswith_casefold(list(candidate.path), list(entry.path))
+        if candidate.path != entry.path and path_startswith_casefold(list(candidate.path), list(entry.path))
     ]
 
 
@@ -577,11 +551,7 @@ def _collect_category_entries(
             if anchor is not None:
                 collected.append(anchor)
 
-    collected.extend(
-        entry
-        for entry in entries
-        if _matches_category_heuristic(entry, category)
-    )
+    collected.extend(entry for entry in entries if _matches_category_heuristic(entry, category))
     return _unique_documented_modules(collected)
 
 
@@ -648,10 +618,7 @@ def _looks_like_unit_root(
         return False
     if _looks_like_wrapper_entry(entry):
         return False
-    if not (
-        classification.descendants(entry, category="em")
-        or classification.descendants(entry, category="ops")
-    ):
+    if not (classification.descendants(entry, category="em") or classification.descendants(entry, category="ops")):
         return False
 
     parameter_names = {variable.name.casefold() for variable in entry.moduleparameters}

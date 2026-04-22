@@ -79,11 +79,7 @@ class CorpusRunResult:
 
     @property
     def passed(self) -> bool:
-        return (
-            self.evaluation.passed
-            and not self.missing_artifacts
-            and self.execution_error is None
-        )
+        return self.evaluation.passed and not self.missing_artifacts and self.execution_error is None
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
@@ -259,7 +255,8 @@ def run_corpus_suite(
     resolved_manifest_dir = manifest_dir.resolve() if manifest_dir is not None else None
     selected_manifest_paths = tuple(
         sorted(
-            path.resolve() for path in (manifest_paths or discover_corpus_manifests(resolved_manifest_dir or DEFAULT_MANIFEST_DIR))
+            path.resolve()
+            for path in (manifest_paths or discover_corpus_manifests(resolved_manifest_dir or DEFAULT_MANIFEST_DIR))
         )
     )
 
@@ -304,9 +301,7 @@ def run_corpus_case(
         [finding.rule_id or finding.id for finding in findings.findings],
     )
     missing_artifacts = tuple(
-        artifact_name
-        for artifact_name in manifest.required_artifacts
-        if not (artifact_dir / artifact_name).exists()
+        artifact_name for artifact_name in manifest.required_artifacts if not (artifact_dir / artifact_name).exists()
     )
     artifact_fragment_failures = _collect_artifact_fragment_failures(
         manifest,
@@ -314,10 +309,7 @@ def run_corpus_case(
     )
     evaluation = CorpusEvaluation(
         case_id=evaluation.case_id,
-        passed=(
-            evaluation.passed
-            and not artifact_fragment_failures
-        ),
+        passed=(evaluation.passed and not artifact_fragment_failures),
         missing_finding_ids=evaluation.missing_finding_ids,
         unexpected_finding_ids=evaluation.unexpected_finding_ids,
         artifact_fragment_failures=artifact_fragment_failures,
@@ -374,7 +366,8 @@ def main(argv: list[str] | None = None) -> int:
                 "case_count": summary["summary"]["case_count"],
                 "failed_count": summary["summary"]["failed_count"],
                 "findings_schema": summary.get("findings_schema"),
-                "corpus_results_report": sanitize_path_for_report(report_path, repo_root=REPO_ROOT) or report_path.as_posix(),
+                "corpus_results_report": sanitize_path_for_report(report_path, repo_root=REPO_ROOT)
+                or report_path.as_posix(),
             }
         )
     )
@@ -390,10 +383,7 @@ def _coerce_optional_str(value: Any) -> str | None:
 def _coerce_artifact_fragments(value: Any) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         return {}
-    return {
-        str(key): expected_fragment
-        for key, expected_fragment in value.items()
-    }
+    return {str(key): expected_fragment for key, expected_fragment in value.items()}
 
 
 def _normalize_severity(value: str) -> str:
@@ -592,19 +582,24 @@ def _execute_workspace_case(
     target_path: Path,
     repo_root: Path,
 ) -> _CorpusExecutionArtifacts:
-    program_dir = _resolve_optional_directory(
-        manifest.program_dir,
-        manifest_path=manifest_path,
-        repo_root=repo_root,
-    ) or target_path.parent
-    abb_lib_dir = _resolve_optional_directory(
-        manifest.abb_lib_dir,
-        manifest_path=manifest_path,
-        repo_root=repo_root,
-    ) or program_dir
+    program_dir = (
+        _resolve_optional_directory(
+            manifest.program_dir,
+            manifest_path=manifest_path,
+            repo_root=repo_root,
+        )
+        or target_path.parent
+    )
+    abb_lib_dir = (
+        _resolve_optional_directory(
+            manifest.abb_lib_dir,
+            manifest_path=manifest_path,
+            repo_root=repo_root,
+        )
+        or program_dir
+    )
     other_lib_dirs = [
-        _resolve_manifest_target_path(manifest_path, raw_path, repo_root)
-        for raw_path in manifest.other_lib_dirs
+        _resolve_manifest_target_path(manifest_path, raw_path, repo_root) for raw_path in manifest.other_lib_dirs
     ]
 
     loader = engine_module.SattLineProjectLoader(
@@ -686,6 +681,8 @@ def _build_semantic_finding_collection(
                 path=target_display_path,
                 module_path=tuple(issue.module_path or ()),
             ),
+            detail=issue.rule.explanation or issue.rule.description,
+            suggestion=issue.rule.suggestion,
             data={
                 "applies_to": issue.rule.applies_to,
                 "source_kind": issue.source_kind,

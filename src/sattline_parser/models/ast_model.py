@@ -1,4 +1,5 @@
 """AST model definitions and formatting helpers."""
+
 from __future__ import annotations
 
 import textwrap
@@ -38,12 +39,6 @@ class FloatLiteral(float):
 
     def __reduce__(self):
         return (type(self), (float(self), self.span))
-
-
-
-
-
-
 
 
 class Simple_DataType(Enum):
@@ -87,11 +82,7 @@ class Variable:
     @property
     def datatype_text(self) -> str:
         # Always return a string representation
-        return (
-            self.datatype.value
-            if isinstance(self.datatype, Simple_DataType)
-            else str(self.datatype)
-        )
+        return self.datatype.value if isinstance(self.datatype, Simple_DataType) else str(self.datatype)
 
     def __post_init__(self):
         # Accept DataType or any-case string
@@ -131,6 +122,7 @@ class DataType:
 
     def __str__(self) -> str:
         from ..utils.formatter import format_list
+
         lines = [
             f"Name       : {self.name!r}",
             f"Description: {self.description!r}",
@@ -165,21 +157,13 @@ class ParameterMapping:
     source_literal: Any | None = None
 
     def __str__(self) -> str:
-        tgt = (
-            self.target.get(const.KEY_VAR_NAME)
-            if isinstance(self.target, dict)
-            else str(self.target)
-        )
+        tgt = self.target.get(const.KEY_VAR_NAME) if isinstance(self.target, dict) else str(self.target)
 
         if self.is_source_global:
             return f"{tgt} => GLOBAL"
 
         if self.source_type == const.TREE_TAG_VARIABLE_NAME and self.source:
-            src = (
-                self.source.get(const.KEY_VAR_NAME)
-                if isinstance(self.source, dict)
-                else str(self.source)
-            )
+            src = self.source.get(const.KEY_VAR_NAME) if isinstance(self.source, dict) else str(self.source)
             return f"{tgt} => {src}"
 
         if self.source_literal is not None:
@@ -250,10 +234,7 @@ class Equation:
     code: list[Any] = field(default_factory=list)
 
     def __str__(self) -> str:
-        return (
-            f"Equation(name={self.name}, pos={self.position},\n"
-            f"    code={format_list(self.code)})"
-        )
+        return f"Equation(name={self.name}, pos={self.position},\n" f"    code={format_list(self.code)})"
 
 
 @dataclass
@@ -272,16 +253,11 @@ class ModuleCode:
         seq_lines = []
         if self.sequences:
             for s in self.sequences:
-                size_str = (
-                    f" with size {s.size}"
-                    if getattr(s, "size", None) is not None
-                    else ""
-                )
+                size_str = f" with size {s.size}" if getattr(s, "size", None) is not None else ""
                 # If you implemented format_seq_nodes(s.code), use it here; otherwise keep existing
                 seq_lines.append(
                     f"Sequence {s.name!r} at {s.position}{size_str} (type={s.type})\n"
-                    f"    Code:\n"
-                    + textwrap.indent(format_seq_nodes(s.code), "        ")
+                    f"    Code:\n" + textwrap.indent(format_seq_nodes(s.code), "        ")
                 )
         else:
             seq_lines.append("No sequences")
@@ -293,11 +269,7 @@ class ModuleCode:
                 pretty_code = []
                 for stmt in e.code:
                     pretty_code.append(format_expr(_unwrap_statement_node(stmt)))
-                size_str = (
-                    f" with size {e.size}"
-                    if getattr(e, "size", None) is not None
-                    else ""
-                )
+                size_str = f" with size {e.size}" if getattr(e, "size", None) is not None else ""
                 eq_lines.append(
                     f"EquationBlock name={e.name!r} at {e.position}{size_str}\n"
                     f"    Code:\n" + textwrap.indent("\n".join(pretty_code), "        ")
@@ -305,13 +277,9 @@ class ModuleCode:
 
         return (
             "ModuleCode{\n"
-            + textwrap.indent(
-                "Sequences:\n" + textwrap.indent("\n\n".join(seq_lines), "    "), "    "
-            )
+            + textwrap.indent("Sequences:\n" + textwrap.indent("\n\n".join(seq_lines), "    "), "    ")
             + "\n\n"
-            + textwrap.indent(
-                "Equations:\n" + textwrap.indent("\n\n".join(eq_lines), "    "), "    "
-            )
+            + textwrap.indent("Equations:\n" + textwrap.indent("\n\n".join(eq_lines), "    "), "    ")
             + "\n}"
         )
 
@@ -321,6 +289,7 @@ class ModuleHeader:
     name: str
     invoke_coord: tuple[float, float, float, float, float]
     declaration_span: SourceSpan | None = None
+    invocation_arguments: tuple[str, ...] = ()
     layer_info: str | None = None
     enable: bool = True
     zoom_limits: tuple[float, float] | None = None
@@ -338,9 +307,7 @@ class SingleModule:
     datecode: int | None = None
     moduleparameters: list[Variable] = field(default_factory=list)
     localvariables: list[Variable] = field(default_factory=list)
-    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(
-        default_factory=list
-    )
+    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(default_factory=list)
     modulecode: ModuleCode | None = None
     parametermappings: list[ParameterMapping] = field(default_factory=list)
 
@@ -364,9 +331,7 @@ class SingleModule:
 class FrameModule:
     header: ModuleHeader
     datecode: int | None = None
-    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(
-        default_factory=list
-    )
+    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(default_factory=list)
     moduledef: ModuleDef | None = None
     modulecode: ModuleCode | None = None
 
@@ -405,12 +370,8 @@ class ModuleTypeInstance:
 class ModuleTypeDef:
     name: str
     datecode: int | None = None
-    moduleparameters: list[Variable] = field(
-        default_factory=list
-    )  # MODULEPARAMETERS declarations
-    localvariables: list[Variable] = field(
-        default_factory=list
-    )  # LOCALVARIABLES declarations
+    moduleparameters: list[Variable] = field(default_factory=list)  # MODULEPARAMETERS declarations
+    localvariables: list[Variable] = field(default_factory=list)  # LOCALVARIABLES declarations
     submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(
         default_factory=list
     )  # nested ModuleInstance nodes
@@ -447,9 +408,7 @@ class BasePicture:
     datatype_defs: list[DataType] = field(default_factory=list)
     moduletype_defs: list[ModuleTypeDef] = field(default_factory=list)
     localvariables: list[Variable] = field(default_factory=list)
-    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(
-        default_factory=list
-    )
+    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(default_factory=list)
     moduledef: ModuleDef | None = None
     modulecode: ModuleCode | None = None
     origin_file: str | None = None

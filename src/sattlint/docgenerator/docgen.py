@@ -286,10 +286,7 @@ def _sequence_render_rows(sequence: Sequence) -> list[SequenceRenderRow]:
 
 
 def _sequence_table_rows(rows: list[SequenceRenderRow]) -> list[list[str]]:
-    return [
-        [row.node_type, row.name, row.detail, row.enter, row.active, row.exit]
-        for row in rows
-    ]
+    return [[row.node_type, row.name, row.detail, row.enter, row.active, row.exit] for row in rows]
 
 
 def _mapping_target_name(mapping) -> str:
@@ -322,10 +319,7 @@ def _mapping_value(entry: DocumentedModule, *target_names: str) -> str | None:
 
 
 def _display_name(entry: DocumentedModule) -> str:
-    return (
-        _mapping_value(entry, "HeaderName", "MediaName", "Name")
-        or entry.name
-    )
+    return _mapping_value(entry, "HeaderName", "MediaName", "Name") or entry.name
 
 
 def _module_title(entry: DocumentedModule) -> str:
@@ -379,13 +373,14 @@ def _unit_category_descendants(
     if not top_level_only:
         return entries
 
-    excluded_ancestors = classification.descendants(root, category="em") + classification.descendants(root, category="ops")
+    excluded_ancestors = classification.descendants(root, category="em") + classification.descendants(
+        root, category="ops"
+    )
     return [
         entry
         for entry in entries
         if not any(
-            entry.path != ancestor.path
-            and entry.path[: len(ancestor.path)] == ancestor.path
+            entry.path != ancestor.path and entry.path[: len(ancestor.path)] == ancestor.path
             for ancestor in excluded_ancestors
         )
     ]
@@ -402,9 +397,7 @@ def _support_entries(unit: DocumentUnit, classification: DocumentationClassifica
         entry
         for entry in descendants
         if not any(
-            entry.path != ancestor.path
-            and entry.path[: len(ancestor.path)] == ancestor.path
-            for ancestor in excluded
+            entry.path != ancestor.path and entry.path[: len(ancestor.path)] == ancestor.path for ancestor in excluded
         )
     ]
 
@@ -536,10 +529,12 @@ def _generic_section_rows(entries: list[DocumentedModule]) -> list[list[str]]:
 def _simple_name_tag_rows(entries: list[DocumentedModule], description_label: str) -> list[list[str]]:
     rows: list[list[str]] = []
     for entry in entries:
-        rows.append([
-            _module_description(entry) if description_label == "description" else _module_title(entry),
-            entry.name,
-        ])
+        rows.append(
+            [
+                _module_description(entry) if description_label == "description" else _module_title(entry),
+                entry.name,
+            ]
+        )
     return rows
 
 
@@ -661,11 +656,7 @@ def _pid_controller_rows(entry: DocumentedModule, classification: DocumentationC
     for descendant in classification.descendants(entry):
         name_cf = descendant.name.casefold()
         label_cf = _moduletype_summary(descendant).casefold()
-        if not (
-            "pid" in label_cf
-            or label_cf.endswith("ctrl")
-            or name_cf.startswith(("pc", "lc", "tc"))
-        ):
+        if not ("pid" in label_cf or label_cf.endswith("ctrl") or name_cf.startswith(("pc", "lc", "tc"))):
             continue
         rows.append(
             [
@@ -678,7 +669,9 @@ def _pid_controller_rows(entry: DocumentedModule, classification: DocumentationC
     return rows
 
 
-def _sequence_rows(entry: DocumentedModule, classification: DocumentationClassification) -> list[tuple[str, list[SequenceRenderRow]]]:
+def _sequence_rows(
+    entry: DocumentedModule, classification: DocumentationClassification
+) -> list[tuple[str, list[SequenceRenderRow]]]:
     rows: list[tuple[str, list[SequenceRenderRow]]] = []
     seen: set[tuple[str, str]] = set()
     for candidate in [entry, *classification.descendants(entry)]:
@@ -716,11 +709,7 @@ def _event_rows(entry: DocumentedModule, classification: DocumentationClassifica
     for descendant in classification.descendants(entry):
         name_cf = descendant.name.casefold()
         label_cf = _moduletype_summary(descendant).casefold()
-        if not (
-            name_cf.startswith("event")
-            or "journal" in label_cf
-            or "event" in label_cf
-        ):
+        if not (name_cf.startswith("event") or "journal" in label_cf or "event" in label_cf):
             continue
         rows.append(
             [
@@ -802,9 +791,15 @@ def _render_introduction(
     _heading(doc, "S88 Model", level=2)
     _paragraph(doc, "The ANSI/ISA-88 (S88) model is used to structure the generated specification.")
     _underlined(doc, "S88 Physical Model")
-    _paragraph(doc, "The physical model section groups units, equipment modules, device interfaces, and communication links detected from the source structure.")
+    _paragraph(
+        doc,
+        "The physical model section groups units, equipment modules, device interfaces, and communication links detected from the source structure.",
+    )
     _underlined(doc, "S88 Procedural Model")
-    _paragraph(doc, "The procedural model section groups detected operations together with their parameters, messages, events, and available sequence logic.")
+    _paragraph(
+        doc,
+        "The procedural model section groups detected operations together with their parameters, messages, events, and available sequence logic.",
+    )
 
     _heading(doc, "Definitions and abbreviations", level=2)
     _heading(doc, "Abbreviations", level=3)
@@ -839,14 +834,13 @@ def _render_physical_model(
     classification: DocumentationClassification,
 ) -> None:
     _heading(doc, "S88 Physical model", level=1)
-    process_cell_name = ", ".join(sorted({unit.section_name for unit in units if unit.section_name})) or "Detected process cell"
+    process_cell_name = (
+        ", ".join(sorted({unit.section_name for unit in units if unit.section_name})) or "Detected process cell"
+    )
     _heading(doc, f"Process Cell - {process_cell_name}", level=2)
     _paragraph(doc, "The detected process cell comprises the units listed below.")
 
-    unit_rows = [
-        [unit.unit_code, unit.unit_class, unit.title, f"See section {unit.title}"]
-        for unit in units
-    ]
+    unit_rows = [[unit.unit_code, unit.unit_class, unit.title, f"See section {unit.title}"] for unit in units]
     _table(doc, ["Unit", "Unit Class", "Danish Description", "Unit Definition"], unit_rows, col_widths=(1, 2, 2, 2))
 
     _render_named_table_section(
@@ -872,9 +866,14 @@ def _render_unit_physical_section(
     support_entries = _support_entries(unit, classification)
 
     _heading(doc, f"Unit Class definition: {unit.title}", level=2)
-    _paragraph(doc, f"This section summarizes the detected physical structure for unit {unit.unit_code}.", style="Body Text")
+    _paragraph(
+        doc, f"This section summarizes the detected physical structure for unit {unit.unit_code}.", style="Body Text"
+    )
     _paragraph(doc, f"Overall detected unit class: {_prettify_name(unit.unit_class)}.", style="Caption")
-    _paragraph(doc, "Note: The generated section is based on code structure, parameter mappings, and detected module groupings.")
+    _paragraph(
+        doc,
+        "Note: The generated section is based on code structure, parameter mappings, and detected module groupings.",
+    )
 
     _render_named_table_section(
         doc,
@@ -889,7 +888,16 @@ def _render_unit_physical_section(
         doc,
         "Measurements and logging",
         _measurement_rows([entry for entry in support_entries if _is_measurement_entry(entry)]),
-        headers=["Measurement", "Tag", "Min", "Max", "Eng. Unit", "Log interval\n(Max)", "Dead-band\nrelative", "Log interval \n(Min)"],
+        headers=[
+            "Measurement",
+            "Tag",
+            "Min",
+            "Max",
+            "Eng. Unit",
+            "Log interval\n(Max)",
+            "Dead-band\nrelative",
+            "Log interval \n(Min)",
+        ],
         level=3,
         widths=(2, 1, 1, 1, 1, 1, 1, 1),
     )
@@ -902,7 +910,9 @@ def _render_unit_physical_section(
                 entry.name,
                 _entry_variable_text(entry, "min", "lowlimit"),
                 _entry_variable_text(entry, "max", "highlimit"),
-                _first_non_empty(_metadata_value(entry, "EngUnit", "Unit"), _entry_variable_text(entry, "engunit", "unit")),
+                _first_non_empty(
+                    _metadata_value(entry, "EngUnit", "Unit"), _entry_variable_text(entry, "engunit", "unit")
+                ),
             ]
             for entry in support_entries
             if _is_special_logging_entry(entry)
@@ -967,7 +977,12 @@ def _render_unit_physical_section(
         doc,
         "Interlocks",
         _interlock_rows([variable for variable in unit.root.localvariables if "interlock" in variable.name.casefold()]),
-        headers=["Tag", "Description", "Interlock Activation\n(Condition to cause interlock)", "Interlock Enable\n(Manipulation of equipment)"],
+        headers=[
+            "Tag",
+            "Description",
+            "Interlock Activation\n(Condition to cause interlock)",
+            "Interlock Enable\n(Manipulation of equipment)",
+        ],
         level=3,
         widths=(2, 2, 2, 2),
     )
@@ -982,7 +997,9 @@ def _render_unit_physical_section(
     _render_named_table_section(
         doc,
         "Exceptions",
-        _exception_rows([variable for variable in unit.root.moduleparameters if variable.name.casefold().startswith("error_")]),
+        _exception_rows(
+            [variable for variable in unit.root.moduleparameters if variable.name.casefold().startswith("error_")]
+        ),
         headers=["Condition", "Exceptions Description"],
         level=3,
         widths=(2, 4),
@@ -1199,11 +1216,7 @@ def _render_uncategorized_appendix(
     units: list[DocumentUnit],
 ) -> None:
     unit_roots = [unit.root for unit in units]
-    appendix_entries = [
-        entry
-        for entry in classification.uncategorized
-        if not _is_within_any(entry, unit_roots)
-    ]
+    appendix_entries = [entry for entry in classification.uncategorized if not _is_within_any(entry, unit_roots)]
     if not appendix_entries:
         return
 
@@ -1264,8 +1277,7 @@ def _variable_rows(variables: list[Variable]) -> list[list[str]]:
 
 def _is_within_any(entry: DocumentedModule, ancestors: list[DocumentedModule]) -> bool:
     return any(
-        entry.path != ancestor.path and entry.path[: len(ancestor.path)] == ancestor.path
-        for ancestor in ancestors
+        entry.path != ancestor.path and entry.path[: len(ancestor.path)] == ancestor.path for ancestor in ancestors
     )
 
 

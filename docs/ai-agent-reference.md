@@ -158,6 +158,13 @@ The parser retains graphics and interact structures, but most static analysis is
 
 - `artifacts/analysis/analyzer_registry.json` records standardized analyzer metadata, semantic rule metadata, analyzer-to-rule mappings, and the summary outputs that surface each rule.
 
+## Analyzer Author Checklist
+
+- Define finding metadata through shared seams. Reuse `Issue`, `rule_profiles`, and semantic-rule metadata instead of inventing analyzer-local severity, confidence, explanation, or suggestion formats.
+- Add one narrow acceptance fixture first. Prefer a single-purpose file under `tests/fixtures/sample_sattline_files/phase0_guardrails/` or an analyzer-local fixture path instead of editing broad samples such as `BatchDemo.s`.
+- Wire findings export in same change when needed. If an analyzer is meant to show up in CLI, pipeline, or LSP output, update registry metadata and the relevant serialization or projection path alongside the analyzer logic.
+- Expose in order: analyzer logic, focused tests, finding shape, then CLI or LSP exposure. Do not make a new analyzer default-on before its finding contract and acceptance tests are stable.
+
 ---
 
 ## Workspace, Editor, And LSP Details

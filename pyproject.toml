@@ -108,9 +108,15 @@ ignore = [
     "E501",  # line too long (handled by formatter)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"src/sattline_parser/models/ast_model.py" = ["N801"]
+"src/sattline_parser/transformer/sl_transformer.py" = ["N802"]
+
 [tool.pyright]
 typeCheckingMode = "basic"
 pythonVersion = "3.13"
+venvPath = "."
+venv = ".venv"
 reportMissingTypeStubs = false
 exclude = ["src/sattlint_lsp/"]
 reportWildcardImportFrom = false

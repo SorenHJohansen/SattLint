@@ -1,4 +1,5 @@
 """SFC analysis for structural dead paths, write races, and state conflicts."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
@@ -91,9 +92,7 @@ def _normalize_step_groups(
 def normalize_mutually_exclusive_step_sets(raw: object) -> tuple[ExclusiveStepGroup, ...]:
     if not isinstance(raw, list):
         return ()
-    return _normalize_step_groups(
-        group for group in raw if isinstance(group, (list, tuple, set))
-    )
+    return _normalize_step_groups(group for group in raw if isinstance(group, list | tuple | set))
 
 
 def get_configured_mutually_exclusive_step_sets(
@@ -107,9 +106,7 @@ def get_configured_mutually_exclusive_step_sets(
     sfc_config = analysis.get("sfc", {})
     if not isinstance(sfc_config, dict):
         return ()
-    return normalize_mutually_exclusive_step_sets(
-        sfc_config.get("mutually_exclusive_steps", [])
-    )
+    return normalize_mutually_exclusive_step_sets(sfc_config.get("mutually_exclusive_steps", []))
 
 
 def _normalize_step_contract_refs(raw: object) -> tuple[str, ...]:
@@ -137,12 +134,8 @@ def _normalize_step_contract(raw: object) -> StepContract:
         return StepContract()
 
     return StepContract(
-        required_enter_writes=_normalize_step_contract_refs(
-            raw.get("required_enter_writes", [])
-        ),
-        required_exit_writes=_normalize_step_contract_refs(
-            raw.get("required_exit_writes", [])
-        ),
+        required_enter_writes=_normalize_step_contract_refs(raw.get("required_enter_writes", [])),
+        required_exit_writes=_normalize_step_contract_refs(raw.get("required_exit_writes", [])),
     )
 
 
@@ -221,7 +214,7 @@ def collect_sfc_reachability_findings(
                 terminated_by = {"kind": "SFCFork", "target": node.target}
                 continue
 
-            if isinstance(node, (SFCAlternative, SFCParallel)):
+            if isinstance(node, SFCAlternative | SFCParallel):
                 for branch_index, branch in enumerate(node.branches or []):
                     inspect_linear_nodes(
                         branch,
@@ -231,7 +224,7 @@ def collect_sfc_reachability_findings(
                     )
                 continue
 
-            if isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+            if isinstance(node, SFCSubsequence | SFCTransitionSub):
                 inspect_linear_nodes(node.body, module_path, sequence_name, branch_path)
 
     def inspect_modulecode(modulecode: ModuleCode | None, module_path: list[str]) -> None:
@@ -363,9 +356,7 @@ class _SfcAccessCollector(VariablesAnalyzer):
                 self._pop_site()
                 self._pop_site()
 
-    def _walk_sequence(
-        self, seq: Sequence, context: ScopeContext, path: list[str]
-    ) -> None:
+    def _walk_sequence(self, seq: Sequence, context: ScopeContext, path: list[str]) -> None:
         seq_name = getattr(seq, "name", "<unnamed>")
         previous_name = self._current_seq_name
         self._current_seq_name = seq_name
@@ -467,7 +458,7 @@ class _SfcAccessCollector(VariablesAnalyzer):
                     self._walk_seq_nodes(branch, env, path)
             elif isinstance(node, SFCParallel):
                 self._walk_parallel_branches(node.branches, context, path)
-            elif isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+            elif isinstance(node, SFCSubsequence | SFCTransitionSub):
                 self._walk_seq_nodes(node.body, env, path)
 
 
@@ -663,7 +654,7 @@ class _SfcStepContractCollector(VariablesAnalyzer):
                 )
                 continue
 
-            if isinstance(node, (SFCBreak, SFCFork)):
+            if isinstance(node, SFCBreak | SFCFork):
                 terminated = True
 
         return current_state
@@ -737,9 +728,7 @@ class _SfcStepContractCollector(VariablesAnalyzer):
             context,
         )
 
-        missing_enter = [
-            label for path, label in required_enter.items() if path not in enter_writes
-        ]
+        missing_enter = [label for path, label in required_enter.items() if path not in enter_writes]
         if missing_enter:
             self.contract_issues.append(
                 Issue(
@@ -758,9 +747,7 @@ class _SfcStepContractCollector(VariablesAnalyzer):
             )
 
         leaked_state = [
-            label
-            for path, label in required_enter.items()
-            if path in incoming_state and path not in enter_writes
+            label for path, label in required_enter.items() if path in incoming_state and path not in enter_writes
         ]
         if leaked_state:
             self.contract_issues.append(
@@ -779,9 +766,7 @@ class _SfcStepContractCollector(VariablesAnalyzer):
                 )
             )
 
-        missing_exit = [
-            label for path, label in required_exit.items() if path not in exit_writes
-        ]
+        missing_exit = [label for path, label in required_exit.items() if path not in exit_writes]
         if missing_exit:
             self.contract_issues.append(
                 Issue(
@@ -1082,10 +1067,7 @@ def _normalize_guard_signature(expr: Any) -> object:
 
         if operator in (const.KEY_COMPARE, "compare"):
             _compare, left, pairs = expr
-            comparisons = [
-                _normalize_compare_guard(left, symbol, right)
-                for symbol, right in pairs or []
-            ]
+            comparisons = [_normalize_compare_guard(left, symbol, right) for symbol, right in pairs or []]
             if not comparisons:
                 return _normalize_guard_signature(left)
             if len(comparisons) == 1:
@@ -1159,7 +1141,7 @@ def _collect_transition_logic_issues(base_picture: BasePicture) -> list[Issue]:
                 )
                 continue
 
-            if isinstance(node, (SFCAlternative, SFCParallel)):
+            if isinstance(node, SFCAlternative | SFCParallel):
                 for branch_index, branch in enumerate(node.branches or []):
                     inspect_nodes(
                         branch,
@@ -1169,7 +1151,7 @@ def _collect_transition_logic_issues(base_picture: BasePicture) -> list[Issue]:
                     )
                 continue
 
-            if isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+            if isinstance(node, SFCSubsequence | SFCTransitionSub):
                 inspect_nodes(node.body, module_path, sequence_name, branch_path)
 
         for duplicates in duplicate_groups.values():
@@ -1236,7 +1218,7 @@ def _collect_active_step_sets(nodes: list[object] | None) -> set[StepSet]:
             active_sets.add(frozenset({node.name}))
             continue
 
-        if isinstance(node, (SFCTransition, SFCFork, SFCBreak)):
+        if isinstance(node, SFCTransition | SFCFork | SFCBreak):
             continue
 
         if isinstance(node, SFCAlternative):
@@ -1258,7 +1240,7 @@ def _collect_active_step_sets(nodes: list[object] | None) -> set[StepSet]:
                     active_sets.add(frozenset(merged))
             continue
 
-        if isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+        if isinstance(node, SFCSubsequence | SFCTransitionSub):
             active_sets.update(_collect_active_step_sets(node.body))
 
     return active_sets
@@ -1394,10 +1376,7 @@ def analyze_sfc(
         issues.append(
             Issue(
                 kind="sfc_parallel_write_race",
-                message=(
-                    "Parallel branches in sequence "
-                    f"{seq_name!r} write to the same variable(s): {preview}"
-                ),
+                message=("Parallel branches in sequence " f"{seq_name!r} write to the same variable(s): {preview}"),
                 module_path=meta.module_path if meta else None,
                 data={
                     "sequence": seq_name,
@@ -1445,9 +1424,7 @@ def analyze_sfc(
 
     issues.extend(_collect_transition_logic_issues(base_picture))
 
-    issues.extend(
-        _collect_illegal_state_combination_issues(base_picture, normalized_groups)
-    )
+    issues.extend(_collect_illegal_state_combination_issues(base_picture, normalized_groups))
 
     if normalized_step_contracts:
         contract_collector = _SfcStepContractCollector(

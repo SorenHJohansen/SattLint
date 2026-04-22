@@ -39,34 +39,159 @@ class ArtifactDefinition:
 
 
 PIPELINE_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
-    ArtifactDefinition("progress", "progress.json", "progress", "sattlint.pipeline.progress", 1, profiles=("quick", "full")),
-    ArtifactDefinition("status", "status.json", "status", "sattlint.pipeline.status", 1, profiles=("quick", "full"), blocking=True),
-    ArtifactDefinition("summary", "summary.json", "summary", "sattlint.pipeline.summary", 1, profiles=("quick", "full"), blocking=True),
-    ArtifactDefinition("findings", "findings.json", "findings", "sattlint.findings", 1, profiles=("quick", "full"), blocking=True),
-    ArtifactDefinition("analysis_diff", "analysis_diff.json", "analysis_diff", "sattlint.analysis_diff", 1, profiles=("quick", "full"), optional=True, depends_on=("findings",)),
-    ArtifactDefinition("corpus_results", "corpus_results.json", "corpus_results", "sattlint.corpus_results", 1, profiles=("quick", "full"), optional=True, blocking=True),
-    ArtifactDefinition("artifact_registry", "artifact_registry.json", "artifact_registry", "sattlint.artifact_registry", 1, profiles=("quick", "full")),
-    ArtifactDefinition("environment", "environment.json", "environment", "sattlint.environment", 1, profiles=("quick", "full")),
-    ArtifactDefinition("ruff", "ruff.json", "ruff", "sattlint.tool_report", 1, profiles=("quick", "full"), blocking=True),
-    ArtifactDefinition("pyright", "pyright.json", "pyright", "sattlint.tool_report", 1, profiles=("quick", "full"), blocking=True),
-    ArtifactDefinition("pytest", "pytest.json", "pytest", "sattlint.tool_report", 1, profiles=("quick", "full"), blocking=True),
-    ArtifactDefinition("vulture", "vulture.json", "vulture", "sattlint.tool_report", 1, profiles=("full",), optional=True),
+    ArtifactDefinition(
+        "progress", "progress.json", "progress", "sattlint.pipeline.progress", 1, profiles=("quick", "full")
+    ),
+    ArtifactDefinition(
+        "status", "status.json", "status", "sattlint.pipeline.status", 1, profiles=("quick", "full"), blocking=True
+    ),
+    ArtifactDefinition(
+        "summary", "summary.json", "summary", "sattlint.pipeline.summary", 1, profiles=("quick", "full"), blocking=True
+    ),
+    ArtifactDefinition(
+        "findings", "findings.json", "findings", "sattlint.findings", 1, profiles=("quick", "full"), blocking=True
+    ),
+    ArtifactDefinition(
+        "analysis_diff",
+        "analysis_diff.json",
+        "analysis_diff",
+        "sattlint.analysis_diff",
+        1,
+        profiles=("quick", "full"),
+        optional=True,
+        depends_on=("findings",),
+    ),
+    ArtifactDefinition(
+        "corpus_results",
+        "corpus_results.json",
+        "corpus_results",
+        "sattlint.corpus_results",
+        1,
+        profiles=("quick", "full"),
+        optional=True,
+        blocking=True,
+    ),
+    ArtifactDefinition(
+        "artifact_registry",
+        "artifact_registry.json",
+        "artifact_registry",
+        "sattlint.artifact_registry",
+        1,
+        profiles=("quick", "full"),
+    ),
+    ArtifactDefinition(
+        "environment", "environment.json", "environment", "sattlint.environment", 1, profiles=("quick", "full")
+    ),
+    ArtifactDefinition(
+        "ruff", "ruff.json", "ruff", "sattlint.tool_report", 1, profiles=("quick", "full"), blocking=True
+    ),
+    ArtifactDefinition(
+        "pyright", "pyright.json", "pyright", "sattlint.tool_report", 1, profiles=("quick", "full"), blocking=True
+    ),
+    ArtifactDefinition(
+        "pytest", "pytest.json", "pytest", "sattlint.tool_report", 1, profiles=("quick", "full"), blocking=True
+    ),
+    ArtifactDefinition(
+        "vulture", "vulture.json", "vulture", "sattlint.tool_report", 1, profiles=("full",), optional=True
+    ),
     ArtifactDefinition("bandit", "bandit.json", "bandit", "sattlint.tool_report", 1, profiles=("full",), optional=True),
-    ArtifactDefinition("architecture", "architecture.json", "architecture", "sattlint.architecture", 1, profiles=("full",), optional=True),
-    ArtifactDefinition("analyzer_registry", "analyzer_registry.json", "analyzer_registry", "sattlint.analyzer_registry", 1, profiles=("full",), optional=True),
-    ArtifactDefinition("dependency_graph", "dependency_graph.json", "dependency_graph", "sattlint.graph", 1, profiles=("full",), optional=True),
-    ArtifactDefinition("call_graph", "call_graph.json", "call_graph", "sattlint.graph", 1, profiles=("full",), optional=True),
-    ArtifactDefinition("impact_analysis", "impact_analysis.json", "impact_analysis", "sattlint.impact_analysis", 1, profiles=("full",), optional=True),
+    ArtifactDefinition(
+        "architecture",
+        "architecture.json",
+        "architecture",
+        "sattlint.architecture",
+        1,
+        profiles=("full",),
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "analyzer_registry",
+        "analyzer_registry.json",
+        "analyzer_registry",
+        "sattlint.analyzer_registry",
+        1,
+        profiles=("full",),
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "dependency_graph",
+        "dependency_graph.json",
+        "dependency_graph",
+        "sattlint.graph",
+        1,
+        profiles=("full",),
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "call_graph", "call_graph.json", "call_graph", "sattlint.graph", 1, profiles=("full",), optional=True
+    ),
+    ArtifactDefinition(
+        "graphics_layout",
+        "graphics_layout.json",
+        "graphics_layout",
+        "sattlint.graphics_layout",
+        1,
+        profiles=("full",),
+        optional=True,
+    ),
+    ArtifactDefinition(
+        "impact_analysis",
+        "impact_analysis.json",
+        "impact_analysis",
+        "sattlint.impact_analysis",
+        1,
+        profiles=("full",),
+        optional=True,
+    ),
     ArtifactDefinition("trace", "trace.json", "trace", "sattlint.trace", 1, profiles=("full",), optional=True),
 )
 
 
 AUDIT_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
-    ArtifactDefinition("progress", "progress.json", "repo_audit_progress", "sattlint.repo_audit.progress", 1, profiles=("quick", "full", "leaks")),
-    ArtifactDefinition("status", "status.json", "repo_audit", "sattlint.repo_audit.status", 1, profiles=("quick", "full", "leaks"), blocking=True),
-    ArtifactDefinition("summary", "summary.json", "repo_audit", "sattlint.repo_audit.summary", 1, profiles=("quick", "full", "leaks"), blocking=True),
-    ArtifactDefinition("findings", "findings.json", "repo_audit", "sattlint.findings", 1, profiles=("quick", "full", "leaks"), blocking=True),
-    ArtifactDefinition("summary_markdown", "summary.md", "repo_audit", "markdown", 1, profiles=("quick", "full", "leaks"), optional=True),
+    ArtifactDefinition(
+        "progress",
+        "progress.json",
+        "repo_audit_progress",
+        "sattlint.repo_audit.progress",
+        1,
+        profiles=("quick", "full", "leaks"),
+    ),
+    ArtifactDefinition(
+        "status",
+        "status.json",
+        "repo_audit",
+        "sattlint.repo_audit.status",
+        1,
+        profiles=("quick", "full", "leaks"),
+        blocking=True,
+    ),
+    ArtifactDefinition(
+        "summary",
+        "summary.json",
+        "repo_audit",
+        "sattlint.repo_audit.summary",
+        1,
+        profiles=("quick", "full", "leaks"),
+        blocking=True,
+    ),
+    ArtifactDefinition(
+        "findings",
+        "findings.json",
+        "repo_audit",
+        "sattlint.findings",
+        1,
+        profiles=("quick", "full", "leaks"),
+        blocking=True,
+    ),
+    ArtifactDefinition(
+        "summary_markdown",
+        "summary.md",
+        "repo_audit",
+        "markdown",
+        1,
+        profiles=("quick", "full", "leaks"),
+        optional=True,
+    ),
 )
 
 

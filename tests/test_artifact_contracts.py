@@ -195,7 +195,7 @@ def test_pipeline_findings_payload_matches_golden(tmp_path):
         finding_count=6,
         rule_ids=(
             "ruff.f401",
-            "mypy.error.assignment",
+            "pyright.assignment",
             "pytest.failures",
             "vulture.dead-code",
             "bandit.b101",
@@ -244,7 +244,7 @@ def test_artifact_registry_payload_matches_golden():
             "corpus_results",
             "artifact_registry",
         ),
-        disabled_artifact_ids=("environment", "ruff", "mypy", "pytest"),
+        disabled_artifact_ids=("progress", "environment", "ruff", "pyright", "pytest"),
     )
     assert_matches_golden(payload, GOLDEN_DIR / "artifact_registry_quick.json")
 

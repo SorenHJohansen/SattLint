@@ -60,7 +60,7 @@ def iter_call_sites(node: object):
             and const.KEY_ARGS in node
             and const.KEY_VAR_NAME not in node
             and isinstance(node.get(const.KEY_NAME), str)
-            and isinstance(node.get(const.KEY_ARGS) or (), (list, tuple))
+            and isinstance(node.get(const.KEY_ARGS) or (), list | tuple)
         ):
             args = tuple(node.get(const.KEY_ARGS) or ())
             yield ("procedure", node[const.KEY_NAME], args)

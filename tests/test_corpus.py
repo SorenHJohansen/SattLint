@@ -253,9 +253,7 @@ def test_run_corpus_case_reports_artifact_fragment_failures(tmp_path):
 
     assert result.passed is False
     assert result.evaluation.passed is False
-    assert result.evaluation.artifact_fragment_failures == (
-        "summary.json.stage: expected 'semantic', got 'parse'",
-    )
+    assert result.evaluation.artifact_fragment_failures == ("summary.json.stage: expected 'semantic', got 'parse'",)
 
 
 def test_execute_corpus_case_strict_writes_case_artifacts(tmp_path):
@@ -403,6 +401,91 @@ def test_execute_corpus_case_workspace_writes_semantic_findings(monkeypatch, tmp
     assert findings_report["findings"][0]["location"]["module_path"] == ["Program", "UnitA"]
     assert_findings_schema(summary_report)
     assert summary_report["rule_counts"] == {"semantic.read-before-write": 1}
+
+
+def test_execute_corpus_case_workspace_preserves_guidance_for_semantic_findings(monkeypatch, tmp_path):
+    manifest_path = tmp_path / "workspace-case.json"
+    target_path = tmp_path / "Program.s"
+    artifact_dir = tmp_path / "artifacts"
+    target_path.write_text("placeholder", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "case_id": "workspace-guidance",
+                "target_file": "Program.s",
+                "mode": "workspace",
+                "expectation": {
+                    "expected_finding_ids": ["semantic.read-before-write"],
+                },
+                "required_artifacts": ["status.json", "summary.json", "findings.json"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class _FakeHeader:
+        name = "Program"
+
+    class _FakeBasePicture:
+        header = _FakeHeader()
+
+    class _FakeLoader:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def resolve(self, target_name, strict=False):
+            assert target_name == "Program"
+            assert strict is False
+            return type(
+                "FakeGraph",
+                (),
+                {
+                    "ast_by_name": {"Program": _FakeBasePicture()},
+                    "warnings": [],
+                    "missing": [],
+                    "unavailable_libraries": set(),
+                },
+            )()
+
+    monkeypatch.setattr("sattlint.devtools.corpus.engine_module.SattLineProjectLoader", _FakeLoader)
+    monkeypatch.setattr(
+        "sattlint.devtools.corpus.engine_module.merge_project_basepicture",
+        lambda root_bp, graph: root_bp,
+    )
+    monkeypatch.setattr(
+        "sattlint.devtools.corpus.engine_module._is_within_directory",
+        lambda path, directory: True,
+    )
+    monkeypatch.setattr(
+        "sattlint.devtools.corpus.analyze_sattline_semantics",
+        lambda *args, **kwargs: SattLineSemanticsReport(
+            basepicture_name="Program",
+            issues=[
+                SemanticIssue(
+                    rule=SemanticRule(
+                        id="semantic.read-before-write",
+                        source="dataflow",
+                        category="variable-lifecycle",
+                        severity="warning",
+                        applies_to="variable",
+                        description="Read before write.",
+                        explanation="The read can observe undefined state on some control paths.",
+                        suggestion="Initialize the variable before the first possible read.",
+                    ),
+                    message="Variable 'PumpStart' is read before it is written.",
+                    module_path=["Program", "UnitA"],
+                )
+            ],
+        ),
+    )
+
+    execute_corpus_case(manifest_path, artifact_dir, repo_root=tmp_path)
+
+    findings_report = json.loads((artifact_dir / "findings.json").read_text(encoding="utf-8"))
+
+    assert_findings_collection(findings_report, finding_count=1)
+    assert findings_report["findings"][0]["detail"] == "The read can observe undefined state on some control paths."
+    assert findings_report["findings"][0]["suggestion"] == "Initialize the variable before the first possible read."
 
 
 def test_run_corpus_suite_aggregates_case_results_and_writes_report(tmp_path):

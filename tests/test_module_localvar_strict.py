@@ -267,9 +267,7 @@ def test_module_localvar_param_mapping_does_not_override_localvariable_same_name
         moduledef=None,
     )
 
-    report = analyze_module_localvar_fields(
-        bp, "StartMaster", "Dv", debug=False, fail_loudly=False
-    )
+    report = analyze_module_localvar_fields(bp, "StartMaster", "Dv", debug=False, fail_loudly=False)
     # The analysis should not produce "unknown field" warnings from the child module's
     # local variable DV (those should not be resolved to parent Dv via mapping).
     assert "unknown field 'Active'" not in report

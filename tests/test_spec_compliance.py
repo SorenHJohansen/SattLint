@@ -121,9 +121,7 @@ def test_opmessage_use_signature_true_is_reported():
         name="OPMessage",
         origin_lib="NNESystem",
         origin_file="Root.s",
-        moduleparameters=[
-            Variable(name="UseSignature", datatype=Simple_DataType.BOOLEAN, init_value=False)
-        ],
+        moduleparameters=[Variable(name="UseSignature", datatype=Simple_DataType.BOOLEAN, init_value=False)],
     )
     instance = ModuleTypeInstance(
         header=_hdr("Prompt"),

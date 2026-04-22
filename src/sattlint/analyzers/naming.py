@@ -76,10 +76,7 @@ class NamingConsistencyReport:
         lines.append(f"Issues: {len(self.issues)}")
         lines.append("")
         lines.append("Kinds:")
-        kind_counts = Counter(
-            str((issue.data or {}).get("symbol_kind", "unknown"))
-            for issue in self.issues
-        )
+        kind_counts = Counter(str((issue.data or {}).get("symbol_kind", "unknown")) for issue in self.issues)
         for symbol_kind in ("variable", "module", "instance"):
             count = kind_counts.get(symbol_kind, 0)
             if count:
@@ -131,10 +128,7 @@ def get_configured_naming_rules(config: dict[str, Any] | None) -> dict[str, Nami
     if not isinstance(naming, dict):
         return defaults
 
-    return {
-        key: _normalize_rule(naming.get(key, {}))
-        for key in defaults
-    }
+    return {key: _normalize_rule(naming.get(key, {})) for key in defaults}
 
 
 def _identifier_style(name: str) -> str:
@@ -186,11 +180,7 @@ def _infer_expected_style(
         return None
 
     best_count = max(style_counts.values())
-    winners = sorted(
-        style
-        for style, count in style_counts.items()
-        if count == best_count
-    )
+    winners = sorted(style for style, count in style_counts.items() if count == best_count)
     if len(winners) != 1:
         return None
     return winners[0]

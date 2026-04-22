@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -130,9 +130,7 @@ def _format_workspace_snapshot_failure(
 ) -> str:
     target_prefix = f"{entry_name} parse/transform error:"
     dependency_issues = [
-        message
-        for message in graph.missing
-        if not message.casefold().startswith(target_prefix.casefold())
+        message for message in graph.missing if not message.casefold().startswith(target_prefix.casefold())
     ]
     resolved = sorted(graph.ast_by_name.keys(), key=str.casefold)
     unavailable = sorted(graph.unavailable_libraries, key=str.casefold)
@@ -184,18 +182,13 @@ def _index_source_files(paths: tuple[Path, ...]) -> dict[str, tuple[Path, ...]]:
     index: dict[str, list[Path]] = {}
     for path in paths:
         index.setdefault(path.stem.casefold(), []).append(path)
-    return {
-        stem: tuple(sorted(matches, key=_path_key))
-        for stem, matches in index.items()
-    }
+    return {stem: tuple(sorted(matches, key=_path_key)) for stem, matches in index.items()}
 
 
 def _path_startswith(path: tuple[str, ...], prefix: tuple[str, ...]) -> bool:
     if len(prefix) > len(path):
         return False
-    return tuple(_cf(part) for part in path[: len(prefix)]) == tuple(
-        _cf(part) for part in prefix
-    )
+    return tuple(_cf(part) for part in path[: len(prefix)]) == tuple(_cf(part) for part in prefix)
 
 
 def _resolve_field_datatype(
@@ -460,16 +453,10 @@ class CompletionItem:
 @dataclass(frozen=True, slots=True)
 class SemanticAnalysisArtifacts:
     diagnostics: tuple[VariableIssue, ...] = ()
-    accesses_by_definition_key: dict[tuple[str, ...], tuple[AccessEvent, ...]] = field(
-        default_factory=dict
-    )
-    effect_flow_edges: dict[tuple[str, ...], tuple[tuple[str, ...], ...]] = field(
-        default_factory=dict
-    )
+    accesses_by_definition_key: dict[tuple[str, ...], tuple[AccessEvent, ...]] = field(default_factory=dict)
+    effect_flow_edges: dict[tuple[str, ...], tuple[tuple[str, ...], ...]] = field(default_factory=dict)
     effect_flow_display_names: dict[tuple[str, ...], str] = field(default_factory=dict)
-    semantic_diagnostics_by_file: dict[str, tuple[SemanticDiagnostic, ...]] = field(
-        default_factory=dict
-    )
+    semantic_diagnostics_by_file: dict[str, tuple[SemanticDiagnostic, ...]] = field(default_factory=dict)
 
 
 SemanticAnalysisProvider = Callable[
@@ -531,7 +518,9 @@ class SemanticSnapshot:
         compare=False,
     )
 
-    def list_symbols(self, query: str = "", *, roots_only: bool = False, limit: int | None = None) -> list[SymbolDefinition]:
+    def list_symbols(
+        self, query: str = "", *, roots_only: bool = False, limit: int | None = None
+    ) -> list[SymbolDefinition]:
         needle = query.strip().casefold()
         matches: list[SymbolDefinition] = []
         for definition in self.definitions:
@@ -635,6 +624,17 @@ class SemanticSnapshot:
             return accesses[:limit]
         return accesses
 
+    def iter_access_events_by_definition(
+        self,
+        *,
+        roots_only: bool = False,
+    ) -> Iterator[tuple[SymbolDefinition, tuple[AccessEvent, ...]]]:
+        for definition in self.definitions:
+            if roots_only and definition.field_path is not None:
+                continue
+            definition_key = tuple(_cf(segment) for segment in definition.canonical_path.split("."))
+            yield definition, self._accesses_by_definition_key.get(definition_key, ())
+
     def find_safety_paths(
         self,
         query: str = "",
@@ -709,15 +709,12 @@ class SemanticSnapshot:
         exact_matches = tuple(
             candidate
             for candidate in candidates
-            if candidate.source_library is not None
-            and candidate.source_library.casefold() == library_key
+            if candidate.source_library is not None and candidate.source_library.casefold() == library_key
         )
         if exact_matches:
             return exact_matches
 
-        unscoped = tuple(
-            candidate for candidate in candidates if candidate.source_library is None
-        )
+        unscoped = tuple(candidate for candidate in candidates if candidate.source_library is None)
         if unscoped:
             return unscoped
 
@@ -926,9 +923,7 @@ class _SemanticIndexBuilder:
     def _build_datatype_field_definitions(
         self,
     ) -> dict[tuple[str, tuple[str, ...]], tuple[Variable, str | None, str | None]]:
-        datatype_index = {
-            dt.name.casefold(): dt for dt in (self.base_picture.datatype_defs or [])
-        }
+        datatype_index = {dt.name.casefold(): dt for dt in (self.base_picture.datatype_defs or [])}
         results: dict[tuple[str, tuple[str, ...]], tuple[Variable, str | None, str | None]] = {}
 
         def walk(
@@ -1075,9 +1070,7 @@ class _SemanticIndexBuilder:
             definition_keys = [CanonicalPath((*declaration_path, resolved_var.name)).key()]
             for index in range(1, min(len(reference_segments), len(resolved_segments) + 1)):
                 definition_keys.append(
-                    CanonicalPath(
-                        (*declaration_path, resolved_var.name, *resolved_segments[:index])
-                    ).key()
+                    CanonicalPath((*declaration_path, resolved_var.name, *resolved_segments[:index])).key()
                 )
             if len(definition_keys) < len(reference_segments):
                 definition_keys.extend([definition_keys[-1]] * (len(reference_segments) - len(definition_keys)))
@@ -1225,7 +1218,10 @@ class _SemanticIndexBuilder:
                 continue
 
             child_module_path = (*module_path, module.header.name)
-            child_display_path = (*display_module_path, decorate_segment(module.header.name, "MT", module.moduletype_name))
+            child_display_path = (
+                *display_module_path,
+                decorate_segment(module.header.name, "MT", module.moduletype_name),
+            )
             moduletype = _try_resolve_instance_typedef(
                 self.base_picture,
                 module,
@@ -1359,7 +1355,7 @@ def _child_module_items(
     moduletype_index: dict[str, list[ModuleTypeDef]],
     unavailable_libraries: set[str],
 ) -> list[tuple[str, str]]:
-    if isinstance(node, (BasePicture, SingleModule, FrameModule, ModuleTypeDef)):
+    if isinstance(node, BasePicture | SingleModule | FrameModule | ModuleTypeDef):
         children = list(node.submodules or [])
     elif isinstance(node, ModuleTypeInstance):
         typedef = _try_resolve_instance_typedef(
@@ -1430,11 +1426,7 @@ def discover_workspace_sources(workspace_root: Path) -> WorkspaceSourceDiscovery
     dependency_files: list[Path] = []
 
     for current_root, dir_names, file_names in os.walk(root):
-        dir_names[:] = [
-            name
-            for name in dir_names
-            if name.casefold() not in _IGNORED_DISCOVERY_DIRS
-        ]
+        dir_names[:] = [name for name in dir_names if name.casefold() not in _IGNORED_DISCOVERY_DIRS]
 
         current_dir = Path(current_root)
         for file_name in file_names:
@@ -1638,8 +1630,8 @@ def load_workspace_snapshot(
     root = Path(workspace_root).resolve() if workspace_root else entry_path.parent
     resolved_discovery = discovery or discover_workspace_sources(root)
     normalized_mode = _normalize_mode(mode)
-    selected_other_lib_dirs = list(other_lib_dirs) if other_lib_dirs is not None else list(
-        resolved_discovery.other_lib_dirs_for(entry_path)
+    selected_other_lib_dirs = (
+        list(other_lib_dirs) if other_lib_dirs is not None else list(resolved_discovery.other_lib_dirs_for(entry_path))
     )
     selected_abb_lib_dir = abb_lib_dir or resolved_discovery.abb_lib_dir or (root / "__missing_abb_lib__")
 
@@ -1658,11 +1650,7 @@ def load_workspace_snapshot(
     if root_bp is None:
         target_prefix = f"{entry_path.stem} parse/transform error:"
         target_failure = next(
-            (
-                message
-                for message in graph.missing
-                if message.casefold().startswith(target_prefix.casefold())
-            ),
+            (message for message in graph.missing if message.casefold().startswith(target_prefix.casefold())),
             None,
         )
         if target_failure is not None:

@@ -310,9 +310,7 @@ def find_disallowed_comments(text: str) -> list[CommentPlacementViolation]:
 
         if depth == 0:
             if not in_string:
-                if pending_enddef_label and not ch.isspace() and not (
-                    ch == "(" and next_ch == "*"
-                ):
+                if pending_enddef_label and not ch.isspace() and not (ch == "(" and next_ch == "*"):
                     pending_enddef_label = False
 
                 if _is_at_keyword(text, i, "ModuleCode"):
@@ -418,9 +416,7 @@ def find_disallowed_comments(text: str) -> list[CommentPlacementViolation]:
                 i += 2
                 col += 2
                 if depth == 0:
-                    if comment_allowed_by_enddef and not _is_valid_enddef_label_comment(
-                        "".join(comment_text)
-                    ):
+                    if comment_allowed_by_enddef and not _is_valid_enddef_label_comment("".join(comment_text)):
                         violations.append(
                             CommentPlacementViolation(
                                 start_line=comment_start_line,

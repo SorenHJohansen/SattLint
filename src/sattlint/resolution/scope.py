@@ -8,6 +8,7 @@ from ..models.ast_model import Variable
 @dataclass
 class ScopeContext:
     """Tracks variable environment with field-aware parameter mappings."""
+
     env: dict[str, Variable]  # Direct variable declarations
     # param_name -> (source_var, field_prefix, source_decl_module_path, source_decl_display_path)
     param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]]

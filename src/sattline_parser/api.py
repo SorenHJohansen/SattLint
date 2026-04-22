@@ -185,9 +185,7 @@ def parse_source_text(
         debug(f"Transform result type: {type(basepic).__name__}")
 
     if not isinstance(basepic, BasePicture):
-        raise RuntimeError(
-            "Transform result is not BasePicture; check transformer.start()"
-        )
+        raise RuntimeError("Transform result is not BasePicture; check transformer.start()")
 
     return basepic
 

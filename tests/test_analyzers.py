@@ -7,13 +7,17 @@ from typing import Any, cast
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattlint import constants as const
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
+from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
 from sattlint.analyzers.dataflow import analyze_dataflow
 from sattlint.analyzers.initial_values import analyze_initial_values
+from sattlint.analyzers.loop_output_refactor import analyze_loop_output_refactor
 from sattlint.analyzers.mms import analyze_mms_interface_variables
 from sattlint.analyzers.modules import analyze_version_drift
 from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
+from sattlint.analyzers.parameter_drift import analyze_parameter_drift
 from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.analyzers.safety_paths import analyze_safety_paths
+from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage
 from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.shadowing import analyze_shadowing
 from sattlint.analyzers.taint_paths import analyze_taint_paths
@@ -246,13 +250,462 @@ def test_mms_interface_flags_naming_drift_from_icf_entries():
     assert "RESULT_TEXT" in naming_drift_issues[0].message
 
 
+def test_loop_output_refactor_detects_cycle_across_equations_and_active_step():
+    eq_input = Equation(
+        name="Input",
+        position=(0.0, 0.0),
+        size=(1.0, 1.0),
+        code=[(const.KEY_ASSIGN, _varref("A"), _varref("B"))],
+    )
+    eq_feedback = Equation(
+        name="Feedback",
+        position=(1.0, 0.0),
+        size=(1.0, 1.0),
+        code=[(const.KEY_ASSIGN, _varref("B"), _varref("C"))],
+    )
+    seq = Sequence(
+        name="MainSeq",
+        type="sequence",
+        position=(0.0, 1.0),
+        size=(1.0, 1.0),
+        code=[
+            SFCStep(
+                kind="step",
+                name="Transfer",
+                code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("C"), _varref("A"))]),
+            )
+        ],
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[
+            Variable(name="A", datatype=Simple_DataType.INTEGER),
+            Variable(name="B", datatype=Simple_DataType.INTEGER),
+            Variable(name="C", datatype=Simple_DataType.INTEGER),
+        ],
+        submodules=[],
+        modulecode=ModuleCode(equations=[eq_input, eq_feedback], sequences=[seq]),
+        moduledef=None,
+    )
+
+    report = analyze_loop_output_refactor(bp)
+
+    issues = [issue for issue in report.issues if issue.kind == "sorting.loop_output_refactor"]
+    assert len(issues) == 1
+    issue = issues[0]
+    assert issue.data is not None
+    assert issue.data["dependency_variables"] == ["a", "b", "c"]
+    assert issue.data["blocks"] == [
+        "EquationBlock 'Input'",
+        "EquationBlock 'Feedback'",
+        "Sequence 'MainSeq' step 'Transfer' ACTIVE",
+    ]
+    assert "Sequence 'MainSeq' step 'Transfer' ACTIVE" in issue.data["loop_text"]
+    assert "At least one dependency in this cycle is delayed by one scan" in issue.data["loop_text"]
+
+    summary = report.summary()
+    assert "semantic.loop-output-refactor" in summary
+    assert "Suggested fix:" in summary
+
+
+def test_loop_output_refactor_ignores_acyclic_sorted_blocks():
+    eq_source = Equation(
+        name="Source",
+        position=(0.0, 0.0),
+        size=(1.0, 1.0),
+        code=[(const.KEY_ASSIGN, _varref("A"), _varref("B"))],
+    )
+    eq_sink = Equation(
+        name="Sink",
+        position=(1.0, 0.0),
+        size=(1.0, 1.0),
+        code=[(const.KEY_ASSIGN, _varref("C"), _varref("A"))],
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[
+            Variable(name="A", datatype=Simple_DataType.INTEGER),
+            Variable(name="B", datatype=Simple_DataType.INTEGER),
+            Variable(name="C", datatype=Simple_DataType.INTEGER),
+        ],
+        submodules=[],
+        modulecode=ModuleCode(equations=[eq_source, eq_sink], sequences=[]),
+        moduledef=None,
+    )
+
+    report = analyze_loop_output_refactor(bp)
+
+    assert not any(issue.kind == "sorting.loop_output_refactor" for issue in report.issues)
+
+
+def test_parameter_drift_flags_diverging_literal_parameter_values():
+    typedef = ModuleTypeDef(
+        name="DoseValve",
+        moduleparameters=[
+            Variable(name="Timeout", datatype=Simple_DataType.INTEGER, init_value=10),
+        ],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[typedef],
+        localvariables=[],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("ValveA"),
+                moduletype_name="DoseValve",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Timeout"),
+                        source_type=const.KEY_VALUE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=None,
+                        source_literal=10,
+                    )
+                ],
+            ),
+            ModuleTypeInstance(
+                header=_hdr("ValveB"),
+                moduletype_name="DoseValve",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Timeout"),
+                        source_type=const.KEY_VALUE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=None,
+                        source_literal=15,
+                    )
+                ],
+            ),
+        ],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    report = analyze_parameter_drift(bp)
+
+    drift_issues = [issue for issue in report.issues if issue.kind == "module.parameter_drift"]
+    assert len(drift_issues) == 2
+    assert all("Timeout" in issue.message for issue in drift_issues)
+    assert any("Program.ValveA=10" in issue.message for issue in drift_issues)
+    assert any("Program.ValveB=15" in issue.message for issue in drift_issues)
+
+
+def test_parameter_drift_ignores_aligned_literal_parameter_values():
+    typedef = ModuleTypeDef(
+        name="DoseValve",
+        moduleparameters=[
+            Variable(name="Timeout", datatype=Simple_DataType.INTEGER, init_value=10),
+        ],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[typedef],
+        localvariables=[],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("ValveA"),
+                moduletype_name="DoseValve",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Timeout"),
+                        source_type=const.KEY_VALUE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=None,
+                        source_literal=10,
+                    )
+                ],
+            ),
+            ModuleTypeInstance(
+                header=_hdr("ValveB"),
+                moduletype_name="DoseValve",
+                parametermappings=[],
+            ),
+        ],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    report = analyze_parameter_drift(bp)
+
+    assert not any(issue.kind == "module.parameter_drift" for issue in report.issues)
+
+
+def test_cyclomatic_complexity_ignores_low_complexity_program_modulecode():
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="MainEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[(const.KEY_ASSIGN, _varref("Output"), IntLiteral(1))],
+                )
+            ]
+        ),
+        moduledef=None,
+    )
+
+    report = analyze_cyclomatic_complexity(bp)
+
+    assert not any(issue.kind == "module.cyclomatic_complexity" for issue in report.issues)
+    assert not any(issue.kind == "step.cyclomatic_complexity" for issue in report.issues)
+
+
+def test_cyclomatic_complexity_flags_high_complexity_program_modulecode():
+    decision_statements = [
+        (
+            const.GRAMMAR_VALUE_IF,
+            [
+                (
+                    _varref(f"Cond{index}"),
+                    [(const.KEY_ASSIGN, _varref("Output"), IntLiteral(index))],
+                )
+            ],
+            [],
+        )
+        for index in range(10)
+    ]
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[Variable(name=f"Cond{index}", datatype=Simple_DataType.BOOLEAN) for index in range(10)],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="MainEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=decision_statements,
+                )
+            ]
+        ),
+        moduledef=None,
+    )
+
+    report = analyze_cyclomatic_complexity(bp)
+
+    issues = [issue for issue in report.issues if issue.kind == "module.cyclomatic_complexity"]
+    assert len(issues) == 1
+    assert issues[0].data == {"scope": "program", "complexity": 11, "threshold": 10}
+    assert "Program" in issues[0].message
+
+
+def test_cyclomatic_complexity_flags_high_complexity_sfc_step():
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=ModuleCode(
+            sequences=[
+                Sequence(
+                    name="MainSeq",
+                    type="SEQUENCE",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        SFCStep(
+                            kind="step",
+                            name="HeatUp",
+                            code=SFCCodeBlocks(
+                                active=[
+                                    (
+                                        const.GRAMMAR_VALUE_IF,
+                                        [
+                                            (
+                                                _varref(f"StepCond{index}"),
+                                                [(const.KEY_ASSIGN, _varref("Output"), IntLiteral(index))],
+                                            )
+                                        ],
+                                        [],
+                                    )
+                                    for index in range(6)
+                                ]
+                            ),
+                        ),
+                        SFCTransition(name="Continue", condition=_varref("Proceed")),
+                    ],
+                )
+            ]
+        ),
+        moduledef=None,
+    )
+
+    report = analyze_cyclomatic_complexity(bp)
+
+    issues = [issue for issue in report.issues if issue.kind == "step.cyclomatic_complexity"]
+    assert len(issues) == 1
+    assert issues[0].data == {
+        "scope": "step",
+        "sequence": "MainSeq",
+        "step": "HeatUp",
+        "complexity": 7,
+        "threshold": 6,
+    }
+    assert "HeatUp" in issues[0].message
+    assert "MainSeq" in issues[0].message
+
+
+def test_scan_loop_resource_usage_flags_non_precision_builtin_in_equation_block():
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="MainEq",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (
+                            const.KEY_FUNCTION_CALL,
+                            "AssignSystemString",
+                            [_varref("SysVarId"), _varref("Value"), _varref("Status")],
+                        )
+                    ],
+                )
+            ]
+        ),
+        moduledef=None,
+    )
+
+    report = analyze_scan_loop_resource_usage(bp)
+
+    issues = [issue for issue in report.issues if issue.kind == "scan_cycle.resource_usage"]
+    assert len(issues) == 1
+    assert issues[0].data == {
+        "call": "assignsystemstring",
+        "context": "equation block 'MainEq'",
+        "precision_scangroup": False,
+    }
+    assert "AssignSystemString" in issues[0].message
+
+
+def test_scan_loop_resource_usage_flags_non_precision_builtin_in_active_step_code():
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=ModuleCode(
+            sequences=[
+                Sequence(
+                    name="MainSeq",
+                    type="SEQUENCE",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        SFCStep(
+                            kind="step",
+                            name="Poll",
+                            code=SFCCodeBlocks(
+                                active=[
+                                    (
+                                        const.KEY_FUNCTION_CALL,
+                                        "AssignSystemString",
+                                        [_varref("SysVarId"), _varref("Value"), _varref("Status")],
+                                    )
+                                ]
+                            ),
+                        )
+                    ],
+                )
+            ]
+        ),
+        moduledef=None,
+    )
+
+    report = analyze_scan_loop_resource_usage(bp)
+
+    issues = [issue for issue in report.issues if issue.kind == "scan_cycle.resource_usage"]
+    assert len(issues) == 1
+    assert issues[0].data == {
+        "call": "assignsystemstring",
+        "context": "active code of step 'Poll' in sequence 'MainSeq'",
+        "precision_scangroup": False,
+    }
+    assert "Poll" in issues[0].message
+    assert "MainSeq" in issues[0].message
+
+
+def test_scan_loop_resource_usage_ignores_non_precision_builtin_outside_active_scan_context():
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=ModuleCode(
+            sequences=[
+                Sequence(
+                    name="MainSeq",
+                    type="SEQUENCE",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        SFCStep(
+                            kind="step",
+                            name="Setup",
+                            code=SFCCodeBlocks(
+                                enter=[
+                                    (
+                                        const.KEY_FUNCTION_CALL,
+                                        "AssignSystemString",
+                                        [_varref("SysVarId"), _varref("Value"), _varref("Status")],
+                                    )
+                                ]
+                            ),
+                        )
+                    ],
+                )
+            ]
+        ),
+        moduledef=None,
+    )
+
+    report = analyze_scan_loop_resource_usage(bp)
+
+    assert not any(issue.kind == "scan_cycle.resource_usage" for issue in report.issues)
+
+
 def test_min_max_mapping_mismatch_detected():
     child = SingleModule(
         header=_hdr("Child"),
         moduledef=None,
-        moduleparameters=[
-            Variable(name="MaxValue", datatype=Simple_DataType.INTEGER)
-        ],
+        moduleparameters=[Variable(name="MaxValue", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
         modulecode=None,
@@ -294,18 +747,14 @@ def test_min_max_mapping_mismatch_detected():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    assert any(
-        i.kind is IssueKind.MIN_MAX_MAPPING_MISMATCH for i in analyzer.issues
-    )
+    assert any(i.kind is IssueKind.MIN_MAX_MAPPING_MISMATCH for i in analyzer.issues)
 
 
 def test_min_max_mapping_mismatch_not_raised_for_aligned_names():
     child = SingleModule(
         header=_hdr("Child"),
         moduledef=None,
-        moduleparameters=[
-            Variable(name="MinValue", datatype=Simple_DataType.INTEGER)
-        ],
+        moduleparameters=[Variable(name="MinValue", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
         modulecode=None,
@@ -325,9 +774,7 @@ def test_min_max_mapping_mismatch_not_raised_for_aligned_names():
         header=_hdr("Parent"),
         moduledef=None,
         moduleparameters=[],
-        localvariables=[
-            Variable(name="MinValue", datatype=Simple_DataType.INTEGER)
-        ],
+        localvariables=[Variable(name="MinValue", datatype=Simple_DataType.INTEGER)],
         submodules=[child],
         modulecode=None,
         parametermappings=[],
@@ -346,18 +793,14 @@ def test_min_max_mapping_mismatch_not_raised_for_aligned_names():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    assert not any(
-        i.kind is IssueKind.MIN_MAX_MAPPING_MISMATCH for i in analyzer.issues
-    )
+    assert not any(i.kind is IssueKind.MIN_MAX_MAPPING_MISMATCH for i in analyzer.issues)
 
 
 def test_unknown_parameter_target_detected_for_single_module_mapping():
     child = SingleModule(
         header=_hdr("Child"),
         moduledef=None,
-        moduleparameters=[
-            Variable(name="DeclaredValue", datatype=Simple_DataType.INTEGER)
-        ],
+        moduleparameters=[Variable(name="DeclaredValue", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
         modulecode=None,
@@ -377,9 +820,7 @@ def test_unknown_parameter_target_detected_for_single_module_mapping():
         header=_hdr("Parent"),
         moduledef=None,
         moduleparameters=[],
-        localvariables=[
-            Variable(name="SourceValue", datatype=Simple_DataType.INTEGER)
-        ],
+        localvariables=[Variable(name="SourceValue", datatype=Simple_DataType.INTEGER)],
         submodules=[child],
         modulecode=None,
         parametermappings=[],
@@ -398,10 +839,7 @@ def test_unknown_parameter_target_detected_for_single_module_mapping():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    issues = [
-        issue for issue in analyzer.issues
-        if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET
-    ]
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET]
     assert len(issues) == 1
     assert issues[0].module_path == ["Root", "Parent", "Child"]
     assert issues[0].role == "unknown parameter mapping target 'MissingValue'"
@@ -410,9 +848,7 @@ def test_unknown_parameter_target_detected_for_single_module_mapping():
 def test_contract_mismatch_detected_for_moduletype_parameter_mapping():
     typedef = ModuleTypeDef(
         name="ChildType",
-        moduleparameters=[
-            Variable(name="ExpectedValue", datatype=Simple_DataType.INTEGER)
-        ],
+        moduleparameters=[Variable(name="ExpectedValue", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
         moduledef=None,
@@ -424,9 +860,7 @@ def test_contract_mismatch_detected_for_moduletype_parameter_mapping():
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[typedef],
-        localvariables=[
-            Variable(name="SourceFlag", datatype=Simple_DataType.BOOLEAN)
-        ],
+        localvariables=[Variable(name="SourceFlag", datatype=Simple_DataType.BOOLEAN)],
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("Child"),
@@ -450,10 +884,7 @@ def test_contract_mismatch_detected_for_moduletype_parameter_mapping():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    issues = [
-        issue for issue in analyzer.issues
-        if issue.kind is IssueKind.CONTRACT_MISMATCH
-    ]
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.CONTRACT_MISMATCH]
     assert len(issues) == 1
     assert issues[0].module_path == ["Root", "Child"]
     assert issues[0].variable is not None
@@ -479,9 +910,7 @@ def test_contract_mismatch_ignores_anytype_targets():
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[typedef],
-        localvariables=[
-            Variable(name="SourceFlag", datatype=Simple_DataType.BOOLEAN)
-        ],
+        localvariables=[Variable(name="SourceFlag", datatype=Simple_DataType.BOOLEAN)],
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("Child"),
@@ -505,17 +934,13 @@ def test_contract_mismatch_ignores_anytype_targets():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    assert not any(
-        issue.kind is IssueKind.CONTRACT_MISMATCH for issue in analyzer.issues
-    )
+    assert not any(issue.kind is IssueKind.CONTRACT_MISMATCH for issue in analyzer.issues)
 
 
 def test_unknown_parameter_target_detected_for_moduletype_instance_mapping():
     typedef = ModuleTypeDef(
         name="ChildType",
-        moduleparameters=[
-            Variable(name="DeclaredValue", datatype=Simple_DataType.INTEGER)
-        ],
+        moduleparameters=[Variable(name="DeclaredValue", datatype=Simple_DataType.INTEGER)],
         localvariables=[],
         submodules=[],
         moduledef=None,
@@ -540,9 +965,7 @@ def test_unknown_parameter_target_detected_for_moduletype_instance_mapping():
         header=_hdr("Parent"),
         moduledef=None,
         moduleparameters=[],
-        localvariables=[
-            Variable(name="SourceValue", datatype=Simple_DataType.INTEGER)
-        ],
+        localvariables=[Variable(name="SourceValue", datatype=Simple_DataType.INTEGER)],
         submodules=[instance],
         modulecode=None,
         parametermappings=[],
@@ -560,13 +983,126 @@ def test_unknown_parameter_target_detected_for_moduletype_instance_mapping():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    issues = [
-        issue for issue in analyzer.issues
-        if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET
-    ]
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UNKNOWN_PARAMETER_TARGET]
     assert len(issues) == 1
     assert issues[0].module_path == ["Root", "Parent", "Child"]
     assert issues[0].role == "unknown parameter mapping target 'MissingValue'"
+
+
+def test_required_parameter_connection_flags_unmapped_used_moduletype_parameter():
+    typedef = ModuleTypeDef(
+        name="ChildType",
+        moduleparameters=[Variable(name="RequiredValue", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Mirror", datatype=Simple_DataType.INTEGER)],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="UseParam",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (
+                            const.KEY_ASSIGN,
+                            _varref("Mirror"),
+                            _varref("RequiredValue"),
+                        )
+                    ],
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+    parent = SingleModule(
+        header=_hdr("Parent"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("Child"),
+                moduletype_name="ChildType",
+                parametermappings=[],
+            )
+        ],
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[typedef],
+        localvariables=[],
+        submodules=[parent],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.REQUIRED_PARAMETER_CONNECTION]
+    assert len(issues) == 1
+    assert issues[0].module_path == ["Root", "Parent", "Child"]
+    assert issues[0].variable is not None
+    assert issues[0].variable.name == "RequiredValue"
+    assert issues[0].role == "required parameter connection missing for 'RequiredValue'"
+
+
+def test_required_parameter_connection_flags_unmapped_used_single_module_parameter():
+    child = SingleModule(
+        header=_hdr("Child"),
+        moduledef=None,
+        moduleparameters=[Variable(name="RequiredValue", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Mirror", datatype=Simple_DataType.INTEGER)],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="UseParam",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (
+                            const.KEY_ASSIGN,
+                            _varref("Mirror"),
+                            _varref("RequiredValue"),
+                        )
+                    ],
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+    parent = SingleModule(
+        header=_hdr("Parent"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[child],
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[parent],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.REQUIRED_PARAMETER_CONNECTION]
+    assert len(issues) == 1
+    assert issues[0].module_path == ["Root", "Parent", "Child"]
+    assert issues[0].variable is not None
+    assert issues[0].variable.name == "RequiredValue"
+    assert issues[0].role == "required parameter connection missing for 'RequiredValue'"
 
 
 def test_magic_number_detection_in_equations_and_sfc():
@@ -615,9 +1151,7 @@ def test_magic_number_detection_in_equations_and_sfc():
 
     bp = BasePicture(
         header=_hdr("Root"),
-        localvariables=[
-            Variable(name="Output", datatype=Simple_DataType.INTEGER)
-        ],
+        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
         modulecode=ModuleCode(sequences=[seq], equations=[eq]),
         moduledef=None,
     )
@@ -631,11 +1165,7 @@ def test_magic_number_detection_in_equations_and_sfc():
     values = sorted(i.literal_value for i in magic if i.literal_value is not None)
     assert values == [2.5, 42]
 
-    spans = {
-        (i.literal_span.line, i.literal_span.column)
-        for i in magic
-        if i.literal_span is not None
-    }
+    spans = {(i.literal_span.line, i.literal_span.column) for i in magic if i.literal_span is not None}
     assert (12, 5) in spans
     assert (20, 7) in spans
     assert (13, 5) not in spans
@@ -690,9 +1220,7 @@ def test_shadowing_detected_for_moduletype_instance_locals():
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[mt],
-        localvariables=[
-            Variable(name="setting", datatype=Simple_DataType.INTEGER)
-        ],
+        localvariables=[Variable(name="setting", datatype=Simple_DataType.INTEGER)],
         submodules=[instance],
         modulecode=None,
         moduledef=None,
@@ -733,10 +1261,7 @@ ENDDEF (*BasePicture*);
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    usage_by_name = {
-        variable.name: analyzer._get_usage(variable)
-        for variable in bp.localvariables
-    }
+    usage_by_name = {variable.name: analyzer._get_usage(variable) for variable in bp.localvariables}
 
     assert usage_by_name["PosX"].read is True
     assert usage_by_name["PanelResize"].read is True
@@ -768,16 +1293,12 @@ ENDDEF (*BasePicture*);
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    issues = [
-        issue for issue in analyzer.issues if issue.kind is IssueKind.UI_ONLY
-    ]
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UI_ONLY]
 
     assert len(issues) == 1
     assert issues[0].variable is not None
     assert issues[0].variable.name == "WidthSource"
-    assert not any(
-        issue.kind is IssueKind.READ_ONLY_NON_CONST for issue in analyzer.issues
-    )
+    assert not any(issue.kind is IssueKind.READ_ONLY_NON_CONST for issue in analyzer.issues)
 
 
 def test_ui_only_variable_detected_for_interact_invar_reads():
@@ -800,9 +1321,7 @@ ENDDEF (*BasePicture*);
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    issues = [
-        issue for issue in analyzer.issues if issue.kind is IssueKind.UI_ONLY
-    ]
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UI_ONLY]
 
     assert len(issues) == 1
     assert issues[0].variable is not None
@@ -834,9 +1353,7 @@ ENDDEF (*BasePicture*);
     analyzer.run()
 
     assert not any(
-        issue.kind is IssueKind.UI_ONLY
-        and issue.variable is not None
-        and issue.variable.name == "WidthSource"
+        issue.kind is IssueKind.UI_ONLY and issue.variable is not None and issue.variable.name == "WidthSource"
         for issue in analyzer.issues
     )
 
@@ -1009,10 +1526,7 @@ def test_variable_analysis_ignores_external_moduletype_usage_for_program_target(
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    assert any(
-        issue.kind is IssueKind.UNUSED and issue.variable is program_var
-        for issue in analyzer.issues
-    )
+    assert any(issue.kind is IssueKind.UNUSED and issue.variable is program_var for issue in analyzer.issues)
 
 
 def test_variable_analysis_treats_external_moduletype_usage_as_used_for_library_target():
@@ -1202,43 +1716,29 @@ def test_unused_datatype_fields_are_aggregated_across_variables():
     unused_fields = {
         issue.field_path
         for issue in analyzer.issues
-        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
-        and issue.datatype_name == "SharedRecord"
+        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD and issue.datatype_name == "SharedRecord"
     }
 
     assert unused_fields == {"C"}
 
 
 def test_sample_fixture_contains_common_variable_quality_issues():
-    fixture = (
-        Path(__file__).parent
-        / "fixtures"
-        / "sample_sattline_files"
-        / "CommonQualityIssues.s"
-    )
+    fixture = Path(__file__).parent / "fixtures" / "sample_sattline_files" / "CommonQualityIssues.s"
 
     bp = parse_source_file(fixture)
     issues = VariablesAnalyzer(bp).run()
 
-    unused = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.UNUSED and issue.variable is not None
-    }
+    unused = {issue.variable.name for issue in issues if issue.kind is IssueKind.UNUSED and issue.variable is not None}
     read_only_non_const = {
         issue.variable.name
         for issue in issues
         if issue.kind is IssueKind.READ_ONLY_NON_CONST and issue.variable is not None
     }
     never_read = {
-        issue.variable.name
-        for issue in issues
-        if issue.kind is IssueKind.NEVER_READ and issue.variable is not None
+        issue.variable.name for issue in issues if issue.kind is IssueKind.NEVER_READ and issue.variable is not None
     }
     unused_fields = {
-        (issue.datatype_name, issue.field_path)
-        for issue in issues
-        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
+        (issue.datatype_name, issue.field_path) for issue in issues if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
     }
 
     assert "UnusedValue" in unused
@@ -1292,9 +1792,7 @@ def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    duplication_issues = [
-        issue for issue in analyzer.issues if issue.kind is IssueKind.DATATYPE_DUPLICATION
-    ]
+    duplication_issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.DATATYPE_DUPLICATION]
     assert len(duplication_issues) == 1
 
     issue = duplication_issues[0]
@@ -1303,9 +1801,7 @@ def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
     assert issue.variable.name == "PhaseTimer"
     assert issue.variable.datatype_text == "Timer"
     assert issue.duplicate_count == 2
-    assert issue.duplicate_locations == [
-        (["BasePicture", "TypeDef:Fyld"], "localvariable", "PhaseTimerCopy")
-    ]
+    assert issue.duplicate_locations == [(["BasePicture", "TypeDef:Fyld"], "localvariable", "PhaseTimerCopy")]
 
     summary = VariablesReport(basepicture_name=bp.header.name, issues=duplication_issues).summary()
     assert "Datatype 'Timer' declared 2 times in BasePicture.TypeDef:Fyld:" in summary
@@ -1390,11 +1886,7 @@ def test_reset_contamination_detected_for_missing_reset_write():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    issues = [
-        i
-        for i in analyzer.issues
-        if i.kind is IssueKind.RESET_CONTAMINATION
-    ]
+    issues = [i for i in analyzer.issues if i.kind is IssueKind.RESET_CONTAMINATION]
     assert any(i.variable and i.variable.name == "Counter" for i in issues)
 
 
@@ -1473,9 +1965,7 @@ def test_reset_contamination_cleared_when_reset_writes_present():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    assert not any(
-        i.kind is IssueKind.RESET_CONTAMINATION for i in analyzer.issues
-    )
+    assert not any(i.kind is IssueKind.RESET_CONTAMINATION for i in analyzer.issues)
 
 
 def test_implicit_latch_detected_when_if_branch_sets_true_without_else_clear():
@@ -1695,11 +2185,7 @@ def test_sfc_step_contract_detects_missing_enter_initialization():
         },
     )
 
-    issues = [
-        issue
-        for issue in report.issues
-        if issue.kind == "sfc_missing_step_enter_contract"
-    ]
+    issues = [issue for issue in report.issues if issue.kind == "sfc_missing_step_enter_contract"]
     assert len(issues) == 1
     assert issues[0].data is not None
     assert issues[0].data["missing_enter_writes"] == ["StepValue"]
@@ -1743,11 +2229,7 @@ def test_sfc_step_contract_detects_missing_exit_cleanup():
         },
     )
 
-    issues = [
-        issue
-        for issue in report.issues
-        if issue.kind == "sfc_missing_step_exit_contract"
-    ]
+    issues = [issue for issue in report.issues if issue.kind == "sfc_missing_step_exit_contract"]
     assert len(issues) == 1
     assert issues[0].data is not None
     assert issues[0].data["missing_exit_writes"] == ["StepValue"]
@@ -1851,16 +2333,10 @@ def test_write_without_effect_detected_for_internal_value_chain():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    write_without_effect = [
-        issue
-        for issue in analyzer.issues
-        if issue.kind is IssueKind.WRITE_WITHOUT_EFFECT
-    ]
+    write_without_effect = [issue for issue in analyzer.issues if issue.kind is IssueKind.WRITE_WITHOUT_EFFECT]
     assert [issue.variable.name for issue in write_without_effect if issue.variable is not None] == ["Stage1"]
     assert any(
-        issue.kind is IssueKind.NEVER_READ
-        and issue.variable is not None
-        and issue.variable.name == "Stage2"
+        issue.kind is IssueKind.NEVER_READ and issue.variable is not None and issue.variable.name == "Stage2"
         for issue in analyzer.issues
     )
 
@@ -1973,8 +2449,7 @@ def test_hidden_global_coupling_is_reported_for_sibling_modules_using_root_globa
     hidden_issues = [
         issue
         for issue in analyzer.issues
-        if issue.kind is IssueKind.HIDDEN_GLOBAL_COUPLING
-        and issue.variable is shared_value
+        if issue.kind is IssueKind.HIDDEN_GLOBAL_COUPLING and issue.variable is shared_value
     ]
     assert len(hidden_issues) == 1
     assert "Writer (write)" in (hidden_issues[0].role or "")
@@ -2059,9 +2534,7 @@ def test_hidden_global_coupling_is_not_reported_for_explicit_parameter_mappings(
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    assert not any(
-        issue.kind is IssueKind.HIDDEN_GLOBAL_COUPLING for issue in analyzer.issues
-    )
+    assert not any(issue.kind is IssueKind.HIDDEN_GLOBAL_COUPLING for issue in analyzer.issues)
 
 
 def test_global_scope_minimization_is_reported_for_root_global_confined_to_one_module_subtree():
@@ -2121,8 +2594,7 @@ def test_global_scope_minimization_is_reported_for_root_global_confined_to_one_m
     issues = [
         issue
         for issue in analyzer.issues
-        if issue.kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION
-        and issue.variable is confined
+        if issue.kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION and issue.variable is confined
     ]
 
     assert len(issues) == 1
@@ -2175,9 +2647,7 @@ def test_global_scope_minimization_is_not_reported_for_root_global_used_in_root_
     analyzer.run()
 
     assert not any(
-        issue.kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION
-        and issue.variable is confined
-        for issue in analyzer.issues
+        issue.kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION and issue.variable is confined for issue in analyzer.issues
     )
 
 
@@ -2219,14 +2689,8 @@ def test_global_scope_minimization_is_suppressed_for_library_targets():
     analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
     analyzer.run()
 
-    assert not any(
-        issue.kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION
-        for issue in analyzer.issues
-    )
-    assert not any(
-        issue.kind is IssueKind.HIDDEN_GLOBAL_COUPLING
-        for issue in analyzer.issues
-    )
+    assert not any(issue.kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION for issue in analyzer.issues)
+    assert not any(issue.kind is IssueKind.HIDDEN_GLOBAL_COUPLING for issue in analyzer.issues)
 
 
 def test_high_fan_in_out_is_reported_for_root_global_shared_across_many_modules():
@@ -2321,9 +2785,7 @@ def test_high_fan_in_out_is_reported_for_root_global_shared_across_many_modules(
     analyzer.run()
 
     issues = [
-        issue
-        for issue in analyzer.issues
-        if issue.kind is IssueKind.HIGH_FAN_IN_OUT and issue.variable is shared
+        issue for issue in analyzer.issues if issue.kind is IssueKind.HIGH_FAN_IN_OUT and issue.variable is shared
     ]
 
     assert len(issues) == 1
@@ -2405,10 +2867,7 @@ def test_high_fan_in_out_is_not_reported_below_threshold():
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    assert not any(
-        issue.kind is IssueKind.HIGH_FAN_IN_OUT and issue.variable is shared
-        for issue in analyzer.issues
-    )
+    assert not any(issue.kind is IssueKind.HIGH_FAN_IN_OUT and issue.variable is shared for issue in analyzer.issues)
 
 
 def test_variables_report_summary_includes_name_collisions():
@@ -2425,10 +2884,7 @@ def test_variables_report_summary_includes_name_collisions():
     assert "Sections:" in summary
     assert "  - Name collisions: 1" in summary
     assert "Name collisions" in summary
-    assert (
-        "BasePicture.TypeDef:Unit :: Value (integer) | "
-        "name collision with parameter 'Value'"
-    ) in summary
+    assert ("BasePicture.TypeDef:Unit :: Value (integer) | " "name collision with parameter 'Value'") in summary
 
 
 def test_variables_report_summary_includes_write_without_effect_section():
@@ -2518,10 +2974,7 @@ def test_variables_report_summary_includes_unknown_parameter_targets():
     summary = VariablesReport(basepicture_name="BasePicture", issues=[issue]).summary()
 
     assert "Unknown parameter mapping targets" in summary
-    assert (
-        "BasePicture.Child :: unknown parameter mapping target 'MissingValue'"
-        in summary
-    )
+    assert "BasePicture.Child :: unknown parameter mapping target 'MissingValue'" in summary
 
 
 def test_variables_report_summary_lists_all_requested_categories_when_empty():
@@ -2587,18 +3040,14 @@ def test_sfc_parallel_write_race_detected_for_same_variable():
                         SFCStep(
                             kind="step",
                             name="Left",
-                            code=SFCCodeBlocks(
-                                active=[(const.KEY_ASSIGN, _varref("Output"), 1)]
-                            ),
+                            code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("Output"), 1)]),
                         )
                     ],
                     [
                         SFCStep(
                             kind="step",
                             name="Right",
-                            code=SFCCodeBlocks(
-                                active=[(const.KEY_ASSIGN, _varref("Output"), 2)]
-                            ),
+                            code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("Output"), 2)]),
                         )
                     ],
                 ]
@@ -2750,9 +3199,7 @@ def test_variables_analyzer_flags_dependency_mapped_status_that_only_reaches_ui(
         moduletype_defs=[_status_bridge_typedef()],
         localvariables=[Variable(name="StatusSink", datatype=Simple_DataType.INTEGER)],
         submodules=[bridge],
-        moduledef=ModuleDef(
-            graph_objects=[GraphObject(type="TextObject", properties={"text_vars": ["StatusSink"]})]
-        ),
+        moduledef=ModuleDef(graph_objects=[GraphObject(type="TextObject", properties={"text_vars": ["StatusSink"]})]),
     )
 
     issues = VariablesAnalyzer(bp).run()
@@ -2766,6 +3213,173 @@ def test_variables_analyzer_flags_dependency_mapped_status_that_only_reaches_ui(
     ]
     assert len(status_issues) == 1
     assert "UI" in (status_issues[0].role or "")
+
+
+def test_variables_analyzer_flags_naming_to_behavior_mismatches():
+    unit = SingleModule(
+        header=_hdr("Unit"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="StartCmd", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="CmdLatch", datatype=Simple_DataType.BOOLEAN),
+        ],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="LocalLogic",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (const.KEY_ASSIGN, _varref("StartCmd"), True),
+                        (const.KEY_ASSIGN, _varref("CmdLatch"), _varref("StartCmd")),
+                    ],
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[
+            Variable(name="ValveStatus", datatype=Simple_DataType.INTEGER),
+            Variable(name="HighAlarm", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Shutdown", datatype=Simple_DataType.BOOLEAN),
+        ],
+        submodules=[unit],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (const.KEY_ASSIGN, _varref("ValveStatus"), IntLiteral(1)),
+                        (const.KEY_ASSIGN, _varref("Shutdown"), _varref("HighAlarm")),
+                    ],
+                )
+            ]
+        ),
+        moduledef=None,
+    )
+
+    issues = VariablesAnalyzer(bp).run()
+
+    naming_issues = [issue for issue in issues if issue.kind is IssueKind.NAMING_ROLE_MISMATCH]
+    assert {
+        (issue.variable.name, tuple(issue.module_path)) for issue in naming_issues if issue.variable is not None
+    } == {
+        ("StartCmd", ("Root", "Unit")),
+        ("ValveStatus", ("Root",)),
+        ("HighAlarm", ("Root",)),
+    }
+    roles_by_name = {issue.variable.name: (issue.role or "") for issue in naming_issues if issue.variable is not None}
+    assert "internal state" in roles_by_name["StartCmd"]
+    assert "written directly" in roles_by_name["ValveStatus"]
+    assert "control input" in roles_by_name["HighAlarm"]
+
+
+def test_variables_analyzer_ignores_safe_naming_role_counterexamples():
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[
+            Variable(name="StartCmd", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Status", datatype=Simple_DataType.INTEGER),
+            Variable(name="Source", datatype=Simple_DataType.INTEGER),
+            Variable(name="Destination", datatype=Simple_DataType.INTEGER),
+            Variable(name="HighAlarm", datatype=Simple_DataType.BOOLEAN),
+        ],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (const.KEY_ASSIGN, _varref("Output"), _varref("StartCmd")),
+                        (
+                            const.KEY_FUNCTION_CALL,
+                            "CopyVariable",
+                            [_varref("Source"), _varref("Destination"), _varref("Status")],
+                        ),
+                    ],
+                )
+            ]
+        ),
+        moduledef=ModuleDef(graph_objects=[GraphObject(type="TextObject", properties={"text_vars": ["HighAlarm"]})]),
+    )
+
+    issues = VariablesAnalyzer(bp).run()
+
+    assert not any(issue.kind is IssueKind.NAMING_ROLE_MISMATCH for issue in issues)
+
+
+def test_variables_analyzer_supports_configured_naming_role_prefixes():
+    unit = SingleModule(
+        header=_hdr("Unit"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="CmdStart", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="StatusValve", datatype=Simple_DataType.INTEGER),
+            Variable(name="Hold", datatype=Simple_DataType.BOOLEAN),
+        ],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (const.KEY_ASSIGN, _varref("CmdStart"), True),
+                        (const.KEY_ASSIGN, _varref("Hold"), _varref("CmdStart")),
+                        (const.KEY_ASSIGN, _varref("StatusValve"), IntLiteral(1)),
+                    ],
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[unit],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    default_issues = VariablesAnalyzer(bp).run()
+    configured_issues = VariablesAnalyzer(
+        bp,
+        config={
+            "analysis": {
+                "naming": {
+                    "role_patterns": {
+                        "command": {"prefixes": ["cmd"]},
+                        "status": {"prefixes": ["status"]},
+                    }
+                }
+            }
+        },
+    ).run()
+
+    assert not any(issue.kind is IssueKind.NAMING_ROLE_MISMATCH for issue in default_issues)
+    configured_names = {
+        issue.variable.name
+        for issue in configured_issues
+        if issue.kind is IssueKind.NAMING_ROLE_MISMATCH and issue.variable is not None
+    }
+    assert configured_names == {"CmdStart", "StatusValve"}
 
 
 def test_variables_analyzer_treats_dependency_mapped_status_as_handled_when_read_in_logic():
@@ -2944,18 +3558,14 @@ def test_sfc_parallel_write_race_detected_for_record_field_overlap():
                         SFCStep(
                             kind="step",
                             name="Left",
-                            code=SFCCodeBlocks(
-                                active=[(const.KEY_ASSIGN, _varref("Rec"), 1)]
-                            ),
+                            code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("Rec"), 1)]),
                         )
                     ],
                     [
                         SFCStep(
                             kind="step",
                             name="Right",
-                            code=SFCCodeBlocks(
-                                active=[(const.KEY_ASSIGN, _varref("Rec.Field"), 2)]
-                            ),
+                            code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("Rec.Field"), 2)]),
                         )
                     ],
                 ]
@@ -3144,10 +3754,7 @@ def test_version_drift_detects_small_code_delta_between_same_named_modules():
     assert "modified_equations" in issues[0].data["material_differences"]["code"]
     assert "Logic" in issues[0].data["material_differences"]["code"]["modified_equations"]
     assert issues[0].data["material_differences"]["code"]["modified_equations"]["Logic"]
-    assert any(
-        "Equation 'Logic' changed" in note
-        for note in issues[0].data["upgrade_notes"]
-    )
+    assert any("Equation 'Logic' changed" in note for note in issues[0].data["upgrade_notes"])
 
 
 def test_version_drift_records_modified_variable_shape_diffs():
@@ -3195,10 +3802,7 @@ def test_version_drift_records_modified_variable_shape_diffs():
         detail["path"] == "datatype"
         for detail in issues[0].data["material_differences"]["localvariables"]["modified"]["Output"]
     )
-    assert any(
-        "Local variable 'Output' changed" in note
-        for note in issues[0].data["upgrade_notes"]
-    )
+    assert any("Local variable 'Output' changed" in note for note in issues[0].data["upgrade_notes"])
 
 
 def test_version_drift_ignores_datecode_only_differences():
@@ -3301,11 +3905,7 @@ def test_initial_value_validation_flags_recipe_parameter_without_value_default()
 
     report = analyze_initial_values(bp)
 
-    issues = [
-        issue
-        for issue in report.issues
-        if issue.kind == "initial-values.missing_required_default"
-    ]
+    issues = [issue for issue in report.issues if issue.kind == "initial-values.missing_required_default"]
     assert len(issues) == 1
     assert issues[0].module_path == ["Root", "RecipeSP"]
     assert issues[0].data == {
@@ -3337,9 +3937,7 @@ def test_initial_value_validation_accepts_engineering_parameter_mapped_from_init
         header=_hdr("Root"),
         datatype_defs=[],
         moduletype_defs=[engineering_parameter],
-        localvariables=[
-            Variable(name="ConfiguredLimit", datatype=Simple_DataType.REAL, init_value=42.5)
-        ],
+        localvariables=[Variable(name="ConfiguredLimit", datatype=Simple_DataType.REAL, init_value=42.5)],
         submodules=[
             ModuleTypeInstance(
                 header=_hdr("EngineeringLimit"),
@@ -3420,7 +4018,8 @@ def test_naming_consistency_flags_inconsistent_variable_names():
     report = analyze_naming_consistency(bp)
 
     issues = [
-        issue for issue in report.issues
+        issue
+        for issue in report.issues
         if issue.kind == "naming.inconsistent_style"
         and issue.data is not None
         and issue.data.get("symbol_kind") == "variable"
@@ -3474,7 +4073,8 @@ def test_naming_consistency_flags_inconsistent_module_names():
     report = analyze_naming_consistency(bp)
 
     issues = [
-        issue for issue in report.issues
+        issue
+        for issue in report.issues
         if issue.kind == "naming.inconsistent_style"
         and issue.data is not None
         and issue.data.get("symbol_kind") == "module"
@@ -3528,7 +4128,8 @@ def test_naming_consistency_flags_inconsistent_instance_names():
     report = analyze_naming_consistency(bp)
 
     issues = [
-        issue for issue in report.issues
+        issue
+        for issue in report.issues
         if issue.kind == "naming.inconsistent_style"
         and issue.data is not None
         and issue.data.get("symbol_kind") == "instance"

@@ -1,4 +1,5 @@
 """Configuration management for SattLint."""
+
 from __future__ import annotations
 
 import os
@@ -76,6 +77,39 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "modules": {"style": "infer", "allow": []},
             "instances": {"style": "infer", "allow": []},
         },
+        "rule_profiles": {
+            "active": "default",
+            "profiles": {
+                "default": {
+                    "description": "Balanced default analyzer profile.",
+                    "disabled_rules": [],
+                    "severity_overrides": {},
+                    "confidence_overrides": {},
+                },
+                "strict-pharma": {
+                    "description": "Promotes style and maintainability drift during regulated review.",
+                    "disabled_rules": [],
+                    "severity_overrides": {
+                        "semantic.naming-inconsistent-style": "error",
+                        "semantic.cyclomatic-complexity.module": "error",
+                        "semantic.cyclomatic-complexity.step": "error",
+                    },
+                    "confidence_overrides": {},
+                },
+                "legacy-plant": {
+                    "description": "Suppresses style-heavy advisories while preserving contract and correctness findings.",
+                    "disabled_rules": [
+                        "semantic.naming-role-mismatch",
+                        "semantic.naming-inconsistent-style",
+                        "semantic.cyclomatic-complexity.module",
+                        "semantic.cyclomatic-complexity.step",
+                        "semantic.loop-output-refactor",
+                    ],
+                    "severity_overrides": {},
+                    "confidence_overrides": {},
+                },
+            },
+        },
     },
     "documentation": {
         "classifications": {
@@ -83,17 +117,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
                 "name_contains": [],
                 "label_equals": [],
                 "desc_name_contains": [],
-                "desc_label_equals": [
-                    "nnestruct:EquipModCoordinate"
-                ],
+                "desc_label_equals": ["nnestruct:EquipModCoordinate"],
             },
             "ops": {
                 "name_contains": [],
                 "label_equals": [],
                 "desc_name_contains": [],
-                "desc_label_equals": [
-                    "NNEMESIFLib:MES_StateControl"
-                ],
+                "desc_label_equals": ["NNEMESIFLib:MES_StateControl"],
             },
             "rp": {
                 "name_contains": ["RecPar"],
@@ -175,6 +205,7 @@ def get_documentation_config(cfg: dict[str, Any] | None = None) -> dict[str, Any
         return documentation_defaults
     return _deep_merge_dict(documentation_defaults, override)
 
+
 def get_config_path() -> Path:
     if os.name == "nt":
         base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
@@ -184,6 +215,11 @@ def get_config_path() -> Path:
     cfg_dir = base / "sattlint"
     cfg_dir.mkdir(parents=True, exist_ok=True)
     return cfg_dir / "config.toml"
+
+
+def get_graphics_rules_path(config_path: Path | None = None) -> Path:
+    resolved_config_path = config_path or get_config_path()
+    return resolved_config_path.with_name("graphics_rules.json")
 
 
 def load_config(path: Path) -> tuple[dict, bool]:
@@ -207,14 +243,12 @@ def save_config(path: Path, cfg: dict) -> None:
     def normalize(v):
         if isinstance(v, Path):
             return str(v)
-        if isinstance(v, (list, tuple)):
+        if isinstance(v, list | tuple):
             return [normalize(x) for x in v]
         if isinstance(v, dict):
             return {k: normalize(x) for k, x in v.items()}
         if v is None:
-            raise ValueError(
-                "Cannot serialize None to TOML. Provide a default value or omit the key."
-            )
+            raise ValueError("Cannot serialize None to TOML. Provide a default value or omit the key.")
         return v
 
     with path.open("wb") as f:
@@ -228,10 +262,7 @@ def target_exists(target: str, cfg: dict) -> bool:
         *[Path(p) for p in cfg["other_lib_dirs"]],
     ]
 
-    if cfg["mode"] == "draft":
-        extensions = [".s", ".x"]  # Try draft first, fallback to official
-    else:
-        extensions = [".x"]  # Official only
+    extensions = [".s", ".x"] if cfg["mode"] == "draft" else [".x"]
 
     for d in dirs:
         if not d.exists():
@@ -292,11 +323,7 @@ def self_check(cfg: dict) -> bool:
         else:
             print(f"✔ other_lib_dirs: {path}")
 
-    targets = [
-        str(target).strip()
-        for target in cfg.get("analyzed_programs_and_libraries", [])
-        if str(target).strip()
-    ]
+    targets = [str(target).strip() for target in cfg.get("analyzed_programs_and_libraries", []) if str(target).strip()]
     if not targets:
         print("WARNING analyzed_programs_and_libraries is empty")
         print("Configure targets before running analyses, documentation, or AST cache refresh.")
@@ -321,9 +348,7 @@ def self_check(cfg: dict) -> bool:
         else:
             for category, rule in classifications.items():
                 if category not in _DOCUMENTATION_CATEGORY_KEYS:
-                    print(
-                        f"❌ documentation.classifications.{category} is not a supported category"
-                    )
+                    print(f"❌ documentation.classifications.{category} is not a supported category")
                     ok = False
                     continue
                 if not isinstance(rule, dict):
@@ -332,20 +357,13 @@ def self_check(cfg: dict) -> bool:
                     continue
                 for key in _DOCUMENTATION_RULE_LIST_KEYS:
                     values = rule.get(key, [])
-                    if not isinstance(values, list) or not all(
-                        isinstance(item, str) for item in values
-                    ):
-                        print(
-                            f"❌ documentation.classifications.{category}.{key} must be a list of strings"
-                        )
+                    if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+                        print(f"❌ documentation.classifications.{category}.{key} must be a list of strings")
                         ok = False
                 for key in _DOCUMENTATION_RULE_LIST_KEYS:
                     values = [str(item) for item in rule.get(key, []) if str(item).strip()]
                     if values:
-                        print(
-                            f"✔ documentation.classifications.{category}.{key}: "
-                            + ", ".join(values)
-                        )
+                        print(f"✔ documentation.classifications.{category}.{key}: " + ", ".join(values))
 
     analysis = cfg.get("analysis", {})
     if not isinstance(analysis, dict):
@@ -363,13 +381,8 @@ def self_check(cfg: dict) -> bool:
                 ok = False
             else:
                 for index, group in enumerate(step_groups, start=1):
-                    if not isinstance(group, list) or not all(
-                        isinstance(item, str) for item in group
-                    ):
-                        print(
-                            "❌ analysis.sfc.mutually_exclusive_steps"
-                            f"[{index}] must be a list of strings"
-                        )
+                    if not isinstance(group, list) or not all(isinstance(item, str) for item in group):
+                        print("❌ analysis.sfc.mutually_exclusive_steps" f"[{index}] must be a list of strings")
                         ok = False
 
             step_contracts = sfc.get("step_contracts", {})
@@ -383,21 +396,13 @@ def self_check(cfg: dict) -> bool:
                         ok = False
                         continue
                     if not isinstance(contract, dict):
-                        print(
-                            "❌ analysis.sfc.step_contracts."
-                            f"{step_name} must be a table/object"
-                        )
+                        print("❌ analysis.sfc.step_contracts." f"{step_name} must be a table/object")
                         ok = False
                         continue
                     for key in ("required_enter_writes", "required_exit_writes"):
                         values = contract.get(key, [])
-                        if not isinstance(values, list) or not all(
-                            isinstance(item, str) for item in values
-                        ):
-                            print(
-                                "❌ analysis.sfc.step_contracts."
-                                f"{step_name}.{key} must be a list of strings"
-                            )
+                        if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+                            print("❌ analysis.sfc.step_contracts." f"{step_name}.{key} must be a list of strings")
                             ok = False
 
         naming = analysis.get("naming", {})
@@ -413,19 +418,26 @@ def self_check(cfg: dict) -> bool:
                     continue
                 style = str(rule.get("style", "infer")).strip().lower()
                 if style not in _NAMING_STYLE_KEYS:
-                    print(
-                        f"❌ analysis.naming.{target}.style must be one of: "
-                        + ", ".join(_NAMING_STYLE_KEYS)
-                    )
+                    print(f"❌ analysis.naming.{target}.style must be one of: " + ", ".join(_NAMING_STYLE_KEYS))
                     ok = False
                 allow = rule.get("allow", [])
-                if not isinstance(allow, list) or not all(
-                    isinstance(item, str) for item in allow
-                ):
-                    print(
-                        f"❌ analysis.naming.{target}.allow must be a list of strings"
-                    )
+                if not isinstance(allow, list) or not all(isinstance(item, str) for item in allow):
+                    print(f"❌ analysis.naming.{target}.allow must be a list of strings")
                     ok = False
+
+    graphics_rules_path = get_graphics_rules_path()
+    if graphics_rules_path.exists():
+        from . import graphics_rules as graphics_rules_module
+
+        try:
+            graphics_rules, _created = graphics_rules_module.load_graphics_rules(graphics_rules_path)
+        except Exception as exc:
+            print(f"? graphics_rules_path invalid: {graphics_rules_path} ({exc})")
+            ok = False
+        else:
+            print(f"? graphics_rules_path: {graphics_rules_path} " f"({len(graphics_rules.get('rules', []))} rules)")
+    else:
+        print(f"? graphics_rules_path not created yet: {graphics_rules_path}")
 
     print("------------------------------\n")
     return ok

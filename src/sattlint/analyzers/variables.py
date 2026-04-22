@@ -1,4 +1,5 @@
 """Variable usage analysis and reporting utilities."""
+
 from __future__ import annotations
 
 import difflib
@@ -6,7 +7,7 @@ import logging
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..call_signatures import CallParameterSignature, resolve_call_signature
 from ..grammar import constants as const
@@ -81,9 +82,74 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("SattLint")
 
+
+@dataclass(frozen=True)
+class _NamingRolePatterns:
+    prefixes: tuple[str, ...] = ()
+    suffixes: tuple[str, ...] = ()
+
+
+_DEFAULT_NAMING_ROLE_PATTERNS: dict[str, _NamingRolePatterns] = {
+    "command": _NamingRolePatterns(suffixes=("cmd",)),
+    "status": _NamingRolePatterns(suffixes=("status",)),
+    "alarm": _NamingRolePatterns(suffixes=("alarm",)),
+}
+
+
+def _normalize_role_pattern_values(raw: object) -> tuple[str, ...]:
+    if not isinstance(raw, list):
+        return ()
+    values: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        value = item.strip().casefold()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        values.append(value)
+    return tuple(values)
+
+
+def _configured_naming_role_patterns(
+    config: dict[str, Any] | None,
+) -> dict[str, _NamingRolePatterns]:
+    patterns = dict(_DEFAULT_NAMING_ROLE_PATTERNS)
+    if not isinstance(config, dict):
+        return patterns
+
+    analysis = config.get("analysis", {})
+    if not isinstance(analysis, dict):
+        return patterns
+
+    naming = analysis.get("naming", {})
+    if not isinstance(naming, dict):
+        return patterns
+
+    raw_role_patterns = naming.get("role_patterns", {})
+    if not isinstance(raw_role_patterns, dict):
+        return patterns
+
+    for role_name, defaults in _DEFAULT_NAMING_ROLE_PATTERNS.items():
+        raw_rule = raw_role_patterns.get(role_name, {})
+        if not isinstance(raw_rule, dict):
+            continue
+        prefixes = tuple(
+            dict.fromkeys((*defaults.prefixes, *_normalize_role_pattern_values(raw_rule.get("prefixes", []))))
+        )
+        suffixes = tuple(
+            dict.fromkeys((*defaults.suffixes, *_normalize_role_pattern_values(raw_rule.get("suffixes", []))))
+        )
+        patterns[role_name] = _NamingRolePatterns(prefixes=prefixes, suffixes=suffixes)
+
+    return patterns
+
+
 # -----------------------------------------------------------------------------
 # Public API
 # -----------------------------------------------------------------------------
+
 
 def analyze_variables(
     base_picture: BasePicture,
@@ -92,6 +158,7 @@ def analyze_variables(
     analyzed_target_is_library: bool = False,
     include_dependency_moduletype_usage: bool = False,
     trace_recorder: AnalysisTraceRecorder | None = None,
+    config: dict[str, Any] | None = None,
 ) -> VariablesReport:
     """
     Analyze a BasePicture AST and return a comprehensive report:
@@ -109,6 +176,7 @@ def analyze_variables(
         analyzed_target_is_library=analyzed_target_is_library,
         include_dependency_moduletype_usage=include_dependency_moduletype_usage,
         trace_recorder=trace_recorder,
+        config=config,
     )
     issues = analyzer.run()
     return VariablesReport(
@@ -153,7 +221,7 @@ class VariablesAnalyzer:
     External ModuleTypeInstance mappings are considered used.
     """
 
-    _OPAQUE_BUILTIN_TYPES: set[str] = {
+    _OPAQUE_BUILTIN_TYPES: ClassVar[set[str]] = {
         "alarm4realspar",
         "arrayobject",
         "eventqueueitem",
@@ -174,6 +242,7 @@ class VariablesAnalyzer:
         include_dependency_moduletype_usage: bool = False,
         trace_recorder: AnalysisTraceRecorder | None = None,
         build_anytype_contracts: bool = True,
+        config: dict[str, Any] | None = None,
     ):
         self.bp = base_picture
         self.debug = debug
@@ -184,6 +253,7 @@ class VariablesAnalyzer:
         self._analysis_warnings: list[str] = []
         self._trace_recorder = trace_recorder
         self._limit_to_module_path: list[str] | None = None
+        self._naming_role_patterns = _configured_naming_role_patterns(config)
 
         # Unified collection of issues
         self._issues: list[VariableIssue] = []
@@ -204,7 +274,7 @@ class VariablesAnalyzer:
             symbol_table=self.symbol_table,
             type_graph=self.type_graph,
             issues=self._issues,
-            global_lookup_fn=self._lookup_global_variable
+            global_lookup_fn=self._lookup_global_variable,
         )
 
         self.typedef_index: dict[str, list[ModuleTypeDef]] = {}
@@ -223,15 +293,14 @@ class VariablesAnalyzer:
         self._procedure_status_bindings: dict[int, list[_ProcedureStatusBinding]] = defaultdict(list)
 
         # Index BasePicture/global variables (localvariables)
-        self._root_env: dict[str, Variable] = {
-            v.name.lower(): v for v in (self.bp.localvariables or [])
-        }
+        self._root_env: dict[str, Variable] = {v.name.lower(): v for v in (self.bp.localvariables or [])}
 
         # Fallback index across the whole AST (by name) to be robust
         self._any_var_index: dict[str, list[Variable]] = {}
         self._index_all_variables()
         self._analyzing_typedefs: set[str] = set()
         self._anytype_field_contracts_by_owner: dict[int, dict[str, AnyTypeFieldContract]] = {}
+        self._required_parameter_names_by_owner: dict[int, dict[str, str]] = {}
         if build_anytype_contracts:
             self._anytype_field_contracts_by_owner = self._build_anytype_field_contracts()
 
@@ -274,8 +343,7 @@ class VariablesAnalyzer:
             typedef
             for typedef in (self.bp.moduletype_defs or [])
             if any(
-                isinstance(variable.datatype, str)
-                and variable.datatype.casefold() == "anytype"
+                isinstance(variable.datatype, str) and variable.datatype.casefold() == "anytype"
                 for variable in (typedef.moduleparameters or [])
             )
         ]
@@ -302,23 +370,15 @@ class VariablesAnalyzer:
 
             parameter_contracts: dict[str, AnyTypeFieldContract] = {}
             for variable in typedef.moduleparameters or []:
-                if not (
-                    isinstance(variable.datatype, str)
-                    and variable.datatype.casefold() == "anytype"
-                ):
+                if not (isinstance(variable.datatype, str) and variable.datatype.casefold() == "anytype"):
                     continue
 
                 usage = extractor._get_usage(variable)
-                field_paths = sorted(
-                    set((usage.field_reads or {}).keys())
-                    | set((usage.field_writes or {}).keys())
-                )
+                field_paths = sorted(set((usage.field_reads or {}).keys()) | set((usage.field_writes or {}).keys()))
                 if not field_paths:
                     continue
 
-                parameter_contracts[variable.name.casefold()] = AnyTypeFieldContract(
-                    field_paths=tuple(field_paths)
-                )
+                parameter_contracts[variable.name.casefold()] = AnyTypeFieldContract(field_paths=tuple(field_paths))
 
             if parameter_contracts:
                 contracts[id(typedef)] = parameter_contracts
@@ -328,16 +388,49 @@ class VariablesAnalyzer:
     def _get_usage(self, variable: Variable) -> VariableUsage:
         return self.usage_tracker.get_usage(variable)
 
+    def _get_required_parameter_names_for_typedef(
+        self,
+        moduletype: ModuleTypeDef,
+    ) -> dict[str, str]:
+        owner_id = id(moduletype)
+        cached = self._required_parameter_names_by_owner.get(owner_id)
+        if cached is not None:
+            return cached
+
+        extractor = VariablesAnalyzer(
+            self.bp,
+            debug=False,
+            fail_loudly=False,
+            unavailable_libraries=self._unavailable_libraries,
+            analyzed_target_is_library=self._analyzed_target_is_library,
+            include_dependency_moduletype_usage=self._include_dependency_moduletype_usage,
+            trace_recorder=None,
+            build_anytype_contracts=False,
+        )
+        extractor._analyze_typedef(
+            moduletype,
+            path=[self.bp.header.name, f"TypeDef:{moduletype.name}"],
+        )
+
+        required_names: dict[str, str] = {}
+        for variable in moduletype.moduleparameters or []:
+            usage = extractor._get_usage(variable)
+            if not (usage.read or usage.written):
+                continue
+            if usage.is_display_only:
+                continue
+            required_names[variable.name.casefold()] = variable.name
+
+        self._required_parameter_names_by_owner[owner_id] = required_names
+        return required_names
+
     @property
     def access_graph(self) -> AccessGraph:
         return self.usage_tracker.access_graph
 
     @property
     def effect_flow_edges(self) -> dict[tuple[str, ...], tuple[tuple[str, ...], ...]]:
-        return {
-            source_key: tuple(sorted(target_keys))
-            for source_key, target_keys in self._effect_flow_edges.items()
-        }
+        return {source_key: tuple(sorted(target_keys)) for source_key, target_keys in self._effect_flow_edges.items()}
 
     @property
     def effect_flow_display_names(self) -> dict[tuple[str, ...], str]:
@@ -458,9 +551,7 @@ class VariablesAnalyzer:
 
         binding = bindings[0]
         channel_label = (
-            "procedure status output"
-            if binding.channel_kind == "status"
-            else "procedure async-operation handle"
+            "procedure status output" if binding.channel_kind == "status" else "procedure async-operation handle"
         )
         if usage.ui_read:
             return (
@@ -475,6 +566,47 @@ class VariablesAnalyzer:
     def _has_procedure_status_binding(self, variable: Variable) -> bool:
         return bool(self._procedure_status_bindings.get(id(variable)))
 
+    def _naming_role_mismatch_reason(
+        self,
+        variable: Variable,
+        usage: VariableUsage,
+        decl_path: list[str],
+    ) -> str | None:
+        name_key = variable.name.casefold()
+        if self._matches_naming_role(name_key, "command"):
+            if usage.read and usage.written and not self._has_output_effect(variable, decl_path):
+                return "Cmd-suffixed variable behaves like internal state instead of a one-way command signal."
+            return None
+        if self._matches_naming_role(name_key, "status"):
+            if usage.written and not self._has_procedure_status_binding(variable):
+                return (
+                    "Status-suffixed variable is written directly in logic instead of being treated as observed status."
+                )
+            return None
+        if self._matches_naming_role(name_key, "alarm"):
+            if usage.non_ui_read:
+                return "Alarm-suffixed variable is consumed in non-UI logic and behaves like a control input."
+            return None
+        return None
+
+    def _matches_naming_role(self, name_key: str, role_name: str) -> bool:
+        patterns = self._naming_role_patterns.get(role_name, _NamingRolePatterns())
+        return any(name_key.startswith(prefix) for prefix in patterns.prefixes) or any(
+            name_key.endswith(suffix) for suffix in patterns.suffixes
+        )
+
+    def _add_naming_role_mismatch_issues(self) -> None:
+        for decl_path, variable, _decl_role in _iter_variables_for_datatype_field_analysis(self):
+            usage = self._get_usage(variable)
+            reason = self._naming_role_mismatch_reason(variable, usage, decl_path)
+            if reason is None:
+                continue
+            self._add_issue(
+                IssueKind.NAMING_ROLE_MISMATCH,
+                decl_path,
+                variable,
+                role=reason,
+            )
 
     def _check_param_mappings_for_single(
         self,
@@ -484,6 +616,29 @@ class VariablesAnalyzer:
         parent_path: list[str],
     ) -> None:
         params_by_name = {v.name.casefold(): v for v in (mod.moduleparameters or [])}
+        mapped_target_keys = {
+            target_name.casefold()
+            for pm in mod.parametermappings or []
+            for target_name in [varname_base(pm.target)]
+            if target_name and target_name.casefold() in params_by_name
+        }
+
+        for parameter in mod.moduleparameters or []:
+            if parameter.name.casefold() in mapped_target_keys:
+                continue
+            usage = self._get_usage(parameter)
+            if not (usage.read or usage.written):
+                continue
+            if usage.is_display_only:
+                continue
+            self._append_issue(
+                VariableIssue(
+                    kind=IssueKind.REQUIRED_PARAMETER_CONNECTION,
+                    module_path=list(parent_path),
+                    variable=parameter,
+                    role=("required parameter connection missing for " f"{parameter.name!r}"),
+                )
+            )
 
         for pm in mod.parametermappings or []:
             tgt_name = varname_base(pm.target)
@@ -508,6 +663,27 @@ class VariablesAnalyzer:
             return
         # Only parameters are valid mapping targets [2]
         params_by_name = {v.name.casefold(): v for v in (mt.moduleparameters or [])}
+        mapped_target_keys = {
+            target_name.casefold()
+            for pm in inst.parametermappings or []
+            for target_name in [varname_base(pm.target)]
+            if target_name and target_name.casefold() in params_by_name
+        }
+        required_parameter_names = self._get_required_parameter_names_for_typedef(mt)
+        for required_key in sorted(required_parameter_names):
+            if required_key in mapped_target_keys:
+                continue
+            required_variable = params_by_name.get(required_key)
+            if required_variable is None:
+                continue
+            self._append_issue(
+                VariableIssue(
+                    kind=IssueKind.REQUIRED_PARAMETER_CONNECTION,
+                    module_path=list(parent_path),
+                    variable=required_variable,
+                    role=("required parameter connection missing for " f"{required_variable.name!r}"),
+                )
+            )
         for pm in inst.parametermappings or []:
             tgt_name = varname_base(pm.target)
             tgt_var = params_by_name.get(tgt_name) if tgt_name else None
@@ -556,14 +732,8 @@ class VariablesAnalyzer:
             return  # cannot validate
 
         # Delegate validation to dedicated validators
-        self._issues.extend(
-            self._string_validator.check_string_mapping(tgt_var, src_var, path)
-        )
-        self._issues.extend(
-            self._min_max_validator.check_min_max_mapping(
-                pm, tgt_var, src_var, path
-            )
-        )
+        self._issues.extend(self._string_validator.check_string_mapping(tgt_var, src_var, path))
+        self._issues.extend(self._min_max_validator.check_min_max_mapping(pm, tgt_var, src_var, path))
 
     def _index_all_variables(self) -> None:
         def _add(v: Variable):
@@ -683,9 +853,7 @@ class VariablesAnalyzer:
             local_var = context.env.get(base_name.casefold())
             if local_var is not None:
                 return self._effect_key_for_variable(local_var, context.module_path)
-        variable, _field_path, decl_module_path, _decl_display = context.resolve_variable(
-            full_ref
-        )
+        variable, _field_path, decl_module_path, _decl_display = context.resolve_variable(full_ref)
         if variable is None:
             return None
         return self._effect_key_for_variable(variable, decl_module_path)
@@ -900,11 +1068,7 @@ class VariablesAnalyzer:
             if direction in {"in", "in var", "inout"}:
                 input_keys.update(self._collect_expression_effect_sources(arg, context))
 
-            if (
-                direction in {"out", "inout"}
-                and isinstance(arg, dict)
-                and const.KEY_VAR_NAME in arg
-            ):
+            if direction in {"out", "inout"} and isinstance(arg, dict) and const.KEY_VAR_NAME in arg:
                 key = self._resolve_effect_key(arg[const.KEY_VAR_NAME], context)
                 if key is not None:
                     output_keys.add(key)
@@ -1043,8 +1207,7 @@ class VariablesAnalyzer:
                     f"{fn_name}: at {' -> '.join(use_path)}"
                     f"{(' [' + site + ']') if site else ''}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
                     f"uses unknown field {seg!r} in record datatype {rec.name!r}. "
-                    f"Available fields: {available[:50]}"
-                    + (f". Close matches: {close}" if close else "")
+                    f"Available fields: {available[:50]}" + (f". Close matches: {close}" if close else "")
                 )
 
             current = f.datatype
@@ -1140,9 +1303,7 @@ class VariablesAnalyzer:
         The `syntactic_ref` is what appears in code (e.g. "Dv.Y_Søjle" or "control").
         Resolution (param mappings) is applied via ScopeContext.resolve_variable().
         """
-        resolved_var, resolved_field_prefix, _decl_path, _decl_display = context.resolve_variable(
-            syntactic_ref
-        )
+        resolved_var, resolved_field_prefix, _decl_path, _decl_display = context.resolve_variable(syntactic_ref)
         if resolved_var is None:
             site = self._site_str()
             raise ValueError(
@@ -1207,10 +1368,7 @@ class VariablesAnalyzer:
         try:
             return Path(origin_file).stem.lower() == Path(root_origin).stem.lower()
         except Exception:
-            return (
-                origin_file.rsplit(".", 1)[0].lower()
-                == root_origin.rsplit(".", 1)[0].lower()
-            )
+            return origin_file.rsplit(".", 1)[0].lower() == root_origin.rsplit(".", 1)[0].lower()
 
     def _extract_field_path(self, var_dict: dict) -> tuple[str | None, str | None]:
         """
@@ -1276,11 +1434,7 @@ class VariablesAnalyzer:
         self._walk_header_groupconn(self.bp.header, root_context, path=[self.bp.header.name])
 
         # Walk submodules with scope propagation
-        self._walk_submodules(
-            self.bp.submodules or [],
-            parent_context=root_context,
-            parent_path=[self.bp.header.name]
-        )
+        self._walk_submodules(self.bp.submodules or [], parent_context=root_context, parent_path=[self.bp.header.name])
 
         if apply_alias_back_propagation:
             self._apply_alias_back_propagation()
@@ -1318,11 +1472,7 @@ class VariablesAnalyzer:
                 continue
             elif usage.is_display_only:
                 self._add_issue(IssueKind.UI_ONLY, bp_path, v, role=role)
-            elif (
-                usage.is_read_only
-                and not bool(v.const)
-                and self._is_const_candidate(v)
-            ):
+            elif usage.is_read_only and not bool(v.const) and self._is_const_candidate(v):
                 self._add_issue(IssueKind.READ_ONLY_NON_CONST, bp_path, v, role=role)
             elif usage.written and not usage.read:
                 self._add_issue(IssueKind.NEVER_READ, bp_path, v, role=role)
@@ -1385,14 +1535,8 @@ class VariablesAnalyzer:
                         continue
                     elif usage.is_display_only:
                         self._add_issue(IssueKind.UI_ONLY, td_path, v, role=role)
-                    elif (
-                        usage.is_read_only
-                        and not bool(v.const)
-                        and self._is_const_candidate(v)
-                    ):
-                        self._add_issue(
-                            IssueKind.READ_ONLY_NON_CONST, td_path, v, role=role
-                        )
+                    elif usage.is_read_only and not bool(v.const) and self._is_const_candidate(v):
+                        self._add_issue(IssueKind.READ_ONLY_NON_CONST, td_path, v, role=role)
                     elif usage.written and not usage.read:
                         self._add_issue(IssueKind.NEVER_READ, td_path, v, role=role)
                     elif (
@@ -1408,6 +1552,7 @@ class VariablesAnalyzer:
                             role=role,
                         )
 
+        self._add_naming_role_mismatch_issues()
         self._add_global_scope_minimization_issues()
         self._add_hidden_global_coupling_issues()
         self._add_high_fan_in_out_issues()
@@ -1448,7 +1593,7 @@ class VariablesAnalyzer:
             # Enforce: cannot have both a parameter and local with same name
             param_keys = {v.name.casefold(): v for v in params}
             local_keys = {v.name.casefold(): v for v in locals_}
-            for k in (set(param_keys.keys()) & set(local_keys.keys())):
+            for k in set(param_keys.keys()) & set(local_keys.keys()):
                 p = param_keys[k]
                 lv = local_keys[k]
                 self._append_issue(
@@ -1484,7 +1629,7 @@ class VariablesAnalyzer:
                 module_path=path.copy(),
                 display_module_path=display_path,
                 current_library=mt.origin_lib,
-                parent_context=None
+                parent_context=None,
             )
 
             # Scan typedef ModuleDef first (graph/interact), then ModuleCode
@@ -1494,12 +1639,8 @@ class VariablesAnalyzer:
             self._walk_typedef_groupconn(mt, context, path)
 
             # Track per-parameter read/write usage
-            used_reads: set[str] = {
-                v.name.lower() for v in (mt.moduleparameters or []) if self._get_usage(v).read
-            }
-            used_writes: set[str] = {
-                v.name.lower() for v in (mt.moduleparameters or []) if self._get_usage(v).written
-            }
+            used_reads: set[str] = {v.name.lower() for v in (mt.moduleparameters or []) if self._get_usage(v).read}
+            used_writes: set[str] = {v.name.lower() for v in (mt.moduleparameters or []) if self._get_usage(v).written}
 
             # Preserve existing "used" union for any other consumers
             used_params: set[str] = used_reads | used_writes
@@ -1560,13 +1701,13 @@ class VariablesAnalyzer:
 
             # Replicate whole-variable accesses as field accesses
             # (accessing the parameter as a whole = accessing that field of parent)
-            for loc, kind in (child_usage.usage_locations or []):
+            for loc, kind in child_usage.usage_locations or []:
                 if field_prefix:
                     # If there's a field prefix, mark that field as accessed
                     if kind == "read":
                         parent_usage.mark_field_read(field_prefix, loc)
                     elif kind == "write":
-                        parent_usage.mark_field_written(field_prefix, loc) # type: ignore
+                        parent_usage.mark_field_written(field_prefix, loc)  # type: ignore
                 else:
                     # No field prefix means whole variable mapping (rare case)
                     if kind == "read":
@@ -1586,22 +1727,24 @@ class VariablesAnalyzer:
             child_name = child.header.name
             child_path = [*parent_path, child_name]
 
-            if self._limit_to_module_path is not None:
-                # Only traverse:
-                #  - nodes along the path to the selected module, and
-                #  - nodes within the selected module subtree.
-                if not (
-                    path_startswith_casefold(self._limit_to_module_path, child_path)
-                    or path_startswith_casefold(child_path, self._limit_to_module_path)
-                ):
-                    continue
+            # Only traverse:
+            #  - nodes along the path to the selected module, and
+            #  - nodes within the selected module subtree.
+            if self._limit_to_module_path is not None and not (
+                path_startswith_casefold(self._limit_to_module_path, child_path)
+                or path_startswith_casefold(child_path, self._limit_to_module_path)
+            ):
+                continue
 
             if isinstance(child, SingleModule):
                 child_display_path = [*parent_context.display_module_path, decorate_segment(child_name, "SM")]
             elif isinstance(child, FrameModule):
                 child_display_path = [*parent_context.display_module_path, decorate_segment(child_name, "FM")]
             elif isinstance(child, ModuleTypeInstance):
-                child_display_path = [*parent_context.display_module_path, decorate_segment(child_name, "MT", moduletype_name=child.moduletype_name)]
+                child_display_path = [
+                    *parent_context.display_module_path,
+                    decorate_segment(child_name, "MT", moduletype_name=child.moduletype_name),
+                ]
             else:
                 child_display_path = [*parent_context.display_module_path, child_name]
 
@@ -1612,15 +1755,9 @@ class VariablesAnalyzer:
             )
 
             # Handle header-level enable and groupconn
-            self._walk_header_enable(
-                child.header, inst_context, path=child_path
-            )
-            self._walk_header_invoke_tails(
-                child.header, inst_context, path=child_path
-            )
-            self._walk_header_groupconn(
-                child.header, inst_context, path=child_path
-            )
+            self._walk_header_enable(child.header, inst_context, path=child_path)
+            self._walk_header_invoke_tails(child.header, inst_context, path=child_path)
+            self._walk_header_groupconn(child.header, inst_context, path=child_path)
 
             if isinstance(child, SingleModule):
                 # Build scope context with parameter mappings
@@ -1632,12 +1769,8 @@ class VariablesAnalyzer:
                 )
 
                 # Use child_context instead of building env dict
-                self._walk_moduledef(
-                    child.moduledef, child_context, child_path
-                )
-                self._walk_module_code(
-                    child.modulecode, child_context, child_path
-                )
+                self._walk_moduledef(child.moduledef, child_context, child_path)
+                self._walk_module_code(child.modulecode, child_context, child_path)
 
                 # Recursively walk submodules with child context
                 self._walk_submodules(
@@ -1669,7 +1802,9 @@ class VariablesAnalyzer:
                             continue
 
                         # Resolve with field path
-                        source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(full_source_name)
+                        source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(
+                            full_source_name
+                        )
                         target_key = target_name.casefold()
                         target_var = child_context.env.get(target_key)
 
@@ -1711,12 +1846,8 @@ class VariablesAnalyzer:
                     module_path=child_path,
                     display_module_path=child_display_path,
                 )
-                self._walk_moduledef(
-                    child.moduledef, frame_context, child_path
-                )
-                self._walk_module_code(
-                    child.modulecode, frame_context, child_path
-                )
+                self._walk_moduledef(child.moduledef, frame_context, child_path)
+                self._walk_module_code(child.modulecode, frame_context, child_path)
 
                 self._walk_submodules(
                     child.submodules or [],
@@ -1743,9 +1874,7 @@ class VariablesAnalyzer:
                 if external and not self._analyzed_target_is_library:
                     continue
 
-                if mt is not None and not self._is_from_root_origin(
-                    getattr(mt, "origin_file", None)
-                ):
+                if mt is not None and not self._is_from_root_origin(getattr(mt, "origin_file", None)):
                     if not self._analyzed_target_is_library and not self._include_dependency_moduletype_usage:
                         self._check_param_mappings_for_type_instance(
                             child,
@@ -1779,9 +1908,7 @@ class VariablesAnalyzer:
                     # Analyze typedef if not already done
                     if mt_key not in self.param_reads_by_typedef and mt_key not in self._analyzing_typedefs:
                         # Use context-aware analysis
-                        self._analyze_typedef_with_context(
-                            mt, typedef_context, path=child_path
-                        )
+                        self._analyze_typedef_with_context(mt, typedef_context, path=child_path)
 
                     # Create alias links with field path information
                     for pm in child.parametermappings or []:
@@ -1797,7 +1924,9 @@ class VariablesAnalyzer:
                                 continue
 
                             # Resolve with field path
-                            source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(full_source_name)
+                            source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(
+                                full_source_name
+                            )
                             target_key = target_name.casefold()
                             target_var = typedef_context.env.get(target_key)
 
@@ -1832,7 +1961,6 @@ class VariablesAnalyzer:
                         current_library=parent_context.current_library,
                     )
 
-
     def _analyze_single_module_with_context(
         self, mod: SingleModule, context: ScopeContext, path: list[str]
     ) -> tuple[set[str], set[str]]:
@@ -1841,17 +1969,11 @@ class VariablesAnalyzer:
         self._walk_module_code(mod.modulecode, context, path)
         self._walk_submodules(mod.submodules or [], parent_context=context, parent_path=path)
 
-        used_reads: set[str] = {
-            v.name.lower() for v in (mod.moduleparameters or []) if self._get_usage(v).read
-        }
-        used_writes: set[str] = {
-            v.name.lower() for v in (mod.moduleparameters or []) if self._get_usage(v).written
-        }
+        used_reads: set[str] = {v.name.lower() for v in (mod.moduleparameters or []) if self._get_usage(v).read}
+        used_writes: set[str] = {v.name.lower() for v in (mod.moduleparameters or []) if self._get_usage(v).written}
         return used_reads, used_writes
 
-    def _analyze_typedef_with_context(
-        self, mt: ModuleTypeDef, context: ScopeContext, path: list[str]
-    ) -> None:
+    def _analyze_typedef_with_context(self, mt: ModuleTypeDef, context: ScopeContext, path: list[str]) -> None:
         """Analyze a ModuleTypeDef with scope context."""
         mt_key = mt.name.lower()
         if mt_key in self._analyzing_typedefs:
@@ -1865,12 +1987,8 @@ class VariablesAnalyzer:
             self._walk_submodules(mt.submodules or [], parent_context=context, parent_path=path)
             self._walk_typedef_groupconn(mt, context, path)
 
-            used_reads: set[str] = {
-                v.name.lower() for v in (mt.moduleparameters or []) if self._get_usage(v).read
-            }
-            used_writes: set[str] = {
-                v.name.lower() for v in (mt.moduleparameters or []) if self._get_usage(v).written
-            }
+            used_reads: set[str] = {v.name.lower() for v in (mt.moduleparameters or []) if self._get_usage(v).read}
+            used_writes: set[str] = {v.name.lower() for v in (mt.moduleparameters or []) if self._get_usage(v).written}
 
             self.used_params_by_typedef[mt.name] = used_reads | used_writes
             self.param_reads_by_typedef[mt_key] = used_reads
@@ -2062,10 +2180,7 @@ class VariablesAnalyzer:
         var_dict_or_other is either a {var_name: "..."} dict (from transformer.variable_name) [5],
         or something else (literal, None, etc.).
         """
-        if (
-            isinstance(var_dict_or_other, dict)
-            and const.KEY_VAR_NAME in var_dict_or_other
-        ):
+        if isinstance(var_dict_or_other, dict) and const.KEY_VAR_NAME in var_dict_or_other:
             base = varname_base(var_dict_or_other)
             if base is not None:
                 return env.get(base)
@@ -2086,9 +2201,7 @@ class VariablesAnalyzer:
             var_locations.append((v, bp_path.copy(), "localvariable"))
 
         # Recursively collect from modules
-        def _collect_from_module(
-            mod: SingleModule | FrameModule | ModuleTypeInstance, path: list[str]
-        ):
+        def _collect_from_module(mod: SingleModule | FrameModule | ModuleTypeInstance, path: list[str]):
             if isinstance(mod, SingleModule):
                 my_path = [*path, mod.header.name]
                 for v in mod.moduleparameters or []:
@@ -2120,8 +2233,7 @@ class VariablesAnalyzer:
         complex_vars = [
             (v, path, role)
             for v, path, role in var_locations
-            if not isinstance(v.datatype, Simple_DataType)
-            and v.datatype_text.casefold() != "anytype"
+            if not isinstance(v.datatype, Simple_DataType) and v.datatype_text.casefold() != "anytype"
         ]
 
         # Group by declaration scope and datatype name so same user datatype names
@@ -2145,10 +2257,7 @@ class VariablesAnalyzer:
 
             # Create an issue for the first occurrence, listing all others
             first_var, first_path, first_role = occurrences[0]
-            duplicate_locs = [
-                (path, role, variable.name)
-                for variable, path, role in occurrences[1:]
-            ]
+            duplicate_locs = [(path, role, variable.name) for variable, path, role in occurrences[1:]]
 
             self._append_issue(
                 VariableIssue(

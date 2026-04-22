@@ -1,4 +1,5 @@
 """Helpers for decoding compressed SattLine text."""
+
 import re
 
 # Seed mappings from sample files (kept explicit for traceability).
@@ -29,12 +30,12 @@ SEED_MAPPING: dict[str, str] = {
     "#79": "SUBMODULES",
     "#73": "MODULEPARAMETERS",
     "#7<": "LOCALVARIABLES",
-        "#74": "GLOBAL",
+    "#74": "GLOBAL",
     "#80": "State",
     "#80;": "State;",
     "#17": "Old",
     "#17;": "Old;",
-        "#18": "Old",
+    "#18": "Old",
     "#18;": "Old;",
     "#87": "Frame_Module",
     "#6<": "LayerModule",
@@ -194,15 +195,12 @@ def is_compressed(text: str) -> bool:
         )
         if kw in text
     )
-    return (
-        marker_count >= 50
-        or marker_char_ratio >= 0.02
-        or (marker_count >= 10 and keyword_hits == 0)
-    )
+    return marker_count >= 50 or marker_char_ratio >= 0.02 or (marker_count >= 10 and keyword_hits == 0)
 
 
 def decode_compressed(text: str, mapping: dict[str, str]) -> str:
     """Replace #markers using the mapping. Leaves unknown markers as-is."""
+
     def _subst(m: re.Match) -> str:
         tok = m.group(0)
         if tok.startswith("#01") and len(tok) > 3:
@@ -235,7 +233,7 @@ def decode_compressed(text: str, mapping: dict[str, str]) -> str:
     )
     decoded = re.sub(
         r'(=>\s*)("\d{4}-\d{2}-\d{2}-\d{2}:\d{2}:\d{2}\.\d{3}")',
-        r'\1Time_Value \2',
+        r"\1Time_Value \2",
         decoded,
     )
     decoded = re.sub(
@@ -271,6 +269,7 @@ def decode_compressed(text: str, mapping: dict[str, str]) -> str:
     )
     # Avoid BOOL tokenizing identifiers like TrueVar
     decoded = re.sub(r"\bTrueVar\b", "TTrueVar", decoded)
+
     # Inject missing ModuleCode before EQUATIONBLOCK when none exists in the same module
     def _ensure_modulecode(m: re.Match) -> str:
         last_enddef = decoded.rfind("ENDDEF", 0, m.start())
@@ -287,6 +286,8 @@ def decode_compressed(text: str, mapping: dict[str, str]) -> str:
         decoded,
     )
     return decoded
+
+
 def preprocess_sl_text(text: str) -> tuple[str, dict[str, str]]:
     """Decode compressed text using the seed mapping (no file output)."""
     mapping = dict(SEED_MAPPING)

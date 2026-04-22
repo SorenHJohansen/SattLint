@@ -24,7 +24,7 @@ from sattlint.transformer.sl_transformer import SLTransformer
 
 def _parse_to_basepicture(localvariables: str, equation_code: str) -> BasePicture:
     source = textwrap.dedent(
-        f'''
+        f"""
         "SyntaxVersion"
         "OriginalFileDate"
         "ProgramDate"
@@ -37,7 +37,7 @@ def _parse_to_basepicture(localvariables: str, equation_code: str) -> BasePictur
             EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
         {equation_code}
         ENDDEF (*BasePicture*);
-        '''
+        """
     )
     parser = create_sl_parser()
     tree = parser.parse(strip_sl_comments(source))
@@ -58,11 +58,11 @@ def _state_ref(name: str, state: str) -> dict:
 
 def test_branch_join_produces_constant_condition():
     bp = _parse_to_basepicture(
-        localvariables='''
+        localvariables="""
             Start: boolean;
             Flag: boolean := False;
-        ''',
-        equation_code='''
+        """,
+        equation_code="""
                 IF Start THEN
                     Flag = True;
                 ELSE
@@ -71,7 +71,7 @@ def test_branch_join_produces_constant_condition():
                 IF Flag THEN
                     Flag = Flag;
                 ENDIF;
-        ''',
+        """,
     )
 
     report = analyze_dataflow(bp)
@@ -86,11 +86,11 @@ def test_branch_join_produces_constant_condition():
 
 def test_else_branch_assumption_makes_nested_condition_false():
     bp = _parse_to_basepicture(
-        localvariables='''
+        localvariables="""
             Start: boolean;
             Output: integer := 0;
-        ''',
-        equation_code='''
+        """,
+        equation_code="""
                 IF Start THEN
                     Output = 1;
                 ELSE
@@ -98,7 +98,7 @@ def test_else_branch_assumption_makes_nested_condition_false():
                         Output = 2;
                     ENDIF;
                 ENDIF;
-        ''',
+        """,
     )
 
     report = analyze_dataflow(bp)
@@ -109,32 +109,30 @@ def test_else_branch_assumption_makes_nested_condition_false():
 
 def test_read_before_write_is_reported_for_uninitialized_reads():
     bp = _parse_to_basepicture(
-        localvariables='''
+        localvariables="""
             Input: boolean;
             Output: boolean;
-        ''',
-        equation_code='''
+        """,
+        equation_code="""
                 Output = Input;
-        ''',
+        """,
     )
 
     report = analyze_dataflow(bp)
 
     assert any(
-        issue.kind == "dataflow.read_before_write"
-        and issue.data is not None
-        and issue.data.get("symbol") == "Input"
+        issue.kind == "dataflow.read_before_write" and issue.data is not None and issue.data.get("symbol") == "Input"
         for issue in report.issues
     )
 
 
 def test_branch_merge_preserves_initialized_unknown_values():
     bp = _parse_to_basepicture(
-        localvariables='''
+        localvariables="""
             Start: boolean;
             Flag: boolean;
-        ''',
-        equation_code='''
+        """,
+        equation_code="""
                 IF Start THEN
                     Flag = True;
                 ELSE
@@ -143,59 +141,53 @@ def test_branch_merge_preserves_initialized_unknown_values():
                 IF Flag THEN
                     Start = True;
                 ENDIF;
-        ''',
+        """,
     )
 
     report = analyze_dataflow(bp)
 
     assert not any(
-        issue.kind == "dataflow.read_before_write"
-        and issue.data is not None
-        and issue.data.get("symbol") == "Flag"
+        issue.kind == "dataflow.read_before_write" and issue.data is not None and issue.data.get("symbol") == "Flag"
         for issue in report.issues
     )
 
 
 def test_dead_overwrite_is_reported_for_back_to_back_writes():
     bp = _parse_to_basepicture(
-        localvariables='''
+        localvariables="""
             Flag: boolean;
-        ''',
-        equation_code='''
+        """,
+        equation_code="""
                 Flag = True;
                 Flag = False;
-        ''',
+        """,
     )
 
     report = analyze_dataflow(bp)
 
     assert any(
-        issue.kind == "dataflow.dead_overwrite"
-        and issue.data is not None
-        and issue.data.get("symbol") == "Flag"
+        issue.kind == "dataflow.dead_overwrite" and issue.data is not None and issue.data.get("symbol") == "Flag"
         for issue in report.issues
     )
 
 
 def test_dead_overwrite_is_not_reported_after_intervening_read():
     bp = _parse_to_basepicture(
-        localvariables='''
+        localvariables="""
             Flag: boolean;
             Output: boolean;
-        ''',
-        equation_code='''
+        """,
+        equation_code="""
                 Flag = True;
                 Output = Flag;
                 Flag = False;
-        ''',
+        """,
     )
 
     report = analyze_dataflow(bp)
 
     assert not any(
-        issue.kind == "dataflow.dead_overwrite"
-        and issue.data is not None
-        and issue.data.get("symbol") == "Flag"
+        issue.kind == "dataflow.dead_overwrite" and issue.data is not None and issue.data.get("symbol") == "Flag"
         for issue in report.issues
     )
 
@@ -295,15 +287,15 @@ def test_assigning_to_old_is_reported_as_temporal_misuse():
 
 def test_contradictory_boolean_condition_is_inferred_false():
     bp = _parse_to_basepicture(
-        localvariables='''
+        localvariables="""
             Flag: boolean;
             Output: boolean;
-        ''',
-        equation_code='''
+        """,
+        equation_code="""
                 IF Flag AND NOT Flag THEN
                     Output = True;
                 ENDIF;
-        ''',
+        """,
     )
 
     report = analyze_dataflow(bp)
@@ -314,17 +306,17 @@ def test_contradictory_boolean_condition_is_inferred_false():
 
 def test_tautological_boolean_condition_is_inferred_true():
     bp = _parse_to_basepicture(
-        localvariables='''
+        localvariables="""
             Flag: boolean;
             Output: boolean;
-        ''',
-        equation_code='''
+        """,
+        equation_code="""
                 IF Flag OR NOT Flag THEN
                     Output = True;
                 ELSE
                     Output = False;
                 ENDIF;
-        ''',
+        """,
     )
 
     report = analyze_dataflow(bp)
@@ -335,15 +327,15 @@ def test_tautological_boolean_condition_is_inferred_true():
 
 def test_contradictory_compare_condition_is_inferred_false():
     bp = _parse_to_basepicture(
-        localvariables='''
+        localvariables="""
             Counter: integer;
             Output: boolean;
-        ''',
-        equation_code='''
+        """,
+        equation_code="""
                 IF Counter == 1 AND Counter == 2 THEN
                     Output = True;
                 ENDIF;
-        ''',
+        """,
     )
 
     report = analyze_dataflow(bp)

@@ -246,8 +246,14 @@ class AlarmIntegrityAnalyzer:
         condition_name = self._pick_parameter_name(parameter_names, _CONDITION_PARAMETER_NAMES)
 
         tag_value = self._get_parameter_value(inst, mt_def, env, tag_name) if tag_name else _ParameterValue("unknown")
-        priority_value = self._get_parameter_value(inst, mt_def, env, priority_name) if priority_name else _ParameterValue("unknown")
-        condition_value = self._get_parameter_value(inst, mt_def, env, condition_name) if condition_name else _ParameterValue("unknown")
+        priority_value = (
+            self._get_parameter_value(inst, mt_def, env, priority_name) if priority_name else _ParameterValue("unknown")
+        )
+        condition_value = (
+            self._get_parameter_value(inst, mt_def, env, condition_name)
+            if condition_name
+            else _ParameterValue("unknown")
+        )
 
         tag_key = self._tag_key(tag_value)
         priority_key = self._priority_key(priority_value)
@@ -289,10 +295,9 @@ class AlarmIntegrityAnalyzer:
         inst: ModuleTypeInstance,
         mt_def: ModuleTypeDef | None,
     ) -> set[str]:
-        names = {
-            variable.name.casefold()
-            for variable in (mt_def.moduleparameters or [])
-        } if mt_def is not None else set()
+        names = (
+            {variable.name.casefold() for variable in (mt_def.moduleparameters or [])} if mt_def is not None else set()
+        )
         for mapping in inst.parametermappings or []:
             target_name = varname_base(mapping.target)
             if target_name:
@@ -510,11 +515,7 @@ class AlarmIntegrityAnalyzer:
 
         for scope_name, groups in (("tag", by_tag), ("condition", by_condition)):
             for scope_key, candidates in groups.items():
-                priorities = {
-                    candidate.priority_key
-                    for candidate in candidates
-                    if candidate.priority_key is not None
-                }
+                priorities = {candidate.priority_key for candidate in candidates if candidate.priority_key is not None}
                 if len(candidates) < 2 or len(priorities) < 2:
                     continue
 
@@ -534,12 +535,7 @@ class AlarmIntegrityAnalyzer:
                     detail = f"Alarm condition {scope_label!r}"
 
                 priorities_label = ", ".join(
-                    sorted(
-                        {
-                            candidate.priority_display or "<unknown priority>"
-                            for candidate in candidates
-                        }
-                    )
+                    sorted({candidate.priority_display or "<unknown priority>" for candidate in candidates})
                 )
                 locations = self._location_list(candidates)
                 for candidate in candidates:
@@ -604,13 +600,13 @@ class AlarmIntegrityAnalyzer:
     def _iter_sequence_node_statements(self, node: Any) -> list[Any]:
         if isinstance(node, SFCStep):
             return [*(node.code.enter or []), *(node.code.active or []), *(node.code.exit or [])]
-        if isinstance(node, (SFCAlternative, SFCParallel)):
+        if isinstance(node, SFCAlternative | SFCParallel):
             branch_statements: list[Any] = []
             for branch in node.branches or []:
                 for child in branch:
                     branch_statements.extend(self._iter_sequence_node_statements(child))
             return branch_statements
-        if isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+        if isinstance(node, SFCSubsequence | SFCTransitionSub):
             nested_statements: list[Any] = []
             for child in node.body or []:
                 nested_statements.extend(self._iter_sequence_node_statements(child))

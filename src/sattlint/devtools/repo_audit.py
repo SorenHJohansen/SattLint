@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
+from defusedxml import ElementTree  # type: ignore[import-untyped]
 
 from sattlint import app as app_module
 from sattlint import config as config_module
@@ -199,9 +199,7 @@ def _write_markdown(path: Path, findings: list[Finding], summary: dict[str, Any]
             location = finding.path or "<repo>"
             if finding.line is not None:
                 location = f"{location}:{finding.line}"
-            lines.append(
-                f"- [{finding.severity.upper()}] {finding.category}: {finding.message} ({location})"
-            )
+            lines.append(f"- [{finding.severity.upper()}] {finding.category}: {finding.message} ({location})")
             if finding.detail:
                 lines.append(f"  Detail: {finding.detail}")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -242,6 +240,33 @@ def _should_skip_dir(dirname: str) -> bool:
     return dirname.startswith(".venv")
 
 
+def _list_tracked_repo_paths(root: Path) -> tuple[str, ...] | None:
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        return None
+
+    try:
+        completed = subprocess.run(  # nosec B603 - fixed git command with controlled arguments
+            [git_executable, "ls-files", "-z"],
+            cwd=root,
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return None
+
+    if completed.returncode != 0:
+        return None
+
+    return tuple(
+        sorted(
+            raw_rel_path.strip()
+            for raw_rel_path in completed.stdout.decode("utf-8", errors="replace").split("\x00")
+            if raw_rel_path.strip()
+        )
+    )
+
+
 def _iter_repo_file_candidates(root: Path, *, include_generated: bool) -> Iterable[Path]:
     for current_root, dirs, files in os.walk(root, topdown=True):
         current_path = Path(current_root)
@@ -271,30 +296,12 @@ def _iter_repo_file_candidates(root: Path, *, include_generated: bool) -> Iterab
 
 
 def _iter_tracked_repo_file_candidates(root: Path, *, include_generated: bool) -> Iterable[Path]:
-    git_executable = shutil.which("git")
-    if git_executable is None:
+    tracked_paths = _list_tracked_repo_paths(root)
+    if tracked_paths is None:
         yield from _iter_repo_file_candidates(root, include_generated=include_generated)
         return
 
-    try:
-        completed = subprocess.run(  # nosec B603 - fixed git command with controlled arguments
-            [git_executable, "ls-files", "-z"],
-            cwd=root,
-            capture_output=True,
-            check=False,
-        )
-    except OSError:
-        yield from _iter_repo_file_candidates(root, include_generated=include_generated)
-        return
-
-    if completed.returncode != 0:
-        yield from _iter_repo_file_candidates(root, include_generated=include_generated)
-        return
-
-    for raw_rel_path in completed.stdout.decode("utf-8", errors="replace").split("\x00"):
-        rel_path = raw_rel_path.strip()
-        if not rel_path:
-            continue
+    for rel_path in tracked_paths:
         if not include_generated and rel_path.startswith("artifacts/"):
             continue
 
@@ -302,8 +309,7 @@ def _iter_tracked_repo_file_candidates(root: Path, *, include_generated: bool) -
         if not path.exists() or path.is_dir():
             continue
         if any(
-            _should_skip_dir(part)
-            and not (include_generated and part in {"artifacts", "build", "htmlcov"})
+            _should_skip_dir(part) and not (include_generated and part in {"artifacts", "build", "htmlcov"})
             for part in path.parts
         ):
             continue
@@ -381,7 +387,11 @@ def _line_findings(
 ) -> list[Finding]:
     findings: list[Finding] = []
     rel_path = _relative_path(path, root)
-    if rel_path == "coverage.xml" or rel_path.startswith(SKIP_CONTENT_SCAN_PREFIXES) or rel_path in SKIP_SELF_SCAN_PATHS:
+    if (
+        rel_path == "coverage.xml"
+        or rel_path.startswith(SKIP_CONTENT_SCAN_PREFIXES)
+        or rel_path in SKIP_SELF_SCAN_PATHS
+    ):
         return findings
     for line_number, line in enumerate(text.splitlines(), 1):
         if not line.strip():
@@ -391,10 +401,7 @@ def _line_findings(
             value = match.group(0)
             if "%USERPROFILE%" in value or "C:\\Users\\MyUser" in value:
                 continue
-            if (
-                rel_path == "README.md"
-                and ("C:\\Tools\\SattLint" in value or "C:\\Path\\To\\Program.s" in value)
-            ):
+            if rel_path == "README.md" and ("C:\\Tools\\SattLint" in value or "C:\\Path\\To\\Program.s" in value):
                 continue
             findings.append(
                 Finding(
@@ -861,10 +868,24 @@ def _find_logging_findings(
     return findings
 
 
-def _build_python_source_scan_context(source_root: Path) -> PythonSourceScanContext:
+def _build_python_source_scan_context(
+    source_root: Path,
+    *,
+    root: Path = REPO_ROOT,
+    tracked_paths: tuple[str, ...] | None = None,
+) -> PythonSourceScanContext:
     texts: dict[Path, str] = {}
     asts: dict[Path, ast.AST] = {}
-    for path in source_root.rglob("*.py"):
+    if tracked_paths is None:
+        paths = sorted(source_root.rglob("*.py"))
+    else:
+        source_prefix = _relative_path(source_root, root).rstrip("/")
+        paths = [
+            root / rel_path
+            for rel_path in tracked_paths
+            if rel_path.endswith(".py") and (rel_path == source_prefix or rel_path.startswith(f"{source_prefix}/"))
+        ]
+    for path in paths:
         text = _read_text(path)
         texts[path] = text
         try:
@@ -874,13 +895,19 @@ def _build_python_source_scan_context(source_root: Path) -> PythonSourceScanCont
     return PythonSourceScanContext(source_root=source_root, texts=texts, asts=asts)
 
 
-def _parse_coverage_findings(root: Path) -> list[Finding]:
+def _parse_coverage_findings(
+    root: Path,
+    *,
+    tracked_paths: tuple[str, ...] | None = None,
+) -> list[Finding]:
     coverage_path = root / "coverage.xml"
+    if tracked_paths is not None and "coverage.xml" not in tracked_paths:
+        return []
     if not coverage_path.exists():
         return []
 
     findings: list[Finding] = []
-    root_xml = ET.fromstring(coverage_path.read_text(encoding="utf-8"))
+    root_xml = ElementTree.fromstring(coverage_path.read_text(encoding="utf-8"))
     for class_node in root_xml.findall(".//class"):
         filename = class_node.attrib.get("filename", "")
         line_rate = float(class_node.attrib.get("line-rate", "0"))
@@ -911,11 +938,17 @@ def _parse_coverage_findings(root: Path) -> list[Finding]:
     return findings
 
 
-def _find_public_readiness_findings(root: Path) -> list[Finding]:
+def _find_public_readiness_findings(
+    root: Path,
+    *,
+    tracked_paths: tuple[str, ...] | None = None,
+) -> list[Finding]:
     findings: list[Finding] = []
+    tracked_path_set = None if tracked_paths is None else set(tracked_paths)
     required_files = ["README.md", "LICENSE", "CONTRIBUTING.md", ".gitignore"]
     for filename in required_files:
-        if not (root / filename).exists():
+        exists = (root / filename).exists() if tracked_path_set is None else filename in tracked_path_set
+        if not exists:
             findings.append(
                 Finding(
                     id="missing-public-file",
@@ -942,8 +975,15 @@ def _find_public_readiness_findings(root: Path) -> list[Finding]:
             )
         )
 
-    workflow_dir = root / ".github" / "workflows"
-    if not workflow_dir.exists() or not any(workflow_dir.glob("*.y*ml")):
+    if tracked_path_set is None:
+        workflow_dir = root / ".github" / "workflows"
+        has_workflow = workflow_dir.exists() and any(workflow_dir.glob("*.y*ml"))
+    else:
+        has_workflow = any(
+            rel_path.startswith(".github/workflows/") and rel_path.endswith((".yml", ".yaml"))
+            for rel_path in tracked_path_set
+        )
+    if not has_workflow:
         findings.append(
             Finding(
                 id="missing-ci-workflow",
@@ -955,29 +995,29 @@ def _find_public_readiness_findings(root: Path) -> list[Finding]:
             )
         )
 
-    git_executable = shutil.which("git")
-    completed = None
-    if git_executable is not None:
-        try:
-            completed = subprocess.run(  # nosec B603 - fixed git command with controlled arguments
-                [git_executable, "ls-files", "artifacts", "build", "htmlcov", "coverage.xml"],
-                cwd=root,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        except OSError:
-            completed = None
+    tracked = list(tracked_paths or ())
+    if not tracked and tracked_path_set is None:
+        git_executable = shutil.which("git")
+        completed = None
+        if git_executable is not None:
+            try:
+                completed = subprocess.run(  # nosec B603 - fixed git command with controlled arguments
+                    [git_executable, "ls-files", "artifacts", "build", "htmlcov", "coverage.xml"],
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+            except OSError:
+                completed = None
+        if completed and completed.returncode == 0:
+            tracked = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
 
-    if completed and completed.returncode == 0:
-        tracked = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    if tracked:
         generated = [
             line
             for line in tracked
-            if any(
-                line == prefix or line.startswith(prefix)
-                for prefix in GENERATED_PATH_PREFIXES
-            )
+            if any(line == prefix or line.startswith(prefix) for prefix in GENERATED_PATH_PREFIXES)
         ]
         if generated:
             findings.append(
@@ -1092,10 +1132,7 @@ def _dedupe_findings(findings: Iterable[Finding]) -> list[Finding]:
 
 
 def _is_leak_finding(finding: Finding) -> bool:
-    return (
-        finding.category in LEAK_RELEVANT_CATEGORIES
-        or finding.id in LEAK_RELEVANT_FINDING_IDS
-    )
+    return finding.category in LEAK_RELEVANT_CATEGORIES or finding.id in LEAK_RELEVANT_FINDING_IDS
 
 
 def collect_custom_findings(
@@ -1107,6 +1144,7 @@ def collect_custom_findings(
 ) -> list[Finding]:
     findings: list[Finding] = []
     suspicious_set = {identifier.strip() for identifier in suspicious_identifiers if identifier.strip()}
+    tracked_paths = _list_tracked_repo_paths(root) if tracked_only else None
     docs_to_scan = [root / "README.md", root / "CONTRIBUTING.md", root / "vscode" / "sattline-vscode" / "README.md"]
     for path, text in _iter_repo_text_entries(
         root,
@@ -1115,7 +1153,11 @@ def collect_custom_findings(
     ):
         findings.extend(_line_findings(path, text, suspicious_set, root=root))
 
-    source_context = _build_python_source_scan_context(root / "src")
+    source_context = _build_python_source_scan_context(
+        root / "src",
+        root=root,
+        tracked_paths=tracked_paths,
+    )
 
     scripts, subcommands = _collect_cli_metadata()
     documented_commands = _extract_documented_commands(
@@ -1143,8 +1185,8 @@ def collect_custom_findings(
     )
     findings.extend(_find_cli_findings())
     findings.extend(_find_logging_findings(root / "src", content_by_file=source_context.texts))
-    findings.extend(_parse_coverage_findings(root))
-    findings.extend(_find_public_readiness_findings(root))
+    findings.extend(_parse_coverage_findings(root, tracked_paths=tracked_paths))
+    findings.extend(_find_public_readiness_findings(root, tracked_paths=tracked_paths))
     return _dedupe_findings(findings)
 
 
@@ -1263,7 +1305,9 @@ def audit_repository(
         progress.start_stage("pipeline")
         pipeline_summary = pipeline_module._run_pipeline(
             pipeline_output_dir,
-            trace_target=pipeline_module.DEFAULT_TRACE_TARGET if pipeline_module.DEFAULT_TRACE_TARGET.exists() else None,
+            trace_target=pipeline_module.DEFAULT_TRACE_TARGET
+            if pipeline_module.DEFAULT_TRACE_TARGET.exists()
+            else None,
             profile=profile,
             include_vulture=False if skip_vulture else None,
             include_bandit=False if skip_bandit else None,
@@ -1284,7 +1328,7 @@ def audit_repository(
     custom_findings = collect_custom_findings(
         REPO_ROOT,
         include_generated=(include_generated or leaks_only),
-        tracked_only=leaks_only,
+        tracked_only=True,
         suspicious_identifiers=suspicious_identifiers,
     )
     progress.complete_stage("custom_scan", detail=f"{len(custom_findings)} custom findings")
@@ -1325,9 +1369,7 @@ def audit_repository(
         "category_counts": _category_counts(findings),
         "max_severity": _max_severity(findings),
         "findings_schema": finding_collection.schema_metadata,
-        "history_cleanup_findings": [
-            finding.to_dict() for finding in findings if finding.history_cleanup_recommended
-        ],
+        "history_cleanup_findings": [finding.to_dict() for finding in findings if finding.history_cleanup_recommended],
         "findings": [finding.to_dict() for finding in findings],
     }
     status_report = {
@@ -1345,9 +1387,15 @@ def audit_repository(
         "severity_counts": summary["severity_counts"],
         "category_counts": summary["category_counts"],
         "findings_schema": summary["findings_schema"],
-        "pipeline_status_report": None if pipeline_summary is None else f"{sanitized_output_dir}/{PIPELINE_OUTPUT_DIRNAME}/status.json",
-        "latest_status_report": None if sanitized_latest_output_dir is None else f"{sanitized_latest_output_dir}/status.json",
-        "latest_summary_report": None if sanitized_latest_output_dir is None else f"{sanitized_latest_output_dir}/summary.json",
+        "pipeline_status_report": None
+        if pipeline_summary is None
+        else f"{sanitized_output_dir}/{PIPELINE_OUTPUT_DIRNAME}/status.json",
+        "latest_status_report": None
+        if sanitized_latest_output_dir is None
+        else f"{sanitized_latest_output_dir}/status.json",
+        "latest_summary_report": None
+        if sanitized_latest_output_dir is None
+        else f"{sanitized_latest_output_dir}/summary.json",
         "top_findings": [
             {
                 "id": finding.id,
@@ -1407,7 +1455,9 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Include generated artifacts such as artifacts/analysis in custom scans",
     )
-    parser.add_argument("--skip-pipeline", action="store_true", help="Skip the existing lint/type/test/security pipeline")
+    parser.add_argument(
+        "--skip-pipeline", action="store_true", help="Skip the existing lint/type/test/security pipeline"
+    )
     parser.add_argument("--skip-vulture", action="store_true", help="Skip Vulture inside the shared pipeline")
     parser.add_argument("--skip-bandit", action="store_true", help="Skip Bandit inside the shared pipeline")
     args = parser.parse_args(argv)
@@ -1429,15 +1479,23 @@ def main(argv: list[str] | None = None) -> int:
     _print_cli_summary(
         {
             "profile": summary["profile"],
-            "overall_status": "fail" if _should_fail((Finding(**finding) for finding in summary["findings"]), fail_on) else "pass",
+            "overall_status": "fail"
+            if _should_fail((Finding(**finding) for finding in summary["findings"]), fail_on)
+            else "pass",
             "findings_schema": summary.get("findings_schema"),
             "finding_count": summary["finding_count"],
-            "blocking_finding_count": _blocking_finding_count((Finding(**finding) for finding in summary["findings"]), fail_on),
+            "blocking_finding_count": _blocking_finding_count(
+                (Finding(**finding) for finding in summary["findings"]), fail_on
+            ),
             "fail_on": fail_on,
             "status_report": f"{summary['output_dir']}/status.json",
             "summary_report": f"{summary['output_dir']}/summary.json",
-            "latest_status_report": None if Path(args.output_dir).resolve() == DEFAULT_OUTPUT_DIR.resolve() else f"{(sanitize_path_for_report(DEFAULT_OUTPUT_DIR.resolve(), repo_root=REPO_ROOT) or DEFAULT_OUTPUT_DIR.resolve().as_posix())}/status.json",
-            "latest_summary_report": None if Path(args.output_dir).resolve() == DEFAULT_OUTPUT_DIR.resolve() else f"{(sanitize_path_for_report(DEFAULT_OUTPUT_DIR.resolve(), repo_root=REPO_ROOT) or DEFAULT_OUTPUT_DIR.resolve().as_posix())}/summary.json",
+            "latest_status_report": None
+            if Path(args.output_dir).resolve() == DEFAULT_OUTPUT_DIR.resolve()
+            else f"{(sanitize_path_for_report(DEFAULT_OUTPUT_DIR.resolve(), repo_root=REPO_ROOT) or DEFAULT_OUTPUT_DIR.resolve().as_posix())}/status.json",
+            "latest_summary_report": None
+            if Path(args.output_dir).resolve() == DEFAULT_OUTPUT_DIR.resolve()
+            else f"{(sanitize_path_for_report(DEFAULT_OUTPUT_DIR.resolve(), repo_root=REPO_ROOT) or DEFAULT_OUTPUT_DIR.resolve().as_posix())}/summary.json",
         }
     )
     return 1 if _should_fail((Finding(**finding) for finding in summary["findings"]), fail_on) else 0

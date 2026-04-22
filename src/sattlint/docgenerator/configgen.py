@@ -27,6 +27,7 @@ log = logging.getLogger("SattLint")
 @dataclass
 class ComponentInfo:
     """Data class for component information."""
+
     name: str  # Without .z extension; original case preserved.
     type: str
     ip_address: str
@@ -38,6 +39,7 @@ class ComponentInfo:
 @dataclass
 class ConfigurationFileInfo:
     """Data class for configuration file information."""
+
     config_name: str  # Original case preserved.
     version: str
     date: str
@@ -48,6 +50,7 @@ class ConfigurationFileInfo:
 
 class ExcelConfig:
     """Configuration constants for Excel generation."""
+
     HEADER_COLOR = "4472C4"
     HEADER_TEXT_COLOR = "FFFFFF"
     KPI_TITLE_COLOR = "1F4E78"
@@ -62,17 +65,12 @@ class ConfigurationFileParser:
 
     def __init__(self):
         self.config_pattern = re.compile(
-            r'Configuration\s*\(\s*Version\s+"([^"]+)"\s+Date\s+"([^"]+)"\s+Name\s+"([^"]+)"',
-            re.DOTALL
+            r'Configuration\s*\(\s*Version\s+"([^"]+)"\s+Date\s+"([^"]+)"\s+Name\s+"([^"]+)"', re.DOTALL
         )
         self.program_pattern = re.compile(
-            r'Program\s*\(\s*Name\s+"([^"]+)"\s+Directory\s+"([^"]+)"\s+MainProgram\s+(\w+)',
-            re.DOTALL
+            r'Program\s*\(\s*Name\s+"([^"]+)"\s+Directory\s+"([^"]+)"\s+MainProgram\s+(\w+)', re.DOTALL
         )
-        self.library_pattern = re.compile(
-            r'Library\s*\(\s*Name\s+"([^"]+)"\s+Directory\s+"([^"]+)"',
-            re.DOTALL
-        )
+        self.library_pattern = re.compile(r'Library\s*\(\s*Name\s+"([^"]+)"\s+Directory\s+"([^"]+)"', re.DOTALL)
 
     def parse_configuration_file(self, config_file: Path) -> ConfigurationFileInfo | None:
         """Parse a configuration file and extract all programs and libraries."""
@@ -95,35 +93,30 @@ class ConfigurationFileParser:
             for match in self.program_pattern.finditer(text):
                 program_name_raw = match.group(1)
                 # Only remove .z extension if it exists
-                program_name = program_name_raw[:-2] if program_name_raw.endswith('.z') else program_name_raw
+                program_name = program_name_raw[:-2] if program_name_raw.endswith(".z") else program_name_raw
 
                 directory = match.group(2)
-                main_program = match.group(3) == 'True'
+                main_program = match.group(3) == "True"
 
-                programs.append({
-                    'name': program_name,
-                    'directory': directory,
-                    'main_program': main_program
-                })
+                programs.append({"name": program_name, "directory": directory, "main_program": main_program})
 
             # Extract all libraries (remove .z extension if present, keep original case)
             libraries = []
             for match in self.library_pattern.finditer(text):
                 library_name_raw = match.group(1)
                 # Only remove .z extension if it exists
-                library_name = library_name_raw[:-2] if library_name_raw.endswith('.z') else library_name_raw
+                library_name = library_name_raw[:-2] if library_name_raw.endswith(".z") else library_name_raw
 
                 directory = match.group(2)
 
-                libraries.append({
-                    'name': library_name,
-                    'directory': directory
-                })
+                libraries.append({"name": library_name, "directory": directory})
 
             # Find main program
-            main_program = next((p['name'] for p in programs if p['main_program']), "None")
+            main_program = next((p["name"] for p in programs if p["main_program"]), "None")
 
-            log.info(f"✓ Parsed {config_file.name}: Config='{config_name}', {len(programs)} programs, {len(libraries)} libraries")
+            log.info(
+                f"✓ Parsed {config_file.name}: Config='{config_name}', {len(programs)} programs, {len(libraries)} libraries"
+            )
 
             return ConfigurationFileInfo(
                 config_name=config_name,
@@ -131,7 +124,7 @@ class ConfigurationFileParser:
                 date=date,
                 main_program=main_program,
                 programs=programs,
-                libraries=libraries
+                libraries=libraries,
             )
 
         except Exception as e:
@@ -223,7 +216,7 @@ class WorkstationMapper:
 
     def get_workstations(self, component_name: str) -> list[str]:
         """Get workstation(s) for a given component (without extension, case-insensitive lookup)."""
-        component_name = component_name.replace('.z', '')
+        component_name = component_name.replace(".z", "")
         # Case-insensitive lookup
         for key in self.workstation_map:
             if key.lower() == component_name.lower():
@@ -256,8 +249,8 @@ class SattLineConfigExtractor:
         self.kfiles_dir = root_dir / "Configuration"
 
         # Compiled regex patterns
-        self.slc_pattern = re.compile(r'SLC(\d+)', re.IGNORECASE)
-        self.pbslc_pattern = re.compile(r'PBSLC(\d+)', re.IGNORECASE)
+        self.slc_pattern = re.compile(r"SLC(\d+)", re.IGNORECASE)
+        self.pbslc_pattern = re.compile(r"PBSLC(\d+)", re.IGNORECASE)
         self.name_pattern = re.compile(r'\(\s*Name\s+"([^"]+)"')
         self.unit_pattern = re.compile(r'\bp(\w+)\s*(?:"[^"]*")?\s*:\s*pType\s*;')
 
@@ -266,12 +259,7 @@ class SattLineConfigExtractor:
 
     def validate_directories(self) -> bool:
         """Validate that all required directories exist."""
-        required_dirs = [
-            self.unitlib_dir,
-            self.projectlib_dir,
-            self.nnelib_dir,
-            self.sglib_dir
-        ]
+        required_dirs = [self.unitlib_dir, self.projectlib_dir, self.nnelib_dir, self.sglib_dir]
 
         missing_dirs = [d for d in required_dirs if not d.exists()]
 
@@ -314,8 +302,9 @@ class SattLineConfigExtractor:
             return []
         return sorted(directory.glob("*.z"))
 
+    @staticmethod
     @lru_cache(maxsize=512)
-    def _read_file_cached(self, file_path: Path) -> str:
+    def _read_file_cached(file_path: Path) -> str:
         """Cache file reads to avoid redundant I/O."""
         return read_text_with_fallback(file_path)
 
@@ -324,7 +313,7 @@ class SattLineConfigExtractor:
         try:
             text = self._read_file_cached(z_file)
             # Remove .z extension from each dependency, preserve original case
-            deps = [line.strip().replace('.z', '') for line in text.splitlines() if line.strip()]
+            deps = [line.strip().replace(".z", "") for line in text.splitlines() if line.strip()]
             return deps
         except Exception as e:
             log.error(f"Error reading {z_file}: {e}")
@@ -350,13 +339,15 @@ class SattLineConfigExtractor:
             return "No SLC"
 
         for prog_name, prog_ip in slc_programs.items():
-            if prog_ip == ip_address:
-                if "pbslc" in prog_name.lower():
-                    if match := self.pbslc_pattern.search(prog_name):
-                        return f"SLC{match.group(1)}"
-                elif "wdslc" in prog_name.lower() or prog_name.lower().startswith("kagcwd"):
-                    if match := self.slc_pattern.search(prog_name):
-                        return f"SLC{match.group(1)}"
+            if prog_ip == ip_address and "pbslc" in prog_name.lower():
+                if match := self.pbslc_pattern.search(prog_name):
+                    return f"SLC{match.group(1)}"
+            elif (
+                prog_ip == ip_address
+                and ("wdslc" in prog_name.lower() or prog_name.lower().startswith("kagcwd"))
+                and (match := self.slc_pattern.search(prog_name))
+            ):
+                return f"SLC{match.group(1)}"
 
         return "No SLC"
 
@@ -380,8 +371,9 @@ class SattLineConfigExtractor:
             log.error(f"Error reading {x_file}: {e}")
             return "Error reading X-File"
 
-    def get_component_info(self, z_file: Path, component_type: str,
-                          has_ip: bool, slc_programs: dict[str, str]) -> ComponentInfo:
+    def get_component_info(
+        self, z_file: Path, component_type: str, has_ip: bool, slc_programs: dict[str, str]
+    ) -> ComponentInfo:
         """Extract all component information (WITHOUT .z extension, preserve original case)."""
         # Remove .z extension from component name, preserve original case
         component_name = z_file.stem
@@ -395,12 +387,7 @@ class SattLineConfigExtractor:
             ip = slc = units = "N/A"
 
         return ComponentInfo(
-            name=component_name,
-            type=component_type,
-            ip_address=ip,
-            slc=slc,
-            units=units,
-            dependencies=dependencies
+            name=component_name, type=component_type, ip_address=ip, slc=slc, units=units, dependencies=dependencies
         )
 
 
@@ -410,17 +397,15 @@ class StyleManager:
     def __init__(self):
         self.header_font = Font(bold=True, size=11, color="FFFFFF")
         self.header_fill = PatternFill(
-            start_color=ExcelConfig.HEADER_COLOR,
-            end_color=ExcelConfig.HEADER_COLOR,
-            fill_type="solid"
+            start_color=ExcelConfig.HEADER_COLOR, end_color=ExcelConfig.HEADER_COLOR, fill_type="solid"
         )
-        self.header_alignment = Alignment(horizontal='left', vertical='center')
+        self.header_alignment = Alignment(horizontal="left", vertical="center")
 
         self.border = Border(
-            left=Side(style='thin', color='000000'),
-            right=Side(style='thin', color='000000'),
-            top=Side(style='thin', color='000000'),
-            bottom=Side(style='thin', color='000000')
+            left=Side(style="thin", color="000000"),
+            right=Side(style="thin", color="000000"),
+            top=Side(style="thin", color="000000"),
+            bottom=Side(style="thin", color="000000"),
         )
 
     def apply_header_style(self, cell):
@@ -449,7 +434,7 @@ class WorksheetHelper:
             showFirstColumn=False,
             showLastColumn=False,
             showRowStripes=True,
-            showColumnStripes=False
+            showColumnStripes=False,
         )
         table.tableStyleInfo = style
         ws.add_table(table)
@@ -506,14 +491,10 @@ class ExcelGenerator:
 
         # Create tables
         if comp_row_count > 1:
-            WorksheetHelper.create_table(
-                self.components_ws, "SystemComponents", f"A1:F{comp_row_count}"
-            )
+            WorksheetHelper.create_table(self.components_ws, "SystemComponents", f"A1:F{comp_row_count}")
 
         if dep_row_count > 1:
-            WorksheetHelper.create_table(
-                self.dependencies_ws, "LibraryDependencies", f"A1:E{dep_row_count}"
-            )
+            WorksheetHelper.create_table(self.dependencies_ws, "LibraryDependencies", f"A1:E{dep_row_count}")
 
         # Create all sheets
         self._create_dashboard(comp_row_count, dep_row_count)
@@ -561,9 +542,7 @@ class ExcelGenerator:
             z_files = self.extractor.get_z_files(directory)
 
             for z_file in z_files:
-                comp_info = self.extractor.get_component_info(
-                    z_file, component_type, has_ip, slc_programs
-                )
+                comp_info = self.extractor.get_component_info(z_file, component_type, has_ip, slc_programs)
                 component_data.append(comp_info)
 
                 # Add dependencies
@@ -621,11 +600,11 @@ class ExcelGenerator:
         ws = self.dashboard_ws
 
         # Title
-        ws.merge_cells('A1:H1')
-        title_cell = ws['A1']
+        ws.merge_cells("A1:H1")
+        title_cell = ws["A1"]
         title_cell.value = "SattLine Configuration Dashboard"
         title_cell.font = Font(bold=True, size=20, color=ExcelConfig.KPI_TITLE_COLOR)
-        title_cell.alignment = Alignment(horizontal='center', vertical='center')
+        title_cell.alignment = Alignment(horizontal="center", vertical="center")
         ws.row_dimensions[1].height = 30
 
         log.info("✓ Dashboard created")
@@ -635,18 +614,25 @@ class ExcelGenerator:
         ws = self.wb.create_sheet("Station Configuration")
 
         # Title
-        ws.merge_cells('A1:I1')
-        title_cell = ws['A1']
+        ws.merge_cells("A1:I1")
+        title_cell = ws["A1"]
         title_cell.value = "Workstation Configuration Overview"
         title_cell.font = Font(bold=True, size=16, color="FFFFFF")
         title_cell.fill = PatternFill(start_color="2E75B6", end_color="2E75B6", fill_type="solid")
-        title_cell.alignment = Alignment(horizontal='center', vertical='center')
+        title_cell.alignment = Alignment(horizontal="center", vertical="center")
         ws.row_dimensions[1].height = 30
 
         # Headers at row 3 - ADDED Physical_Location
         headers = [
-            "Station_ID", "Station_Type", "Physical_Location", "Configuration_File",
-            "SLC_Number", "Programs", "Libraries", "Units_Served", "IP_Address"
+            "Station_ID",
+            "Station_Type",
+            "Physical_Location",
+            "Configuration_File",
+            "SLC_Number",
+            "Programs",
+            "Libraries",
+            "Units_Served",
+            "IP_Address",
         ]
 
         header_row = 3
@@ -662,26 +648,32 @@ class ExcelGenerator:
             config = station_configs[station_id]
 
             ws.cell(row=current_row, column=1, value=station_id)
-            ws.cell(row=current_row, column=2, value=config['type'])
+            ws.cell(row=current_row, column=2, value=config["type"])
             ws.cell(row=current_row, column=3, value=self.workstation_mapper.get_physical_location(station_id))
-            ws.cell(row=current_row, column=4, value=config['config_file'])  # Original case preserved
+            ws.cell(row=current_row, column=4, value=config["config_file"])  # Original case preserved
 
             # Aggregate SLC numbers from all programs
             slc_numbers = self._aggregate_slc_numbers(config, component_data)
             ws.cell(row=current_row, column=5, value=slc_numbers)
 
             # Programs list (original case preserved)
-            ws.cell(row=current_row, column=6, value=", ".join(config['programs']) if config['programs'] else "No programs")
+            ws.cell(
+                row=current_row, column=6, value=", ".join(config["programs"]) if config["programs"] else "No programs"
+            )
 
             # Libraries list (original case preserved)
-            ws.cell(row=current_row, column=7, value=", ".join(config['libraries']) if config['libraries'] else "No libraries")
+            ws.cell(
+                row=current_row,
+                column=7,
+                value=", ".join(config["libraries"]) if config["libraries"] else "No libraries",
+            )
 
             # Aggregate units from all programs
             units_served = self._aggregate_units(config, component_data)
             ws.cell(row=current_row, column=8, value=units_served)
 
             # IP addresses
-            ws.cell(row=current_row, column=9, value=config.get('ip_address', 'N/A'))
+            ws.cell(row=current_row, column=9, value=config.get("ip_address", "N/A"))
 
             current_row += 1
 
@@ -691,15 +683,15 @@ class ExcelGenerator:
             WorksheetHelper.create_table(ws, "StationConfiguration", table_ref)
 
         # Set column widths
-        ws.column_dimensions['A'].width = 20
-        ws.column_dimensions['B'].width = 25
-        ws.column_dimensions['C'].width = 25
-        ws.column_dimensions['D'].width = 25
-        ws.column_dimensions['E'].width = 25
-        ws.column_dimensions['F'].width = 40
-        ws.column_dimensions['G'].width = 40
-        ws.column_dimensions['H'].width = 50
-        ws.column_dimensions['I'].width = 15
+        ws.column_dimensions["A"].width = 20
+        ws.column_dimensions["B"].width = 25
+        ws.column_dimensions["C"].width = 25
+        ws.column_dimensions["D"].width = 25
+        ws.column_dimensions["E"].width = 25
+        ws.column_dimensions["F"].width = 40
+        ws.column_dimensions["G"].width = 40
+        ws.column_dimensions["H"].width = 50
+        ws.column_dimensions["I"].width = 15
 
         log.info(f"✓ Station Configuration sheet created with {current_row - header_row - 1} stations")
 
@@ -707,7 +699,7 @@ class ExcelGenerator:
         """Aggregate unique SLC numbers from all programs in the configuration (case-insensitive matching)."""
         slc_set = set()
 
-        for program_name in config['programs']:
+        for program_name in config["programs"]:
             # Case-insensitive comparison
             comp = next((c for c in component_data if c.name.lower() == program_name.lower()), None)
             if comp and comp.slc and comp.slc not in ["N/A", "No SLC"]:
@@ -722,16 +714,16 @@ class ExcelGenerator:
         """Aggregate unique units from all programs in the configuration (case-insensitive matching)."""
         units_set = set()
 
-        for program_name in config['programs']:
+        for program_name in config["programs"]:
             # Case-insensitive comparison
             comp = next((c for c in component_data if c.name.lower() == program_name.lower()), None)
             if comp and comp.units:
                 # Extract units from the format "(N) unit1, unit2, ..."
                 units_text = comp.units
-                if '(' in units_text and ')' in units_text:
-                    parts = units_text.split(') ', 1)
+                if "(" in units_text and ")" in units_text:
+                    parts = units_text.split(") ", 1)
                     if len(parts) == 2:
-                        units_list = [u.strip() for u in parts[1].split(',')]
+                        units_list = [u.strip() for u in parts[1].split(",")]
                         units_set.update(units_list)
 
         if not units_set:
@@ -742,11 +734,11 @@ class ExcelGenerator:
 
     def _format_units_for_station(self, units_text: str) -> str:
         """Format units text for display."""
-        if not units_text or units_text in ['N/A', 'No units assigned', 'No X-File', 'Error reading X-File']:
+        if not units_text or units_text in ["N/A", "No units assigned", "No X-File", "Error reading X-File"]:
             return "No units assigned"
 
-        if '(' in units_text and ')' in units_text:
-            parts = units_text.split(') ', 1)
+        if "(" in units_text and ")" in units_text:
+            parts = units_text.split(") ", 1)
             if len(parts) == 2:
                 return parts[1]
 
@@ -763,13 +755,13 @@ class ExcelGenerator:
 
                 if station_id not in station_configs:
                     station_configs[station_id] = {
-                        'config_file': config_file,  # Original case preserved
-                        'type': station_type,
-                        'programs': [],
-                        'libraries': [],
-                        'units': None,
-                        'ip_address': None,
-                        'slc': None
+                        "config_file": config_file,  # Original case preserved
+                        "type": station_type,
+                        "programs": [],
+                        "libraries": [],
+                        "units": None,
+                        "ip_address": None,
+                        "slc": None,
                     }
 
         # Parse configuration files to get programs/libraries for each config
@@ -779,21 +771,21 @@ class ExcelGenerator:
         for config in configurations:
             # Store with original case name, but create lowercase key for lookup
             config_contents[config.config_name.lower()] = {
-                'programs': [p['name'] for p in config.programs],  # Original case preserved
-                'libraries': [library['name'] for library in config.libraries]  # Original case preserved
+                "programs": [p["name"] for p in config.programs],  # Original case preserved
+                "libraries": [library["name"] for library in config.libraries],  # Original case preserved
             }
 
         # Populate station configs with programs and libraries from configuration files
-        for station_id, station_config in station_configs.items():
-            config_file_lower = station_config['config_file'].lower()
+        for station_config in station_configs.values():
+            config_file_lower = station_config["config_file"].lower()
 
             if config_file_lower in config_contents:
-                station_config['programs'] = config_contents[config_file_lower]['programs'].copy()
-                station_config['libraries'] = config_contents[config_file_lower]['libraries'].copy()
+                station_config["programs"] = config_contents[config_file_lower]["programs"].copy()
+                station_config["libraries"] = config_contents[config_file_lower]["libraries"].copy()
 
                 # Add transitive dependencies
                 additional_libraries = set()
-                for program_name in station_config['programs']:
+                for program_name in station_config["programs"]:
                     # Case-insensitive comparison
                     comp = next((c for c in component_data if c.name.lower() == program_name.lower()), None)
                     if comp:
@@ -805,25 +797,25 @@ class ExcelGenerator:
 
                 for lib in additional_libraries:
                     # Case-insensitive check if library already exists
-                    if not any(existing_lib.lower() == lib.lower() for existing_lib in station_config['libraries']):
-                        station_config['libraries'].append(lib)
+                    if not any(existing_lib.lower() == lib.lower() for existing_lib in station_config["libraries"]):
+                        station_config["libraries"].append(lib)
 
-                station_config['libraries'].sort()
-                station_config['programs'].sort()
+                station_config["libraries"].sort()
+                station_config["programs"].sort()
 
         return station_configs
 
     def _determine_station_type(self, station_id: str) -> str:
         """Determine station type from station ID."""
-        if station_id.startswith('LOP'):
+        if station_id.startswith("LOP"):
             return "Local Operator Panel"
-        elif station_id.startswith('OP'):
+        elif station_id.startswith("OP"):
             return "Operator Station"
-        elif station_id.startswith('OPC'):
+        elif station_id.startswith("OPC"):
             return "OPC Server"
-        elif station_id.startswith('PRG'):
+        elif station_id.startswith("PRG"):
             return "Programmer Station"
-        elif 'Journal' in station_id:
+        elif "Journal" in station_id:
             return "Journal Server"
         else:
             return "Special System"
@@ -833,18 +825,18 @@ class ExcelGenerator:
         ws = self.wb.create_sheet("Configuration Summary")
 
         # Title
-        ws.merge_cells('A1:F1')
-        title_cell = ws['A1']
+        ws.merge_cells("A1:F1")
+        title_cell = ws["A1"]
         title_cell.value = "📊 Configuration Files Summary"
         title_cell.font = Font(bold=True, size=16, color="FFFFFF")
         title_cell.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-        title_cell.alignment = Alignment(horizontal='center', vertical='center')
+        title_cell.alignment = Alignment(horizontal="center", vertical="center")
         ws.row_dimensions[1].height = 30
 
         configurations = self.extractor.parse_all_configuration_files()
 
         if not configurations:
-            ws['A3'] = "No configuration files found or parsing failed"
+            ws["A3"] = "No configuration files found or parsing failed"
             return
 
         headers = ["Configuration_Name", "Version", "Date", "Main_Program", "Total_Programs", "Total_Libraries"]
@@ -869,12 +861,12 @@ class ExcelGenerator:
             WorksheetHelper.create_table(ws, "ConfigurationSummary", table_ref)
 
         # Set column widths
-        ws.column_dimensions['A'].width = 25
-        ws.column_dimensions['B'].width = 12
-        ws.column_dimensions['C'].width = 25
-        ws.column_dimensions['D'].width = 25
-        ws.column_dimensions['E'].width = 15
-        ws.column_dimensions['F'].width = 15
+        ws.column_dimensions["A"].width = 25
+        ws.column_dimensions["B"].width = 12
+        ws.column_dimensions["C"].width = 25
+        ws.column_dimensions["D"].width = 25
+        ws.column_dimensions["E"].width = 15
+        ws.column_dimensions["F"].width = 15
 
         log.info("✓ Configuration Summary sheet created")
 
@@ -883,23 +875,30 @@ class ExcelGenerator:
         ws = self.wb.create_sheet("Configuration Details")
 
         # Title
-        ws.merge_cells('A1:I1')
-        title_cell = ws['A1']
+        ws.merge_cells("A1:I1")
+        title_cell = ws["A1"]
         title_cell.value = "📋 Configuration File Details"
         title_cell.font = Font(bold=True, size=16, color="FFFFFF")
         title_cell.fill = PatternFill(start_color="2E75B6", end_color="2E75B6", fill_type="solid")
-        title_cell.alignment = Alignment(horizontal='center', vertical='center')
+        title_cell.alignment = Alignment(horizontal="center", vertical="center")
         ws.row_dimensions[1].height = 30
 
         configurations = self.extractor.parse_all_configuration_files()
 
         if not configurations:
-            ws['A3'] = "No configuration files found or parsing failed"
+            ws["A3"] = "No configuration files found or parsing failed"
             return
 
         headers = [
-            "Configuration_Name", "Component_Type", "Component_Name", "Directory",
-            "Main_Program", "Version", "Date", "Total_Programs", "Total_Libraries"
+            "Configuration_Name",
+            "Component_Type",
+            "Component_Name",
+            "Directory",
+            "Main_Program",
+            "Version",
+            "Date",
+            "Total_Programs",
+            "Total_Libraries",
         ]
 
         header_row = 3
@@ -914,9 +913,9 @@ class ExcelGenerator:
             for program in config.programs:
                 ws.cell(row=current_row, column=1, value=config.config_name)  # Original case
                 ws.cell(row=current_row, column=2, value="Program")
-                ws.cell(row=current_row, column=3, value=program['name'])  # Original case
-                ws.cell(row=current_row, column=4, value=program['directory'])
-                ws.cell(row=current_row, column=5, value="Yes" if program['main_program'] else "No")
+                ws.cell(row=current_row, column=3, value=program["name"])  # Original case
+                ws.cell(row=current_row, column=4, value=program["directory"])
+                ws.cell(row=current_row, column=5, value="Yes" if program["main_program"] else "No")
                 ws.cell(row=current_row, column=6, value=config.version)
                 ws.cell(row=current_row, column=7, value=config.date)
                 ws.cell(row=current_row, column=8, value=len(config.programs))
@@ -927,8 +926,8 @@ class ExcelGenerator:
             for library in config.libraries:
                 ws.cell(row=current_row, column=1, value=config.config_name)  # Original case
                 ws.cell(row=current_row, column=2, value="Library")
-                ws.cell(row=current_row, column=3, value=library['name'])  # Original case
-                ws.cell(row=current_row, column=4, value=library['directory'])
+                ws.cell(row=current_row, column=3, value=library["name"])  # Original case
+                ws.cell(row=current_row, column=4, value=library["directory"])
                 ws.cell(row=current_row, column=5, value="N/A")
                 ws.cell(row=current_row, column=6, value=config.version)
                 ws.cell(row=current_row, column=7, value=config.date)
@@ -941,15 +940,15 @@ class ExcelGenerator:
             WorksheetHelper.create_table(ws, "ConfigurationDetails", table_ref)
 
         # Set column widths
-        ws.column_dimensions['A'].width = 25
-        ws.column_dimensions['B'].width = 15
-        ws.column_dimensions['C'].width = 30
-        ws.column_dimensions['D'].width = 40
-        ws.column_dimensions['E'].width = 12
-        ws.column_dimensions['F'].width = 12
-        ws.column_dimensions['G'].width = 25
-        ws.column_dimensions['H'].width = 15
-        ws.column_dimensions['I'].width = 15
+        ws.column_dimensions["A"].width = 25
+        ws.column_dimensions["B"].width = 15
+        ws.column_dimensions["C"].width = 30
+        ws.column_dimensions["D"].width = 40
+        ws.column_dimensions["E"].width = 12
+        ws.column_dimensions["F"].width = 12
+        ws.column_dimensions["G"].width = 25
+        ws.column_dimensions["H"].width = 15
+        ws.column_dimensions["I"].width = 15
 
         log.info("✓ Configuration Details sheet created")
 
@@ -958,61 +957,61 @@ class ExcelGenerator:
         ws = self.query_ws
 
         # Title
-        ws.merge_cells('A1:H1')
-        title_cell = ws['A1']
+        ws.merge_cells("A1:H1")
+        title_cell = ws["A1"]
         title_cell.value = "🎯 Change Impact Analysis Tool"
         title_cell.font = Font(bold=True, size=20, color=ExcelConfig.KPI_TITLE_COLOR)
-        title_cell.alignment = Alignment(horizontal='center', vertical='center')
+        title_cell.alignment = Alignment(horizontal="center", vertical="center")
         ws.row_dimensions[1].height = 35
 
         # Instructions
-        ws.merge_cells('A3:H3')
-        inst_cell = ws['A3']
-        inst_cell.value = "Select programs/libraries you plan to change to see all impacted stations, units, dependencies, and SLCs"
+        ws.merge_cells("A3:H3")
+        inst_cell = ws["A3"]
+        inst_cell.value = (
+            "Select programs/libraries you plan to change to see all impacted stations, units, dependencies, and SLCs"
+        )
         inst_cell.font = Font(italic=True, size=11, color="666666")
-        inst_cell.alignment = Alignment(horizontal='center', wrap_text=True)
+        inst_cell.alignment = Alignment(horizontal="center", wrap_text=True)
         ws.row_dimensions[3].height = 25
 
         # Selection area
-        ws.merge_cells('A5:H5')
-        sel_header = ws['A5']
+        ws.merge_cells("A5:H5")
+        sel_header = ws["A5"]
         sel_header.value = "📝 SELECT COMPONENTS TO DOWNLOAD (up to 10)"
         sel_header.font = Font(bold=True, size=12, color="FFFFFF")
         sel_header.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-        sel_header.alignment = Alignment(horizontal='center')
+        sel_header.alignment = Alignment(horizontal="center")
 
         # Create 10 selection dropdowns
         for i in range(10):
             row = 7 + i
-            ws[f'A{row}'] = f"Component {i+1}:"
-            ws[f'A{row}'].font = Font(bold=True, size=10)
-            ws[f'A{row}'].alignment = Alignment(horizontal='right')
+            ws[f"A{row}"] = f"Component {i+1}:"
+            ws[f"A{row}"].font = Font(bold=True, size=10)
+            ws[f"A{row}"].alignment = Alignment(horizontal="right")
 
-            ws.merge_cells(f'B{row}:D{row}')
-            sel_cell = ws[f'B{row}']
+            ws.merge_cells(f"B{row}:D{row}")
+            sel_cell = ws[f"B{row}"]
             sel_cell.fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
             sel_cell.border = self.style_manager.border
 
             # Data validation
-            dv = DataValidation(
-                type="list",
-                formula1="'System Components'!$B$2:$B$1000",
-                allow_blank=True
-            )
+            dv = DataValidation(type="list", formula1="'System Components'!$B$2:$B$1000", allow_blank=True)
             dv.add(sel_cell)
             ws.add_data_validation(dv)
 
             # Show component type
-            ws[f'E{row}'] = f'=IF(B{row}="","",INDEX(\'System Components\'!F:F,MATCH(B{row},\'System Components\'!B:B,0)))'
-            ws[f'E{row}'].font = Font(size=9, italic=True, color="666666")
+            ws[f"E{row}"] = (
+                f"=IF(B{row}=\"\",\"\",INDEX('System Components'!F:F,MATCH(B{row},'System Components'!B:B,0)))"
+            )
+            ws[f"E{row}"].font = Font(size=9, italic=True, color="666666")
 
         # Results section - Affected Workstations
-        ws.merge_cells('A19:H19')
-        results_header = ws['A19']
+        ws.merge_cells("A19:H19")
+        results_header = ws["A19"]
         results_header.value = "AFFECTED WORKSTATIONS"
         results_header.font = Font(bold=True, size=12, color="FFFFFF")
         results_header.fill = PatternFill(start_color="ED7D31", end_color="ED7D31", fill_type="solid")
-        results_header.alignment = Alignment(horizontal='center')
+        results_header.alignment = Alignment(horizontal="center")
 
         # Build reverse mapping: component -> workstations (use original case for display)
         component_to_workstations: dict[str, set[str]] = {}
@@ -1024,7 +1023,7 @@ class ExcelGenerator:
                 if config.config_name.lower() == config_file.lower():
                     # Map all programs in this config to these workstations
                     for program in config.programs:
-                        prog_name = program['name']
+                        prog_name = program["name"]
                         prog_name_lower = prog_name.lower()
                         component_original_case[prog_name_lower] = prog_name  # Store original case
 
@@ -1034,7 +1033,7 @@ class ExcelGenerator:
 
                     # Map all libraries in this config to these workstations
                     for library in config.libraries:
-                        lib_name = library['name']
+                        lib_name = library["name"]
                         lib_name_lower = lib_name.lower()
                         component_original_case[lib_name_lower] = lib_name  # Store original case
 
@@ -1043,22 +1042,22 @@ class ExcelGenerator:
                         component_to_workstations[lib_name_lower].update(workstations)
 
         # Create formulas to display affected workstations
-        ws['A21'] = "Workstations:"
-        ws['A21'].font = Font(bold=True, size=10)
-        ws['A21'].alignment = Alignment(horizontal='right')
+        ws["A21"] = "Workstations:"
+        ws["A21"].font = Font(bold=True, size=10)
+        ws["A21"].alignment = Alignment(horizontal="right")
 
         # Create a lookup table (with original case for display)
-        ws['J1'] = "Component_Lookup"
-        ws['K1'] = "Workstations"
-        ws['J1'].font = Font(bold=True)
-        ws['K1'].font = Font(bold=True)
+        ws["J1"] = "Component_Lookup"
+        ws["K1"] = "Workstations"
+        ws["J1"].font = Font(bold=True)
+        ws["K1"].font = Font(bold=True)
 
         lookup_row = 2
         for comp_name_lower, stations in sorted(component_to_workstations.items()):
             # Use original case for display in lookup table
             original_name = component_original_case.get(comp_name_lower, comp_name_lower)
-            ws[f'J{lookup_row}'] = original_name
-            ws[f'K{lookup_row}'] = ", ".join(sorted(stations))
+            ws[f"J{lookup_row}"] = original_name
+            ws[f"K{lookup_row}"] = ", ".join(sorted(stations))
             lookup_row += 1
 
         # Create formula that concatenates unique workstations using TEXTJOIN and VLOOKUPs
@@ -1069,33 +1068,30 @@ class ExcelGenerator:
             vlookup_formulas.append(f'IFERROR(VLOOKUP(B{row_ref},J:K,2,FALSE),"")')
 
         # Join all workstations with comma
-        ws.merge_cells('B21:H21')
-        ws['B21'] = f'=TEXTJOIN(", ",TRUE,{",".join(vlookup_formulas)})'
-        ws['B21'].alignment = Alignment(wrap_text=True, vertical='top')
+        ws.merge_cells("B21:H21")
+        ws["B21"] = f'=TEXTJOIN(", ",TRUE,{",".join(vlookup_formulas)})'
+        ws["B21"].alignment = Alignment(wrap_text=True, vertical="top")
 
         # Hide the lookup columns
-        ws.column_dimensions['J'].hidden = True
-        ws.column_dimensions['K'].hidden = True
+        ws.column_dimensions["J"].hidden = True
+        ws.column_dimensions["K"].hidden = True
 
         # Set column widths for visible columns
-        ws.column_dimensions['A'].width = 15
-        ws.column_dimensions['B'].width = 20
-        ws.column_dimensions['C'].width = 20
-        ws.column_dimensions['D'].width = 20
-        ws.column_dimensions['E'].width = 20
-        ws.column_dimensions['F'].width = 15
-        ws.column_dimensions['G'].width = 15
-        ws.column_dimensions['H'].width = 15
+        ws.column_dimensions["A"].width = 15
+        ws.column_dimensions["B"].width = 20
+        ws.column_dimensions["C"].width = 20
+        ws.column_dimensions["D"].width = 20
+        ws.column_dimensions["E"].width = 20
+        ws.column_dimensions["F"].width = 15
+        ws.column_dimensions["G"].width = 15
+        ws.column_dimensions["H"].width = 15
 
         log.info("✓ Query Tool created with workstation impact analysis")
 
 
 def main(argv: list[str] | None = None):
     """Main entry point."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
     parser = argparse.ArgumentParser(
         description="Generate an Excel workbook from a SattLine configuration root directory."
