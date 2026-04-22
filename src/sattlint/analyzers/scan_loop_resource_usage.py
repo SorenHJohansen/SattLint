@@ -85,7 +85,7 @@ class ScanLoopResourceUsageAnalyzer:
                 for statement in node.code.active or []:
                     self._scan_node(statement, module_path=module_path, context=context)
                 continue
-            if isinstance(node, (SFCAlternative, SFCParallel)):
+            if isinstance(node, SFCAlternative | SFCParallel):
                 for branch in node.branches or []:
                     self._scan_sequence_nodes(
                         module_path=module_path,
@@ -93,7 +93,7 @@ class ScanLoopResourceUsageAnalyzer:
                         nodes=branch,
                     )
                 continue
-            if isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+            if isinstance(node, SFCSubsequence | SFCTransitionSub):
                 self._scan_sequence_nodes(
                     module_path=module_path,
                     sequence_name=sequence_name,

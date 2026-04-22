@@ -7,14 +7,14 @@ from sattlint.engine import CodeMode, resolve_graphics_companion_path, validate_
 from sattlint.graphics_validation import validate_graphics_text
 from sattlint_lsp.server import collect_syntax_diagnostics
 
-VALID_SINGLE_FILE = '''"SyntaxVersion"
+VALID_SINGLE_FILE = """"SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
 BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
-'''
+"""
 
 
 def _write_source_file(tmp_path: Path, name: str) -> Path:
@@ -24,7 +24,7 @@ def _write_source_file(tmp_path: Path, name: str) -> Path:
 
 
 def _write_graphics_file(tmp_path: Path, name: str, row: str) -> Path:
-    content = f'''" Syntax version 2.23, date: 2026-04-22-00:00:00.000 N "
+    content = f"""" Syntax version 2.23, date: 2026-04-22-00:00:00.000 N "
 
  5
  None  True   0.00000E+00 0.00000E+00
@@ -36,7 +36,7 @@ def _write_graphics_file(tmp_path: Path, name: str, row: str) -> Path:
  None  True
  t
            0
-'''
+"""
     file_path = tmp_path / name
     file_path.write_text(content, encoding="utf-8")
     return file_path

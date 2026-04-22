@@ -205,11 +205,7 @@ def _normalize_profile_payload(name: str, payload: object) -> RuleProfile:
     if not isinstance(payload, dict):
         return _default_profiles().get(name, RuleProfile(name=name, description=f"Custom profile {name}."))
     disabled_rules = tuple(
-        sorted(
-            str(rule_id).strip()
-            for rule_id in payload.get("disabled_rules", [])
-            if str(rule_id).strip()
-        )
+        sorted(str(rule_id).strip() for rule_id in payload.get("disabled_rules", []) if str(rule_id).strip())
     )
     severity_overrides = {
         str(rule_id).strip(): str(value).strip()
@@ -296,9 +292,6 @@ def apply_rule_profile_to_report(analyzer_key: str, report: Any, config: dict[st
         return report
     profile = get_active_rule_profile(config)
     report.issues = [
-        updated
-        for issue in issues
-        for updated in [apply_rule_profile_to_issue(issue, profile)]
-        if updated is not None
+        updated for issue in issues for updated in [apply_rule_profile_to_issue(issue, profile)] if updated is not None
     ]
     return report

@@ -104,11 +104,7 @@ class LoopOutputRefactorAnalyzer:
             ]
             dependencies.sort(key=lambda item: (item["from"], item["to"]))
             dependency_variables = sorted(
-                {
-                    variable
-                    for dependency in dependencies
-                    for variable in dependency["variables"]
-                }
+                {variable for dependency in dependencies for variable in dependency["variables"]}
             )
             block_labels = [block.label for block in cycle_blocks]
             loop_text = self._format_loop_text(cycle_blocks, dependencies)
@@ -177,11 +173,11 @@ class LoopOutputRefactorAnalyzer:
                         )
                     )
                 continue
-            if isinstance(node, (SFCAlternative, SFCParallel)):
+            if isinstance(node, SFCAlternative | SFCParallel):
                 for branch in node.branches or []:
                     self._collect_sequence_blocks(module_path, sequence_name, branch, blocks)
                 continue
-            if isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+            if isinstance(node, SFCSubsequence | SFCTransitionSub):
                 self._collect_sequence_blocks(module_path, sequence_name, node.body or [], blocks)
 
     def _make_block(

@@ -158,7 +158,7 @@ class CyclomaticComplexityAnalyzer:
             if isinstance(node, SFCTransition):
                 count += 1 + self._count_node(node.condition)
                 continue
-            if isinstance(node, (SFCAlternative, SFCParallel)):
+            if isinstance(node, SFCAlternative | SFCParallel):
                 count += max(0, len(node.branches or []) - 1)
                 for branch in node.branches or []:
                     count += self._count_sequence_nodes(
@@ -167,7 +167,7 @@ class CyclomaticComplexityAnalyzer:
                         nodes=branch,
                     )
                 continue
-            if isinstance(node, (SFCSubsequence, SFCTransitionSub)):
+            if isinstance(node, SFCSubsequence | SFCTransitionSub):
                 count += self._count_sequence_nodes(
                     module_path=module_path,
                     sequence_name=sequence_name,
@@ -211,9 +211,7 @@ class CyclomaticComplexityAnalyzer:
                 return self._count_node(node[1])
             if tag in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND):
                 children = node[1] or []
-                return max(0, len(children) - 1) + sum(
-                    self._count_node(child) for child in children
-                )
+                return max(0, len(children) - 1) + sum(self._count_node(child) for child in children)
             return sum(self._count_node(child) for child in node[1:])
         if isinstance(node, list):
             return sum(self._count_node(item) for item in node)

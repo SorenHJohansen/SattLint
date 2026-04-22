@@ -1,4 +1,3 @@
-
 from sattlint.graphics_rules import (
     DEFAULT_GRAPHICS_RULES,
     load_graphics_rules,
@@ -149,9 +148,7 @@ def test_validate_graphics_layout_entries_uses_relative_path_for_duplicate_names
     )
 
     assert report.matched_rule_count == 1
-    assert [finding.module_path for finding in report.findings] == [
-        "Program.Equipmentmoduler.Stop.L1"
-    ]
+    assert [finding.module_path for finding in report.findings] == ["Program.Equipmentmoduler.Stop.L1"]
 
 
 def test_validate_graphics_layout_entries_matches_unit_structure_path(tmp_path):
@@ -246,6 +243,4 @@ def test_validate_graphics_layout_entries_matches_equipment_structure_path(tmp_p
     )
 
     assert report.matched_rule_count == 1
-    assert [finding.module_path for finding in report.findings] == [
-        "Program.UnitA.L1.L2.Empty.L1.L2.EquipModPanel"
-    ]
+    assert [finding.module_path for finding in report.findings] == ["Program.UnitA.L1.L2.Empty.L1.L2.EquipModPanel"]
