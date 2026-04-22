@@ -123,7 +123,7 @@ class ContextBuilder:
                         kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
                         module_path=module_path.copy(),
                         variable=None,
-                        role=(f"unknown parameter mapping target " f"{target_display_name!r}"),
+                        role=(f"unknown parameter mapping target {target_display_name!r}"),
                     )
                 )
                 continue
@@ -223,7 +223,7 @@ class ContextBuilder:
                         kind=IssueKind.UNKNOWN_PARAMETER_TARGET,
                         module_path=module_path.copy(),
                         variable=None,
-                        role=(f"unknown parameter mapping target " f"{target_display_name!r}"),
+                        role=(f"unknown parameter mapping target {target_display_name!r}"),
                     )
                 )
                 continue

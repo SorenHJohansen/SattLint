@@ -132,7 +132,7 @@ class VariableIssue:
         field_txt = f".{self.field_path}" if self.field_path else ""
         seq_txt = f" seq={self.sequence_name!r}" if self.sequence_name else ""
         reset_txt = f" reset={self.reset_variable!r}" if self.reset_variable else ""
-        return f"[{mp}] {role_txt} {self.variable.name!r}{field_txt} ({dt})" f"{seq_txt}{reset_txt}"
+        return f"[{mp}] {role_txt} {self.variable.name!r}{field_txt} ({dt}){seq_txt}{reset_txt}"
 
 
 @dataclass
@@ -495,9 +495,7 @@ class VariablesReport:
         )
         tgt_name_w = max(len(issue.variable.name) if issue.variable else 0 for issue in self.min_max_mapping_mismatch)
 
-        header = (
-            f"      {'Location':<{location_w}}  " f"{'Source Var':<{src_name_w}}  =>  " f"{'Target Var':<{tgt_name_w}}"
-        )
+        header = f"      {'Location':<{location_w}}  {'Source Var':<{src_name_w}}  =>  {'Target Var':<{tgt_name_w}}"
         lines.append(header)
         lines.append("      " + "-" * len(header.strip()))
 
@@ -505,9 +503,7 @@ class VariablesReport:
             location = ".".join(issue.module_path)
             src_name = issue.source_variable.name if issue.source_variable else "?"
             tgt_name = issue.variable.name if issue.variable else "?"
-            lines.append(
-                f"      {location:<{location_w}}  " f"{src_name:<{src_name_w}}  =>  " f"{tgt_name:<{tgt_name_w}}"
-            )
+            lines.append(f"      {location:<{location_w}}  {src_name:<{src_name_w}}  =>  {tgt_name:<{tgt_name_w}}")
 
     def _append_magic_numbers(self, lines: list[str]) -> None:
         title = SECTION_TITLES[IssueKind.MAGIC_NUMBER]

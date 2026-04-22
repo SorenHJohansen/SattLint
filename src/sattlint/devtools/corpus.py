@@ -497,9 +497,7 @@ def format_cli_summary(status_report: dict[str, Any]) -> str:
     findings_schema = status_report.get("findings_schema")
     if findings_schema:
         lines.append(
-            "Findings schema: "
-            f"{findings_schema.get('kind', 'unknown')} "
-            f"v{findings_schema.get('schema_version', '?')}"
+            f"Findings schema: {findings_schema.get('kind', 'unknown')} v{findings_schema.get('schema_version', '?')}"
         )
     lines.append(f"Corpus cases: {status_report['case_count']}")
     lines.append(f"Failed cases: {status_report['failed_count']}")

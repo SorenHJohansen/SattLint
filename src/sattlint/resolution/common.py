@@ -55,7 +55,7 @@ def resolve_moduletype_def_strict(
         available = sorted({mt.name for mt in (bp.moduletype_defs or [])})
         note = ""
         if unavailable_libraries:
-            note = " Note: Some libraries are unavailable (e.g., proprietary): " f"{sorted(unavailable_libraries)[:10]}"
+            note = f" Note: Some libraries are unavailable (e.g., proprietary): {sorted(unavailable_libraries)[:10]}"
         raise ValueError(f"Unknown moduletype {moduletype_name!r}.{note} Available moduletype defs: {available[:50]}")
     matches = dedupe_moduletype_defs(matches)
     if len(matches) > 1:
