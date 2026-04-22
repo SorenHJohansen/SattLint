@@ -39,6 +39,7 @@ class ArtifactDefinition:
 
 
 PIPELINE_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
+    ArtifactDefinition("progress", "progress.json", "progress", "sattlint.pipeline.progress", 1, profiles=("quick", "full")),
     ArtifactDefinition("status", "status.json", "status", "sattlint.pipeline.status", 1, profiles=("quick", "full"), blocking=True),
     ArtifactDefinition("summary", "summary.json", "summary", "sattlint.pipeline.summary", 1, profiles=("quick", "full"), blocking=True),
     ArtifactDefinition("findings", "findings.json", "findings", "sattlint.findings", 1, profiles=("quick", "full"), blocking=True),
@@ -61,6 +62,7 @@ PIPELINE_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
 
 
 AUDIT_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
+    ArtifactDefinition("progress", "progress.json", "repo_audit_progress", "sattlint.repo_audit.progress", 1, profiles=("quick", "full", "leaks")),
     ArtifactDefinition("status", "status.json", "repo_audit", "sattlint.repo_audit.status", 1, profiles=("quick", "full", "leaks"), blocking=True),
     ArtifactDefinition("summary", "summary.json", "repo_audit", "sattlint.repo_audit.summary", 1, profiles=("quick", "full", "leaks"), blocking=True),
     ArtifactDefinition("findings", "findings.json", "repo_audit", "sattlint.findings", 1, profiles=("quick", "full", "leaks"), blocking=True),

@@ -46,6 +46,7 @@ def build_pipeline_status_report(
     tool_statuses: dict[str, dict[str, Any]],
     failing_tools: list[str],
     non_blocking_tools: list[str],
+    progress_report: str | None = None,
     findings_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     canonical_command = (
@@ -62,6 +63,8 @@ def build_pipeline_status_report(
         "failing_tools": failing_tools,
         "non_blocking_tools": non_blocking_tools,
     }
+    if progress_report is not None:
+        payload["progress_report"] = progress_report
     if findings_schema is not None:
         payload["findings_schema"] = findings_schema
     return payload
@@ -79,6 +82,7 @@ def build_pipeline_summary_report(
     tool_exit_codes: dict[str, int | None],
     artifact_registry_report: dict[str, Any],
     counts: dict[str, Any],
+    progress_report: str | None = None,
     findings_schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     canonical_command = (
@@ -103,6 +107,8 @@ def build_pipeline_summary_report(
         "artifact_registry": artifact_registry_report,
         "counts": counts,
     }
+    if progress_report is not None:
+        payload["progress_report"] = progress_report
     if findings_schema is not None:
         payload["findings_schema"] = findings_schema
     return payload

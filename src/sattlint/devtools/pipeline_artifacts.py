@@ -28,6 +28,7 @@ def payload_from_context(key: str) -> Callable[[PipelineArtifactContext], dict[s
 
 
 DEFAULT_PIPELINE_ARTIFACT_PRODUCERS: tuple[PipelineArtifactProducer, ...] = (
+    PipelineArtifactProducer("progress", payload_from_context("progress")),
     PipelineArtifactProducer("artifact_registry", payload_from_context("artifact_registry")),
     PipelineArtifactProducer("environment", payload_from_context("environment")),
     PipelineArtifactProducer("ruff", payload_from_context("ruff")),
