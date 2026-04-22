@@ -18,7 +18,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv pip install -e ".[dev,lsp]"
+        run: uv pip install --system -e ".[dev,lsp]"
 
       - name: Run Pyright
         run: uvx pyright src/sattlint src/sattline_parser

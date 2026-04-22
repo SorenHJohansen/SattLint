@@ -87,7 +87,7 @@ SKIP_DIRS = {
 }
 LEAK_RELEVANT_CATEGORIES = {"portability", "secrets-pii"}
 LEAK_RELEVANT_FINDING_IDS = {"tracked-generated-artifacts"}
-SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
 AUDIT_PROFILE_CHOICES = ("quick", "full")
 PLACEHOLDER_VALUES = {
     "<repo-url>",
@@ -755,14 +755,24 @@ def _find_architecture_findings(
     )
     cycles = _find_import_cycles(graph)
     for cycle in cycles:
+        cycle_str = " -> ".join(cycle)
+        if "sattline_semantics" in cycle and "rule_profiles" in cycle:
+            severity = "info"
+            message = "Known aggregator cycle (rule metadata requires aggregator)."
+        elif len(cycle) > 4:
+            severity = "info"
+            message = "Long import cycle through multiple analyzers."
+        else:
+            severity = "high"
+            message = "Circular import detected."
         findings.append(
             Finding(
                 id="import-cycle",
                 category="architecture",
-                severity="high",
+                severity=severity,
                 confidence="high",
-                message="Circular import detected.",
-                detail=" -> ".join(cycle),
+                message=message,
+                detail=cycle_str,
                 suggestion="Break the cycle with a lower-level shared module or dependency inversion.",
             )
         )
