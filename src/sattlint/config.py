@@ -1,13 +1,14 @@
 """Configuration management for SattLint."""
 from __future__ import annotations
 
-from copy import deepcopy
 import os
 import sys
 import tomllib
-import tomli_w
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, cast
+
+import tomli_w
 
 _DOCUMENTATION_RULE_LIST_KEYS = (
     "name_contains",
@@ -247,11 +248,7 @@ def self_check(cfg: dict) -> bool:
     ok = True
 
     # Python version
-    if sys.version_info < (3, 13):
-        print("❌ Python 3.13+ required")
-        ok = False
-    else:
-        print(f"✔ Python {sys.version.split()[0]}")
+    print(f"✔ Python {sys.version.split()[0]}")
 
     # Required keys
     required_keys = [

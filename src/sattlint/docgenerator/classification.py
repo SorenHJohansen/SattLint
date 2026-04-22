@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
-from typing import TypeAlias
+from dataclasses import dataclass
 
 from .. import config as config_module
 from ..models.ast_model import (
@@ -17,7 +16,7 @@ from ..models.ast_model import (
 )
 from ..resolution.common import format_moduletype_label, path_startswith_casefold, resolve_moduletype_def_strict
 
-DocumentableNode: TypeAlias = SingleModule | FrameModule | ModuleTypeInstance
+type DocumentableNode = SingleModule | FrameModule | ModuleTypeInstance
 DOCUMENTATION_CATEGORY_ORDER = [
     "em",
     "ops",
@@ -359,7 +358,7 @@ def _collect_documented_modules(
         typedef_stack: set[tuple[str, str]],
     ) -> None:
         for child in children or []:
-            child_path = parent_path + [child.header.name]
+            child_path = [*parent_path, child.header.name]
             if isinstance(child, SingleModule):
                 entries.append(
                     DocumentedModule(
@@ -476,14 +475,7 @@ def _matches_rule(
     ):
         return False
 
-    if _matches_direct(
-        entry,
-        name_contains=direct_name_patterns,
-        label_equals=direct_label_patterns,
-    ):
-        return True
-
-    return False
+    return bool(_matches_direct(entry, name_contains=direct_name_patterns, label_equals=direct_label_patterns))
 
 
 def _matches_direct(
@@ -497,9 +489,7 @@ def _matches_direct(
 
     if name_contains and _contains_pattern(moduletype_name, name_contains):
         return True
-    if label_equals and _equals_pattern(moduletype_label, label_equals):
-        return True
-    return False
+    return bool(label_equals and _equals_pattern(moduletype_label, label_equals))
 
 
 def _contains_pattern(text: str, patterns: list[str]) -> bool:
@@ -669,9 +659,7 @@ def _looks_like_unit_root(
         return True
     if "sectionname" in parameter_names:
         return True
-    if entry.moduletype_name and len(entry.path) <= 3:
-        return True
-    return False
+    return bool(entry.moduletype_name and len(entry.path) <= 3)
 
 
 def _looks_like_wrapper_entry(entry: DocumentedModule) -> bool:

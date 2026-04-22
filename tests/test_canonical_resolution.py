@@ -2,7 +2,7 @@
 
 
 from sattlint import constants as const
-from sattlint.analyzers.variables import VariablesAnalyzer, IssueKind
+from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.models.ast_model import (
     BasePicture,
     DataType,

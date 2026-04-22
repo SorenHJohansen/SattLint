@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
-
+from typing import Any
 
 FINDING_SCHEMA_KIND = "sattlint.findings"
 FINDING_SCHEMA_VERSION = 1
@@ -28,7 +28,7 @@ class FindingLocation:
         }
 
     @classmethod
-    def from_mapping(cls, payload: Mapping[str, Any] | None) -> "FindingLocation":
+    def from_mapping(cls, payload: Mapping[str, Any] | None) -> FindingLocation:
         payload = payload or {}
         return cls(
             path=_coerce_str(payload.get("path") or payload.get("file")),
@@ -89,7 +89,7 @@ class FindingRecord:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "FindingRecord":
+    def from_dict(cls, payload: Mapping[str, Any]) -> FindingRecord:
         location_payload = payload.get("location")
         location = FindingLocation.from_mapping(
             location_payload if isinstance(location_payload, Mapping) else payload
@@ -120,7 +120,7 @@ class FindingRecord:
         source: str,
         analyzer: str | None = None,
         artifact: str | None = None,
-    ) -> "FindingRecord":
+    ) -> FindingRecord:
         location_payload = payload.get("location")
         location = FindingLocation.from_mapping(
             location_payload if isinstance(location_payload, Mapping) else payload
@@ -165,7 +165,7 @@ class FindingCollection:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "FindingCollection":
+    def from_dict(cls, payload: Mapping[str, Any]) -> FindingCollection:
         findings_payload = payload.get("findings") or []
         return cls(
             findings=tuple(FindingRecord.from_dict(item) for item in findings_payload),

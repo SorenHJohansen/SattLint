@@ -1,11 +1,13 @@
 """AST model definitions and formatting helpers."""
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Any
-from enum import Enum
-from ..grammar import constants as const
-from ..utils.formatter import format_list, format_optional, format_expr, format_seq_nodes
+
 import textwrap
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
+
+from ..grammar import constants as const
+from ..utils.formatter import format_expr, format_list, format_optional, format_seq_nodes
 
 
 @dataclass(frozen=True)
@@ -57,7 +59,7 @@ class Simple_DataType(Enum):
     REAL = "real"
 
     @classmethod
-    def from_any(cls, value: "Simple_DataType | str") -> "Simple_DataType":
+    def from_any(cls, value: Simple_DataType | str) -> Simple_DataType:
         # Use the concrete class in isinstance for proper type narrowing in type checkers.
         if isinstance(value, Simple_DataType):
             return value
@@ -181,7 +183,7 @@ class ParameterMapping:
             return f"{tgt} => {src}"
 
         if self.source_literal is not None:
-            return f"{tgt} => {repr(self.source_literal)}"
+            return f"{tgt} => {self.source_literal!r}"
 
         return f"{tgt} => <None>"
 
@@ -261,7 +263,7 @@ class ModuleCode:
 
     def __str__(self) -> str:
         def _unwrap_statement_node(x):
-            if hasattr(x, "data") and getattr(x, "data") == const.KEY_STATEMENT:
+            if hasattr(x, "data") and x.data == const.KEY_STATEMENT:
                 ch = getattr(x, "children", [])
                 return ch[0] if ch else x
             return x

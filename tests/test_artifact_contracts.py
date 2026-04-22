@@ -11,6 +11,7 @@ from sattlint.devtools.corpus import (
     CorpusSuiteResult,
 )
 from sattlint.devtools.finding_exports import build_pipeline_finding_collection
+
 from .helpers.artifact_assertions import (
     assert_analysis_diff_report,
     assert_artifact_registry_report,
@@ -18,7 +19,6 @@ from .helpers.artifact_assertions import (
     assert_findings_collection,
     assert_matches_golden,
 )
-
 
 GOLDEN_DIR = Path(__file__).parent / "fixtures" / "goldens"
 
@@ -34,14 +34,14 @@ def _build_sample_findings_payload(repo_root: Path) -> dict[str, object]:
                 "location": {"row": 4, "column": 8},
             }
         ],
-        mypy_findings=[
+        pyright_findings=[
             {
                 "severity": "error",
                 "message": "Incompatible types in assignment",
                 "file": str(repo_root / "src" / "typed.py"),
                 "line": 9,
                 "column": 3,
-                "code": "assignment",
+                "errorCode": "assignment",
             }
         ],
         pytest_report={"summary": {"tests": 2, "failures": 1, "errors": 0, "skipped": 0}},

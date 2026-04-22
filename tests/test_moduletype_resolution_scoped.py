@@ -4,7 +4,6 @@ import pytest
 
 from sattlint import constants as const
 from sattlint.analyzers.variables import VariablesAnalyzer
-from sattlint.resolution.common import resolve_moduletype_def_strict as _resolve_moduletype_def_strict
 from sattlint.models.ast_model import (
     BasePicture,
     DataType,
@@ -16,6 +15,7 @@ from sattlint.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+from sattlint.resolution.common import resolve_moduletype_def_strict as _resolve_moduletype_def_strict
 
 
 def _header(name: str = "BP") -> ModuleHeader:

@@ -8,7 +8,6 @@ from ..grammar.parser_decode import is_compressed, preprocess_sl_text
 from ..reporting.comment_code_report import CommentCodeHit, CommentCodeReport
 from ..utils.text_processing import find_comments_with_code
 
-
 _SOURCE_SUFFIXES = {".s", ".x", ".l", ".z"}
 
 

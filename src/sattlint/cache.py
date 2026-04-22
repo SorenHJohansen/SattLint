@@ -1,11 +1,13 @@
 """Cache helpers for parsed ASTs and file manifests."""
 from __future__ import annotations
+
 import hashlib
-import pickle  # nosec B403 - trusted local cache files only
-from pathlib import Path
-from typing import Any, Iterable, cast
 import json
 import os
+import pickle  # nosec B403 - trusted local cache files only
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any, cast
 
 CACHE_VERSION = 4  # Bump when the cache payload format changes.
 LOOKUP_CACHE_VERSION = 1

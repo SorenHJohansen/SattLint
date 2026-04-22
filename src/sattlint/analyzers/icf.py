@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import re
 from pathlib import Path
 from typing import Any
@@ -6,24 +7,23 @@ from typing import Any
 from ..models.ast_model import (
     BasePicture,
     ModuleTypeDef,
-    SingleModule,
     ModuleTypeInstance,
-    Variable,
     Simple_DataType,
+    SingleModule,
+    Variable,
 )
-from ..resolution.common import (
-    resolve_moduletype_def_strict,
-    resolve_module_by_strict_path,
-    ResolvedModulePath,
-)
-from ..resolution.type_graph import TypeGraph
 from ..reporting.icf_report import (
     ICFEntry,
     ICFResolvedEntry,
     ICFValidationIssue,
     ICFValidationReport,
 )
-
+from ..resolution.common import (
+    ResolvedModulePath,
+    resolve_module_by_strict_path,
+    resolve_moduletype_def_strict,
+)
+from ..resolution.type_graph import TypeGraph
 
 _ICF_REF_RE = re.compile(r"(?:^|.*?)(?:[A-Za-z]::)?(?P<program>[^:]+):(?P<path>.+)$")
 

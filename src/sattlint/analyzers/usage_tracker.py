@@ -1,8 +1,10 @@
 """Tracks variable usage and access events."""
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
+
 from ..models.usage import VariableUsage
-from ..resolution import AccessGraph, AccessEvent, AccessKind, CanonicalPath
+from ..resolution import AccessEvent, AccessGraph, AccessKind, CanonicalPath
 
 if TYPE_CHECKING:
     from ..models.ast_model import Variable
@@ -61,7 +63,7 @@ class UsageTracker:
                 usage.mark_written(path)
 
         # Create canonical path locally since it's usage tracking concern
-        segs: list[str] = list(decl_module_path) + [variable.name]
+        segs: list[str] = [*list(decl_module_path), variable.name]
         if field_path:
             segs.extend([p for p in field_path.split(".") if p])
         canonical = CanonicalPath(tuple(segs))

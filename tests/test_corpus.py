@@ -1,20 +1,16 @@
 import json
 from pathlib import Path
 
-from sattlint.analyzers.sattline_semantics import SemanticIssue, SemanticRule, SattLineSemanticsReport
+from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, SemanticIssue, SemanticRule
 from sattlint.devtools.corpus import (
     CORPUS_RESULTS_FILENAME,
-    CorpusCaseManifest,
-    CorpusEvaluation,
-    CorpusExpectation,
-    CorpusRunResult,
-    CorpusSuiteResult,
     evaluate_finding_ids,
     execute_corpus_case,
     load_corpus_manifest,
     run_corpus_case,
     run_corpus_suite,
 )
+
 from .helpers.artifact_assertions import (
     assert_corpus_results_report,
     assert_findings_collection,

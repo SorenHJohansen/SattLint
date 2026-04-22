@@ -1,20 +1,20 @@
 """Module comparison, version drift analysis, and debug helpers."""
 import logging
-from collections import Counter
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from typing import Any, cast
+
 from ..models.ast_model import (
     BasePicture,
-    SingleModule,
+    Equation,
     FrameModule,
-    ModuleTypeInstance,
     ModuleTypeDef,
-    Variable,
+    ModuleTypeInstance,
     ParameterMapping,
     Sequence,
-    Equation,
+    SingleModule,
+    Variable,
 )
 from .framework import Issue, format_report_header
 
@@ -631,13 +631,10 @@ def _diff_normalized_variants(
 
     if kind == "dict":
         dict_values: dict[int, dict[str, object]] = {
-            variant_id: {
-                key: item
-                for key, item in cast(
+            variant_id: dict(cast(
                     tuple[tuple[str, object], ...],
                     cast(tuple[object, tuple[tuple[str, object], ...]], value)[1],
-                )
-            }
+                ))
             for variant_id, value in variants.items()
         }
         keys = sorted({key for mapping in dict_values.values() for key in mapping})
@@ -657,13 +654,10 @@ def _diff_normalized_variants(
 
     if kind.startswith("object:"):
         object_values: dict[int, dict[str, object]] = {
-            variant_id: {
-                key: item
-                for key, item in cast(
+            variant_id: dict(cast(
                     tuple[tuple[str, object], ...],
                     cast(tuple[object, tuple[tuple[str, object], ...]], value)[1],
-                )
-            }
+                ))
             for variant_id, value in variants.items()
         }
         keys = sorted({key for mapping in object_values.values() for key in mapping})
@@ -1008,7 +1002,7 @@ def _walk_modules(
                 node_name_lower == target_name_lower,
             )
 
-        path_with_current = current_path + [node_name]
+        path_with_current = [*current_path, node_name]
 
         if node_name_lower == target_name_lower:
             if debug:
@@ -1030,7 +1024,7 @@ def _walk_modules(
         node_name = node.header.name
         if debug:
             log.debug("  FrameModule: %r", node_name)
-        path_with_current = current_path + [node_name]
+        path_with_current = [*current_path, node_name]
 
         if debug:
             log.debug(
@@ -1048,7 +1042,7 @@ def _walk_modules(
         if debug:
             log.debug("  ModuleTypeDef: %r", node_name)
             log.debug("  Has %d submodules", len(node.submodules))
-        path_with_current = current_path + [f"TypeDef:{node_name}"]
+        path_with_current = [*current_path, f"TypeDef:{node_name}"]
 
         for i, sub in enumerate(node.submodules):
             if debug:
@@ -1189,7 +1183,7 @@ def _group_modules_by_name(
         current_path: list[str],
     ) -> None:
         if isinstance(node, SingleModule):
-            module_path = current_path + [node.header.name]
+            module_path = [*current_path, node.header.name]
             if _is_from_root_origin(getattr(node, "origin_file", None), root_origin):
                 grouped[_normalize_name(node.header.name)].append((module_path, node))
             for child in node.submodules or []:
@@ -1197,7 +1191,7 @@ def _group_modules_by_name(
             return
 
         if isinstance(node, FrameModule):
-            module_path = current_path + [node.header.name]
+            module_path = [*current_path, node.header.name]
             for child in node.submodules or []:
                 walk(child, module_path)
             return
@@ -1205,7 +1199,7 @@ def _group_modules_by_name(
         if isinstance(node, ModuleTypeDef):
             if not _is_from_root_origin(getattr(node, "origin_file", None), root_origin):
                 return
-            typedef_path = current_path + [f"TypeDef:{node.name}"]
+            typedef_path = [*current_path, f"TypeDef:{node.name}"]
             for child in node.submodules or []:
                 walk(child, typedef_path)
             return
@@ -1502,4 +1496,3 @@ def analyze_version_drift(
         )
 
     return VersionDriftReport(name=base_picture.header.name, issues=issues)
-

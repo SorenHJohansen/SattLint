@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import re
 import threading
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from lsprotocol.types import (
     CompletionItem as LspCompletionItem,
+)
+from lsprotocol.types import (
     CompletionItemKind,
     CompletionList,
     CompletionOptions,
@@ -159,7 +161,7 @@ class LspSettings:
     max_completion_items: int = 100
 
     @classmethod
-    def from_initialization_options(cls, data: Any) -> "LspSettings":
+    def from_initialization_options(cls, data: Any) -> LspSettings:
         if not isinstance(data, dict):
             return cls()
         raw_entry = str(data.get("entryFile", "")).strip()
@@ -244,7 +246,7 @@ def _ensure_document_paths(ls: SattLineLanguageServer) -> dict[Path, str]:
     document_paths = getattr(ls, "document_paths", None)
     if document_paths is None:
         document_paths = {}
-        setattr(ls, "document_paths", document_paths)
+        ls.document_paths = document_paths
     return document_paths
 
 

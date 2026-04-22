@@ -6,49 +6,49 @@ from typing import Any, cast
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattlint import constants as const
+from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.dataflow import analyze_dataflow
 from sattlint.analyzers.initial_values import analyze_initial_values
 from sattlint.analyzers.mms import analyze_mms_interface_variables
-from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
-from sattlint.analyzers.safety_paths import analyze_safety_paths
-from sattlint.analyzers.taint_paths import analyze_taint_paths
-from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.analyzers.modules import analyze_version_drift
+from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
+from sattlint.analyzers.registry import get_default_analyzers
+from sattlint.analyzers.safety_paths import analyze_safety_paths
 from sattlint.analyzers.sfc import analyze_sfc
-from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
-from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.analyzers.shadowing import analyze_shadowing
+from sattlint.analyzers.taint_paths import analyze_taint_paths
+from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.engine import parse_source_file
 from sattlint.models.ast_model import (
     BasePicture,
     DataType,
     Equation,
-    FrameModule,
     FloatLiteral,
+    FrameModule,
     GraphObject,
     IntLiteral,
-    ModuleTypeDef,
-    ModuleTypeInstance,
+    ModuleCode,
     ModuleDef,
     ModuleHeader,
-    ModuleCode,
+    ModuleTypeDef,
+    ModuleTypeInstance,
     ParameterMapping,
     Sequence,
     SFCCodeBlocks,
     SFCParallel,
     SFCStep,
+    SFCTransition,
     Simple_DataType,
     SingleModule,
-    SFCTransition,
     SourceSpan,
     Variable,
 )
+from sattlint.reporting.icf_report import ICFEntry
 from sattlint.reporting.variables_report import (
     ALL_VARIABLE_ANALYSIS_KINDS,
     VariableIssue,
     VariablesReport,
 )
-from sattlint.reporting.icf_report import ICFEntry
 from sattlint.resolution.scope import ScopeContext
 
 

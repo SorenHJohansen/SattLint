@@ -1,21 +1,21 @@
 """SFC analysis for structural dead paths, write races, and state conflicts."""
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence as SequenceABC
+from collections.abc import Iterable, Mapping
+from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass
 from itertools import product
-from typing import Any, TypeAlias, cast
+from typing import Any, cast
 
 from sattline_parser.utils.formatter import format_expr
 
-from .framework import Issue, SimpleReport
 from ..grammar import constants as const
-from .variables import ScopeContext, VariablesAnalyzer
 from ..models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleCode,
     ModuleTypeDef,
+    Sequence,
     SFCAlternative,
     SFCBreak,
     SFCFork,
@@ -24,17 +24,17 @@ from ..models.ast_model import (
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
-    Sequence,
     SingleModule,
     Variable,
 )
 from ..resolution import AccessKind
 from ..resolution.paths import CanonicalPath, decorate_segment
+from .framework import Issue, SimpleReport
+from .variables import ScopeContext, VariablesAnalyzer
 
-
-ParallelKey: TypeAlias = tuple[tuple[str, ...], str, int]
-StepSet: TypeAlias = frozenset[str]
-ExclusiveStepGroup: TypeAlias = tuple[str, ...]
+type ParallelKey = tuple[tuple[str, ...], str, int]
+type StepSet = frozenset[str]
+type ExclusiveStepGroup = tuple[str, ...]
 
 
 @dataclass
@@ -179,8 +179,8 @@ def get_configured_step_contracts(
 
 
 def _sequence_node_label(node: object) -> str:
-    if hasattr(node, "name") and getattr(node, "name", None):
-        return f"{type(node).__name__}:{getattr(node, 'name')}"
+    if hasattr(node, "name") and getattr(node, "name", None):  # type: ignore[reportAttributeAccessIssue]
+        return f"{type(node).__name__}:{node.name}"  # type: ignore[reportAttributeAccessIssue]
     if isinstance(node, SFCFork):
         return f"SFCFork:{node.target}"
     return type(node).__name__
@@ -227,7 +227,7 @@ def collect_sfc_reachability_findings(
                         branch,
                         module_path,
                         sequence_name,
-                        branch_path + (branch_index,),
+                        (*branch_path, branch_index),
                     )
                 continue
 
@@ -247,11 +247,11 @@ def collect_sfc_reachability_findings(
     ) -> None:
         for module in modules or []:
             if isinstance(module, SingleModule):
-                child_path = module_path + [module.header.name]
+                child_path = [*module_path, module.header.name]
                 inspect_modulecode(module.modulecode, child_path)
                 walk_modules(module.submodules, child_path)
             elif isinstance(module, FrameModule):
-                child_path = module_path + [module.header.name]
+                child_path = [*module_path, module.header.name]
                 inspect_modulecode(getattr(module, "modulecode", None), child_path)
                 walk_modules(module.submodules, child_path)
 
@@ -318,7 +318,7 @@ class _SfcAccessCollector(VariablesAnalyzer):
         if kind is not AccessKind.WRITE:
             return
 
-        segments = list(decl_module_path) + [var.name]
+        segments = [*list(decl_module_path), var.name]
         if field_path:
             segments.extend(part for part in field_path.split(".") if part)
         canonical = CanonicalPath(tuple(segments))
@@ -467,9 +467,7 @@ class _SfcAccessCollector(VariablesAnalyzer):
                     self._walk_seq_nodes(branch, env, path)
             elif isinstance(node, SFCParallel):
                 self._walk_parallel_branches(node.branches, context, path)
-            elif isinstance(node, SFCSubsequence):
-                self._walk_seq_nodes(node.body, env, path)
-            elif isinstance(node, SFCTransitionSub):
+            elif isinstance(node, (SFCSubsequence, SFCTransitionSub)):
                 self._walk_seq_nodes(node.body, env, path)
 
 
@@ -820,8 +818,8 @@ class _SfcStepContractCollector(VariablesAnalyzer):
             if not isinstance(child_name, str):
                 continue
 
-            child_path = parent_path + [child_name]
-            child_display_path = parent_context.display_module_path + [child_name]
+            child_path = [*parent_path, child_name]
+            child_display_path = [*parent_context.display_module_path, child_name]
 
             if hasattr(module_obj, "moduleparameters") and hasattr(module_obj, "localvariables"):
                 single_module = cast(Any, module_obj)
@@ -867,7 +865,7 @@ class _SfcStepContractCollector(VariablesAnalyzer):
                 continue
 
             module_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
-            display_path = root_context.display_module_path + [f"TypeDef:{moduletype.name}"]
+            display_path = [*root_context.display_module_path, f"TypeDef:{moduletype.name}"]
             env: dict[str, Variable] = {}
             for variable in moduletype.moduleparameters or []:
                 env[variable.name.casefold()] = variable
@@ -1045,7 +1043,7 @@ def _normalize_compare_guard(left: Any, operator: str, right: Any) -> object:
 
 
 def _normalize_guard_signature(expr: Any) -> object:
-    if hasattr(expr, "data") and getattr(expr, "data") == const.KEY_STATEMENT:
+    if hasattr(expr, "data") and expr.data == const.KEY_STATEMENT:
         children = getattr(expr, "children", [])
         if children:
             return _normalize_guard_signature(children[0])
@@ -1167,7 +1165,7 @@ def _collect_transition_logic_issues(base_picture: BasePicture) -> list[Issue]:
                         branch,
                         module_path,
                         sequence_name,
-                        branch_path + (branch_index,),
+                        (*branch_path, branch_index),
                     )
                 continue
 
@@ -1209,11 +1207,11 @@ def _collect_transition_logic_issues(base_picture: BasePicture) -> list[Issue]:
     ) -> None:
         for module in modules or []:
             if isinstance(module, SingleModule):
-                child_path = module_path + [module.header.name]
+                child_path = [*module_path, module.header.name]
                 inspect_modulecode(module.modulecode, child_path)
                 walk_modules(module.submodules, child_path)
             elif isinstance(module, FrameModule):
-                child_path = module_path + [module.header.name]
+                child_path = [*module_path, module.header.name]
                 inspect_modulecode(getattr(module, "modulecode", None), child_path)
                 walk_modules(module.submodules, child_path)
 
@@ -1326,11 +1324,11 @@ def _collect_illegal_state_combination_issues(
     def walk_modules(modules: SequenceABC[object] | None, module_path: list[str]) -> None:
         for module in modules or []:
             if isinstance(module, SingleModule):
-                child_path = module_path + [module.header.name]
+                child_path = [*module_path, module.header.name]
                 inspect_modulecode(module.modulecode, child_path)
                 walk_modules(module.submodules, child_path)
             elif isinstance(module, FrameModule):
-                child_path = module_path + [module.header.name]
+                child_path = [*module_path, module.header.name]
                 inspect_modulecode(getattr(module, "modulecode", None), child_path)
                 walk_modules(module.submodules, child_path)
 

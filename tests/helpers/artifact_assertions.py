@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
-
+from typing import Any
 
 EXPECTED_FINDINGS_SCHEMA = {
     "kind": "sattlint.findings",

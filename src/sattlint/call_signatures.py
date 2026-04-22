@@ -5,7 +5,6 @@ from typing import Literal
 
 from .analyzers.sattline_builtins import get_function_signature
 
-
 _STATUS_PARAMETER_NAMES = {"status", "debugstatus"}
 
 

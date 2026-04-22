@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from hashlib import sha256
 from functools import lru_cache
+from hashlib import sha256
 from pathlib import Path
 from tempfile import gettempdir
 
@@ -176,7 +176,7 @@ def parse_source_text(
 
     basepic = active_transformer.transform(tree)
     try:
-        setattr(basepic, "parse_tree", tree)
+        basepic.parse_tree = tree
     except Exception:
         if debug is not None:
             debug("BasePicture does not allow dynamic attributes; parse tree not attached")

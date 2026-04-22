@@ -1,8 +1,9 @@
-import subprocess
 import json
+import subprocess
 from unittest.mock import patch
 
 from sattlint.devtools import repo_audit
+
 from .helpers.artifact_assertions import assert_findings_collection, assert_findings_schema
 
 

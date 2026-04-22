@@ -1,20 +1,21 @@
 """Reporting utilities for variable usage analysis."""
 from __future__ import annotations
+
 import logging
 
 from ..models.ast_model import (
     BasePicture,
-    SingleModule,
     FrameModule,
-    ModuleTypeInstance,
     ModuleTypeDef,
+    ModuleTypeInstance,
+    SingleModule,
 )
 from ..resolution.common import (
-    resolve_module_by_strict_path,
-    resolve_moduletype_def_strict,
+    find_all_aliases,
     format_moduletype_label,
     path_startswith_casefold,
-    find_all_aliases,
+    resolve_module_by_strict_path,
+    resolve_moduletype_def_strict,
 )
 from .variables import VariablesAnalyzer
 
@@ -434,7 +435,7 @@ def _find_module_instances(bp: BasePicture, typedef_name: str):
         """Search within a typedef's submodules for our target."""
         def search_subs(modules, current_path):
             for mod in modules or []:
-                mod_path = current_path + [mod.header.name]
+                mod_path = [*current_path, mod.header.name]
 
                 # Check if this matches our target
                 if isinstance(mod, ModuleTypeInstance):
@@ -462,11 +463,10 @@ def _find_module_instances(bp: BasePicture, typedef_name: str):
 
     def search_project_tree(modules, path):
         for mod in modules or []:
-            current_path = path + [mod.header.name]
+            current_path = [*path, mod.header.name]
 
-            if isinstance(mod, ModuleTypeInstance):
-                if mod.moduletype_name.lower() == typedef_name_lower:
-                    direct_instances.append((mod, current_path))
+            if isinstance(mod, ModuleTypeInstance) and mod.moduletype_name.lower() == typedef_name_lower:
+                direct_instances.append((mod, current_path))
 
             if isinstance(mod, (SingleModule, FrameModule)):
                 search_project_tree(mod.submodules or [], current_path)
@@ -481,7 +481,7 @@ def _find_module_instances(bp: BasePicture, typedef_name: str):
 
         def find_parent_instances(modules, path):
             for m in modules or []:
-                p = path + [m.header.name]
+                p = [*path, m.header.name]
                 if isinstance(m, ModuleTypeInstance):
                     if m.moduletype_name.lower() == parent_typedef_name.lower():
                         parent_instances.append(p)

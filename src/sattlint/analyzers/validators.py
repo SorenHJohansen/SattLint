@@ -1,12 +1,14 @@
 """Dedicated validator classes for variable analysis."""
 from __future__ import annotations
-from dataclasses import dataclass
-import re
+
 import logging
-from typing import Any, Mapping, Protocol
+import re
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 from ..grammar import constants as const
-from ..models.ast_model import Variable, ParameterMapping, Simple_DataType
+from ..models.ast_model import ParameterMapping, Simple_DataType, Variable
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution import TypeGraph
 from ..resolution.common import varname_full
@@ -67,17 +69,15 @@ class StringMappingValidator:
 
         # Only check when both are built-in string types
         if self._is_string_simple_type(tgt_var.datatype) and \
-           self._is_string_simple_type(src_var.datatype):
-
-            if tgt_var.datatype is not src_var.datatype:
-                issue = VariableIssue(
-                    kind=IssueKind.STRING_MAPPING_MISMATCH,
-                    module_path=list(path),
-                    variable=tgt_var,
-                    role="parameter mapping type mismatch",
-                    source_variable=src_var,
-                )
-                issues.append(issue)
+           self._is_string_simple_type(src_var.datatype) and tgt_var.datatype is not src_var.datatype:
+            issue = VariableIssue(
+                kind=IssueKind.STRING_MAPPING_MISMATCH,
+                module_path=list(path),
+                variable=tgt_var,
+                role="parameter mapping type mismatch",
+                source_variable=src_var,
+            )
+            issues.append(issue)
 
         return issues
 class MinMaxValidator:

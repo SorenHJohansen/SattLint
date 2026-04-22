@@ -1,9 +1,8 @@
-from types import SimpleNamespace
 import json
+from types import SimpleNamespace
 
 from sattlint.contracts import FindingCollection, FindingRecord
-from sattlint.devtools import corpus
-from sattlint.devtools import pipeline
+from sattlint.devtools import corpus, pipeline
 from sattlint.devtools.artifact_registry import ArtifactDefinition
 from sattlint.devtools.baselines import build_analysis_diff_report
 from sattlint.devtools.finding_exports import build_pipeline_finding_collection
@@ -14,6 +13,7 @@ from sattlint.devtools.pipeline_artifacts import (
     write_pipeline_artifacts,
 )
 from sattlint.reporting.variables_report import IssueKind
+
 from .helpers.artifact_assertions import (
     assert_analysis_diff_report,
     assert_artifact_registry_report,
@@ -385,14 +385,14 @@ def test_build_pipeline_finding_collection_normalizes_tool_payloads(tmp_path):
                 "location": {"row": 4, "column": 8},
             }
         ],
-        mypy_findings=[
+        pyright_findings=[
             {
                 "severity": "error",
                 "message": "Incompatible types in assignment",
                 "file": str(tmp_path / "src" / "typed.py"),
                 "line": 9,
                 "column": 3,
-                "code": "assignment",
+                "errorCode": "assignment",
             }
         ],
         pytest_report={"summary": {"tests": 2, "failures": 1, "errors": 0, "skipped": 0}},

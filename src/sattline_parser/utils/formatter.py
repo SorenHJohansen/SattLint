@@ -1,7 +1,9 @@
 """formatting helpers for AST models."""
 from __future__ import annotations
-from typing import Any, TYPE_CHECKING
+
 import textwrap
+from typing import TYPE_CHECKING, Any
+
 from ..grammar import constants as const
 
 if TYPE_CHECKING:
@@ -38,13 +40,13 @@ def format_list(
         lines = []
         for v in items:
             lines.append(
-                indent + f"Name: {repr(v.name):<{name_w}} , "
-                f"Datatype: {repr(v.datatype):<{dtype_w}}, "
-                f"Global: {str(v.global_var):<{global_w}}, "
-                f"Const: {str(v.const):<{const_w}}, "
-                f"State: {str(v.state):<{state_w}}, "
-                f"Init_value : {repr(v.init_value):<{init_w}}, "
-                f"Description: {repr(v.description):<{desc_w}}"
+                indent + f"Name: {v.name!r:<{name_w}} , "
+                f"Datatype: {v.datatype!r:<{dtype_w}}, "
+                f"Global: {v.global_var!s:<{global_w}}, "
+                f"Const: {v.const!s:<{const_w}}, "
+                f"State: {v.state!s:<{state_w}}, "
+                f"Init_value : {v.init_value!r:<{init_w}}, "
+                f"Description: {v.description!r:<{desc_w}}"
             )
         return "[\n" + "\n".join(lines) + "]"
     # Generic rendering for any other items.
@@ -66,7 +68,7 @@ def format_expr(expr, indent="    "):
     """
 
     # 0) Unwrap a Statement tree anywhere (so nested IFs also render pretty)
-    if hasattr(expr, "data") and getattr(expr, "data") == const.KEY_STATEMENT:
+    if hasattr(expr, "data") and expr.data == const.KEY_STATEMENT:
         children = getattr(expr, "children", [])
         if children:
             return format_expr(children[0], indent)

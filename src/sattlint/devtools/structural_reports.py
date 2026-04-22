@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from sattlint.app import VARIABLE_ANALYSES
 from sattlint.analyzers.registry import (
     get_default_analyzer_catalog,
     get_default_cli_analyzers,
 )
+from sattlint.app import VARIABLE_ANALYSES
 from sattlint.editor_api import discover_workspace_sources, load_workspace_snapshot
 from sattlint.path_sanitizer import sanitize_path_for_report
 from sattlint.reporting.variables_report import IssueKind, VariablesReport
@@ -643,7 +643,7 @@ def _collect_reverse_impact(
     direct_dependents: set[str] = set()
     direct_entry_files: set[str] = set()
     direct_list_values: dict[str, set[str]] = {field: set() for field in list_fields}
-    direct_count_values = {field: 0 for field in count_fields}
+    direct_count_values = dict.fromkeys(count_fields, 0)
 
     for edge in incoming_edges.get(node_id, []):
         direct_dependents.add(edge["source"])
@@ -656,7 +656,7 @@ def _collect_reverse_impact(
     transitive_dependents: set[str] = set()
     transitive_entry_files: set[str] = set()
     transitive_list_values: dict[str, set[str]] = {field: set() for field in list_fields}
-    transitive_count_values = {field: 0 for field in count_fields}
+    transitive_count_values = dict.fromkeys(count_fields, 0)
     pending = [node_id]
     visited_targets: set[str] = set()
 

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77.0.0", "wheel"]
+requires = ["setuptools>=82.0.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -45,14 +45,15 @@ test = [
 
 dev = [
     "sattlint[test,lsp]",
-    "black>=23.0.0",  # Code formatting
-    "ruff>=0.1.0",    # Linting
-    "mypy>=1.0.0",    # Type checking
-    "build>=1.2.2",   # Build frontend for release validation
-    "bandit>=1.8.0",  # Security analysis
-    "twine>=5.1.1",   # Package metadata validation
-    "vulture>=2.11",  # Dead code analysis
-    "types-openpyxl", # Stubs for mypy
+    "ruff>=0.1.0",      # Linting & formatting
+    "pyright>=1.1.380", # Type checking
+    "build>=1.2.2",    # Build frontend for release validation
+    "bandit>=1.8.0",   # Security analysis
+    "twine>=5.1.1",    # Package metadata validation
+    "vulture>=2.11",    # Dead code analysis
+    "types-openpyxl",  # Stubs for mypy
+    "types-regex",     # Stubs for regex
+    "pre-commit>=4.0", # Git hooks
 ]
 
 [tool.pytest.ini_options]
@@ -85,6 +86,35 @@ sattlint-analysis-pipeline = "sattlint.devtools.pipeline:main"
 sattlint-corpus-runner = "sattlint.devtools.corpus:main"
 sattlint-repo-audit = "sattlint.devtools.repo_audit:main"
 sattlint-trace = "sattlint.tracing:cli"
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "W",     # pycodestyle warnings
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugarith
+    "C4",    # flake8-comprehensions
+    "SIM",   # flake8-simplify
+    "RUF",   # ruff-specific rules
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.pyright]
+typeCheckingMode = "basic"
+pythonVersion = "3.13"
+reportMissingTypeStubs = false
+exclude = ["src/sattlint_lsp/"]
+reportWildcardImportFrom = false
+ignoreStdlibInStubSrc = true
 
 [tool.setuptools.packages.find]
 where = ["src"]

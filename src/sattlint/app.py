@@ -4,39 +4,37 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import logging
 import os
-from pathlib import Path
 import re
 import sys
-from typing import Iterator, Sequence, cast
-from . import engine as engine_module
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import cast
+
 from . import config as config_module
-from .analyzers.variables import (
-    IssueKind,
-    filter_variable_report,
-    analyze_variables,
+from . import engine as engine_module
+from .analyzers import variable_usage_reporting as variables_reporting_module
+from .analyzers.comment_code import analyze_comment_code_files
+from .analyzers.framework import AnalysisContext
+from .analyzers.icf import parse_icf_file, validate_icf_entries_against_program
+from .analyzers.mms import analyze_mms_interface_variables
+from .analyzers.modules import (
+    analyze_module_duplicates,
+    compare_modules,
+    debug_module_structure,
+    find_modules_by_name,
 )
+from .analyzers.registry import get_default_cli_analyzers
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variable_usage_reporting import (
     debug_variable_usage,
 )
-from .analyzers.mms import analyze_mms_interface_variables
-from .analyzers.icf import parse_icf_file, validate_icf_entries_against_program
-from .analyzers.framework import AnalysisContext
-from .analyzers.registry import get_default_cli_analyzers
-from .analyzers import variable_usage_reporting as variables_reporting_module
-from .analyzers.comment_code import analyze_comment_code_files
-from .reporting.variables_report import (
-    DEFAULT_VARIABLE_ANALYSIS_KINDS,
-    VariablesReport,
-)
-from .analyzers.modules import (
-    debug_module_structure,
-    analyze_module_duplicates,
-    find_modules_by_name,
-    compare_modules,
+from .analyzers.variables import (
+    IssueKind,
+    analyze_variables,
+    filter_variable_report,
 )
 from .cache import ASTCache, compute_cache_key, get_cache_dir
 from .docgenerator import generate_docx
@@ -47,6 +45,10 @@ from .docgenerator.classification import (
 )
 from .models.ast_model import BasePicture
 from .models.project_graph import ProjectGraph
+from .reporting.variables_report import (
+    DEFAULT_VARIABLE_ANALYSIS_KINDS,
+    VariablesReport,
+)
 
 VARIABLE_ANALYSES = {
     "1": ("All variable analyses (high confidence)", None),
@@ -352,7 +354,7 @@ def _clear_windows_console() -> None:
             ("dwMaximumWindowSize", _Coord),
         ]
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[reportAttributeAccessIssue]
     _configure_windows_console_api(kernel32, _Coord, _ConsoleScreenBufferInfo)
 
     std_output_handle = wintypes.DWORD(-11).value
@@ -363,7 +365,7 @@ def _clear_windows_console() -> None:
 
     buffer_info = _ConsoleScreenBufferInfo()
     if not kernel32.GetConsoleScreenBufferInfo(stdout_handle, ctypes.byref(buffer_info)):
-        raise OSError(ctypes.get_last_error(), "GetConsoleScreenBufferInfo failed")
+        raise OSError(ctypes.get_last_error(), "GetConsoleScreenBufferInfo failed")  # type: ignore[reportAttributeAccessIssue]
 
     cell_count = int(buffer_info.dwSize.X) * int(buffer_info.dwSize.Y)
     written = wintypes.DWORD()
@@ -376,7 +378,7 @@ def _clear_windows_console() -> None:
         origin,
         ctypes.byref(written),
     ):
-        raise OSError(ctypes.get_last_error(), "FillConsoleOutputCharacterW failed")
+        raise OSError(ctypes.get_last_error(), "FillConsoleOutputCharacterW failed")  # type: ignore[reportAttributeAccessIssue]
     if not kernel32.FillConsoleOutputAttribute(
         stdout_handle,
         buffer_info.wAttributes,
@@ -384,9 +386,9 @@ def _clear_windows_console() -> None:
         origin,
         ctypes.byref(written),
     ):
-        raise OSError(ctypes.get_last_error(), "FillConsoleOutputAttribute failed")
+        raise OSError(ctypes.get_last_error(), "FillConsoleOutputAttribute failed")  # type: ignore[reportAttributeAccessIssue]
     if not kernel32.SetConsoleCursorPosition(stdout_handle, origin):
-        raise OSError(ctypes.get_last_error(), "SetConsoleCursorPosition failed")
+        raise OSError(ctypes.get_last_error(), "SetConsoleCursorPosition failed")  # type: ignore[reportAttributeAccessIssue]
 
 
 def clear_screen():
@@ -2086,9 +2088,8 @@ def main(argv: list[str] | None = None) -> int:
             )
             pause()
         else:
-            if not self_check(cfg):
-                if not confirm("Self-check failed. Continue?"):
-                    return 0
+            if not self_check(cfg) and not confirm("Self-check failed. Continue?"):
+                return 0
             if _has_analyzed_targets(cfg):
                 ensure_ast_cache(cfg)
         dirty = False

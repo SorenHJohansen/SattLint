@@ -4,7 +4,6 @@ import pytest
 
 from sattlint import constants as const
 from sattlint.analyzers.variables import VariablesAnalyzer
-from sattlint.reporting.variables_report import IssueKind
 from sattlint.models.ast_model import (
     BasePicture,
     DataType,
@@ -18,6 +17,7 @@ from sattlint.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattlint.reporting.variables_report import IssueKind
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -94,8 +94,8 @@ def test_copyvariable_marks_all_leaf_fields_read_and_written():
     assert src_usage.field_reads is not None
     assert dst_usage.field_writes is not None
 
-    read_keys = {k.casefold() for k in src_usage.field_reads.keys()}
-    write_keys = {k.casefold() for k in dst_usage.field_writes.keys()}
+    read_keys = {k.casefold() for k in src_usage.field_reads}
+    write_keys = {k.casefold() for k in dst_usage.field_writes}
 
     assert {"a", "b"}.issubset(read_keys)
     assert {"a", "b"}.issubset(write_keys)
@@ -168,8 +168,8 @@ def test_copyvarnosort_expands_nested_prefix_fields():
     src_u = analyzer._get_usage(src)
     dst_u = analyzer._get_usage(dst)
 
-    read_keys = {k.casefold() for k in (src_u.field_reads or {}).keys()}
-    write_keys = {k.casefold() for k in (dst_u.field_writes or {}).keys()}
+    read_keys = {k.casefold() for k in (src_u.field_reads or {})}
+    write_keys = {k.casefold() for k in (dst_u.field_writes or {})}
 
     assert "inner.x" in read_keys
     assert "inner.y" in read_keys
@@ -229,7 +229,7 @@ def test_initvariable_writes_all_fields_and_reads_nothing():
 
     # Rec is fully written
     rec_u = analyzer._get_usage(rec)
-    write_keys = {k.casefold() for k in (rec_u.field_writes or {}).keys()}
+    write_keys = {k.casefold() for k in (rec_u.field_writes or {})}
     assert {"a", "b"}.issubset(write_keys)
 
     # InitRec is NOT read (per user semantics)

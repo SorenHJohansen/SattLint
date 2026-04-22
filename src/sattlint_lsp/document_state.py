@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sattlint.core.document import LineIndex
 
 if TYPE_CHECKING:
     from sattlint.core.semantic import SemanticSnapshot
+
     from .local_parser import DocumentParseResult
 
 
@@ -123,9 +124,7 @@ class DocumentState:
             return False
         if self.analysis_includes_comment_validation != include_comment_validation:
             return False
-        if require_snapshot and not self.analysis_has_snapshot:
-            return False
-        return True
+        return not (require_snapshot and not self.analysis_has_snapshot)
 
     def remember_analysis(self, result: DocumentParseResult, *, include_comment_validation: bool) -> None:
         self.syntax_diagnostics = tuple(result.syntax_diagnostics)
