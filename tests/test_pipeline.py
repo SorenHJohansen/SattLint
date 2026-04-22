@@ -431,7 +431,7 @@ def test_build_pipeline_finding_collection_normalizes_tool_payloads(tmp_path):
         finding_count=6,
         rule_ids=(
             "ruff.f401",
-            "mypy.error.assignment",
+            "pyright.assignment",
             "pytest.failures",
             "vulture.dead-code",
             "bandit.b101",
@@ -439,7 +439,7 @@ def test_build_pipeline_finding_collection_normalizes_tool_payloads(tmp_path):
         ),
     )
     assert any(item["rule_id"] == "ruff.f401" and item["location"]["line"] == 4 for item in payload["findings"])
-    assert any(item["rule_id"] == "mypy.error.assignment" and item["severity"] == "high" for item in payload["findings"])
+    assert any(item["rule_id"] == "pyright.assignment" and item["severity"] == "high" for item in payload["findings"])
     assert any(item["rule_id"] == "pytest.failures" for item in payload["findings"])
     assert any(item["rule_id"] == "vulture.dead-code" and item["confidence"] == "high" for item in payload["findings"])
     assert any(item["rule_id"] == "bandit.b101" and item["category"] == "security" for item in payload["findings"])
@@ -875,7 +875,7 @@ def test_run_pipeline_serializes_structural_graph_reports(monkeypatch, tmp_path)
     )
     assert status_report["overall_status"] == "pass"
     assert_findings_schema(status_report)
-    assert status_report["tool_statuses"]["mypy"]["status"] == "pass"
+    assert status_report["tool_statuses"]["pyright"]["status"] == "pass"
     assert status_report["tool_statuses"]["rule_metadata"]["status"] == "pass"
     assert summary["counts"]["dependency_graph_edges"] == 1
     assert summary["counts"]["call_graph_edges"] == 1
@@ -1189,7 +1189,7 @@ def test_run_pipeline_quick_profile_skips_optional_reports(monkeypatch, tmp_path
     artifact_registry = json.loads((tmp_path / "artifact_registry.json").read_text(encoding="utf-8"))
     findings_report = json.loads((tmp_path / "findings.json").read_text(encoding="utf-8"))
 
-    assert [name for name, _command in commands] == ["ruff", "mypy", "pytest"]
+    assert [name for name, _command in commands] == ["ruff", "pyright", "pytest"]
     pytest_command = next(command for name, command in commands if name == "pytest")
     assert "-o" in pytest_command
     assert any(part.startswith("addopts=--strict-markers --strict-config") for part in pytest_command)
