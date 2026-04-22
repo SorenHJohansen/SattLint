@@ -1,0 +1,24 @@
+name: Type Check
+
+on: [push, pull_request]
+
+jobs:
+  pyright:
+    name: Pyright
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv pip install -e ".[dev,lsp]"
+
+      - name: Run Pyright
+        run: uvx pyright src/sattlint src/sattline_parser

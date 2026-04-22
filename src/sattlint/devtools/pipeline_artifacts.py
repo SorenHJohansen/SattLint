@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any
 
 from sattlint.devtools.artifact_registry import ArtifactDefinition
 
@@ -32,7 +33,7 @@ DEFAULT_PIPELINE_ARTIFACT_PRODUCERS: tuple[PipelineArtifactProducer, ...] = (
     PipelineArtifactProducer("artifact_registry", payload_from_context("artifact_registry")),
     PipelineArtifactProducer("environment", payload_from_context("environment")),
     PipelineArtifactProducer("ruff", payload_from_context("ruff")),
-    PipelineArtifactProducer("mypy", payload_from_context("mypy")),
+    PipelineArtifactProducer("pyright", payload_from_context("pyright")),
     PipelineArtifactProducer("pytest", payload_from_context("pytest")),
     PipelineArtifactProducer("vulture", payload_from_context("vulture")),
     PipelineArtifactProducer("bandit", payload_from_context("bandit")),

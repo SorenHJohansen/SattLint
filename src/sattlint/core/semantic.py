@@ -3,21 +3,14 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Any, cast
+
+from sattline_parser import parse_source_text as parser_core_parse_source_text
 
 from ..call_signatures import CallSignatureOccurrence, resolve_call_signature
-from .ast_tools import iter_call_sites, iter_variable_refs
-from .diagnostics import SemanticDiagnostic
-from .safety_paths import (
-    DEFAULT_SAFETY_SIGNAL_KEYWORDS,
-    SafetyPathTrace,
-    SymbolAccess,
-    build_safety_path_traces,
-    build_symbol_accesses,
-)
-from .taint_paths import TaintPathTrace, build_taint_path_traces
 from ..engine import (
     CodeMode,
     SattLineProjectLoader,
@@ -38,11 +31,20 @@ from ..models.ast_model import (
 )
 from ..models.project_graph import ProjectGraph
 from ..reporting.variables_report import VariableIssue
-from ..resolution.access_graph import AccessEvent
 from ..resolution import CanonicalPath, CanonicalSymbolTable, ContextBuilder, SymbolKind, TypeGraph, decorate_segment
-from ..resolution.common import resolve_moduletype_def_strict, resolve_module_by_strict_path
+from ..resolution.access_graph import AccessEvent
+from ..resolution.common import resolve_module_by_strict_path, resolve_moduletype_def_strict
 from ..resolution.scope import ScopeContext
-from sattline_parser import parse_source_text as parser_core_parse_source_text
+from .ast_tools import iter_call_sites, iter_variable_refs
+from .diagnostics import SemanticDiagnostic
+from .safety_paths import (
+    DEFAULT_SAFETY_SIGNAL_KEYWORDS,
+    SafetyPathTrace,
+    SymbolAccess,
+    build_safety_path_traces,
+    build_symbol_accesses,
+)
+from .taint_paths import TaintPathTrace, build_taint_path_traces
 
 _SOURCE_EXTENSIONS = {".s", ".x", ".l", ".z"}
 _PROGRAM_EXTENSIONS = {".s", ".x"}
@@ -423,7 +425,7 @@ class _ReferenceOccurrence:
 
     def definition_key_for_column(self, column: int) -> tuple[str, ...]:
         current_column = self.column
-        for segment_text, definition_key in zip(self.segment_texts, self.definition_keys):
+        for segment_text, definition_key in zip(self.segment_texts, self.definition_keys, strict=False):
             segment_end = current_column + len(segment_text) - 1
             if current_column <= column <= segment_end:
                 return definition_key
@@ -432,7 +434,7 @@ class _ReferenceOccurrence:
 
     def reference_for_definition_key(self, definition_key: tuple[str, ...]) -> SymbolReference | None:
         current_column = self.column
-        for segment_text, candidate_key in zip(self.segment_texts, self.definition_keys):
+        for segment_text, candidate_key in zip(self.segment_texts, self.definition_keys, strict=False):
             if candidate_key == definition_key:
                 return SymbolReference(
                     canonical_path=".".join(definition_key),
@@ -945,7 +947,7 @@ class _SemanticIndexBuilder:
             next_active = set(active_types)
             next_active.add(current_key)
             for variable_field in datatype.var_list or []:
-                path = prefix + (variable_field.name,)
+                path = (*prefix, variable_field.name)
                 results[(root_type_name.casefold(), tuple(_cf(segment) for segment in path))] = (
                     variable_field,
                     datatype.origin_file,
@@ -985,7 +987,7 @@ class _SemanticIndexBuilder:
         origin_library: str | None,
     ) -> None:
         for variable in variables:
-            root_path = CanonicalPath(module_path + (variable.name,))
+            root_path = CanonicalPath((*module_path, variable.name))
             self._record_definition(
                 canonical_path=root_path,
                 kind=kind,
@@ -1070,11 +1072,11 @@ class _SemanticIndexBuilder:
                 continue
 
             resolved_segments = [segment for segment in field_path.split(".") if segment] if field_path else []
-            definition_keys = [CanonicalPath(tuple(declaration_path + [resolved_var.name])).key()]
+            definition_keys = [CanonicalPath((*declaration_path, resolved_var.name)).key()]
             for index in range(1, min(len(reference_segments), len(resolved_segments) + 1)):
                 definition_keys.append(
                     CanonicalPath(
-                        tuple(declaration_path + [resolved_var.name] + resolved_segments[:index])
+                        (*declaration_path, resolved_var.name, *resolved_segments[:index])
                     ).key()
                 )
             if len(definition_keys) < len(reference_segments):
@@ -1154,10 +1156,8 @@ class _SemanticIndexBuilder:
     ) -> None:
         for module in modules:
             if isinstance(module, SingleModule):
-                child_module_path = module_path + (module.header.name,)
-                child_display_path = display_module_path + (
-                    decorate_segment(module.header.name, "SM"),
-                )
+                child_module_path = (*module_path, module.header.name)
+                child_display_path = (*display_module_path, decorate_segment(module.header.name, "SM"))
                 child_context = self.context_builder.build_for_single(
                     module,
                     parent_context,
@@ -1207,10 +1207,8 @@ class _SemanticIndexBuilder:
                 continue
 
             if isinstance(module, FrameModule):
-                child_module_path = module_path + (module.header.name,)
-                child_display_path = display_module_path + (
-                    decorate_segment(module.header.name, "FM"),
-                )
+                child_module_path = (*module_path, module.header.name)
+                child_display_path = (*display_module_path, decorate_segment(module.header.name, "FM"))
                 frame_context = self._repath_context(
                     parent_context,
                     module_path=child_module_path,
@@ -1226,10 +1224,8 @@ class _SemanticIndexBuilder:
                 )
                 continue
 
-            child_module_path = module_path + (module.header.name,)
-            child_display_path = display_module_path + (
-                decorate_segment(module.header.name, "MT", module.moduletype_name),
-            )
+            child_module_path = (*module_path, module.header.name)
+            child_display_path = (*display_module_path, decorate_segment(module.header.name, "MT", module.moduletype_name))
             moduletype = _try_resolve_instance_typedef(
                 self.base_picture,
                 module,
@@ -1363,9 +1359,7 @@ def _child_module_items(
     moduletype_index: dict[str, list[ModuleTypeDef]],
     unavailable_libraries: set[str],
 ) -> list[tuple[str, str]]:
-    if isinstance(node, BasePicture):
-        children = list(node.submodules or [])
-    elif isinstance(node, (SingleModule, FrameModule, ModuleTypeDef)):
+    if isinstance(node, (BasePicture, SingleModule, FrameModule, ModuleTypeDef)):
         children = list(node.submodules or [])
     elif isinstance(node, ModuleTypeInstance):
         typedef = _try_resolve_instance_typedef(
@@ -1697,9 +1691,9 @@ def load_workspace_snapshot(
 
 
 __all__ = [
+    "DEFAULT_SAFETY_SIGNAL_KEYWORDS",
     "CallSignatureOccurrence",
     "CompletionItem",
-    "DEFAULT_SAFETY_SIGNAL_KEYWORDS",
     "SafetyPathTrace",
     "SemanticDiagnostic",
     "SemanticSnapshot",

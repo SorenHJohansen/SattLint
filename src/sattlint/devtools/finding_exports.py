@@ -118,6 +118,44 @@ def _build_mypy_findings(
     return records
 
 
+def _build_pyright_findings(
+    findings: list[dict[str, Any]],
+    *,
+    repo_root: Path,
+) -> list[FindingRecord]:
+    records: list[FindingRecord] = []
+    for entry in findings:
+        severity = str(entry.get("severity") or "error").lower()
+        rule = entry.get("rule") or ""
+        code = str(entry.get("errorCode") or rule or "unknown")
+        range_data = entry.get("range", {})
+        start = range_data.get("start", {})
+        records.append(
+            FindingRecord(
+                id=f"pyright-{severity}-{code}",
+                rule_id=f"pyright.{code}" if code else "pyright",
+                category="typing",
+                severity=_normalized_severity(severity, default="medium"),
+                confidence="high",
+                message=str(entry.get("message") or "Pyright reported a typing issue."),
+                source="pyright",
+                analyzer="pyright",
+                artifact="findings",
+                location=FindingLocation(
+                    path=_sanitize_path(entry.get("file"), repo_root=repo_root),
+                    line=start.get("line"),
+                    column=start.get("character"),
+                ),
+                data={
+                    "code": code,
+                    "severity": severity,
+                    "rule": rule,
+                },
+            )
+        )
+    return records
+
+
 def _build_vulture_findings(
     findings: list[dict[str, Any]],
     *,
@@ -231,7 +269,7 @@ def build_pipeline_finding_collection(
     *,
     repo_root: Path,
     ruff_findings: list[dict[str, Any]],
-    mypy_findings: list[dict[str, Any]],
+    pyright_findings: list[dict[str, Any]],
     pytest_report: dict[str, Any],
     vulture_findings: list[dict[str, Any]],
     bandit_findings: list[dict[str, Any]],
@@ -239,7 +277,7 @@ def build_pipeline_finding_collection(
 ) -> FindingCollection:
     records = [
         *_build_ruff_findings(ruff_findings, repo_root=repo_root),
-        *_build_mypy_findings(mypy_findings, repo_root=repo_root),
+        *_build_pyright_findings(pyright_findings, repo_root=repo_root),
         *_build_pytest_findings(pytest_report),
         *_build_vulture_findings(vulture_findings, repo_root=repo_root),
         *_build_bandit_findings(bandit_findings, repo_root=repo_root),

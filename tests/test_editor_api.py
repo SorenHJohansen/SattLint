@@ -3,10 +3,25 @@ from typing import Any, cast
 
 import pytest
 
-from sattlint.editor_api import build_source_snapshot_from_basepicture, discover_workspace_sources, load_workspace_snapshot
-from sattlint.models.ast_model import BasePicture, DataType, Equation, ModuleCode, ModuleHeader, ModuleTypeDef, ModuleTypeInstance, ParameterMapping, Simple_DataType, SourceSpan, Variable
-
 from sattlint import constants as const
+from sattlint.editor_api import (
+    build_source_snapshot_from_basepicture,
+    discover_workspace_sources,
+    load_workspace_snapshot,
+)
+from sattlint.models.ast_model import (
+    BasePicture,
+    DataType,
+    Equation,
+    ModuleCode,
+    ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    Simple_DataType,
+    SourceSpan,
+    Variable,
+)
 
 
 def _write_text(path: Path, content: str) -> None:

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Union
+from typing import Any
 
 from ..models.ast_model import (
     FrameModule,
@@ -47,11 +47,11 @@ def _iter_variables_for_datatype_field_analysis(
         variables.append((bp_path.copy(), variable, "localvariable"))
 
     def _collect_from_module(
-        mod: Union[SingleModule, FrameModule, ModuleTypeInstance],
+        mod: SingleModule | FrameModule | ModuleTypeInstance,
         path: list[str],
     ) -> None:
         if isinstance(mod, SingleModule):
-            my_path = path + [mod.header.name]
+            my_path = [*path, mod.header.name]
             for variable in mod.moduleparameters or []:
                 variables.append((my_path.copy(), variable, "moduleparameter"))
             for variable in mod.localvariables or []:
@@ -59,7 +59,7 @@ def _iter_variables_for_datatype_field_analysis(
             for child in mod.submodules or []:
                 _collect_from_module(child, my_path)
         elif isinstance(mod, FrameModule):
-            my_path = path + [mod.header.name]
+            my_path = [*path, mod.header.name]
             for child in mod.submodules or []:
                 _collect_from_module(child, my_path)
 
@@ -173,7 +173,7 @@ def _add_hidden_global_coupling_issues(self) -> None:
     added_issue_count = 0
 
     for variable in self.bp.localvariables or []:
-        variable_prefix = root_prefix + (variable.name.casefold(),)
+        variable_prefix = (*root_prefix, variable.name.casefold())
         access_by_module: dict[tuple[str, ...], set[AccessKind]] = defaultdict(set)
         display_paths: dict[tuple[str, ...], tuple[str, ...]] = {}
 
@@ -228,7 +228,7 @@ def _add_high_fan_in_out_issues(self) -> None:
     added_issue_count = 0
 
     for variable in self.bp.localvariables or []:
-        variable_prefix = root_prefix + (variable.name.casefold(),)
+        variable_prefix = (*root_prefix, variable.name.casefold())
         reader_modules: set[tuple[str, ...]] = set()
         writer_modules: set[tuple[str, ...]] = set()
         display_paths: dict[tuple[str, ...], tuple[str, ...]] = {}
@@ -297,7 +297,7 @@ def _add_global_scope_minimization_issues(self) -> None:
     added_issue_count = 0
 
     for variable in self.bp.localvariables or []:
-        variable_prefix = root_prefix + (variable.name.casefold(),)
+        variable_prefix = (*root_prefix, variable.name.casefold())
         access_module_keys: set[tuple[str, ...]] = set()
         display_paths: dict[tuple[str, ...], tuple[str, ...]] = {}
 
@@ -391,11 +391,11 @@ def _add_magic_number_issue(
 
 def _collect_issues_from_module(
     self,
-    mod: Union[SingleModule, FrameModule, ModuleTypeInstance],
+    mod: SingleModule | FrameModule | ModuleTypeInstance,
     path: list[str],
 ) -> None:
     if isinstance(mod, SingleModule):
-        my_path = path + [mod.header.name]
+        my_path = [*path, mod.header.name]
         for variable in mod.moduleparameters or []:
             usage = self._get_usage(variable)
             if usage.is_unused:
@@ -474,7 +474,7 @@ def _collect_issues_from_module(
             self._collect_issues_from_module(child, my_path)
 
     elif isinstance(mod, FrameModule):
-        my_path = path + [mod.header.name]
+        my_path = [*path, mod.header.name]
         for child in mod.submodules or []:
             self._collect_issues_from_module(child, my_path)
 

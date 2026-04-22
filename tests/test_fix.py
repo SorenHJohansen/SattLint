@@ -1,7 +1,7 @@
 """Ad-hoc validation for the field validation fix."""
 
 from sattlint.analyzers.variables import VariablesAnalyzer
-from sattlint.models.ast_model import BasePicture, DataType, ModuleHeader, Variable, Simple_DataType
+from sattlint.models.ast_model import BasePicture, DataType, ModuleHeader, Simple_DataType, Variable
 
 
 def _bp_with_datatypes() -> BasePicture:

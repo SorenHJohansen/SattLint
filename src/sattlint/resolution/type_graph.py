@@ -1,8 +1,8 @@
 """Type graph for record/datatype field resolution."""
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from ..models.ast_model import BasePicture, Simple_DataType, Variable
 
@@ -35,7 +35,7 @@ class TypeGraph:
         self._records_by_key = records_by_key
 
     @classmethod
-    def from_datatypes(cls, datatypes: Iterable) -> "TypeGraph":
+    def from_datatypes(cls, datatypes: Iterable) -> TypeGraph:
         records: dict[str, RecordDef] = {}
         for dt in datatypes or []:
             fields: dict[str, FieldDef] = {}
@@ -49,7 +49,7 @@ class TypeGraph:
         return cls(records)
 
     @classmethod
-    def from_basepicture(cls, bp: BasePicture) -> "TypeGraph":
+    def from_basepicture(cls, bp: BasePicture) -> TypeGraph:
         return cls.from_datatypes(bp.datatype_defs or [])
 
     def has_record(self, type_name: str) -> bool:
@@ -98,7 +98,7 @@ class TypeGraph:
 
             visiting.add(tkey)
             for field in rec.fields_by_key.values():
-                new_prefix = prefix + (field.name,)
+                new_prefix = (*prefix, field.name)
                 if isinstance(field.datatype, Simple_DataType):
                     yield new_prefix
                 else:

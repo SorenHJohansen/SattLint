@@ -8,7 +8,6 @@ from typing import Any
 
 from sattlint.contracts import FindingCollection, FindingRecord
 
-
 ANALYSIS_DIFF_SCHEMA_KIND = "sattlint.analysis_diff"
 ANALYSIS_DIFF_SCHEMA_VERSION = 1
 

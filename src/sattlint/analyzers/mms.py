@@ -1,19 +1,20 @@
 from __future__ import annotations
+
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-import re
 from typing import Any
 
 from ..grammar import constants as const
 from ..models.ast_model import (
     BasePicture,
-    SingleModule,
     FrameModule,
-    ModuleTypeInstance,
     ModuleTypeDef,
+    ModuleTypeInstance,
     ParameterMapping,
     Simple_DataType,
+    SingleModule,
     Variable,
 )
 from ..reporting.icf_report import ICFEntry
@@ -23,18 +24,17 @@ from ..reporting.mms_report import (
     WriteFields,
 )
 from ..resolution.common import (
-    find_var_in_scope,
     find_all_aliases,
     find_all_aliases_upstream,
-    varname_full,
-    varname_base,
+    find_var_in_scope,
     resolve_moduletype_def_strict,
+    varname_base,
+    varname_full,
 )
 from ..resolution.type_graph import TypeGraph
 from .framework import Issue
 from .icf import parse_icf_file, validate_icf_entries_against_program
 from .variables import VariablesAnalyzer
-
 
 _INTERFACE_TARGETS: dict[str, dict[str, str]] = {
     "mmswritevar": {
@@ -644,7 +644,7 @@ def analyze_mms_interface_variables(
             if isinstance(mod, ModuleTypeInstance):
                 mt_name = mod.moduletype_name or ""
                 mt_key = mt_name.casefold()
-                next_path = path + [mod.header.name]
+                next_path = [*path, mod.header.name]
                 current_map = _build_param_map(
                     mod.parametermappings,
                     param_map,
@@ -713,7 +713,7 @@ def analyze_mms_interface_variables(
             elif isinstance(mod, (SingleModule, FrameModule)):
                 _walk_typedef(
                     mod.submodules,
-                    path + [mod.header.name],
+                    [*path, mod.header.name],
                     param_map,
                     visited_types,
                 )
@@ -724,14 +724,11 @@ def analyze_mms_interface_variables(
         param_map: dict[str, str],
     ) -> None:
         for mod in modules or []:
-            if isinstance(mod, SingleModule):
-                next_path = path + [mod.header.name]
-                _walk_modules(mod.submodules, next_path, param_map)
-            elif isinstance(mod, FrameModule):
-                next_path = path + [mod.header.name]
+            if isinstance(mod, (SingleModule, FrameModule)):
+                next_path = [*path, mod.header.name]
                 _walk_modules(mod.submodules, next_path, param_map)
             elif isinstance(mod, ModuleTypeInstance):
-                next_path = path + [mod.header.name]
+                next_path = [*path, mod.header.name]
                 mt_name = mod.moduletype_name or ""
                 mt_key = mt_name.casefold()
                 mt_def: ModuleTypeDef | None = None

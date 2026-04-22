@@ -37,12 +37,12 @@ class CanonicalSymbolTable:
         kind: SymbolKind,
         type_graph: TypeGraph,
     ) -> None:
-        root = CanonicalPath(tuple(module_path + [var.name]))
+        root = CanonicalPath((*module_path, var.name))
         self.add(SymbolDef(kind=kind, canonical_path=root, datatype=var.datatype))
 
         # Expand nested record fields to represent every addressable leaf field as a fully-qualified path.
         for field_path in type_graph.iter_leaf_field_paths(var.datatype):
             if not field_path:
                 continue
-            cp = CanonicalPath(tuple(module_path + [var.name] + list(field_path)))
+            cp = CanonicalPath((*module_path, var.name, *list(field_path)))
             self.add(SymbolDef(kind=kind, canonical_path=cp, datatype=None))

@@ -35,7 +35,7 @@ class LineIndex:
     line_starts: tuple[int, ...]
 
     @classmethod
-    def from_text(cls, text: str) -> "LineIndex":
+    def from_text(cls, text: str) -> LineIndex:
         return cls(text=text, line_starts=_build_line_starts(text))
 
     def line_start_offset(self, zero_based_line: int) -> int:
@@ -49,10 +49,7 @@ class LineIndex:
         if zero_based_line < 0:
             return ""
         start = self.line_start_offset(zero_based_line)
-        if zero_based_line + 1 < len(self.line_starts):
-            end = self.line_starts[zero_based_line + 1]
-        else:
-            end = len(self.text)
+        end = self.line_starts[zero_based_line + 1] if zero_based_line + 1 < len(self.line_starts) else len(self.text)
         line_text = self.text[start:end]
         if line_text.endswith("\r\n"):
             return line_text[:-2]

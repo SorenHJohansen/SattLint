@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from sattlint.reporting.icf_report import ICFEntry
 from sattlint.analyzers.icf import validate_icf_entries_against_program
 from sattlint.models.ast_model import BasePicture, DataType, ModuleHeader, Simple_DataType, SingleModule, Variable
+from sattlint.reporting.icf_report import ICFEntry
 
 
 def _header(name: str) -> ModuleHeader:

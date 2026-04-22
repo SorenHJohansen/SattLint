@@ -1,14 +1,13 @@
 from __future__ import annotations
+
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import TypeAlias
 
 from ..analyzers.framework import Issue, format_report_header
 
-
-WriteLocation: TypeAlias = tuple[tuple[str, ...], int]
-WriteField: TypeAlias = tuple[str, tuple[WriteLocation, ...]]
-WriteFields: TypeAlias = tuple[WriteField, ...]
+type WriteLocation = tuple[tuple[str, ...], int]
+type WriteField = tuple[str, tuple[WriteLocation, ...]]
+type WriteFields = tuple[WriteField, ...]
 
 _ISSUE_LABELS = {
     "mms.duplicate_tag": "Duplicate external tags",
@@ -98,7 +97,7 @@ class MMSInterfaceReport:
             lines.append("")
 
         ranked_vars = []
-        for key, var_hits in hits_by_var.items():
+        for _key, var_hits in hits_by_var.items():
             total, field_totals, _dedup = _merge_write_counts(var_hits)
             display_name = var_hits[0].source_variable
             ranked_vars.append((total, display_name, field_totals))

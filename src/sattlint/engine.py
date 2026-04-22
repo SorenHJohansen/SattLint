@@ -1,30 +1,33 @@
 """Parsing and project-loading engine for SattLine sources."""
+import logging
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
+
 from lark import Lark
 from lark.exceptions import UnexpectedInput, VisitError
+
 from sattline_parser import create_parser as parser_core_create_parser
-from sattline_parser.api import describe_parse_error
 from sattline_parser import parse_source_file as parser_core_parse_source_file
 from sattline_parser import parse_source_text as parser_core_parse_source_text
-from .transformer.sl_transformer import SLTransformer
+from sattline_parser.api import describe_parse_error
+
+from .cache import FileASTCache, FileLookupCache, get_cache_dir
 from .grammar.parser_decode import is_compressed, preprocess_sl_text
 from .models.ast_model import (
     BasePicture,
     DataType,
     ModuleTypeDef,
 )
-from .utils.text_processing import find_disallowed_comments
-from collections.abc import Callable, Iterable
-from enum import Enum
 from .models.project_graph import ProjectFailure, ProjectGraph
-from .cache import FileLookupCache, FileASTCache, get_cache_dir
+from .transformer.sl_transformer import SLTransformer
+from .utils.text_processing import find_disallowed_comments
 from .validation import (
-    StructuralValidationError,
     RawSourceValidationError,
+    StructuralValidationError,
     validate_transformed_basepicture,
 )
-import logging
 
 # Create a module-level logger consistent with the CLI output.
 logging.basicConfig(
@@ -832,7 +835,7 @@ def _get_dump_dir() -> Path:
 def dump_parse_tree(project: tuple[BasePicture, ProjectGraph]) -> None:
     """Save the parse tree from the root BasePicture to a file."""
     from datetime import datetime
-    project_bp, graph = project
+    project_bp, _graph = project
 
     if project_bp.parse_tree is None:
         print("❌ No parse tree available for the root program.")
@@ -852,7 +855,7 @@ def dump_parse_tree(project: tuple[BasePicture, ProjectGraph]) -> None:
 def dump_ast(project: tuple[BasePicture, ProjectGraph]) -> None:
     """Save the AST (BasePicture) structure to a file."""
     from datetime import datetime
-    project_bp, graph = project
+    project_bp, _graph = project
 
     dump_dir = _get_dump_dir()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

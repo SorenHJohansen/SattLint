@@ -26,7 +26,7 @@ class CanonicalPath:
     def key(self) -> tuple[str, ...]:
         return tuple(_cf(s) for s in self.segments)
 
-    def join(self, *more: str) -> "CanonicalPath":
+    def join(self, *more: str) -> CanonicalPath:
         if not more:
             return self
         return CanonicalPath(self.segments + tuple(more))
