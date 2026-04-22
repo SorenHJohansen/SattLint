@@ -702,7 +702,7 @@ def _require_analyzed_targets(cfg: dict) -> list[str]:
     targets = _get_analyzed_targets(cfg)
     if not targets:
         raise RuntimeError(
-            "No analyzed programs/libraries configured. " "Add entries to 'analyzed_programs_and_libraries' first."
+            "No analyzed programs/libraries configured. Add entries to 'analyzed_programs_and_libraries' first."
         )
     return targets
 
@@ -714,7 +714,7 @@ def _has_analyzed_targets(cfg: dict) -> bool:
 def _require_targets_for_menu_action(cfg: dict, action: str) -> bool:
     if _has_analyzed_targets(cfg):
         return True
-    print("\nNo analyzed programs/libraries configured. " f"Add entries in Setup before {action}.")
+    print(f"\nNo analyzed programs/libraries configured. Add entries in Setup before {action}.")
     pause()
     return False
 

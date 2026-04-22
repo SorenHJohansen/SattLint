@@ -636,7 +636,7 @@ class VariablesAnalyzer:
                     kind=IssueKind.REQUIRED_PARAMETER_CONNECTION,
                     module_path=list(parent_path),
                     variable=parameter,
-                    role=("required parameter connection missing for " f"{parameter.name!r}"),
+                    role=(f"required parameter connection missing for {parameter.name!r}"),
                 )
             )
 
@@ -681,7 +681,7 @@ class VariablesAnalyzer:
                     kind=IssueKind.REQUIRED_PARAMETER_CONNECTION,
                     module_path=list(parent_path),
                     variable=required_variable,
-                    role=("required parameter connection missing for " f"{required_variable.name!r}"),
+                    role=(f"required parameter connection missing for {required_variable.name!r}"),
                 )
             )
         for pm in inst.parametermappings or []:

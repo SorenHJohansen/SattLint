@@ -534,9 +534,7 @@ class SattLineProjectLoader(DebugMixin):
         if self.contextual_lookup is not None:
             resolved = self.contextual_lookup(name, extensions, requester_dir, "code")
             if resolved is not None:
-                self.dbg(
-                    f"Using contextual code file: {resolved} " f"(requested by {requester_dir or self.program_dir})"
-                )
+                self.dbg(f"Using contextual code file: {resolved} (requested by {requester_dir or self.program_dir})")
                 return resolved
 
         cached = self._find_in_cached_base(
@@ -592,9 +590,7 @@ class SattLineProjectLoader(DebugMixin):
         if self.contextual_lookup is not None:
             resolved = self.contextual_lookup(name, extensions, requester_dir, "deps")
             if resolved is not None:
-                self.dbg(
-                    f"Using contextual deps file: {resolved} " f"(requested by {requester_dir or self.program_dir})"
-                )
+                self.dbg(f"Using contextual deps file: {resolved} (requested by {requester_dir or self.program_dir})")
                 return resolved
 
         cached = self._find_in_cached_base(

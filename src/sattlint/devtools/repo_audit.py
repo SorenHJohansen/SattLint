@@ -1241,9 +1241,7 @@ def _print_cli_summary(status_report: dict[str, Any]) -> None:
     findings_schema = status_report.get("findings_schema")
     if findings_schema:
         print(
-            "Findings schema: "
-            f"{findings_schema.get('kind', 'unknown')} "
-            f"v{findings_schema.get('schema_version', '?')}"
+            f"Findings schema: {findings_schema.get('kind', 'unknown')} v{findings_schema.get('schema_version', '?')}"
         )
     print(
         "Findings: "

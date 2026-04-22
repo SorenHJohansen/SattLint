@@ -1291,9 +1291,7 @@ def _collect_illegal_state_combination_issues(
                 Issue(
                     kind="sfc_illegal_state_combination",
                     message=(
-                        "Sequence "
-                        f"{sequence.name!r} can activate mutually exclusive step combinations: "
-                        f"{preview}"
+                        f"Sequence {sequence.name!r} can activate mutually exclusive step combinations: {preview}"
                     ),
                     module_path=module_path.copy(),
                     data={
@@ -1376,7 +1374,7 @@ def analyze_sfc(
         issues.append(
             Issue(
                 kind="sfc_parallel_write_race",
-                message=("Parallel branches in sequence " f"{seq_name!r} write to the same variable(s): {preview}"),
+                message=(f"Parallel branches in sequence {seq_name!r} write to the same variable(s): {preview}"),
                 module_path=meta.module_path if meta else None,
                 data={
                     "sequence": seq_name,
