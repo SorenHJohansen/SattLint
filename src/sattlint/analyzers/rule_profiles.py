@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
-from .framework import Issue
 from .sattline_semantics import SemanticRule, get_rule_for_framework_issue_kind
 
 
@@ -260,7 +259,7 @@ def _resolve_issue_rule(issue_kind: str) -> SemanticRule | None:
     return _EXTRA_RULES_BY_KIND.get(issue_kind) or get_rule_for_framework_issue_kind(issue_kind)
 
 
-def materialize_issue_metadata(issue: Issue) -> Issue:
+def materialize_issue_metadata(issue: Any) -> Any:
     rule = _resolve_issue_rule(issue.kind)
     if rule is None:
         return issue
@@ -274,7 +273,7 @@ def materialize_issue_metadata(issue: Issue) -> Issue:
     )
 
 
-def apply_rule_profile_to_issue(issue: Issue, profile: RuleProfile) -> Issue | None:
+def apply_rule_profile_to_issue(issue: Any, profile: RuleProfile) -> Any | None:
     materialized = materialize_issue_metadata(issue)
     if materialized.rule_id in set(profile.disabled_rules):
         return None

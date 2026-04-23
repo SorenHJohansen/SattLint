@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -54,7 +55,9 @@ class SimpleReport:
         lines.append(f"Issues: {len(self.issues)}")
         lines.append("")
         lines.append("Findings:")
-        from .rule_profiles import materialize_issue_metadata
+        materialize_issue_metadata = importlib.import_module(
+            "sattlint.analyzers.rule_profiles"
+        ).materialize_issue_metadata
 
         for issue in sorted(
             [materialize_issue_metadata(issue) for issue in self.issues],

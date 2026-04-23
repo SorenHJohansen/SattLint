@@ -3,8 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from ..analyzers.framework import format_report_header
 from ..models.ast_model import Simple_DataType, SourceSpan, Variable
+
+
+def _format_report_header(report_type: str, target: str, status: str | None = None) -> list[str]:
+    lines = [f"Report: {report_type}", f"Target: {target}"]
+    if status:
+        lines.append(f"Status: {status}")
+    return lines
 
 
 class IssueKind(Enum):
@@ -638,12 +644,12 @@ class VariablesReport:
     def summary(self) -> str:
         summary_kinds = self._summary_kinds()
         if not self.issues and not summary_kinds:
-            lines = format_report_header("Variable issues", self.basepicture_name, status="ok")
+            lines = _format_report_header("Variable issues", self.basepicture_name, status="ok")
             lines.append("No issues found.")
             return "\n".join(lines)
 
         status = "issues" if self.issues else "ok"
-        lines = format_report_header("Variable issues", self.basepicture_name, status=status)
+        lines = _format_report_header("Variable issues", self.basepicture_name, status=status)
         lines.append(f"Issues: {len(self.issues)}")
         if summary_kinds:
             lines.append("Sections:")
