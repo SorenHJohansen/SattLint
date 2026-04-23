@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from typing import Any
-
 from .sattline_semantics import SemanticRule, get_rule_for_framework_issue_kind
 
 

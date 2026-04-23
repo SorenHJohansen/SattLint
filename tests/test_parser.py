@@ -1443,6 +1443,9 @@ ENDDEF (*BasePicture*);
 
 
 def test_load_source_text_preserves_state_markers_in_compressed_libraries():
+    if not _repo_path("Libs").exists():
+        pytest.skip("Compressed library files not available")
+
     cases = [
         ("SupportLib.x", "GetRemoteFile", "ExecuteLocal"),
         ("NSupportLib.x", "zRestoreStringList", "ExecuteState"),
@@ -1480,6 +1483,9 @@ def test_load_source_text_preserves_state_markers_in_compressed_libraries():
 
 
 def test_load_source_text_preserves_duration_value_in_compressed_libraries():
+    if not _repo_path("Libs").exists():
+        pytest.skip("Compressed library files not available")
+
     journal_path = _repo_path("Libs", "HA", "ABBLib", "JournalLib.x")
     journal_src = _load_source_text(journal_path)
     assert 'Duration_Value "1h"' in journal_src
@@ -1524,6 +1530,9 @@ def test_load_source_text_preserves_duration_value_in_compressed_libraries():
 
 
 def test_validate_single_file_syntax_accepts_reported_compressed_library_files():
+    if not _repo_path("Libs").exists():
+        pytest.skip("Compressed library files not available")
+
     for file_name in [
         "SupportLib.x",
         "NSupportLib.x",

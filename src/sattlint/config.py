@@ -382,7 +382,7 @@ def self_check(cfg: dict) -> bool:
             else:
                 for index, group in enumerate(step_groups, start=1):
                     if not isinstance(group, list) or not all(isinstance(item, str) for item in group):
-                        print("❌ analysis.sfc.mutually_exclusive_steps" f"[{index}] must be a list of strings")
+                        print(f"❌ analysis.sfc.mutually_exclusive_steps[{index}] must be a list of strings")
                         ok = False
 
             step_contracts = sfc.get("step_contracts", {})
@@ -396,13 +396,13 @@ def self_check(cfg: dict) -> bool:
                         ok = False
                         continue
                     if not isinstance(contract, dict):
-                        print("❌ analysis.sfc.step_contracts." f"{step_name} must be a table/object")
+                        print(f"❌ analysis.sfc.step_contracts.{step_name} must be a table/object")
                         ok = False
                         continue
                     for key in ("required_enter_writes", "required_exit_writes"):
                         values = contract.get(key, [])
                         if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
-                            print("❌ analysis.sfc.step_contracts." f"{step_name}.{key} must be a list of strings")
+                            print(f"❌ analysis.sfc.step_contracts.{step_name}.{key} must be a list of strings")
                             ok = False
 
         naming = analysis.get("naming", {})
@@ -435,7 +435,7 @@ def self_check(cfg: dict) -> bool:
             print(f"? graphics_rules_path invalid: {graphics_rules_path} ({exc})")
             ok = False
         else:
-            print(f"? graphics_rules_path: {graphics_rules_path} " f"({len(graphics_rules.get('rules', []))} rules)")
+            print(f"? graphics_rules_path: {graphics_rules_path} ({len(graphics_rules.get('rules', []))} rules)")
     else:
         print(f"? graphics_rules_path not created yet: {graphics_rules_path}")
 

@@ -112,8 +112,7 @@ class LoopOutputRefactorAnalyzer:
                 Issue(
                     kind="sorting.loop_output_refactor",
                     message=(
-                        f"Dependency loop across sorted blocks in {'.'.join(module_path)!r}: "
-                        f"{', '.join(block_labels)}."
+                        f"Dependency loop across sorted blocks in {'.'.join(module_path)!r}: {', '.join(block_labels)}."
                     ),
                     module_path=module_path.copy(),
                     data={

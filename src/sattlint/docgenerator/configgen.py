@@ -679,7 +679,7 @@ class ExcelGenerator:
 
         # Create table
         if current_row > header_row + 1:
-            table_ref = f"A{header_row}:I{current_row-1}"
+            table_ref = f"A{header_row}:I{current_row - 1}"
             WorksheetHelper.create_table(ws, "StationConfiguration", table_ref)
 
         # Set column widths
@@ -857,7 +857,7 @@ class ExcelGenerator:
             current_row += 1
 
         if current_row > header_row + 1:
-            table_ref = f"A{header_row}:F{current_row-1}"
+            table_ref = f"A{header_row}:F{current_row - 1}"
             WorksheetHelper.create_table(ws, "ConfigurationSummary", table_ref)
 
         # Set column widths
@@ -936,7 +936,7 @@ class ExcelGenerator:
                 current_row += 1
 
         if current_row > header_row + 1:
-            table_ref = f"A{header_row}:I{current_row-1}"
+            table_ref = f"A{header_row}:I{current_row - 1}"
             WorksheetHelper.create_table(ws, "ConfigurationDetails", table_ref)
 
         # Set column widths
@@ -985,7 +985,7 @@ class ExcelGenerator:
         # Create 10 selection dropdowns
         for i in range(10):
             row = 7 + i
-            ws[f"A{row}"] = f"Component {i+1}:"
+            ws[f"A{row}"] = f"Component {i + 1}:"
             ws[f"A{row}"].font = Font(bold=True, size=10)
             ws[f"A{row}"].alignment = Alignment(horizontal="right")
 

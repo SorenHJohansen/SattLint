@@ -1,5 +1,8 @@
 name: Type Check
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 on: [push, pull_request]
 
 jobs:
@@ -18,7 +21,9 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv pip install -e ".[dev,lsp]"
+        run: |
+          uv pip install --system -e ".[dev,lsp]"
+          uv pip install --system pyright
 
       - name: Run Pyright
-        run: uvx pyright src/sattlint src/sattline_parser
+        run: python -m pyright src/sattlint src/sattline_parser
