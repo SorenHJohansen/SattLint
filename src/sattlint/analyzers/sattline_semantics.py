@@ -12,7 +12,7 @@ from ..tracing import (
 )
 from .alarm_integrity import analyze_alarm_integrity
 from .dataflow import analyze_dataflow
-from .framework import Issue, format_report_header
+from .issue import Issue, format_report_header
 from .safety_paths import analyze_safety_paths
 from .sfc import analyze_sfc
 from .shadowing import analyze_shadowing

@@ -234,7 +234,7 @@ class Equation:
     code: list[Any] = field(default_factory=list)
 
     def __str__(self) -> str:
-        return f"Equation(name={self.name}, pos={self.position},\n" f"    code={format_list(self.code)})"
+        return f"Equation(name={self.name}, pos={self.position},\n    code={format_list(self.code)})"
 
 
 @dataclass
