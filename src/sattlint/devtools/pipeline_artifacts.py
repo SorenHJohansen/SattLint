@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import os
+import tempfile
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -115,11 +119,43 @@ def write_pipeline_artifacts(
     return tuple(written_artifacts)
 
 
+def write_json_artifact(path: Path, payload: dict[str, Any]) -> None:
+    """Write *payload* as indented JSON to *path*, creating parent directories as needed."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = json.dumps(payload, indent=2, sort_keys=True)
+    last_error: PermissionError | None = None
+    for _ in range(5):
+        temp_path: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                newline="",
+                dir=path.parent,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                handle.write(content)
+                temp_path = handle.name
+            os.replace(temp_path, path)
+            return
+        except PermissionError as exc:
+            last_error = exc
+            if temp_path is not None:
+                Path(temp_path).unlink(missing_ok=True)
+            time.sleep(0.1)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"Failed to write {path}")
+
+
 __all__ = [
     "DEFAULT_PIPELINE_ARTIFACT_PRODUCERS",
     "PipelineArtifactContext",
     "PipelineArtifactProducer",
     "payload_from_context",
     "validate_pipeline_artifact_producers",
+    "write_json_artifact",
     "write_pipeline_artifacts",
 ]

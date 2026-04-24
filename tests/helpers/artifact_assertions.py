@@ -19,6 +19,7 @@ EXPECTED_CORPUS_RESULTS_SCHEMA = {
     "kind": "sattlint.corpus_results",
     "schema_version": 1,
 }
+_DEFAULT_FINDINGS_KEY = "findings_schema"
 
 
 def load_golden_payload(path: str | Path) -> Any:
@@ -29,7 +30,7 @@ def assert_matches_golden(payload: Any, golden_path: str | Path) -> None:
     assert payload == load_golden_payload(golden_path)
 
 
-def assert_findings_schema(payload: Mapping[str, Any], *, key: str = "findings_schema") -> None:
+def assert_findings_schema(payload: Mapping[str, Any], *, key: str = _DEFAULT_FINDINGS_KEY) -> None:
     assert payload.get(key) == EXPECTED_FINDINGS_SCHEMA
 
 

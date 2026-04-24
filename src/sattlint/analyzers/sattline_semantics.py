@@ -43,6 +43,7 @@ class SemanticRule:
 @dataclass(frozen=True)
 class SemanticRuleContract:
     acceptance_tests: tuple[str, ...]
+    corpus_cases: tuple[str, ...]
     mutation_applicability: str
     suppression_modes: tuple[str, ...]
     incremental_safe: bool
@@ -100,6 +101,7 @@ def _attach_rule_contract(
     return replace(
         rule,
         acceptance_tests=contract.acceptance_tests,
+        corpus_cases=contract.corpus_cases,
         mutation_applicability=contract.mutation_applicability,
         suppression_modes=contract.suppression_modes,
         incremental_safe=contract.incremental_safe,
@@ -149,12 +151,14 @@ _SPEC_SOURCE_ACCEPTANCE_TESTS = (
     "tests/test_spec_compliance.py",
     "tests/test_sattline_semantics.py",
 )
+_WORKSPACE_CORPUS_CASES = ("workspace-common-quality-issues",)
 
 _VARIABLE_RULE_CONTRACT = SemanticRuleContract(
     acceptance_tests=_merge_acceptance_tests(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
         _VARIABLE_SOURCE_ACCEPTANCE_TESTS,
     ),
+    corpus_cases=_WORKSPACE_CORPUS_CASES,
     mutation_applicability="required",
     suppression_modes=("baseline",),
     incremental_safe=True,
@@ -164,6 +168,7 @@ _SHADOWING_RULE_CONTRACT = SemanticRuleContract(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
         ("tests/test_analyzers.py", "tests/test_app.py"),
     ),
+    corpus_cases=_WORKSPACE_CORPUS_CASES,
     mutation_applicability="required",
     suppression_modes=("baseline",),
     incremental_safe=False,
@@ -173,6 +178,7 @@ _SFC_RULE_CONTRACT = SemanticRuleContract(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
         _SFC_SOURCE_ACCEPTANCE_TESTS,
     ),
+    corpus_cases=_WORKSPACE_CORPUS_CASES,
     mutation_applicability="required",
     suppression_modes=("baseline",),
     incremental_safe=False,
@@ -182,6 +188,7 @@ _ALARM_RULE_CONTRACT = SemanticRuleContract(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
         _ALARM_SOURCE_ACCEPTANCE_TESTS,
     ),
+    corpus_cases=_WORKSPACE_CORPUS_CASES,
     mutation_applicability="required",
     suppression_modes=("baseline",),
     incremental_safe=False,
@@ -191,6 +198,7 @@ _INITIAL_VALUES_RULE_CONTRACT = SemanticRuleContract(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
         _INITIAL_VALUES_SOURCE_ACCEPTANCE_TESTS,
     ),
+    corpus_cases=_WORKSPACE_CORPUS_CASES,
     mutation_applicability="required",
     suppression_modes=("baseline",),
     incremental_safe=False,
@@ -200,6 +208,7 @@ _SAFETY_RULE_CONTRACT = SemanticRuleContract(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
         _SAFETY_SOURCE_ACCEPTANCE_TESTS,
     ),
+    corpus_cases=_WORKSPACE_CORPUS_CASES,
     mutation_applicability="required",
     suppression_modes=("baseline",),
     incremental_safe=False,
@@ -209,12 +218,14 @@ _TAINT_RULE_CONTRACT = SemanticRuleContract(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
         _TAINT_SOURCE_ACCEPTANCE_TESTS,
     ),
+    corpus_cases=_WORKSPACE_CORPUS_CASES,
     mutation_applicability="required",
     suppression_modes=("baseline",),
     incremental_safe=False,
 )
 _TRACE_RULE_CONTRACT = SemanticRuleContract(
     acceptance_tests=_SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+    corpus_cases=(),
     mutation_applicability="not_applicable",
     suppression_modes=("baseline",),
     incremental_safe=False,
@@ -224,6 +235,7 @@ _DATAFLOW_RULE_CONTRACT = SemanticRuleContract(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
         _DATAFLOW_SOURCE_ACCEPTANCE_TESTS,
     ),
+    corpus_cases=_WORKSPACE_CORPUS_CASES,
     mutation_applicability="required",
     suppression_modes=("baseline",),
     incremental_safe=False,
@@ -233,6 +245,7 @@ _UNSAFE_DEFAULTS_RULE_CONTRACT = SemanticRuleContract(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
         _UNSAFE_DEFAULTS_SOURCE_ACCEPTANCE_TESTS,
     ),
+    corpus_cases=_WORKSPACE_CORPUS_CASES,
     mutation_applicability="required",
     suppression_modes=("baseline",),
     incremental_safe=False,
@@ -242,6 +255,7 @@ _SPEC_RULE_CONTRACT = SemanticRuleContract(
         _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
         _SPEC_SOURCE_ACCEPTANCE_TESTS,
     ),
+    corpus_cases=_WORKSPACE_CORPUS_CASES,
     mutation_applicability="optional",
     suppression_modes=("baseline",),
     incremental_safe=False,

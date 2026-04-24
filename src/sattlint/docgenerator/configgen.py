@@ -21,6 +21,8 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.worksheet.worksheet import Worksheet
 
+from sattline_parser.api import read_text_with_fallback
+
 log = logging.getLogger("SattLint")
 
 
@@ -226,15 +228,6 @@ class WorkstationMapper:
     def get_physical_location(self, station_id: str) -> str:
         """Get physical location for a workstation."""
         return self.physical_locations.get(station_id, "Unknown Location")
-
-
-def read_text_with_fallback(file_path: Path) -> str:
-    """Read text file with utf-8, falling back to cp1252 for Danish characters."""
-    try:
-        return file_path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        log.debug(f"UTF-8 decode failed for {file_path.name}, trying cp1252")
-        return file_path.read_text(encoding="cp1252")
 
 
 class SattLineConfigExtractor:

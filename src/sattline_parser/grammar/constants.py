@@ -223,3 +223,5 @@ GRAMMAR_REGEX_NAME = (
     r"(?![\p{L}\p{Nl}\p{M}\p{Nd}_'])/"
 )
 GRAMMAR_REGEX_STRING_CRLF = r"/\"([^\"\n]|\"\")*\n/"
+
+__all__ = [name for name in dir() if not name.startswith("_")]  # pyright: ignore[reportUnsupportedDunderAll]

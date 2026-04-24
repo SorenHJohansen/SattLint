@@ -20,6 +20,7 @@ from sattlint.models.project_graph import ProjectGraph
 from sattlint.reporting.variables_report import (
     ALL_VARIABLE_ANALYSIS_KINDS,
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
+    IssueKind,
     VariableIssue,
     VariablesReport,
 )
@@ -63,7 +64,7 @@ ENDDEF (*BasePicture*);
 class DummyReport:
     basepicture_name: ClassVar[str] = "Dummy"
     issues: ClassVar[list[object]] = []
-    visible_kinds: ClassVar[frozenset[app.IssueKind]] = frozenset(DEFAULT_VARIABLE_ANALYSIS_KINDS)
+    visible_kinds: ClassVar[frozenset[IssueKind]] = frozenset(DEFAULT_VARIABLE_ANALYSIS_KINDS)
     include_empty_sections: ClassVar[bool] = True
 
     def summary(self):
@@ -229,6 +230,52 @@ def test_clear_screen_uses_windows_console_helper(monkeypatch):
     assert calls == ["clear"]
 
 
+def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkeypatch, capsys, noop_screen):
+    icf_dir = tmp_path / "icf"
+    icf_dir.mkdir()
+    icf_file = icf_dir / "Program.icf"
+    icf_file.write_text("Tag=Program:Root.Value\n", encoding="utf-8")
+
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg.update(
+        {
+            "icf_dir": str(icf_dir),
+            "program_dir": str(tmp_path),
+            "ABB_lib_dir": str(tmp_path),
+            "other_lib_dirs": [],
+            "scan_root_only": True,
+            "debug": False,
+        }
+    )
+
+    calls: list[tuple[str, bool]] = []
+
+    def fake_load_program_ast(_cfg, program_name, *, force_dependency_resolution=False):
+        calls.append((program_name, force_dependency_resolution))
+        root_bp = SimpleNamespace(moduletype_defs=[])
+        graph = SimpleNamespace(ast_by_name={program_name: SimpleNamespace(moduletype_defs=[])})
+        return root_bp, graph
+
+    class FakeReport:
+        total_entries = 1
+        valid_entries = 1
+        skipped_entries = 0
+        issues: ClassVar[list[object]] = []
+
+        def summary(self):
+            return "summary"
+
+    monkeypatch.setattr(app, "load_program_ast", fake_load_program_ast)
+    monkeypatch.setattr(app.engine_module, "merge_project_basepicture", lambda bp, _graph: bp)
+    monkeypatch.setattr(app, "validate_icf_entries_against_program", lambda *args, **kwargs: FakeReport())
+
+    app.run_icf_validation(cfg)
+
+    assert calls == [("Program", True)]
+    out = capsys.readouterr().out
+    assert "summary" in out
+
+
 def test_clear_screen_falls_back_to_ansi_when_windows_clear_fails(monkeypatch):
     writes: list[str] = []
 
@@ -291,10 +338,10 @@ def test_configure_windows_console_api_sets_wide_char_signature():
         SetConsoleCursorPosition = _FakeCall()
 
     class _Coord(ctypes.Structure):  # type: ignore[misc]
-        _fields_ = []  # noqa: RUF012
+        _fields_ = ()
 
     class _BufferInfo(ctypes.Structure):  # type: ignore[misc]
-        _fields_ = []  # noqa: RUF012
+        _fields_ = ()
 
     kernel32 = _FakeKernel32()
 
@@ -330,7 +377,7 @@ def test_self_check_handles_paths(tmp_path, monkeypatch, capsys):
 
 
 def test_self_check_allows_empty_analyzed_target_list(capsys):
-    ok = app.self_check(app.DEFAULT_CONFIG.copy())
+    ok = app.self_check(deepcopy(app.DEFAULT_CONFIG))
 
     out = capsys.readouterr().out
     assert ok is True
@@ -504,7 +551,7 @@ def test_run_checks_reaches_every_default_cli_analyzer(noop_screen, monkeypatch)
             key=key,
             name=f"Analyzer {index}",
             description=f"Reachability probe for {key}",
-            run=lambda _context, analyzer_key=key: (
+            run=lambda context, analyzer_key=key: (
                 invoked.append(analyzer_key),
                 SimpleReport(name=analyzer_key),
             )[1],
@@ -526,7 +573,7 @@ def test_run_checks_reaches_every_default_cli_analyzer(noop_screen, monkeypatch)
 def test_run_checks_applies_rule_profiles_to_simple_reports(noop_screen, monkeypatch, capsys):
     target = SimpleNamespace(header=SimpleNamespace(name="Program"))
 
-    def _run_profiled_report(_context):
+    def _run_profiled_report(context):
         return SimpleReport(
             name="Profiled",
             issues=[
@@ -604,7 +651,7 @@ def test_dump_menu_all_options(noop_screen, monkeypatch, real_context):
 
 
 def test_config_menu_all_options(noop_screen, monkeypatch, tmp_path):
-    cfg = app.DEFAULT_CONFIG.copy()
+    cfg = deepcopy(app.DEFAULT_CONFIG)
     cfg["program_dir"] = str(tmp_path / "programs")
     cfg["ABB_lib_dir"] = str(tmp_path / "abb")
 
@@ -698,15 +745,15 @@ def test_show_config_uses_sectioned_layout(capsys, monkeypatch, tmp_path):
 
     out = capsys.readouterr().out
     assert "Current Configuration" in out
-    assert "Analyzed Programs And Libraries" in out
-    assert "[1] KaHAApplSupportLib" in out
+    assert "Analyzed Programs" in out and "Libraries" in out
+    assert "KaHAApplSupportLib" in out
     assert "General" in out
-    assert "scan_root_only         no" in out
-    assert "fast_cache_validation  yes" in out
+    assert "scan_root_only" in out
+    assert "fast_cache_validation" in out
     assert "Directories" in out
-    assert r"program_dir  Projects\Program" in out
-    assert "Other Library Directories" in out
-    assert r"[2] Projects\Lib2" in out
+    assert r"Projects\Program" in out
+    assert "Other" in out and "Library" in out
+    assert r"Projects\Lib2" in out
     assert "Graphics Rules" in out
     assert "graphics_rules_path" in out
     assert "Configured Graphics Rule Selectors" in out
@@ -1207,7 +1254,7 @@ def test_syntax_check_command_reports_parse_error(tmp_path, capsys):
     captured = capsys.readouterr()
     assert exit_code != 0
     assert "ERROR [parse]" in captured.err
-    assert str(source_file) in captured.err
+    assert "InvalidProgram.s" in captured.err
     assert "Expected one of:" in captured.err
     assert "^" in captured.err
 

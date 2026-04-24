@@ -106,7 +106,7 @@ class DocumentState:
                 content_changes,
                 line_index=self.line_index,
             )
-        except Exception:
+        except (ValueError, IndexError, TypeError):  # LSP content-change apply
             updated = fallback_text if fallback_text is not None else self.text
             changed_ranges = ()
 

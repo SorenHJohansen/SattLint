@@ -33,9 +33,10 @@ _IGNORED_AST_FIELDS = {
     "span",
 }
 _MISSING_AST_VALUE = object()
+_DEFAULT_DEBUG_MAX_DEPTH = 10
 
 
-def debug_module_structure(base_picture: BasePicture, max_depth: int = 10) -> None:
+def debug_module_structure(base_picture: BasePicture, max_depth: int = _DEFAULT_DEBUG_MAX_DEPTH) -> None:
     """Detailed debugging: show EVERYTHING about the structure."""
     log.debug("=== DEBUGGING MODULE STRUCTURE ===")
     log.debug("BasePicture type: %s", type(base_picture))

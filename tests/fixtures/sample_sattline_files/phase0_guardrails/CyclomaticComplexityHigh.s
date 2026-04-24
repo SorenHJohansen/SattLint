@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-22-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-22-12:00:00.000, name: CyclomaticComplexityHigh"
+"Program date: 2026-04-22-12:00:00.000, name: CyclomaticHigh"
 
 BasePicture Invocation
    ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0

@@ -31,8 +31,7 @@ pip install -e .[dev]
 Configure your editor with:
 - Python language server (pyright or pylance)
 - Ruff for linting and formatting
-- Black for formatting
-- MyPy for type checking
+- Pyright for type checking
 
 Consult your editor's documentation for the appropriate LSP and formatter plugins.
 
@@ -52,9 +51,7 @@ python -m venv .venv
 # Install in development mode
 pip install -e .[dev]
 
-# Install VS Code extensions (prompted automatically)
-# - Python
-# - Pylance (automatically installed with Python extension)
+# Recommended VS Code extensions are listed in .vscode/extensions.json
 ```
 
 To run the local SattLine VS Code extension client:
@@ -74,11 +71,11 @@ npm run package:vsix
 
 #### 2. VS Code Configuration
 The repository includes `.vscode/settings.json` which configures:
-- Python interpreter detection
+- Cross-platform Python interpreter discovery via `.venv`
 - Ruff for linting
-- Black for formatting
-- MyPy for type checking
+- Pyright for type checking
 - Pytest for testing
+- Search visibility for machine-readable audit reports under `artifacts/audit/`
 
 ## Development Workflow
 
@@ -87,16 +84,22 @@ All code quality tools are configured in `pyproject.toml`:
 
 ```bash
 # Format code
-black src/ tests/
+ruff format src/ tests/
 
 # Lint code
 ruff check src/ tests/
 
 # Type check
-mypy src/
+pyright src tests
 
 # Run tests
 pytest tests/ -v
+
+# Run tests with the enforced coverage baseline
+pytest -q --tb=short
+
+# Audit installed Python dependencies
+pip-audit
 
 # Run the repository audit
 sattlint-repo-audit --profile full --output-dir artifacts/audit
@@ -115,16 +118,19 @@ The canonical audit entry point is `sattlint-repo-audit`.
 pytest
 
 # Run with coverage
-pytest --cov=src/sattlint
+pytest --cov=src
 
 # Run specific test file
-pytest tests/test_analyzer.py
+pytest tests/test_cli.py
 ```
+
+The repository currently enforces a ratcheted minimum coverage threshold in `pyproject.toml`.
+Raise that threshold incrementally as test surface expands instead of jumping directly to the long-term target.
 
 ### Pre-commit Hooks (Optional)
 ```bash
-# Install pre-commit framework
-pip install pre-commit
+# Install hooks from the repo's configured toolchain
+pip install -e .[dev]
 pre-commit install
 
 # This will run formatting, linting, and type checks before each commit
@@ -157,4 +163,5 @@ Note: `src/sattlint/docgenerator/configgen.py` generates Excel configuration wor
 ### Cross-Platform Compatibility
 - Use `pathlib.Path` for file operations
 - Avoid hard-coded paths in new code
+- Keep `.vscode/settings.json` platform-neutral by pointing at the virtual environment root instead of OS-specific executables
 - Test changes on both platforms if possible

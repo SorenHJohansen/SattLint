@@ -9,6 +9,7 @@ from ..reporting.comment_code_report import CommentCodeHit, CommentCodeReport
 from ..utils.text_processing import find_comments_with_code
 
 _SOURCE_SUFFIXES = {".s", ".x", ".l", ".z"}
+_COMMENT_PREVIEW_MAX_LEN = 120
 
 
 def _read_source_text(path: Path) -> str:
@@ -18,7 +19,7 @@ def _read_source_text(path: Path) -> str:
     return text
 
 
-def _comment_preview(text: str, max_len: int = 120) -> str:
+def _comment_preview(text: str, max_len: int = _COMMENT_PREVIEW_MAX_LEN) -> str:
     for line in text.splitlines():
         stripped = line.strip()
         if stripped:

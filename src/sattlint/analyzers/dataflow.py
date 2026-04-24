@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, TypeGuard, cast
 
+from lark import Tree
+
 from sattline_parser.utils.formatter import format_expr
 
 from ..grammar import constants as const
@@ -1233,8 +1235,8 @@ class DataflowAnalyzer:
                     collected.append(resolved)
                 return
 
-            if hasattr(node, "data") and node.data == const.KEY_STATEMENT:  # type: ignore[reportAttributeAccessIssue]
-                for child in getattr(node, "children", []):  # type: ignore[reportAttributeAccessIssue]
+            if isinstance(node, Tree) and node.data == const.KEY_STATEMENT:
+                for child in node.children:
                     visit(child)
                 return
 
@@ -1598,8 +1600,9 @@ class DataflowAnalyzer:
         return format_expr(expr).replace("\n", " ").strip()
 
     def _sequence_node_label(self, node: object) -> str:
-        if hasattr(node, "name") and getattr(node, "name", None):  # type: ignore[reportAttributeAccessIssue]
-            return f"{type(node).__name__}:{node.name}"  # type: ignore[reportAttributeAccessIssue]
+        node_name = getattr(node, "name", None)
+        if node_name:
+            return f"{type(node).__name__}:{node_name}"
         if isinstance(node, SFCFork):
             return f"SFCFork:{node.target}"
         return type(node).__name__

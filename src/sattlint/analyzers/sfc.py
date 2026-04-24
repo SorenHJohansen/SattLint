@@ -172,11 +172,86 @@ def get_configured_step_contracts(
 
 
 def _sequence_node_label(node: object) -> str:
-    if hasattr(node, "name") and getattr(node, "name", None):  # type: ignore[reportAttributeAccessIssue]
-        return f"{type(node).__name__}:{node.name}"  # type: ignore[reportAttributeAccessIssue]
+    node_name = getattr(node, "name", None)
+    if node_name:
+        return f"{type(node).__name__}:{node_name}"
     if isinstance(node, SFCFork):
         return f"SFCFork:{node.target}"
     return type(node).__name__
+
+
+def _inspect_sfc_linear_nodes(
+    findings: list[SfcReachabilityFinding],
+    nodes: SequenceABC[object] | None,
+    module_path: list[str],
+    sequence_name: str,
+    branch_path: tuple[int, ...] = (),
+) -> None:
+    terminated_by: dict[str, Any] | None = None
+    for index, node in enumerate(nodes or []):
+        if terminated_by is not None:
+            findings.append(
+                SfcReachabilityFinding(
+                    module_path=tuple(module_path),
+                    sequence_name=sequence_name,
+                    branch_path=branch_path,
+                    node_index=index,
+                    node_label=_sequence_node_label(node),
+                    node_type=type(node).__name__,
+                    terminated_by=dict(terminated_by),
+                )
+            )
+            continue
+
+        if isinstance(node, SFCBreak):
+            terminated_by = {"kind": "SFCBreak"}
+            continue
+
+        if isinstance(node, SFCFork):
+            terminated_by = {"kind": "SFCFork", "target": node.target}
+            continue
+
+        if isinstance(node, SFCAlternative | SFCParallel):
+            for branch_index, branch in enumerate(node.branches or []):
+                _inspect_sfc_linear_nodes(
+                    findings,
+                    branch,
+                    module_path,
+                    sequence_name,
+                    (*branch_path, branch_index),
+                )
+            continue
+
+        if isinstance(node, SFCSubsequence | SFCTransitionSub):
+            _inspect_sfc_linear_nodes(findings, node.body, module_path, sequence_name, branch_path)
+
+
+def _inspect_sfc_modulecode(
+    findings: list[SfcReachabilityFinding],
+    modulecode: ModuleCode | None,
+    module_path: list[str],
+) -> None:
+    if modulecode is None:
+        return
+    for sequence in modulecode.sequences or []:
+        if isinstance(sequence, Sequence):
+            _inspect_sfc_linear_nodes(findings, sequence.code, module_path, sequence.name)
+
+
+def _walk_sfc_modules(
+    findings: list[SfcReachabilityFinding],
+    modules: SequenceABC[object] | None,
+    module_path: list[str],
+) -> None:
+    for module in modules or []:
+        if isinstance(module, SingleModule):
+            child_path = [*module_path, module.header.name]
+            _inspect_sfc_modulecode(findings, module.modulecode, child_path)
+            _walk_sfc_modules(findings, module.submodules, child_path)
+        elif isinstance(module, FrameModule):
+            child_path = [*module_path, module.header.name]
+            _inspect_sfc_modulecode(findings, getattr(module, "modulecode", None), child_path)
+            _walk_sfc_modules(findings, module.submodules, child_path)
 
 
 def collect_sfc_reachability_findings(
@@ -184,76 +259,13 @@ def collect_sfc_reachability_findings(
 ) -> list[SfcReachabilityFinding]:
     findings: list[SfcReachabilityFinding] = []
 
-    def inspect_linear_nodes(
-        nodes: SequenceABC[object] | None,
-        module_path: list[str],
-        sequence_name: str,
-        branch_path: tuple[int, ...] = (),
-    ) -> None:
-        terminated_by: dict[str, Any] | None = None
-        for index, node in enumerate(nodes or []):
-            if terminated_by is not None:
-                findings.append(
-                    SfcReachabilityFinding(
-                        module_path=tuple(module_path),
-                        sequence_name=sequence_name,
-                        branch_path=branch_path,
-                        node_index=index,
-                        node_label=_sequence_node_label(node),
-                        node_type=type(node).__name__,
-                        terminated_by=dict(terminated_by),
-                    )
-                )
-                continue
-
-            if isinstance(node, SFCBreak):
-                terminated_by = {"kind": "SFCBreak"}
-                continue
-
-            if isinstance(node, SFCFork):
-                terminated_by = {"kind": "SFCFork", "target": node.target}
-                continue
-
-            if isinstance(node, SFCAlternative | SFCParallel):
-                for branch_index, branch in enumerate(node.branches or []):
-                    inspect_linear_nodes(
-                        branch,
-                        module_path,
-                        sequence_name,
-                        (*branch_path, branch_index),
-                    )
-                continue
-
-            if isinstance(node, SFCSubsequence | SFCTransitionSub):
-                inspect_linear_nodes(node.body, module_path, sequence_name, branch_path)
-
-    def inspect_modulecode(modulecode: ModuleCode | None, module_path: list[str]) -> None:
-        if modulecode is None:
-            return
-        for sequence in modulecode.sequences or []:
-            if isinstance(sequence, Sequence):
-                inspect_linear_nodes(sequence.code, module_path, sequence.name)
-
-    def walk_modules(
-        modules: SequenceABC[object] | None,
-        module_path: list[str],
-    ) -> None:
-        for module in modules or []:
-            if isinstance(module, SingleModule):
-                child_path = [*module_path, module.header.name]
-                inspect_modulecode(module.modulecode, child_path)
-                walk_modules(module.submodules, child_path)
-            elif isinstance(module, FrameModule):
-                child_path = [*module_path, module.header.name]
-                inspect_modulecode(getattr(module, "modulecode", None), child_path)
-                walk_modules(module.submodules, child_path)
-
     root_path = [base_picture.header.name]
-    inspect_modulecode(base_picture.modulecode, root_path)
-    walk_modules(base_picture.submodules, root_path)
+    _inspect_sfc_modulecode(findings, base_picture.modulecode, root_path)
+    _walk_sfc_modules(findings, base_picture.submodules, root_path)
     for moduletype in base_picture.moduletype_defs or []:
         if isinstance(moduletype, ModuleTypeDef):
-            inspect_modulecode(
+            _inspect_sfc_modulecode(
+                findings,
                 moduletype.modulecode,
                 [base_picture.header.name, f"TypeDef:{moduletype.name}"],
             )

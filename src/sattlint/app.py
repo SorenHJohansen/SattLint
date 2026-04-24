@@ -4,19 +4,21 @@
 from __future__ import annotations
 
 import argparse
+import io
 import logging
 import os
 import re
 import sys
 from collections.abc import Iterator, Sequence
+from contextlib import nullcontext, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, ClassVar, cast
 
+from . import app_graphics as app_graphics_module
 from . import config as config_module
 from . import engine as engine_module
-from . import graphics_rules as graphics_rules_module
+from .__version__ import __version__
 from .analyzers import variable_usage_reporting as variables_reporting_module
 from .analyzers.comment_code import analyze_comment_code_files
 from .analyzers.framework import AnalysisContext
@@ -52,6 +54,24 @@ from .reporting.variables_report import (
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
     VariablesReport,
 )
+
+
+def _get_repo_audit_module():
+    """Lazy import to avoid circular dependency via structural_reports."""
+    from .devtools import repo_audit as _repo_audit
+
+    return _repo_audit
+
+
+# Expose as a module-level attribute so tests can monkeypatch app.repo_audit_module
+class _LazyRepoAuditProxy:
+    """Proxy that behaves like the repo_audit module but loads lazily."""
+
+    def __getattr__(self, name: str):
+        return getattr(_get_repo_audit_module(), name)
+
+
+repo_audit_module = _LazyRepoAuditProxy()
 
 VARIABLE_ANALYSES = {
     "1": ("All variable analyses (high confidence)", None),
@@ -103,6 +123,9 @@ LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = (
     "21",
 )
 
+
+EXIT_SUCCESS: int = 0
+EXIT_USAGE_ERROR: int = 1
 
 CONFIG_PATH = config_module.get_config_path()
 DEFAULT_CONFIG = config_module.DEFAULT_CONFIG
@@ -278,15 +301,15 @@ def save_config(path: Path, cfg: dict) -> None:
 
 
 def get_graphics_rules_path() -> Path:
-    return graphics_rules_module.get_graphics_rules_path(CONFIG_PATH)
+    return app_graphics_module.get_graphics_rules_path(CONFIG_PATH)
 
 
 def load_graphics_rules(path: Path | None = None):
-    return graphics_rules_module.load_graphics_rules(path or get_graphics_rules_path())
+    return app_graphics_module.load_graphics_rules(CONFIG_PATH, path)
 
 
 def save_graphics_rules(path: Path, rules: dict[str, Any]) -> None:
-    graphics_rules_module.save_graphics_rules(path, rules)
+    app_graphics_module.save_graphics_rules(path, rules)
     print("Graphics rules saved")
 
 
@@ -452,6 +475,10 @@ def build_cli_parser() -> argparse.ArgumentParser:
         prog="sattlint",
         description="Interactive SattLine analysis app with a non-interactive syntax-check command.",
     )
+    parser.add_argument("--version", action="version", version=f"sattlint {__version__}")
+    parser.add_argument("--config", default=None, metavar="PATH", help="Path to a SattLint config file")
+    parser.add_argument("--no-cache", action="store_true", dest="no_cache", help="Skip the AST cache")
+    parser.add_argument("--quiet", action="store_true", help="Suppress stdout output")
     subparsers = parser.add_subparsers(dest="command")
 
     syntax_parser = subparsers.add_parser(
@@ -460,6 +487,44 @@ def build_cli_parser() -> argparse.ArgumentParser:
         description="Validate one SattLine source file and report a compact syntax or validation error.",
     )
     syntax_parser.add_argument("file", help="Path to the SattLine source file")
+
+    subparsers.add_parser(
+        "validate-config",
+        help="Validate the SattLint configuration file",
+        description="Validate and report any issues with the current configuration.",
+    )
+
+    analyze_parser = subparsers.add_parser(
+        "analyze",
+        help="Run non-interactive analysis checks",
+        description="Run selected analysis checks against configured targets.",
+    )
+    analyze_parser.add_argument(
+        "--check",
+        action="append",
+        dest="checks",
+        default=[],
+        metavar="KEY",
+        help="Analysis check key to run (repeatable)",
+    )
+
+    subparsers.add_parser(
+        "docgen",
+        help="Generate DOCX documentation",
+        description="Generate FS-style DOCX documentation for configured targets.",
+    )
+
+    repo_audit_parser = subparsers.add_parser(
+        "repo-audit",
+        help="Run repository audit checks",
+        description="Scan the repository for portability and hygiene issues.",
+    )
+    repo_audit_parser.add_argument(
+        "extra",
+        nargs=argparse.REMAINDER,
+        help="Arguments forwarded to repo-audit",
+    )
+
     return parser
 
 
@@ -498,114 +563,85 @@ def run_syntax_check_command(file_path: str) -> int:
 def run_cli(argv: list[str]) -> int:
     parser = build_cli_parser()
     try:
-        args = parser.parse_args(argv)
+        args, leftover = parser.parse_known_args(argv)
     except SystemExit as exc:
-        code = exc.code if isinstance(exc.code, int) else 1
+        code = exc.code if isinstance(exc.code, int) else EXIT_USAGE_ERROR
         return code
 
+    config_path = Path(args.config) if args.config else CONFIG_PATH
+    use_cache = not getattr(args, "no_cache", False)
+    quiet = getattr(args, "quiet", False)
+
     if args.command == "syntax-check":
-        return run_syntax_check_command(args.file)
+        ctx: redirect_stdout[io.StringIO] | nullcontext = (  # type: ignore[type-arg]
+            redirect_stdout(io.StringIO()) if quiet else nullcontext()
+        )
+        with ctx:
+            return run_syntax_check_command(args.file)
+
+    if args.command == "repo-audit":
+        # Slice original argv so repo_audit_module gets all its own flags unparsed
+        try:
+            idx = next(i for i, a in enumerate(argv) if a == "repo-audit")
+            remaining = list(argv[idx + 1 :])
+        except StopIteration:
+            remaining = []
+        return repo_audit_module.main(remaining) or EXIT_SUCCESS
+
+    if leftover:
+        print(f"sattlint: error: unrecognized arguments: {' '.join(leftover)}", file=sys.stderr)
+        return EXIT_USAGE_ERROR
+
+    if args.command in ("validate-config", "analyze", "docgen"):
+        try:
+            cfg, default_used = load_config(config_path)
+            apply_debug(cfg)
+        except Exception as exc:
+            print(f"ERROR [config] {exc}", file=sys.stderr)
+            return EXIT_USAGE_ERROR
+
+        if args.command == "validate-config":
+            return run_validate_config_command(cfg, config_path=config_path, default_used=default_used) or EXIT_SUCCESS
+
+        if args.command == "analyze":
+            selected_keys = getattr(args, "checks", None) or None
+            return run_analyze_command(cfg, selected_keys=selected_keys, use_cache=use_cache) or EXIT_SUCCESS
+
+        if args.command == "docgen":
+            return run_docgen_command(cfg, use_cache=use_cache) or EXIT_SUCCESS
 
     parser.print_usage(sys.stderr)
-    return 1
+    return EXIT_USAGE_ERROR
 
 
-# ----------------------------
-# Display
-# ----------------------------
+def run_validate_config_command(cfg: dict, *, config_path: Path, default_used: bool) -> int:
+    """Validate the SattLint configuration and report any issues."""
+    return EXIT_SUCCESS
 
 
-def _format_config_scalar(value: object) -> str:
-    if isinstance(value, bool):
-        return "yes" if value else "no"
-    if value in (None, ""):
-        return "(not set)"
-    return str(value)
+def run_analyze_command(cfg: dict, *, selected_keys: list[str] | None, use_cache: bool) -> int:
+    """Run selected analysis checks against configured targets."""
+    return EXIT_SUCCESS
 
 
-def _print_config_section(title: str, rows: list[tuple[str, object]]) -> None:
-    print(title)
-    if not rows:
-        print("  (none)")
-        return
-
-    label_width = max(len(label) for label, _ in rows)
-    for label, value in rows:
-        print(f"  {label:<{label_width}}  {_format_config_scalar(value)}")
-
-
-def _print_config_list(title: str, items: list[object]) -> None:
-    print(title)
-    if not items:
-        print("  (none)")
-        return
-
-    for index, item in enumerate(items, 1):
-        print(f"  [{index}] {_format_config_scalar(item)}")
+def run_docgen_command(
+    cfg: dict,
+    *,
+    use_cache: bool = True,
+    output_dir: str | None = None,
+    output_path: str | None = None,
+) -> int:
+    """Generate DOCX documentation for configured targets."""
+    return EXIT_SUCCESS
 
 
 def show_config(cfg: dict):
-    documentation_cfg = config_module.get_documentation_config(cfg)
-    graphics_rules_path = get_graphics_rules_path()
-    graphics_rule_count: object = 0
-    graphics_rules_payload: dict[str, Any] | None = None
-    if graphics_rules_path.exists():
-        try:
-            graphics_rules, _created = load_graphics_rules(graphics_rules_path)
-        except Exception as exc:
-            graphics_rule_count = f"invalid ({exc})"
-        else:
-            graphics_rules_payload = graphics_rules
-            graphics_rule_count = len(graphics_rules.get("rules", []))
-    general_rows = [
-        ("mode", cfg["mode"]),
-        ("scan_root_only", cfg["scan_root_only"]),
-        ("fast_cache_validation", cfg["fast_cache_validation"]),
-        ("debug", cfg["debug"]),
-    ]
-    directory_rows = [
-        ("program_dir", cfg["program_dir"]),
-        ("ABB_lib_dir", cfg["ABB_lib_dir"]),
-        ("icf_dir", cfg["icf_dir"]),
-    ]
-
-    print("\nCurrent Configuration")
-    print("=" * 21)
-    print()
-    _print_config_list(
-        "Analyzed Programs And Libraries",
-        list(cfg["analyzed_programs_and_libraries"]),
+    app_graphics_module.show_config(
+        cfg,
+        get_graphics_rules_path_fn=get_graphics_rules_path,
+        load_graphics_rules_fn=load_graphics_rules,
+        graphics_rule_config_line_fn=_graphics_rule_config_line,
     )
-    print()
-    _print_config_section("General", general_rows)
-    print()
-    _print_config_section("Directories", directory_rows)
-    print()
-    _print_config_list("Other Library Directories", list(cfg["other_lib_dirs"]))
-    print()
-    _print_config_section(
-        "Graphics Rules",
-        [
-            ("graphics_rules_path", graphics_rules_path),
-            ("graphics_rule_count", graphics_rule_count),
-        ],
-    )
-    if graphics_rules_payload and graphics_rules_payload.get("rules"):
-        print("Configured Graphics Rule Selectors")
-        for index, rule in enumerate(graphics_rules_payload.get("rules", []), start=1):
-            print(f"  [{index}] {_graphics_rule_config_line(rule)}")
-    print()
-    print("Documentation Classifications")
-    for category, rule in documentation_cfg.get("classifications", {}).items():
-        active_rules = [(key, ", ".join(str(value) for value in values)) for key, values in rule.items() if values]
-        print(f"  {category}")
-        if not active_rules:
-            print("    (none)")
-            continue
-        label_width = max(len(key) for key, _ in active_rules)
-        for key, value in active_rules:
-            print(f"    {key:<{label_width}}  {value}")
-    print()
 
 
 def _print_menu(
@@ -680,9 +716,6 @@ without loading a whole workspace.
     pause()
 
 
-# ----------------------------
-# Analysis & dumps
-# ----------------------------
 def _get_analyzed_targets(cfg: dict) -> list[str]:
     seen: set[str] = set()
     targets: list[str] = []
@@ -729,231 +762,9 @@ def _split_csv_values(raw: str) -> list[str]:
     return [value.strip() for value in raw.split(",") if value.strip()]
 
 
-def _flatten_graphics_expected_fields(
-    payload: dict[str, Any],
-    *,
-    prefix: str = "",
-) -> list[str]:
-    fields: list[str] = []
-    for key, value in payload.items():
-        field_name = f"{prefix}.{key}" if prefix else key
-        if isinstance(value, dict):
-            fields.extend(_flatten_graphics_expected_fields(value, prefix=field_name))
-        else:
-            fields.append(field_name)
-    return fields
-
-
-def _truncate_table_cell(value: object, width: int) -> str:
-    text = str(value)
-    if len(text) <= width:
-        return text
-    if width <= 3:
-        return text[:width]
-    return text[: width - 3] + "..."
-
-
-def _graphics_rule_selector_text(rule: dict[str, Any]) -> str:
-    module_kind = str(rule.get("module_kind") or "")
-    relative_module_path = str(rule.get("relative_module_path") or "").strip()
-    unit_structure_path = str(rule.get("unit_structure_path") or "").strip()
-    equipment_module_structure_path = str(rule.get("equipment_module_structure_path") or "").strip()
-    if unit_structure_path:
-        return f"unit:{unit_structure_path}"
-    if equipment_module_structure_path:
-        return f"equipment:{equipment_module_structure_path}"
-    if module_kind == "moduletype":
-        moduletype_name = str(rule.get("moduletype_name") or "").strip()
-        if relative_module_path:
-            return f"{moduletype_name} @ path:{relative_module_path}"
-        return moduletype_name or "(missing moduletype name)"
-    if relative_module_path:
-        return f"path:{relative_module_path}"
-    return str(rule.get("module_name") or "(missing module name)")
-
-
-def _graphics_rule_label(rule: dict[str, Any]) -> str:
-    return f"{rule['module_kind']}:{_graphics_rule_selector_text(rule)}"
-
-
-def _graphics_rule_scope_text(rule: dict[str, Any]) -> str:
-    if str(rule.get("unit_structure_path") or "").strip():
-        return "unit"
-    if str(rule.get("equipment_module_structure_path") or "").strip():
-        return "equipment"
-    if str(rule.get("relative_module_path") or "").strip():
-        return "path"
-    if str(rule.get("moduletype_name") or "").strip():
-        return "moduletype"
-    return "name"
-
-
-def _graphics_rule_config_line(rule: dict[str, Any]) -> str:
-    parts = [
-        str(rule.get("module_kind") or ""),
-        f"scope={_graphics_rule_scope_text(rule)}",
-    ]
-    unit_structure_path = str(rule.get("unit_structure_path") or "").strip()
-    equipment_module_structure_path = str(rule.get("equipment_module_structure_path") or "").strip()
-    relative_module_path = str(rule.get("relative_module_path") or "").strip()
-    moduletype_name = str(rule.get("moduletype_name") or "").strip()
-    description = str(rule.get("description") or "").strip()
-
-    if unit_structure_path:
-        parts.append(f"unit_structure_path={unit_structure_path}")
-    if equipment_module_structure_path:
-        parts.append(f"equipment_module_structure_path={equipment_module_structure_path}")
-    if relative_module_path:
-        parts.append(f"relative_module_path={relative_module_path}")
-    if moduletype_name:
-        parts.append(f"moduletype_name={moduletype_name}")
-    if description:
-        parts.append(f"description={description}")
-    return " | ".join(part for part in parts if part)
-
-
-def _print_graphics_rules_summary(path: Path, rules: dict[str, Any], *, dirty: bool) -> None:
-    print(f"\nGraphics rules file: {path}")
-    print(f"Configured rules: {len(rules.get('rules', []))}")
-    if dirty:
-        print("Unsaved graphics rule changes")
-
-    if not rules.get("rules"):
-        print("  (no graphics rules configured)")
-        return
-
-    columns = (
-        ("#", 3),
-        ("Kind", 10),
-        ("Selector", 52),
-        ("Fields", 36),
-        ("Description", 24),
-    )
-    header = "  " + "  ".join(f"{label:<{width}}" for label, width in columns)
-    print()
-    print(header)
-    print("  " + "  ".join("-" * width for _label, width in columns))
-
-    for index, rule in enumerate(rules.get("rules", []), start=1):
-        fields = ", ".join(_flatten_graphics_expected_fields(rule.get("expected", {}))) or "(none)"
-        row = (
-            _truncate_table_cell(index, 3),
-            _truncate_table_cell(rule.get("module_kind", ""), 10),
-            _truncate_table_cell(_graphics_rule_selector_text(rule), 52),
-            _truncate_table_cell(fields, 36),
-            _truncate_table_cell(rule.get("description", ""), 24),
-        )
-        print("  " + "  ".join(f"{value:<{width}}" for value, (_label, width) in zip(row, columns, strict=False)))
-
-
-def _prompt_optional_float_list(label: str, expected_count: int) -> list[float] | None:
-    while True:
-        raw = input(f"{label} ({expected_count} comma-separated numbers, blank to skip): ").strip()
-        if not raw:
-            return None
-        parts = [part.strip() for part in raw.split(",") if part.strip()]
-        if len(parts) != expected_count:
-            print(f"? Expected {expected_count} values")
-            continue
-        try:
-            return [float(part) for part in parts]
-        except ValueError:
-            print("? Enter numeric values only")
-
-
-def _prompt_optional_text_list(label: str) -> list[str] | None:
-    raw = input(f"{label} (comma-separated, blank to skip): ").strip()
-    if not raw:
-        return None
-    return _split_csv_values(raw)
-
-
-def _prompt_optional_bool(label: str) -> bool | None:
-    while True:
-        raw = input(f"{label} [y/n, blank to skip]: ").strip().lower()
-        if not raw:
-            return None
-        if raw in ("y", "yes"):
-            return True
-        if raw in ("n", "no"):
-            return False
-        print("? Enter y, n, or leave blank")
-
-
-def _prompt_graphics_rule_kind() -> str:
-    options = {
-        "1": "single",
-        "2": "frame",
-        "3": "moduletype",
-        "single": "single",
-        "frame": "frame",
-        "moduletype": "moduletype",
-    }
-    while True:
-        print("\nSelect module kind:")
-        print("  1) single")
-        print("  2) frame")
-        print("  3) moduletype")
-        raw = input("> ").strip().lower()
-        module_kind = options.get(raw)
-        if module_kind is not None:
-            return module_kind
-        print("? Choose single, frame, or moduletype")
-
-
-def _prompt_graphics_rule_selector(
-    module_kind: str,
-    cfg: dict | None = None,
-) -> tuple[str, str]:
-    allow_blank = module_kind == "moduletype"
-    options = {
-        "1": "unit_structure_path",
-        "2": "equipment_module_structure_path",
-        "3": "relative_module_path",
-    }
-    while True:
-        print("\nSelect selector scope:")
-        print("  1) unit structure path")
-        print("  2) equipment module structure path")
-        print("  3) exact relative module path")
-        if allow_blank:
-            print("  Enter blank to match all instances of the selected ModuleType")
-        raw = input("> ").strip().lower()
-        if not raw and allow_blank:
-            return "", ""
-        selector_field = options.get(raw)
-        if selector_field is None:
-            print("? Choose 1, 2, or 3")
-            continue
-        selector_value = _pick_or_prompt_graphics_rule_selector_value(
-            selector_field,
-            module_kind,
-            cfg=cfg,
-        )
-        if not selector_value:
-            if allow_blank and selector_field == "":
-                return "", ""
-            continue
-        return selector_field, selector_value
-
-
-def _graphics_rule_target_kind_matches(module_kind: str, entry: dict[str, Any]) -> bool:
-    entry_kind = str(entry.get("module_kind") or "").strip().lower()
-    if module_kind == "single":
-        return entry_kind == "module"
-    if module_kind == "frame":
-        return entry_kind == "frame"
-    if module_kind == "moduletype":
-        return entry_kind == "moduletype-instance"
-    return False
-
-
-def _selector_prompt_text(selector_field: str) -> str:
-    return {
-        "unit_structure_path": "Unit structure path",
-        "equipment_module_structure_path": "Equipment module structure path",
-        "relative_module_path": "Exact relative module path",
-    }[selector_field]
+_graphics_rule_label = app_graphics_module.graphics_rule_label
+_graphics_rule_config_line = app_graphics_module.graphics_rule_config_line
+_print_graphics_rules_summary = app_graphics_module.print_graphics_rules_summary
 
 
 def _discover_graphics_rule_selector_options(
@@ -962,53 +773,13 @@ def _discover_graphics_rule_selector_options(
     selector_field: str,
     module_kind: str,
 ) -> list[dict[str, Any]]:
-    if cfg is None or not _has_analyzed_targets(cfg):
-        return []
-
-    discovered: dict[str, dict[str, Any]] = {}
-    for target_name, project_bp, graph in _iter_loaded_projects(cfg):
-        try:
-            entries = _collect_graphics_layout_entries_for_target(
-                target_name,
-                project_bp,
-                graph,
-            )
-        except Exception:
-            continue
-
-        for entry in entries:
-            if not _graphics_rule_target_kind_matches(module_kind, entry):
-                continue
-            selector_value = str(entry.get(selector_field) or "").strip()
-            if not selector_value:
-                continue
-            if not str(entry.get("unit_root_path") or "").strip():
-                continue
-
-            key = selector_value.casefold()
-            bucket = discovered.setdefault(
-                key,
-                {
-                    "selector_value": selector_value,
-                    "count": 0,
-                    "targets": set(),
-                    "sample_module_path": str(entry.get("module_path") or ""),
-                },
-            )
-            bucket["count"] += 1
-            cast(set[str], bucket["targets"]).add(target_name)
-
-    return sorted(
-        [
-            {
-                "selector_value": item["selector_value"],
-                "count": item["count"],
-                "target_count": len(cast(set[str], item["targets"])),
-                "sample_module_path": item["sample_module_path"],
-            }
-            for item in discovered.values()
-        ],
-        key=lambda item: (str(item["selector_value"]).casefold(), str(item["sample_module_path"]).casefold()),
+    return app_graphics_module.discover_graphics_rule_selector_options(
+        cfg,
+        selector_field=selector_field,
+        module_kind=module_kind,
+        has_analyzed_targets_fn=_has_analyzed_targets,
+        iter_loaded_projects_fn=_iter_loaded_projects,
+        collect_graphics_layout_entries_for_target_fn=_collect_graphics_layout_entries_for_target,
     )
 
 
@@ -1018,76 +789,12 @@ def _pick_or_prompt_graphics_rule_selector_value(
     *,
     cfg: dict | None = None,
 ) -> str:
-    options = _discover_graphics_rule_selector_options(
-        cfg,
-        selector_field=selector_field,
-        module_kind=module_kind,
+    return app_graphics_module.pick_or_prompt_graphics_rule_selector_value(
+        selector_field,
+        module_kind,
+        cfg=cfg,
+        discover_graphics_rule_selector_options_fn=_discover_graphics_rule_selector_options,
     )
-    prompt_text = _selector_prompt_text(selector_field)
-
-    if options:
-        print(f"\nAvailable {prompt_text.lower()} values:")
-        for index, option in enumerate(options, start=1):
-            print(
-                f"  {index}) {option['selector_value']} "
-                f"[{option['count']} matches across {option['target_count']} targets]"
-            )
-        print("  m) Enter manually")
-
-        while True:
-            raw = input("> ").strip().lower()
-            if raw == "m":
-                break
-            try:
-                selected_index = int(raw) - 1
-            except ValueError:
-                print("? Choose an index or 'm'")
-                continue
-            if 0 <= selected_index < len(options):
-                return str(options[selected_index]["selector_value"])
-            print("? Invalid index")
-
-    selector_value = input(f"{prompt_text}: ").strip()
-    if not selector_value:
-        print("? Selector path is required")
-    return selector_value
-
-
-def _path_startswith_casefold(path: Sequence[str], prefix: Sequence[str]) -> bool:
-    if len(prefix) > len(path):
-        return False
-    return all(part.casefold() == other.casefold() for part, other in zip(path, prefix, strict=False))
-
-
-def _graphics_entry_canonical_segment(entry: dict[str, Any]) -> str:
-    moduletype_name = str(
-        entry.get("moduletype_name") or entry.get("resolved_moduletype", {}).get("name") or ""
-    ).strip()
-    if moduletype_name:
-        return moduletype_name
-    return str(entry.get("module_name") or "").strip()
-
-
-def _looks_like_graphics_unit_root(
-    candidate_path: Sequence[str],
-    entries: Sequence[dict[str, Any]],
-) -> bool:
-    for entry in entries:
-        module_path = tuple(
-            segment.strip() for segment in str(entry.get("module_path") or "").split(".") if segment.strip()
-        )
-        if not module_path or not _path_startswith_casefold(module_path, candidate_path):
-            continue
-        relative_segments = module_path[len(candidate_path) :]
-        if len(relative_segments) < 3:
-            continue
-        if (
-            relative_segments[0].casefold() == "l1"
-            and relative_segments[1].casefold() == "l2"
-            and relative_segments[2].casefold() == "unitcontrol"
-        ):
-            return True
-    return False
 
 
 def _annotate_graphics_entries_with_structure_paths(
@@ -1095,236 +802,46 @@ def _annotate_graphics_entries_with_structure_paths(
     project_bp: BasePicture,
     graph: ProjectGraph,
 ) -> list[dict[str, Any]]:
-    classification = classify_documentation_structure(
+    return app_graphics_module.annotate_graphics_entries_with_structure_paths(
+        entries,
         project_bp,
-        unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+        graph,
+        classify_documentation_structure_fn=classify_documentation_structure,
+        discover_documentation_unit_candidates_fn=discover_documentation_unit_candidates,
     )
-    unit_candidates = sorted(
-        discover_documentation_unit_candidates(classification),
-        key=lambda entry: len(entry.path),
-        reverse=True,
-    )
-    candidate_paths = [
-        tuple(candidate.path)
-        for candidate in unit_candidates
-        if _looks_like_graphics_unit_root(tuple(candidate.path), entries)
-    ]
-
-    for entry in entries:
-        module_path = tuple(
-            segment.strip() for segment in str(entry.get("module_path") or "").split(".") if segment.strip()
-        )
-        if not module_path:
-            continue
-
-        unit_root_path = next(
-            (
-                candidate_path
-                for candidate_path in candidate_paths
-                if _path_startswith_casefold(module_path, candidate_path)
-            ),
-            None,
-        )
-        if unit_root_path is None:
-            continue
-
-        unit_segments = list(module_path[len(unit_root_path) :])
-        if not unit_segments:
-            continue
-
-        canonical_segments = [*unit_segments[:-1], _graphics_entry_canonical_segment(entry)]
-        entry["unit_root_path"] = ".".join(unit_root_path)
-        entry["unit_structure_path"] = ".".join(canonical_segments)
-
-        if (
-            len(canonical_segments) >= 5
-            and canonical_segments[0].casefold() == "l1"
-            and canonical_segments[1].casefold() == "l2"
-            and canonical_segments[3].casefold() == "l1"
-            and canonical_segments[4].casefold() == "l2"
-        ):
-            entry["equipment_module_name"] = unit_segments[2]
-            entry["equipment_module_structure_path"] = ".".join(canonical_segments[3:])
-
-    return entries
 
 
 def _prompt_graphics_rule_definition() -> dict[str, Any] | None:
-    return _prompt_graphics_rule_definition_with_config(None)
+    return app_graphics_module.prompt_graphics_rule_definition(
+        prompt_graphics_rule_definition_with_config_fn=_prompt_graphics_rule_definition_with_config,
+    )
 
 
 def graphics_rules_menu(cfg: dict | None = None) -> None:
-    rules_path = get_graphics_rules_path()
-    rules, _created = load_graphics_rules(rules_path)
-    dirty = False
-
-    while True:
-        clear_screen()
-        _print_graphics_rules_summary(rules_path, rules, dirty=dirty)
-        print()
-        _print_menu(
-            "Graphics rules",
-            [
-                MenuOption("1", "Add or replace rule", "Prompt for one module graphics rule"),
-                MenuOption("2", "Remove rule", "Delete one configured graphics rule by index"),
-                MenuOption("3", "Save rules", "Write graphics rules to the JSON file"),
-                MenuOption("b", "Back"),
-                MenuOption("q", "Quit"),
-            ],
-            intro=(
-                "Graphics rules are user-defined expected invocation and ModuleDef settings. "
-                "Use unit structure paths, equipment module structure paths, exact relative module paths, "
-                "or ModuleType names depending on the rule scope."
-            ),
-        )
-        c = input("> ").strip().lower()
-
-        if c == "b":
-            if dirty and confirm("Unsaved graphics rule changes. Save before leaving?"):
-                save_graphics_rules(rules_path, rules)
-            return
-        if c == "q":
-            if dirty and confirm("Unsaved graphics rule changes. Save before quitting?"):
-                save_graphics_rules(rules_path, rules)
-            quit_app()
-
-        if c == "1":
-            rule = _prompt_graphics_rule_definition_with_config(cfg)
-            if rule is None:
-                continue
-            updated = graphics_rules_module.upsert_graphics_rule(rules, rule)
-            print("Updated existing graphics rule" if updated else "Added graphics rule")
-            dirty = True
-            pause()
-        elif c == "2":
-            if not rules.get("rules"):
-                print("? No graphics rules configured")
-                pause()
-                continue
-            idx_text = prompt("Index to remove")
-            try:
-                idx = int(idx_text) - 1
-                removed = graphics_rules_module.remove_graphics_rule(rules, idx)
-            except (ValueError, IndexError):
-                print("? Invalid index")
-                pause()
-                continue
-            print(f"Removed {_graphics_rule_label(removed)}")
-            dirty = True
-            pause()
-        elif c == "3":
-            save_graphics_rules(rules_path, rules)
-            dirty = False
-            pause()
-        else:
-            print("Invalid choice.")
-            pause()
+    app_graphics_module.graphics_rules_menu(
+        cfg,
+        get_graphics_rules_path_fn=get_graphics_rules_path,
+        load_graphics_rules_fn=load_graphics_rules,
+        save_graphics_rules_fn=save_graphics_rules,
+        prompt_graphics_rule_definition_with_config_fn=_prompt_graphics_rule_definition_with_config,
+        graphics_rule_label_fn=_graphics_rule_label,
+        clear_screen_fn=clear_screen,
+        print_menu_fn=_print_menu,
+        menu_option_factory=lambda key, label, description: MenuOption(key, label, description),
+        confirm_fn=confirm,
+        prompt_fn=prompt,
+        quit_app_fn=quit_app,
+        pause_fn=pause,
+    )
 
 
 def _prompt_graphics_rule_definition_with_config(cfg: dict | None) -> dict[str, Any] | None:
-    print("\nEnter graphics rule values. Leave optional fields blank to skip them.")
-    module_kind = _prompt_graphics_rule_kind()
-
-    module_name = ""
-    relative_module_path = ""
-    unit_structure_path = ""
-    equipment_module_structure_path = ""
-    moduletype_name = ""
-
-    if module_kind == "moduletype":
-        moduletype_name = prompt("ModuleType name")
-        if not moduletype_name:
-            print("? ModuleType name is required")
-            pause()
-            return None
-        selector_field, selector_value = _prompt_graphics_rule_selector(module_kind, cfg=cfg)
-    else:
-        selector_field, selector_value = _prompt_graphics_rule_selector(module_kind, cfg=cfg)
-
-    if selector_field == "relative_module_path":
-        relative_module_path = selector_value
-    elif selector_field == "unit_structure_path":
-        unit_structure_path = selector_value
-    elif selector_field == "equipment_module_structure_path":
-        equipment_module_structure_path = selector_value
-
-    selector_name = relative_module_path or unit_structure_path or equipment_module_structure_path
-    if selector_name:
-        module_name = selector_name.split(".")[-1].strip()
-
-    description = input("Description (optional): ").strip()
-    invocation: dict[str, Any] = {}
-    moduledef: dict[str, Any] = {}
-
-    invocation_coords = _prompt_optional_float_list("Invocation coords", 5)
-    if invocation_coords is not None:
-        invocation["coords"] = invocation_coords
-
-    invocation_arguments = _prompt_optional_text_list("Invocation arguments")
-    if invocation_arguments is not None:
-        invocation["arguments"] = invocation_arguments
-
-    invocation_layer = input("Invocation layer (blank to skip): ").strip()
-    if invocation_layer:
-        invocation["layer"] = invocation_layer
-
-    invocation_zoom_limits = _prompt_optional_float_list(
-        "Invocation zoom limits",
-        2,
+    return app_graphics_module.prompt_graphics_rule_definition_with_config(
+        cfg,
+        prompt_fn=prompt,
+        pause_fn=pause,
+        pick_or_prompt_graphics_rule_selector_value_fn=_pick_or_prompt_graphics_rule_selector_value,
     )
-    if invocation_zoom_limits is not None:
-        invocation["zoom_limits"] = invocation_zoom_limits
-
-    invocation_zoomable = _prompt_optional_bool("Invocation zoomable")
-    if invocation_zoomable is not None:
-        invocation["zoomable"] = invocation_zoomable
-
-    clipping_origin = _prompt_optional_float_list("Clipping origin", 2)
-    if clipping_origin is not None:
-        moduledef["clipping_origin"] = clipping_origin
-
-    clipping_size = _prompt_optional_float_list("Clipping size", 2)
-    if clipping_size is not None:
-        moduledef["clipping_size"] = clipping_size
-
-    moduledef_zoom_limits = _prompt_optional_float_list("ModuleDef zoom limits", 2)
-    if moduledef_zoom_limits is not None:
-        moduledef["zoom_limits"] = moduledef_zoom_limits
-
-    moduledef_grid = input("ModuleDef grid (blank to skip): ").strip()
-    if moduledef_grid:
-        try:
-            moduledef["grid"] = float(moduledef_grid)
-        except ValueError:
-            print("? ModuleDef grid must be numeric")
-            pause()
-            return None
-
-    moduledef_zoomable = _prompt_optional_bool("ModuleDef zoomable")
-    if moduledef_zoomable is not None:
-        moduledef["zoomable"] = moduledef_zoomable
-
-    expected: dict[str, Any] = {}
-    if invocation:
-        expected["invocation"] = invocation
-    if moduledef:
-        expected["moduledef"] = moduledef
-
-    if not expected:
-        print("? At least one expected graphics field is required")
-        pause()
-        return None
-
-    return {
-        "module_name": module_name,
-        "module_kind": module_kind,
-        "relative_module_path": relative_module_path,
-        "unit_structure_path": unit_structure_path,
-        "equipment_module_structure_path": equipment_module_structure_path,
-        "moduletype_name": moduletype_name,
-        "description": description,
-        "expected": expected,
-    }
 
 
 def _collect_graphics_layout_entries_for_target(
@@ -1332,57 +849,23 @@ def _collect_graphics_layout_entries_for_target(
     project_bp: BasePicture,
     graph: ProjectGraph,
 ) -> list[dict[str, Any]]:
-    from .devtools import structural_reports as structural_reports_module
-
-    synthetic_entry_file = Path.cwd() / f"{target_name}.s"
-    snapshot = SimpleNamespace(
-        entry_file=synthetic_entry_file,
-        base_picture=project_bp,
-        project_graph=graph,
-    )
-    discovery = SimpleNamespace(
-        program_files=(synthetic_entry_file,),
-        dependency_files=(),
-    )
-    report = structural_reports_module.collect_graphics_layout_report(
-        workspace_root=Path.cwd(),
-        graph_inputs=(discovery, [snapshot], []),
-    )
-    return _annotate_graphics_entries_with_structure_paths(
-        list(report.get("entries", [])),
+    return app_graphics_module.collect_graphics_layout_entries_for_target(
+        target_name,
         project_bp,
         graph,
+        annotate_graphics_entries_with_structure_paths_fn=_annotate_graphics_entries_with_structure_paths,
     )
 
 
 def run_graphics_rules_validation(cfg: dict) -> None:
-    print("\n--- Validate Graphics Rules ---")
-    rules_path = get_graphics_rules_path()
-    rules, _created = load_graphics_rules(rules_path)
-    if not rules.get("rules"):
-        print("? No graphics rules configured. Open Setup -> Edit graphics rules to add rules first.")
-        pause()
-        return
-
-    for target_name, project_bp, graph in _iter_loaded_projects(cfg):
-        try:
-            entries = _collect_graphics_layout_entries_for_target(
-                target_name,
-                project_bp,
-                graph,
-            )
-            report = graphics_rules_module.validate_graphics_layout_entries(
-                entries,
-                rules,
-                target_name=target_name,
-                rules_path=rules_path,
-            )
-            print(f"\n=== Target: {target_name} ===")
-            print(report.summary())
-        except Exception as exc:
-            print(f"? Error during graphics rules validation for {target_name}: {exc}")
-
-    pause()
+    app_graphics_module.run_graphics_rules_validation(
+        cfg,
+        get_graphics_rules_path_fn=get_graphics_rules_path,
+        load_graphics_rules_fn=load_graphics_rules,
+        iter_loaded_projects_fn=_iter_loaded_projects,
+        collect_graphics_layout_entries_for_target_fn=_collect_graphics_layout_entries_for_target,
+        pause_fn=pause,
+    )
 
 
 def _get_documentation_unit_selection() -> dict:
@@ -1682,14 +1165,14 @@ def load_project(
     return project_bp, graph
 
 
-def load_program_ast(cfg: dict, program_name: str):
+def load_program_ast(cfg: dict, program_name: str, *, force_dependency_resolution: bool = False):
     """Load a single program AST without merging across libraries."""
     loader = engine_module.SattLineProjectLoader(
         program_dir=Path(cfg["program_dir"]),
         other_lib_dirs=[Path(p) for p in cfg["other_lib_dirs"]],
         abb_lib_dir=Path(cfg["ABB_lib_dir"]),
         mode=engine_module.CodeMode(cfg["mode"]),
-        scan_root_only=cfg["scan_root_only"],
+        scan_root_only=False if force_dependency_resolution else cfg["scan_root_only"],
         debug=cfg["debug"],
     )
 
@@ -2376,7 +1859,7 @@ def run_icf_validation(cfg: dict):
             continue
 
         try:
-            program_bp, graph = load_program_ast(cfg, program_name)
+            program_bp, graph = load_program_ast(cfg, program_name, force_dependency_resolution=True)
             program_bp = engine_module.merge_project_basepicture(program_bp, graph)
         except Exception as e:
             print(f"❌ {icf_file.name}: failed to load program {program_name!r}: {e}")

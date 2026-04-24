@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import cache
 from typing import TYPE_CHECKING
+
+from lark.exceptions import UnexpectedInput
 
 from sattline_parser.api import build_lark_parser
 
@@ -37,25 +40,15 @@ _CONTROL_RE = re.compile(
 )
 _COMPARE_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_:.]*\s*(?:<=|>=|<>|<|>)\s*")
 
-# Lazy-loaded grammar parsers for accurate code detection
-_statement_parser: Lark | None = None
-_expression_parser: Lark | None = None
 
-
+@cache
 def _get_statement_parser() -> Lark:
-    """Get or create a parser for SattLine statements."""
-    global _statement_parser
-    if _statement_parser is None:
-        _statement_parser = build_lark_parser(start="statement", propagate_positions=False)
-    return _statement_parser
+    return build_lark_parser(start="statement", propagate_positions=False)
 
 
+@cache
 def _get_expression_parser() -> Lark:
-    """Get or create a parser for SattLine expressions."""
-    global _expression_parser
-    if _expression_parser is None:
-        _expression_parser = build_lark_parser(start="expression", propagate_positions=False)
-    return _expression_parser
+    return build_lark_parser(start="expression", propagate_positions=False)
 
 
 def _is_valid_code_via_grammar(text: str) -> bool:
@@ -89,7 +82,7 @@ def _is_valid_code_via_grammar(text: str) -> bool:
         parser = _get_statement_parser()
         parser.parse(text)
         statement_is_valid = True
-    except Exception:
+    except UnexpectedInput:
         statement_is_valid = False
 
     if statement_is_valid:
@@ -101,7 +94,7 @@ def _is_valid_code_via_grammar(text: str) -> bool:
         parser = _get_expression_parser()
         parser.parse(text)
         expression_is_valid = True
-    except Exception:
+    except UnexpectedInput:
         expression_is_valid = False
 
     return expression_is_valid

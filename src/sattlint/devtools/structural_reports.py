@@ -8,6 +8,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    FrameModule,
+    ModuleDef,
+    ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    SingleModule,
+)
 from sattlint.analyzers.registry import (
     get_actual_cli_analyzer_keys,
     get_actual_lsp_analyzer_keys,
@@ -17,15 +26,6 @@ from sattlint.analyzers.registry import (
 )
 from sattlint.app import VARIABLE_ANALYSES
 from sattlint.editor_api import discover_workspace_sources, load_workspace_snapshot
-from sattlint.models.ast_model import (
-    BasePicture,
-    FrameModule,
-    ModuleDef,
-    ModuleHeader,
-    ModuleTypeDef,
-    ModuleTypeInstance,
-    SingleModule,
-)
 from sattlint.path_sanitizer import sanitize_path_for_report
 from sattlint.reporting.variables_report import IssueKind, VariablesReport
 from sattlint.resolution.common import resolve_moduletype_def_strict

@@ -13,8 +13,10 @@ from sattlint.models.ast_model import (
     ModuleTypeDef,
     ModuleTypeInstance,
     Simple_DataType,
+    SingleModule,
     Variable,
 )
+from sattlint.resolution.common import resolve_module_by_strict_path as _resolve_module_by_strict_path
 from sattlint.resolution.common import resolve_moduletype_def_strict as _resolve_moduletype_def_strict
 
 
@@ -63,6 +65,55 @@ def test_ambiguous_within_dependencies_raises():
 
     with pytest.raises(ValueError):
         _resolve_moduletype_def_strict(bp, "CIP", current_library="Lib1")
+
+
+def test_resolves_same_library_prefers_draft_source_file():
+    mt_source = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="KaHAXDiluteLib.s")
+    mt_fallback = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="KaHAXModullLib.x")
+    bp = BasePicture(
+        header=_header(),
+        origin_lib="Lib1",
+        origin_file="Root.s",
+        moduletype_defs=[mt_fallback, mt_source],
+        library_dependencies={"lib1": []},
+    )
+
+    resolved = _resolve_moduletype_def_strict(bp, "CIP", current_library="Lib1")
+
+    assert resolved is mt_source
+
+
+def test_strict_path_prefers_enclosing_draft_moduletype_definition():
+    transfer_source = ModuleTypeDef(
+        name="Transfer",
+        origin_lib="ProjectLib",
+        origin_file="KaHAXDiluteLib.s",
+        submodules=[SingleModule(header=_header("Dilute"), moduledef=None)],
+    )
+    transfer_fallback = ModuleTypeDef(
+        name="Transfer",
+        origin_lib="ProjectLib",
+        origin_file="KaHAXModullLib.x",
+        submodules=[SingleModule(header=_header("Legacy"), moduledef=None)],
+    )
+    wrapper = ModuleTypeDef(
+        name="Wrapper",
+        origin_lib="ProjectLib",
+        origin_file="KaHAXDiluteLib.s",
+        submodules=[ModuleTypeInstance(header=_header("Transfer"), moduletype_name="Transfer")],
+    )
+    bp = BasePicture(
+        header=_header("BasePicture"),
+        origin_lib="AppLib",
+        origin_file="Root.s",
+        moduletype_defs=[transfer_fallback, transfer_source, wrapper],
+        submodules=[ModuleTypeInstance(header=_header("Wrapper"), moduletype_name="Wrapper")],
+        library_dependencies={"applib": ["projectlib"]},
+    )
+
+    resolved = _resolve_module_by_strict_path(bp, "Wrapper.Transfer.Dilute")
+
+    assert resolved.node.header.name == "Dilute"
 
 
 def test_analyzer_uses_library_scoped_moduletype_defs():

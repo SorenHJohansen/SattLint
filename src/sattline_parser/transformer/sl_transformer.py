@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import contextlib
+import re
 from typing import Any, Literal, cast
 
 from lark import Token, Transformer, Tree, v_args
+
+__all__ = ["SLTransformer"]
 
 from ..grammar import constants as const
 from ..models.ast_model import (
@@ -83,6 +86,21 @@ def _iter_tree_children(node: Any):
         yield from getattr(node, "children", [])
 
 
+_PROGRAM_NAME_RE = re.compile(r",\s*name:\s*(\S+)", re.IGNORECASE)
+
+
+def _extract_program_name_from_header_lines(tree: Tree) -> str | None:
+    """Extract program name from the program_date_line header string."""
+    for child in tree.children:
+        if isinstance(child, Tree) and child.data == "program_date_line":
+            for token in child.children:
+                raw = str(token).strip('"')
+                m = _PROGRAM_NAME_RE.search(raw)
+                if m:
+                    return m.group(1).strip()
+    return None
+
+
 class SLTransformer(Transformer):
     def __init__(self):
         super().__init__()
@@ -154,10 +172,18 @@ class SLTransformer(Transformer):
         return None
 
     # ---------- top-level ----------
+
     def start(self, items) -> BasePicture:
+        program_name: str | None = None
+        bp: BasePicture | None = None
         for it in items:
-            if isinstance(it, BasePicture):
-                return it
+            if isinstance(it, Tree) and it.data == "header_lines":
+                program_name = _extract_program_name_from_header_lines(it)
+            elif isinstance(it, BasePicture):
+                bp = it
+        if bp is not None:
+            bp.program_name = program_name
+            return bp
         types = ", ".join(type(x).__name__ for x in items)
         raise ValueError(f"start expected a BasePicture; got: {types}")
 

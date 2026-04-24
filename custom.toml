@@ -1,0 +1,102 @@
+analyzed_programs_and_libraries = []
+mode = "official"
+scan_root_only = false
+fast_cache_validation = true
+debug = false
+program_dir = ""
+ABB_lib_dir = ""
+icf_dir = ""
+other_lib_dirs = []
+
+[analysis.sfc]
+mutually_exclusive_steps = []
+
+[analysis.sfc.step_contracts]
+
+[analysis.naming.variables]
+style = "infer"
+allow = []
+
+[analysis.naming.modules]
+style = "infer"
+allow = []
+
+[analysis.naming.instances]
+style = "infer"
+allow = []
+
+[analysis.rule_profiles]
+active = "default"
+
+[analysis.rule_profiles.profiles.default]
+description = "Balanced default analyzer profile."
+disabled_rules = []
+
+[analysis.rule_profiles.profiles.default.severity_overrides]
+
+[analysis.rule_profiles.profiles.default.confidence_overrides]
+
+[analysis.rule_profiles.profiles.strict-pharma]
+description = "Promotes style and maintainability drift during regulated review."
+disabled_rules = []
+
+[analysis.rule_profiles.profiles.strict-pharma.severity_overrides]
+"semantic.naming-inconsistent-style" = "error"
+"semantic.cyclomatic-complexity.module" = "error"
+"semantic.cyclomatic-complexity.step" = "error"
+
+[analysis.rule_profiles.profiles.strict-pharma.confidence_overrides]
+
+[analysis.rule_profiles.profiles.legacy-plant]
+description = "Suppresses style-heavy advisories while preserving contract and correctness findings."
+disabled_rules = [
+    "semantic.naming-role-mismatch",
+    "semantic.naming-inconsistent-style",
+    "semantic.cyclomatic-complexity.module",
+    "semantic.cyclomatic-complexity.step",
+    "semantic.loop-output-refactor",
+]
+
+[analysis.rule_profiles.profiles.legacy-plant.severity_overrides]
+
+[analysis.rule_profiles.profiles.legacy-plant.confidence_overrides]
+
+[documentation.classifications.em]
+name_contains = []
+label_equals = []
+desc_name_contains = []
+desc_label_equals = [
+    "nnestruct:EquipModCoordinate",
+]
+
+[documentation.classifications.ops]
+name_contains = []
+label_equals = []
+desc_name_contains = []
+desc_label_equals = [
+    "NNEMESIFLib:MES_StateControl",
+]
+
+[documentation.classifications.rp]
+name_contains = [
+    "RecPar",
+]
+label_equals = []
+desc_name_contains = []
+desc_label_equals = []
+
+[documentation.classifications.ep]
+name_contains = [
+    "EngPar",
+]
+label_equals = []
+desc_name_contains = []
+desc_label_equals = []
+
+[documentation.classifications.up]
+name_contains = [
+    "UsrPar",
+]
+label_equals = []
+desc_name_contains = []
+desc_label_equals = []

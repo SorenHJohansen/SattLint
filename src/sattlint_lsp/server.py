@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import threading
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,7 @@ from pygls import uris
 from pygls.lsp.server import LanguageServer
 from pygls.workspace import TextDocument
 
+from sattline_parser.models.ast_model import Simple_DataType
 from sattlint.editor_api import (
     SemanticSnapshot,
     SymbolDefinition,
@@ -49,7 +51,6 @@ from sattlint.editor_api import (
     load_source_snapshot,
 )
 from sattlint.engine import CodeMode
-from sattlint.models.ast_model import Simple_DataType
 
 from .document_state import DocumentState
 from .local_parser import IncrementalDocumentParserAdapter
@@ -73,6 +74,8 @@ _TYPEDEF_START_RE = re.compile(
 _ENDDEF_LABEL_RE = re.compile(r"^\s*ENDDEF\b(?:\s*\(\*(?P<label>.*?)\*\))?", re.IGNORECASE)
 _INTERACTIVE_SNAPSHOT_WAIT_S = 0.05
 _DIAGNOSTIC_SNAPSHOT_WAIT_S = 0.15
+_MAX_IDENTIFIER_LENGTH = 20
+_DEFAULT_MAX_COMPLETION_ITEMS = 100
 _DEFAULT_LOCAL_PARSER = IncrementalDocumentParserAdapter()
 
 
@@ -152,8 +155,8 @@ def _identifier_length(name: str) -> int:
 def _validate_rename_target(new_name: str) -> None:
     if not _VALID_IDENTIFIER_RE.fullmatch(new_name):
         raise ValueError(f"{new_name!r} is not a valid SattLine identifier")
-    if _identifier_length(new_name) > 20:
-        raise ValueError(f"{new_name!r} exceeds the 20 character identifier limit")
+    if _identifier_length(new_name) > _MAX_IDENTIFIER_LENGTH:
+        raise ValueError(f"{new_name!r} exceeds the {_MAX_IDENTIFIER_LENGTH} character identifier limit")
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,7 +166,7 @@ class LspSettings:
     scan_root_only: bool = False
     enable_variable_diagnostics: bool = True
     workspace_diagnostics_mode: str = "off"
-    max_completion_items: int = 100
+    max_completion_items: int = _DEFAULT_MAX_COMPLETION_ITEMS
 
     @classmethod
     def from_initialization_options(cls, data: Any) -> LspSettings:
@@ -171,11 +174,11 @@ class LspSettings:
             return cls()
         raw_entry = str(data.get("entryFile", "")).strip()
         raw_mode = str(data.get("mode", CodeMode.DRAFT.value)).strip().lower() or CodeMode.DRAFT.value
-        raw_limit = data.get("maxCompletionItems", 100)
+        raw_limit = data.get("maxCompletionItems", _DEFAULT_MAX_COMPLETION_ITEMS)
         try:
             limit = max(1, int(raw_limit))
         except (TypeError, ValueError):
-            limit = 100
+            limit = _DEFAULT_MAX_COMPLETION_ITEMS
         return cls(
             entry_file=raw_entry or None,
             mode=raw_mode,
@@ -220,7 +223,7 @@ def _diagnostic_signature(diagnostic: Diagnostic) -> tuple[int, int, int, int, i
     )
 
 
-def _merge_unique_diagnostics(*collections: tuple[Diagnostic, ...] | list[Diagnostic]) -> tuple[Diagnostic, ...]:
+def _merge_unique_diagnostics(*collections: Sequence[Diagnostic]) -> tuple[Diagnostic, ...]:
     unique: dict[tuple[int, int, int, int, int, str, str, int], Diagnostic] = {}
     for collection in collections:
         for diagnostic in collection:
@@ -368,7 +371,7 @@ def collect_completion_candidates(
     *,
     line: int,
     column: int,
-    limit: int = 100,
+    limit: int = _DEFAULT_MAX_COMPLETION_ITEMS,
 ) -> list[LspCompletionItem]:
     lines = source_text.splitlines()
     current_line = lines[line] if 0 <= line < len(lines) else ""
@@ -655,7 +658,7 @@ def collect_local_definition_locations(
     if local_snapshot is None:
         try:
             local_snapshot = load_source_snapshot(document_path, source_text)
-        except Exception:
+        except Exception:  # LSP handler — keep broad to prevent server crash
             return []
 
     definitions = _local_definition_candidates(
@@ -684,14 +687,14 @@ def collect_local_completion_candidates(
     *,
     line: int,
     column: int,
-    limit: int = 100,
+    limit: int = _DEFAULT_MAX_COMPLETION_ITEMS,
     snapshot: SemanticSnapshot | None = None,
 ) -> list[LspCompletionItem]:
     local_snapshot = snapshot
     if local_snapshot is None:
         try:
             local_snapshot = load_source_snapshot(document_path, source_text)
-        except Exception:
+        except Exception:  # LSP handler — keep broad to prevent server crash
             return []
 
     return collect_completion_candidates(
@@ -885,7 +888,7 @@ def _load_snapshot_bundle_compat(
             return None
     try:
         return _load_snapshot_bundle(ls, document_path)
-    except Exception:
+    except Exception:  # LSP handler — keep broad to prevent server crash
         if raise_on_error:
             raise
         return None
@@ -1152,7 +1155,7 @@ def _publish_closed_document_diagnostics(
                 allow_stale=True,
                 raise_on_error=False,
             )
-        except Exception:
+        except Exception:  # LSP handler — keep broad to prevent server crash
             bundle = None
         if bundle is not None:
             merged = _semantic_diagnostics_for_path(bundle, resolved_path)
@@ -1437,9 +1440,8 @@ def on_references(ls: SattLineLanguageServer, params: ReferenceParams) -> list[L
         bundle=bundle,
         active_document_path=document_path,
     )
-    if getattr(getattr(params, "context", None), "include_declaration", False) or getattr(
-        getattr(params, "context", None), "includeDeclaration", False
-    ):
+    ref_context = getattr(params, "context", None)
+    if getattr(ref_context, "include_declaration", False) or getattr(ref_context, "includeDeclaration", False):
         declaration_locations: list[Location] = []
         for definition in candidates:
             target_range = _range_for_definition(definition)

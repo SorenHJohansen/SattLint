@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from sattline_parser.api import read_text_with_fallback
+
 _RECORD_FAMILY_CODE = "5"
 _PICTURE_DISPLAY_SUBTYPE = "2"
 _RECORD_TERMINATOR = "0"
@@ -189,8 +191,5 @@ def validate_graphics_text(text: str, file_path: Path) -> GraphicsValidationResu
 
 
 def validate_graphics_file(file_path: Path) -> GraphicsValidationResult:
-    try:
-        text = file_path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        text = file_path.read_text(encoding="cp1252")
+    text = read_text_with_fallback(file_path)
     return validate_graphics_text(text, file_path)

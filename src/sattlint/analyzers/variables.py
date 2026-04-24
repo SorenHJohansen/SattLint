@@ -212,6 +212,22 @@ class _ProcedureStatusBinding:
     field_path: str | None = None
 
 
+def _collect_module_vars(
+    mods: list[Any],
+    index: dict[str, list[Variable]],
+) -> None:
+    for m in mods or []:
+        if isinstance(m, SingleModule):
+            for v in m.moduleparameters or []:
+                index.setdefault(v.name.lower(), []).append(v)
+            for v in m.localvariables or []:
+                index.setdefault(v.name.lower(), []).append(v)
+            _collect_module_vars(m.submodules or [], index)
+        elif isinstance(m, FrameModule):
+            _collect_module_vars(m.submodules or [], index)
+        # ModuleTypeInstance declares no variables
+
+
 class VariablesAnalyzer:
     """
     Walks the AST and marks VariableUsage.read / VariableUsage.written.
@@ -736,34 +752,21 @@ class VariablesAnalyzer:
         self._issues.extend(self._min_max_validator.check_min_max_mapping(pm, tgt_var, src_var, path))
 
     def _index_all_variables(self) -> None:
-        def _add(v: Variable):
-            self._any_var_index.setdefault(v.name.lower(), []).append(v)
+        index = self._any_var_index
 
         # BasePicture locals
         for v in self.bp.localvariables or []:
-            _add(v)
+            index.setdefault(v.name.lower(), []).append(v)
 
         # Descendants
-        def _walk(mods):
-            for m in mods or []:
-                if isinstance(m, SingleModule):
-                    for v in m.moduleparameters or []:
-                        _add(v)
-                    for v in m.localvariables or []:
-                        _add(v)
-                    _walk(m.submodules or [])
-                elif isinstance(m, FrameModule):
-                    _walk(m.submodules or [])
-                # ModuleTypeInstance declares no variables
-
-        _walk(self.bp.submodules or [])
+        _collect_module_vars(self.bp.submodules or [], index)
 
         # TypeDefs declared in this file
         for mt in self.bp.moduletype_defs or []:
             for v in mt.moduleparameters or []:
-                _add(v)
+                index.setdefault(v.name.lower(), []).append(v)
             for v in mt.localvariables or []:
-                _add(v)
+                index.setdefault(v.name.lower(), []).append(v)
 
     def _is_const_candidate(self, v: Variable) -> bool:
         # Built-ins are normalized to Simple_DataType in Variable.__post_init__ [1]
@@ -1707,7 +1710,7 @@ class VariablesAnalyzer:
                     if kind == "read":
                         parent_usage.mark_field_read(field_prefix, loc)
                     elif kind == "write":
-                        parent_usage.mark_field_written(field_prefix, loc)  # type: ignore
+                        parent_usage.mark_field_written(field_prefix, loc)
                 else:
                     # No field prefix means whole variable mapping (rare case)
                     if kind == "read":

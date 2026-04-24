@@ -9,6 +9,8 @@ import os
 import re
 import shutil
 import subprocess  # nosec B404 - audit intentionally executes trusted local developer tools
+import tempfile
+import time
 import tomllib
 from collections import Counter
 from collections.abc import Iterable
@@ -22,6 +24,7 @@ from sattlint import app as app_module
 from sattlint import config as config_module
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
 from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS, artifact_reports_map
+from sattlint.devtools.pipeline_artifacts import write_json_artifact
 from sattlint.devtools.progress_reporting import ProgressReporter
 from sattlint.path_sanitizer import sanitize_path_for_report
 
@@ -112,6 +115,7 @@ ALLOWED_PRINT_MODULES = {
     "src/sattlint/devtools/repo_audit.py",
 }
 WINDOWS_PATH_RE = re.compile(r"(?<![\w/])(?:[A-Za-z]:[\\/][^\s'\">|]+)")
+_DOCUMENTED_COMMAND_RE = re.compile(r"\b(sattlint(?:-[a-z0-9-]+)?)(?:\s+([a-z][a-z0-9-]*))?", re.IGNORECASE)
 UNIX_PATH_RE = re.compile(r"(?<![\w.])/(?:home|Users|mnt/c|mnt/[A-Za-z]/Users)/[^\s'\">]+")
 LOCAL_ENDPOINT_RE = re.compile(r"\b(?:localhost|127(?:\.\d{1,3}){3}|[a-z0-9-]+\.local)(?::\d{2,5})?\b")
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
@@ -182,9 +186,33 @@ def _relative_path(path: Path, root: Path = REPO_ROOT) -> str:
         return path.as_posix()
 
 
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
+def _write_text_artifact(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    last_error: PermissionError | None = None
+    for _ in range(5):
+        temp_path: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                newline="",
+                dir=path.parent,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                handle.write(content)
+                temp_path = handle.name
+            os.replace(temp_path, path)
+            return
+        except PermissionError as exc:
+            last_error = exc
+            if temp_path is not None:
+                Path(temp_path).unlink(missing_ok=True)
+            time.sleep(0.1)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"Failed to write {path}")
 
 
 def _write_markdown(path: Path, findings: list[Finding], summary: dict[str, Any]) -> None:
@@ -202,8 +230,7 @@ def _write_markdown(path: Path, findings: list[Finding], summary: dict[str, Any]
             lines.append(f"- [{finding.severity.upper()}] {finding.category}: {finding.message} ({location})")
             if finding.detail:
                 lines.append(f"  Detail: {finding.detail}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _write_text_artifact(path, "\n".join(lines) + "\n")
 
 
 def _mirror_latest_reports(source_dir: Path, latest_output_dir: Path | None) -> None:
@@ -531,13 +558,12 @@ def _load_pyproject(root: Path) -> dict[str, Any]:
 
 
 def _extract_documented_commands(paths: Iterable[Path], *, root: Path = REPO_ROOT) -> list[DocumentedCommand]:
-    pattern = re.compile(r"\b(sattlint(?:-[a-z0-9-]+)?)(?:\s+([a-z][a-z0-9-]*))?", re.IGNORECASE)
     commands: list[DocumentedCommand] = []
     for path in paths:
         text = _read_text(path)
         rel_path = _relative_path(path, root)
         for line_number, line in enumerate(text.splitlines(), 1):
-            for match in pattern.finditer(line):
+            for match in _DOCUMENTED_COMMAND_RE.finditer(line):
                 command = match.group(1)
                 subcommand = match.group(2)
                 if command == "sattlint" and subcommand in {"and", "is", "supports"}:
@@ -896,6 +922,8 @@ def _build_python_source_scan_context(
             if rel_path.endswith(".py") and (rel_path == source_prefix or rel_path.startswith(f"{source_prefix}/"))
         ]
     for path in paths:
+        if not path.exists():
+            continue
         text = _read_text(path)
         texts[path] = text
         try:
@@ -1150,7 +1178,7 @@ def collect_custom_findings(
     *,
     include_generated: bool = False,
     tracked_only: bool = False,
-    suspicious_identifiers: Iterable[str] = ("SQHJ",),
+    suspicious_identifiers: Iterable[str] = (),
 ) -> list[Finding]:
     findings: list[Finding] = []
     suspicious_set = {identifier.strip() for identifier in suspicious_identifiers if identifier.strip()}
@@ -1293,7 +1321,7 @@ def audit_repository(
         kind="sattlint.repo_audit.progress",
         title="Repository audit",
         output_dir=output_dir,
-        write_json=_write_json,
+        write_json=write_json_artifact,
         stages=[
             ("pipeline", "Run shared pipeline"),
             ("custom_scan", "Run repository-specific checks"),
@@ -1416,9 +1444,9 @@ def audit_repository(
         ],
     }
     progress.start_stage("write_reports")
-    _write_json(output_dir / "status.json", status_report)
-    _write_json(output_dir / "summary.json", summary)
-    _write_json(output_dir / "findings.json", finding_collection.to_dict())
+    write_json_artifact(output_dir / "status.json", status_report)
+    write_json_artifact(output_dir / "summary.json", summary)
+    write_json_artifact(output_dir / "findings.json", finding_collection.to_dict())
     _write_markdown(output_dir / "summary.md", findings, summary)
     _mirror_latest_reports(output_dir, latest_output_dir)
     progress.complete_stage("write_reports")
@@ -1470,7 +1498,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-bandit", action="store_true", help="Skip Bandit inside the shared pipeline")
     args = parser.parse_args(argv)
 
-    suspicious_identifiers = ["SQHJ", *args.suspicious_identifier]
+    suspicious_identifiers = list(args.suspicious_identifier)
     fail_on = args.fail_on or ("medium" if args.leaks_only else "high")
     summary = audit_repository(
         Path(args.output_dir).resolve(),

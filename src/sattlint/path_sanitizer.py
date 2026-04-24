@@ -45,13 +45,13 @@ def sanitize_path_for_report(
 
     try:
         resolved_repo_root = repo_root.resolve()
-    except Exception:
+    except OSError:
         resolved_repo_root = repo_root
 
     candidate = Path(raw_path)
     try:
         resolved_candidate = candidate.resolve(strict=False)
-    except Exception:
+    except OSError:
         resolved_candidate = candidate
 
     try:

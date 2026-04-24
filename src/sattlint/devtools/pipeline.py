@@ -30,6 +30,7 @@ from sattlint.devtools.corpus import CORPUS_RESULTS_FILENAME, run_corpus_suite
 from sattlint.devtools.finding_exports import build_pipeline_finding_collection
 from sattlint.devtools.pipeline_artifacts import (
     PipelineArtifactContext,
+    write_json_artifact,
     write_pipeline_artifacts,
 )
 from sattlint.devtools.progress_reporting import ProgressReporter
@@ -86,6 +87,7 @@ DEFAULT_QUICK_PYTEST_TARGETS = (
     "tests/test_repo_audit.py",
     "tests/test_corpus.py",
 )
+_VULTURE_LINE_RE = re.compile(r"^(?P<file>.*?):(?P<line>\d+): (?P<message>.*) \((?P<confidence>\d+)% confidence\)$")
 
 
 @dataclass(slots=True)
@@ -182,11 +184,6 @@ def _run_command(name: str, command: list[str], *, cwd: Path = REPO_ROOT) -> Com
         stdout=completed.stdout,
         stderr=completed.stderr,
     )
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
 def _profile_settings(profile: str) -> dict[str, Any]:
@@ -302,10 +299,9 @@ def _parse_json_lines(raw_output: str) -> list[dict[str, Any]]:
 
 
 def _parse_vulture_output(raw_output: str) -> list[dict[str, Any]]:
-    pattern = re.compile(r"^(?P<file>.*?):(?P<line>\d+): (?P<message>.*) \((?P<confidence>\d+)% confidence\)$")
     findings: list[dict[str, Any]] = []
     for line in raw_output.splitlines():
-        match = pattern.match(line.strip())
+        match = _VULTURE_LINE_RE.match(line.strip())
         if match is None:
             continue
         findings.append(
@@ -481,7 +477,7 @@ def _run_pipeline(
         kind="sattlint.pipeline.progress",
         title="Pipeline",
         output_dir=output_dir,
-        write_json=_write_json,
+        write_json=write_json_artifact,
         stages=[
             ("environment", "Collect environment"),
             ("ruff", "Run Ruff"),
@@ -1016,7 +1012,7 @@ def _run_pipeline(
         profile=profile,
         enabled_artifact_ids=enabled_artifacts,
         context=artifact_context,
-        write_json=_write_json,
+        write_json=write_json_artifact,
     )
     progress.complete_stage("write_artifacts")
     progress.finalize(overall_status=overall_status)

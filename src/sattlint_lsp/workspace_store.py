@@ -11,6 +11,7 @@ from typing import Any
 
 from lsprotocol.types import Diagnostic
 
+from sattline_parser.api import read_text_with_fallback
 from sattlint.editor_api import (
     SemanticSnapshot,
     WorkspaceSourceDiscovery,
@@ -46,9 +47,7 @@ def _build_source_path_index(
 
 def _read_dependency_names(dependency_path: Path) -> tuple[str, ...]:
     try:
-        text = dependency_path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        text = dependency_path.read_text(encoding="cp1252")
+        text = read_text_with_fallback(dependency_path)
     except OSError:
         return ()
     return tuple(line.strip().casefold() for line in text.splitlines() if line.strip())

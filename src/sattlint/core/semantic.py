@@ -49,6 +49,7 @@ from .taint_paths import TaintPathTrace, build_taint_path_traces
 _SOURCE_EXTENSIONS = {".s", ".x", ".l", ".z"}
 _PROGRAM_EXTENSIONS = {".s", ".x"}
 _DEPENDENCY_EXTENSIONS = {".l", ".z"}
+_DEFAULT_LIST_DISPLAY_LIMIT = 12
 _IGNORED_DISCOVERY_DIRS = {
     ".git",
     ".hg",
@@ -103,7 +104,7 @@ def _resolved_path(path: Path | None) -> Path | None:
         return None
     try:
         return path.resolve()
-    except Exception:
+    except OSError:
         return path
 
 
@@ -115,7 +116,7 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
         return False
 
 
-def _format_name_list(items: list[str], *, limit: int = 12) -> str:
+def _format_name_list(items: list[str], *, limit: int = _DEFAULT_LIST_DISPLAY_LIMIT) -> str:
     if len(items) <= limit:
         return ", ".join(items)
     shown = ", ".join(items[:limit])

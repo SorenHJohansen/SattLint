@@ -77,6 +77,29 @@ _DURATION_COMPONENT_PATTERNS = (
     re.compile(r"\d+ms", re.IGNORECASE),
 )
 _TIME_LITERAL_RE = re.compile(r"\d{4}-\d{2}-\d{2}-\d{2}:\d{2}:\d{2}\.\d{3}")
+_MAX_IDENTIFIER_LENGTH = 20
+_TYPO_SUGGESTION_MAX_DISTANCE = 2
+_RESERVED_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+_ALLOWED_IDENTIFIER_KEYWORDS = frozenset({const.GRAMMAR_VALUE_NEWWINDOW.casefold()})
+
+
+def _build_reserved_identifier_keywords() -> frozenset[str]:
+    reserved: set[str] = set()
+    for name in dir(const):
+        if not name.startswith("GRAMMAR_VALUE_"):
+            continue
+        value = getattr(const, name)
+        if not isinstance(value, str):
+            continue
+        if _RESERVED_IDENTIFIER_RE.fullmatch(value) is None:
+            continue
+        if value.casefold() in _ALLOWED_IDENTIFIER_KEYWORDS:
+            continue
+        reserved.add(value.casefold())
+    return frozenset(reserved)
+
+
+_RESERVED_IDENTIFIER_KEYWORDS = _build_reserved_identifier_keywords()
 
 
 def _identifier_length(name: str) -> int:
@@ -85,11 +108,22 @@ def _identifier_length(name: str) -> int:
     return len(name)
 
 
-def _validate_identifier(name: str | None, context: str) -> None:
+def _validate_identifier(
+    name: str | None,
+    context: str,
+    *,
+    check_reserved_keywords: bool = True,
+) -> None:
     if not name:
         return
-    if _identifier_length(name) > 20:
-        raise StructuralValidationError(f"{context} name {name!r} exceeds 20 characters")
+    if _identifier_length(name) > _MAX_IDENTIFIER_LENGTH:
+        raise StructuralValidationError(f"{context} name {name!r} exceeds {_MAX_IDENTIFIER_LENGTH} characters")
+    if (
+        check_reserved_keywords
+        and not (len(name) >= 2 and name.startswith("'") and name.endswith("'"))
+        and name.casefold() in _RESERVED_IDENTIFIER_KEYWORDS
+    ):
+        raise StructuralValidationError(f"{context} name {name!r} is a reserved SattLine keyword")
 
 
 def _span_kwargs(span: SourceSpan | None) -> dict[str, int]:
@@ -179,7 +213,7 @@ def _ref_span(ref: dict[str, object] | str | None) -> SourceSpan | None:
     return span if isinstance(span, SourceSpan) else None
 
 
-def _bounded_levenshtein(left: str, right: str, *, max_distance: int = 2) -> int | None:
+def _bounded_levenshtein(left: str, right: str, *, max_distance: int = _TYPO_SUGGESTION_MAX_DISTANCE) -> int | None:
     left_cf = left.casefold()
     right_cf = right.casefold()
 
@@ -214,7 +248,7 @@ def _suggest_datatype_name(name: str, known_datatypes: AbcSequence[str]) -> str 
     best_distance: int | None = None
     name_cf = name.casefold()
     for candidate in known_datatypes:
-        distance = _bounded_levenshtein(name, candidate, max_distance=2)
+        distance = _bounded_levenshtein(name, candidate, max_distance=_TYPO_SUGGESTION_MAX_DISTANCE)
         if distance is None:
             continue
         # Skip candidates that are a strict prefix of the unknown name.
@@ -844,6 +878,12 @@ def _validate_statement_list(
                     f"{context} assignment writes to CONST variable {variable.name!r}",
                     **_span_kwargs(_ref_span(statement[1])),
                 )
+            if variable is not None and _is_string_simple_type(variable.datatype):
+                raise StructuralValidationError(
+                    f"{context} assignment to string variable {variable.name!r} is not allowed;"
+                    " use CopyString() or CopyVar() to copy strings",
+                    **_span_kwargs(_ref_span(statement[1])),
+                )
         _validate_variable_refs(statement, env, type_graph, context)
         _validate_no_string_literals_in_calls(statement, context)
         _validate_builtin_call_types(statement, env, type_graph, context)
@@ -1314,7 +1354,9 @@ def validate_transformed_basepicture(
     warn_incompatible_parameter_mappings: bool = False,
     warning_sink: Callable[[str], None] | None = None,
 ) -> None:
-    _validate_identifier(basepic.header.name, "BasePicture")
+    _validate_identifier(basepic.header.name, "BasePicture", check_reserved_keywords=False)
+    if basepic.program_name is not None:
+        _validate_identifier(basepic.program_name, "BasePicture program name")
     _ensure_unique_names(
         [moduletype.name for moduletype in basepic.moduletype_defs or []],
         "BasePicture",
