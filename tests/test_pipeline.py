@@ -1,4 +1,5 @@
 import json
+import os
 from types import SimpleNamespace
 
 from sattlint.analyzers.registry import (
@@ -21,6 +22,7 @@ from sattlint.devtools.pipeline_artifacts import (
     PipelineArtifactContext,
     PipelineArtifactProducer,
     validate_pipeline_artifact_producers,
+    write_json_artifact,
     write_pipeline_artifacts,
 )
 from sattlint.devtools.progress_reporting import ProgressReporter
@@ -84,20 +86,13 @@ def test_collect_architecture_report_includes_shadowing_cli_filter():
     assert report["actual_lsp_analyzers"] == list(get_actual_lsp_analyzer_keys())
     assert report["declared_cli_analyzers"] == report["actual_cli_analyzers"]
     assert report["declared_lsp_analyzers"] == report["actual_lsp_analyzers"]
-    assert report["analyzers_missing_exposure"] == [
-        "cyclomatic-complexity",
-        "naming-consistency",
-        "parameter-drift",
-        "scan-loop-resource-usage",
-    ]
+    assert report["analyzers_missing_exposure"] == []
     assert report["analyzers_missing_acceptance_tests"] == []
     assert report["rules_missing_acceptance_tests"] == []
     assert report["rules_missing_mutation_applicability"] == []
     assert report["rules_missing_suppression_modes"] == []
     assert report["rules_missing_incremental_safety_markers"] == []
-    assert "semantic.duplicate-alarm-tag" in report["rules_missing_corpus_links"]
-    assert "semantic.naming-role-mismatch" in report["rules_missing_corpus_links"]
-    assert "semantic.required-parameter-connection" in report["rules_missing_corpus_links"]
+    assert report["rules_missing_corpus_links"] == []
     assert IssueKind.SHADOWING.value in report["cli_variable_filter_issue_kinds"]
     assert IssueKind.UI_ONLY.value in report["cli_variable_filter_issue_kinds"]
     assert IssueKind.GLOBAL_SCOPE_MINIMIZATION.value in report["cli_variable_filter_issue_kinds"]
@@ -110,23 +105,12 @@ def test_collect_architecture_report_includes_shadowing_cli_filter():
     assert report["variables_report_summary_support"][IssueKind.HIGH_FAN_IN_OUT.value] is True
     assert phase2_gate["status"] == "pass"
     assert phase2_gate["blocking_finding_ids"] == []
-    assert phase2_gate["advisory_finding_ids"] == ["rule-corpus-link-gap"]
+    assert phase2_gate["advisory_finding_ids"] == []
     assert "cli-analyzer-metadata-drift" not in finding_ids
     assert "lsp-analyzer-metadata-drift" not in finding_ids
-    assert "semantic.duplicate-alarm-tag" in phase2_gate["advisory_rule_ids"]
-    assert "semantic.naming-role-mismatch" in phase2_gate["advisory_rule_ids"]
-    assert "semantic.required-parameter-connection" in phase2_gate["advisory_rule_ids"]
-    exposure_gap = next(finding for finding in report["findings"] if finding["id"] == "analyzer-exposure-gap")
-    corpus_gap = next(finding for finding in report["findings"] if finding["id"] == "rule-corpus-link-gap")
-    assert exposure_gap["missing_analyzers"] == [
-        "cyclomatic-complexity",
-        "naming-consistency",
-        "parameter-drift",
-        "scan-loop-resource-usage",
-    ]
-    assert "semantic.duplicate-alarm-tag" in corpus_gap["missing_rule_ids"]
-    assert "semantic.naming-role-mismatch" in corpus_gap["missing_rule_ids"]
-    assert "semantic.required-parameter-connection" in corpus_gap["missing_rule_ids"]
+    assert phase2_gate["advisory_rule_ids"] == []
+    assert "analyzer-exposure-gap" not in finding_ids
+    assert "rule-corpus-link-gap" not in finding_ids
 
 
 def test_collect_phase2_rule_metadata_gate_fails_on_enforced_gaps():
@@ -199,7 +183,7 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
     assert mms_interface["cli_exposed"] is True
     assert mms_interface["rule_ids"] == []
     assert naming_consistency["acceptance_tests"] == ["tests/test_analyzers.py"]
-    assert naming_consistency["exposed_via"] == []
+    assert naming_consistency["exposed_via"] == ["pipeline"]
     assert set(duplicate_alarm_tag) == {
         "id",
         "source",
@@ -224,7 +208,7 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
     assert "alarm-integrity" in duplicate_alarm_tag["analyzers"]
     assert "alarm-integrity.summary" in duplicate_alarm_tag["outputs"]
     assert "tests/test_analyzers.py" in duplicate_alarm_tag["acceptance_tests"]
-    assert duplicate_alarm_tag["corpus_cases"] == []
+    assert duplicate_alarm_tag["corpus_cases"] == ["workspace-common-quality-issues"]
     assert duplicate_alarm_tag["mutation_applicability"] == "required"
     assert duplicate_alarm_tag["suppression_modes"] == ["baseline"]
     assert duplicate_alarm_tag["incremental_safe"] is False
@@ -825,6 +809,26 @@ def test_write_pipeline_artifacts_uses_registry_producer_mapping(tmp_path):
 
     assert artifact_ids == ("status",)
     assert written == [("status.json", {"kind": "status"})]
+
+
+def test_write_json_artifact_retries_permission_error(tmp_path, monkeypatch):
+    target = tmp_path / "status.json"
+    replace_calls = {"count": 0}
+    real_replace = os.replace
+
+    def flaky_replace(source, destination):
+        replace_calls["count"] += 1
+        if replace_calls["count"] == 1:
+            raise PermissionError("temporary file lock")
+        real_replace(source, destination)
+
+    monkeypatch.setattr("sattlint.devtools.pipeline_artifacts.os.replace", flaky_replace)
+    monkeypatch.setattr("sattlint.devtools.pipeline_artifacts.time.sleep", lambda _seconds: None)
+
+    write_json_artifact(target, {"kind": "status"})
+
+    assert replace_calls["count"] == 2
+    assert json.loads(target.read_text(encoding="utf-8")) == {"kind": "status"}
 
 
 def test_write_pipeline_artifacts_requires_producer_for_enabled_artifact(tmp_path):

@@ -10,6 +10,37 @@ from typing import Any
 from ..grammar import constants as const
 from ..utils.formatter import format_expr, format_list, format_optional, format_seq_nodes
 
+__all__ = [
+    "BasePicture",
+    "DataType",
+    "Equation",
+    "FloatLiteral",
+    "FrameModule",
+    "GraphObject",
+    "IntLiteral",
+    "InteractObject",
+    "ModuleCode",
+    "ModuleDef",
+    "ModuleHeader",
+    "ModuleTypeDef",
+    "ModuleTypeInstance",
+    "ParameterMapping",
+    "SFCAlternative",
+    "SFCBreak",
+    "SFCCodeBlocks",
+    "SFCFork",
+    "SFCParallel",
+    "SFCStep",
+    "SFCSubsequence",
+    "SFCTransition",
+    "SFCTransitionSub",
+    "Sequence",
+    "Simple_DataType",
+    "SingleModule",
+    "SourceSpan",
+    "Variable",
+]
+
 
 @dataclass(frozen=True)
 class SourceSpan:
@@ -404,6 +435,7 @@ class ModuleTypeDef:
 class BasePicture:
     header: ModuleHeader
     name: str = "BasePicture"
+    program_name: str | None = None
     position: tuple[float, float, float, float, float] | None = None
     datatype_defs: list[DataType] = field(default_factory=list)
     moduletype_defs: list[ModuleTypeDef] = field(default_factory=list)

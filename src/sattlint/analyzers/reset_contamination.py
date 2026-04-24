@@ -119,7 +119,7 @@ def _is_from_root_origin(origin_file: str | None, root_origin: str | None) -> bo
         return False
     try:
         return Path(origin_file).stem.lower() == Path(root_origin).stem.lower()
-    except Exception:
+    except (ValueError, TypeError):
         return origin_file.rsplit(".", 1)[0].lower() == root_origin.rsplit(".", 1)[0].lower()
 
 

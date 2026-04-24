@@ -1,5 +1,7 @@
 """Parser-core text preprocessing helpers."""
 
+__all__ = ["strip_sl_comments"]
+
 
 def strip_sl_comments(text: str) -> str:
     """

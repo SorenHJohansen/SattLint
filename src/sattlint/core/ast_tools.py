@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from ..grammar import constants as const
 
+_DEFAULT_VAR_NAME = "var_name"
 
-def iter_variable_refs(node: object, *, key_name: str = "var_name"):
+
+def iter_variable_refs(node: object, *, key_name: str = _DEFAULT_VAR_NAME):
     if isinstance(node, dict) and key_name in node:
         yield node
         return

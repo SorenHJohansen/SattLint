@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from ..grammar import constants as const
@@ -20,6 +21,8 @@ class ResolvedModulePath:
     node: Any
     path: list[str]
     display_path_str: str
+    current_library: str | None = None
+    current_file: str | None = None
 
 
 def path_startswith_casefold(location: list[str], prefix: list[str]) -> bool:
@@ -29,35 +32,68 @@ def path_startswith_casefold(location: list[str], prefix: list[str]) -> bool:
 
 
 def format_moduletype_label(mt: ModuleTypeDef) -> str:
+    file_label = f" ({mt.origin_file})" if mt.origin_file else ""
     if mt.origin_lib:
-        return f"{mt.origin_lib}:{mt.name}"
+        return f"{mt.origin_lib}:{mt.name}{file_label}"
     return mt.name
 
 
 def dedupe_moduletype_defs(matches: list[ModuleTypeDef]) -> list[ModuleTypeDef]:
-    unique: dict[tuple[str, str], ModuleTypeDef] = {}
+    unique: dict[tuple[str, str, str], ModuleTypeDef] = {}
     for mt in matches:
-        key = (mt.name.casefold(), (mt.origin_lib or "").casefold())
+        key = (
+            mt.name.casefold(),
+            (mt.origin_lib or "").casefold(),
+            (mt.origin_file or "").casefold(),
+        )
         if key not in unique:
             unique[key] = mt
     return list(unique.values())
 
 
-def resolve_moduletype_def_strict(
+def preferred_source_extensions(origin_file: str | None) -> list[str]:
+    suffix = Path(origin_file).suffix.lower() if origin_file else ""
+    if suffix == ".s":
+        return [".s", ".x"]
+    if suffix == ".x":
+        return [".x", ".s"]
+    return []
+
+
+def narrow_matches_by_source_preference(
+    matches: list[ModuleTypeDef],
+    preferred_extensions: list[str],
+) -> list[ModuleTypeDef]:
+    if len(matches) <= 1 or not preferred_extensions:
+        return matches
+
+    for ext in preferred_extensions:
+        scoped = [mt for mt in matches if Path(mt.origin_file or "").suffix.lower() == ext]
+        if scoped:
+            return scoped
+
+    return matches
+
+
+def select_moduletype_def_strict(
     bp: BasePicture,
     moduletype_name: str,
+    matches: list[ModuleTypeDef],
+    *,
     current_library: str | None = None,
+    current_file: str | None = None,
     unavailable_libraries: set[str] | None = None,
 ) -> ModuleTypeDef:
-    key = moduletype_name.casefold()
-    matches = [mt for mt in (bp.moduletype_defs or []) if mt.name.casefold() == key]
     if not matches:
         available = sorted({mt.name for mt in (bp.moduletype_defs or [])})
         note = ""
         if unavailable_libraries:
             note = f" Note: Some libraries are unavailable (e.g., proprietary): {sorted(unavailable_libraries)[:10]}"
         raise ValueError(f"Unknown moduletype {moduletype_name!r}.{note} Available moduletype defs: {available[:50]}")
+
     matches = dedupe_moduletype_defs(matches)
+    preferred_extensions = preferred_source_extensions(current_file or bp.origin_file)
+
     if len(matches) > 1:
         if current_library is None and bp.origin_lib:
             current_library = bp.origin_lib
@@ -65,6 +101,7 @@ def resolve_moduletype_def_strict(
         if current_library:
             current_lib_cf = current_library.casefold()
             local_matches = [mt for mt in matches if (mt.origin_lib or "").casefold() == current_lib_cf]
+            local_matches = narrow_matches_by_source_preference(local_matches, preferred_extensions)
             if len(local_matches) == 1:
                 return local_matches[0]
             if len(local_matches) > 1:
@@ -76,6 +113,7 @@ def resolve_moduletype_def_strict(
             for dep in deps:
                 dep_cf = dep.casefold()
                 dep_matches = [mt for mt in matches if (mt.origin_lib or "").casefold() == dep_cf]
+                dep_matches = narrow_matches_by_source_preference(dep_matches, preferred_extensions)
                 if len(dep_matches) > 1:
                     labels = sorted(format_moduletype_label(mt) for mt in dep_matches)
                     raise ValueError(f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}")
@@ -88,9 +126,33 @@ def resolve_moduletype_def_strict(
                 labels = sorted(format_moduletype_label(mt) for mt in dep_candidates)
                 raise ValueError(f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}")
 
+        matches = narrow_matches_by_source_preference(matches, preferred_extensions)
+        if len(matches) == 1:
+            return matches[0]
+
         labels = sorted(format_moduletype_label(mt) for mt in matches)
         raise ValueError(f"Ambiguous moduletype {moduletype_name!r} (multiple definitions): {labels}")
+
     return matches[0]
+
+
+def resolve_moduletype_def_strict(
+    bp: BasePicture,
+    moduletype_name: str,
+    current_library: str | None = None,
+    current_file: str | None = None,
+    unavailable_libraries: set[str] | None = None,
+) -> ModuleTypeDef:
+    key = moduletype_name.casefold()
+    matches = [mt for mt in (bp.moduletype_defs or []) if mt.name.casefold() == key]
+    return select_moduletype_def_strict(
+        bp,
+        moduletype_name,
+        matches,
+        current_library=current_library,
+        current_file=current_file,
+        unavailable_libraries=unavailable_libraries,
+    )
 
 
 def resolve_module_by_strict_path(
@@ -129,18 +191,26 @@ def resolve_module_by_strict_path(
 
     current: Any = bp
     resolved_path: list[str] = [bp.header.name]
+    current_library = bp.origin_lib
+    current_file = bp.origin_file
 
     def resolve_moduletype(node: ModuleTypeInstance) -> ModuleTypeDef:
         if moduletype_index is not None:
             matches = moduletype_index.get(node.moduletype_name.casefold(), [])
-            if len(matches) > 1:
-                matches = dedupe_moduletype_defs(matches)
-            if len(matches) == 1:
-                return matches[0]
-            if len(matches) > 1:
-                labels = sorted(format_moduletype_label(mt) for mt in matches)
-                raise ValueError(f"Ambiguous moduletype {node.moduletype_name!r} (multiple definitions): {labels}")
-        return resolve_moduletype_def_strict(bp, node.moduletype_name)
+            if matches:
+                return select_moduletype_def_strict(
+                    bp,
+                    node.moduletype_name,
+                    matches,
+                    current_library=current_library,
+                    current_file=current_file,
+                )
+        return resolve_moduletype_def_strict(
+            bp,
+            node.moduletype_name,
+            current_library=current_library,
+            current_file=current_file,
+        )
 
     def children_of(node: Any) -> list[Any]:
         if isinstance(node, BasePicture):
@@ -177,7 +247,7 @@ def resolve_module_by_strict_path(
                     try:
                         mt = resolve_moduletype(m)
                         details.append(f"{m.header.name} ({format_moduletype_label(mt)})")
-                    except Exception:
+                    except (ValueError, AttributeError):
                         details.append(f"{m.header.name} ({m.moduletype_name})")
                 else:
                     details.append(m.header.name)
@@ -198,9 +268,26 @@ def resolve_module_by_strict_path(
 
         current = matches[0]
         resolved_path.append(matches[0].header.name)
+        if isinstance(current, ModuleTypeInstance):
+            mt = resolve_moduletype(current)
+            if mt.origin_lib:
+                current_library = mt.origin_lib
+            if mt.origin_file:
+                current_file = mt.origin_file
+        elif isinstance(current, BasePicture | ModuleTypeDef):
+            if current.origin_lib:
+                current_library = current.origin_lib
+            if current.origin_file:
+                current_file = current.origin_file
 
     display_path = ".".join(resolved_path)
-    return ResolvedModulePath(node=current, path=resolved_path, display_path_str=display_path)
+    return ResolvedModulePath(
+        node=current,
+        path=resolved_path,
+        display_path_str=display_path,
+        current_library=current_library,
+        current_file=current_file,
+    )
 
 
 def find_module_by_name(bp: BasePicture, name: str):

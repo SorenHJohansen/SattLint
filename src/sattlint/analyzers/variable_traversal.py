@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from lark import Tree
+
 from ..grammar import constants as const
 from ..models.ast_model import (
     FloatLiteral,
@@ -672,13 +674,13 @@ def _walk_stmt_or_expr(
         self._walk_stmt_or_expr(tail, context, path, is_ui_read=is_ui_read)
         return
 
-    if hasattr(obj, "data"):  # type: ignore[reportAttributeAccessIssue]
-        if obj.data == const.KEY_ENABLE_EXPRESSION:  # type: ignore[reportAttributeAccessIssue]
-            for child in getattr(obj, "children", []):  # type: ignore[reportAttributeAccessIssue]
+    if isinstance(obj, Tree):
+        if obj.data == const.KEY_ENABLE_EXPRESSION:
+            for child in obj.children:
                 self._walk_stmt_or_expr(child, context, path, is_ui_read=is_ui_read)
             return
-        if obj.data == const.GRAMMAR_VALUE_INVAR_PREFIX:  # type: ignore[reportAttributeAccessIssue]
-            for child in getattr(obj, "children", []):  # type: ignore[reportAttributeAccessIssue]
+        if obj.data == const.GRAMMAR_VALUE_INVAR_PREFIX:
+            for child in obj.children:
                 self._walk_stmt_or_expr(child, context, path, is_ui_read=is_ui_read)
             return
 

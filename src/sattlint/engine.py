@@ -12,7 +12,7 @@ from lark.exceptions import UnexpectedInput, VisitError
 from sattline_parser import create_parser as parser_core_create_parser
 from sattline_parser import parse_source_file as parser_core_parse_source_file
 from sattline_parser import parse_source_text as parser_core_parse_source_text
-from sattline_parser.api import describe_parse_error
+from sattline_parser.api import describe_parse_error, read_text_with_fallback
 
 from .cache import FileASTCache, FileLookupCache, get_cache_dir
 from .grammar.parser_decode import is_compressed, preprocess_sl_text
@@ -31,12 +31,7 @@ from .validation import (
     validate_transformed_basepicture,
 )
 
-# Create a module-level logger consistent with the CLI output.
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(message)s",  # Just the message, no prefixes
-    force=True,
-)
+# Library module: use getLogger only; root logging config belongs to the entry point (app.py).
 log = logging.getLogger("SattLint")
 
 
@@ -225,17 +220,6 @@ def create_sl_parser() -> Lark:
     return parser_core_create_parser()
 
 
-def _read_text_simple(path: Path) -> str:
-    # If utf-8 fails, try cp1252 (covers characters like 'ø' / 0xF8)
-    try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        try:
-            return path.read_text(encoding="cp1252")
-        except UnicodeDecodeError:
-            return path.read_text(encoding="latin-1")
-
-
 def _load_source_text(
     code_path: Path,
     *,
@@ -245,7 +229,7 @@ def _load_source_text(
     if debug is not None:
         debug(f"Parsing file: {source_path}")
 
-    src = _read_text_simple(source_path)
+    src = read_text_with_fallback(source_path)
     if is_compressed(src):
         if debug is not None:
             debug("Compressed format detected; decoding before parsing")
@@ -423,7 +407,7 @@ class SattLineProjectLoader(DebugMixin):
     def _is_ignored_base(self, base: Path) -> bool:
         try:
             base_r = base.resolve()
-        except Exception:
+        except OSError:
             base_r = base
         return any(base_r == ign for ign in self._ignored_dirs)
 
@@ -431,12 +415,12 @@ class SattLineProjectLoader(DebugMixin):
         allowed = [self.program_dir, *self.other_lib_dirs, self.abb_lib_dir]
         try:
             base_r = base.resolve()
-        except Exception:
+        except OSError:
             base_r = base
         for candidate in allowed:
             try:
                 cand_r = candidate.resolve()
-            except Exception:
+            except OSError:
                 cand_r = candidate
             if base_r == cand_r:
                 return True
@@ -650,19 +634,14 @@ class SattLineProjectLoader(DebugMixin):
         return None
 
     def _read_deps(self, deps_path: Path) -> list[str]:
-        # If utf-8 fails, try cp1252 (covers characters like 'ø' / 0xF8)
-        try:
-            text = deps_path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            text = deps_path.read_text(encoding="cp1252")
-
+        text = read_text_with_fallback(deps_path)
         lines = text.splitlines()
         names = [ln.strip() for ln in lines if ln.strip()]
         self.dbg(f"Deps from {deps_path.name}: {names}")
         return names
 
     def _read_text_simple(self, path: Path) -> str:
-        return _read_text_simple(path)
+        return read_text_with_fallback(path)
 
     def _library_name_for_path(self, code_path: Path) -> str:
         """
@@ -672,20 +651,20 @@ class SattLineProjectLoader(DebugMixin):
         rp = code_path.resolve()
         try:
             pr = self.program_dir.resolve()
-        except Exception:
+        except OSError:
             pr = self.program_dir
         if rp.is_relative_to(pr):
             return pr.name
         for ld in self.other_lib_dirs:
             try:
                 lr = ld.resolve()
-            except Exception:
+            except OSError:
                 lr = ld
             if rp.is_relative_to(lr):
                 return lr.name
         try:
             ar = self.abb_lib_dir.resolve()
-        except Exception:
+        except OSError:
             ar = self.abb_lib_dir
         if rp.is_relative_to(ar):
             return ar.name

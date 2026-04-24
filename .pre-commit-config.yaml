@@ -10,7 +10,7 @@ repos:
     hooks:
       - id: pyright
         name: pyright
-        entry: python -m pyright
+        entry: .venv/Scripts/python.exe -m pyright
         language: system
         pass_filenames: false
 

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "python .github/hooks/scripts/claimed_files_guard.py",
+        "windows": ".venv\\Scripts\\python.exe .github\\hooks\\scripts\\claimed_files_guard.py",
+        "linux": ".venv/bin/python .github/hooks/scripts/claimed_files_guard.py",
+        "osx": ".venv/bin/python .github/hooks/scripts/claimed_files_guard.py",
+        "cwd": ".",
+        "timeout": 10
+      }
+    ]
+  }
+}

@@ -13,6 +13,18 @@ from lark import Lark
 from lark import __version__ as lark_version
 from lark.exceptions import UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken
 
+__all__ = [
+    "ParseErrorDetails",
+    "build_lark_parser",
+    "create_parser",
+    "create_sl_parser",
+    "describe_parse_error",
+    "load_source_text",
+    "parse_source_file",
+    "parse_source_text",
+    "read_text_with_fallback",
+]
+
 from .grammar import constants as const
 from .grammar.parser_decode import is_compressed, preprocess_sl_text
 from .models.ast_model import BasePicture
@@ -132,7 +144,8 @@ def describe_parse_error(exc: Exception, source_text: str) -> ParseErrorDetails:
     return ParseErrorDetails(message=str(exc), line=line, column=column)
 
 
-def _read_text_simple(path: Path) -> str:
+def read_text_with_fallback(path: Path) -> str:
+    """Read a text file trying utf-8, then cp1252, then latin-1."""
     try:
         return path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
@@ -140,6 +153,10 @@ def _read_text_simple(path: Path) -> str:
             return path.read_text(encoding="cp1252")
         except UnicodeDecodeError:
             return path.read_text(encoding="latin-1")
+
+
+# Internal alias kept for callers that import the private name.
+_read_text_simple = read_text_with_fallback
 
 
 def load_source_text(
@@ -177,7 +194,7 @@ def parse_source_text(
     basepic = active_transformer.transform(tree)
     try:
         basepic.parse_tree = tree
-    except Exception:
+    except AttributeError:
         if debug is not None:
             debug("BasePicture does not allow dynamic attributes; parse tree not attached")
 

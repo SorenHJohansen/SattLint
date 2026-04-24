@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import textwrap
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from ..grammar import constants as const
 
-if TYPE_CHECKING:
-    pass
+_DEFAULT_INDENT = "    "
+
+__all__ = ["format_expr", "format_list", "format_optional", "format_seq_nodes"]
 
 
 def format_list(
     items: list[Any],
-    indent: str = "    ",
+    indent: str = _DEFAULT_INDENT,
     align_variables: bool = True,
     inline_if_singleline: bool = False,
 ) -> str:
@@ -62,7 +63,7 @@ def format_optional(obj: Any) -> str:
     return "None" if obj is None else str(obj)
 
 
-def format_expr(expr, indent="    "):
+def format_expr(expr, indent: str = _DEFAULT_INDENT):
     """
     Pretty-print nested expressions and statements (assign/IF/AND/OR/compare/add/mul/function).
     Produces SattLine-like multi-line formatting where appropriate.
@@ -186,7 +187,7 @@ def format_expr(expr, indent="    "):
     return str(expr)
 
 
-def format_seq_nodes(nodes: list[Any], indent: str = "    ") -> str:
+def format_seq_nodes(nodes: list[Any], indent: str = _DEFAULT_INDENT) -> str:
     # Pretty-print a list of SFC nodes recursively
     lines: list[str] = []
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -13,6 +12,7 @@ from .issue import Issue, format_report_header
 __all__ = [
     "AnalysisContext",
     "AnalysisResult",
+    "Analyzer",
     "AnalyzerSpec",
     "Issue",
     "Report",
@@ -25,6 +25,12 @@ class Report(Protocol):
     issues: list[Any]
 
     def summary(self) -> str: ...
+
+
+class Analyzer(Protocol):
+    """Callable protocol for analyzer functions registered in AnalyzerSpec."""
+
+    def __call__(self, context: AnalysisContext) -> Report: ...
 
 
 @dataclass
@@ -94,7 +100,7 @@ class AnalyzerSpec:
     key: str
     name: str
     description: str
-    run: Callable[[AnalysisContext], Report]
+    run: Analyzer
     enabled: bool = True
     supports_live_diagnostics: bool = False
 

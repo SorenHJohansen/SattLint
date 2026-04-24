@@ -176,6 +176,20 @@ def test_build_python_source_scan_context_uses_tracked_files_only(tmp_path):
     assert {path.relative_to(tmp_path).as_posix() for path in context.texts} == {"src/tracked.py"}
 
 
+def test_build_python_source_scan_context_skips_missing_tracked_files(tmp_path):
+    tracked_file = tmp_path / "src" / "tracked.py"
+    tracked_file.parent.mkdir(parents=True)
+    tracked_file.write_text("VALUE = 1\n", encoding="utf-8")
+
+    context = repo_audit._build_python_source_scan_context(
+        tmp_path / "src",
+        root=tmp_path,
+        tracked_paths=("src/tracked.py", "src/missing.py"),
+    )
+
+    assert {path.relative_to(tmp_path).as_posix() for path in context.texts} == {"src/tracked.py"}
+
+
 def test_parse_coverage_findings_ignores_untracked_coverage_xml(tmp_path):
     coverage_path = tmp_path / "coverage.xml"
     coverage_path.write_text(

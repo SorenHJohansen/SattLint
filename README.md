@@ -87,6 +87,33 @@ sattlint
 
 That opens the interactive menu.
 
+For the desktop GUI shell:
+
+```bash
+sattlint-gui
+```
+
+The GUI reuses the same config file and analysis helpers as the CLI. It currently covers setup editing, self-check and cache tooling, variable analysis launch, and non-interactive DOCX generation from configured targets.
+
+For non-interactive use, SattLint also exposes subcommands:
+
+```bash
+sattlint syntax-check path/to/Program.s
+sattlint analyze
+sattlint analyze --list-checks
+sattlint validate-config
+sattlint docgen --output-dir docs-out
+sattlint repo-audit --profile quick --fail-on high
+```
+
+Shared flags for config-driven commands:
+
+```bash
+sattlint --config path/to/config.toml --no-cache analyze
+sattlint --config path/to/config.toml --verbose validate-config
+sattlint --quiet repo-audit --profile quick
+```
+
 ---
 
 ## Updating SattLint
@@ -146,6 +173,15 @@ Start SattLint:
 
 ```bash
 sattlint
+```
+
+Or run a specific automation command:
+
+```bash
+sattlint syntax-check FILE
+sattlint analyze
+sattlint validate-config
+sattlint-gui
 ```
 
 Main menu:

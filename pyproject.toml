@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sattlint"
-version = "0.1.1"
+dynamic = ["version"]
 description = "Static analysis, validation, documentation, and LSP tooling for SattLine projects"
 readme = "README.md"
 license = "MIT"
@@ -49,6 +49,8 @@ dev = [
     "pyright>=1.1.380", # Type checking
     "build>=1.2.2",    # Build frontend for release validation
     "bandit>=1.8.0",   # Security analysis
+    "pip-audit>=2.8.0", # Dependency vulnerability scanning
+    "rich>=13.9.0",    # Optional terminal formatting
     "twine>=5.1.1",    # Package metadata validation
     "vulture>=2.11",    # Dead code analysis
     "types-openpyxl",  # Stubs for mypy
@@ -69,7 +71,7 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
-    "--cov-fail-under=0",
+    "--cov-fail-under=19",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
@@ -81,6 +83,7 @@ markers = [
 
 [project.scripts]
 sattlint = "sattlint.app:cli"
+sattlint-gui = "sattlint_gui.main:gui"
 sattlint-lsp = "sattlint_lsp.server:cli"
 sattlint-analysis-pipeline = "sattlint.devtools.pipeline:main"
 sattlint-corpus-runner = "sattlint.devtools.corpus:main"
@@ -124,6 +127,9 @@ ignoreStdlibInStubSrc = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.dynamic]
+version = { attr = "sattlint.__version__.__version__" }
 
 [tool.setuptools.package-data]
 sattlint = ["grammar/*.lark"]

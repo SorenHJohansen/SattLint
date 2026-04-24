@@ -10,13 +10,7 @@ from lark.exceptions import UnexpectedInput, VisitError
 from lsprotocol.types import Diagnostic, DiagnosticSeverity, Position, Range
 
 from sattline_parser.api import create_parser, describe_parse_error
-from sattline_parser.transformer.sl_transformer import SLTransformer
-from sattline_parser.utils.text_processing import strip_sl_comments
-from sattlint.core.ast_tools import iter_variable_refs
-from sattlint.core.document import LineIndex
-from sattlint.editor_api import SemanticSnapshot, build_source_snapshot_from_basepicture
-from sattlint.graphics_validation import validate_graphics_text
-from sattlint.models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleCode,
@@ -32,9 +26,16 @@ from sattlint.models.ast_model import (
     SourceSpan,
     Variable,
 )
+from sattline_parser.transformer.sl_transformer import SLTransformer
+from sattline_parser.utils.text_processing import strip_sl_comments
+from sattlint.core.ast_tools import iter_variable_refs
+from sattlint.core.document import LineIndex
+from sattlint.editor_api import SemanticSnapshot, build_source_snapshot_from_basepicture
+from sattlint.graphics_validation import validate_graphics_text
 from sattlint.utils.text_processing import find_disallowed_comments
 
 _CHECKPOINT_TOKEN_INTERVAL = 64
+_MAX_CHECKPOINTS = 10
 
 
 def _extract_error_position(exc: Exception) -> tuple[int | None, int | None]:
@@ -388,7 +389,7 @@ class IncrementalDocumentParserAdapter:
         # Adaptive checkpoint interval: cap total checkpoints to ~10 regardless of file size.
         # Each checkpoint deep-copies Lark's value_stack (which grows as the file is parsed),
         # making per-line checkpointing prohibitively expensive for files >1000 lines.
-        max_desired_checkpoints = 10
+        max_desired_checkpoints = _MAX_CHECKPOINTS
         clean_lines = cleaned_text.count("\n") + 1
         checkpoint_line_interval = max(1, clean_lines // max_desired_checkpoints)
         lexer = self._cursor_lexer(cursor)

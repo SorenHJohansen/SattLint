@@ -88,7 +88,7 @@ def _normalize_module_kind(value: Any) -> str:
     normalized = _MODULE_KIND_ALIASES.get(raw)
     if normalized is None:
         raise ValueError(
-            f"Unsupported graphics rule module_kind {raw!r}; expected one of {sorted(_ALLOWED_MODULE_KINDS)}"
+            "Unsupported graphics rule module_kind " f"{raw!r}; expected one of {sorted(_ALLOWED_MODULE_KINDS)}"
         )
     return normalized
 
@@ -160,7 +160,7 @@ def _normalize_rule(rule: Any) -> dict[str, Any]:
     )
     if len(populated_selectors) > 1:
         selector_names = ", ".join(name for name, _value in populated_selectors)
-        raise ValueError(f"Graphics rule must use only one selector path field; got: {selector_names}")
+        raise ValueError("Graphics rule must use only one selector path field; got: " f"{selector_names}")
 
     if module_kind == "moduletype":
         if not moduletype_name:

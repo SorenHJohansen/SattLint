@@ -2,6 +2,8 @@
 
 import re
 
+__all__ = ["SEED_MAPPING", "decode_compressed", "is_compressed", "preprocess_sl_text"]
+
 # Seed mappings from sample files (kept explicit for traceability).
 SEED_MAPPING: dict[str, str] = {
     "#6?": "Invocation",
@@ -175,6 +177,25 @@ SEED_MAPPING: dict[str, str] = {
 # we avoid guessing punctuation for "#01" until learned via an aligned pair.
 
 _MARKER_RE = re.compile(r"#[0-9A-Za-z;:=><?]+")
+_WHITESPACE_RE = re.compile(r"\s+")
+_ENDDEF_TRAILING_SEMI_RE = re.compile(r"\bENDDEF\b\s*;")
+_SEMI_BEFORE_ASSIGN_RE = re.compile(r";\s*:=")
+_ENDIF_SEMI_COMMA_RE = re.compile(r"ENDIF;\s*,")
+_ENDIF_SEMI_PAREN_RE = re.compile(r"ENDIF;\s*\)")
+_EMPTY_ASSIGN_RE = re.compile(r":=\s*;")
+_GRAPHOBJECTS_INTERACT_RE = re.compile(r"\bGraphObjects\b\s*:\s*InteractObjects\b")
+_DURATION_STR_RE = re.compile(r'(\bduration\b(?:\s+OpSave)?\s*:=\s*)("[^"]*")', re.IGNORECASE)
+_TIME_STR_RE = re.compile(r'(\btime\b(?:\s+OpSave)?\s*:=\s*)("[^"]*")', re.IGNORECASE)
+_DATE_TIMESTAMP_RE = re.compile(r'(=>\s*)("\d{4}-\d{2}-\d{2}-\d{2}:\d{2}:\d{2}\.\d{3}")')
+_EXECUTE_LOCAL_ENDDEF_RE = re.compile(r"(ExecuteLocalOld\s*=\s*ExecuteLocal:Old)\s+ENDDEF")
+_EXECUTE_STATE_IF_RE = re.compile(r"(ExecuteState:Old)\s+IF\b")
+_ENDIF_NO_TERM_RE = re.compile(r"\bENDIF\b(?!\s*[;,\)])")
+_GRAPHOBJECTS_ENDDEF_RE = re.compile(r"\bGraphObjects\b\s*:\s*ENDDEF\b")
+_TYPE_ENDDEF_RE = re.compile(r"\b(integer|real|boolean|string)\b\s+ENDDEF\b", re.IGNORECASE)
+_ENABLE_OUTVAR_RE = re.compile(r"(Enable_\s*=\s*\w+\s*:)\s*OutVar_")
+_TRUEVAR_RE = re.compile(r"\bTrueVar\b")
+_EQUATIONBLOCK_RE = re.compile(r"\bEQUATIONBLOCK\b")
+_EMPTY_TRAILING_ARG_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\(([^)]*?),\s*\)")
 
 
 def is_compressed(text: str) -> bool:
@@ -182,7 +203,7 @@ def is_compressed(text: str) -> bool:
     markers = _MARKER_RE.findall(text)
     if not markers:
         return False
-    compact_len = max(len(re.sub(r"\s+", "", text)), 1)
+    compact_len = max(len(_WHITESPACE_RE.sub("", text)), 1)
     marker_char_ratio = len("".join(markers)) / compact_len
     marker_count = len(markers)
     keyword_hits = sum(
@@ -213,62 +234,27 @@ def decode_compressed(text: str, mapping: dict[str, str]) -> str:
 
     decoded = _MARKER_RE.sub(_subst, text)
     # Normalize common ABB formatting quirks
-    decoded = re.sub(r"\bENDDEF\b\s*;", "ENDDEF", decoded)
-    decoded = re.sub(r";\s*:=", " :=", decoded)
-    decoded = re.sub(r"ENDIF;\s*,", "ENDIF,", decoded)
-    decoded = re.sub(r"ENDIF;\s*\)", "ENDIF)", decoded)
-    decoded = re.sub(r":=\s*;", ":= Default;", decoded)
-    decoded = re.sub(r"\bGraphObjects\b\s*:\s*InteractObjects\b", "InteractObjects", decoded)
-    decoded = re.sub(
-        r"(\bduration\b(?:\s+OpSave)?\s*:=\s*)(\"[^\"]*\")",
-        r"\1Duration_Value \2",
-        decoded,
-        flags=re.IGNORECASE,
-    )
-    decoded = re.sub(
-        r"(\btime\b(?:\s+OpSave)?\s*:=\s*)(\"[^\"]*\")",
-        r"\1Time_Value \2",
-        decoded,
-        flags=re.IGNORECASE,
-    )
-    decoded = re.sub(
-        r'(=>\s*)("\d{4}-\d{2}-\d{2}-\d{2}:\d{2}:\d{2}\.\d{3}")',
-        r"\1Time_Value \2",
-        decoded,
-    )
-    decoded = re.sub(
-        r"(ExecuteLocalOld\s*=\s*ExecuteLocal:Old)\s+ENDDEF",
-        r"\1; ENDDEF",
-        decoded,
-    )
-    decoded = re.sub(
-        r"(ExecuteState:Old)\s+IF\b",
-        r"\1; IF",
-        decoded,
-    )
+    decoded = _ENDDEF_TRAILING_SEMI_RE.sub("ENDDEF", decoded)
+    decoded = _SEMI_BEFORE_ASSIGN_RE.sub(" :=", decoded)
+    decoded = _ENDIF_SEMI_COMMA_RE.sub("ENDIF,", decoded)
+    decoded = _ENDIF_SEMI_PAREN_RE.sub("ENDIF)", decoded)
+    decoded = _EMPTY_ASSIGN_RE.sub(":= Default;", decoded)
+    decoded = _GRAPHOBJECTS_INTERACT_RE.sub("InteractObjects", decoded)
+    decoded = _DURATION_STR_RE.sub(r"\1Duration_Value \2", decoded)
+    decoded = _TIME_STR_RE.sub(r"\1Time_Value \2", decoded)
+    decoded = _DATE_TIMESTAMP_RE.sub(r"\1Time_Value \2", decoded)
+    decoded = _EXECUTE_LOCAL_ENDDEF_RE.sub(r"\1; ENDDEF", decoded)
+    decoded = _EXECUTE_STATE_IF_RE.sub(r"\1; IF", decoded)
     # Ensure IF statements terminate with ';' (but not inside expressions)
-    decoded = re.sub(r"\bENDIF\b(?!\s*[;,\)])", "ENDIF;", decoded)
+    decoded = _ENDIF_NO_TERM_RE.sub("ENDIF;", decoded)
     # Drop empty GraphObjects sections before ENDDEF
-    decoded = re.sub(
-        r"\bGraphObjects\b\s*:\s*ENDDEF\b",
-        "ENDDEF",
-        decoded,
-    )
+    decoded = _GRAPHOBJECTS_ENDDEF_RE.sub("ENDDEF", decoded)
     # Ensure variable groups end with ';' before ENDDEF
-    decoded = re.sub(
-        r"\b(integer|real|boolean|string)\b\s+ENDDEF\b",
-        r"\1 ; ENDDEF",
-        decoded,
-        flags=re.IGNORECASE,
-    )
+    decoded = _TYPE_ENDDEF_RE.sub(r"\1 ; ENDDEF", decoded)
     # Normalize Enable_ tails to use InVar_ for grammar compatibility
-    decoded = re.sub(
-        r"(Enable_\s*=\s*\w+\s*:)\s*OutVar_",
-        r"\1 InVar_",
-        decoded,
-    )
+    decoded = _ENABLE_OUTVAR_RE.sub(r"\1 InVar_", decoded)
     # Avoid BOOL tokenizing identifiers like TrueVar
-    decoded = re.sub(r"\bTrueVar\b", "TTrueVar", decoded)
+    decoded = _TRUEVAR_RE.sub("TTrueVar", decoded)
 
     # Inject missing ModuleCode before EQUATIONBLOCK when none exists in the same module
     def _ensure_modulecode(m: re.Match) -> str:
@@ -278,13 +264,9 @@ def decode_compressed(text: str, mapping: dict[str, str]) -> str:
             return m.group(0)
         return "ModuleCode " + m.group(0)
 
-    decoded = re.sub(r"\bEQUATIONBLOCK\b", _ensure_modulecode, decoded)
+    decoded = _EQUATIONBLOCK_RE.sub(_ensure_modulecode, decoded)
     # Fill empty trailing function arguments (e.g., "Func(a, )")
-    decoded = re.sub(
-        r"\b([A-Za-z_][A-Za-z0-9_]*)\(([^)]*?),\s*\)",
-        r"\1(\2, 0)",
-        decoded,
-    )
+    decoded = _EMPTY_TRAILING_ARG_RE.sub(r"\1(\2, 0)", decoded)
     return decoded
 
 

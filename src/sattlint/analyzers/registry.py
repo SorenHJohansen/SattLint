@@ -329,24 +329,28 @@ def _base_delivery_metadata_by_analyzer() -> dict[str, AnalyzerDeliveryMetadata]
             implementation_bucket="engineering-rules",
             acceptance_tests=("tests/test_analyzers.py",),
             min_fixture_set=shared_fixtures,
+            exposed_via=("pipeline",),
         ),
         "cyclomatic-complexity": AnalyzerDeliveryMetadata(
             scope="single-file",
             implementation_bucket="engineering-rules",
             acceptance_tests=("tests/test_analyzers.py",),
             min_fixture_set=shared_fixtures,
+            exposed_via=("pipeline",),
         ),
         "parameter-drift": AnalyzerDeliveryMetadata(
             scope="cross-module",
             implementation_bucket="engineering-rules",
             acceptance_tests=("tests/test_analyzers.py",),
             min_fixture_set=shared_fixtures,
+            exposed_via=("pipeline",),
         ),
         "scan-loop-resource-usage": AnalyzerDeliveryMetadata(
             scope="single-file",
             implementation_bucket="engineering-rules",
             acceptance_tests=("tests/test_analyzers.py",),
             min_fixture_set=shared_fixtures,
+            exposed_via=("pipeline",),
         ),
         "version-drift": AnalyzerDeliveryMetadata(
             scope="workspace",

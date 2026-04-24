@@ -5,6 +5,11 @@ from pathlib import Path
 
 from ..analyzers.framework import format_report_header
 
+_AGGREGATED_REASONS = {
+    "missing journal parameter fields",
+    "unit structure drift",
+}
+
 
 @dataclass(frozen=True)
 class ICFEntry:
@@ -13,6 +18,9 @@ class ICFEntry:
     section: str | None
     key: str
     value: str
+    unit: str | None = None
+    journal: str | None = None
+    group: str | None = None
 
 
 @dataclass(frozen=True)
@@ -27,6 +35,7 @@ class ICFResolvedEntry:
     entry: ICFEntry
     module_path: list[str]
     variable_name: str
+    root_datatype: object
     field_path: str | None
     leaf_name: str
     datatype: object
@@ -69,10 +78,23 @@ class ICFValidationReport:
             lines.append("Invalid entries:")
             for issue in self.issues:
                 location = f"{issue.entry.file_path.name}:{issue.entry.line_no}"
-                section = f" [{issue.entry.section}]" if issue.entry.section else ""
+                context_parts: list[str] = []
+                if issue.entry.unit:
+                    context_parts.append(f"Unit {issue.entry.unit}")
+                if issue.entry.journal:
+                    context_parts.append(f"Journal {issue.entry.journal}")
+                if issue.entry.group:
+                    context_parts.append(f"Group {issue.entry.group}")
+                if context_parts:
+                    section = f" [{' | '.join(context_parts)}]"
+                else:
+                    section = f" [{issue.entry.section}]" if issue.entry.section else ""
                 detail = f" ({issue.detail})" if issue.detail else ""
-                lines.append(
-                    f"  - {location}{section} {issue.entry.key} => {issue.entry.value}: {issue.reason}{detail}"
-                )
+                if issue.reason in _AGGREGATED_REASONS:
+                    lines.append(f"  - {location}{section}: {issue.reason}{detail}")
+                else:
+                    lines.append(
+                        f"  - {location}{section} {issue.entry.key} => {issue.entry.value}: {issue.reason}{detail}"
+                    )
 
         return "\n".join(lines)
