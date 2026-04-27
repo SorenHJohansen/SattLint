@@ -64,9 +64,7 @@ def build_incremental_analysis_report(
     analyzer_report = analyzer_registry_report or _default_analyzer_report()
     analyzers = analyzer_report.get("analyzers") or []
     incremental_analyzers = sorted(
-        str(analyzer.get("key") or "")
-        for analyzer in analyzers
-        if analyzer.get("supports_incremental") is True
+        str(analyzer.get("key") or "") for analyzer in analyzers if analyzer.get("supports_incremental") is True
     )
     non_incremental_analyzers = sorted(
         str(analyzer.get("key") or "")
