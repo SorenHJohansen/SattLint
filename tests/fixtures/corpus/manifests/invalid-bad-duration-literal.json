@@ -1,0 +1,29 @@
+{
+  "case_id": "invalid-bad-duration-literal",
+  "target_file": "../invalid/BadDurationLiteral.s",
+  "mode": "strict",
+  "expectation": {
+    "expected_finding_ids": [
+      "syntax.validation"
+    ],
+    "artifact_fragments": {
+      "status.json": {
+        "execution_status": "ok",
+        "stage": "validation",
+        "validation_ok": false
+      },
+      "summary.json": {
+        "stage": "validation",
+        "validation_ok": false
+      }
+    },
+    "forbidden_finding_ids": [
+      "corpus.execution-error"
+    ]
+  },
+  "required_artifacts": [
+    "findings.json",
+    "status.json",
+    "summary.json"
+  ]
+}

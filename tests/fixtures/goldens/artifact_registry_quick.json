@@ -177,6 +177,22 @@
             "schema_kind": "sattlint.tool_report",
             "schema_version": 1,
             "used_by": []
+        },
+        {
+            "artifact_id": "incremental_analysis",
+            "blocking": false,
+            "depends_on": [],
+            "enabled": false,
+            "filename": "incremental_analysis.json",
+            "optional": true,
+            "producer": "incremental_analysis",
+            "profiles": [
+                "quick",
+                "full"
+            ],
+            "schema_kind": "sattlint.incremental_analysis",
+            "schema_version": 1,
+            "used_by": []
         }
     ],
     "generated_by": "sattlint.devtools.pipeline",

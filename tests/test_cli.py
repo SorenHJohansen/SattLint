@@ -1,24 +1,40 @@
 """CLI behavior tests for SattLint."""
 
+from types import SimpleNamespace
 from typing import cast
 
 import sattlint
-from sattlint import app
+from sattlint import app, app_base
+
+
+def _run_base_cli(argv: list[str], **overrides) -> int:
+    kwargs = {
+        "config_path": app.CONFIG_PATH,
+        "repo_audit_module": SimpleNamespace(main=lambda argv=None: app_base.EXIT_SUCCESS),
+        "load_config_fn": lambda path: ({"debug": False}, False),
+        "apply_debug_fn": lambda _cfg: None,
+        "run_validate_config_command_fn": lambda cfg, *, config_path, default_used: app_base.EXIT_SUCCESS,
+        "run_analyze_command_fn": lambda cfg, *, selected_keys, use_cache: app_base.EXIT_SUCCESS,
+        "run_docgen_command_fn": lambda cfg, *, use_cache: app_base.EXIT_SUCCESS,
+        "run_format_icf_command_fn": lambda cfg, *, check: app_base.EXIT_SUCCESS,
+    }
+    kwargs.update(overrides)
+    return app_base.run_cli(list(argv), **kwargs)
 
 
 def test_build_cli_parser_has_descriptions():
-    parser = app.build_cli_parser()
+    parser = app_base.build_cli_parser()
 
     assert parser.description
     action = next(action for action in parser._actions if getattr(action, "choices", None))
     choices = cast(dict[str, object], action.choices)
     syntax_parser = cast(object, choices["syntax-check"])
-    assert {"syntax-check", "analyze", "docgen", "validate-config", "repo-audit"} <= set(choices)
+    assert {"syntax-check", "analyze", "docgen", "validate-config", "format-icf", "repo-audit"} <= set(choices)
     assert getattr(syntax_parser, "description", None)
 
 
 def test_run_cli_without_command_returns_usage_error():
-    assert app.run_cli([]) == app.EXIT_USAGE_ERROR
+    assert _run_base_cli([]) == app_base.EXIT_USAGE_ERROR
 
 
 def test_package_exports_version():
@@ -26,7 +42,7 @@ def test_package_exports_version():
 
 
 def test_run_cli_version_flag(capsys):
-    assert app.run_cli(["--version"]) == 0
+    assert _run_base_cli(["--version"]) == app_base.EXIT_SUCCESS
 
     captured = capsys.readouterr()
     assert captured.out.strip() == f"sattlint {sattlint.__version__}"
@@ -36,65 +52,69 @@ def test_run_cli_version_flag(capsys):
 def test_run_cli_validate_config_uses_custom_path(monkeypatch):
     seen = {}
 
-    monkeypatch.setattr(app, "load_config", lambda path: ({"debug": False}, False))
-    monkeypatch.setattr(app, "apply_debug", lambda _cfg: None)
-    monkeypatch.setattr(
-        app,
-        "run_validate_config_command",
-        lambda cfg, *, config_path, default_used: seen.update(
-            {"cfg": cfg, "config_path": config_path, "default_used": default_used}
-        )
-        or app.EXIT_SUCCESS,
+    exit_code = _run_base_cli(
+        ["--config", "custom.toml", "validate-config"],
+        load_config_fn=lambda path: ({"debug": False}, False),
+        apply_debug_fn=lambda _cfg: None,
+        run_validate_config_command_fn=lambda cfg, *, config_path, default_used: (
+            seen.update({"cfg": cfg, "config_path": config_path, "default_used": default_used}) or app_base.EXIT_SUCCESS
+        ),
     )
 
-    exit_code = app.run_cli(["--config", "custom.toml", "validate-config"])
-
-    assert exit_code == app.EXIT_SUCCESS
+    assert exit_code == app_base.EXIT_SUCCESS
     assert str(seen["config_path"]).endswith("custom.toml")
     assert seen["default_used"] is False
 
 
-def test_run_cli_analyze_passes_flags(monkeypatch):
+def test_run_cli_analyze_passes_flags():
     seen = {}
 
-    monkeypatch.setattr(app, "load_config", lambda path: ({"debug": False}, False))
-    monkeypatch.setattr(app, "apply_debug", lambda _cfg: None)
-    monkeypatch.setattr(
-        app,
-        "run_analyze_command",
-        lambda cfg, *, selected_keys, use_cache: seen.update(
-            {"cfg": cfg, "selected_keys": selected_keys, "use_cache": use_cache}
-        )
-        or app.EXIT_SUCCESS,
+    exit_code = _run_base_cli(
+        ["--no-cache", "analyze", "--check", "variables", "--check", "shadowing"],
+        load_config_fn=lambda path: ({"debug": False}, False),
+        apply_debug_fn=lambda _cfg: None,
+        run_analyze_command_fn=lambda cfg, *, selected_keys, use_cache: (
+            seen.update({"cfg": cfg, "selected_keys": selected_keys, "use_cache": use_cache}) or app_base.EXIT_SUCCESS
+        ),
     )
 
-    exit_code = app.run_cli(["--no-cache", "analyze", "--check", "variables", "--check", "shadowing"])
-
-    assert exit_code == app.EXIT_SUCCESS
+    assert exit_code == app_base.EXIT_SUCCESS
     assert seen["selected_keys"] == ["variables", "shadowing"]
     assert seen["use_cache"] is False
 
 
-def test_run_cli_repo_audit_passes_through_args(monkeypatch):
+def test_run_cli_format_icf_passes_check_flag():
     seen = {}
 
-    monkeypatch.setattr(
-        app.repo_audit_module,
-        "main",
-        lambda argv=None: seen.update({"argv": argv}) or app.EXIT_SUCCESS,
+    exit_code = _run_base_cli(
+        ["format-icf", "--check"],
+        load_config_fn=lambda path: ({"debug": False, "icf_dir": "icf"}, False),
+        apply_debug_fn=lambda _cfg: None,
+        run_format_icf_command_fn=lambda cfg, *, check: seen.update({"cfg": cfg, "check": check})
+        or app_base.EXIT_SUCCESS,
     )
 
-    exit_code = app.run_cli(["repo-audit", "--profile", "quick", "--fail-on", "high"])
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert seen["check"] is True
 
-    assert exit_code == app.EXIT_SUCCESS
+
+def test_run_cli_repo_audit_passes_through_args():
+    seen = {}
+
+    exit_code = _run_base_cli(
+        ["repo-audit", "--profile", "quick", "--fail-on", "high"],
+        repo_audit_module=SimpleNamespace(main=lambda argv=None: seen.update({"argv": argv}) or app_base.EXIT_SUCCESS),
+    )
+
+    assert exit_code == app_base.EXIT_SUCCESS
     assert seen["argv"] == ["--profile", "quick", "--fail-on", "high"]
 
 
 def test_run_cli_quiet_suppresses_stdout(monkeypatch, capsys):
-    monkeypatch.setattr(app, "run_syntax_check_command", lambda _path: print("visible") or app.EXIT_SUCCESS)
+    monkeypatch.setattr(app_base, "run_syntax_check_command", lambda _path: print("visible") or app_base.EXIT_SUCCESS)
 
-    exit_code = app.run_cli(["--quiet", "syntax-check", "dummy.s"])
+    exit_code = _run_base_cli(["--quiet", "syntax-check", "dummy.s"])
 
     captured = capsys.readouterr()
-    assert exit_code == app.EXIT_SUCCESS
+    assert exit_code == app_base.EXIT_SUCCESS
     assert captured.out == ""

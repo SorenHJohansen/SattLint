@@ -1016,6 +1016,140 @@ ENDDEF (*BasePicture*);
     assert "SEQFORK target 'MissingTarget'" in result.message
 
 
+def test_validate_single_file_syntax_accepts_seqfork_after_step_without_seqbreak(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE Seq1 COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP S1
+        SEQFORK Tr2
+        SEQTRANSITION Tr1 WAIT_FOR True
+    ENDSEQUENCE
+
+    SEQUENCE Seq2 COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP S2
+        SEQTRANSITION Tr2 WAIT_FOR True
+            SEQFORK S1
+    ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "SeqForkAfterStep.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is True
+    assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_rejects_parallel_branch_ending_in_transition(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE ParSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Init
+        SEQTRANSITION TrStart WAIT_FOR True
+        PARALLELSEQ
+            SEQSTEP BranchA
+            SEQTRANSITION TrDoneA WAIT_FOR True
+        PARALLELBRANCH
+            SEQSTEP BranchB
+            SEQTRANSITION TrDoneB WAIT_FOR True
+            SEQSTEP BranchBDone
+        ENDPARALLEL
+        SEQSTEP Merge
+    ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "ParallelBranchEndsInTransition.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert "parallel branch 1 ends with SEQTRANSITION" in result.message
+
+
+def test_validate_single_file_syntax_rejects_step_immediately_after_endparallel(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE ParSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Init
+        SEQTRANSITION TrStart WAIT_FOR True
+        PARALLELSEQ
+            SEQSTEP BranchA
+            SEQTRANSITION TrDoneA WAIT_FOR True
+            SEQSTEP BranchADone
+        PARALLELBRANCH
+            SEQSTEP BranchB
+            SEQTRANSITION TrDoneB WAIT_FOR True
+            SEQSTEP BranchBDone
+        ENDPARALLEL
+        SEQSTEP Merge
+    ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "StepAfterEndParallel.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert "immediately after parallel block 'ENDPARALLEL'" in result.message
+
+
+def test_validate_single_file_syntax_rejects_subseqtransition_starting_with_step(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Idle
+        SEQTRANSITION TrStart WAIT_FOR True
+        SEQSTEP Check
+        SUBSEQTRANSITION TrCheckPhase
+            SEQSTEP Checking
+            SEQTRANSITION TrCheckOk WAIT_FOR True
+        ENDSUBSEQTRANSITION
+        SEQSTEP Active
+    ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "SubSeqTransitionStartsWithStep.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert "must not start with SEQSTEP" in result.message
+
+
 def test_validate_single_file_syntax_rejects_old_on_non_state_variable(tmp_path):
     code = """
 "SyntaxVersion"
@@ -1468,6 +1602,35 @@ ENDDEF (*BasePicture*);
     assert result.message is not None
     assert "assignment to string variable 'StrA' is not allowed" in result.message
     assert "CopyString" in result.message
+
+
+def test_validate_single_file_syntax_rejects_real_assignment_to_integer(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    OperatorSetpoint: real := 50.0;
+    Output: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Output = OperatorSetpoint;
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "RealToIntegerAssignment.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert (
+        "assigns 'OperatorSetpoint' with datatype 'real' to target 'Output' with datatype 'integer'" in result.message
+    )
 
 
 def test_validate_single_file_syntax_allows_copystring_for_string_copy(tmp_path):

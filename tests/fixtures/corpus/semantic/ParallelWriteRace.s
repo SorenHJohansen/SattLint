@@ -14,8 +14,6 @@ BasePicture Invocation
 LOCALVARIABLES
    StartCmd: boolean  := False;
    SharedOutput: integer  := 0;
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
 
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
@@ -34,12 +32,15 @@ ModuleCode
             ACTIVECODE
                SharedOutput = 1;
          SEQTRANSITION TrLeftDone WAIT_FOR True
+         SEQSTEP LeftJoined
       PARALLELBRANCH
          SEQSTEP BranchRight
             ACTIVECODE
                SharedOutput = 2;
          SEQTRANSITION TrRightDone WAIT_FOR True
+         SEQSTEP RightJoined
       ENDPARALLEL
+      SEQTRANSITION TrMerge WAIT_FOR True
       SEQSTEP Merge
          ENTERCODE
             StartCmd = False;

@@ -3,13 +3,15 @@
 import logging
 from typing import cast
 
+import pytest
+
 from sattlint import engine
 
 
 def test_format_debug_list_renders_multiline_bullets() -> None:
     formatted = engine._format_debug_list("Resolved ASTs", ["iconlib", "configlib"])
 
-    assert formatted == ("Resolved ASTs (2):\n" "  - iconlib\n" "  - configlib")
+    assert formatted == ("Resolved ASTs (2):\n  - iconlib\n  - configlib")
 
 
 def test_format_debug_missing_entries_splits_parse_failures() -> None:
@@ -58,10 +60,11 @@ def test_loader_resolve_logs_readable_debug_sections(monkeypatch, caplog, tmp_pa
         debug=True,
     )
 
-    def fake_visit(root_name, graph, strict, requester_dir):
+    def fake_visit(root_name, graph, strict, requester_dir, syntax_check=False):
         assert root_name == "Root"
         assert strict is False
         assert requester_dir == tmp_path
+        assert syntax_check is False
         graph.ast_by_name["iconlib"] = object()
         graph.ast_by_name["configlib"] = object()
         graph.missing.extend(
@@ -178,3 +181,40 @@ def test_loader_keeps_dependency_ast_when_validation_warns(monkeypatch, tmp_path
     assert "Root" in graph.ast_by_name
     assert graph.missing == []
     assert any(warning == "Dep: validation warning: dependency issue" for warning in graph.warnings)
+
+
+def test_loader_strict_syntax_check_validates_root_before_reading_dependencies(monkeypatch, tmp_path) -> None:
+    invalid_root = "\n".join(
+        [
+            '"SyntaxVersion"',
+            '"OriginalFileDate"',
+            '"ProgramDate"',
+            "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1",
+            "LOCALVARIABLES",
+            "    A: integer := 0;",
+            "    A: integer := 1;",
+            "ModuleDef",
+            "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )",
+            "ENDDEF (*BasePicture*);",
+        ]
+    )
+    root_file = tmp_path / "Root.s"
+    root_file.write_text(invalid_root, encoding="utf-8")
+    root_file.with_suffix(".l").write_text("Dep\n", encoding="utf-8")
+
+    loader = engine.SattLineProjectLoader(
+        program_dir=tmp_path,
+        other_lib_dirs=[],
+        abb_lib_dir=tmp_path,
+        mode=engine.CodeMode.DRAFT,
+        scan_root_only=False,
+        debug=False,
+    )
+
+    def fail_if_read(*_args, **_kwargs):
+        raise AssertionError("dependency list should not be read before strict root validation")
+
+    monkeypatch.setattr(loader, "_read_deps", fail_if_read)
+
+    with pytest.raises(engine.StructuralValidationError, match="duplicate variable names"):
+        loader.resolve("Root", strict=True, syntax_check=True)

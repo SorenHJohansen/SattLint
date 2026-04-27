@@ -3,10 +3,13 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import scrolledtext, ttk
 
+from ..theme import resolve_theme
+
 
 class ConsoleView(ttk.Frame):
     def __init__(self, parent, *, title: str) -> None:
         super().__init__(parent, style="Content.TFrame")
+        theme = resolve_theme(parent)
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
 
@@ -15,9 +18,9 @@ class ConsoleView(ttk.Frame):
             self,
             wrap=tk.WORD,
             relief=tk.FLAT,
-            bg="#18211d",
-            fg="#d7eadf",
-            insertbackground="#d7eadf",
+            bg=theme.console_bg,
+            fg=theme.console_text,
+            insertbackground=theme.console_text,
         )
         self._text.grid(row=1, column=0, sticky="nsew")
         self._text.configure(state=tk.DISABLED)

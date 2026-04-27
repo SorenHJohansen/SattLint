@@ -114,6 +114,7 @@ See `.github/instructions/repo-audit.instructions.md` (auto-loaded for `src/satt
 - For non-trivial work, report the summary of changes.
 - For non-trivial work, report the exact files changed.
 - For non-trivial work, report the commands run.
+- Keep terminal output easy to scan: avoid long single-line diagnostics when practical; prefer wrapped or structured multiline blocks.
 - Group findings by severity when relevant.
 - Distinguish confirmed issues from suspected or heuristic findings.
 - Report assumptions and limitations.

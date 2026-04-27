@@ -454,6 +454,32 @@ def _collect_sequence_labels(nodes: list[object], labels: dict[str, str], contex
             _collect_sequence_labels(node.body, labels, context)
 
 
+def _collect_label_names(nodes: list[object], names: set[str]) -> None:
+    """Collect all step/transition/subsequence label names (case-folded) without duplicate checks."""
+    for node in nodes:
+        if isinstance(node, SFCStep | SFCTransition | SFCSubsequence | SFCTransitionSub):
+            label_name = getattr(node, "name", None)
+            if isinstance(label_name, str) and label_name:
+                names.add(label_name.casefold())
+        if isinstance(node, SFCAlternative | SFCParallel):
+            for branch in node.branches:
+                _collect_label_names(branch, names)
+        elif isinstance(node, SFCSubsequence | SFCTransitionSub):
+            _collect_label_names(node.body, names)
+
+
+def _parallel_branch_trailer(node: object) -> str | None:
+    if isinstance(node, SFCTransition):
+        return "SEQTRANSITION"
+    if isinstance(node, SFCTransitionSub):
+        return "SUBSEQTRANSITION"
+    if isinstance(node, SFCFork):
+        return "SEQFORK"
+    if isinstance(node, SFCBreak):
+        return "SEQBREAK"
+    return None
+
+
 def _iter_variable_refs(node: object):
     if isinstance(node, dict) and const.KEY_VAR_NAME in node:
         yield node
@@ -884,6 +910,21 @@ def _validate_statement_list(
                     " use CopyString() or CopyVar() to copy strings",
                     **_span_kwargs(_ref_span(statement[1])),
                 )
+            target_datatype = _resolve_ref_datatype(statement[1], env, type_graph)
+            actual_datatype = _infer_expression_datatype(statement[2], env, type_graph)
+            if (
+                target_datatype is not None
+                and actual_datatype is not None
+                and not _assignment_type_matches(actual_datatype, target_datatype)
+            ):
+                source_description = "expression"
+                if isinstance(statement[2], dict) and const.KEY_VAR_NAME in statement[2]:
+                    source_description = str(statement[2][const.KEY_VAR_NAME])
+                raise StructuralValidationError(
+                    f"{context} assigns {source_description!r} with datatype {_format_datatype(actual_datatype)!r} "
+                    f"to target {str(statement[1][const.KEY_VAR_NAME])!r} with datatype {_format_datatype(target_datatype)!r}",
+                    **_span_kwargs(_ref_span(statement[1])),
+                )
         _validate_variable_refs(statement, env, type_graph, context)
         _validate_no_string_literals_in_calls(statement, context)
         _validate_builtin_call_types(statement, env, type_graph, context)
@@ -900,12 +941,14 @@ def _validate_sequence_nodes(
     context: str,
     *,
     labels: dict[str, str],
+    module_labels: frozenset[str] = frozenset(),
     env: dict[str, Variable],
     type_graph: TypeGraph,
     require_init_step: bool,
     warning_sink: Callable[[str], None] | None = None,
 ) -> None:
-    previous_step: str | None = None
+    previous_unit_name: str | None = None
+    previous_unit_kind: str | None = None
     init_steps = 0
     missing_initial_init_step = False
 
@@ -926,25 +969,33 @@ def _validate_sequence_nodes(
                         f"{context} has SEQINITSTEP {node.name!r} outside the first position",
                         warning_sink=warning_sink,
                     )
-            if previous_step is not None:
+            if previous_unit_name is not None:
                 raise StructuralValidationError(
-                    f"{context} has step {node.name!r} immediately after step "
-                    f"{previous_step!r} without an intervening transition"
+                    f"{context} has step {node.name!r} immediately after "
+                    f"{previous_unit_kind} {previous_unit_name!r} without an intervening transition"
                 )
             _validate_code_blocks(node.code, env, type_graph, f"{context} step {node.name!r}")
-            previous_step = node.name
+            previous_unit_name = node.name
+            previous_unit_kind = "step"
             continue
 
-        previous_step = None
+        previous_unit_name = None
+        previous_unit_kind = None
 
         if isinstance(node, SFCTransition):
             _validate_identifier(node.name, f"{context} transition")
         elif isinstance(node, SFCTransitionSub):
             _validate_identifier(node.name, f"{context} transition-sub")
+            if node.body and isinstance(node.body[0], SFCStep):
+                raise StructuralValidationError(
+                    f"{context} transition-sub {node.name!r} must not start with SEQSTEP; "
+                    f"SUBSEQTRANSITION bodies must enter through a transition"
+                )
             _validate_sequence_nodes(
                 node.body,
                 f"{context} transition-sub {node.name!r}",
                 labels=labels,
+                module_labels=module_labels,
                 env=env,
                 type_graph=type_graph,
                 require_init_step=False,
@@ -956,6 +1007,7 @@ def _validate_sequence_nodes(
                 node.body,
                 f"{context} subsequence {node.name!r}",
                 labels=labels,
+                module_labels=module_labels,
                 env=env,
                 type_graph=type_graph,
                 require_init_step=False,
@@ -967,6 +1019,7 @@ def _validate_sequence_nodes(
                     branch,
                     f"{context} alternative branch {index}",
                     labels=labels,
+                    module_labels=module_labels,
                     env=env,
                     type_graph=type_graph,
                     require_init_step=False,
@@ -978,16 +1031,26 @@ def _validate_sequence_nodes(
                     branch,
                     f"{context} parallel branch {index}",
                     labels=labels,
+                    module_labels=module_labels,
                     env=env,
                     type_graph=type_graph,
                     require_init_step=False,
                     warning_sink=warning_sink,
                 )
+                if branch:
+                    trailer = _parallel_branch_trailer(branch[-1])
+                    if trailer is not None:
+                        raise StructuralValidationError(
+                            f"{context} parallel branch {index} ends with {trailer}; "
+                            f"PARALLELBRANCH/ENDPARALLEL must follow a completed sequence unit"
+                        )
+            previous_unit_name = "ENDPARALLEL"
+            previous_unit_kind = "parallel block"
         elif isinstance(node, SFCFork):
             _validate_identifier(node.target, f"{context} fork target")
-            if node.target.casefold() not in labels:
+            if node.target.casefold() not in labels and node.target.casefold() not in module_labels:
                 raise StructuralValidationError(
-                    f"{context} has SEQFORK target {node.target!r} that does not exist in the sequence"
+                    f"{context} has SEQFORK target {node.target!r} that does not exist in the sequence or module"
                 )
         elif isinstance(node, SFCBreak):
             continue
@@ -1019,6 +1082,12 @@ def _validate_module_code(
                 f"{context} equation {equation.name!r}",
             )
 
+    module_label_set: set[str] = set()
+    for sequence in modulecode.sequences or []:
+        if isinstance(sequence, Sequence):
+            _collect_label_names(sequence.code or [], module_label_set)
+    module_labels = frozenset(module_label_set)
+
     for sequence in modulecode.sequences or []:
         if isinstance(sequence, Sequence):
             _validate_identifier(sequence.name, f"{context} sequence")
@@ -1028,6 +1097,7 @@ def _validate_module_code(
                 sequence.code or [],
                 f"{context} sequence {sequence.name!r}",
                 labels=labels,
+                module_labels=module_labels,
                 env=env,
                 type_graph=type_graph,
                 require_init_step=True,

@@ -368,6 +368,16 @@ def validate_single_file_syntax(
     )
 
 
+def _raise_syntax_validation_failure(result: SyntaxValidationResult) -> None:
+    if result.ok:
+        return
+    raise StructuralValidationError(
+        result.message or "Syntax validation failed",
+        line=result.line,
+        column=result.column,
+    )
+
+
 # ---------- Loader with recursive resolution ----------
 class SattLineProjectLoader(DebugMixin):
     def __init__(
@@ -695,7 +705,7 @@ class SattLineProjectLoader(DebugMixin):
         self._ast_cache.save(code_path, self.mode.value, bp)
         return bp
 
-    def resolve(self, root_name: str, strict: bool = False) -> ProjectGraph:
+    def resolve(self, root_name: str, strict: bool = False, *, syntax_check: bool = False) -> ProjectGraph:
         if self.scan_root_only:
             return self._resolve_root_only(root_name, strict)
         self.dbg(f"Resolving root: {root_name}")
@@ -703,7 +713,7 @@ class SattLineProjectLoader(DebugMixin):
         previous_root_key = getattr(self, "_active_root_key", None)
         self._active_root_key = root_name.casefold()
         try:
-            self._visit(root_name, graph, strict, requester_dir=self.program_dir)
+            self._visit(root_name, graph, strict, requester_dir=self.program_dir, syntax_check=syntax_check)
         finally:
             self._active_root_key = previous_root_key
         self.dbg(_format_debug_list("Resolved ASTs", graph.ast_by_name.keys()))
@@ -765,12 +775,19 @@ class SattLineProjectLoader(DebugMixin):
         strict: bool,
         *,
         requester_dir: Path | None,
+        syntax_check: bool = False,
     ) -> None:
         key = name.lower()
         root_key = getattr(self, "_active_root_key", None)
         if key in self._visited or key in self._stack:
             return
         self._stack.add(key)
+
+        root_code_path: Path | None = None
+        if strict and syntax_check and key == root_key:
+            root_code_path = self._find_code_with_context(name, requester_dir=requester_dir)
+            if root_code_path is not None:
+                _raise_syntax_validation_failure(validate_single_file_syntax(root_code_path, mode=self.mode))
 
         # Resolve dependencies first (from non-vendor dirs only)
         deps_path = self._find_deps_with_context(name, requester_dir=requester_dir)
@@ -779,7 +796,7 @@ class SattLineProjectLoader(DebugMixin):
 
         # Visit each dep
         for dep in dep_names:
-            self._visit(dep, graph, strict, requester_dir=dependency_requester)
+            self._visit(dep, graph, strict, requester_dir=dependency_requester, syntax_check=syntax_check)
 
         dep_libs: list[str] = []
         for dep in dep_names:
@@ -794,7 +811,7 @@ class SattLineProjectLoader(DebugMixin):
                 dep_libs.append(cached_lib)
 
         # Determine code path
-        code_path = self._find_code_with_context(name, requester_dir=requester_dir)
+        code_path = root_code_path or self._find_code_with_context(name, requester_dir=requester_dir)
         if code_path is not None:
             try:
                 validation_warnings: list[str] = []

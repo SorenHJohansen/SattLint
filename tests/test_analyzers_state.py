@@ -1,6 +1,5 @@
 """Tests for state-integrity analyzers: reset contamination, implicit latch, SFC step contract, write-without-effect, hidden global coupling, global scope minimization, high fan-in/out, and variables report summary."""
 
-
 from sattlint import constants as const
 from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
@@ -1284,4 +1283,3 @@ def test_variables_report_summary_keeps_filtered_empty_output_scoped():
     assert "Reset contamination (missing reset writes)" in summary
     assert "      none" in summary
     assert "Unused variables" not in summary
-

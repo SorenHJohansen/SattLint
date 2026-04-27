@@ -968,3 +968,143 @@ def test_sattline_semantic_rule_groups_cover_core_analyzers():
 
     all_rule_ids = [rule_id for rule_ids in groups.values() for rule_id in rule_ids]
     assert len(all_rule_ids) == len(set(all_rule_ids))
+
+
+# ---------------------------------------------------------------------------
+# ID15: Regression lock-in tests for recently added rules
+# ---------------------------------------------------------------------------
+
+
+def test_sattline_semantics_includes_unsafe_default_true_rule():
+    """Lock-in: boolean variable with init_value=True triggers semantic.unsafe-default-true."""
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="EnableBypass", datatype=Simple_DataType.BOOLEAN, init_value=True),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (const.KEY_ASSIGN, _varref("EnableBypass"), False),
+                    ],
+                )
+            ],
+        ),
+    )
+
+    report = analyze_sattline_semantics(bp)
+
+    assert any(issue.rule.id == "semantic.unsafe-default-true" for issue in report.issues)
+
+
+def test_sattline_semantics_includes_scan_cycle_stale_read_rule():
+    """Lock-in: reading :OLD after a same-scan :NEW write triggers semantic.scan-cycle-stale-read."""
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[
+            Variable(name="Counter", datatype=Simple_DataType.INTEGER, state=True),
+            Variable(name="Output", datatype=Simple_DataType.INTEGER),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        # Write :NEW
+                        (const.KEY_ASSIGN, {const.KEY_VAR_NAME: "Counter", "state": "new"}, 1),
+                        # Read :OLD after same-scan :NEW write — stale read
+                        (
+                            const.KEY_ASSIGN,
+                            _varref("Output"),
+                            {const.KEY_VAR_NAME: "Counter", "state": "old"},
+                        ),
+                    ],
+                )
+            ],
+        ),
+    )
+
+    report = analyze_sattline_semantics(bp)
+
+    assert any(issue.rule.id == "semantic.scan-cycle-stale-read" for issue in report.issues)
+
+
+def test_sattline_semantics_rule_ids_are_stable():
+    """Lock-in: all rule IDs known at test-write time remain registered.
+
+    Detects accidental removal of a rule from the semantic rule registry.
+    """
+    from sattlint.analyzers.sattline_semantics import get_sattline_semantic_rules
+
+    registered_ids = {rule.id for rule in get_sattline_semantic_rules()}
+
+    expected_rule_ids = {
+        # Variable lifecycle
+        "semantic.unused-variable",
+        "semantic.unused-datatype-field",
+        "semantic.read-only-non-const",
+        "semantic.naming-role-mismatch",
+        "semantic.ui-only-variable",
+        "semantic.procedure-status-handling",
+        "semantic.never-read-write",
+        "semantic.write-without-effect",
+        "semantic.global-scope-minimization",
+        "semantic.hidden-global-coupling",
+        "semantic.high-fan-in-out-variable",
+        "semantic.unknown-parameter-target",
+        "semantic.required-parameter-connection",
+        "semantic.cross-module-contract-mismatch",
+        "semantic.string-mapping-mismatch",
+        "semantic.duplicated-datatype-layout",
+        "semantic.name-collision",
+        "semantic.min-max-mapping-mismatch",
+        "semantic.shadowing",
+        "semantic.reset-contamination",
+        "semantic.implicit-latch",
+        # SFC / control-flow
+        "semantic.parallel-write-race",
+        "semantic.unreachable-sequence-node",
+        "semantic.unreachable-transition",
+        "semantic.transition-always-true",
+        "semantic.transition-always-false",
+        "semantic.duplicate-transition-guard",
+        "semantic.illegal-state-combination",
+        "semantic.missing-step-enter-contract",
+        "semantic.missing-step-exit-contract",
+        "semantic.step-state-leakage",
+        # Alarm
+        "semantic.duplicate-alarm-tag",
+        "semantic.duplicate-alarm-condition",
+        "semantic.conflicting-alarm-priority",
+        "semantic.never-cleared-alarm",
+        # Initial values
+        "semantic.missing-parameter-initial-value",
+        # Safety / taint
+        "semantic.unconsumed-safety-signal",
+        "semantic.external-input-to-critical-sink",
+        # Tracing
+        "semantic.duplicate-sibling-name",
+        "semantic.unexpected-submodule-type",
+        # Dataflow
+        "semantic.read-before-write",
+        "semantic.dead-overwrite",
+        "semantic.condition-always-true",
+        "semantic.condition-always-false",
+        "semantic.unreachable-branch",
+        "semantic.unreachable-sequence-node-dataflow",
+        "semantic.self-compare-condition",
+        "semantic.scan-cycle-stale-read",
+        "semantic.scan-cycle-implicit-new",
+        "semantic.scan-cycle-temporal-misuse",
+        # Unsafe defaults
+        "semantic.unsafe-default-true",
+    }
+
+    missing = expected_rule_ids - registered_ids
+    assert not missing, f"Rules removed from registry: {sorted(missing)}"

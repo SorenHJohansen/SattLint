@@ -1,9 +1,10 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: SubseqTransition"
+"Program date: 2026-04-23-12:00:00.000, name: SubSeqFlow"
 (* Covers SUBSEQTRANSITION / ENDSUBSEQTRANSITION inside a SEQUENCE.
    A SUBSEQTRANSITION is a named sequence element that contains a full
    embedded sub-sequence body acting as a complex transition region.
+   The embedded body enters through a transition before reaching a step.
    Expected: strict syntax-check passes. *)
 
 BasePicture Invocation
@@ -15,8 +16,6 @@ LOCALVARIABLES
    CheckDone: boolean  := False;
    Ready: boolean  := False;
    Status: integer  := 0;
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
 
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
@@ -31,6 +30,7 @@ ModuleCode
             Status = 1;
             CheckDone = False;
       SUBSEQTRANSITION TrCheckPhase
+         SEQTRANSITION TrCheckEnter WAIT_FOR True
          SEQSTEP Checking
             ACTIVECODE
                CheckDone = Ready;

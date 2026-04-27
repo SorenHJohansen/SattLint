@@ -1792,4 +1792,3 @@ def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
     assert "+ PhaseTimerCopy (localvariable)" in summary
     assert "AnyType" not in summary
     assert "TypeDef:Applik" not in summary
-

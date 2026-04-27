@@ -21,12 +21,6 @@ class BindingResult:
     value: Any = None
 
 
-@dataclass(frozen=True, slots=True)
-class DemoTarget:
-    name: str
-    reason: str
-
-
 _FALLBACK_CONFIG_PATH = Path("sattlint.json")
 _FALLBACK_CONFIG = {
     "analyzed_programs_and_libraries": [],
@@ -97,23 +91,6 @@ def suggest_workspace_ha_config(cfg: dict[str, Any] | None = None) -> dict[str, 
     return base_cfg
 
 
-def select_demo_target(cfg: dict[str, Any]) -> DemoTarget | None:
-    configured = [str(item).strip() for item in cfg.get("analyzed_programs_and_libraries", []) if str(item).strip()]
-    if configured:
-        return DemoTarget(name=configured[0], reason="first configured analysis target")
-
-    program_dir = Path(str(cfg.get("program_dir") or "")).expanduser()
-    mode = str(cfg.get("mode") or "official").strip().lower()
-    if not program_dir.exists() or not program_dir.is_dir():
-        return None
-
-    suffixes = (".s", ".x") if mode == "draft" else (".x",)
-    candidates = sorted(path.stem for path in program_dir.iterdir() if path.is_file() and path.suffix.lower() in suffixes)
-    if not candidates:
-        return None
-    return DemoTarget(name=candidates[0], reason=f"first {mode} target discovered in program_dir")
-
-
 class SattLintBinding:
     @property
     def config_path(self):
@@ -180,27 +157,56 @@ class SattLintBinding:
             use_cache=True,
         )
 
-    def select_demo_target(self, cfg: dict[str, Any]) -> DemoTarget | None:
-        return select_demo_target(cfg)
+    def run_bundle(self, cfg: dict[str, Any], selected_keys: list[str] | None = None) -> BindingResult:
+        """Run variable analysis then checks, combining output as a bundle."""
+        parts: list[str] = []
+        all_ok = True
 
-    def run_demo(self, cfg: dict[str, Any]) -> BindingResult:
-        demo_target = self.select_demo_target(cfg)
-        if demo_target is None:
-            return BindingResult(
-                ok=False,
-                output="Error: no demo target available. Add a target or configure program_dir with SattLine files.",
-            )
+        variable_result = self.run_variable_analysis(cfg)
+        all_ok = all_ok and variable_result.ok
+        parts.append("[Variable Analysis]\n" + variable_result.output)
 
-        demo_cfg = dict(cfg)
-        demo_cfg["analyzed_programs_and_libraries"] = [demo_target.name]
-        self_check = self.run_self_check(demo_cfg)
-        variable_analysis = self.run_variable_analysis(demo_cfg)
-        combined_output = (
-            f"Demo target: {demo_target.name} ({demo_target.reason})\n\n"
-            f"[Self-check]\n{self_check.output}\n\n"
-            f"[Variable Analysis]\n{variable_analysis.output}"
-        )
-        return BindingResult(ok=self_check.ok and variable_analysis.ok, output=combined_output, value=demo_target.name)
+        checks_result = self.run_checks(cfg, selected_keys)
+        all_ok = all_ok and checks_result.ok
+        parts.append("[Checks]\n" + checks_result.output)
+
+        return BindingResult(ok=all_ok, output="\n\n".join(parts))
+
+    def run_checks(self, cfg: dict[str, Any], selected_keys: list[str] | None = None) -> BindingResult:
+        """Run enabled analyzer checks, optionally filtered to selected_keys.
+
+        Replicates app._run_checks behaviour without the interactive pause.
+        """
+        try:
+            app_module = _get_app_module()
+        except Exception as exc:
+            return BindingResult(ok=False, output=f"Error: {exc}")
+
+        def _execute() -> None:
+            analyzers = app_module._get_enabled_analyzers()
+            if selected_keys is not None:
+                selected = {key.casefold() for key in selected_keys}
+                analyzers = [spec for spec in analyzers if spec.key.casefold() in selected]
+            if not analyzers:
+                print("No matching checks found")
+                return
+            print("--- Running checks ---")
+            for target_name, project_bp, graph in app_module._iter_loaded_projects(cfg):
+                context = app_module.AnalysisContext(
+                    base_picture=project_bp,
+                    graph=graph,
+                    debug=cfg.get("debug", False),
+                    target_is_library=app_module._target_is_library(cfg, project_bp, graph),
+                    config=cfg,
+                )
+                print(f"\n=== Target: {target_name} ===")
+                for spec in analyzers:
+                    print(f"\n=== {spec.name} ({spec.key}) ===")
+                    report = spec.run(context)
+                    report = app_module.apply_rule_profile_to_report(spec.key, report, cfg)
+                    print(report.summary())
+
+        return _capture_output(_execute)
 
     def list_enabled_analyzers(self) -> list[AnalyzerDescriptor]:
         try:
@@ -220,8 +226,6 @@ class SattLintBinding:
 __all__ = [
     "AnalyzerDescriptor",
     "BindingResult",
-    "DemoTarget",
     "SattLintBinding",
-    "select_demo_target",
     "suggest_workspace_ha_config",
 ]

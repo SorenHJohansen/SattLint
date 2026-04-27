@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import codecs
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +30,13 @@ from ..resolution.type_graph import TypeGraph
 
 _ICF_REF_RE = re.compile(r"(?:^|.*?)(?:[A-Za-z]::)?(?P<program>[^:]+):(?P<path>.+)$")
 _ICF_HEADER_RE = re.compile(r"^\[(?P<tag>[^\]\s]+)(?:\s+(?P<label>.+?))?\]$")
+_ICF_PLACEHOLDER_RE = re.compile(r"^[A-Za-z]::\.$")
+_ICF_FORMATTING_SPACING: dict[str, int] = {
+    "unit": 2,
+    "journal": 2,
+    "operation": 2,
+    "group": 1,
+}
 
 _GROUP_SUFFIX_RULES: dict[str, dict[str, tuple[tuple[str, ...], ...]]] = {
     "journaldata_dcstomes": {
@@ -75,8 +84,97 @@ _OPTIONAL_PARAMETER_RECORD_FIELDS: dict[str, set[str]] = {
 }
 
 
+@dataclass(frozen=True)
+class ICFFormatResult:
+    file_path: Path
+    changed: bool
+
+
 def _cf(value: str) -> str:
     return value.casefold()
+
+
+def _decode_icf_text(raw_bytes: bytes) -> tuple[str, str, bool]:
+    if raw_bytes.startswith(codecs.BOM_UTF8):
+        try:
+            return raw_bytes[len(codecs.BOM_UTF8) :].decode("utf-8"), "utf-8", True
+        except UnicodeDecodeError:
+            pass
+
+    for encoding in ("utf-8", "cp1252", "latin-1"):
+        try:
+            return raw_bytes.decode(encoding), encoding, False
+        except UnicodeDecodeError:
+            continue
+    return raw_bytes.decode("latin-1", errors="replace"), "latin-1", False
+
+
+def _detect_icf_newline(raw_bytes: bytes) -> str:
+    return "\r\n" if b"\r\n" in raw_bytes else "\n"
+
+
+def _header_spacing(tag: str) -> int:
+    return _ICF_FORMATTING_SPACING.get(_cf(tag), 1)
+
+
+def format_icf_text(text: str) -> str:
+    """Normalize blank-line spacing around ICF headers without changing nonblank lines."""
+    lines = text.splitlines()
+    first_header_index = next((index for index, line in enumerate(lines) if _ICF_HEADER_RE.match(line.strip())), None)
+    if first_header_index is None:
+        return text
+
+    prefix = lines[:first_header_index]
+    body = lines[first_header_index:]
+    formatted_body: list[str] = []
+
+    for raw_line in body:
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+
+        header_match = _ICF_HEADER_RE.match(stripped)
+        if header_match is None:
+            formatted_body.append(raw_line)
+            continue
+
+        if formatted_body:
+            while formatted_body and formatted_body[-1] == "":
+                formatted_body.pop()
+            formatted_body.extend([""] * _header_spacing(header_match.group("tag")))
+
+        formatted_body.append(raw_line)
+
+    while formatted_body and formatted_body[-1] == "":
+        formatted_body.pop()
+
+    formatted_lines = prefix[:]
+    while formatted_lines and formatted_lines[-1] == "":
+        formatted_lines.pop()
+    if formatted_lines and formatted_body:
+        formatted_lines.append("")
+    formatted_lines.extend(formatted_body)
+
+    normalized = "\n".join(formatted_lines)
+    if text.endswith(("\n", "\r\n")):
+        normalized += "\n"
+    return normalized
+
+
+def format_icf_file(file_path: Path, *, check: bool = False) -> ICFFormatResult:
+    """Rewrite one ICF file with normalized header spacing while preserving encoding and newline style."""
+    raw_bytes = file_path.read_bytes()
+    text, encoding, has_utf8_bom = _decode_icf_text(raw_bytes)
+    newline = _detect_icf_newline(raw_bytes)
+    formatted_text = format_icf_text(text)
+    rendered_text = formatted_text.replace("\n", newline)
+    changed = text != rendered_text
+    if changed and not check:
+        encoded = rendered_text.encode(encoding)
+        if has_utf8_bom:
+            encoded = codecs.BOM_UTF8 + encoded
+        file_path.write_bytes(encoded)
+    return ICFFormatResult(file_path=file_path, changed=changed)
 
 
 def _split_path(path: str) -> list[str]:
@@ -150,18 +248,48 @@ def _resolve_unit_type_label(
 def _summarize_signature_diff(
     reference: tuple[tuple[str, str, str, str], ...], current: tuple[tuple[str, str, str, str], ...]
 ) -> str:
+    def _format_signature_entry(entry: tuple[str, str, str, str]) -> str:
+        journal, group, key, value = entry
+        label_parts: list[str] = []
+        if journal:
+            label_parts.append(journal)
+        if group:
+            label_parts.append(group)
+        scope = "/".join(label_parts)
+        scoped_key = key if not scope else f"[{scope}] {key}"
+        return f"{scoped_key} => {value}"
+
+    def _format_entry_list(entries: set[tuple[str, str, str, str]], *, limit: int = 3) -> str:
+        sorted_entries = sorted(entries)
+        preview = ", ".join(_format_signature_entry(entry) for entry in sorted_entries[:limit])
+        if len(sorted_entries) > limit:
+            preview = f"{preview}, ..."
+        return preview
+
     reference_set = set(reference)
     current_set = set(current)
     parts: list[str] = []
     missing = reference_set - current_set
     extra = current_set - reference_set
     if missing:
-        parts.append(f"missing {len(missing)} entries")
+        parts.append(f"missing {len(missing)} entries ({_format_entry_list(missing)})")
     if extra:
-        parts.append(f"extra {len(extra)} entries")
+        parts.append(f"extra {len(extra)} entries ({_format_entry_list(extra)})")
     if not parts and len(reference) != len(current):
         parts.append(f"entry count {len(current)} != {len(reference)}")
-    return "; ".join(parts) or "entry ordering differs"
+    if parts:
+        return "; ".join(parts)
+
+    for index, (expected_entry, current_entry) in enumerate(zip(reference, current, strict=False), start=1):
+        if expected_entry == current_entry:
+            continue
+        return (
+            "entry ordering differs "
+            f"(first mismatch at position {index}: expected {_format_signature_entry(expected_entry)} "
+            f"but found {_format_signature_entry(current_entry)})"
+        )
+
+    return "entry ordering differs"
 
 
 def parse_icf_file(file_path: Path) -> list[ICFEntry]:
@@ -173,13 +301,7 @@ def parse_icf_file(file_path: Path) -> list[ICFEntry]:
     group: str | None = None
 
     raw_bytes = file_path.read_bytes()
-    try:
-        text = raw_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        try:
-            text = raw_bytes.decode("cp1252")
-        except UnicodeDecodeError:
-            text = raw_bytes.decode("latin-1", errors="replace")
+    text, _encoding, _has_utf8_bom = _decode_icf_text(raw_bytes)
 
     for idx, raw_line in enumerate(text.splitlines(), start=1):
         line = raw_line.strip()
@@ -236,6 +358,11 @@ def _extract_icf_sattline_ref(value: str) -> tuple[str | None, str | None]:
     if not program or not path:
         return None, None
     return program, path
+
+
+def _is_placeholder_icf_value(value: str) -> bool:
+    """Return True for intentionally unbound ICF placeholders such as ``H::.``."""
+    return _ICF_PLACEHOLDER_RE.match(value.strip()) is not None
 
 
 def _find_variable_in_module_scope(
@@ -512,6 +639,7 @@ def _validate_entry_context(entry: ICFEntry, path: str) -> list[ICFValidationIss
 def _validate_parameter_record_completeness(
     type_graph: TypeGraph,
     resolved_entries: list[ICFResolvedEntry],
+    placeholder_entries: list[ICFEntry] | None = None,
 ) -> list[ICFValidationIssue]:
     issues: list[ICFValidationIssue] = []
     grouped: dict[
@@ -557,6 +685,12 @@ def _validate_parameter_record_completeness(
         expected_fields = {field.name: _cf(field.name) for field in record.fields_by_key.values()}
         optional_fields = _OPTIONAL_PARAMETER_RECORD_FIELDS.get(_cf(datatype_name), set())
         present = {_cf(resolved.leaf_name) for resolved in entries}
+        for ph in placeholder_entries or []:
+            if _normalize_group_name(ph.group) != "journaldata_parameters":
+                continue
+            if ph.unit != unit or ph.journal != journal or ph.group != group:
+                continue
+            present.add(_cf(ph.key))
         for (
             other_unit,
             other_journal,
@@ -664,11 +798,17 @@ def validate_icf_entries_against_program(
     type_graph = TypeGraph.from_basepicture(base_picture)
     issues: list[ICFValidationIssue] = []
     resolved_entries: list[ICFResolvedEntry] = []
+    placeholder_entries: list[ICFEntry] = []
     validated = 0
     valid = 0
     skipped = 0
 
     for entry in entries:
+        if _is_placeholder_icf_value(entry.value):
+            placeholder_entries.append(entry)
+            skipped += 1
+            continue
+
         program, path = _extract_icf_sattline_ref(entry.value)
         if program is None or path is None:
             skipped += 1
@@ -741,7 +881,7 @@ def validate_icf_entries_against_program(
             )
         )
 
-    issues.extend(_validate_parameter_record_completeness(type_graph, resolved_entries))
+    issues.extend(_validate_parameter_record_completeness(type_graph, resolved_entries, placeholder_entries))
     issues.extend(_validate_unit_structure(base_picture, entries, moduletype_index=moduletype_index))
 
     return ICFValidationReport(

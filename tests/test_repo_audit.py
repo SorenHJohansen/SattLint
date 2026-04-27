@@ -1,6 +1,9 @@
 import json
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from sattlint.devtools import repo_audit
 
@@ -492,3 +495,159 @@ def test_audit_repository_mirrors_latest_reports_to_stable_directory(tmp_path):
     assert latest_summary["finding_count"] == 1
     assert_findings_collection(mirrored_findings, finding_count=1)
     assert mirrored_findings["findings"][0]["id"] == "oversized-module"
+
+
+# --- ID 19: Coverage summary report tests ---
+
+_COVERAGE_XML_TEMPLATE = """\
+<coverage>
+    <packages>
+        <package>
+            <classes>
+                {classes}
+            </classes>
+        </package>
+    </packages>
+</coverage>
+"""
+
+
+def _write_coverage_xml(root: Path, classes_xml: str) -> None:
+    (root / "coverage.xml").write_text(
+        _COVERAGE_XML_TEMPLATE.format(classes=classes_xml).strip(),
+        encoding="utf-8",
+    )
+
+
+def test_build_coverage_summary_report_returns_skipped_when_no_coverage_xml(tmp_path):
+    report = repo_audit.build_coverage_summary_report(tmp_path)
+
+    assert report["skipped"] is True
+    assert report["kind"] == "sattlint.coverage_summary"
+    assert report["schema_version"] == 1
+    assert report["modules"] == []
+    assert report["findings"] == []
+    assert report["summary"]["module_count"] == 0
+
+
+def test_build_coverage_summary_report_emits_low_coverage_findings(tmp_path):
+    _write_coverage_xml(
+        tmp_path,
+        '<class filename="src/sattlint/some_module.py" line-rate="0.05" lines-valid="100" />'
+        '<class filename="src/sattlint/other_module.py" line-rate="0.35" lines-valid="50" />'
+        '<class filename="src/sattlint/good_module.py" line-rate="0.80" lines-valid="200" />',
+    )
+
+    report = repo_audit.build_coverage_summary_report(tmp_path)
+
+    assert report["skipped"] is False
+    assert report["summary"]["module_count"] == 3
+    assert report["summary"]["low_coverage_count"] == 2
+
+    severities = {f["severity"] for f in report["findings"]}
+    assert "high" in severities  # 5% < 10%
+    assert "medium" in severities  # 35% < 40%
+
+    paths_in_findings = {f["path"] for f in report["findings"]}
+    assert "src/sattlint/good_module.py" not in paths_in_findings
+
+
+def test_build_coverage_summary_report_skips_non_src_modules(tmp_path):
+    _write_coverage_xml(
+        tmp_path,
+        '<class filename="tests/test_something.py" line-rate="0.05" lines-valid="50" />'
+        '<class filename="src/sattlint/real_module.py" line-rate="0.90" lines-valid="200" />',
+    )
+
+    report = repo_audit.build_coverage_summary_report(tmp_path)
+
+    assert report["summary"]["module_count"] == 1
+    assert report["summary"]["low_coverage_count"] == 0
+    assert all(m["path"].startswith("src/") for m in report["modules"])
+
+
+def test_build_coverage_summary_report_includes_avg_line_rate(tmp_path):
+    _write_coverage_xml(
+        tmp_path,
+        '<class filename="src/a.py" line-rate="0.20" lines-valid="100" />'
+        '<class filename="src/b.py" line-rate="0.80" lines-valid="100" />',
+    )
+
+    report = repo_audit.build_coverage_summary_report(tmp_path)
+
+    assert report["summary"]["avg_line_rate"] == pytest.approx(0.5, abs=0.01)
+
+
+# --- ID 31: CLI consistency report tests ---
+
+
+def test_build_cli_consistency_report_has_required_schema_fields():
+    report = repo_audit.build_cli_consistency_report()
+
+    assert report["kind"] == "sattlint.cli_consistency"
+    assert report["schema_version"] == 1
+    assert "declared" in report
+    assert "scripts" in report["declared"]
+    assert "subcommands" in report["declared"]
+    assert "gaps" in report
+    assert "summary" in report
+    assert "status" in report
+    assert report["status"] in ("pass", "fail")
+
+
+def test_build_cli_consistency_report_lists_declared_scripts_and_subcommands():
+    report = repo_audit.build_cli_consistency_report()
+
+    # sattlint itself should be in scripts
+    assert any("sattlint" in s for s in report["declared"]["scripts"])
+    # At least one subcommand should be declared
+    assert len(report["declared"]["subcommands"]) > 0
+
+
+def test_build_cli_consistency_report_gap_counts_match_gap_lists():
+    report = repo_audit.build_cli_consistency_report()
+
+    gaps = report["gaps"]
+    summary = report["summary"]
+
+    assert summary["undeclared_subcommand_count"] == len(gaps["undeclared_subcommands"])
+    assert summary["undeclared_script_count"] == len(gaps["undeclared_scripts"])
+    assert summary["undocumented_subcommand_count"] == len(gaps["undocumented_subcommands"])
+    assert summary["undocumented_script_count"] == len(gaps["undocumented_scripts"])
+    expected_gap_count = summary["undeclared_subcommand_count"] + summary["undeclared_script_count"]
+    assert summary["gap_count"] == expected_gap_count
+
+
+def test_build_cli_consistency_report_detects_undeclared_subcommand(tmp_path, monkeypatch):
+    """Documented subcommand that is not in the parser should appear in undeclared_subcommands."""
+    readme = tmp_path / "README.md"
+    readme.write_text("Run `sattlint ghost-command` to do something.\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        repo_audit,
+        "_collect_cli_metadata",
+        lambda: ({"sattlint"}, {"syntax-check", "analyze"}),
+    )
+
+    report = repo_audit.build_cli_consistency_report(root=tmp_path)
+
+    undeclared_names = [g["subcommand"] for g in report["gaps"]["undeclared_subcommands"]]
+    assert "ghost-command" in undeclared_names
+    assert report["summary"]["gap_count"] > 0
+    assert report["status"] == "fail"
+
+
+def test_build_cli_consistency_report_pass_when_all_documented_subcommands_are_declared(tmp_path, monkeypatch):
+    readme = tmp_path / "README.md"
+    readme.write_text("Run `sattlint syntax-check` to check syntax.\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        repo_audit,
+        "_collect_cli_metadata",
+        lambda: ({"sattlint"}, {"syntax-check"}),
+    )
+
+    report = repo_audit.build_cli_consistency_report(root=tmp_path)
+
+    assert report["gaps"]["undeclared_subcommands"] == []
+    assert report["summary"]["undeclared_subcommand_count"] == 0

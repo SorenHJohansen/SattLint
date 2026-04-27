@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: InteractObjects"
+"Program date: 2026-04-23-12:00:00.000, name: InteractItems"
 (* Covers InteractObjects section with three interact item types:
    - TextBox_: integer input/output widget with OutVar_ write binding
    - ComBut_: boolean toggle button with Enable_ / InVar_ / OutVar_ bindings

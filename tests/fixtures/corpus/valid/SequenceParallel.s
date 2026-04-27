@@ -4,6 +4,8 @@
 (* Covers PARALLELSEQ / PARALLELBRANCH / ENDPARALLEL for concurrent
    branches executing simultaneously inside a SEQUENCE.
    Both branches must complete before the sequence continues.
+   Each parallel branch ends with a step before PARALLELBRANCH/ENDPARALLEL.
+   A transition follows ENDPARALLEL before the sequence continues.
    Expected: strict syntax-check passes. *)
 
 BasePicture Invocation
@@ -17,8 +19,6 @@ LOCALVARIABLES
    OutputA: integer  := 0;
    OutputB: integer  := 0;
    Combined: integer  := 0;
-   SeqControl: integer  := 0;
-   SeqTimer: integer  := 0;
 
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
@@ -43,6 +43,7 @@ ModuleCode
             ENTERCODE
                DoneA = True;
          SEQTRANSITION TrExitA WAIT_FOR DoneA
+         SEQSTEP JoinedA
       PARALLELBRANCH
          SEQSTEP BranchB
             ACTIVECODE
@@ -52,7 +53,9 @@ ModuleCode
             ENTERCODE
                DoneB = True;
          SEQTRANSITION TrExitB WAIT_FOR DoneB
+         SEQSTEP JoinedB
       ENDPARALLEL
+      SEQTRANSITION TrMerge WAIT_FOR DoneA AND DoneB
       SEQSTEP Merge
          ENTERCODE
             Combined = OutputA + OutputB;

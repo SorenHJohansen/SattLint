@@ -420,4 +420,3 @@ ENDDEF (*BasePicture*);
     assert bp.header.invoke_coord_tails == ["PosX"]
     assert bp.moduledef is not None
     assert bp.moduledef.properties[const.KEY_TAILS] == ["PanelResize"]
-

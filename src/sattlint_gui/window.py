@@ -19,6 +19,7 @@ class SattLintWindow(tk.Tk):
         super().__init__()
         self.theme = theme or DEFAULT_THEME
         self.binding = SattLintBinding()
+        self.sidebar: SidebarFrame | None = None
         self.title("SattLint GUI")
         self.geometry("1280x800")
         self.minsize(960, 640)
@@ -57,6 +58,7 @@ class SattLintWindow(tk.Tk):
             on_select=self.show_view,
         )
         sidebar.pack(fill=tk.BOTH, expand=True)
+        self.sidebar = sidebar
 
         title = ttk.Label(content_host, text="SattLint", style="Title.TLabel")
         title.grid(row=0, column=0, sticky="ew", padx=20, pady=(18, 8))
@@ -99,6 +101,9 @@ class SattLintWindow(tk.Tk):
     def show_view(self, name: str) -> None:
         view = self._views[name]
         view.tkraise()
+        if self.sidebar is not None:
+            self.sidebar.set_selected(name)
+        self.set_status(f"Viewing {name}")
 
     def _handle_close(self) -> None:
         for view in self._views.values():
@@ -114,6 +119,7 @@ class SattLintWindow(tk.Tk):
         publisher = getattr(results_view, "publish_result", None)
         if callable(publisher):
             publisher(title, text)
+        self.show_view("Results")
         self.set_status(f"Updated results for {title}")
 
     def set_status(self, text: str) -> None:
