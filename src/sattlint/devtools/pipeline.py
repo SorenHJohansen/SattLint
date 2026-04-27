@@ -1272,8 +1272,7 @@ def main(argv: list[str] | None = None) -> int:
         "--fail-on-drift",
         action="store_true",
         help=(
-            "Exit with code 1 if the baseline comparison finds new or resolved findings. "
-            "Requires --baseline-findings."
+            "Exit with code 1 if the baseline comparison finds new or resolved findings. Requires --baseline-findings."
         ),
     )
     parser.add_argument(
