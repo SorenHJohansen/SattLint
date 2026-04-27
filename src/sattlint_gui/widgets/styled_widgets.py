@@ -20,8 +20,14 @@ def apply_theme(root: tk.Misc, theme: SattLintTheme) -> ttk.Style:
     style.configure("TLabel", background=theme.bg_main, foreground=theme.text)
     style.configure("Title.TLabel", background=theme.bg_main, foreground=theme.accent, font=("Segoe UI", 20, "bold"))
     style.configure("Section.TLabel", background=theme.bg_panel, foreground=theme.accent, font=("Segoe UI", 11, "bold"))
-    style.configure("SidebarTitle.TLabel", background=theme.bg_panel, foreground=theme.accent, font=("Segoe UI", 12, "bold"))
+    style.configure(
+        "SidebarTitle.TLabel", background=theme.bg_panel, foreground=theme.accent, font=("Segoe UI", 12, "bold")
+    )
     style.configure("Muted.TLabel", background=theme.bg_main, foreground=theme.text)
+    style.configure("TEntry", fieldbackground=theme.input_bg, foreground=theme.text)
+    style.configure("TCombobox", fieldbackground=theme.input_bg, foreground=theme.text)
+    style.map("TCombobox", fieldbackground=[("readonly", theme.input_bg)], foreground=[("readonly", theme.text)])
+    style.configure("TCheckbutton", background=theme.bg_panel, foreground=theme.text)
     style.configure(
         "TButton",
         background=theme.btn_bg,
@@ -32,9 +38,11 @@ def apply_theme(root: tk.Misc, theme: SattLintTheme) -> ttk.Style:
     )
     style.map("TButton", background=[("active", theme.btn_active)])
     style.configure("Accent.TButton", background=theme.accent, foreground=theme.console_text)
-    style.map("Accent.TButton", background=[("active", theme.btn_active)])
+    style.map("Accent.TButton", background=[("active", "#001aa0")])
     style.configure("Nav.TButton", background=theme.btn_bg, anchor="w")
     style.map("Nav.TButton", background=[("active", theme.btn_active)])
+    style.configure("Selected.Nav.TButton", background=theme.btn_active, foreground=theme.console_text, anchor="w")
+    style.map("Selected.Nav.TButton", background=[("active", theme.btn_active)])
     return style
 
 

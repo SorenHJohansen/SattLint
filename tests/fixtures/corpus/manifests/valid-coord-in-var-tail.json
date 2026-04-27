@@ -1,0 +1,26 @@
+{
+  "case_id": "valid-coord-in-var-tail",
+  "target_file": "../valid/CoordInVarTail.s",
+  "mode": "workspace",
+  "expectation": {
+    "expected_finding_ids": [],
+    "artifact_fragments": {
+      "status.json": {
+        "execution_status": "ok",
+        "missing_dependency_count": 0
+      },
+      "summary.json": {
+        "missing_dependencies": []
+      }
+    },
+    "forbidden_finding_ids": [
+      "corpus.execution-error",
+      "syntax.parse"
+    ]
+  },
+  "required_artifacts": [
+    "findings.json",
+    "status.json",
+    "summary.json"
+  ]
+}

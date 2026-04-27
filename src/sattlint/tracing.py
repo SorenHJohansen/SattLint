@@ -155,6 +155,28 @@ def detect_unreachable_sequence_logic(base_picture: BasePicture) -> list[dict[st
     ]
 
 
+def _build_timing_summary(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate trace events into per-phase event counts and span durations.
+
+    For each phase, computes:
+    - event_count: number of events in that phase
+    - span_ms: elapsed time between first and last event in the phase
+    """
+    phase_events: dict[str, list[float]] = {}
+    for event in events:
+        phase = str(event.get("phase") or "unknown")
+        offset = float(event.get("time_offset_ms") or 0.0)
+        phase_events.setdefault(phase, []).append(offset)
+
+    summary: dict[str, Any] = {}
+    for phase, offsets in sorted(phase_events.items()):
+        summary[phase] = {
+            "event_count": len(offsets),
+            "span_ms": round(max(offsets) - min(offsets), 3) if len(offsets) > 1 else 0.0,
+        }
+    return summary
+
+
 def trace_basepicture_analysis(
     base_picture: BasePicture,
     *,
@@ -215,6 +237,7 @@ def trace_basepicture_analysis(
             "unreachable_logic": unreachable_logic,
             "transform_invariant_violations": transform_violations,
         },
+        "timing_summary": _build_timing_summary(trace_recorder.events),
         "events": trace_recorder.events,
     }
 

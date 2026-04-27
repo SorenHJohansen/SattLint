@@ -251,10 +251,7 @@ def print_graphics_rules_summary(path: Path, rules: dict[str, Any], *, dirty: bo
     print(separator_line)
     for row in rows:
         print(
-            "  ".join(
-                truncate_table_cell(value, widths[index]).ljust(widths[index])
-                for index, value in enumerate(row)
-            )
+            "  ".join(truncate_table_cell(value, widths[index]).ljust(widths[index]) for index, value in enumerate(row))
         )
 
 
@@ -715,7 +712,9 @@ def collect_graphics_layout_entries_for_target(
     project_bp: BasePicture,
     graph: ProjectGraph,
     *,
-    annotate_graphics_entries_with_structure_paths_fn: Callable[[list[dict[str, Any]], BasePicture, ProjectGraph], list[dict[str, Any]]],
+    annotate_graphics_entries_with_structure_paths_fn: Callable[
+        [list[dict[str, Any]], BasePicture, ProjectGraph], list[dict[str, Any]]
+    ],
 ) -> list[dict[str, Any]]:
     from .devtools import structural_reports as structural_reports_module
 

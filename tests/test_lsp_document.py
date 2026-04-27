@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
 from lsprotocol.types import CompletionItem as LspCompletionItem
 from lsprotocol.types import CompletionItemKind, Position, Range
 
@@ -586,6 +587,19 @@ ENDDEF (*BasePicture*);
     assert "integer" in hover_text
 
 
+def test_on_hover_returns_none_for_invalid_params() -> None:
+    def fail_if_called(_uri: str):
+        raise AssertionError("invalid hover params should not reach workspace lookup")
+
+    fake_ls = SimpleNamespace(workspace=SimpleNamespace(get_text_document=fail_if_called))
+    params = SimpleNamespace(
+        text_document=SimpleNamespace(uri=None),
+        position=SimpleNamespace(line=0, character=0),
+    )
+
+    assert on_hover(cast(Any, fake_ls), cast(Any, params)) is None
+
+
 def test_on_references_falls_back_to_local_snapshot_when_workspace_snapshot_fails(monkeypatch, tmp_path):
     source = """
 "SyntaxVersion"
@@ -676,6 +690,25 @@ ENDDEF (*BasePicture*);
     assert matching_uri is not None
     assert len(changes[matching_uri]) == 3
     assert all(item.new_text == "Renamed" for item in changes[matching_uri])
+
+
+def test_on_rename_returns_none_for_invalid_params(monkeypatch) -> None:
+    def fail_if_called(_uri: str):
+        raise AssertionError("invalid rename params should not reach workspace lookup")
+
+    fake_ls = SimpleNamespace(workspace=SimpleNamespace(get_text_document=fail_if_called))
+    params = SimpleNamespace(
+        text_document=SimpleNamespace(uri="file:///tmp/Main.s"),
+        position=SimpleNamespace(line=0, character=0),
+        new_name=None,
+    )
+
+    monkeypatch.setattr(
+        "sattlint_lsp.server._validate_rename_target",
+        lambda _new_name: pytest.fail("rename target validation should be skipped for malformed params"),
+    )
+
+    assert on_rename(cast(Any, fake_ls), cast(Any, params)) is None
 
 
 def test_get_or_build_local_snapshot_passes_previous_result_and_changed_ranges_to_adapter(tmp_path):
@@ -976,6 +1009,24 @@ ENDDEF (*BasePicture*);
     result = on_completion(cast(Any, fake_ls), cast(Any, params))
 
     assert any(item.label == "Dv" for item in result.items)
+
+
+def test_on_completion_returns_empty_list_for_invalid_params() -> None:
+    def fail_if_called(_uri: str):
+        raise AssertionError("invalid completion params should not reach workspace lookup")
+
+    fake_ls = SimpleNamespace(
+        workspace=SimpleNamespace(get_text_document=fail_if_called),
+        settings=SimpleNamespace(max_completion_items=20),
+    )
+    params = SimpleNamespace(
+        text_document=SimpleNamespace(uri="file:///tmp/Main.s"),
+        position=SimpleNamespace(line="zero", character=0),
+    )
+
+    result = on_completion(cast(Any, fake_ls), cast(Any, params))
+
+    assert result.items == []
 
 
 def test_on_completion_ignores_dependency_list_documents(monkeypatch, tmp_path):

@@ -878,6 +878,99 @@ def _find_cli_findings() -> list[Finding]:
     return findings
 
 
+# ---------------------------------------------------------------------------
+# Coverage summary public API (delegates to coverage_reports module to avoid
+# introducing a circular import with pipeline.py)
+# ---------------------------------------------------------------------------
+
+from sattlint.devtools import coverage_reports as _coverage_reports_module
+
+
+def build_coverage_summary_report(root: Path) -> dict[str, Any]:
+    """Build a coverage-summary report for the repository at *root*.
+
+    Delegates to :mod:`sattlint.devtools.coverage_reports` so that this module
+    does not import ``pipeline`` and avoids a circular dependency.
+    """
+    return _coverage_reports_module.build_coverage_summary_report(root)
+
+
+CLI_CONSISTENCY_SCHEMA_KIND = "sattlint.cli_consistency"
+CLI_CONSISTENCY_SCHEMA_VERSION = 1
+
+
+def build_cli_consistency_report(*, root: Path = REPO_ROOT) -> dict[str, Any]:
+    """Build a machine-readable CLI/TUI consistency report.
+
+    Collects declared scripts and subcommands from pyproject.toml and the
+    CLI parser, then compares them against documented commands found in docs
+    and markdown files.  Emits a consolidated ``cli_consistency.json``
+    artifact with gaps, undocumented commands, and undeclared documented
+    references.
+    """
+    scripts, subcommands = _collect_cli_metadata()
+    doc_paths: list[Path] = []
+    for pattern in ("*.md", "docs/**/*.md"):
+        doc_paths.extend(root.glob(pattern))
+    documented_commands = _extract_documented_commands(doc_paths, root=root)
+
+    # Build gap lists
+    undeclared_subcommands: list[dict[str, Any]] = []
+    undeclared_scripts: list[dict[str, Any]] = []
+    for item in documented_commands:
+        if item.command == "sattlint" and item.subcommand and item.subcommand not in subcommands:
+            undeclared_subcommands.append(
+                {
+                    "subcommand": item.subcommand,
+                    "referenced_in": item.path,
+                    "line": item.line,
+                }
+            )
+        if item.command.startswith("sattlint-") and item.command not in scripts:
+            undeclared_scripts.append(
+                {
+                    "script": item.command,
+                    "referenced_in": item.path,
+                    "line": item.line,
+                }
+            )
+
+    # Documented subcommands that are implemented (for completeness)
+    documented_subcommand_names = {
+        item.subcommand for item in documented_commands if item.command == "sattlint" and item.subcommand
+    }
+    undocumented_subcommands = sorted(subcommands - documented_subcommand_names)
+
+    documented_script_names = {item.command for item in documented_commands if item.command.startswith("sattlint-")}
+    undocumented_scripts = sorted(scripts - documented_script_names)
+
+    gap_count = len(undeclared_subcommands) + len(undeclared_scripts)
+    return {
+        "kind": CLI_CONSISTENCY_SCHEMA_KIND,
+        "schema_version": CLI_CONSISTENCY_SCHEMA_VERSION,
+        "declared": {
+            "scripts": sorted(scripts),
+            "subcommands": sorted(subcommands),
+        },
+        "gaps": {
+            "undeclared_subcommands": undeclared_subcommands,
+            "undeclared_scripts": undeclared_scripts,
+            "undocumented_subcommands": undocumented_subcommands,
+            "undocumented_scripts": undocumented_scripts,
+        },
+        "summary": {
+            "declared_script_count": len(scripts),
+            "declared_subcommand_count": len(subcommands),
+            "undeclared_subcommand_count": len(undeclared_subcommands),
+            "undeclared_script_count": len(undeclared_scripts),
+            "undocumented_subcommand_count": len(undocumented_subcommands),
+            "undocumented_script_count": len(undocumented_scripts),
+            "gap_count": gap_count,
+        },
+        "status": "fail" if gap_count > 0 else "pass",
+    }
+
+
 def _find_logging_findings(
     source_root: Path,
     *,
@@ -1377,10 +1470,13 @@ def audit_repository(
         key=lambda item: (-SEVERITY_RANK[item.severity], item.category, item.path or "", item.line or 0, item.id),
     )
     blocking_count = _blocking_finding_count(findings, fail_on)
+    enabled_audit_artifact_ids = {"progress", "status", "summary", "findings", "summary_markdown"}
+    if audit_profile == "full":
+        enabled_audit_artifact_ids.add("cli_consistency")
     reports = artifact_reports_map(
         AUDIT_ARTIFACTS,
         profile=audit_profile,
-        enabled_artifact_ids={"progress", "status", "summary", "findings", "summary_markdown"},
+        enabled_artifact_ids=enabled_audit_artifact_ids,
     )
     progress.complete_stage("merge_findings", detail=f"{len(findings)} total findings")
     reports["pipeline_status"] = None if pipeline_summary is None else f"{PIPELINE_OUTPUT_DIRNAME}/status.json"
@@ -1448,6 +1544,9 @@ def audit_repository(
     write_json_artifact(output_dir / "summary.json", summary)
     write_json_artifact(output_dir / "findings.json", finding_collection.to_dict())
     _write_markdown(output_dir / "summary.md", findings, summary)
+    if audit_profile == "full":
+        cli_consistency_report = build_cli_consistency_report(root=REPO_ROOT)
+        write_json_artifact(output_dir / "cli_consistency.json", cli_consistency_report)
     _mirror_latest_reports(output_dir, latest_output_dir)
     progress.complete_stage("write_reports")
     progress.finalize(overall_status=overall_status_value)

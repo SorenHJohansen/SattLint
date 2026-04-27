@@ -27,6 +27,12 @@ from sattlint.devtools.artifact_registry import (
 )
 from sattlint.devtools.baselines import build_analysis_diff_report, load_finding_collection
 from sattlint.devtools.corpus import CORPUS_RESULTS_FILENAME, run_corpus_suite
+from sattlint.devtools.coverage_reports import build_coverage_summary_report
+from sattlint.devtools.derived_reports import (
+    build_incremental_analysis_report,
+    build_performance_budget_report,
+    build_profiling_summary_report,
+)
 from sattlint.devtools.finding_exports import build_pipeline_finding_collection
 from sattlint.devtools.pipeline_artifacts import (
     PipelineArtifactContext,
@@ -34,6 +40,7 @@ from sattlint.devtools.pipeline_artifacts import (
     write_pipeline_artifacts,
 )
 from sattlint.devtools.progress_reporting import ProgressReporter
+from sattlint.devtools.semantic_reports import build_rule_metrics_report, build_sattline_semantic_report
 from sattlint.devtools.status_reports import (
     build_pipeline_status_report,
     build_pipeline_summary_report,
@@ -184,6 +191,35 @@ def _run_command(name: str, command: list[str], *, cwd: Path = REPO_ROOT) -> Com
         stdout=completed.stdout,
         stderr=completed.stderr,
     )
+
+
+def _detect_changed_files(*, repo_root: Path = REPO_ROOT) -> list[str]:
+    try:
+        completed = subprocess.run(  # nosec B603 - fixed internal git command
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+    except OSError:
+        return []
+
+    if completed.returncode != 0:
+        return []
+
+    changed_files: set[str] = set()
+    for raw_line in completed.stdout.splitlines():
+        if len(raw_line) < 4:
+            continue
+        path_text = raw_line[3:].strip()
+        if not path_text:
+            continue
+        if " -> " in path_text:
+            path_text = path_text.split(" -> ", 1)[1].strip()
+        changed_files.add(path_text.replace("\\", "/"))
+    return sorted(changed_files)
 
 
 def _profile_settings(profile: str) -> dict[str, Any]:
@@ -459,6 +495,12 @@ def _run_pipeline(
     include_bandit: bool | None = None,
     baseline_findings: Path | None = None,
     corpus_manifest_dir: Path | None = None,
+    changed_files: list[str] | None = None,
+    slow_phase_threshold_ms: float = 25.0,
+    phase_budget_ms: float = 50.0,
+    total_budget_ms: float = 250.0,
+    fail_on_drift: bool = False,
+    fail_on_budget: bool = False,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     if baseline_findings is not None and not baseline_findings.exists():
@@ -471,6 +513,10 @@ def _run_pipeline(
     run_trace = settings["include_trace"] and trace_target is not None and trace_target.exists()
     resolved_corpus_manifest_dir = corpus_manifest_dir.resolve() if corpus_manifest_dir is not None else None
     run_corpus = bool(resolved_corpus_manifest_dir and resolved_corpus_manifest_dir.exists())
+    run_coverage_summary = run_structural_reports and (REPO_ROOT / "coverage.xml").exists()
+    resolved_changed_files = (
+        list(changed_files) if changed_files is not None else _detect_changed_files(repo_root=REPO_ROOT)
+    )
     sanitized_output_dir = sanitize_path_for_report(output_dir, repo_root=REPO_ROOT) or output_dir.as_posix()
     canonical_command = f"sattlint-analysis-pipeline --profile {profile} --output-dir {sanitized_output_dir}"
     progress = ProgressReporter(
@@ -525,7 +571,12 @@ def _run_pipeline(
             }
         )
     if run_trace:
-        enabled_artifacts.add("trace")
+        enabled_artifacts.update({"trace", "profiling_summary", "performance_budget"})
+    enabled_artifacts.add("incremental_analysis")
+    if run_coverage_summary:
+        enabled_artifacts.add("coverage_summary")
+    if run_structural_reports:
+        enabled_artifacts.update({"sattline_semantic", "rule_metrics"})
 
     artifact_registry_report = build_artifact_registry_report(
         PIPELINE_ARTIFACTS,
@@ -713,6 +764,29 @@ def _run_pipeline(
     else:
         progress.skip_stage("corpus", detail="no manifest directory")
 
+    incremental_analysis_report = build_incremental_analysis_report(
+        resolved_changed_files,
+        repo_root=REPO_ROOT,
+        analyzer_registry_report=analyzer_registry_report if run_structural_reports else None,
+    )
+
+    coverage_summary_report: dict[str, Any] | None = None
+    if run_coverage_summary:
+        coverage_summary_report = build_coverage_summary_report(REPO_ROOT)
+
+    profiling_summary_report = build_profiling_summary_report(
+        trace_report,
+        slow_phase_threshold_ms=slow_phase_threshold_ms,
+    )
+    performance_budget_report = build_performance_budget_report(
+        profiling_summary_report,
+        total_budget_ms=total_budget_ms,
+        phase_budget_ms=phase_budget_ms,
+    )
+
+    sattline_semantic_report: dict[str, Any] | None = None
+    rule_metrics_report: dict[str, Any] | None = None
+
     phase2_rule_metadata_gate = {
         "status": "skipped",
         "enforced_fields": ["acceptance_tests", "mutation_applicability"],
@@ -739,6 +813,14 @@ def _run_pipeline(
         architecture_findings=list(architecture_report.get("findings", [])),
     )
     progress.complete_stage("findings", detail=f"{len(finding_collection.findings)} normalized findings")
+
+    if run_structural_reports:
+        _findings_dict = finding_collection.to_dict()
+        sattline_semantic_report = build_sattline_semantic_report(_findings_dict)
+        rule_metrics_report = build_rule_metrics_report(
+            _findings_dict,
+            analyzer_registry_report if not analyzer_registry_report.get("skipped") else None,
+        )
 
     analysis_diff_report: dict[str, Any] | None = None
     if baseline_findings is not None:
@@ -874,6 +956,72 @@ def _run_pipeline(
                 else None
             ),
         ),
+        "baseline_drift": _make_tool_status(
+            status=(
+                "skipped"
+                if analysis_diff_report is None
+                else "fail"
+                if fail_on_drift
+                and (
+                    analysis_diff_report["summary"]["new_count"] > 0
+                    or analysis_diff_report["summary"]["resolved_count"] > 0
+                )
+                else "pass"
+            ),
+            report=None if analysis_diff_report is None else "analysis_diff.json",
+            raw_exit_code=None,
+            normalized_exit_code=(
+                None
+                if analysis_diff_report is None
+                else 1
+                if fail_on_drift
+                and (
+                    analysis_diff_report["summary"]["new_count"] > 0
+                    or analysis_diff_report["summary"]["resolved_count"] > 0
+                )
+                else 0
+            ),
+            finding_count=(
+                0
+                if analysis_diff_report is None
+                else analysis_diff_report["summary"]["new_count"] + analysis_diff_report["summary"]["resolved_count"]
+            ),
+            detail=(
+                "skipped: no baseline supplied"
+                if analysis_diff_report is None
+                else (
+                    f"{analysis_diff_report['summary']['new_count']} new, "
+                    f"{analysis_diff_report['summary']['resolved_count']} resolved, "
+                    f"{analysis_diff_report['summary']['changed_count']} changed"
+                )
+            ),
+        ),
+        "performance_budget": _make_tool_status(
+            status=(
+                "skipped"
+                if performance_budget_report is None
+                else "fail"
+                if fail_on_budget and performance_budget_report["status"] == "fail"
+                else "pass_with_notes"
+                if performance_budget_report["status"] == "fail"
+                else "pass"
+            ),
+            report=None if performance_budget_report is None else "performance_budget.json",
+            raw_exit_code=None,
+            normalized_exit_code=(
+                None
+                if performance_budget_report is None
+                else 1
+                if fail_on_budget and performance_budget_report["status"] == "fail"
+                else 0
+            ),
+            finding_count=0 if performance_budget_report is None else performance_budget_report["violation_count"],
+            detail=(
+                "skipped because trace profiling is unavailable"
+                if performance_budget_report is None
+                else f"{performance_budget_report['violation_count']} budget violations"
+            ),
+        ),
     }
     overall_status = _overall_status(tool_statuses)
     failing_tools = [name for name, payload in tool_statuses.items() if payload["status"] == "fail"]
@@ -920,6 +1068,26 @@ def _run_pipeline(
             "rule_metadata": (
                 None if not run_structural_reports else 1 if phase2_rule_metadata_gate["status"] == "fail" else 0
             ),
+            "baseline_drift": (
+                None
+                if analysis_diff_report is None
+                else 1
+                if fail_on_drift
+                and (
+                    analysis_diff_report["summary"]["new_count"] > 0
+                    or analysis_diff_report["summary"]["resolved_count"] > 0
+                )
+                else 0
+                if analysis_diff_report is not None
+                else None
+            ),
+            "performance_budget": (
+                None
+                if performance_budget_report is None
+                else 1
+                if fail_on_budget and performance_budget_report["status"] == "fail"
+                else 0
+            ),
         },
         artifact_registry_report=artifact_registry_report,
         progress_report=f"{sanitized_output_dir}/progress.json",
@@ -937,6 +1105,15 @@ def _run_pipeline(
             "baseline_unchanged_findings": 0
             if analysis_diff_report is None
             else analysis_diff_report["summary"]["unchanged_count"],
+            "incremental_changed_file_count": 0
+            if incremental_analysis_report is None
+            else incremental_analysis_report["summary"]["changed_file_count"],
+            "incremental_candidate_analyzer_count": 0
+            if incremental_analysis_report is None
+            else incremental_analysis_report["summary"]["impacted_analyzer_count"],
+            "incremental_blocking_analyzer_count": 0
+            if incremental_analysis_report is None
+            else incremental_analysis_report["summary"]["fallback_analyzer_count"],
             "normalized_findings": len(finding_collection.findings),
             "corpus_case_count": 0 if corpus_results_report is None else corpus_results_report["summary"]["case_count"],
             "corpus_passed_case_count": 0
@@ -978,6 +1155,18 @@ def _run_pipeline(
             "trace_transform_violations": 0
             if trace_report is None
             else len(trace_report.get("heuristics", {}).get("transform_invariant_violations", [])),
+            "profiling_total_duration_ms": 0.0
+            if profiling_summary_report is None
+            else profiling_summary_report["total_duration_ms"],
+            "profiling_phase_count": 0
+            if profiling_summary_report is None
+            else profiling_summary_report["summary"]["phase_count"],
+            "profiling_slow_phase_count": 0
+            if profiling_summary_report is None
+            else profiling_summary_report["summary"]["slow_phase_count"],
+            "performance_budget_violation_count": 0
+            if performance_budget_report is None
+            else performance_budget_report["violation_count"],
         },
     )
 
@@ -998,9 +1187,15 @@ def _run_pipeline(
             "graphics_layout": None if graphics_layout_report.get("skipped") else graphics_layout_report,
             "impact_analysis": None if impact_analysis_report.get("skipped") else impact_analysis_report,
             "trace": trace_report,
+            "incremental_analysis": incremental_analysis_report,
             "findings": finding_collection.to_dict(),
             "analysis_diff": analysis_diff_report,
             "corpus_results": corpus_results_report,
+            "coverage_summary": coverage_summary_report,
+            "sattline_semantic": sattline_semantic_report,
+            "rule_metrics": rule_metrics_report,
+            "profiling_summary": profiling_summary_report,
+            "performance_budget": performance_budget_report,
             "status": status_report,
             "summary": summary,
         }
@@ -1047,13 +1242,56 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="Optional directory of corpus manifests used to emit corpus_results.json",
     )
+    parser.add_argument(
+        "--changed-file",
+        action="append",
+        default=None,
+        help="Repo-relative path to include in incremental_analysis.json. Repeatable.",
+    )
+    parser.add_argument(
+        "--slow-phase-threshold-ms",
+        type=float,
+        default=25.0,
+        help="Minimum phase duration included in profiling_summary.json slow_phases.",
+    )
+    parser.add_argument(
+        "--phase-budget-ms",
+        type=float,
+        default=50.0,
+        help="Per-phase duration budget used by performance_budget.json.",
+    )
+    parser.add_argument(
+        "--total-budget-ms",
+        type=float,
+        default=250.0,
+        help="Total trace duration budget used by performance_budget.json.",
+    )
     parser.add_argument("--skip-vulture", action="store_true", help="Skip the Vulture dead-code scan")
     parser.add_argument("--skip-bandit", action="store_true", help="Skip the Bandit security scan")
+    parser.add_argument(
+        "--fail-on-drift",
+        action="store_true",
+        help=(
+            "Exit with code 1 if the baseline comparison finds new or resolved findings. "
+            "Requires --baseline-findings."
+        ),
+    )
+    parser.add_argument(
+        "--fail-on-budget",
+        action="store_true",
+        help="Exit with code 1 when performance_budget.json reports budget violations.",
+    )
+    parser.add_argument(
+        "--save-baseline",
+        default="",
+        help="Copy the emitted findings.json to this path after a successful run (approve-or-refresh workflow).",
+    )
     args = parser.parse_args(argv)
 
     trace_target = Path(args.trace_target).resolve() if args.trace_target else None
     baseline_findings = Path(args.baseline_findings).resolve() if args.baseline_findings else None
     corpus_manifest_dir = Path(args.corpus_manifest_dir).resolve() if args.corpus_manifest_dir else None
+    save_baseline = Path(args.save_baseline).resolve() if args.save_baseline else None
     summary = _run_pipeline(
         Path(args.output_dir).resolve(),
         trace_target=trace_target,
@@ -1062,7 +1300,18 @@ def main(argv: list[str] | None = None) -> int:
         include_bandit=False if args.skip_bandit else None,
         baseline_findings=baseline_findings,
         corpus_manifest_dir=corpus_manifest_dir,
+        changed_files=args.changed_file,
+        slow_phase_threshold_ms=args.slow_phase_threshold_ms,
+        phase_budget_ms=args.phase_budget_ms,
+        total_budget_ms=args.total_budget_ms,
+        fail_on_drift=args.fail_on_drift,
+        fail_on_budget=args.fail_on_budget,
     )
+    if save_baseline is not None:
+        findings_src = Path(args.output_dir).resolve() / "findings.json"
+        if findings_src.exists():
+            save_baseline.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(findings_src, save_baseline)
     _print_cli_summary(
         {
             "profile": summary["profile"],

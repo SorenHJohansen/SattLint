@@ -15,7 +15,7 @@ LOCALVARIABLES
    MaxLimit: integer Const  := 100;
    ActiveFlag: boolean State  := False;
    OperatorSetpoint: real OpSave  := 50.0;
-   Output: integer  := 0;
+   Output: real  := 0.0;
    Changed: boolean  := False;
 
 ModuleDef

@@ -276,6 +276,38 @@ def test_run_icf_validation_forces_dependency_aware_ast_loading(tmp_path, monkey
     assert "summary" in out
 
 
+def test_run_format_icf_command_formats_files_without_changing_nonblank_lines(tmp_path, capsys):
+    icf_dir = tmp_path / "icf"
+    icf_dir.mkdir()
+    icf_file = icf_dir / "Program.icf"
+    original = (
+        "; header\n"
+        "[Unit UnitA]\n"
+        "[Journal JournalA]\n"
+        "[Group JournalData_DCStoMES]\n"
+        "OPR_ID=F::Program:UnitA.JournalA.T.OPR_ID\n"
+        "[Operation OpStart]\n"
+        "[Group StateChange_DCStoMES]\n"
+        "STATE_NO=F::Program:UnitA.OpStart.STATE_NO\n"
+    )
+    icf_file.write_text(original, encoding="utf-8")
+
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg["icf_dir"] = str(icf_dir)
+
+    exit_code = app.run_format_icf_command(cfg)
+
+    formatted = icf_file.read_text(encoding="utf-8")
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_SUCCESS
+    assert [line for line in formatted.splitlines() if line.strip()] == [
+        line for line in original.splitlines() if line.strip()
+    ]
+    assert "[Journal JournalA]\n\n[Group JournalData_DCStoMES]" in formatted
+    assert "[Operation OpStart]" in formatted
+    assert "Changed: 1" in out
+
+
 def test_clear_screen_falls_back_to_ansi_when_windows_clear_fails(monkeypatch):
     writes: list[str] = []
 
@@ -1152,6 +1184,7 @@ def test_show_help_mentions_setup_and_syntax_check(noop_screen, capsys):
     out = capsys.readouterr().out
     assert "Open Setup" in out
     assert "syntax-check" in out
+    assert "format-icf" in out
     assert "Tools" in out
 
 

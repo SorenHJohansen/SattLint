@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from sattlint.analyzers.icf import parse_icf_file, validate_icf_entries_against_program
+from sattlint.analyzers.icf import (
+    format_icf_file,
+    format_icf_text,
+    parse_icf_file,
+    validate_icf_entries_against_program,
+)
 from sattlint.models.ast_model import (
     BasePicture,
     DataType,
@@ -59,6 +64,83 @@ def test_parse_icf_file_tracks_unit_journal_and_group_context(tmp_path):
     assert entries[0].group == "JournalData_DCStoMES"
 
 
+def test_format_icf_text_preserves_nonblank_content_and_distinguishes_major_headers():
+    source = (
+        "; header\n"
+        "\n"
+        "[Unit UnitA]\n"
+        "[Journal JournalA]\n"
+        "[Group JournalData_DCStoMES]\n"
+        "OPR_ID=F::Program:UnitA.JournalA.T.OPR_ID\n"
+        "[Operation OpStart]\n"
+        "[Group StateChange_DCStoMES]\n"
+        "STATE_NO=F::Program:UnitA.OpStart.STATE_NO\n"
+        "[Unit UnitB]\n"
+        "[Journal JournalB]\n"
+        "[Group JournalData_DCStoMES]\n"
+        "OPR_ID=F::Program:UnitB.JournalB.T.OPR_ID\n"
+    )
+
+    formatted = format_icf_text(source)
+
+    assert [line for line in formatted.splitlines() if line.strip()] == [
+        line for line in source.splitlines() if line.strip()
+    ]
+    assert formatted == (
+        "; header\n"
+        "\n"
+        "[Unit UnitA]\n"
+        "\n"
+        "\n"
+        "[Journal JournalA]\n"
+        "\n"
+        "[Group JournalData_DCStoMES]\n"
+        "OPR_ID=F::Program:UnitA.JournalA.T.OPR_ID\n"
+        "\n"
+        "\n"
+        "[Operation OpStart]\n"
+        "\n"
+        "[Group StateChange_DCStoMES]\n"
+        "STATE_NO=F::Program:UnitA.OpStart.STATE_NO\n"
+        "\n"
+        "\n"
+        "[Unit UnitB]\n"
+        "\n"
+        "\n"
+        "[Journal JournalB]\n"
+        "\n"
+        "[Group JournalData_DCStoMES]\n"
+        "OPR_ID=F::Program:UnitB.JournalB.T.OPR_ID\n"
+    )
+    assert format_icf_text(formatted) == formatted
+
+
+def test_format_icf_file_preserves_nonblank_content_encoding_and_newline_style(tmp_path):
+    icf_file = tmp_path / "Program.icf"
+    original = (
+        "; S\u00f8jle\r\n"
+        "\r\n"
+        "[Unit UnitA]\r\n"
+        "[Operation Op\u00c6]\r\n"
+        "[Group JournalData_Parameters]\r\n"
+        "L\u00f8bS\u00f8jle1=F::Program:UnitA.Op\u00c6.Value.Data.L\u00f8b_S\u00f8jle1\r\n"
+    )
+    icf_file.write_bytes(original.encode("cp1252"))
+
+    result = format_icf_file(icf_file)
+    raw = icf_file.read_bytes()
+    formatted = raw.decode("cp1252")
+
+    assert result.changed is True
+    assert b"\r\n" in raw
+    assert "S\u00f8jle" in formatted
+    assert "L\u00f8bS\u00f8jle1=F::Program:UnitA.Op\u00c6.Value.Data.L\u00f8b_S\u00f8jle1" in formatted
+    assert [line for line in formatted.splitlines() if line.strip()] == [
+        line for line in original.splitlines() if line.strip()
+    ]
+    assert format_icf_file(icf_file, check=True).changed is False
+
+
 def test_icf_validation_reports_valid_and_invalid_entries():
     record = DataType(
         name="Rec",
@@ -105,6 +187,82 @@ def test_icf_validation_reports_valid_and_invalid_entries():
     assert report.valid_entries == 1
     assert len(report.issues) == 1
     assert report.issues[0].reason == "invalid field path"
+
+
+def test_icf_validation_skips_placeholder_h_dot_value():
+    bp = BasePicture(
+        header=_header("KaHAIsoFK3"),
+        submodules=[SingleModule(header=_header("KaHA265A"), moduledef=None)],
+    )
+
+    entries = [
+        _entry(
+            "Fyld_TidTotal",
+            "H::.",
+            unit="KaHA265A",
+            journal="CRY_Fyld1 ,CRY_Fyld1",
+            group="JournalData_Parameters",
+        ),
+    ]
+
+    report = validate_icf_entries_against_program(bp, entries, expected_program="KaHAIsoFK3")
+
+    assert report.skipped_entries == 1
+    assert report.valid_entries == 0
+    assert not any(issue.reason == "program mismatch" for issue in report.issues)
+
+
+def test_icf_validation_placeholder_counts_as_covered_for_completeness():
+    # Record has two fields; one resolves normally, one is bound to H::. placeholder.
+    # The completeness check must not report the placeholder field as missing.
+    fill_record = DataType(
+        name="FillRecord",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="Tid_Start", datatype=Simple_DataType.TIME),
+            Variable(name="Fyld_TidTotal", datatype=Simple_DataType.REAL),
+        ],
+    )
+    dv = DataType(
+        name="DvRecord",
+        description=None,
+        datecode=None,
+        var_list=[Variable(name="CRY_Fyld1", datatype="FillRecord")],
+    )
+    unit = SingleModule(
+        header=_header("KaHA265A"),
+        moduledef=None,
+        localvariables=[Variable(name="Dv", datatype="DvRecord")],
+    )
+    bp = BasePicture(
+        header=_header("KaHAIsoFK3"),
+        datatype_defs=[fill_record, dv],
+        submodules=[unit],
+    )
+
+    entries = [
+        _entry(
+            "Tid_Start",
+            "KaHAIsoFK3:KaHA265A.Dv.CRY_Fyld1.Tid_Start",
+            unit="KaHA265A",
+            journal="CRY_Fyld1 ,CRY_Fyld1",
+            group="JournalData_Parameters",
+        ),
+        _entry(
+            "Fyld_TidTotal",
+            "H::.",
+            line_no=2,
+            unit="KaHA265A",
+            journal="CRY_Fyld1 ,CRY_Fyld1",
+            group="JournalData_Parameters",
+        ),
+    ]
+
+    report = validate_icf_entries_against_program(bp, entries, expected_program="KaHAIsoFK3")
+
+    assert report.skipped_entries == 1
+    assert not any(issue.reason == "missing journal parameter fields" for issue in report.issues)
 
 
 def test_icf_validation_marks_unresolved_module_segment_in_detail():
@@ -687,7 +845,12 @@ def test_icf_validation_flags_unit_structure_drift_within_same_sattline_type_onl
     drift_issues = [issue for issue in report.issues if issue.reason == "unit structure drift"]
     assert len(drift_issues) == 1
     assert drift_issues[0].entry.unit == "KaHA221B"
-    assert drift_issues[0].detail == "unit type ApplTank differs from KaHA221A: missing 1 entries"
+    assert drift_issues[0].detail is not None
+    assert drift_issues[0].detail.startswith("unit type ApplTank differs from KaHA221A: missing 1 entries (")
+    assert (
+        "[HygienicStatus/JournalData_DCStoMES] cr_id => Program:StartMaster.<UNIT>.HygienicStatus.T.CR_ID"
+        in drift_issues[0].detail
+    )
     assert "OPR_ID =>" not in summary
 
 

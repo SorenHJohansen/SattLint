@@ -1,9 +1,12 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
 "Program date: 2026-04-23-12:00:00.000, name: OpenSequenceSeqFork"
-(* Covers OPENSEQUENCE (no automatic wrap-around) with a SEQFORK that
-   jumps back to an earlier named step, and a SEQBREAK to exit the sequence.
-   OPENSEQUENCE does not loop back automatically; SEQFORK provides jump-to-step.
+(* Covers SEQFORK patterns across OPENSEQUENCE and SEQUENCE:
+   - SEQFORK after a SEQTRANSITION (fork on transition, intra-sequence)
+   - SEQFORK after a SEQSTEP, with SEQBREAK
+   - SEQFORK after a SEQSTEP, without SEQBREAK
+   - SEQFORK with a cross-sequence target in the same module
+   SEQBREAK is optional after SEQFORK.
    Expected: strict syntax-check passes. *)
 
 BasePicture Invocation
@@ -19,7 +22,7 @@ LOCALVARIABLES
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ModuleCode
-   OPENSEQUENCE MainOpen COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+   OPENSEQUENCE MainOpen COORD 0.0, 0.5 OBJSIZE 1.0, 0.5
       SEQINITSTEP Init
          ENTERCODE
             RetryCount = 0;
@@ -34,7 +37,7 @@ ModuleCode
             ENTERCODE
                Output = 0;
          SEQTRANSITION TrExit WAIT_FOR True
-            SEQBREAK
+            SEQFORK Finished SEQBREAK
       ALTERNATIVEBRANCH
          SEQTRANSITION TrRetry WAIT_FOR RestartCmd
          SEQSTEP Retry
@@ -42,16 +45,23 @@ ModuleCode
                RetryCount = RetryCount + 1;
                Output = 0;
                RestartCmd = False;
-         SEQTRANSITION TrBackToWorking WAIT_FOR True
-            SEQFORK Working
+         SEQFORK Working SEQBREAK
       ALTERNATIVEBRANCH
          SEQTRANSITION TrAbort WAIT_FOR AbortCmd
          SEQSTEP Abort
             ENTERCODE
                Output = -1;
          SEQTRANSITION TrAbortExit WAIT_FOR True
-            SEQBREAK
+            SEQFORK Finished SEQBREAK
       ENDALTERNATIVE
+   SEQSTEP Finished
    ENDOPENSEQUENCE
+
+   SEQUENCE Helper COORD 0.0, 0.0 OBJSIZE 1.0, 0.5
+      SEQINITSTEP HInit
+      SEQFORK TrHelper
+      SEQTRANSITION TrHelper WAIT_FOR True
+         SEQFORK Working
+   ENDSEQUENCE
 
 ENDDEF (*BasePicture*);

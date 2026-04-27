@@ -1135,6 +1135,11 @@ def test_run_pipeline_serializes_structural_graph_reports(monkeypatch, tmp_path)
     monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
     monkeypatch.setattr(
         pipeline,
+        "build_coverage_summary_report",
+        lambda repo_root: {"kind": "sattlint.coverage_summary", "skipped": True},
+    )
+    monkeypatch.setattr(
+        pipeline,
         "_collect_structural_report_bundle",
         lambda workspace_root=pipeline.REPO_ROOT, progress_callback=None: pipeline.StructuralReportsBundle(
             architecture_report={"findings": []},
@@ -1233,6 +1238,11 @@ def test_run_pipeline_serializes_structural_graph_reports(monkeypatch, tmp_path)
 
 def test_run_pipeline_fails_when_enforced_rule_metadata_is_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    monkeypatch.setattr(
+        pipeline,
+        "build_coverage_summary_report",
+        lambda repo_root: {"kind": "sattlint.coverage_summary", "skipped": True},
+    )
     monkeypatch.setattr(
         pipeline,
         "_collect_structural_report_bundle",
@@ -1560,3 +1570,706 @@ def test_run_pipeline_quick_profile_skips_optional_reports(monkeypatch, tmp_path
     assert status_report["tool_statuses"]["vulture"]["status"] == "skipped"
     assert status_report["tool_statuses"]["bandit"]["status"] == "skipped"
     assert status_report["tool_statuses"]["rule_metadata"]["status"] == "skipped"
+
+
+# --- ID 10: Baseline regression enforcement tests ---
+
+
+def _make_fake_baseline_findings_file(path, finding_message="Pytest reported failing tests."):
+    """Write a minimal baseline findings.json with one finding."""
+    path.write_text(
+        json.dumps(
+            {
+                "kind": "sattlint.findings",
+                "schema_version": 1,
+                "finding_count": 1,
+                "findings": [
+                    {
+                        "id": "pytest-old",
+                        "rule_id": "pytest.failures",
+                        "category": "correctness",
+                        "severity": "high",
+                        "confidence": "high",
+                        "message": finding_message,
+                        "source": "pytest",
+                        "analyzer": "pytest",
+                        "artifact": "findings",
+                        "location": {
+                            "path": None,
+                            "line": None,
+                            "column": None,
+                            "symbol": None,
+                            "module_path": [],
+                        },
+                        "fingerprint": None,
+                        "detail": None,
+                        "suggestion": None,
+                        "data": {},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _patched_run_command(name, command, cwd=pipeline.REPO_ROOT):
+    return pipeline.CommandResult(
+        name=name,
+        command=command,
+        exit_code=0,
+        duration_seconds=0.0,
+        stdout="[]" if name == "ruff" else "",
+        stderr="",
+    )
+
+
+def test_run_pipeline_baseline_drift_status_skipped_without_baseline(monkeypatch, tmp_path):
+    monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
+    monkeypatch.setattr(pipeline, "_run_command", _patched_run_command)
+    monkeypatch.setattr(pipeline, "_parse_json_lines", lambda raw_output: [])
+    monkeypatch.setattr(
+        pipeline,
+        "_parse_pytest_junit",
+        lambda xml_path: {"summary": {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}, "testcases": []},
+    )
+
+    summary = pipeline._run_pipeline(tmp_path, trace_target=None, profile="quick")
+
+    assert summary["status"]["tool_statuses"]["baseline_drift"]["status"] == "skipped"
+    assert summary["status"]["overall_status"] == "pass"
+
+
+def test_run_pipeline_fail_on_drift_passes_when_no_new_findings(monkeypatch, tmp_path):
+    """fail_on_drift=True should not fail when findings are unchanged."""
+    baseline_path = tmp_path / "baseline.json"
+    # Baseline with zero findings — current run also has zero findings.
+    baseline_path.write_text(
+        json.dumps({"kind": "sattlint.findings", "schema_version": 1, "finding_count": 0, "findings": []}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
+    monkeypatch.setattr(pipeline, "_run_command", _patched_run_command)
+    monkeypatch.setattr(pipeline, "_parse_json_lines", lambda raw_output: [])
+    monkeypatch.setattr(
+        pipeline,
+        "_parse_pytest_junit",
+        lambda xml_path: {"summary": {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}, "testcases": []},
+    )
+
+    summary = pipeline._run_pipeline(
+        tmp_path,
+        trace_target=None,
+        profile="quick",
+        baseline_findings=baseline_path,
+        fail_on_drift=True,
+    )
+
+    assert summary["status"]["tool_statuses"]["baseline_drift"]["status"] == "pass"
+    assert summary["status"]["overall_status"] == "pass"
+
+
+def test_run_pipeline_fail_on_drift_fails_when_new_findings_present(monkeypatch, tmp_path):
+    """fail_on_drift=True should fail when current has new findings relative to baseline."""
+    baseline_path = tmp_path / "baseline.json"
+    # Baseline with zero findings; current run will have a pytest failure finding.
+    baseline_path.write_text(
+        json.dumps({"kind": "sattlint.findings", "schema_version": 1, "finding_count": 0, "findings": []}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
+    monkeypatch.setattr(
+        pipeline,
+        "_run_command",
+        lambda name, command, cwd=pipeline.REPO_ROOT: pipeline.CommandResult(
+            name=name,
+            command=command,
+            exit_code=1 if name == "pytest" else 0,
+            duration_seconds=0.0,
+            stdout="[]" if name == "ruff" else "",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(pipeline, "_parse_json_lines", lambda raw_output: [])
+    monkeypatch.setattr(
+        pipeline,
+        "_parse_pytest_junit",
+        lambda xml_path: {"summary": {"tests": 2, "failures": 1, "errors": 0, "skipped": 0}, "testcases": []},
+    )
+
+    summary = pipeline._run_pipeline(
+        tmp_path,
+        trace_target=None,
+        profile="quick",
+        baseline_findings=baseline_path,
+        fail_on_drift=True,
+    )
+
+    assert summary["status"]["tool_statuses"]["baseline_drift"]["status"] == "fail"
+    assert "baseline_drift" in summary["status"]["failing_tools"]
+    assert summary["status"]["overall_status"] == "fail"
+    assert summary["counts"]["baseline_new_findings"] > 0
+
+
+def test_run_pipeline_fail_on_drift_false_does_not_fail_on_new_findings(monkeypatch, tmp_path):
+    """Without fail_on_drift, new findings in the diff do not change overall_status."""
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps({"kind": "sattlint.findings", "schema_version": 1, "finding_count": 0, "findings": []}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
+    monkeypatch.setattr(
+        pipeline,
+        "_run_command",
+        lambda name, command, cwd=pipeline.REPO_ROOT: pipeline.CommandResult(
+            name=name,
+            command=command,
+            exit_code=1 if name == "pytest" else 0,
+            duration_seconds=0.0,
+            stdout="[]" if name == "ruff" else "",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(pipeline, "_parse_json_lines", lambda raw_output: [])
+    monkeypatch.setattr(
+        pipeline,
+        "_parse_pytest_junit",
+        lambda xml_path: {"summary": {"tests": 2, "failures": 1, "errors": 0, "skipped": 0}, "testcases": []},
+    )
+
+    summary = pipeline._run_pipeline(
+        tmp_path,
+        trace_target=None,
+        profile="quick",
+        baseline_findings=baseline_path,
+        fail_on_drift=False,
+    )
+
+    assert summary["status"]["tool_statuses"]["baseline_drift"]["status"] == "pass"
+    # pytest itself still fails, but baseline_drift does not add to failures
+    assert "baseline_drift" not in summary["status"]["failing_tools"]
+
+
+def test_main_save_baseline_copies_findings_json(monkeypatch, tmp_path):
+    """--save-baseline copies findings.json to the specified target path."""
+    baseline_dest = tmp_path / "saved" / "baseline.json"
+
+    monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
+    monkeypatch.setattr(pipeline, "_run_command", _patched_run_command)
+    monkeypatch.setattr(pipeline, "_parse_json_lines", lambda raw_output: [])
+    monkeypatch.setattr(
+        pipeline,
+        "_parse_pytest_junit",
+        lambda xml_path: {"summary": {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}, "testcases": []},
+    )
+
+    exit_code = pipeline.main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--profile",
+            "quick",
+            "--save-baseline",
+            str(baseline_dest),
+        ]
+    )
+
+    assert exit_code == 0
+    assert baseline_dest.exists()
+    saved = json.loads(baseline_dest.read_text(encoding="utf-8"))
+    assert saved["kind"] == "sattlint.findings"
+
+
+def test_main_fail_on_drift_exits_nonzero_when_new_findings(monkeypatch, tmp_path):
+    """--fail-on-drift should make main() return non-zero when drift is detected."""
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps({"kind": "sattlint.findings", "schema_version": 1, "finding_count": 0, "findings": []}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
+    monkeypatch.setattr(
+        pipeline,
+        "_run_command",
+        lambda name, command, cwd=pipeline.REPO_ROOT: pipeline.CommandResult(
+            name=name,
+            command=command,
+            exit_code=1 if name == "pytest" else 0,
+            duration_seconds=0.0,
+            stdout="[]" if name == "ruff" else "",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(pipeline, "_parse_json_lines", lambda raw_output: [])
+    monkeypatch.setattr(
+        pipeline,
+        "_parse_pytest_junit",
+        lambda xml_path: {"summary": {"tests": 2, "failures": 1, "errors": 0, "skipped": 0}, "testcases": []},
+    )
+
+    exit_code = pipeline.main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--profile",
+            "quick",
+            "--baseline-findings",
+            str(baseline_path),
+            "--fail-on-drift",
+        ]
+    )
+
+    assert exit_code == 1
+
+
+def _minimal_structural_bundle() -> pipeline.StructuralReportsBundle:
+    return pipeline.StructuralReportsBundle(
+        architecture_report={"findings": []},
+        analyzer_registry_report=pipeline._collect_analyzer_registry_report(),
+        graph_inputs=pipeline.WorkspaceGraphInputs(
+            discovery=SimpleNamespace(program_files=(), dependency_files=()),
+            snapshots=[],
+            snapshot_failures=[],
+        ),
+        dependency_graph_report={"edges": []},
+        call_graph_report={"edges": []},
+        graphics_layout_report={"entries": [], "groups": [], "findings": []},
+        impact_analysis_report={"library_impacts": [], "module_impacts": []},
+    )
+
+
+def test_run_pipeline_emits_incremental_analysis_artifact(monkeypatch, tmp_path):
+    monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
+    monkeypatch.setattr(pipeline, "_run_command", _patched_run_command)
+    monkeypatch.setattr(pipeline, "_parse_json_lines", lambda raw_output: [])
+    monkeypatch.setattr(
+        pipeline,
+        "_parse_pytest_junit",
+        lambda xml_path: {"summary": {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}, "testcases": []},
+    )
+
+    summary = pipeline._run_pipeline(
+        tmp_path,
+        trace_target=None,
+        profile="quick",
+        changed_files=["tests/fixtures/sample_sattline_files/LinterTestProgram.s"],
+    )
+
+    report_path = tmp_path / "incremental_analysis.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert report_path.exists()
+    assert report["kind"] == "sattlint.incremental_analysis"
+    assert report["mode"] == "mixed"
+    assert report["summary"]["changed_file_count"] == 1
+    assert report["summary"]["impacted_analyzer_count"] >= 1
+    assert report["summary"]["fallback_analyzer_count"] >= 1
+    assert summary["counts"]["incremental_changed_file_count"] == 1
+    assert summary["reports"]["incremental_analysis"] == "incremental_analysis.json"
+
+
+def test_run_pipeline_emits_profiling_and_budget_reports(monkeypatch, tmp_path):
+    trace_target = tmp_path / "TraceTarget.s"
+    trace_target.write_text("dummy", encoding="utf-8")
+
+    monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
+    monkeypatch.setattr(pipeline, "_run_command", _patched_run_command)
+    monkeypatch.setattr(pipeline, "_parse_json_lines", lambda raw_output: [])
+    monkeypatch.setattr(
+        pipeline,
+        "_parse_pytest_junit",
+        lambda xml_path: {"summary": {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}, "testcases": []},
+    )
+    monkeypatch.setattr(
+        pipeline, "_collect_structural_report_bundle", lambda progress_callback=None: _minimal_structural_bundle()
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_collect_trace_report",
+        lambda target: {
+            "source_file": "tests/fixtures/sample_sattline_files/LinterTestProgram.s",
+            "basepicture_name": "LinterTestProgram",
+            "events": [
+                {"phase": "variables", "action": "start", "time_offset_ms": 0.0},
+                {"phase": "variables", "action": "done", "time_offset_ms": 60.0},
+                {"phase": "dataflow", "action": "done", "time_offset_ms": 12.0},
+            ],
+            "timing_summary": {
+                "variables": {"event_count": 2, "span_ms": 60.0},
+                "dataflow": {"event_count": 1, "span_ms": 12.0},
+            },
+            "dataflow_analysis": {"issue_count": 0},
+            "heuristics": {"unreachable_logic": [], "transform_invariant_violations": []},
+        },
+    )
+
+    summary = pipeline._run_pipeline(
+        tmp_path,
+        trace_target=trace_target,
+        profile="full",
+        slow_phase_threshold_ms=20.0,
+        phase_budget_ms=50.0,
+        total_budget_ms=100.0,
+    )
+
+    profiling_report = json.loads((tmp_path / "profiling_summary.json").read_text(encoding="utf-8"))
+    budget_report = json.loads((tmp_path / "performance_budget.json").read_text(encoding="utf-8"))
+
+    assert profiling_report["kind"] == "sattlint.profiling_summary"
+    assert profiling_report["summary"]["phase_count"] == 2
+    assert profiling_report["summary"]["slow_phase_count"] == 1
+    assert profiling_report["slow_phases"][0]["phase"] == "variables"
+    assert budget_report["kind"] == "sattlint.performance_budget"
+    assert budget_report["status"] == "fail"
+    assert budget_report["violation_count"] == 1
+    assert summary["status"]["tool_statuses"]["performance_budget"]["status"] == "pass_with_notes"
+    assert summary["counts"]["profiling_slow_phase_count"] == 1
+    assert summary["counts"]["performance_budget_violation_count"] == 1
+
+
+def test_main_fail_on_budget_exits_nonzero(monkeypatch, tmp_path):
+    trace_target = tmp_path / "TraceTarget.s"
+    trace_target.write_text("dummy", encoding="utf-8")
+
+    monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
+    monkeypatch.setattr(pipeline, "_run_command", _patched_run_command)
+    monkeypatch.setattr(pipeline, "_parse_json_lines", lambda raw_output: [])
+    monkeypatch.setattr(
+        pipeline,
+        "_parse_pytest_junit",
+        lambda xml_path: {"summary": {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}, "testcases": []},
+    )
+    monkeypatch.setattr(
+        pipeline, "_collect_structural_report_bundle", lambda progress_callback=None: _minimal_structural_bundle()
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_collect_trace_report",
+        lambda target: {
+            "source_file": "tests/fixtures/sample_sattline_files/LinterTestProgram.s",
+            "basepicture_name": "LinterTestProgram",
+            "events": [{"phase": "variables", "action": "done", "time_offset_ms": 80.0}],
+            "timing_summary": {"variables": {"event_count": 1, "span_ms": 80.0}},
+            "dataflow_analysis": {"issue_count": 0},
+            "heuristics": {"unreachable_logic": [], "transform_invariant_violations": []},
+        },
+    )
+
+    exit_code = pipeline.main(
+        [
+            "--output-dir",
+            str(tmp_path),
+            "--profile",
+            "full",
+            "--trace-target",
+            str(trace_target),
+            "--phase-budget-ms",
+            "50",
+            "--total-budget-ms",
+            "70",
+            "--fail-on-budget",
+        ]
+    )
+
+    assert exit_code == 1
+
+
+# --- ID 19: Coverage summary pipeline artifact tests ---
+
+
+def test_run_pipeline_emits_coverage_summary_when_coverage_xml_exists(monkeypatch, tmp_path):
+    """Full profile should emit coverage_summary.json when coverage.xml is present."""
+    coverage_xml = pipeline.REPO_ROOT / "coverage.xml"
+    coverage_xml.exists()
+
+    # Patch REPO_ROOT to tmp_path so coverage.xml lookup is local
+    fake_root = tmp_path / "repo"
+    fake_root.mkdir()
+    (fake_root / "coverage.xml").write_text(
+        """<coverage>
+  <packages><package><classes>
+    <class filename="src/sattlint/mod.py" line-rate="0.05" lines-valid="100" />
+  </classes></package></packages>
+</coverage>""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(pipeline, "REPO_ROOT", fake_root)
+    monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
+    monkeypatch.setattr(pipeline, "_run_command", _patched_run_command)
+    monkeypatch.setattr(pipeline, "_parse_json_lines", lambda raw_output: [])
+    monkeypatch.setattr(
+        pipeline,
+        "_parse_pytest_junit",
+        lambda xml_path: {"summary": {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}, "testcases": []},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_collect_structural_report_bundle",
+        lambda workspace_root=pipeline.REPO_ROOT, progress_callback=None: pipeline.StructuralReportsBundle(
+            architecture_report={"findings": []},
+            analyzer_registry_report={"rules": []},
+            graph_inputs=pipeline.WorkspaceGraphInputs(
+                discovery=SimpleNamespace(program_files=(), dependency_files=()),
+                snapshots=[],
+                snapshot_failures=[],
+            ),
+            dependency_graph_report={"edges": []},
+            call_graph_report={"edges": []},
+            graphics_layout_report={"entries": [], "groups": [], "findings": []},
+            impact_analysis_report={"library_impacts": [], "module_impacts": []},
+        ),
+    )
+
+    output_dir = tmp_path / "out"
+    summary = pipeline._run_pipeline(output_dir, trace_target=None, profile="full")
+
+    coverage_artifact = output_dir / "coverage_summary.json"
+    assert coverage_artifact.exists(), "coverage_summary.json should be written in full profile"
+    report = json.loads(coverage_artifact.read_text(encoding="utf-8"))
+    assert report["kind"] == "sattlint.coverage_summary"
+    assert report["skipped"] is False
+    assert summary["reports"].get("coverage_summary") == "coverage_summary.json"
+
+
+# ---------------------------------------------------------------------------
+# ID21: Phase2 rule acceptance gate tests
+# ---------------------------------------------------------------------------
+
+
+def test_phase2_rule_metadata_gate_fails_on_enforced_finding():
+    """Gate status is 'fail' and rule appears in blocking_rule_ids when an enforced finding is present."""
+    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate
+
+    architecture_report = {
+        "findings": [
+            {
+                "id": "rule-acceptance-test-gap",
+                "severity": "error",
+                "message": "Rule missing acceptance tests",
+                "missing_rule_ids": ["semantic.some-new-rule"],
+            }
+        ]
+    }
+
+    gate = collect_phase2_rule_metadata_gate(architecture_report)
+
+    assert gate["status"] == "fail"
+    assert "semantic.some-new-rule" in gate["blocking_rule_ids"]
+    assert gate["advisory_rule_ids"] == []
+
+
+def test_phase2_rule_metadata_gate_advisory_finding_does_not_fail():
+    """Gate status remains 'pass' when only advisory findings are present."""
+    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate
+
+    architecture_report = {
+        "findings": [
+            {
+                "id": "rule-corpus-link-gap",
+                "severity": "warning",
+                "message": "Rule not linked to corpus case",
+                "missing_rule_ids": ["semantic.some-rule"],
+            }
+        ]
+    }
+
+    gate = collect_phase2_rule_metadata_gate(architecture_report)
+
+    assert gate["status"] == "pass"
+    assert "semantic.some-rule" in gate["advisory_rule_ids"]
+    assert gate["blocking_rule_ids"] == []
+
+
+def test_phase2_rule_metadata_gate_passes_with_clean_architecture_report():
+    """Gate status is 'pass' with no blocking or advisory rule IDs when no gate findings exist."""
+    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate
+
+    gate = collect_phase2_rule_metadata_gate({"findings": []})
+
+    assert gate["status"] == "pass"
+    assert gate["blocking_rule_ids"] == []
+    assert gate["advisory_rule_ids"] == []
+
+
+def test_phase2_rule_metadata_gate_both_enforced_and_advisory():
+    """Blocking findings cause fail; advisory findings are also collected independently."""
+    from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate
+
+    architecture_report = {
+        "findings": [
+            {
+                "id": "rule-acceptance-test-gap",
+                "severity": "error",
+                "message": "Missing acceptance tests",
+                "missing_rule_ids": ["semantic.rule-a"],
+            },
+            {
+                "id": "rule-corpus-link-gap",
+                "severity": "warning",
+                "message": "Missing corpus link",
+                "missing_rule_ids": ["semantic.rule-b"],
+            },
+        ]
+    }
+
+    gate = collect_phase2_rule_metadata_gate(architecture_report)
+
+    assert gate["status"] == "fail"
+    assert "semantic.rule-a" in gate["blocking_rule_ids"]
+    assert "semantic.rule-b" in gate["advisory_rule_ids"]
+
+
+# ---------------------------------------------------------------------------
+# ID2/ID7: sattline_semantic and rule_metrics report builder tests
+# ---------------------------------------------------------------------------
+
+
+def test_build_sattline_semantic_report_groups_by_rule():
+    """build_sattline_semantic_report extracts semantic findings and groups them correctly."""
+    from sattlint.devtools.semantic_reports import build_sattline_semantic_report
+
+    findings_report = {
+        "findings": [
+            {
+                "rule_id": "semantic.unused-variable",
+                "severity": "warning",
+                "category": "variable-lifecycle",
+                "source": "variables",
+            },
+            {
+                "rule_id": "semantic.unused-variable",
+                "severity": "warning",
+                "category": "variable-lifecycle",
+                "source": "variables",
+            },
+            {
+                "rule_id": "semantic.read-before-write",
+                "severity": "warning",
+                "category": "control-flow",
+                "source": "dataflow",
+            },
+            # Non-semantic finding should be excluded
+            {"rule_id": "ruff-e501", "severity": "warning", "category": "style", "source": "ruff"},
+        ]
+    }
+
+    report = build_sattline_semantic_report(findings_report)
+
+    assert report["kind"] == "sattlint.sattline_semantic"
+    assert report["schema_version"] == 1
+    assert report["total_count"] == 3
+    rule_ids = [r["rule_id"] for r in report["rules"]]
+    assert "semantic.unused-variable" in rule_ids
+    assert "semantic.read-before-write" in rule_ids
+    assert "ruff-e501" not in rule_ids
+    unused_entry = next(r for r in report["rules"] if r["rule_id"] == "semantic.unused-variable")
+    assert unused_entry["count"] == 2
+    assert report["by_severity"]["warning"] == 3
+    assert "variable-lifecycle" in report["by_category"]
+
+
+def test_build_sattline_semantic_report_empty_findings():
+    """build_sattline_semantic_report handles zero semantic findings gracefully."""
+    from sattlint.devtools.semantic_reports import build_sattline_semantic_report
+
+    report = build_sattline_semantic_report({"findings": []})
+
+    assert report["total_count"] == 0
+    assert report["rules"] == []
+    assert report["by_category"] == {}
+    assert report["by_severity"] == {}
+
+
+def test_build_rule_metrics_report_counts_firings():
+    """build_rule_metrics_report counts per-rule firing frequency."""
+    from sattlint.devtools.semantic_reports import build_rule_metrics_report
+
+    findings_report = {
+        "findings": [
+            {
+                "rule_id": "semantic.unused-variable",
+                "location": {"path": "src/foo.s"},
+            },
+            {
+                "rule_id": "semantic.unused-variable",
+                "location": {"path": "src/bar.s"},
+            },
+            {
+                "rule_id": "semantic.read-before-write",
+                "location": {"path": "src/foo.s"},
+            },
+        ]
+    }
+
+    report = build_rule_metrics_report(findings_report)
+
+    assert report["kind"] == "sattlint.rule_metrics"
+    assert report["summary"]["total_semantic_finding_count"] == 3
+    assert report["summary"]["rules_triggered_count"] == 2
+    unused_entry = next(r for r in report["rules"] if r["rule_id"] == "semantic.unused-variable")
+    assert unused_entry["finding_count"] == 2
+    assert unused_entry["targets_affected"] == 2
+
+
+def test_build_rule_metrics_report_never_triggered_uses_registry():
+    """Rules present in the analyzer registry but not in findings appear in never_triggered."""
+    from sattlint.devtools.semantic_reports import build_rule_metrics_report
+
+    findings_report = {"findings": []}
+    analyzer_registry = {
+        "rules": [
+            {"rule_id": "semantic.unused-variable"},
+            {"rule_id": "semantic.read-before-write"},
+        ]
+    }
+
+    report = build_rule_metrics_report(findings_report, analyzer_registry)
+
+    assert "semantic.unused-variable" in report["never_triggered"]
+    assert "semantic.read-before-write" in report["never_triggered"]
+    assert report["summary"]["rules_never_triggered_count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# ID3: Trace timing aggregation tests
+# ---------------------------------------------------------------------------
+
+
+def test_trace_timing_summary_is_present_and_aggregates_phases():
+    """trace_basepicture_analysis includes timing_summary keyed by phase."""
+    from sattlint.models.ast_model import BasePicture, ModuleHeader
+    from sattlint.tracing import trace_basepicture_analysis
+
+    bp = BasePicture(
+        header=ModuleHeader(name="Minimal", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
+        localvariables=[],
+        modulecode=None,
+    )
+
+    result = trace_basepicture_analysis(bp)
+
+    assert "timing_summary" in result
+    timing = result["timing_summary"]
+    assert isinstance(timing, dict)
+    # There should be at least one phase in the summary
+    assert len(timing) >= 1
+    for _phase, stats in timing.items():
+        assert isinstance(stats["event_count"], int)
+        assert stats["event_count"] >= 1
+        assert isinstance(stats["span_ms"], float)
+        assert stats["span_ms"] >= 0.0

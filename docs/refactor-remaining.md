@@ -1,151 +1,115 @@
 # Refactor Plan
 
-Items #2, #4, #5, #8, #9, #33, and #45 are closed (done or no action needed).
-The remaining 9 open items are sequenced below.
+This document tracks only remaining refactor work. Completed items have been removed. Wave 1 audit output lives in `docs/refactor-wave1-audit.md` and feeds Wave 5.
 
 ---
 
 ## Planned waves
 
-| Wave | Item(s) | Focus | Dependency |
-|------|---------|-------|------------|
-| ~~1~~ | ~~#5~~ | ~~Import consolidation~~ | Done - 3 sites updated to `sattline_parser.models.ast_model` |
-| ~~2~~ | ~~#45, #9~~ | ~~Debug comment cleanup; devtools import direction~~ | Done - no debug comments found; import direction already correct |
-| 1 | #27, #36 | Dataclass audit; `Optional` triage | Audit-only pass - no code changes yet |
-| 2 | #22, #23 | Module boundary ordering; LSP input validation | #22 needs validation-first test coverage first |
-| ~~3~~ | ~~#8~~ | ~~Test file splitting~~ | Done - 5 files split into 10; 521 tests pass |
-| ~~3~~ | ~~#7~~ | ~~`app.py` monolith split~~ | Partially done - CLI expanded, constants added, `repo_audit_module` proxy. Full file split deferred: see Wave 3b. |
-| 3b | #7 | `app.py` test-patch refactor (prerequisite for split) | Must do before splitting |
-| 3c | #7 | `app.py` file split into `app/` package | Depends on 3b |
-| 4 | #20, #44 | Print-to-logging; logging levels | After wave 3 so `app.py` is stable |
-| 5 | #21 | Return type consistency | After waves 3-4; fix per-module alongside those changes |
+| Wave | Item(s) | Focus | Exit condition |
+|------|---------|-------|----------------|
+| 3 | #7 | Split `src/sattlint/app.py` behind stable `sattlint.app` facade | `app.py` becomes thin facade plus CLI entry points with no behavior drift |
+| 4 | #20, #44 | User-visible console output routing; logging levels | App-facing output stops using ad hoc `print()` paths except intentional console wrappers |
+| 5 | #21 | Return type consistency | Sentinel-return sites are triaged and fixed module-by-module |
 
 ---
 
 ## Wave notes
 
-**Wave 1 - Audit passes (#27, #36)**
-
-- `#27`: List all dataclasses with `Select-String -Path src/**/*.py -Pattern "@dataclass"`. Categorise by whether
-  they are mutated after construction. Only mark `frozen=True` on provably immutable
-  ones. No code changes in this wave - produce an audit table as output.
-- `#36`: List functions typed `-> Optional[X]` or `-> X | None` and triage which are
-  genuinely nullable vs. which use `None` as a sentinel. Output an audit list for the
-  next fix wave.
-
 ---
 
-**Wave 2 - Boundary and validation (#22, #23)**
+**Wave 3 - Bulletproof `app.py` split (#7)**
 
-- `#22`: Add tests for the validation-before-load path in `engine.py`. Then enforce
-  that `validation.py` runs before `engine.py` dependency loading when `syntax_check`
-  is `True`.
-- `#23`: Add boundary validation for LSP request params in `server.py` (highest-value
-  target). Use `isinstance` guards or a small `_validate_params` helper per handler.
-  Do not add validation at internal Python-to-Python call paths.
+Current facts to preserve:
 
----
+- `src/sattlint/app.py` is still the public import and still owns CLI dispatch, menu routing, project loading, and analysis workflows.
+- `src/sattlint/app_graphics.py` already owns most graphics helpers and is called from `app.py` through wrappers. Treat it as an existing leaf seam; do not re-split graphics first.
+- `tests/test_app.py`, `tests/test_app_menus.py`, and `tests/test_app_analysis.py` still contain many `monkeypatch.setattr(app, ...)` seams. Moving code without retargeting those seams will create false-green tests.
+- `repo_audit_module` must stay lazy to preserve the current circular-import break with `structural_reports`.
 
-**~~Wave 3 - `app.py` CLI and constants (#7)~~** (Done)
+Principles for the split:
 
-Expanded `build_cli_parser()` with `--version`, `--config`, `--no-cache`, `--quiet`
-flags and `validate-config`, `analyze`, `docgen`, `repo-audit` subcommands.
-Added `EXIT_SUCCESS`/`EXIT_USAGE_ERROR` constants and lazy `repo_audit_module` proxy
-to break the circular import via `structural_reports`. 521 tests pass.
+- Keep `sattlint.app` as the only public import path during the entire refactor.
+- Extract one slice at a time and retarget only the tests that cover that slice in the same change.
+- Prefer sibling modules first (`app_base.py`, `app_docs.py`, `app_analysis.py`, `app_menus.py`) over an immediate `app/` package rename. Converting the facade file into a package can be a final cleanup step after behavior is stable, not part of the risky move.
+- `app.py` should remain a thin facade that re-exports moved callables and keeps `main()` / `cli()` stable.
+- No slice is considered moved until its focused pytest target passes with patches aimed at the owning module instead of the facade.
 
----
+Recommended sequence:
 
-**Wave 3b - Refactor `app.py` test patches (prerequisite for file split)**
+1. Stabilize test ownership before moving code.
+  - Pick one authoritative test file per surface: analysis behavior in `tests/test_app_analysis.py`, menu and CLI behavior in `tests/test_app_menus.py`.
+  - Remove or merge duplicated coverage from `tests/test_app.py` only after equivalent split-file coverage is confirmed. Right now the legacy file still mirrors menu/config and analysis seams, which inflates patch churn and can hide missing coverage.
+  - Add shared helper fixtures only where they reduce repeated patch setup without obscuring what module is actually being patched.
 
-The file split is blocked by 62+ `monkeypatch.setattr(app, 'X', mock)` calls across
-three test files. When `X` moves to a submodule, patching `app.X` no longer intercepts
-the call inside the submodule — the test passes but tests nothing real.
+2. Extract a base seam into `src/sattlint/app_base.py` while keeping `src/sattlint/app.py` as facade.
+  - Move constants, config I/O wrappers, prompt and screen helpers, logging setup, CLI parser, `run_cli()`, `run_syntax_check_command()`, cache helpers, and the lazy `repo_audit_module` support.
+  - In `app.py`, re-export those names from `app_base.py` so external callers and the console entry point do not move.
+  - Retarget only menu and CLI tests that patch these names.
 
-Before splitting, update every `monkeypatch.setattr(app, 'X', mock)` to patch the
-submodule that will own `X` after the split. Mapping:
+3. Extract documentation flow into `src/sattlint/app_docs.py`.
+  - Move documentation scope state, unit-selection helpers, and `documentation_menu()`.
+  - Keep `classify_documentation_structure` and related imported names patched at the docs module once this slice moves.
+  - Validate with the documentation and main-menu tests only.
 
-| Attribute patched | Target submodule after split |
+4. Extract analysis flow into `src/sattlint/app_analysis.py`.
+  - Move project-loading helpers that are analysis-only, `_iter_loaded_projects()`, analyzer catalog helpers, variable-analysis submenus, module-analysis flows, ICF/MMS/comment-code actions, and datatype or debug utilities.
+  - Move imported aliases used only by this slice with it, including `analyze_variables`, `analyze_shadowing`, `validate_icf_entries_against_program`, and analysis-specific helper imports.
+  - Retarget analysis tests slice-by-slice instead of doing a repo-wide monkeypatch rewrite.
+
+5. Extract top-level menu orchestration into `src/sattlint/app_menus.py`.
+  - Move `dump_menu()`, `config_menu()`, `tools_menu()`, interactive `main()` loop helpers, and any remaining menu-only glue.
+  - Keep `app.py` with thin `main()` / `cli()` entry points that delegate into `app_menus.py` until the last cleanup step.
+
+6. Shrink `src/sattlint/app.py` to explicit facade exports.
+  - After all moved slices have green focused tests, reduce `app.py` to imports plus explicit re-exports.
+  - Only if this is still valuable, replace the facade file with an `app/` package in a final mechanical rename. That rename should be zero-behavior and zero-test-logic.
+
+Patch-target map for the split:
+
+| Patched name today | Owning module after split |
 |---|---|
-| `clear_screen`, `pause`, `confirm`, `prompt`, `quit_app` | `app._base` |
-| `_clear_windows_console` | `app._base` |
-| `load_config`, `save_config`, `apply_debug`, `self_check` | `app._base` |
-| `target_exists`, `load_project`, `ensure_ast_cache`, `force_refresh_ast` | `app._base` |
-| `ASTCache`, `get_cache_dir` | `app._base` |
-| `_iter_loaded_projects`, `_get_enabled_analyzers`, `_run_checks` | `app._analysis` |
-| `run_variable_analysis`, `run_debug_variable_usage` | `app._analysis` |
-| `run_mms_interface_analysis`, `run_icf_validation` | `app._analysis` |
-| `run_comment_code_analysis`, `run_module_tree_debug` | `app._analysis` |
-| `run_advanced_datatype_analysis` | `app._analysis` |
-| `analysis_menu`, `variable_usage_submenu`, `module_analysis_submenu` | `app._analysis` |
-| `analyze_variables`, `analyze_shadowing` | `app._analysis` (these are imported names) |
-| `get_graphics_rules_path`, `load_graphics_rules` | `app._base` |
-| `graphics_rules_menu` | `app._graphics` |
-| `_discover_graphics_rule_selector_options` | `app._graphics` |
-| `classify_documentation_structure` | `app._docs` |
-| `documentation_menu` | `app._docs` |
-| `_get_documentation_unit_selection`, `_set_documentation_unit_selection` | `app._docs` |
-| `dump_menu`, `config_menu`, `tools_menu`, `show_help`, `show_config` | `app._menus` |
-| `load_config` in `run_cli` tests | `app._base` |
-| `run_syntax_check_command` | `app._base` |
-| `repo_audit_module` | `app` (proxy; stays at top level) |
+| `clear_screen`, `pause`, `confirm`, `prompt`, `quit_app`, `_clear_windows_console` | `app_base` |
+| `load_config`, `save_config`, `apply_debug`, `self_check`, `target_exists` | `app_base` |
+| `ensure_ast_cache`, `force_refresh_ast`, `ASTCache`, `get_cache_dir` | `app_base` |
+| `build_cli_parser`, `run_cli`, `run_syntax_check_command`, `show_config`, `show_help` | `app_base` |
+| `repo_audit_module` | `app` facade |
+| `graphics_rules_menu`, `run_graphics_rules_validation`, `get_graphics_rules_path`, `load_graphics_rules` | existing `app_graphics` seam or thin `app.py` wrappers over it |
+| `documentation_menu`, `_get_documentation_unit_selection`, `_set_documentation_unit_selection`, `classify_documentation_structure` | `app_docs` |
+| `load_project`, `load_program_ast`, `_iter_loaded_projects`, `_get_enabled_analyzers`, `_run_checks` | `app_analysis` |
+| `run_variable_analysis`, `run_datatype_usage_analysis`, `run_debug_variable_usage`, `run_advanced_datatype_analysis` | `app_analysis` |
+| `run_module_localvar_analysis`, `run_module_duplicates_analysis`, `run_module_find_by_name`, `run_module_tree_debug` | `app_analysis` |
+| `run_mms_interface_analysis`, `run_icf_validation`, `validate_icf_entries_against_program`, `run_comment_code_analysis` | `app_analysis` |
+| `analysis_menu`, `variable_usage_submenu`, `module_analysis_submenu`, `analyze_variables`, `analyze_shadowing` | `app_analysis` |
+| `dump_menu`, `config_menu`, `tools_menu`, `main` interactive routing | `app_menus` |
 
-Steps:
-1. Do the file split (wave 3c) first in a branch.
-2. Run `pytest` — expect many failures.
-3. For each `monkeypatch.setattr(app, 'X', mock)` failure, change to
-   `monkeypatch.setattr(app._submodule, 'X', mock)` where `_submodule` is from the
-   table above.
-4. Re-run until all 521 tests pass.
+Focused validation order for Wave 3:
 
----
+1. Run only the pytest module that covers the slice you just moved.
+2. Retarget its monkeypatch sites from `sattlint.app` to the owning module in that same change.
+3. Re-run the same focused pytest module before moving the next slice.
+4. Only after all slices are green, run the combined app-facing suite.
 
-**Wave 3c - `app.py` file split into `app/` package**
+Abort conditions for the split:
 
-Depends on Wave 3b being done first. Do as a mechanical move, not a rewrite.
-Keep all public names importable from `sattlint.app` via `__init__.py` re-exports
-so all external callers continue to work unchanged.
-
-Proposed submodule boundaries (line numbers in current `app.py`, ~2850 lines):
-
-| File | Lines | Contents |
-|---|---|---|
-| `app/_base.py` | L1–L731 | Imports, constants, shared UI helpers, config I/O, CLI dispatch stubs |
-| `app/_graphics.py` | L732–L1387 | Graphics rule helpers, `graphics_rules_menu`, `run_graphics_rules_validation` |
-| `app/_docs.py` | L1388–L1578 | Documentation helpers, `documentation_menu` |
-| `app/_analysis.py` | L1579–L2493 | Project loading, variable analysis, all analysis menus |
-| `app/_menus.py` | L2494–end | `dump_menu`, `config_menu`, `tools_menu`, `main`, `cli` |
-| `app/__init__.py` | — | Re-exports everything from the above submodules |
-
-Import DAG (no cycles):
-```
-_graphics  → _base
-_docs      → _base
-_analysis  → _base, _graphics, _docs
-_menus     → _base, _graphics, _analysis
-__init__   → all
-```
-
-`repo_audit_module` stays as a lazy proxy on `app` (already in `_base`) to keep the
-existing circular-import break.
+- If a move requires widespread cross-imports back into `app.py`, stop and re-cut the seam smaller.
+- If a test starts passing only when patching both `sattlint.app` and the new module, the facade boundary is still wrong.
+- If the final step is only a rename from facade file to package layout, defer it unless there is a concrete maintenance win.
 
 ---
 
 **Wave 4 - Print-to-logging (#20, #44)**
 
-`console.print()` wrapper is already in place (`console.py`). Remaining work: replace
-bare `print()` calls in `app.py` (and modules split out in wave 3) with
-`console.print_status()` or `console.print_info()`. Do not convert informational output
-to invisible `logging.debug` - keep it user-visible via the console wrapper. Fix
-logging levels (#44) in the same pass.
+- `console.py` already provides output wrappers. After Wave 3 settles ownership, replace remaining ad hoc user-facing `print()` calls in the app surfaces with the correct console wrapper while keeping the output visible.
+- Fix logging levels in the same pass so debug-only detail stays behind debug mode and normal status output remains user-facing.
 
 ---
 
 **Wave 5 - Return type consistency (#21)**
 
-Work through the audit list from wave 1. Fix per module as each module is touched.
-Prefer raising a typed exception over returning `None` / `[]` / `{}` at internal
-boundaries. At external (LSP / CLI) boundaries, keep safe fallback returns and annotate
-with `# LSP handler` or `# CLI boundary` comments.
+- Use `docs/refactor-wave1-audit.md` to fix return contracts module-by-module.
+- Prefer raising typed exceptions at internal boundaries over returning `None`, `[]`, or `{}` sentinels.
+- Keep safe fallbacks only at explicit CLI or LSP boundaries, and label those boundaries clearly in code when needed.
 
 ---
 

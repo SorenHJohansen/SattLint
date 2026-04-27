@@ -7,7 +7,7 @@ import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 from lsprotocol.types import (
     CompletionItem as LspCompletionItem,
@@ -157,6 +157,76 @@ def _validate_rename_target(new_name: str) -> None:
         raise ValueError(f"{new_name!r} is not a valid SattLine identifier")
     if _identifier_length(new_name) > _MAX_IDENTIFIER_LENGTH:
         raise ValueError(f"{new_name!r} exceeds the {_MAX_IDENTIFIER_LENGTH} character identifier limit")
+
+
+def _is_non_negative_int(value: object) -> TypeGuard[int]:
+    return type(value) is int and value >= 0
+
+
+def _validated_text_document_uri(params: Any) -> str | None:
+    text_document = getattr(params, "text_document", None)
+    uri = getattr(text_document, "uri", None)
+    if not isinstance(uri, str) or not uri:
+        return None
+    return uri
+
+
+def _validated_text_document_position(params: Any) -> tuple[str, int, int] | None:
+    uri = _validated_text_document_uri(params)
+    if uri is None:
+        return None
+
+    position = getattr(params, "position", None)
+    line = getattr(position, "line", None)
+    character = getattr(position, "character", None)
+    if not _is_non_negative_int(line) or not _is_non_negative_int(character):
+        return None
+    return uri, line, character
+
+
+def _validated_open_request(params: Any) -> tuple[str, int, str] | None:
+    uri = _validated_text_document_uri(params)
+    if uri is None:
+        return None
+
+    text_document = getattr(params, "text_document", None)
+    version = getattr(text_document, "version", None)
+    text = getattr(text_document, "text", None)
+    if not _is_non_negative_int(version) or not isinstance(text, str):
+        return None
+    return uri, version, text
+
+
+def _validated_change_request(params: Any) -> tuple[str, int, list[Any]] | None:
+    uri = _validated_text_document_uri(params)
+    if uri is None:
+        return None
+
+    text_document = getattr(params, "text_document", None)
+    version = getattr(text_document, "version", None)
+    content_changes = getattr(params, "content_changes", None)
+    if not _is_non_negative_int(version):
+        return None
+    if content_changes is None:
+        normalized_changes: list[Any] = []
+    elif isinstance(content_changes, list | tuple):
+        normalized_changes = list(content_changes)
+    else:
+        return None
+    return uri, version, normalized_changes
+
+
+def _validated_rename_request(params: Any) -> tuple[str, int, int, str] | None:
+    position_request = _validated_text_document_position(params)
+    if position_request is None:
+        return None
+
+    new_name = getattr(params, "new_name", None)
+    if not isinstance(new_name, str):
+        return None
+
+    uri, line, character = position_request
+    return uri, line, character, new_name
 
 
 @dataclass(frozen=True, slots=True)
@@ -1269,9 +1339,14 @@ server = SattLineLanguageServer()
 
 @server.feature("initialize")
 def on_initialize(ls: SattLineLanguageServer, params: InitializeParams) -> None:
-    ls.settings = LspSettings.from_initialization_options(params.initialization_options)
+    ls.settings = LspSettings.from_initialization_options(getattr(params, "initialization_options", None))
     root_uri = getattr(params, "root_uri", None)
     root_path = getattr(params, "root_path", None)
+    if not isinstance(root_uri, str):
+        root_uri = None
+    if not isinstance(root_path, str):
+        root_path = None
+
     if root_uri:
         resolved_root = uris.to_fs_path(root_uri) or root_uri
         ls.workspace_root = Path(resolved_root).resolve()
@@ -1295,7 +1370,12 @@ def on_initialize(ls: SattLineLanguageServer, params: InitializeParams) -> None:
 
 @server.feature("textDocument/didOpen")
 def on_did_open(ls: SattLineLanguageServer, params: DidOpenTextDocumentParams) -> None:
-    document = ls.workspace.get_text_document(params.text_document.uri)
+    request = _validated_open_request(params)
+    if request is None:
+        return
+
+    document_uri, version, text = request
+    document = ls.workspace.get_text_document(document_uri)
     document_path = _document_path(document)
     if not _is_diagnostic_path(document_path):
         state = ls.document_states.pop(document.uri, None)
@@ -1308,15 +1388,20 @@ def on_did_open(ls: SattLineLanguageServer, params: DidOpenTextDocumentParams) -
         ls,
         document_path,
         uri=document.uri,
-        version=params.text_document.version,
-        text=params.text_document.text,
+        version=version,
+        text=text,
     )
     _publish_diagnostics(ls, document)
 
 
 @server.feature("textDocument/didChange")
 def on_did_change(ls: SattLineLanguageServer, params: DidChangeTextDocumentParams) -> None:
-    document = ls.workspace.get_text_document(params.text_document.uri)
+    request = _validated_change_request(params)
+    if request is None:
+        return
+
+    document_uri, version, content_changes = request
+    document = ls.workspace.get_text_document(document_uri)
     document_path = _document_path(document)
     if not _is_diagnostic_path(document_path):
         state = ls.document_states.pop(document.uri, None)
@@ -1329,8 +1414,8 @@ def on_did_change(ls: SattLineLanguageServer, params: DidChangeTextDocumentParam
         ls,
         document_path,
         uri=document.uri,
-        version=params.text_document.version,
-        content_changes=list(params.content_changes or []),
+        version=version,
+        content_changes=content_changes,
         fallback_text=document.source,
     )
     _publish_diagnostics(ls, document, include_semantic=False, include_comment_validation=False)
@@ -1338,7 +1423,11 @@ def on_did_change(ls: SattLineLanguageServer, params: DidChangeTextDocumentParam
 
 @server.feature("textDocument/didSave")
 def on_did_save(ls: SattLineLanguageServer, params: DidSaveTextDocumentParams) -> None:
-    document = ls.workspace.get_text_document(params.text_document.uri)
+    document_uri = _validated_text_document_uri(params)
+    if document_uri is None:
+        return
+
+    document = ls.workspace.get_text_document(document_uri)
     document_path = _document_path(document)
     if not _is_diagnostic_path(document_path):
         state = ls.document_states.pop(document.uri, None)
@@ -1361,17 +1450,19 @@ def on_did_save(ls: SattLineLanguageServer, params: DidSaveTextDocumentParams) -
 
 @server.feature("textDocument/didClose")
 def on_did_close(ls: SattLineLanguageServer, params: DidCloseTextDocumentParams) -> None:
-    state = ls.document_states.pop(params.text_document.uri, None)
-    document_path = (
-        state.path if state is not None else Path(uris.to_fs_path(params.text_document.uri) or params.text_document.uri)
-    )
+    document_uri = _validated_text_document_uri(params)
+    if document_uri is None:
+        return
+
+    state = ls.document_states.pop(document_uri, None)
+    document_path = state.path if state is not None else Path(uris.to_fs_path(document_uri) or document_uri)
     _ensure_document_paths(ls).pop(document_path.resolve(), None)
     if not _is_diagnostic_path(document_path):
-        ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=params.text_document.uri, diagnostics=[]))
+        ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=document_uri, diagnostics=[]))
         return
 
     if not _is_program_path(document_path):
-        ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=params.text_document.uri, diagnostics=[]))
+        ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=document_uri, diagnostics=[]))
         return
 
     _publish_closed_document_diagnostics(ls, document_path)
@@ -1379,12 +1470,17 @@ def on_did_close(ls: SattLineLanguageServer, params: DidCloseTextDocumentParams)
 
 @server.feature("textDocument/definition")
 def on_definition(ls: SattLineLanguageServer, params: DefinitionParams) -> list[Location] | None:
-    document = ls.workspace.get_text_document(params.text_document.uri)
+    request = _validated_text_document_position(params)
+    if request is None:
+        return None
+
+    document_uri, line, character = request
+    document = ls.workspace.get_text_document(document_uri)
     document_path, source_text, local_snapshot, bundle, candidates = _resolve_symbol_context(
         ls,
         document,
-        line=params.position.line,
-        column=params.position.character,
+        line=line,
+        column=character,
     )
     if not _is_program_path(document_path):
         return None
@@ -1393,8 +1489,8 @@ def on_definition(ls: SattLineLanguageServer, params: DefinitionParams) -> list[
         local_locations = collect_local_definition_locations(
             document_path,
             source_text,
-            line=params.position.line,
-            column=params.position.character,
+            line=line,
+            column=character,
             snapshot=local_snapshot,
         )
         return local_locations or None
@@ -1410,12 +1506,17 @@ def on_definition(ls: SattLineLanguageServer, params: DefinitionParams) -> list[
 
 @server.feature("textDocument/hover")
 def on_hover(ls: SattLineLanguageServer, params: HoverParams) -> Hover | None:
-    document = ls.workspace.get_text_document(params.text_document.uri)
+    request = _validated_text_document_position(params)
+    if request is None:
+        return None
+
+    document_uri, line, character = request
+    document = ls.workspace.get_text_document(document_uri)
     document_path, _source_text, _local_snapshot, _bundle, candidates = _resolve_symbol_context(
         ls,
         document,
-        line=params.position.line,
-        column=params.position.character,
+        line=line,
+        column=character,
     )
     if not _is_program_path(document_path) or not candidates:
         return None
@@ -1424,12 +1525,17 @@ def on_hover(ls: SattLineLanguageServer, params: HoverParams) -> Hover | None:
 
 @server.feature("textDocument/references")
 def on_references(ls: SattLineLanguageServer, params: ReferenceParams) -> list[Location] | None:
-    document = ls.workspace.get_text_document(params.text_document.uri)
+    request = _validated_text_document_position(params)
+    if request is None:
+        return None
+
+    document_uri, line, character = request
+    document = ls.workspace.get_text_document(document_uri)
     document_path, _source_text, local_snapshot, bundle, candidates = _resolve_symbol_context(
         ls,
         document,
-        line=params.position.line,
-        column=params.position.character,
+        line=line,
+        column=character,
     )
     if not _is_program_path(document_path) or not candidates:
         return None
@@ -1455,14 +1561,19 @@ def on_references(ls: SattLineLanguageServer, params: ReferenceParams) -> list[L
 
 @server.feature("textDocument/rename")
 def on_rename(ls: SattLineLanguageServer, params: RenameParams) -> WorkspaceEdit | None:
-    _validate_rename_target(params.new_name)
+    request = _validated_rename_request(params)
+    if request is None:
+        return None
 
-    document = ls.workspace.get_text_document(params.text_document.uri)
+    document_uri, line, character, new_name = request
+    _validate_rename_target(new_name)
+
+    document = ls.workspace.get_text_document(document_uri)
     document_path, _source_text, local_snapshot, bundle, candidates = _resolve_symbol_context(
         ls,
         document,
-        line=params.position.line,
-        column=params.position.character,
+        line=line,
+        column=character,
     )
     if not _is_program_path(document_path) or not candidates:
         return None
@@ -1474,7 +1585,7 @@ def on_rename(ls: SattLineLanguageServer, params: RenameParams) -> WorkspaceEdit
         target_range = _range_for_definition(definition)
         target_uri = _definition_uri(definition, bundle=bundle, active_document_path=document_path)
         if target_range is not None and target_uri is not None:
-            _append_workspace_edit(changes, target_uri, target_range, params.new_name)
+            _append_workspace_edit(changes, target_uri, target_range, new_name)
 
     for reference in references:
         reference_uri: str | None = None
@@ -1490,7 +1601,7 @@ def on_rename(ls: SattLineLanguageServer, params: RenameParams) -> WorkspaceEdit
             changes,
             reference_uri,
             _range_from_position(reference.line, reference.column, reference.length),
-            params.new_name,
+            new_name,
         )
 
     if not changes:
@@ -1500,7 +1611,12 @@ def on_rename(ls: SattLineLanguageServer, params: RenameParams) -> WorkspaceEdit
 
 @server.feature("textDocument/completion", CompletionOptions(trigger_characters=["."]))
 def on_completion(ls: SattLineLanguageServer, params: TextDocumentPositionParams) -> CompletionList:
-    document = ls.workspace.get_text_document(params.text_document.uri)
+    request = _validated_text_document_position(params)
+    if request is None:
+        return CompletionList(is_incomplete=False, items=[])
+
+    document_uri, line, character = request
+    document = ls.workspace.get_text_document(document_uri)
     document_path = _document_path(document)
     if not _is_program_path(document_path):
         return CompletionList(is_incomplete=False, items=[])
@@ -1511,8 +1627,8 @@ def on_completion(ls: SattLineLanguageServer, params: TextDocumentPositionParams
     local_items = collect_local_completion_candidates(
         document_path,
         source_text,
-        line=params.position.line,
-        column=params.position.character,
+        line=line,
+        column=character,
         limit=ls.settings.max_completion_items,
         snapshot=local_snapshot,
     )
@@ -1530,8 +1646,8 @@ def on_completion(ls: SattLineLanguageServer, params: TextDocumentPositionParams
     workspace_items = collect_completion_candidates(
         bundle.snapshot,
         source_text,
-        line=params.position.line,
-        column=params.position.character,
+        line=line,
+        column=character,
         limit=ls.settings.max_completion_items,
     )
     items = _merge_completion_items(

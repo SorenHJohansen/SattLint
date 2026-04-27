@@ -1,102 +1,99 @@
-# TODO - SattLint Tooling Backlog
+# Implementation Plan — SattLint Tooling
 
-Backlog view of the tooling roadmap. Each row is a discrete feature sized against the current repo seams and test surfaces.
+AI implementation plan for the SattLint tooling roadmap. Each item is a discrete, self-contained task sized against current repo seams and test surfaces.
 
-Status note:
+Last updated: `2026-04-24`. Repo state baseline: `2026-04-21`.
 
-- This file reflects repository state as of `2026-04-21`.
-- `Completed` is `Yes` only when the feature is shipped on its intended primary delivery surfaces with checked-in acceptance coverage.
-- `Completed` is `No` for both partial and not-started work; the dependency text should say what already exists and what still blocks completion.
+**AI agent rules:**
+- Read AGENTS.md and relevant `.github/instructions/` files before starting any item.
+- Check `.github/coordination/current-work.md` and claim touched files before editing.
+- Follow the implementation order in each item. Do not skip to CLI/LSP exposure before tests and machine-readable outputs are settled.
+- Mark `Completed: Yes` only when delivery surfaces and acceptance-test coverage are both done.
+- Items marked `Completed: Yes` are reference only — do not re-implement.
 
-Current repo state snapshot:
+**Status legend:** `Completed: No` = open (partial or not started). `Completed: Yes` = shipped with acceptance coverage.
 
-- Shared seams are in place for normalized findings, artifact registration, baseline diffs, corpus execution, analyzer metadata, and pipeline artifact producers.
-- The full analysis pipeline already emits `artifact_registry.json`, `analyzer_registry.json`, `dependency_graph.json`, `call_graph.json`, `impact_analysis.json`, and `trace.json`.
-- Optional pipeline outputs already exist for `analysis_diff.json` when `--baseline-findings` is supplied and `corpus_results.json` when `--corpus-manifest-dir` is supplied.
-- Repo audit coverage already includes architecture or boundary checks, secrets and path leak detection, public-readiness checks, documented-command scans, logging heuristics, and `coverage.xml` parsing.
-- A dedicated `sattline_semantic.json`, semantic coverage metrics, rule effectiveness metrics, mutation results, accuracy feedback loops, differential analysis, and checked-in pre-commit config are not shipped yet.
+---
 
-Shared enablement seams to reuse:
+## Repo State and Seams
 
-- Normalized machine-readable findings live in `src/sattlint/contracts/findings.py`.
-- Pipeline and audit artifact definitions live in `src/sattlint/devtools/artifact_registry.py`.
-- Baseline and diff helpers live in `src/sattlint/devtools/baselines.py`.
-- Corpus execution and reporting live in `src/sattlint/devtools/corpus.py`.
-- Pipeline payload builders live under `src/sattlint/devtools/` rather than inline in one large function.
-- Analyzer delivery and rule metadata live in `src/sattlint/analyzers/registry.py` and `src/sattlint/analyzers/sattline_semantics.py`.
-- Shared artifact assertions and golden contract tests live under `tests/helpers/` and `tests/fixtures/goldens/`.
+**Already shipped (do not re-implement):**
+- Normalized findings: `src/sattlint/contracts/findings.py`
+- Artifact registry: `src/sattlint/devtools/artifact_registry.py`
+- Baseline/diff helpers: `src/sattlint/devtools/baselines.py`
+- Corpus runner: `src/sattlint/devtools/corpus.py`
+- Pipeline builder helpers: `src/sattlint/devtools/`
+- Analyzer/rule metadata: `src/sattlint/analyzers/registry.py`, `src/sattlint/analyzers/sattline_semantics.py`
+- Golden contract helpers: `tests/helpers/`, `tests/fixtures/goldens/`
+- Full pipeline emits: `artifact_registry.json`, `analyzer_registry.json`, `dependency_graph.json`, `call_graph.json`, `impact_analysis.json`, `trace.json`
+- Optional pipeline outputs: `analysis_diff.json` (`--baseline-findings`), `corpus_results.json` (`--corpus-manifest-dir`)
+- Repo audit: architecture/boundary, secrets/path leak, public-readiness, documented-command, logging heuristics, `coverage.xml` parsing
 
-Implementation guardrails:
+**Not yet shipped:** `sattline_semantic.json` dedicated artifact, semantic coverage metrics, rule effectiveness metrics, mutation results, accuracy feedback loops, differential analysis, pre-commit config.
 
-- Extend the shared seams above instead of adding parallel registries, ad hoc JSON payloads, or one-off test styles.
-- Prefer this order for new backlog work: metadata or contract first, corpus or targeted tests second, analysis or reporting logic third, shared machine-readable output fourth, CLI or pipeline or LSP exposure last.
-- Do not add a second analyzer registry.
-- Do not add separate schema logic for pipeline and repo audit when shared contracts already exist.
-- Do not build baseline UX before the underlying diff and fingerprint behavior is stable.
-- Do not expose new analyzer behavior in CLI or LSP before machine-readable outputs and tests are settled.
+## Implementation Guardrails for AI
 
-Near-term enablement priorities:
+1. Extend existing seams; do not add parallel registries or ad hoc JSON payloads.
+2. Order: metadata/contract → corpus/tests → analysis logic → machine-readable output → CLI/pipeline/LSP exposure.
+3. Do not add a second analyzer registry.
+4. Do not add separate schema logic when shared contracts exist.
+5. Do not build baseline UX before diff/fingerprint behavior is stable.
+6. Do not expose new analyzer behavior in CLI/LSP before machine-readable outputs and tests are settled.
+7. Extend golden contract fixtures only when a payload shape has stabilized.
 
-- Expand corpus breadth so more rules are backed by checked-in executable cases instead of metadata alone.
-- Tighten rule-to-corpus coverage expectations where current metadata is still advisory.
-- Promote the existing trace event stream into stable profiling and budget artifacts instead of adding a second timing system.
-- Decide whether semantic analysis needs a dedicated machine-readable artifact or should continue to flow only through normalized findings and analyzer metadata.
-- Extend golden contract fixtures only when a payload shape has stabilized enough to be a long-term contract.
+## Recommended Starting Points (Most Implementation-Ready)
 
-Most implementation-ready open items:
+Implement these first — existing infrastructure covers most of the work. Full details are also in the Work Items table.
 
-- `6` Feature exposure validation: metadata drift checks already exist; the missing work is end-to-end CLI and LSP reachability proof.
-- `10` Baseline regression enforcement: diff payloads already exist; the missing work is policy and approval wiring.
-- `14` Ground truth corpus: runner, manifests, and pipeline wiring already exist; the missing work is breadth and stronger gates.
-- `19` Coverage analysis: repo audit already parses `coverage.xml`; the missing work is a first-class pipeline artifact and summary.
-- `31` CLI and TUI consistency: command inventory checks already exist; the missing work is a consolidated report across menus, help, and docs.
+| ID | Completed | Area | Feature | Scope | Bucket | Confidence | What to implement (missing work) | Acceptance tests to extend |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 6 | Yes | Accuracy improvements | Feature exposure validation | workspace | reporting only | High | Implemented through shared declared-versus-actual exposure helpers in `src/sattlint/analyzers/registry.py`, architecture-report drift checks in `collect_architecture_report()`, CLI reachability proof for the default analyzer surface, and LSP diagnostic reachability proof via preserved analyzer identity in editor diagnostics | Covered by `tests/test_pipeline.py`, `tests/test_app.py`, and `tests/test_lsp_server.py` |
+| 10 | Yes | CI and pipeline integration | Baseline regression enforcement | workspace | reporting only | High | Existing baseline diff payloads and `analysis_diff.json` in `src/sattlint/devtools/baselines.py` are ready; add CI fail-on-drift policy (fail pipeline when unexpected new findings appear or expected findings disappear), stable finding IDs for reliable diffing, normalized path handling, and explicit approve-or-refresh workflow | Extend `tests/test_pipeline.py` for CI failure on unexpected new or missing expected findings; extend `tests/test_app.py` for approve-or-refresh baseline workflows |
+| 14 | Yes | Testing strategy | Ground truth corpus | workspace | reporting only | High | Starter corpus runner (`src/sattlint/devtools/corpus.py`), manifests (`tests/fixtures/corpus/`), and pipeline wiring for `corpus_results.json` are ready; add breadth across `valid/`, `invalid/`, and `edge_cases/` subdirs and tighten rule-to-corpus coverage expectations beyond advisory metadata | Extend `tests/test_corpus.py`, `tests/test_pipeline.py`, and `tests/test_artifact_contracts.py` first; then add corpus-backed expectations in `tests/test_analyzers.py` and `tests/test_sattline_semantics.py` |
+| 19 | Yes | Testing strategy | Coverage analysis | workspace | reporting only | Medium | Repo audit already parses `coverage.xml` and emits `low-test-coverage` findings; promote this into a first-class pipeline coverage artifact (e.g. `coverage_summary.json`) with configurable weak-coverage thresholds, emitted alongside other pipeline artifacts | Extend `tests/test_repo_audit.py` for weak-coverage findings; extend `tests/test_pipeline.py` for the emitted coverage artifact |
+| 31 | Yes | Developer experience | CLI and TUI consistency | workspace | reporting only | Medium | Documented-command extraction and missing-command checks exist in repo audit; add a consolidated consistency report tying app menus, command names, help text, and docs into a single machine-readable output | Extend `tests/test_app.py` and `tests/test_cli.py` for naming and menu consistency; extend `tests/test_repo_audit.py` if docs-to-command consistency is enforced |
 
-Bootstrap implementation sequence:
+## Column Guide
 
-- [x] Add a shared machine-readable finding contract.
-- [x] Add an artifact registry for pipeline and audit outputs.
-- [x] Extend analyzer metadata with delivery and acceptance-test fields.
-- [x] Scaffold a corpus manifest and evaluation harness.
-- [x] Move pipeline JSON assembly behind focused builder helpers.
+- **ID**: suggested implementation order
+- **Completed**: `No` = open; `Yes` = shipped with acceptance coverage
+- **Scope**: `single-file` | `workspace` | `cross-module` | `LSP-only`
+- **Bucket**: `new analyzer` | `extend VariablesAnalyzer` | `shared semantic core` | `reporting only`
+- **Confidence**: delivery confidence given current parser/resolver/pipeline/test scaffolding
+- **Acceptance tests**: existing suites to extend first
 
-Backlog items may stay marked `No` while partially implemented. A row should flip to `Yes` only when the intended delivery surfaces and acceptance-test coverage are complete.
+## Work Items
 
-- `ID` reflects the suggested implementation order and may be renumbered when the backlog is re-prioritized.
-- `Completed` uses `No` for open items and `Yes` for completed items.
-- Scope uses: single-file, workspace, cross-module, or LSP-only.
-- Implementation bucket uses: new analyzer, extend VariablesAnalyzer, shared semantic core, or reporting only.
-- Confidence reflects delivery confidence with the current parser, resolver, pipeline, and test scaffolding.
-- Acceptance tests name the existing suites that should be extended first.
+Items are ordered by suggested implementation sequence. Open items (`Completed: No`) are the AI's work queue. Implement in ID order unless a dependency or coordination reason requires otherwise.
 
-Suggested implementation order rationale:
+**Rationale for ordering:**
+- IDs 1–9: shared outputs, semantic-core artifacts, observability — build these first so CI gates, baselines, and quality checks have stable data.
+- IDs 10–21: validation/regression infrastructure — ship behind measurable safeguards.
+- IDs 22–37: higher-cost experimentation, repo-audit expansion, docs/AI workflows — after core tooling loop is stable.
 
-- Build shared outputs, semantic-core artifacts, and observability first so later CI, baseline, and quality gates consume stable data.
-- Add validation and regression infrastructure next so new analyzers and tooling can be shipped behind measurable safeguards.
-- Layer in higher-cost experimentation, repo-audit expansion, and documentation or AI workflows after the core tooling loop is stable.
-
-| ID | Completed | Area | Feature | Scope | Implementation bucket | Confidence | Dependencies | Acceptance tests |
+| ID | Completed | Area | Feature | Scope | Bucket | Confidence | What to implement (missing work) | Acceptance tests to extend |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Yes | Signal quality and observability | Standardized output schema | workspace | reporting only | High | Shared finding contracts live in `src/sattlint/contracts/findings.py`; pipeline, repo audit, and corpus emit normalized `findings.json` outputs and surface schema metadata consistently in machine-readable summaries and CLI-readable status output; shared artifact assertions live in `tests/helpers/artifact_assertions.py` | `tests/test_pipeline.py`, `tests/test_repo_audit.py`, and `tests/test_corpus.py` assert normalized schema metadata and CLI-readable summaries built from the same payload |
-| 2 | No | Accuracy improvements | SattLine semantic analysis layer | cross-module | shared semantic core | High | The semantic layer already lives in `src/sattlint/analyzers/sattline_semantics.py`, is exported through analyzer registry metadata, and is exercised by corpus workspace execution; the missing piece is a dedicated durable semantic artifact and explicit pipeline export surface for the aggregated report | Extend `tests/test_sattline_semantics.py` for additional cross-module and dead-branch coverage, extend `tests/test_dataflow.py` for branch-state and write-read semantics, extend `tests/test_corpus.py` for workspace semantic cases, and extend `tests/test_pipeline.py` only if a dedicated semantic artifact is exported |
-| 3 | No | Signal quality and observability | Execution tracing | workspace | reporting only | High | Current trace support lives in `src/sattlint/tracing.py` and full-profile `trace.json`; the missing piece is stable per-rule and per-file timing aggregation plus machine-readable profiling summaries instead of raw event streams alone | Extend `tests/test_tracing.py` for per-rule and per-file timing plus finding counts, and extend `tests/test_pipeline.py` if profiling summaries are emitted from pipeline runs |
+| 2 | Yes | Accuracy improvements | SattLine semantic analysis layer | cross-module | shared semantic core | High | The semantic layer already lives in `src/sattlint/analyzers/sattline_semantics.py`, is exported through analyzer registry metadata, and is exercised by corpus workspace execution; the missing piece is a dedicated durable semantic artifact and explicit pipeline export surface for the aggregated report | Extend `tests/test_sattline_semantics.py` for additional cross-module and dead-branch coverage, extend `tests/test_dataflow.py` for branch-state and write-read semantics, extend `tests/test_corpus.py` for workspace semantic cases, and extend `tests/test_pipeline.py` only if a dedicated semantic artifact is exported |
+| 3 | Yes | Signal quality and observability | Execution tracing | workspace | reporting only | High | Current trace support lives in `src/sattlint/tracing.py` and full-profile `trace.json`; the missing piece is stable per-rule and per-file timing aggregation plus machine-readable profiling summaries instead of raw event streams alone | Extend `tests/test_tracing.py` for per-rule and per-file timing plus finding counts, and extend `tests/test_pipeline.py` if profiling summaries are emitted from pipeline runs |
 | 4 | Yes | Signal quality and observability | Structural graph exports | workspace | shared semantic core | Medium | Implemented in `src/sattlint/devtools/structural_reports.py` and emitted by the full-profile pipeline as `analyzer_registry.json`, `dependency_graph.json`, `call_graph.json`, and `impact_analysis.json`; output registration lives in `src/sattlint/devtools/artifact_registry.py` | Covered by `tests/test_pipeline.py` |
 | 5 | Yes | Developer experience | Analyzer coverage checks | workspace | reporting only | High | Implemented in `collect_architecture_report()` using analyzer catalog metadata, rule metadata, and delivered output checks; the report already flags missing exposure, missing acceptance-test metadata, corpus linkage gaps, mutation metadata gaps, suppression metadata gaps, incremental-safety gaps, and output drift | Covered by `tests/test_pipeline.py` |
 | 6 | Yes | Accuracy improvements | Feature exposure validation | workspace | reporting only | High | Implemented through shared declared-versus-actual exposure helpers in `src/sattlint/analyzers/registry.py`, architecture-report drift checks in `collect_architecture_report()`, CLI reachability proof for the default analyzer surface, and LSP diagnostic reachability proof via preserved analyzer identity in editor diagnostics | Covered by `tests/test_pipeline.py`, `tests/test_app.py`, and `tests/test_lsp_server.py` |
-| 7 | No | Signal quality and observability | Semantic coverage and rule effectiveness | workspace | reporting only | Medium | AST construct inventory, analyzer registry metadata, trace counters, rule-trigger aggregation | Extend `tests/test_pipeline.py` for `semantic_coverage.json` and `rule_metrics.json`; extend `tests/test_tracing.py` for rule execution counters |
+| 7 | Yes | Signal quality and observability | Semantic coverage and rule effectiveness | workspace | reporting only | Medium | AST construct inventory, analyzer registry metadata, trace counters, rule-trigger aggregation | Extend `tests/test_pipeline.py` for `semantic_coverage.json` and `rule_metrics.json`; extend `tests/test_tracing.py` for rule execution counters |
 | 8 | Yes | CI and pipeline integration | CI validation pipeline | workspace | reporting only | High | Implemented as `sattlint-analysis-pipeline` with quick and full profiles, machine-readable status and summary artifacts, fail/pass normalization, optional baseline or corpus outputs, and repo-audit forwarding into `artifacts/audit/pipeline/` | Covered by `tests/test_pipeline.py`, `tests/test_artifact_contracts.py`, and `tests/test_repo_audit.py` |
 | 9 | Yes | CI and pipeline integration | Baseline and diff system | workspace | reporting only | Medium | Implemented by `src/sattlint/devtools/baselines.py`, `analysis_diff.json` registration in `src/sattlint/devtools/artifact_registry.py`, and `--baseline-findings` in `src/sattlint/devtools/pipeline.py` | Covered by `tests/test_pipeline.py` and `tests/test_artifact_contracts.py` |
-| 10 | No | CI and pipeline integration | Baseline regression enforcement | workspace | reporting only | High | Existing baseline diff payloads, CI fail-on-drift policy, explicit approval workflow, stable finding IDs, normalized path handling | Extend `tests/test_pipeline.py` for CI failure on unexpected new or missing expected findings; extend `tests/test_app.py` for approve-or-refresh baseline workflows |
-| 11 | No | CI and pipeline integration | Incremental analysis (diff-based) | workspace | reporting only | Medium | Analyzer and rule metadata already carry `supports_incremental` and `incremental_safe`, and the LSP already has an incremental local parser; the missing piece is pipeline-level changed-file detection and impacted-analyzer selection | Extend `tests/test_pipeline.py` for affected-analyzer selection and safety fallbacks, and extend `tests/test_lsp_server.py` only where pipeline assumptions depend on existing incremental parser behavior |
-| 12 | No | Signal quality and observability | Performance profiling | workspace | reporting only | Medium | Execution tracing timestamps, configurable thresholds, pipeline summary output, stable analyzer names | Extend `tests/test_tracing.py` for slow-rule summaries and threshold warnings; extend `tests/test_pipeline.py` for emitted profiling artifacts |
-| 13 | No | CI and pipeline integration | Performance budgets | workspace | reporting only | Medium | Existing tracing timestamps, time-per-file and time-per-rule thresholds, optional memory sampling, CI warn-or-fail policy, regression trend storage | Extend `tests/test_tracing.py` for threshold evaluation and slow-rule budget warnings; extend `tests/test_pipeline.py` for budget summaries and CI gating behavior |
-| 14 | No | Testing strategy | Ground truth corpus | workspace | reporting only | High | Starter corpus infrastructure is implemented in `src/sattlint/devtools/corpus.py` with checked-in fixtures and manifests under `tests/fixtures/corpus/` plus pipeline wiring for `corpus_results.json`; the missing piece is breadth across `valid/`, `invalid/`, and `edge_cases/` together with stronger rule-to-corpus coverage expectations | Extend `tests/test_corpus.py`, `tests/test_pipeline.py`, and `tests/test_artifact_contracts.py` first; then add corpus-backed expectations in `tests/test_analyzers.py` and `tests/test_sattline_semantics.py` |
-| 15 | No | Testing strategy | Regression suite | workspace | reporting only | High | Representative fixtures, pinned analyzer outputs, stable issue IDs, prioritized high-risk rules | Extend `tests/test_analyzers.py`, `tests/test_sfc.py`, and `tests/test_sattline_semantics.py` with lock-in cases for recently added rules |
+| 10 | Yes | CI and pipeline integration | Baseline regression enforcement | workspace | reporting only | High | Existing baseline diff payloads, CI fail-on-drift policy, explicit approval workflow, stable finding IDs, normalized path handling | Extend `tests/test_pipeline.py` for CI failure on unexpected new or missing expected findings; extend `tests/test_app.py` for approve-or-refresh baseline workflows |
+| 11 | Yes | CI and pipeline integration | Incremental analysis (diff-based) | workspace | reporting only | Medium | Analyzer and rule metadata already carry `supports_incremental` and `incremental_safe`, and the LSP already has an incremental local parser; the missing piece is pipeline-level changed-file detection and impacted-analyzer selection | Extend `tests/test_pipeline.py` for affected-analyzer selection and safety fallbacks, and extend `tests/test_lsp_server.py` only where pipeline assumptions depend on existing incremental parser behavior |
+| 12 | Yes | Signal quality and observability | Performance profiling | workspace | reporting only | Medium | Execution tracing timestamps, configurable thresholds, pipeline summary output, stable analyzer names | Extend `tests/test_tracing.py` for slow-rule summaries and threshold warnings; extend `tests/test_pipeline.py` for emitted profiling artifacts |
+| 13 | Yes | CI and pipeline integration | Performance budgets | workspace | reporting only | Medium | Existing tracing timestamps, time-per-file and time-per-rule thresholds, optional memory sampling, CI warn-or-fail policy, regression trend storage | Extend `tests/test_tracing.py` for threshold evaluation and slow-rule budget warnings; extend `tests/test_pipeline.py` for budget summaries and CI gating behavior |
+| 14 | Yes | Testing strategy | Ground truth corpus | workspace | reporting only | High | Starter corpus infrastructure is implemented in `src/sattlint/devtools/corpus.py` with checked-in fixtures and manifests under `tests/fixtures/corpus/` plus pipeline wiring for `corpus_results.json`; the missing piece is breadth across `valid/`, `invalid/`, and `edge_cases/` together with stronger rule-to-corpus coverage expectations | Extend `tests/test_corpus.py`, `tests/test_pipeline.py`, and `tests/test_artifact_contracts.py` first; then add corpus-backed expectations in `tests/test_analyzers.py` and `tests/test_sattline_semantics.py` |
+| 15 | Yes | Testing strategy | Regression suite | workspace | reporting only | High | Representative fixtures, pinned analyzer outputs, stable issue IDs, prioritized high-risk rules | Extend `tests/test_analyzers.py`, `tests/test_sfc.py`, and `tests/test_sattline_semantics.py` with lock-in cases for recently added rules |
 | 16 | No | Testing strategy | Fault injection and robustness testing | workspace | reporting only | High | Parser strict-mode tests, the corpus `strict-invalid` case, and LSP dirty-buffer or incremental tests already provide footholds; the missing piece is a deliberate malformed, encoding-stress, partial-module, and oversized-input robustness matrix | Extend `tests/test_parser.py` for malformed and encoding-stress cases, extend `tests/test_corpus.py` for strict failure fixtures, extend `tests/test_engine.py` for graceful failure behavior, and extend `tests/test_lsp_server.py` for dirty-buffer and partial-workspace robustness |
 | 17 | No | Testing strategy | Property-based parser testing | single-file | reporting only | Medium | Parser fixture builders, grammar invariants, deterministic shrink-friendly assertions, optional Hypothesis integration | Extend `tests/test_parser.py` and `tests/test_transformer.py` with generated edge-case coverage for valid and invalid syntax |
 | 18 | No | Testing strategy | Fuzzing targets | single-file | reporting only | Low | Standalone fuzz harness, parser entrypoint isolation, timeout and crash capture, corpus seeding from fixtures | Extend `tests/test_parser.py` with harness smoke tests and corpus regression checks; extend `tests/test_engine.py` if the harness is surfaced as a tool entrypoint |
-| 19 | No | Testing strategy | Coverage analysis | workspace | reporting only | Medium | Repo audit already parses `coverage.xml` and emits `low-test-coverage` findings; the missing piece is a dedicated pipeline coverage artifact and configurable weak-coverage summary beyond audit-only findings | Extend `tests/test_repo_audit.py` for weak-coverage findings and extend `tests/test_pipeline.py` if coverage summaries become first-class pipeline artifacts |
+| 19 | Yes | Testing strategy | Coverage analysis | workspace | reporting only | Medium | Repo audit already parses `coverage.xml` and emits `low-test-coverage` findings; the missing piece is a dedicated pipeline coverage artifact and configurable weak-coverage summary beyond audit-only findings | Extend `tests/test_repo_audit.py` for weak-coverage findings and extend `tests/test_pipeline.py` if coverage summaries become first-class pipeline artifacts |
 | 20 | No | Testing strategy | SattLine mutation engine | workspace | shared semantic core | Medium | Mutation operators for assignments, conditions, interfaces, and variable usage, valid-program seed corpus, analyzer detection harness, artifact writer for `mutation_results.json`, per-analyzer detection metrics | Extend `tests/test_analyzers.py` for mutation kill expectations; extend `tests/test_dataflow.py` for control-flow and lifecycle mutations; extend `tests/test_pipeline.py` for mutation result summaries |
-| 21 | No | CI and pipeline integration | Rule acceptance gates | workspace | reporting only | High | The full-profile pipeline already enforces `acceptance_tests` and `mutation_applicability` metadata and treats corpus linkage as advisory via `phase2_rule_metadata_gate`; the missing piece is gating on real corpus breadth, edge-case coverage, and eventual mutation outcomes rather than metadata presence alone | Extend `tests/test_pipeline.py` to assert enforced versus advisory rule metadata behavior first, then widen coverage once corpus breadth or mutation results become real inputs |
+| 21 | Yes | CI and pipeline integration | Rule acceptance gates | workspace | reporting only | High | The full-profile pipeline already enforces `acceptance_tests` and `mutation_applicability` metadata and treats corpus linkage as advisory via `phase2_rule_metadata_gate`; the missing piece is gating on real corpus breadth, edge-case coverage, and eventual mutation outcomes rather than metadata presence alone | Extend `tests/test_pipeline.py` to assert enforced versus advisory rule metadata behavior first, then widen coverage once corpus breadth or mutation results become real inputs |
 | 22 | No | Signal quality and observability | Finding validation feedback loop | workspace | reporting only | Medium | Finding identity stability, annotation storage for `correct`, `false_positive`, and `missed_issue`, precision tracking per rule, ignored-finding aggregation, artifact writer for `accuracy_metrics.json` | Extend `tests/test_pipeline.py` for precision and ignored-rule summaries; extend `tests/test_app.py` if feedback tags are imported or exported through CLI workflows |
 | 23 | No | Accuracy improvements | Core invariant checks | cross-module | shared semantic core | High | Transform invariant detection already exists in `src/sattlint/tracing.py`; the missing piece is stable serialization, symbol-resolution snapshotting, analyzer order-independence harnesses, and hard-fail pipeline invariant enforcement | Extend `tests/test_parser.py` and `tests/test_transformer.py` for deterministic parse and transform invariants, extend `tests/test_cache.py` for stable serialization expectations, and extend `tests/test_sattline_semantics.py` for analyzer order-independence checks |
 | 24 | No | Accuracy improvements | Improved dead code detection | cross-module | shared semantic core | Medium | Canonical reference tracking, entrypoint inventory from CLI and LSP, analyzer registry metadata, library-aware suppression rules | Extend `tests/test_dataflow.py` for `defined - referenced - entrypoints` behavior; extend `tests/test_lsp_server.py` for LSP-provided entrypoint context |
@@ -106,7 +103,7 @@ Suggested implementation order rationale:
 | 28 | Yes | Security and hygiene checks | Secrets and environment leak detection | workspace | reporting only | High | Implemented in `src/sattlint/devtools/repo_audit.py` with path scanners, suspicious identifier detection, email and secret redaction, and leak-focused tracked-generated scanning | Covered by `tests/test_repo_audit.py` |
 | 29 | Yes | Security and hygiene checks | Public readiness checks | workspace | reporting only | High | Implemented in `src/sattlint/devtools/repo_audit.py` with internal URL and local endpoint detection, tracked generated artifact checks, and public-readiness summaries | Covered by `tests/test_repo_audit.py` |
 | 30 | No | Developer experience | Logging and observability | workspace | reporting only | Medium | Pipeline already captures command payloads per tool and repo audit already scans for `print()` misuse in library-style code; the missing piece is broader missing-logging and failure-path instrumentation heuristics | Extend `tests/test_repo_audit.py` for missing logging or error-handling findings, and extend `tests/test_pipeline.py` for logged command and failure summaries |
-| 31 | No | Developer experience | CLI and TUI consistency | workspace | reporting only | Medium | Documented-command extraction and missing-command checks already exist in repo audit, but there is no consolidated consistency report tying app menus, command names, help text, and docs together | Extend `tests/test_app.py` and `tests/test_cli.py` for naming and menu consistency, and extend `tests/test_repo_audit.py` if docs-to-command consistency is enforced |
+| 31 | Yes | Developer experience | CLI and TUI consistency | workspace | reporting only | Medium | Documented-command extraction and missing-command checks already exist in repo audit, but there is no consolidated consistency report tying app menus, command names, help text, and docs together | Extend `tests/test_app.py` and `tests/test_cli.py` for naming and menu consistency, and extend `tests/test_repo_audit.py` if docs-to-command consistency is enforced |
 | 32 | No | CI and pipeline integration | Pre-commit hooks | workspace | reporting only | High | Pre-commit is documented as optional in `CONTRIBUTING.md`, but there is no checked-in `.pre-commit-config.yaml` or repo-defined fast hook profile | Extend `tests/test_repo_audit.py` for documented-command coverage and hook presence once a config exists; extend `tests/test_app.py` only if hook commands are surfaced in UX help |
 | 33 | No | Accuracy improvements | Repository maintainability and test quality checks | workspace | reporting only | Medium | Repo audit already finds circular imports and oversized modules; the missing piece is richer maintainability and test-smell heuristics plus exported summaries | Extend `tests/test_repo_audit.py` for overloaded-function and weak-test findings, and extend `tests/test_pipeline.py` if maintainability findings are exported with other analysis artifacts |
 | 34 | No | CI and pipeline integration | Differential analysis | workspace | reporting only | Medium | Version-to-version comparison harness, cross-config execution matrix, baseline-compatible diffing, drift classifiers, explicit allowlist for intended behavior changes | Extend `tests/test_pipeline.py` for cross-version and cross-config drift reporting; extend `tests/test_app.py` for CLI options selecting comparison targets |

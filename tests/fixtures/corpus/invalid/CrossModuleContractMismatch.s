@@ -1,6 +1,6 @@
 "Syntax version 2.23, date: 2026-04-23-12:00:00.000 N"
 "Original file date: ---"
-"Program date: 2026-04-23-12:00:00.000, name: CrossModuleContractMismatch"
+"Program date: 2026-04-23-12:00:00.000, name: ContractMismatch"
 (* SEMANTIC: A parameter mapping passes a variable whose datatype is incompatible
    with the declared parameter datatype.
    ChildType expects a boolean 'EnableFlag' parameter, but the caller maps an

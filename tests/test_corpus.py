@@ -577,9 +577,10 @@ def test_checked_in_corpus_manifests_pass_against_repo_fixtures(tmp_path):
         write_results=False,
     )
 
-    assert {case.manifest.case_id for case in suite.cases} == {
-        "strict-invalid",
-        "workspace-common-quality-issues",
-    }
-    assert suite.passed is True
+    case_ids = {case.manifest.case_id for case in suite.cases}
+    # Original anchor cases always present
+    assert "strict-invalid" in case_ids
+    assert "workspace-common-quality-issues" in case_ids
+    # All manifests should be loaded and all should pass
+    assert suite.passed is True, f"Failed cases: {[c.manifest.case_id for c in suite.cases if not c.passed]}"
     assert all(case.execution_error is None for case in suite.cases)

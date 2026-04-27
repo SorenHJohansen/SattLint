@@ -215,12 +215,8 @@ def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_conte
         "_iter_loaded_projects",
         lambda *_args, **_kwargs: iter([("TargetA", "project", SimpleNamespace(unavailable_libraries=set()))]),
     )
-    monkeypatch.setattr(
-        variables_reporting_module, "analyze_datatype_usage", lambda *_, **__: "report"
-    )
-    monkeypatch.setattr(
-        variables_reporting_module, "debug_variable_usage", lambda *_, **__: "report"
-    )
+    monkeypatch.setattr(variables_reporting_module, "analyze_datatype_usage", lambda *_, **__: "report")
+    monkeypatch.setattr(variables_reporting_module, "debug_variable_usage", lambda *_, **__: "report")
 
     monkeypatch.setattr(builtins, "input", make_input(["1", "VarName"]))
     app.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy())
@@ -254,9 +250,7 @@ def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatc
     assert out.count("Issues: 0") == 2
 
 
-def test_run_variable_analysis_all_analyses_executes_real_analyzers(
-    noop_screen, monkeypatch, capsys
-):
+def test_run_variable_analysis_all_analyses_executes_real_analyzers(noop_screen, monkeypatch, capsys):
     project_bp = parser_core_parse_source_text(VALID_SINGLE_FILE)
     graph = SimpleNamespace(
         unavailable_libraries=set(),
@@ -277,9 +271,7 @@ def test_run_variable_analysis_all_analyses_executes_real_analyzers(
     assert "No variable analysis output was produced" not in out
 
 
-def test_run_variable_analysis_all_reports_lists_empty_categories(
-    noop_screen, monkeypatch, capsys
-):
+def test_run_variable_analysis_all_reports_lists_empty_categories(noop_screen, monkeypatch, capsys):
     graph = SimpleNamespace(unavailable_libraries=set(), warnings=[])
     monkeypatch.setattr(
         app,
@@ -317,9 +309,7 @@ def test_run_variable_analysis_all_reports_lists_empty_categories(
     assert out.count("      none") >= 3
 
 
-def test_run_variable_analysis_all_reports_hide_low_confidence_categories(
-    noop_screen, monkeypatch, capsys
-):
+def test_run_variable_analysis_all_reports_hide_low_confidence_categories(noop_screen, monkeypatch, capsys):
     from sattlint.models.ast_model import Variable
 
     issue = VariableIssue(
@@ -356,9 +346,7 @@ def test_run_variable_analysis_all_reports_hide_low_confidence_categories(
     assert "UI/display-only variables" not in out
 
 
-def test_run_variable_analysis_can_render_low_confidence_category_on_request(
-    noop_screen, monkeypatch, capsys
-):
+def test_run_variable_analysis_can_render_low_confidence_category_on_request(noop_screen, monkeypatch, capsys):
     from sattlint.models.ast_model import Variable
 
     issue = VariableIssue(
@@ -470,9 +458,7 @@ def test_run_variable_analysis_prints_validation_warnings(noop_screen, monkeypat
     assert "Issues: 0" in out
 
 
-def test_run_variable_analysis_hides_dependency_validation_warnings(
-    noop_screen, monkeypatch, capsys
-):
+def test_run_variable_analysis_hides_dependency_validation_warnings(noop_screen, monkeypatch, capsys):
     graph = SimpleNamespace(
         unavailable_libraries=set(),
         warnings=["dep_a: warning one", "dep_b: warning two"],
@@ -588,9 +574,7 @@ def test_variable_usage_submenu_exposes_shadowing_report(noop_screen, monkeypatc
     assert captured == [{app.IssueKind.SHADOWING}]
 
 
-def test_variable_usage_submenu_exposes_hidden_global_coupling_report(
-    noop_screen, monkeypatch
-):
+def test_variable_usage_submenu_exposes_hidden_global_coupling_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
     monkeypatch.setattr(builtins, "input", make_input(["20", "b"]))
@@ -600,9 +584,7 @@ def test_variable_usage_submenu_exposes_hidden_global_coupling_report(
     assert captured == [{app.IssueKind.HIDDEN_GLOBAL_COUPLING}]
 
 
-def test_variable_usage_submenu_exposes_global_scope_minimization_report(
-    noop_screen, monkeypatch
-):
+def test_variable_usage_submenu_exposes_global_scope_minimization_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
     monkeypatch.setattr(builtins, "input", make_input(["19", "b"]))
@@ -612,9 +594,7 @@ def test_variable_usage_submenu_exposes_global_scope_minimization_report(
     assert captured == [{app.IssueKind.GLOBAL_SCOPE_MINIMIZATION}]
 
 
-def test_variable_usage_submenu_exposes_high_fan_in_out_report(
-    noop_screen, monkeypatch
-):
+def test_variable_usage_submenu_exposes_high_fan_in_out_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
     monkeypatch.setattr(builtins, "input", make_input(["21", "b"]))

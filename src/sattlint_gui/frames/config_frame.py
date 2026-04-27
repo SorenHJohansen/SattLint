@@ -5,6 +5,7 @@ from copy import deepcopy
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from ..binding import SattLintBinding
+from ..theme import resolve_theme
 
 _EDITABLE_TOP_LEVEL_KEYS = (
     "analyzed_programs_and_libraries",
@@ -48,6 +49,7 @@ class ConfigFrame(ttk.Frame):
     def __init__(self, parent, *, binding: SattLintBinding) -> None:
         super().__init__(parent, style="Content.TFrame")
         self.binding = binding
+        theme = resolve_theme(parent)
         self._loading = False
         self._dirty = False
         self._full_config: dict = {}
@@ -132,9 +134,10 @@ class ConfigFrame(ttk.Frame):
         self.targets_list = tk.Listbox(
             targets_panel,
             relief=tk.FLAT,
-            bg="#fbf8f2",
-            fg="#1f2722",
-            selectbackground="#c5b89d",
+            bg=theme.input_bg,
+            fg=theme.text,
+            selectbackground=theme.btn_active,
+            selectforeground=theme.console_text,
             exportselection=False,
         )
         self.targets_list.grid(row=1, column=0, sticky="nsew", pady=(8, 8))
@@ -152,9 +155,10 @@ class ConfigFrame(ttk.Frame):
         self.other_libs_list = tk.Listbox(
             libs_panel,
             relief=tk.FLAT,
-            bg="#fbf8f2",
-            fg="#1f2722",
-            selectbackground="#c5b89d",
+            bg=theme.input_bg,
+            fg=theme.text,
+            selectbackground=theme.btn_active,
+            selectforeground=theme.console_text,
             exportselection=False,
         )
         self.other_libs_list.grid(row=1, column=0, sticky="nsew", pady=(8, 8))

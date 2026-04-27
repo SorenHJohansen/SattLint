@@ -912,4 +912,3 @@ ENDDEF (*BasePicture*);
     labels = {item.label for item in items}
 
     assert "LocalVar" in labels
-

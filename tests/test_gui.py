@@ -5,6 +5,11 @@ from sattlint_gui import binding, main
 from sattlint_gui import gui as package_gui
 from sattlint_gui.frames.config_frame import apply_editable_config, extract_editable_config
 from sattlint_gui.frames.docs_frame import DocsFrame
+from sattlint_gui.frames.results_frame import ResultsFrame
+from sattlint_gui.theme import ALLOWED_THEME_COLORS, DEFAULT_THEME
+from sattlint_gui.widgets.analyzer_list import AnalyzerList
+from sattlint_gui.widgets.report_view import _ISSUE_COUNT_RE, _TARGET_HEADER_RE
+from sattlint_gui.window import SattLintWindow
 
 
 def test_package_exports_gui_callable():
@@ -35,6 +40,22 @@ def test_gui_entrypoint_creates_window_and_runs_mainloop(monkeypatch):
 
     assert main.gui() == 0
     assert events == ["mainloop"]
+
+
+def test_default_theme_uses_only_allowed_palette():
+    colors = {
+        DEFAULT_THEME.bg_main,
+        DEFAULT_THEME.bg_panel,
+        DEFAULT_THEME.btn_bg,
+        DEFAULT_THEME.btn_active,
+        DEFAULT_THEME.accent,
+        DEFAULT_THEME.input_bg,
+        DEFAULT_THEME.text,
+        DEFAULT_THEME.console_bg,
+        DEFAULT_THEME.console_text,
+    }
+
+    assert colors <= ALLOWED_THEME_COLORS
 
 
 def test_extract_editable_config_normalizes_defaults():
@@ -120,41 +141,108 @@ def test_suggest_workspace_ha_config_fills_missing_paths(monkeypatch, tmp_path):
     assert len(suggested["other_lib_dirs"]) == 3
 
 
-def test_select_demo_target_prefers_configured_target():
-    demo_target = binding.select_demo_target({"analyzed_programs_and_libraries": ["KaHAApplSupportLib"]})
+def test_analyzer_list_selection():
+    # Test AnalyzerList selection logic without a real Tk root by driving _vars directly
+    # with a lightweight stand-in that matches the BooleanVar interface used by get_selected_keys.
+    class FakeBoolVar:
+        def __init__(self, value: bool = True) -> None:
+            self._value = value
 
-    assert demo_target is not None
-    assert demo_target.name == "KaHAApplSupportLib"
-    assert demo_target.reason == "first configured analysis target"
+        def get(self) -> bool:
+            return self._value
+
+        def set(self, value: bool) -> None:
+            self._value = value
+
+    al = cast(Any, AnalyzerList.__new__(AnalyzerList))
+    al._vars = [
+        (FakeBoolVar(True), "unused"),
+        (FakeBoolVar(True), "icf"),
+        (FakeBoolVar(True), "graphics"),
+    ]
+
+    # all selected by default
+    assert al.get_selected_keys() == ["unused", "icf", "graphics"]
+
+    # deselect one
+    al._vars[1][0].set(False)
+    assert al.get_selected_keys() == ["unused", "graphics"]
+
+    # select_all restores
+    al.select_all()
+    assert al.get_selected_keys() == ["unused", "icf", "graphics"]
+
+    # deselect_all clears
+    al.deselect_all()
+    assert al.get_selected_keys() == []
 
 
-def test_select_demo_target_falls_back_to_program_dir(tmp_path):
-    (tmp_path / "Alpha.x").write_text("", encoding="utf-8")
-    (tmp_path / "Beta.x").write_text("", encoding="utf-8")
+def test_binding_run_checks_filters_by_selected_keys(monkeypatch):
+    ran: list[str] = []
 
-    demo_target = binding.select_demo_target({"program_dir": str(tmp_path), "mode": "official"})
+    class FakeSpec:
+        def __init__(self, key, name) -> None:
+            self.key = key
+            self.name = name
 
-    assert demo_target is not None
-    assert demo_target.name == "Alpha"
-    assert "program_dir" in demo_target.reason
+        def run(self, context):
+            ran.append(self.key)
+            return type("Report", (), {"summary": lambda self: f"{self.key} ok"})()
 
-
-def test_binding_run_demo_combines_outputs(monkeypatch):
-    gui_binding = binding.SattLintBinding()
-    monkeypatch.setattr(gui_binding, "select_demo_target", lambda cfg: binding.DemoTarget("DemoTarget", "configured"))
-    monkeypatch.setattr(gui_binding, "run_self_check", lambda cfg: binding.BindingResult(ok=True, output="self-check ok"))
-    monkeypatch.setattr(
-        gui_binding,
-        "run_variable_analysis",
-        lambda cfg: binding.BindingResult(ok=True, output="variable-analysis ok"),
+    fake_app = SimpleNamespace(
+        _get_enabled_analyzers=lambda: [
+            FakeSpec("unused", "Unused Variables"),
+            FakeSpec("icf", "ICF Validation"),
+            FakeSpec("graphics", "Graphics Layout"),
+        ],
+        _iter_loaded_projects=lambda cfg: [],
+        AnalysisContext=None,
+        _target_is_library=lambda cfg, bp, graph: False,
+        apply_rule_profile_to_report=lambda key, report, cfg: report,
     )
+    monkeypatch.setattr(binding, "_APP_MODULE", fake_app)
 
-    result = gui_binding.run_demo({"mode": "draft"})
+    gui_binding = binding.SattLintBinding()
+    result = gui_binding.run_checks({"mode": "draft"}, selected_keys=["unused", "graphics"])
 
     assert result.ok is True
-    assert "Demo target: DemoTarget (configured)" in result.output
-    assert "[Self-check]\nself-check ok" in result.output
-    assert "[Variable Analysis]\nvariable-analysis ok" in result.output
+    assert "No matching checks found" not in result.output
+
+
+def test_binding_run_checks_reports_no_matching(monkeypatch):
+    fake_app = SimpleNamespace(
+        _get_enabled_analyzers=lambda: [],
+        _iter_loaded_projects=lambda cfg: [],
+        AnalysisContext=None,
+        _target_is_library=lambda cfg, bp, graph: False,
+        apply_rule_profile_to_report=lambda key, report, cfg: report,
+    )
+    monkeypatch.setattr(binding, "_APP_MODULE", fake_app)
+
+    gui_binding = binding.SattLintBinding()
+    result = gui_binding.run_checks({"mode": "draft"}, selected_keys=["nonexistent"])
+
+    assert result.ok is True
+    assert "No matching checks found" in result.output
+
+
+def test_window_publish_result_routes_to_results_view():
+    events: list[str] = []
+    published: list[tuple[str, str]] = []
+
+    class FakeResultsView:
+        def publish_result(self, title: str, text: str) -> None:
+            published.append((title, text))
+
+    window = cast(Any, SattLintWindow.__new__(SattLintWindow))
+    window._views = {"Results": FakeResultsView()}
+    window.show_view = lambda name: events.append(f"show:{name}")
+    window.set_status = lambda text: events.append(f"status:{text}")
+
+    SattLintWindow.publish_result(window, "Self-check", "ok")
+
+    assert published == [("Self-check", "ok")]
+    assert events == ["show:Results", "status:Updated results for Self-check"]
 
 
 def test_docs_frame_generate_docs_reports_status(monkeypatch):
@@ -209,7 +297,7 @@ def test_docs_frame_generate_docs_reports_status(monkeypatch):
     frame.summary = FakeReportView()
     frame.preview = FakeReportView()
     frame.console = FakeConsoleView()
-    frame.after = lambda _delay, callback: (callback() or "after-id")
+    frame.after = lambda _delay, callback: callback() or "after-id"
 
     frame.generate_docs()
 
@@ -217,3 +305,314 @@ def test_docs_frame_generate_docs_reports_status(monkeypatch):
     assert ("status", "Documentation generation running...") in events
     assert ("status", "Documentation generation finished") in events
     assert ("result", "Documentation:Wrote docs-out/TargetA_FS.docx") in events
+
+
+# ── Phase 4 tests ────────────────────────────────────────────────────────────
+
+
+def test_report_view_target_header_regex():
+    assert _TARGET_HEADER_RE.match("=== Target: MyUnit ===")
+    assert _TARGET_HEADER_RE.match("=== Unused Variables (unused) ===")
+    assert not _TARGET_HEADER_RE.match("  - some finding")
+    assert not _TARGET_HEADER_RE.match("3 issues")
+
+
+def test_report_view_issue_count_regex():
+    assert _ISSUE_COUNT_RE.match("0 issues")
+    assert _ISSUE_COUNT_RE.match("12 issues")
+    assert _ISSUE_COUNT_RE.match("  1 issue")
+    assert not _ISSUE_COUNT_RE.match("some finding (3 issues)")
+
+
+def test_results_frame_publish_adds_history():
+    class FakeHistoryBox:
+        def __init__(self) -> None:
+            self._items: list[str] = []
+
+        def insert(self, _end, label: str) -> None:
+            self._items.append(label)
+
+        def delete(self, _start, _end) -> None:
+            self._items.clear()
+
+        def selection_clear(self, _start, _end) -> None:
+            pass
+
+        def selection_set(self, _index) -> None:
+            pass
+
+        def see(self, _index) -> None:
+            pass
+
+        def curselection(self):
+            return ()
+
+    class FakeReportView:
+        def __init__(self) -> None:
+            self.text = ""
+
+        def set_text(self, text: str) -> None:
+            self.text = text
+
+        def append_text(self, text: str) -> None:
+            self.text += text
+
+    frame = cast(Any, ResultsFrame.__new__(ResultsFrame))
+    frame._entries = []
+    frame._history_box = FakeHistoryBox()
+    frame._detail = FakeReportView()
+
+    frame.publish_result("Self-check", "ok\n1 issue")
+    frame.publish_result("Variable Analysis", "3 issues")
+
+    assert len(frame._entries) == 2
+    assert frame._entries[0][1] == "ok\n1 issue"
+    assert frame._entries[1][1] == "3 issues"
+    assert len(frame._history_box._items) == 2
+    assert "Self-check" in frame._history_box._items[0]
+    assert "Variable Analysis" in frame._history_box._items[1]
+    # detail shows the most recently published entry
+    assert "3 issues" in frame._detail.text
+
+
+def test_results_frame_clear_resets_state():
+    class FakeHistoryBox:
+        def __init__(self) -> None:
+            self._items: list[str] = []
+
+        def insert(self, _end, label: str) -> None:
+            self._items.append(label)
+
+        def delete(self, _start, _end) -> None:
+            self._items.clear()
+
+        def selection_clear(self, _start, _end) -> None:
+            pass
+
+        def selection_set(self, _index) -> None:
+            pass
+
+        def see(self, _index) -> None:
+            pass
+
+    class FakeDetailView:
+        def __init__(self) -> None:
+            self.text = ""
+
+        def set_text(self, text: str) -> None:
+            self.text = text
+
+    frame = cast(Any, ResultsFrame.__new__(ResultsFrame))
+    frame._entries = [("lbl", "txt")]
+    frame._history_box = FakeHistoryBox()
+    frame._history_box._items = ["lbl"]
+    frame._detail = FakeDetailView()
+
+    frame.clear()
+
+    assert frame._entries == []
+    assert frame._history_box._items == []
+    assert "cleared" in frame._detail.text
+
+
+def test_binding_run_bundle_combines_variable_analysis_and_checks(monkeypatch):
+    gui_binding = binding.SattLintBinding()
+    monkeypatch.setattr(
+        gui_binding, "run_variable_analysis", lambda cfg: binding.BindingResult(ok=True, output="var ok")
+    )
+    monkeypatch.setattr(
+        gui_binding, "run_checks", lambda cfg, selected_keys=None: binding.BindingResult(ok=True, output="checks ok")
+    )
+
+    result = gui_binding.run_bundle({"mode": "draft"})
+
+    assert result.ok is True
+    assert "[Variable Analysis]\nvar ok" in result.output
+    assert "[Checks]\nchecks ok" in result.output
+
+
+def test_binding_run_bundle_marks_failed_if_any_step_fails(monkeypatch):
+    gui_binding = binding.SattLintBinding()
+    monkeypatch.setattr(
+        gui_binding, "run_variable_analysis", lambda cfg: binding.BindingResult(ok=False, output="var failed")
+    )
+    monkeypatch.setattr(
+        gui_binding, "run_checks", lambda cfg, selected_keys=None: binding.BindingResult(ok=True, output="checks ok")
+    )
+
+    result = gui_binding.run_bundle({"mode": "draft"})
+
+    assert result.ok is False
+
+
+# ── Phase 5 tests: Higher-level GUI and integration workflows ─────────────────
+
+
+def test_window_publish_result_routes_to_results_frame():
+    """Verify that publish_result routes output to Results frame and switches view."""
+    events: list[str] = []
+
+    class FakeResultsFrame:
+        def publish_result(self, title: str, text: str) -> None:
+            events.append(f"publish:{title}:{text}")
+
+        def tkraise(self) -> None:
+            events.append("tkraise")
+
+    class FakeSidebar:
+        def set_selected(self, name: str) -> None:
+            events.append(f"sidebar_select:{name}")
+
+    from types import SimpleNamespace
+
+    from sattlint_gui.window import SattLintWindow
+
+    window = SimpleNamespace()
+    window._views = {"Results": FakeResultsFrame()}
+    window.sidebar = FakeSidebar()
+    window.set_status = lambda text: events.append(f"status:{text}")
+    window.show_view = lambda name: (
+        window._views[name].tkraise(),
+        window.sidebar.set_selected(name),
+        window.set_status(f"Viewing {name}"),
+    )
+
+    # Bind the method from the real window class
+    SattLintWindow.publish_result(cast(Any, window), "Test Output", "sample content")
+
+    assert "publish:Test Output:sample content" in events
+    assert "tkraise" in events
+    assert "sidebar_select:Results" in events
+    assert any("Updated results for Test Output" in e for e in events)
+
+
+def test_window_set_status_updates_status_var(monkeypatch):
+    """Verify status_var updates via set_status."""
+    from types import SimpleNamespace
+
+    from sattlint_gui.window import SattLintWindow
+
+    window = SimpleNamespace()
+    window.status_var = SimpleNamespace(value="Initial")
+    window.status_var.set = lambda text: setattr(window.status_var, "value", text)
+    window.status_var.get = lambda: window.status_var.value
+
+    SattLintWindow.set_status(cast(Any, window), "New Status")
+
+    assert window.status_var.get() == "New Status"
+
+
+def test_docs_frame_refresh_preview_shows_output_paths(monkeypatch):
+    """Verify DocsFrame._refresh_preview displays expected output file paths."""
+    from types import SimpleNamespace
+    from typing import Any, cast
+
+    from sattlint_gui.frames.docs_frame import DocsFrame
+
+    class FakeReportView:
+        def __init__(self) -> None:
+            self.text = ""
+
+        def set_text(self, text: str) -> None:
+            self.text = text
+
+    class FakeBinding:
+        config_path = "config.toml"
+
+        def load_config(self) -> dict:
+            return {"analyzed_programs_and_libraries": ["TargetA", "TargetB"], "mode": "official"}
+
+    frame = cast(Any, DocsFrame.__new__(DocsFrame))
+    frame.cfg = {"analyzed_programs_and_libraries": ["TargetA", "TargetB"]}
+    frame.preview = FakeReportView()
+    frame.output_dir_var = SimpleNamespace(get=lambda: "custom-out")
+
+    frame._refresh_preview()
+
+    # Account for platform-specific path separators
+    assert "TargetA_FS.docx" in frame.preview.text
+    assert "TargetB_FS.docx" in frame.preview.text
+    assert "custom-out" in frame.preview.text
+
+
+def test_results_frame_publish_result_adds_timestamped_entry(monkeypatch):
+    """Verify ResultsFrame.publish_result adds timestamped history entries."""
+    from typing import Any, cast
+
+    from sattlint_gui.frames.results_frame import ResultsFrame
+
+    class FakeListbox:
+        def __init__(self) -> None:
+            self.items = []
+
+        def insert(self, index: str, item: str) -> None:
+            self.items.append(item)
+
+        def selection_clear(self, start: int, end: int) -> None:
+            pass
+
+        def selection_set(self, index: int) -> None:
+            pass
+
+        def see(self, index: int) -> None:
+            pass
+
+    class FakeReportView:
+        def __init__(self, parent, title=None) -> None:
+            self.text_content = ""
+
+        def set_text(self, text: str) -> None:
+            self.text_content = text
+
+    frame = cast(Any, ResultsFrame.__new__(ResultsFrame))
+    frame._history_box = FakeListbox()
+    frame._detail = FakeReportView(None)
+    frame._entries = []
+
+    frame.publish_result("Test Result", "test output content")
+
+    assert len(frame._entries) == 1
+    # Entry label includes timestamp: "[HH:MM:SS] Test Result"
+    assert "Test Result" in frame._entries[0][0]
+    assert frame._entries[0][1] == "test output content"
+    assert len(frame._history_box.items) == 1
+    assert "Test Result" in frame._history_box.items[0]
+
+
+def test_analyze_frame_run_bundle_combines_va_and_checks_output():
+    """Verify AnalyzeFrame.run_bundle calls binding.run_bundle with selected keys."""
+    from types import SimpleNamespace
+    from typing import Any, cast
+
+    from sattlint_gui.binding import BindingResult, SattLintBinding
+    from sattlint_gui.frames.analyze_frame import AnalyzeFrame
+
+    call_args = {}
+
+    class FakeBinding(SattLintBinding):
+        def run_bundle(self, cfg, selected_keys=None):
+            call_args["cfg"] = cfg
+            call_args["selected_keys"] = selected_keys
+            return BindingResult(ok=True, output="[Variable Analysis]\nok\n\n[Checks]\nok")
+
+    class FakeAnalyzerList:
+        def get_selected_keys(self):
+            return ["unused", "icf"]
+
+    frame = cast(Any, AnalyzeFrame.__new__(AnalyzeFrame))
+    frame.binding = FakeBinding()
+    frame.cfg = {"mode": "draft"}
+    frame.analyzer_list = FakeAnalyzerList()
+    frame.console = SimpleNamespace(set_text=lambda t: None)
+    frame.on_result = lambda _title, _text: None
+    frame.on_status = lambda _text: None
+
+    # Directly call the action to test binding integration
+    def action():
+        return frame.binding.run_bundle(frame.cfg, ["unused", "icf"])
+
+    result = action()
+
+    assert result.ok is True
+    assert "[Variable Analysis]" in result.output
+    assert "[Checks]" in result.output

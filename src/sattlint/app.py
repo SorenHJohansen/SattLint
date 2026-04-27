@@ -4,25 +4,22 @@
 from __future__ import annotations
 
 import argparse
-import io
-import logging
 import os
 import re
 import sys
 from collections.abc import Iterator, Sequence
-from contextlib import nullcontext, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar, cast
+from typing import Any, cast
 
+from . import app_base as app_base_module
 from . import app_graphics as app_graphics_module
 from . import config as config_module
 from . import engine as engine_module
-from .__version__ import __version__
 from .analyzers import variable_usage_reporting as variables_reporting_module
 from .analyzers.comment_code import analyze_comment_code_files
 from .analyzers.framework import AnalysisContext
-from .analyzers.icf import parse_icf_file, validate_icf_entries_against_program
+from .analyzers.icf import format_icf_file, parse_icf_file, validate_icf_entries_against_program
 from .analyzers.mms import analyze_mms_interface_variables
 from .analyzers.modules import (
     analyze_module_duplicates,
@@ -127,8 +124,8 @@ LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = (
 EXIT_SUCCESS: int = 0
 EXIT_USAGE_ERROR: int = 1
 
-CONFIG_PATH = config_module.get_config_path()
-DEFAULT_CONFIG = config_module.DEFAULT_CONFIG
+CONFIG_PATH = app_base_module.CONFIG_PATH
+DEFAULT_CONFIG = app_base_module.DEFAULT_CONFIG
 _DOCUMENTATION_SCOPE_STATE = {
     "mode": "all",
     "instance_paths": [],
@@ -292,12 +289,11 @@ def _target_validation_warnings(target_name: str, warnings: list[str]) -> list[s
 
 
 def load_config(path: Path):
-    return config_module.load_config(path)
+    return app_base_module.load_config(path)
 
 
 def save_config(path: Path, cfg: dict) -> None:
-    config_module.save_config(path, cfg)
-    print("Config saved")
+    app_base_module.save_config(path, cfg)
 
 
 def get_graphics_rules_path() -> Path:
@@ -314,304 +310,78 @@ def save_graphics_rules(path: Path, rules: dict[str, Any]) -> None:
 
 
 def self_check(cfg: dict) -> bool:
-    return config_module.self_check(cfg)
+    return app_base_module.self_check(cfg)
 
 
-# Configure logging so normal runs stay quiet unless debug mode is enabled.
-logging.basicConfig(format="%(message)s", level=logging.INFO)
-logging.getLogger().setLevel(logging.INFO)
-
-log = logging.getLogger("SattLint")
+log = app_base_module.log
 
 
 # ----------------------------
 # Helpers
 # ----------------------------
 def _configure_windows_console_api(kernel32, coord_type, buffer_info_type):
-    import ctypes
-    from ctypes import wintypes
-
-    kernel32.GetStdHandle.argtypes = [wintypes.DWORD]
-    kernel32.GetStdHandle.restype = wintypes.HANDLE
-
-    kernel32.GetConsoleScreenBufferInfo.argtypes = [
-        wintypes.HANDLE,
-        ctypes.POINTER(buffer_info_type),
-    ]
-    kernel32.GetConsoleScreenBufferInfo.restype = wintypes.BOOL
-
-    kernel32.FillConsoleOutputCharacterW.argtypes = [
-        wintypes.HANDLE,
-        wintypes.WCHAR,
-        wintypes.DWORD,
-        coord_type,
-        ctypes.POINTER(wintypes.DWORD),
-    ]
-    kernel32.FillConsoleOutputCharacterW.restype = wintypes.BOOL
-
-    kernel32.FillConsoleOutputAttribute.argtypes = [
-        wintypes.HANDLE,
-        wintypes.WORD,
-        wintypes.DWORD,
-        coord_type,
-        ctypes.POINTER(wintypes.DWORD),
-    ]
-    kernel32.FillConsoleOutputAttribute.restype = wintypes.BOOL
-
-    kernel32.SetConsoleCursorPosition.argtypes = [wintypes.HANDLE, coord_type]
-    kernel32.SetConsoleCursorPosition.restype = wintypes.BOOL
+    return app_base_module._configure_windows_console_api(kernel32, coord_type, buffer_info_type)
 
 
 def _clear_windows_console() -> None:
-    import ctypes
-    from ctypes import wintypes
-
-    class _Coord(ctypes.Structure):
-        _fields_: ClassVar[Any] = [("X", wintypes.SHORT), ("Y", wintypes.SHORT)]
-
-    class _SmallRect(ctypes.Structure):
-        _fields_: ClassVar[Any] = [
-            ("Left", wintypes.SHORT),
-            ("Top", wintypes.SHORT),
-            ("Right", wintypes.SHORT),
-            ("Bottom", wintypes.SHORT),
-        ]
-
-    class _ConsoleScreenBufferInfo(ctypes.Structure):
-        _fields_: ClassVar[Any] = [
-            ("dwSize", _Coord),
-            ("dwCursorPosition", _Coord),
-            ("wAttributes", wintypes.WORD),
-            ("srWindow", _SmallRect),
-            ("dwMaximumWindowSize", _Coord),
-        ]
-
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[reportAttributeAccessIssue]
-    _configure_windows_console_api(kernel32, _Coord, _ConsoleScreenBufferInfo)
-
-    std_output_handle = wintypes.DWORD(-11).value
-    stdout_handle = kernel32.GetStdHandle(std_output_handle)
-    invalid_handle = ctypes.c_void_p(-1).value
-    if stdout_handle in (None, 0, invalid_handle):
-        raise OSError("unable to access stdout console handle")
-
-    buffer_info = _ConsoleScreenBufferInfo()
-    if not kernel32.GetConsoleScreenBufferInfo(stdout_handle, ctypes.byref(buffer_info)):
-        raise OSError(ctypes.get_last_error(), "GetConsoleScreenBufferInfo failed")  # type: ignore[reportAttributeAccessIssue]
-
-    cell_count = int(buffer_info.dwSize.X) * int(buffer_info.dwSize.Y)
-    written = wintypes.DWORD()
-    origin = _Coord(0, 0)
-
-    if not kernel32.FillConsoleOutputCharacterW(
-        stdout_handle,
-        " ",
-        cell_count,
-        origin,
-        ctypes.byref(written),
-    ):
-        raise OSError(ctypes.get_last_error(), "FillConsoleOutputCharacterW failed")  # type: ignore[reportAttributeAccessIssue]
-    if not kernel32.FillConsoleOutputAttribute(
-        stdout_handle,
-        buffer_info.wAttributes,
-        cell_count,
-        origin,
-        ctypes.byref(written),
-    ):
-        raise OSError(ctypes.get_last_error(), "FillConsoleOutputAttribute failed")  # type: ignore[reportAttributeAccessIssue]
-    if not kernel32.SetConsoleCursorPosition(stdout_handle, origin):
-        raise OSError(ctypes.get_last_error(), "SetConsoleCursorPosition failed")  # type: ignore[reportAttributeAccessIssue]
+    app_base_module._clear_windows_console()
 
 
 def clear_screen():
-    sys.stdout.flush()
-    if os.name == "nt":
-        try:
-            _clear_windows_console()
-            return
-        except OSError:
-            if os.system("cls") == 0:  # nosec B605 B607 - fixed built-in command used as Windows console fallback
-                return
-
-    sys.stdout.write("\033[2J\033[H")
-    sys.stdout.flush()
+    app_base_module.clear_screen(os_module=os, sys_module=sys, clear_windows_console=_clear_windows_console)
 
 
 def pause():
-    input("\nPress Enter to continue...")
+    app_base_module.pause()
 
 
-class QuitAppError(Exception):
-    pass
+QuitAppError = app_base_module.QuitAppError
 
 
 def quit_app() -> None:
-    clear_screen()
-    raise QuitAppError()
+    app_base_module.quit_app(clear_screen_fn=clear_screen)
 
 
 def confirm(msg: str) -> bool:
-    return input(f"{msg} [y/N]: ").strip().lower() in ("y", "yes")
+    return app_base_module.confirm(msg)
 
 
 def prompt(msg: str, default: str | None = None) -> str:
-    if default is not None:
-        return input(f"{msg} [{default}]: ").strip() or default
-    return input(f"{msg}: ").strip()
+    return app_base_module.prompt(msg, default)
 
 
 def target_exists(target: str, cfg: dict) -> bool:
-    return config_module.target_exists(target, cfg)
+    return app_base_module.target_exists(target, cfg)
 
 
 def apply_debug(cfg: dict):
-    level = logging.DEBUG if cfg.get("debug") else logging.INFO
-    logging.getLogger().setLevel(level)
-    log.setLevel(level)
+    app_base_module.apply_debug(cfg)
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="sattlint",
-        description="Interactive SattLine analysis app with a non-interactive syntax-check command.",
-    )
-    parser.add_argument("--version", action="version", version=f"sattlint {__version__}")
-    parser.add_argument("--config", default=None, metavar="PATH", help="Path to a SattLint config file")
-    parser.add_argument("--no-cache", action="store_true", dest="no_cache", help="Skip the AST cache")
-    parser.add_argument("--quiet", action="store_true", help="Suppress stdout output")
-    subparsers = parser.add_subparsers(dest="command")
-
-    syntax_parser = subparsers.add_parser(
-        "syntax-check",
-        help="Validate a single SattLine file with the parser and transformer",
-        description="Validate one SattLine source file and report a compact syntax or validation error.",
-    )
-    syntax_parser.add_argument("file", help="Path to the SattLine source file")
-
-    subparsers.add_parser(
-        "validate-config",
-        help="Validate the SattLint configuration file",
-        description="Validate and report any issues with the current configuration.",
-    )
-
-    analyze_parser = subparsers.add_parser(
-        "analyze",
-        help="Run non-interactive analysis checks",
-        description="Run selected analysis checks against configured targets.",
-    )
-    analyze_parser.add_argument(
-        "--check",
-        action="append",
-        dest="checks",
-        default=[],
-        metavar="KEY",
-        help="Analysis check key to run (repeatable)",
-    )
-
-    subparsers.add_parser(
-        "docgen",
-        help="Generate DOCX documentation",
-        description="Generate FS-style DOCX documentation for configured targets.",
-    )
-
-    repo_audit_parser = subparsers.add_parser(
-        "repo-audit",
-        help="Run repository audit checks",
-        description="Scan the repository for portability and hygiene issues.",
-    )
-    repo_audit_parser.add_argument(
-        "extra",
-        nargs=argparse.REMAINDER,
-        help="Arguments forwarded to repo-audit",
-    )
-
-    return parser
-
-
-def _format_syntax_error(result: engine_module.SyntaxValidationResult) -> str:
-    location = ""
-    if result.line is not None and result.column is not None:
-        location = f":{result.line}:{result.column}"
-    elif result.line is not None:
-        location = f":{result.line}"
-
-    detail = result.message or "Unknown error"
-    return f"ERROR [{result.stage}] {result.file_path}{location}: {detail}"
-
-
-def _format_syntax_warning(file_path: Path, message: str) -> str:
-    return f"WARNING [validation] {file_path}: {message}"
+    return app_base_module.build_cli_parser()
 
 
 def run_syntax_check_command(file_path: str) -> int:
-    target_path = Path(file_path)
-    if not target_path.exists() or not target_path.is_file():
-        print(f"ERROR [io] {target_path}: File not found", file=sys.stderr)
-        return 1
-
-    result = engine_module.validate_single_file_syntax(target_path)
-    if result.ok:
-        for warning in result.warnings:
-            print(_format_syntax_warning(result.file_path, warning), file=sys.stderr)
-        print("OK")
-        return 0
-
-    print(_format_syntax_error(result), file=sys.stderr)
-    return 1
+    return app_base_module.run_syntax_check_command(file_path)
 
 
 def run_cli(argv: list[str]) -> int:
-    parser = build_cli_parser()
-    try:
-        args, leftover = parser.parse_known_args(argv)
-    except SystemExit as exc:
-        code = exc.code if isinstance(exc.code, int) else EXIT_USAGE_ERROR
-        return code
-
-    config_path = Path(args.config) if args.config else CONFIG_PATH
-    use_cache = not getattr(args, "no_cache", False)
-    quiet = getattr(args, "quiet", False)
-
-    if args.command == "syntax-check":
-        ctx: redirect_stdout[io.StringIO] | nullcontext = (  # type: ignore[type-arg]
-            redirect_stdout(io.StringIO()) if quiet else nullcontext()
-        )
-        with ctx:
-            return run_syntax_check_command(args.file)
-
-    if args.command == "repo-audit":
-        # Slice original argv so repo_audit_module gets all its own flags unparsed
-        try:
-            idx = next(i for i, a in enumerate(argv) if a == "repo-audit")
-            remaining = list(argv[idx + 1 :])
-        except StopIteration:
-            remaining = []
-        return repo_audit_module.main(remaining) or EXIT_SUCCESS
-
-    if leftover:
-        print(f"sattlint: error: unrecognized arguments: {' '.join(leftover)}", file=sys.stderr)
-        return EXIT_USAGE_ERROR
-
-    if args.command in ("validate-config", "analyze", "docgen"):
-        try:
-            cfg, default_used = load_config(config_path)
-            apply_debug(cfg)
-        except Exception as exc:
-            print(f"ERROR [config] {exc}", file=sys.stderr)
-            return EXIT_USAGE_ERROR
-
-        if args.command == "validate-config":
-            return run_validate_config_command(cfg, config_path=config_path, default_used=default_used) or EXIT_SUCCESS
-
-        if args.command == "analyze":
-            selected_keys = getattr(args, "checks", None) or None
-            return run_analyze_command(cfg, selected_keys=selected_keys, use_cache=use_cache) or EXIT_SUCCESS
-
-        if args.command == "docgen":
-            return run_docgen_command(cfg, use_cache=use_cache) or EXIT_SUCCESS
-
-    parser.print_usage(sys.stderr)
-    return EXIT_USAGE_ERROR
+    return app_base_module.run_cli(
+        argv,
+        config_path=CONFIG_PATH,
+        repo_audit_module=repo_audit_module,
+        build_cli_parser_fn=build_cli_parser,
+        run_syntax_check_command_fn=run_syntax_check_command,
+        load_config_fn=load_config,
+        apply_debug_fn=apply_debug,
+        run_validate_config_command_fn=run_validate_config_command,
+        run_analyze_command_fn=run_analyze_command,
+        run_docgen_command_fn=run_docgen_command,
+        run_format_icf_command_fn=run_format_icf_command,
+        exit_success=EXIT_SUCCESS,
+        exit_usage_error=EXIT_USAGE_ERROR,
+    )
 
 
 def run_validate_config_command(cfg: dict, *, config_path: Path, default_used: bool) -> int:
@@ -633,6 +403,64 @@ def run_docgen_command(
 ) -> int:
     """Generate DOCX documentation for configured targets."""
     return EXIT_SUCCESS
+
+
+def _configured_icf_files(cfg: dict) -> tuple[Path | None, list[Path]]:
+    icf_dir_raw = str(cfg.get("icf_dir", "") or "").strip()
+    if not icf_dir_raw:
+        return None, []
+
+    icf_dir = Path(icf_dir_raw)
+    if not icf_dir.exists() or not icf_dir.is_dir():
+        return icf_dir, []
+
+    icf_files = sorted(path for path in icf_dir.iterdir() if path.is_file() and path.suffix.lower() == ".icf")
+    return icf_dir, icf_files
+
+
+def run_format_icf_command(cfg: dict, *, check: bool = False) -> int:
+    """Format configured ICF files using consistent header spacing."""
+    icf_dir, icf_files = _configured_icf_files(cfg)
+    if icf_dir is None:
+        print("? icf_dir is not set in the config. Set it before running ICF formatting.")
+        return EXIT_USAGE_ERROR
+
+    if not icf_dir.exists() or not icf_dir.is_dir():
+        print(f"? icf_dir does not exist or is not a directory: {icf_dir}")
+        return EXIT_USAGE_ERROR
+
+    if not icf_files:
+        print(f"? No .icf files found in {icf_dir}")
+        return EXIT_USAGE_ERROR
+
+    changed_count = 0
+    unchanged_count = 0
+    action = "Would change" if check else "Changed"
+    verb = "would change" if check else "changed"
+
+    print("\n--- ICF Formatting ---")
+    for icf_file in icf_files:
+        result = format_icf_file(icf_file, check=check)
+        if result.changed:
+            print(f"  {icf_file.name}: {verb}")
+            changed_count += 1
+        else:
+            print(f"  {icf_file.name}: unchanged")
+            unchanged_count += 1
+
+    print("Summary:")
+    print(f"  Files processed: {len(icf_files)}")
+    print(f"  {action}: {changed_count}")
+    print(f"  Unchanged: {unchanged_count}")
+
+    if check and changed_count:
+        return 1
+    return EXIT_SUCCESS
+
+
+def run_icf_formatter(cfg: dict):
+    run_format_icf_command(cfg)
+    pause()
 
 
 def show_config(cfg: dict):
@@ -704,6 +532,10 @@ Main areas:
 
 Quick single-file validation:
   sattlint syntax-check /path/to/Program.s
+
+ICF formatting:
+    sattlint format-icf
+    sattlint format-icf --check
 
 That command is useful when you want a strict parser or transformer check for one file
 without loading a whole workspace.
@@ -1429,6 +1261,11 @@ def interface_communication_submenu(cfg: dict):
                     "1", "MMS interface variables", "Inventory MMSWriteVar or MMSReadVar usage and related checks"
                 ),
                 MenuOption("2", "Validate ICF paths", "Validate ICF entries against each program AST"),
+                MenuOption(
+                    "3",
+                    "Format ICF files",
+                    "Normalize Unit, Journal, Operation, and Group spacing in configured .icf files",
+                ),
                 MenuOption("b", "Back"),
                 MenuOption("q", "Quit"),
             ],
@@ -1445,6 +1282,8 @@ def interface_communication_submenu(cfg: dict):
             run_mms_interface_analysis(cfg)
         elif c == "2":
             run_icf_validation(cfg)
+        elif c == "3":
+            run_icf_formatter(cfg)
         else:
             print("Invalid choice.")
             pause()
@@ -1825,19 +1664,17 @@ def run_mms_interface_analysis(cfg: dict):
 
 def run_icf_validation(cfg: dict):
     """Validate ICF paths against per-program ASTs (non-recursive, report-only)."""
-    icf_dir_raw = cfg.get("icf_dir", "")
-    if not icf_dir_raw:
+    icf_dir, icf_files = _configured_icf_files(cfg)
+    if icf_dir is None:
         print("❌ icf_dir is not set in the config. Set it before running ICF validation.")
         pause()
         return
 
-    icf_dir = Path(icf_dir_raw)
     if not icf_dir.exists() or not icf_dir.is_dir():
         print(f"❌ icf_dir does not exist or is not a directory: {icf_dir}")
         pause()
         return
 
-    icf_files = sorted(p for p in icf_dir.iterdir() if p.is_file() and p.suffix.lower() == ".icf")
     if not icf_files:
         print(f"⚠ No .icf files found in {icf_dir}")
         pause()

@@ -9,7 +9,7 @@ from typing import Any, ClassVar, cast
 
 import pytest
 
-from sattlint import app
+from sattlint import app, app_base
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.framework import AnalyzerSpec, Issue, SimpleReport
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys
@@ -186,41 +186,41 @@ def noop_screen(monkeypatch):
 def test_load_and_save_config(tmp_path, capsys):
     config_path = tmp_path / "config.toml"
 
-    cfg, created = app.load_config(config_path)
+    cfg, created = app_base.load_config(config_path)
     assert created is True
     assert cfg["mode"] == "official"
     assert config_path.exists()
 
     cfg["analyzed_programs_and_libraries"] = ["RootProgram"]
-    app.save_config(config_path, cfg)
+    app_base.save_config(config_path, cfg)
     out = capsys.readouterr().out
     assert "Config saved" in out
 
-    loaded, created = app.load_config(config_path)
+    loaded, created = app_base.load_config(config_path)
     assert created is False
     assert loaded["analyzed_programs_and_libraries"] == ["RootProgram"]
 
 
 def test_save_config_rejects_none(tmp_path):
     config_path = tmp_path / "config.toml"
-    cfg = cast(dict[str, object], app.DEFAULT_CONFIG.copy())
+    cfg = cast(dict[str, object], app_base.DEFAULT_CONFIG.copy())
     cfg["analyzed_programs_and_libraries"] = None
     with pytest.raises(ValueError):
-        app.save_config(config_path, cfg)
+        app_base.save_config(config_path, cfg)
 
 
 def test_clear_screen_uses_windows_console_helper(monkeypatch):
     calls: list[str] = []
 
-    monkeypatch.setattr(app.os, "name", "nt")
-    monkeypatch.setattr(app, "_clear_windows_console", lambda: calls.append("clear"))
+    monkeypatch.setattr(app_base.os, "name", "nt")
+    monkeypatch.setattr(app_base, "_clear_windows_console", lambda: calls.append("clear"))
     monkeypatch.setattr(
-        app.sys,
+        app_base.sys,
         "stdout",
         SimpleNamespace(flush=lambda: None, write=lambda _text: None),
     )
 
-    app.clear_screen()
+    app_base.clear_screen()
 
     assert calls == ["clear"]
 
@@ -231,16 +231,16 @@ def test_clear_screen_falls_back_to_ansi_when_windows_clear_fails(monkeypatch):
     def _raise_os_error() -> None:
         raise OSError("clear failed")
 
-    monkeypatch.setattr(app.os, "name", "nt")
-    monkeypatch.setattr(app.os, "system", lambda _command: 1)
-    monkeypatch.setattr(app, "_clear_windows_console", _raise_os_error)
+    monkeypatch.setattr(app_base.os, "name", "nt")
+    monkeypatch.setattr(app_base.os, "system", lambda _command: 1)
+    monkeypatch.setattr(app_base, "_clear_windows_console", _raise_os_error)
     monkeypatch.setattr(
-        app.sys,
+        app_base.sys,
         "stdout",
         SimpleNamespace(flush=lambda: None, write=lambda text: writes.append(text)),
     )
 
-    app.clear_screen()
+    app_base.clear_screen()
 
     assert writes == ["\033[2J\033[H"]
 
@@ -252,20 +252,20 @@ def test_clear_screen_falls_back_to_cls_before_ansi(monkeypatch):
     def _raise_os_error() -> None:
         raise OSError("clear failed")
 
-    monkeypatch.setattr(app.os, "name", "nt")
-    monkeypatch.setattr(app, "_clear_windows_console", _raise_os_error)
+    monkeypatch.setattr(app_base.os, "name", "nt")
+    monkeypatch.setattr(app_base, "_clear_windows_console", _raise_os_error)
     monkeypatch.setattr(
-        app.os,
+        app_base.os,
         "system",
         lambda command: calls.append(command) or 0,
     )
     monkeypatch.setattr(
-        app.sys,
+        app_base.sys,
         "stdout",
         SimpleNamespace(flush=lambda: None, write=lambda text: writes.append(text)),
     )
 
-    app.clear_screen()
+    app_base.clear_screen()
 
     assert calls == ["cls"]
     assert writes == []
@@ -287,14 +287,14 @@ def test_configure_windows_console_api_sets_wide_char_signature():
         SetConsoleCursorPosition = _FakeCall()
 
     class _Coord(ctypes.Structure):  # type: ignore[misc]
-        _fields_ = []
+        _fields_: ClassVar[Any] = []
 
     class _BufferInfo(ctypes.Structure):  # type: ignore[misc]
-        _fields_ = []
+        _fields_: ClassVar[Any] = []
 
     kernel32 = _FakeKernel32()
 
-    app._configure_windows_console_api(kernel32, _Coord, _BufferInfo)
+    app_base._configure_windows_console_api(kernel32, _Coord, _BufferInfo)
 
     assert kernel32.FillConsoleOutputCharacterW.argtypes[1] is ctypes.wintypes.WCHAR  # type: ignore[union-attr]
     assert kernel32.FillConsoleOutputCharacterW.restype is ctypes.wintypes.BOOL  # type: ignore[union-attr]
@@ -374,6 +374,7 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
     monkeypatch.setattr(app, "run_module_tree_debug", lambda *_: record("module-tree"))
     monkeypatch.setattr(app, "run_mms_interface_analysis", lambda *_: record("mms"))
     monkeypatch.setattr(app, "run_icf_validation", lambda *_: record("icf"))
+    monkeypatch.setattr(app, "run_icf_formatter", lambda *_: record("icf-format"))
     monkeypatch.setattr(app, "run_comment_code_analysis", lambda *_: record("comment"))
     monkeypatch.setattr(
         app,
@@ -423,6 +424,7 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
         "4",
         "1",
         "2",
+        "3",
         "b",
         "5",
         "1",
@@ -452,6 +454,7 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_conte
     assert "module-tree" in calls
     assert "mms" in calls
     assert "icf" in calls
+    assert "icf-format" in calls
     assert "comment" in calls
 
 
