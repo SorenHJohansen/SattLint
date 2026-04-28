@@ -36,7 +36,6 @@ See `.github/instructions/sattline-invariants.instructions.md` for `src/**` and 
 - Validation: `sattlint syntax-check` (parser), targeted `pytest` (Python/CLI), pipeline/audit (devtools).
 - No VS Code test runner; use repo venv directly.
 - Match first validation to surface changed. Start narrow, then widen.
-- New SattLine unit: create `.g`, `.l`, `.s` triplet. Verify semantic completeness after syntax-check.
 - Claim files in `.github/coordination/current-work.md` for parallel work.
 - When changing CLI menus, update `tests/test_app.py` in same change.
 
@@ -62,14 +61,6 @@ See `.github/instructions/sattline-invariants.instructions.md` for `src/**` and 
 - `sattlint syntax-check` is strict. No new silent fallback behavior.
 - Workspace/LSP may degrade only in established ways (unavailable deps, dirty buffers).
 - Preserve distinction between single-file strict validation and dependency-aware workspace loading.
-
-## Unit Scaffolding Semantic Validation (Critical)
-
-**Syntax-check ≠ completion.** After syntax-check passes, verify:
-1. Main library: MODULEPARAMETERS + LOCALVARIABLES + SUBMODULES invoking support-lib types.
-2. Support library: MODULEDEFINITIONS for all types referenced by main lib.
-3. Cross-library: grep SUBMODULE type names, verify exist in support library TYPEDEFINITIONS.
-If semantic checks fail, do not mark work complete.
 
 ## Repo-Audit And Public-Readiness
 
