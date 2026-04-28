@@ -10,8 +10,9 @@ repos:
     hooks:
       - id: pyright
         name: pyright
-        entry: .venv/Scripts/python.exe -m pyright
-        language: system
+        language: python
+        entry: pyright
+        additional_dependencies: [pyright>=1.1.380]
         pass_filenames: false
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
