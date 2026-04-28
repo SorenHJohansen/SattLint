@@ -1,7 +1,6 @@
 name: Lint
 
 
-
 on: [push, pull_request]
 
 jobs:
@@ -33,3 +32,65 @@ jobs:
 
       - name: Run Ruff Format
         run: uvx ruff format --check src
+
+  doc-gardener:
+    name: Doc Gardener
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Run doc-gardener scan
+        run: sattlint-doc-gardener
+        continue-on-error:
+
+  layer-lint:
+    name: Layer Linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Run layer linter
+        run: sattlint-layer-lint
+
+  review:
+    name: Agent Review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev,test]"
+
+      - name: Run agent review
+        run: sattlint-review
+        continue-on-error: true
