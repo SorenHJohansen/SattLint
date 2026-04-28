@@ -1,34 +1,42 @@
-# AGENTS.md - AI Working Guide for SattLint
+# AGENTS.md - Table of Contents
 
-> This file is the primary AI working guide for stable SattLint repo conventions, workflows, safety rules, and critical invariants.
-> Direct user instructions, code, tests, and clearly newer repo documentation take precedence if this file is stale.
-> Update this file when architecture boundaries, entry points, workflows, or critical invariants materially change.
+> Primary AI guide for SattLint conventions, workflows, and invariants.
+> Direct user instructions, code, tests take precedence if stale.
+> Update only when architecture boundaries, entry points, or critical invariants materially change.
 
----
+## Quick Reference
 
-## Purpose
+**Communication:** Terse. Drop articles/filler. Pattern: `[thing] [action] [reason]. [next step].`
+**Boundaries:** Code/commits/PRs written normal. No terse mode for security warnings or irreversible actions.
 
-- Keep durable agent-facing guidance here.
-- Keep this file concise enough to be used as an instruction file rather than a handbook.
-- Move long examples, detailed architecture notes, and extended reference material into repo docs.
-- Use `docs/ai-agent-reference.md` for deeper SattLine examples, AST details, file maps, and common task snippets.
+## Repo Map
 
----
+| Path | Purpose |
+|------|---------|
+| `src/sattline_parser/` | Parser core: grammar, transformer, AST models |
+| `src/sattlint/` | CLI, config, analyzers, reporting, doc generation |
+| `src/sattlint/core/` | Shared semantic/document helpers for editor code |
+| `src/sattlint_lsp/` | LSP server, workspace store, incremental parser |
+| `vscode/sattline-vscode/` | No-build VS Code client |
+| `tests/` | Fixtures and regression coverage |
+| `artifacts/` | Machine-readable analysis/audit outputs |
 
-## Repo At A Glance
+## Key Docs (Progressive Disclosure)
 
-- `src/sattline_parser/` contains the parser core: grammar, transformer, AST models, and parser-side utilities.
-- `src/sattlint/` contains the CLI, config, analyzers, reporting, doc generation, and compatibility wrappers.
-- `src/sattlint/core/` contains the shared semantic and document helpers used by editor-facing code.
-- `src/sattlint_lsp/` contains the incremental parser backend, workspace snapshot store, and language server.
-- `vscode/sattline-vscode/` contains the no-build VS Code client.
-- `tests/` contains fixtures and regression coverage.
-- `artifacts/analysis/` contains machine-readable outputs from the dev-analysis pipeline.
-- `artifacts/audit/` contains machine-readable outputs from the repository audit runner.
+| Doc | When to Read |
+|-----|-------------|
+| `ARCHITECTURE.md` | Architecture overview, domains, layering |
+| `docs/design-docs/core-beliefs.md` | Golden principles, agent legibility rules |
+| `docs/design-docs/index.md` | Design docs index |
+| `docs/exec-plans/index.md` | Execution plans template and directory structure |
+| `docs/exec-plans/tech-debt-tracker.md` | Known technical debt |
+| `docs/quality-score.md` | Domain quality grades |
+| `.github/instructions/*.md` | Subsystem-scoped instructions |
+| `docs/references/ai-agent-reference.md` | SattLine examples, AST details, task snippets |
 
----
+## Critical Invariants (Auto-Loaded)
 
-## Agent Workflow
+See `.github/instructions/sattline-invariants.instructions.md` for `src/**` and `tests/**` edits.
 
 - **Communication style:** Respond terse. Drop articles (a/an/the), filler (just/really/basically), pleasantries, hedging. Fragments OK. Short synonyms. Technical terms exact. Code unchanged.
 - Pattern: [thing] [action] [reason]. [next step].
@@ -52,24 +60,28 @@
 - Prefer subsystem-scoped instructions under `.github/instructions/` over growing `AGENTS.md`; keep global guidance stable and push file-specific detail into targeted instruction files.
 - When adding AI customizations, optimize for lower context waste: concise frontmatter, keyword-rich descriptions, narrow `applyTo` globs, and machine-readable or scriptable behavior when practical.
 
----
+## Workflow Rules
+
+- Inspect repo structure, current code, tests before changes
+- Reuse existing patterns/analyzers/tests before new abstractions
+- Validation: `sattlint syntax-check` (parser), targeted `pytest` (Python/CLI), pipeline/audit (devtools)
+- No VS Code test runner; use repo venv directly
+- Claim files in `.github/coordination/current-work.md` for parallel work
+- Update `tests/test_app.py` when changing CLI menus
+- Prefer incremental, reviewable changes over large rewrites
+- Propose plan before broad or multi-file changes
+- When adding AI customizations, optimize for lower context waste
 
 ## Change Boundaries
 
-### Allowed
+**Allowed:** analyzers, validators, tests, docs, helper scripts, CI wiring, small refactors
+**Avoid:** broad rewrites, duplicate tooling, silent behavior changes, weakening validation
 
-- analyzers, validators, tests, docs, helper scripts, config or CI wiring
-- small refactors required to support the requested work
-- low-risk fixes discovered during implementation
-- targeted editor or LSP improvements that stay within established architecture
+## Security
 
-### Avoid
-
-- broad rewrites without clear justification and regression coverage
-- duplicate or overlapping tooling when existing repo tooling can be extended
-- silent user-facing behavior changes
-- deleting major functionality without strong evidence, explanation, and replacement intent
-- weakening strict validation semantics just to make fixtures or tests pass
+- Redact secrets/PII in outputs (report by type/path, not raw value)
+- Watch for `SQHJ`, local paths, machine-specific behavior
+- Prefer repo-relative paths
 
 ---
 
@@ -157,46 +169,9 @@ See `.github/instructions/repo-audit.instructions.md` (auto-loaded for `src/satt
 
 ## Definition Of Done
 
-- Relevant tests are added or updated.
-- Appropriate validation commands are run.
-- Docs are updated when workflows, behavior, or architecture-facing usage materially change.
-- `AGENTS.md` is updated only when stable conventions, workflows, entry points, or critical invariants materially change.
-- The LSP is restarted when the change touches the language server, shared semantic core, editor facade, or VS Code client.
+- Tests added/updated
+- Validation commands run
+- Docs updated on material change
+- LSP restarted if `src/sattlint_lsp/`, `src/sattlint/core/`, `editor_api.py`, or `vscode/` touched
 
----
-
-## SattLint Workflow And Architecture
-
-- Analysis selection is driven by the config list `analyzed_programs_and_libraries`, not by a single `root` entry.
-- Reports should stay scoped to explicitly analyzed targets even when dependencies are loaded for resolution.
-- Program-target analysis should not let external library module code create findings or usage marks for non-root-origin moduletype definitions.
-- The parser core lives under `src/sattline_parser/`; compatibility wrappers remain under `src/sattlint/grammar/`, `src/sattlint/models/ast_model.py`, and `src/sattlint/transformer/sl_transformer.py`.
-- Shared editor semantics live under `src/sattlint/core/`; `src/sattlint/editor_api.py` remains a compatibility facade.
-- Workspace snapshot loading and caching are centralized in `src/sattlint_lsp/workspace_store.py`.
-- The VS Code client is no-build and lives under `vscode/sattline-vscode/`.
-- If you materially change these boundaries, update this file and the deeper reference doc.
-
----
-
-## Critical SattLine And SattLint Invariants
-
-See `.github/instructions/sattline-invariants.instructions.md` (auto-loaded for `src/**` and `tests/**` edits).
-
-Key rules to remember here:
-- Grammar requires three header `STRING` lines before `BasePicture`.
-- Identifiers are case-insensitive; compare with `.casefold()`.
-- Do not weaken `syntax-check` strict semantics.
-- Do not collapse workspace fallback behavior into strict single-file validation.
-- Restart LSP after touching `src/sattlint_lsp/`, `src/sattlint/core/`, `src/sattlint/editor_api.py`, or `vscode/sattline-vscode/`.
-
----
-
-## Reference Material
-
-- For extended SattLine examples, AST notes, file maps, and task snippets, see `docs/ai-agent-reference.md`.
-- For domain language details, see the `sattline_*_reference.md` files and `SattLineReferenceDocs/`.
-- For parser and analyzer behavior, prefer current code and tests over stale prose.
-
----
-
-*Last updated: 2026-04-24*
+*Last updated: 2026-04-28*

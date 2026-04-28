@@ -29,13 +29,11 @@ Not yet decoded enough for a field map:
 Main samples used for the first pass:
 
 - [sattline_graphics_reference.md](sattline_graphics_reference.md)
-- [../../tests/fixtures/sample_sattline_files/BatchDemo.g](../../tests/fixtures/sample_sattline_files/BatchDemo.g)
 - [../../tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.g](../../tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.g)
-- [../../Libs/HA/ProjectLib/KaHAApplLib.g](../../Libs/HA/ProjectLib/KaHAApplLib.g)
-- [../../Libs/HA/ABBLib/NSupportLib.y](../../Libs/HA/ABBLib/NSupportLib.y)
-- [../../Libs/HA/ABBLib/EventLib.y](../../Libs/HA/ABBLib/EventLib.y)
-- [../../Libs/HA/ABBLib/BatchReportzLib.y](../../Libs/HA/ABBLib/BatchReportzLib.y)
-- [../../Libs/HA/NNELib/nnesystem.y](../../Libs/HA/NNELib/nnesystem.y)
+- [../../tests/fixtures/sample_sattline_files/LinterTestProgram.g](../../tests/fixtures/sample_sattline_files/LinterTestProgram.g)
+
+### Additional Sources
+
 - user-supplied draft test program with eight `CompositeObject` placeholders and matching `.g` sidecar: default then customized `TrendCurve`, `ColumnDiagram`, `StringSelector`, and `Alarmlist`
 - user-confirmed rule: `.g` and `.y` use the exact same family mapping
 
@@ -163,11 +161,9 @@ User-confirmed picture-display fields from live examples:
 - the line immediately before that flag is the zoomable source, either literal or variable
 - the first line of the record can carry an activate variable, like modules do
 - the numeric line before subtype `2` is the default line colour for the picture display
-- the first payload line after subtype `2` can also carry an optional line-colour variable binding
+ - the first payload line after subtype `2` can also carry an optional line-colour variable binding
 
-Sampled indexed block from [../../Libs/HA/ProjectLib/KaHAApplLib.g](../../Libs/HA/ProjectLib/KaHAApplLib.g):
-
-```text
+ ```text
 5
  Lit  True  4 True  0.00000E+00 0.00000E+00
   1.00000E+00 7.14286E-02
@@ -317,11 +313,9 @@ Working interpretation:
 
 ### StringSelector: subtype `1`
 
-String selectors are easier to identify because the payload is visibly a title, an "otherwise" string, and an integer-to-string table.
+ String selectors are easier to identify because the payload is visibly a title, an "otherwise" string, and an integer-to-string table.
 
-Sample block from [../../Libs/HA/ABBLib/BatchReportzLib.y](../../Libs/HA/ABBLib/BatchReportzLib.y):
-
-```text
+ ```text
 5
  None  True   5.50000E-001 0.00000E+000
   7.50000E-001 5.00001E-002
@@ -370,7 +364,7 @@ The dedicated draft test program also confirms two additional behaviors for subt
 
 ## Family `1`: TrendCurve Records in `.g` and `.y`
 
-Trend-style blocks in [../../Libs/HA/NNELib/nnesystem.y](../../Libs/HA/NNELib/nnesystem.y) and in the user-supplied draft test `.g` begin with family code `1` and have a much larger payload than family `5`.
+Trend-style blocks in the user-supplied draft test `.g` begin with family code `1` and have a much larger payload than family `5`.
 
 High-confidence indicators inside one sampled block:
 
@@ -416,7 +410,7 @@ This is enough to identify family `2` reliably as `ColumnDiagram`, but not yet e
 
 ## Family `4`: EventList or AlarmList Records in `.y`
 
-Very compact records in [../../Libs/HA/ABBLib/EventLib.y](../../Libs/HA/ABBLib/EventLib.y), [../../Libs/HA/ABBLib/NSupportLib.y](../../Libs/HA/ABBLib/NSupportLib.y), and the user-supplied draft test `.g` look like serialized event-list or alarm-list widgets.
+Very compact records in the user-supplied draft test `.g` look like serialized event-list or alarm-list widgets.
 
 Sample block:
 

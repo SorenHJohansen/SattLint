@@ -71,7 +71,7 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
-    "--cov-fail-under=19",
+    "--cov-fail-under=100",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
@@ -88,6 +88,10 @@ sattlint-lsp = "sattlint_lsp.server:cli"
 sattlint-analysis-pipeline = "sattlint.devtools.pipeline:main"
 sattlint-corpus-runner = "sattlint.devtools.corpus:main"
 sattlint-repo-audit = "sattlint.devtools.repo_audit:main"
+sattlint-doc-gardener = "sattlint.devtools.doc_gardener:main"
+sattlint-layer-lint = "sattlint.devtools.layer_linter:main"
+sattlint-review = "sattlint.devtools.review_tool:main"
+sattlint-observability = "sattlint.devtools.observability:main"
 sattlint-trace = "sattlint.tracing:cli"
 
 [tool.ruff]
