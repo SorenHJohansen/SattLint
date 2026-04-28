@@ -17,7 +17,7 @@ jobs:
           - ubuntu-latest
           - windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -40,7 +40,7 @@ jobs:
     name: Doc Gardener
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -61,7 +61,7 @@ jobs:
     name: Layer Linter
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -81,7 +81,7 @@ jobs:
     name: Agent Review
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Python
         uses: actions/setup-python@v6
