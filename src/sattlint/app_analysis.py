@@ -4,10 +4,11 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
 
+from sattline_parser.models.ast_model import BasePicture
+
 from . import app_support as app_support_module
 from . import console as console_module
 from . import engine as engine_module
-from .casefolding import casefold_equal, casefold_key
 from .analyzers import variable_usage_reporting as variables_reporting_module
 from .analyzers.comment_code import analyze_comment_code_files
 from .analyzers.framework import AnalysisContext
@@ -25,7 +26,7 @@ from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variable_usage_reporting import debug_variable_usage
 from .analyzers.variables import IssueKind, analyze_variables, filter_variable_report
 from .cache import ASTCache, compute_cache_key, get_cache_dir
-from sattline_parser.models.ast_model import BasePicture
+from .casefolding import casefold_equal, casefold_key
 from .models.project_graph import ProjectGraph
 from .reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, VariablesReport
 
@@ -515,7 +516,9 @@ def module_analysis_submenu(
                 menu_option_factory("1", "Compare module variants", "Compare matching module names across instances"),
                 menu_option_factory("2", "Find module instances", "List where a module name appears in the target"),
                 menu_option_factory("3", "Inspect module tree", "Print the module tree for debugging structure"),
-                menu_option_factory("4", "Validate graphics rules", "Check configured graphics rules against loaded modules"),
+                menu_option_factory(
+                    "4", "Validate graphics rules", "Check configured graphics rules against loaded modules"
+                ),
                 menu_option_factory("b", "Back", ""),
                 menu_option_factory("q", "Quit", ""),
             ],
@@ -643,7 +646,8 @@ def analyzer_catalog_menu(
             menu_option_factory("1", "Run full analyzer suite", "Run every default analyzer in sequence"),
         ]
         options.extend(
-            menu_option_factory(str(index), spec.name, spec.description) for index, spec in enumerate(analyzers, start=2)
+            menu_option_factory(str(index), spec.name, spec.description)
+            for index, spec in enumerate(analyzers, start=2)
         )
         options.extend([menu_option_factory("b", "Back", ""), menu_option_factory("q", "Quit", "")])
         print_menu_fn(
@@ -692,9 +696,15 @@ def advanced_analysis_menu(
         print_menu_fn(
             "Advanced analysis & debug",
             [
-                menu_option_factory("1", "Datatype usage analysis", "Trace field-level usage for a selected variable name"),
-                menu_option_factory("2", "Variable usage trace", "Show fields and locations for a selected variable name"),
-                menu_option_factory("3", "Module local variable analysis", "Inspect field usage inside one module path"),
+                menu_option_factory(
+                    "1", "Datatype usage analysis", "Trace field-level usage for a selected variable name"
+                ),
+                menu_option_factory(
+                    "2", "Variable usage trace", "Show fields and locations for a selected variable name"
+                ),
+                menu_option_factory(
+                    "3", "Module local variable analysis", "Inspect field usage inside one module path"
+                ),
                 menu_option_factory("b", "Back", ""),
                 menu_option_factory("q", "Quit", ""),
             ],
@@ -742,11 +752,15 @@ def analysis_menu(
             [
                 menu_option_factory("1", "Full analyzer suite", "Run every enabled registry-backed analyzer"),
                 menu_option_factory("2", "Variable issues", "Focused variable reports and investigation tools"),
-                menu_option_factory("3", "Structure & modules", "Inspect module layout, duplication, and tree structure"),
+                menu_option_factory(
+                    "3", "Structure & modules", "Inspect module layout, duplication, and tree structure"
+                ),
                 menu_option_factory("4", "Interfaces & communication", "Check MMS mappings and validate ICF paths"),
                 menu_option_factory("5", "Code quality", "Readability and maintainability checks"),
                 menu_option_factory("6", "Analyzer catalog", "Choose one registry-backed analyzer by name"),
-                menu_option_factory("7", "Advanced analysis & debug", "Targeted tracing for variables and module locals"),
+                menu_option_factory(
+                    "7", "Advanced analysis & debug", "Targeted tracing for variables and module locals"
+                ),
                 menu_option_factory("b", "Back", ""),
                 menu_option_factory("q", "Quit", ""),
             ],

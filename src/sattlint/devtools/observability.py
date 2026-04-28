@@ -2,10 +2,9 @@
 
 import json
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 ARTIFACTS_DIR = Path("artifacts")
 OBSERVABILITY_FILE = ARTIFACTS_DIR / "observability.json"
@@ -14,15 +13,13 @@ OBSERVABILITY_FILE = ARTIFACTS_DIR / "observability.json"
 def run_command(cmd: list[str]) -> tuple[int, str, str]:
     """Run a command and return (returncode, stdout, stderr)."""
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, check=False
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         return result.returncode, result.stdout, result.stderr
     except Exception as e:
         return 1, "", str(e)
 
 
-def get_test_metrics() -> Dict[str, Any]:
+def get_test_metrics() -> dict[str, Any]:
     """Get test-related metrics."""
     metrics = {
         "test_count": 0,
@@ -38,7 +35,7 @@ def get_test_metrics() -> Dict[str, Any]:
     return metrics
 
 
-def get_coverage_metrics() -> Dict[str, Any]:
+def get_coverage_metrics() -> dict[str, Any]:
     """Get coverage metrics from coverage.xml if available."""
     metrics = {
         "line_coverage": 0.0,
@@ -48,6 +45,7 @@ def get_coverage_metrics() -> Dict[str, Any]:
     if coverage_file.exists():
         try:
             import xml.etree.ElementTree as ET
+
             tree = ET.parse(coverage_file)
             root = tree.getroot()
             # Get line-rate and branch-rate from the root coverage element
@@ -62,7 +60,7 @@ def get_coverage_metrics() -> Dict[str, Any]:
     return metrics
 
 
-def get_lint_metrics() -> Dict[str, Any]:
+def get_lint_metrics() -> dict[str, Any]:
     """Get lint metrics from ruff."""
     metrics = {
         "ruff_warnings": 0,
@@ -70,7 +68,7 @@ def get_lint_metrics() -> Dict[str, Any]:
         "ruff_fixable": 0,
     }
     # Run ruff and count warnings/errors
-    returncode, stdout, stderr = run_command(["uvx", "ruff", "check", "src"])
+    _, stdout, _ = run_command(["uvx", "ruff", "check", "src"])
     # Parse output to count warnings and errors
     # Simple approach: each line starting with src/ and containing a warning/error
     for line in stdout.splitlines():
@@ -80,13 +78,13 @@ def get_lint_metrics() -> Dict[str, Any]:
             if "error" in line.lower():
                 metrics["ruff_errors"] += 1
     # Check for fixable errors
-    returncode, stdout, stderr = run_command(["uvx", "ruff", "check", "--fix", "--output-format=concise", "src"])
+    _, _, _ = run_command(["uvx", "ruff", "check", "--fix", "--output-format=concise", "src"])
     # In a real implementation, we'd compare before/after or use a specific flag
     # For now, we'll leave fixable as 0
     return metrics
 
 
-def get_build_metrics() -> Dict[str, Any]:
+def get_build_metrics() -> dict[str, Any]:
     """Get build/install metrics."""
     metrics = {
         "install_success": False,
@@ -100,7 +98,7 @@ def get_build_metrics() -> Dict[str, Any]:
     return metrics
 
 
-def collect_all_metrics() -> Dict[str, Any]:
+def collect_all_metrics() -> dict[str, Any]:
     """Collect all observability metrics."""
     return {
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -111,14 +109,14 @@ def collect_all_metrics() -> Dict[str, Any]:
     }
 
 
-def write_metrics(metrics: Dict[str, Any]) -> None:
+def write_metrics(metrics: dict[str, Any]) -> None:
     """Write metrics to the observability file."""
     ARTIFACTS_DIR.mkdir(exist_ok=True)
     with open(OBSERVABILITY_FILE, "w") as f:
         json.dump(metrics, f, indent=2)
 
 
-def read_metrics() -> Dict[str, Any]:
+def read_metrics() -> dict[str, Any]:
     """Read metrics from the observability file."""
     if OBSERVABILITY_FILE.exists():
         with open(OBSERVABILITY_FILE) as f:

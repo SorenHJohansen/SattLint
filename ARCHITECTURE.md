@@ -2,9 +2,9 @@
 
 This document describes the high-level architecture of SattLint. If you want to familiarize yourself with the code base, you are just in the right place!
 
-See also the [design docs](/home/sorenhj/Workspace/GitHub.com/SattLint/docs/design-docs/index.md), which discuss design decisions in more detail.
+See also the [design docs](docs/design-docs/index.md), which discuss design decisions in more detail.
 
-Also see [core beliefs](/home/sorenhj/Workspace/GitHub.com/SattLint/docs/design-docs/core-beliefs.md), which define the golden principles that guide all development.
+Also see [core beliefs](docs/design-docs/core-beliefs.md), which define the golden principles that guide all development.
 
 ## Bird's Eye View
 

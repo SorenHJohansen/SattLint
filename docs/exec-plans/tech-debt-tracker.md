@@ -28,6 +28,8 @@ Last scan: 2026-04-28
 | Date | Findings | Action Taken |
 |------|-----------|--------------|
 | 2026-04-28 | 0 findings | Doc-gardening scan |
+| 2026-04-28 | 1 findings | Doc-gardening scan |
+| 2026-04-28 | 0 findings | Doc-gardening scan |
 | 2026-04-28 | AGENTS.md 172→100 lines, docs/ restructuring | Initial restructure |
 | (next scan due: weekly via CI) | | |
 
