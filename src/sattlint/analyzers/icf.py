@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleTypeDef,
@@ -15,6 +15,7 @@ from ..models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from ..reporting.icf_report import (
     ICFEntry,
     ICFResolvedEntry,
@@ -96,10 +97,12 @@ def _cf(value: str) -> str:
 
 def _decode_icf_text(raw_bytes: bytes) -> tuple[str, str, bool]:
     if raw_bytes.startswith(codecs.BOM_UTF8):
+        bom_stripped = raw_bytes[len(codecs.BOM_UTF8) :]
         try:
-            return raw_bytes[len(codecs.BOM_UTF8) :].decode("utf-8"), "utf-8", True
+            return bom_stripped.decode("utf-8"), "utf-8", True
         except UnicodeDecodeError:
-            pass
+            # Keep decoding resilient for malformed BOM-prefixed payloads.
+            raw_bytes = bom_stripped
 
     for encoding in ("utf-8", "cp1252", "latin-1"):
         try:

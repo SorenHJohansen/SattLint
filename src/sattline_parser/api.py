@@ -25,10 +25,11 @@ __all__ = [
     "read_text_with_fallback",
 ]
 
+from sattline_parser.grammar.parser_decode import is_compressed, preprocess_sl_text
+from sattline_parser.models.ast_model import BasePicture
+from sattline_parser.transformer.sl_transformer import SLTransformer
+
 from .grammar import constants as const
-from .grammar.parser_decode import is_compressed, preprocess_sl_text
-from .models.ast_model import BasePicture
-from .transformer.sl_transformer import SLTransformer
 from .utils.text_processing import strip_sl_comments
 
 GRAMMAR_PATH = Path(__file__).resolve().parent / "grammar" / "sattline.lark"

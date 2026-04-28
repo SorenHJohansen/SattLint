@@ -23,6 +23,7 @@ from defusedxml import ElementTree  # type: ignore[import-untyped]
 from sattlint import app as app_module
 from sattlint import config as config_module
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
+from sattlint.devtools import coverage_reports as _coverage_reports_module
 from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS, artifact_reports_map
 from sattlint.devtools.pipeline_artifacts import write_json_artifact
 from sattlint.devtools.progress_reporting import ProgressReporter
@@ -882,8 +883,6 @@ def _find_cli_findings() -> list[Finding]:
 # Coverage summary public API (delegates to coverage_reports module to avoid
 # introducing a circular import with pipeline.py)
 # ---------------------------------------------------------------------------
-
-from sattlint.devtools import coverage_reports as _coverage_reports_module
 
 
 def build_coverage_summary_report(root: Path) -> dict[str, Any]:

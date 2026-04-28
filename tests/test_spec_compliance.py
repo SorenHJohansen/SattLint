@@ -1,7 +1,4 @@
-from sattlint import constants as const
-from sattlint.analyzers.registry import get_default_analyzers
-from sattlint.analyzers.spec_compliance import analyze_spec_compliance
-from sattlint.models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleCode,
@@ -16,6 +13,9 @@ from sattlint.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+from sattlint import constants as const
+from sattlint.analyzers.registry import get_default_analyzers
+from sattlint.analyzers.spec_compliance import analyze_spec_compliance
 
 
 def _hdr(name: str) -> ModuleHeader:

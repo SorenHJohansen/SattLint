@@ -2,7 +2,7 @@
 
 import pickle
 
-from sattlint.models.ast_model import FloatLiteral, IntLiteral, SourceSpan
+from sattline_parser.models.ast_model import FloatLiteral, IntLiteral, SourceSpan
 
 
 def test_int_literal_pickle_round_trip_preserves_span():

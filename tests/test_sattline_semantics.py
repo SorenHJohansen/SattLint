@@ -1,11 +1,5 @@
 from sattline_parser import parse_source_text as parser_core_parse_source_text
-from sattlint import constants as const
-from sattlint.analyzers.registry import get_default_analyzers
-from sattlint.analyzers.sattline_semantics import (
-    analyze_sattline_semantics,
-    get_sattline_semantic_rule_groups,
-)
-from sattlint.models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     Equation,
@@ -24,6 +18,12 @@ from sattlint.models.ast_model import (
     Simple_DataType,
     SingleModule,
     Variable,
+)
+from sattlint import constants as const
+from sattlint.analyzers.registry import get_default_analyzers
+from sattlint.analyzers.sattline_semantics import (
+    analyze_sattline_semantics,
+    get_sattline_semantic_rule_groups,
 )
 from sattlint.tracing import detect_unreachable_sequence_logic
 

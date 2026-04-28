@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from ..models.ast_model import BasePicture, Simple_DataType, Variable
+from sattline_parser.models.ast_model import BasePicture, Simple_DataType, Variable
 
 
 def _cf(s: str) -> str:

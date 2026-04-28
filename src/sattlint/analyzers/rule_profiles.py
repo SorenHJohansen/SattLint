@@ -259,8 +259,34 @@ def _resolve_issue_rule(issue_kind: str) -> SemanticRule | None:
     return _EXTRA_RULES_BY_KIND.get(issue_kind) or get_rule_for_framework_issue_kind(issue_kind)
 
 
+def _normalized_issue_kind(issue: Any) -> str | None:
+    raw_kind = getattr(issue, "kind", None)
+    if raw_kind is None:
+        return None
+    kind_value = getattr(raw_kind, "value", raw_kind)
+    kind_text = str(kind_value).strip()
+    return kind_text or None
+
+
+def _issue_has_rule_metadata(issue: Any) -> bool:
+    return all(hasattr(issue, attr) for attr in ("rule_id", "severity", "confidence", "explanation", "suggestion"))
+
+
+def _derived_rule_id(issue: Any) -> str | None:
+    normalized_kind = _normalized_issue_kind(issue)
+    if normalized_kind is None:
+        return None
+    rule = _resolve_issue_rule(normalized_kind)
+    return rule.id if rule is not None else None
+
+
 def materialize_issue_metadata(issue: Any) -> Any:
-    rule = _resolve_issue_rule(issue.kind)
+    if not _issue_has_rule_metadata(issue):
+        return issue
+    normalized_kind = _normalized_issue_kind(issue)
+    if normalized_kind is None:
+        return issue
+    rule = _resolve_issue_rule(normalized_kind)
     if rule is None:
         return issue
     return replace(
@@ -275,12 +301,15 @@ def materialize_issue_metadata(issue: Any) -> Any:
 
 def apply_rule_profile_to_issue(issue: Any, profile: RuleProfile) -> Any | None:
     materialized = materialize_issue_metadata(issue)
-    if materialized.rule_id in set(profile.disabled_rules):
+    resolved_rule_id = getattr(materialized, "rule_id", None) or _derived_rule_id(materialized)
+    if resolved_rule_id in set(profile.disabled_rules):
         return None
-    if materialized.rule_id is None:
+    if resolved_rule_id is None:
         return materialized
-    severity = (profile.severity_overrides or {}).get(materialized.rule_id, materialized.severity)
-    confidence = (profile.confidence_overrides or {}).get(materialized.rule_id, materialized.confidence)
+    if not all(hasattr(materialized, attr) for attr in ("severity", "confidence")):
+        return materialized
+    severity = (profile.severity_overrides or {}).get(resolved_rule_id, materialized.severity)
+    confidence = (profile.confidence_overrides or {}).get(resolved_rule_id, materialized.confidence)
     return replace(materialized, severity=severity, confidence=confidence)
 
 

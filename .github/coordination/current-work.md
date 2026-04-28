@@ -11,6 +11,181 @@ Shared ledger for concurrent chats and agents in SattLint.
 
 ## Active Workstreams
 
+### Workstream spraydryer-298a-scaffold-046
+
+### Workstream spraydryer-298a-scaffold-047
+
+### Workstream rule-profile-variableissue-045
+
+- Owner: current chat
+- Goal: prevent analyzer menu crash when rule profile filtering receives `VariableIssue` objects without `rule_id`
+- Claims: none
+- First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_rule_profiles.py -x -q --tb=short`
+- Status: done
+- Notes: patched `src/sattlint/analyzers/rule_profiles.py` to safely process issue objects without `rule_id`/severity metadata and derive rule ids from `kind` for disable filtering when possible. Added focused regression coverage in `tests/test_rule_profiles.py` for `VariableIssue` compatibility and derived-rule disable behavior. Validation passed with `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_rule_profiles.py -x -q --tb=short` and `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_menus.py -x -q --tb=short -k run_checks_applies_rule_profiles_to_simple_reports`.
+
+### Workstream scaffold-skill-preserve-nnestart-044
+
+- Owner: current chat
+- Goal: update unit scaffold skill so NNEStart content is preserved and only unit-specific equipment/module names are adapted
+- Claims: none
+- First validation: markdown-only consistency update plus PowerShell parse for scaffold helper
+- Status: done
+- Notes: updated `.github/skills/sattline-scaffold/SKILL.md` to enforce donor preservation: no deletion of NNEStart content, Program retains generic donor modules, MainLib owns requested unit moduletype, SupportLib contains remaining donor type definitions, and only equipment/unit-specific values are adapted. Updated helper guidance in `.github/skills/sattline-scaffold/assets/new-unit-scaffold.ps1` to match. Validation passed with PowerShell parse check on helper script.
+
+### Workstream refactor-roadmap-cleanup-042
+
+- Owner: current chat
+- Goal: clean `docs/refactor-remaining.md` so it lists only open refactor scope
+- Claims: none
+- First validation: markdown-only consistency update
+- Status: done
+- Notes: removed completed baseline and completed R4 section; normalized roadmap to open backlog items only.
+
+### Workstream layout-overlap-041
+
+- Owner: current chat
+- Goal: detect overlapping module invocations and overlapping graph/interact layout rectangles from parsed invocation and ModuleDef geometry
+- Claims: none
+- First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_variables.py -x -q --tb=short -k overlap`
+- Status: done
+- Notes: added `src/sattlint/analyzers/layout_geometry.py` and wired new `layout_overlap` findings through variable analysis, semantic metadata, diagnostics, and reporting. Validation passed with `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_variables.py -x -q --tb=short -k overlap`, `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_variables.py -x -q --tb=short`, and static checks on touched analyzer files.
+
+### Workstream wave3-safety-semantics-040
+
+- Owner: current chat
+- Goal: implement Wave 3 safety slice by tightening LSP exception boundaries and strict-validation semantics for expression and assignment rules
+- Claims: none
+- First validation: `& ".venv/Scripts/sattlint.exe" syntax-check tests/fixtures/corpus/valid/VariableModifiers.s`
+- Status: done
+- Notes: landed strict expression semantics in `src/sattlint/validation.py` for arithmetic numeric-only checks, logical boolean-only checks, comparison numeric-only checks, division-by-zero literal rejection, and IF-expression branch compatibility checks; kept existing `:OLD` assignment behavior due compressed-library compatibility (`tests/test_parser_validation.py::test_validate_single_file_syntax_accepts_reported_compressed_library_files`). Replaced broad LSP catch-all handlers in `src/sattlint_lsp/server.py` with explicit recoverable exception handling plus structured warning logs, and added focused coverage in `tests/test_lsp_diagnostics.py`. Validation passed with `& ".venv/Scripts/sattlint.exe" syntax-check tests/fixtures/corpus/valid/VariableModifiers.s`, `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_parser_validation.py tests/test_lsp_diagnostics.py -x -q --tb=short -k "arithmetic_with_boolean_operand or logical_with_integer_operand or comparison_with_boolean_operand or division_by_zero_literal or if_expression_with_incompatible_branches or recoverable_snapshot_failure or non_recoverable_snapshot_failure"`, and `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_parser_validation.py tests/test_lsp_diagnostics.py -x -q --tb=short` (93 passed).
+
+### Workstream wave2-import-graph-039
+
+- Owner: current chat
+- Goal: implement Wave 2 import-graph cleanup by removing wildcard wrapper imports and migrating internal code to parser-core direct imports
+- Claims: none
+- First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_parser_core.py tests/test_parser_validation.py tests/test_dataflow.py -x -q --tb=short`
+- Status: done
+- Notes: removed all remaining `import *` usage from parser compatibility wrappers (`src/sattlint/models/ast_model.py`, `src/sattlint/transformer/sl_transformer.py`, `src/sattlint/grammar/constants.py`, `src/sattlint/grammar/parser_decode.py`) by switching to explicit `__all__`-driven re-export plumbing. Focused validation passed with `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_parser_core.py tests/test_parser_validation.py tests/test_dataflow.py -x -q --tb=short` (89 passed).
+
+### Workstream wave1-roadmap-sync-038
+
+- Owner: current chat
+- Goal: align `docs/refactor-remaining.md` Wave 1 section with landed structural refactors
+- Claims: none
+- First validation: markdown-only consistency update
+- Status: done
+- Notes: marked Wave 1 items as completed and updated the section to reflect landed app split ownership, VariablesAnalyzer decomposition, and pipeline stage extraction.
+
+### Workstream wave1-pipeline-stages-037
+
+- Owner: current chat
+- Goal: continue Wave 1 by decomposing `src/sattlint/devtools/pipeline.py:_run_pipeline` into stage helpers while preserving report outputs
+- Claims: none
+- First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_pipeline.py -x -q --tb=short`
+- Status: done
+- Notes: extracted `_run_environment_stage`, `_run_ruff_stage`, `_run_pyright_stage`, and `_run_pytest_stage`, and updated `_run_pipeline` to orchestrate via these stage helpers. Focused validation passed with `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_pipeline.py -x -q --tb=short` (49 passed).
+
+### Workstream wave1-variables-walkers-036
+
+- Owner: current chat
+- Goal: continue Wave 1 by decomposing `VariablesAnalyzer._walk_submodules` into explicit node-type handlers while preserving behavior
+- Claims: none
+- First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_variables.py -x -q --tb=short`
+- Status: done
+- Notes: refactored `VariablesAnalyzer._walk_submodules` into explicit handler methods (`_walk_singlemodule_subtree`, `_walk_framemodule_subtree`, `_walk_moduletype_instance_subtree`) plus shared traversal helpers, and decomposed `VariablesAnalyzer.run()` into focused phases (`_analyze_root_scope`, `_run_post_traversal_analyses`, `_collect_basepicture_issues`, `_collect_typedef_issues`). Focused validation passed with `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_variables.py -x -q --tb=short` (38 passed).
+
+### Workstream wave1-app-support-035
+
+- Owner: current chat
+- Goal: continue Wave 1 app split by moving remaining helper behavior out of `src/sattlint/app.py` into dedicated owner module with facade wrappers preserved
+- Claims: none
+- First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py -x -q --tb=short -k "show_help or run_format_icf_command or main_blocks_target_dependent_menu_actions_without_targets"`
+- Status: done
+- Notes: added `src/sattlint/app_support.py` to own app helper behavior (ICF formatting, menu rendering, target selection, help text, warning formatting, and target-load error class), while `src/sattlint/app.py` keeps compatibility wrappers. Focused validation passed with `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py -x -q --tb=short -k "show_help or run_format_icf_command or main_blocks_target_dependent_menu_actions_without_targets"` (3 passed, 61 deselected) and `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_cli.py -x -q --tb=short` (9 passed).
+
+### Workstream wave1-cli-entry-034
+
+- Owner: current chat
+- Goal: start Wave 1 by extracting CLI parser and dispatch ownership into `src/sattlint/cli/entry.py` while preserving `sattlint.app` facade behavior
+- Claims: none
+- First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_cli.py -x -q --tb=short`
+- Status: done
+- Notes: introduced `src/sattlint/cli/entry.py` for CLI parser and dispatch ownership, kept `src/sattlint/app_base.py` as compatibility wrapper, and added package marker `src/sattlint/cli/__init__.py`. Validation passed with `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_cli.py -x -q --tb=short` (9 passed) and `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py -x -q --tb=short -k "syntax_check_command_ok or cli_entry_point_forwards_sys_argv_without_loading_ast or main_returns_error_for_unknown_cli_command"` (3 passed, 61 deselected).
+
+### Workstream scaffold-file-triplet-033
+
+- Owner: current chat
+- Goal: update agent and skill guidance so new SattLine program or library scaffolds always use `.g`, `.l`, and `.s`, with empty `.g`, and never create `.x`, `.y`, or `.z`
+- Claims: none
+- First validation: PowerShell parse of `.github/skills/sattline-scaffold/assets/new-unit-scaffold.ps1` plus focused grep for remaining scaffold `.x/.y/.z` guidance
+- Status: done
+- Notes: updated `AGENTS.md`, `.github/skills/sattline-scaffold/SKILL.md`, and `.github/skills/sattline-scaffold/assets/new-unit-scaffold.ps1` so new scaffold creation now requires `.g`, `.l`, and `.s` only, with empty `.g`, and no `.x`, `.y`, or `.z` outputs. Validation passed with PowerShell parse of the helper script and a focused grep confirming no remaining scaffold-specific `.x/.y/.z` creation guidance in the updated files.
+
+### Workstream unit-tests-columns-xdilute-032
+
+- Owner: current chat
+- Goal: add focused SattLine unit-test programs for XDilute 231X, Soejle 251D, and MPC column coverage based on library self-test patterns
+- Claims: none
+- First validation: `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/SattLineUnitTests/TestXDilute231X.s`
+- Status: done
+- Notes: added three focused `.s/.l` test pairs under `Libs/HA/SattLineUnitTests` using the target libraries' own self-test invocation patterns; validation passed with `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/SattLineUnitTests/TestXDilute231X.s`, `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/SattLineUnitTests/TestSoejle251D.s`, and `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/SattLineUnitTests/TestMPCSoejle22C.s`. `KaHAMPCSøjleLib` exposes 221C and 241C internally, so the new MPC test exercises the generic exported `Soejle` surface under a 22C-oriented test name.
+
+### Workstream todo-gui-explorer-031
+
+- Owner: current chat
+- Goal: create TODO_GUI roadmap for File-Centric Explorer with UX, resilience, accessibility, and architecture requirements
+- Claims: none
+- First validation: markdown lint-free structure review in TODO_GUI.md
+- Status: done
+- Notes: replaced TODO_GUI.md with actionable File-Centric Explorer roadmap, prioritized backend order, UI component plan, milestone checklist, and capability backlog categories from responsiveness through navigation.
+
+### Workstream spraydryer-299a-scaffold-029
+
+- Owner: current chat
+- Goal: create valid spraydryer unit scaffold for tag 299A in HA ProjectLib and UnitLib
+- Claims: none
+- First validation: `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/UnitLib/KaHASprayDryerZ9.x`
+- Status: done
+- Notes: repaired parse-invalid spraydryer 299A scaffold files in ProjectLib and UnitLib into minimal valid forms, then created the missing `.y` and `.z` companions. Dependency wiring now follows scaffold rules: `Libs/HA/ProjectLib/KaHASprayDryerLib.z` includes `KaHASprayDryerSupLib`, and `Libs/HA/UnitLib/KaHASprayDryerZ9.z` includes `KaHASprayDryerLib`. Validation passed: `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/ProjectLib/KaHASprayDryerLib.x` and `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/UnitLib/KaHASprayDryerZ9.x` with only existing asset-verification warnings from copied `.y` files.
+
+### Workstream spraydryer-299a-slg-041
+
+- Owner: current chat
+- Goal: add current-format `.s/.l/.g` spraydryer scaffold companions for tag 299A based on the existing valid spraydryer unit
+- Claims: none
+- First validation: `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/ProjectLib/KaHASprayDryerLib.s`
+- Status: done
+- Notes: added `KaHASprayDryerLib.s/.l/.g`, `KaHASprayDryerSupLib.s/.l/.g`, and `KaHASprayDryerZ9.s/.l/.g` by mirroring the existing valid spraydryer 299A implementation and dependency wiring from the legacy `.x/.z` artifacts. Semantic completeness confirmed by inspection: main lib `SprayDryer_299A` has parameters, locals, graphics, and three support-lib submodules; support lib defines `SprayDryerInlet`, `SprayDryerHeater`, and `SprayDryerOutlet`. Validation passed with `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/ProjectLib/KaHASprayDryerLib.s`, `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/ProjectLib/KaHASprayDryerSupLib.s`, and `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/UnitLib/KaHASprayDryerZ9.s`.
+
+### Workstream wave5-return-contracts-030
+
+- Owner: current chat
+- Goal: implement Wave 5 return-contract cleanup in app graphics optional prompt helpers while preserving CLI boundary behavior
+- Claims: none
+- First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_menus.py -x -q --tb=short -k "graphics_rule or optional_prompt"`
+- Status: done
+- Notes: optional prompt leaf helpers in `src/sattlint/app_graphics.py` already raise typed exceptions (`OptionalPromptSkipped`, `OptionalPromptValidationError`) instead of returning sentinel `None`, with boundary conversion in `prompt_graphics_rule_definition_with_config()`. Follow-on Wave 5 slice removed the empty-string sentinel from required selector entry by raising `RequiredPromptValidationError` in `pick_or_prompt_graphics_rule_selector_value()` and handling it at rule-definition boundary with pause + `None` return. Added focused contract tests in `tests/test_app_menus.py` for blank-manual selector input and boundary handling when selector is missing. Validation passed: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_menus.py -x -q --tb=short -k "graphics_rule or optional_prompt or selector"` (8 passed, 36 deselected) and `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py tests/test_app_menus.py tests/test_app_analysis.py tests/test_cli.py -x -q --tb=short` (140 passed).
+
+### Workstream wave4-console-routing-028
+
+- Owner: current chat
+- Goal: implement Wave 4 app-surface output routing through console wrappers with no CLI behavior drift
+- Claims: none
+- First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py tests/test_app_menus.py tests/test_app_analysis.py tests/test_cli.py -x -q --tb=short`
+- Status: done
+- Notes: added `print_output()` in `src/sattlint/console.py` as a generic output wrapper that preserves `print()` semantics, then routed app-surface output through that wrapper by aliasing module-level `print` in `src/sattlint/app.py`, `src/sattlint/app_base.py`, `src/sattlint/app_docs.py`, `src/sattlint/app_analysis.py`, and `src/sattlint/app_menus.py`. Validation passed: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py tests/test_app_menus.py tests/test_app_analysis.py tests/test_cli.py -x -q --tb=short` (135 passed).
+
+### Workstream skill-sattline-scaffold-027
+
+- Owner: current chat
+- Goal: add reusable skill for creating new SattLine program/library units from HA application spec guidance
+- Claims: none
+- First validation: `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/UnitLib/KaHASprayDryerZ9.x`
+- Status: done
+- Notes: cleaned spraydryer outputs to final-target structure: program no longer includes template helper/report/changelog modules, program `.z` now depends on `KaHASprayDryerLib`, main library `.z` now depends on `KaHASprayDryerSupLib`, and support/main libraries were rewritten as focused spraydryer artifacts rather than NNEStart copies. Updated scaffold skill guidance and repository memory with these constraints for future runs.
+
 ### Workstream repo-verify-fixall-026
 
 - Owner: current chat
@@ -19,6 +194,15 @@ Shared ledger for concurrent chats and agents in SattLint.
 - First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_repo_audit.py tests/test_pipeline.py -x -q --tb=short`
 - Status: active
 - Notes: start with shared devtools coverage-report extraction to break static repo_audit/pipeline cycle, then clear local validation and LSP narrowing diagnostics and rerun repo gate.
+
+### Workstream wave4-consistency-cleanup-039
+
+- Owner: current chat
+- Goal: implement Wave 4 consistency and cleanup by centralizing case-insensitive helpers and AnyType checks, normalizing small analyzer helper patterns, and reducing complexity in app/menu and reset-contamination hotspots
+- Claims: src/sattlint/app_support.py, src/sattlint/app_menus.py, src/sattlint/app_analysis.py, src/sattlint/casefolding.py, src/sattlint/validation.py, src/sattlint/analyzers/dataflow.py, src/sattlint/analyzers/variables.py, src/sattlint/analyzers/validators.py, src/sattlint/analyzers/reset_contamination.py, tests/test_app_menus.py, tests/test_analyzers_state.py, docs/refactor-remaining.md
+- First validation: & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_menus.py tests/test_analyzers_state.py -x -q --tb=short
+- Status: done
+- Notes: landed shared case-insensitive and `AnyType` helpers in `src/sattlint/casefolding.py`; delegated duplicated app-analysis target/warning normalization to `app_support`; decomposed `app_menus.config_menu`, `reset_contamination._collect_stmt_paths`, and `DataflowAnalyzer.run` into smaller helper phases; normalized `AnyType` contract handling in validation and variable analyzers. Focused validation passed with `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_menus.py tests/test_analyzers_state.py tests/test_dataflow.py -x -q --tb=short` (84 passed) and `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_analysis.py tests/test_builtin_record_semantics.py tests/test_analyzers_variables.py tests/test_parser_validation.py -x -q --tb=short -k "anytype or analyzed_targets or validation_warnings or source_paths or contract"` (11 passed, 126 deselected).
 
 ### Workstream assignment-datatype-025
 
@@ -60,10 +244,10 @@ Shared ledger for concurrent chats and agents in SattLint.
 
 - Owner: current chat
 - Goal: start Wave 3 by extracting the first `app_base` seam from `src/sattlint/app.py` while preserving the `sattlint.app` facade
-- Claims: `.github/coordination/current-work.md`, `src/sattlint/app.py`, `src/sattlint/app_base.py`, `tests/test_app_menus.py`, `tests/test_cli.py`
-- First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_cli.py -x -q --tb=short`
-- Status: active
-- Notes: first slice landed `src/sattlint/app_base.py` and moved config plus console helper implementations there while `src/sattlint/app.py` stayed as the public facade. Retargeted authoritative helper ownership tests in `tests/test_app_menus.py` to the new module and preserved facade call-time monkeypatch behavior from `app.py`. Validation passed: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_menus.py -x -q --tb=short` (39 passed). Second slice landed the CLI parser plus syntax-check and `run_cli` dispatch helpers in `src/sattlint/app_base.py`; `src/sattlint/app.py` now forwards them with injected facade collaborators so app-level monkeypatch seams remain stable. Retargeted `tests/test_cli.py` to the owner module. Validation passed: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_cli.py -x -q --tb=short` (9 passed) and `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_menus.py -x -q --tb=short -k "syntax_check_command_ok or cli_entry_point_forwards_sys_argv_without_loading_ast or syntax_check_command_reports_parse_error or syntax_check_command_prints_warning_for_legacy_sequence_initstep or syntax_check_command_rejects_missing_file or main_returns_error_for_unknown_cli_command"` (6 passed, 33 deselected).
+- Claims: none
+- First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_analysis.py -x -q --tb=short`
+- Status: done
+- Notes: first slice landed `src/sattlint/app_base.py` and moved config plus console helper implementations there while `src/sattlint/app.py` stayed as the public facade. Retargeted authoritative helper ownership tests in `tests/test_app_menus.py` to the new module and preserved facade call-time monkeypatch behavior from `app.py`. Validation passed: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_menus.py -x -q --tb=short` (39 passed). Second slice landed the CLI parser plus syntax-check and `run_cli` dispatch helpers in `src/sattlint/app_base.py`; `src/sattlint/app.py` now forwards them with injected facade collaborators so app-level monkeypatch seams remain stable. Retargeted `tests/test_cli.py` to the owner module. Validation passed: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_cli.py -x -q --tb=short` (9 passed) and `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_menus.py -x -q --tb=short -k "syntax_check_command_ok or cli_entry_point_forwards_sys_argv_without_loading_ast or syntax_check_command_reports_parse_error or syntax_check_command_prints_warning_for_legacy_sequence_initstep or syntax_check_command_rejects_missing_file or main_returns_error_for_unknown_cli_command"` (6 passed, 33 deselected). Third slice landed `src/sattlint/app_docs.py` and moved documentation scope state plus documentation menu and generation helpers behind dependency-injected calls from the facade. Retargeted docs-slice ownership in `tests/test_app_menus.py` and kept facade compatibility in legacy tests. Validation passed: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_menus.py -x -q --tb=short` (39 passed) and `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py -x -q --tb=short -k documentation_menu_scope_by_moduletype` (1 passed, 63 deselected). Fourth slice landed `src/sattlint/app_analysis.py` and `src/sattlint/app_menus.py`; moved project loading, analyzer flows, and interactive menu orchestration into owner modules while `src/sattlint/app.py` became a thin facade with collaborator-injected delegates. Retargeted primary analysis ownership assertions in `tests/test_app_analysis.py` to `app_analysis` and preserved legacy app monkeypatch seams (`repo_audit_module`, `engine_module`, `ASTCache`, analyzer registry). Validation passed: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_analysis.py -x -q --tb=short` (23 passed), `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_menus.py -x -q --tb=short` (39 passed), `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_cli.py -x -q --tb=short` (9 passed), and optional compatibility check `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py -x -q --tb=short -k "main_blocks_target_dependent_menu_actions_without_targets or run_variable_analysis_runs_all_analyzed_targets"` (2 passed, 62 deselected).
 
 ### Workstream seqfork-step-form-020
 

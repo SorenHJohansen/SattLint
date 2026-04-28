@@ -1,5 +1,6 @@
 """Tests for grammar coverage and parser-core behaviour (parse_source_text, source spans, flags, and identifier rules)."""
 
+import ast
 from pathlib import Path
 
 import pytest
@@ -8,16 +9,16 @@ from lark.exceptions import UnexpectedCharacters
 from sattline_parser import api as parser_api
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser import strip_sl_comments
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    ModuleTypeInstance,
+)
+from sattline_parser.transformer.sl_transformer import SLTransformer
 from sattlint import constants as const
 from sattlint.engine import (
     create_sl_parser,
     parse_source_file,
 )
-from sattlint.models.ast_model import (
-    BasePicture,
-    ModuleTypeInstance,
-)
-from sattlint.transformer.sl_transformer import SLTransformer
 
 
 def _parse_to_basepicture(text: str):
@@ -28,6 +29,44 @@ def _parse_to_basepicture(text: str):
 
 def _repo_path(*parts: str) -> Path:
     return Path(__file__).resolve().parents[1].joinpath(*parts)
+
+
+def test_internal_modules_do_not_import_parser_compat_wrappers():
+    src_root = _repo_path("src", "sattlint")
+    allowed_wrapper_files = {
+        src_root / "models" / "ast_model.py",
+        src_root / "grammar" / "parser_decode.py",
+        src_root / "transformer" / "sl_transformer.py",
+    }
+    forbidden_absolute = {
+        "sattlint.models.ast_model",
+        "sattlint.grammar.parser_decode",
+        "sattlint.transformer.sl_transformer",
+    }
+    forbidden_relative = {
+        "models.ast_model",
+        "grammar.parser_decode",
+        "transformer.sl_transformer",
+    }
+
+    violations: list[str] = []
+    for source_file in sorted(src_root.rglob("*.py")):
+        if source_file in allowed_wrapper_files:
+            continue
+
+        tree = ast.parse(source_file.read_text(encoding="utf-8"), filename=str(source_file))
+        relative_path = source_file.relative_to(_repo_path()).as_posix()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if module in forbidden_absolute or (node.level > 0 and module in forbidden_relative):
+                    violations.append(f"{relative_path}:{node.lineno} imports {module}")
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in forbidden_absolute:
+                        violations.append(f"{relative_path}:{node.lineno} imports {alias.name}")
+
+    assert not violations, "Internal modules must import parser-core directly:\n" + "\n".join(violations)
 
 
 def test_ternary_if_has_lowest_precedence():

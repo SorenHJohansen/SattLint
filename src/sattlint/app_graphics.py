@@ -5,13 +5,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+from sattline_parser.models.ast_model import BasePicture
+
 from . import config as config_module
 from . import graphics_rules as graphics_rules_module
 from .docgenerator.classification import (
     classify_documentation_structure,
     discover_documentation_unit_candidates,
 )
-from .models.ast_model import BasePicture
 from .models.project_graph import ProjectGraph
 
 LoadedProjectIterator = Callable[[dict[str, Any]], Iterator[tuple[str, BasePicture, ProjectGraph]]]
@@ -255,40 +256,65 @@ def print_graphics_rules_summary(path: Path, rules: dict[str, Any], *, dirty: bo
         )
 
 
-def prompt_optional_float_list(label: str, expected_count: int, *, pause_fn: Callable[[], None]) -> list[float] | None:
+class OptionalPromptSkippedError(Exception):
+    """Raised when user explicitly skips an optional CLI prompt."""
+
+
+# Backward-compatible alias for existing call sites and tests.
+OptionalPromptSkipped = OptionalPromptSkippedError
+
+
+class OptionalPromptValidationError(Exception):
+    """Raised when optional prompt input is present but invalid."""
+
+
+class RequiredPromptValidationError(Exception):
+    """Raised when required prompt input is missing or invalid."""
+
+
+def prompt_optional_float_list(label: str, expected_count: int, *, pause_fn: Callable[[], None]) -> list[float]:
     raw = input(f"{label} ({expected_count} comma-separated numbers, blank to skip): ").strip()
     if not raw:
-        return None
+        raise OptionalPromptSkipped()
     try:
         values = [float(part.strip()) for part in raw.split(",")]
-    except ValueError:
+    except ValueError as exc:
         print("? Must be numeric")
         pause_fn()
-        return None
+        raise OptionalPromptValidationError("Must be numeric") from exc
     if len(values) != expected_count:
         print(f"? Expected {expected_count} values")
         pause_fn()
-        return None
+        raise OptionalPromptValidationError(f"Expected {expected_count} values")
     return values
 
 
-def prompt_optional_text_list(label: str) -> list[str] | None:
+def prompt_optional_text_list(label: str) -> list[str]:
     raw = input(f"{label} (comma-separated, blank to skip): ").strip()
     if not raw:
-        return None
+        raise OptionalPromptSkipped()
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
-def prompt_optional_bool(label: str) -> bool | None:
+def prompt_optional_bool(label: str) -> bool:
     raw = input(f"{label} [y/n, blank to skip]: ").strip().lower()
     if not raw:
-        return None
+        raise OptionalPromptSkipped()
     if raw in {"y", "yes", "true", "1"}:
         return True
     if raw in {"n", "no", "false", "0"}:
         return False
     print("? Enter y or n")
-    return None
+    raise OptionalPromptValidationError("Enter y or n")
+
+
+def optional_prompt_or_none(prompt_fn: Callable[[], Any]) -> Any | None:
+    try:
+        return prompt_fn()
+    except OptionalPromptSkipped:
+        return None
+    except OptionalPromptValidationError:
+        return None
 
 
 def prompt_graphics_rule_kind() -> str:
@@ -426,6 +452,7 @@ def pick_or_prompt_graphics_rule_selector_value(
     selector_value = input(f"{prompt_text}: ").strip()
     if not selector_value:
         print("? Selector path is required")
+        raise RequiredPromptValidationError("Selector path is required")
     return selector_value
 
 
@@ -608,17 +635,25 @@ def prompt_graphics_rule_definition_with_config(
             print("? ModuleType name is required")
             pause_fn()
             return None
-        selector_field, selector_value = prompt_graphics_rule_selector(
-            module_kind,
-            cfg=cfg,
-            pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
-        )
+        try:
+            selector_field, selector_value = prompt_graphics_rule_selector(
+                module_kind,
+                cfg=cfg,
+                pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
+            )
+        except RequiredPromptValidationError:
+            pause_fn()
+            return None
     else:
-        selector_field, selector_value = prompt_graphics_rule_selector(
-            module_kind,
-            cfg=cfg,
-            pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
-        )
+        try:
+            selector_field, selector_value = prompt_graphics_rule_selector(
+                module_kind,
+                cfg=cfg,
+                pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
+            )
+        except RequiredPromptValidationError:
+            pause_fn()
+            return None
 
     if selector_field == "relative_module_path":
         relative_module_path = selector_value
@@ -635,11 +670,14 @@ def prompt_graphics_rule_definition_with_config(
     invocation: dict[str, Any] = {}
     moduledef: dict[str, Any] = {}
 
-    invocation_coords = prompt_optional_float_list("Invocation coords", 5, pause_fn=pause_fn)
+    # Keep optional prompt skip behavior at CLI boundary while avoiding sentinel returns in leaf helpers.
+    invocation_coords = optional_prompt_or_none(
+        lambda: prompt_optional_float_list("Invocation coords", 5, pause_fn=pause_fn)
+    )
     if invocation_coords is not None:
         invocation["coords"] = invocation_coords
 
-    invocation_arguments = prompt_optional_text_list("Invocation arguments")
+    invocation_arguments = optional_prompt_or_none(lambda: prompt_optional_text_list("Invocation arguments"))
     if invocation_arguments is not None:
         invocation["arguments"] = invocation_arguments
 
@@ -647,27 +685,33 @@ def prompt_graphics_rule_definition_with_config(
     if invocation_layer:
         invocation["layer"] = invocation_layer
 
-    invocation_zoom_limits = prompt_optional_float_list(
-        "Invocation zoom limits",
-        2,
-        pause_fn=pause_fn,
+    invocation_zoom_limits = optional_prompt_or_none(
+        lambda: prompt_optional_float_list(
+            "Invocation zoom limits",
+            2,
+            pause_fn=pause_fn,
+        )
     )
     if invocation_zoom_limits is not None:
         invocation["zoom_limits"] = invocation_zoom_limits
 
-    invocation_zoomable = prompt_optional_bool("Invocation zoomable")
+    invocation_zoomable = optional_prompt_or_none(lambda: prompt_optional_bool("Invocation zoomable"))
     if invocation_zoomable is not None:
         invocation["zoomable"] = invocation_zoomable
 
-    clipping_origin = prompt_optional_float_list("Clipping origin", 2, pause_fn=pause_fn)
+    clipping_origin = optional_prompt_or_none(
+        lambda: prompt_optional_float_list("Clipping origin", 2, pause_fn=pause_fn)
+    )
     if clipping_origin is not None:
         moduledef["clipping_origin"] = clipping_origin
 
-    clipping_size = prompt_optional_float_list("Clipping size", 2, pause_fn=pause_fn)
+    clipping_size = optional_prompt_or_none(lambda: prompt_optional_float_list("Clipping size", 2, pause_fn=pause_fn))
     if clipping_size is not None:
         moduledef["clipping_size"] = clipping_size
 
-    moduledef_zoom_limits = prompt_optional_float_list("ModuleDef zoom limits", 2, pause_fn=pause_fn)
+    moduledef_zoom_limits = optional_prompt_or_none(
+        lambda: prompt_optional_float_list("ModuleDef zoom limits", 2, pause_fn=pause_fn)
+    )
     if moduledef_zoom_limits is not None:
         moduledef["zoom_limits"] = moduledef_zoom_limits
 
@@ -680,7 +724,7 @@ def prompt_graphics_rule_definition_with_config(
             pause_fn()
             return None
 
-    moduledef_zoomable = prompt_optional_bool("ModuleDef zoomable")
+    moduledef_zoomable = optional_prompt_or_none(lambda: prompt_optional_bool("ModuleDef zoomable"))
     if moduledef_zoomable is not None:
         moduledef["zoomable"] = moduledef_zoomable
 

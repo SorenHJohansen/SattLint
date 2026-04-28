@@ -4,6 +4,8 @@
 Verifies that only the last component of a dotted path is used as the prefix.
 """
 
+import pytest
+
 
 def _last_component(path: str) -> str:
     return path.split(".")[-1] if "." in path else ""
@@ -15,19 +17,21 @@ def _reconstruct(prefix: str, field_path: str) -> str:
     return prefix or field_path
 
 
-def test_mapping_uses_last_component_as_prefix():
-    source_path = "Dv.I.WT001"
+@pytest.mark.parametrize(
+    ("source_path", "field_path", "expected_prefix", "expected_reconstructed"),
+    [
+        ("Dv.I.WT001", "Value", "WT001", "WT001.Value"),
+        ("Dv.A.B.C.D.WT002", "Status.Code", "WT002", "WT002.Status.Code"),
+    ],
+)
+def test_mapping_uses_last_component_as_prefix(
+    source_path: str,
+    field_path: str,
+    expected_prefix: str,
+    expected_reconstructed: str,
+) -> None:
     last_component = _last_component(source_path)
-    assert last_component == "WT001"
+    assert last_component == expected_prefix
 
-    full_field_path = _reconstruct(last_component, "Value")
-    assert full_field_path == "WT001.Value"
-
-
-def test_mapping_handles_deeper_nesting():
-    source_path = "Dv.A.B.C.D.WT002"
-    last_component = _last_component(source_path)
-    assert last_component == "WT002"
-
-    reconstructed = _reconstruct(last_component, "Status.Code")
-    assert reconstructed == "WT002.Status.Code"
+    full_field_path = _reconstruct(last_component, field_path)
+    assert full_field_path == expected_reconstructed

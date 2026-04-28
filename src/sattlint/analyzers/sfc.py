@@ -8,10 +8,7 @@ from dataclasses import dataclass
 from itertools import product
 from typing import Any, cast
 
-from sattline_parser.utils.formatter import format_expr
-
-from ..grammar import constants as const
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleCode,
@@ -28,6 +25,9 @@ from ..models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.utils.formatter import format_expr
+
+from ..grammar import constants as const
 from ..resolution import AccessKind
 from ..resolution.paths import CanonicalPath, decorate_segment
 from .framework import Issue, SimpleReport
@@ -178,6 +178,16 @@ def _sequence_node_label(node: object) -> str:
     if isinstance(node, SFCFork):
         return f"SFCFork:{node.target}"
     return type(node).__name__
+
+
+def _iter_step_phase_statements(
+    step: SFCStep,
+) -> tuple[tuple[str, SequenceABC[object]], tuple[str, SequenceABC[object]], tuple[str, SequenceABC[object]]]:
+    return (
+        ("ENTER", step.code.enter or ()),
+        ("ACTIVE", step.code.active or ()),
+        ("EXIT", step.code.exit or ()),
+    )
 
 
 def _inspect_sfc_linear_nodes(
@@ -376,26 +386,13 @@ class _SfcAccessCollector(VariablesAnalyzer):
             for node in seq.code or []:
                 if isinstance(node, SFCStep):
                     base = f"STEP:{node.name}"
-                    self._push_site(f"{base}:ENTER")
-                    try:
-                        for stmt in node.code.enter or []:
-                            self._walk_stmt_or_expr(stmt, context, path)
-                    finally:
-                        self._pop_site()
-
-                    self._push_site(f"{base}:ACTIVE")
-                    try:
-                        for stmt in node.code.active or []:
-                            self._walk_stmt_or_expr(stmt, context, path)
-                    finally:
-                        self._pop_site()
-
-                    self._push_site(f"{base}:EXIT")
-                    try:
-                        for stmt in node.code.exit or []:
-                            self._walk_stmt_or_expr(stmt, context, path)
-                    finally:
-                        self._pop_site()
+                    for phase, statements in _iter_step_phase_statements(node):
+                        self._push_site(f"{base}:{phase}")
+                        try:
+                            for statement in statements:
+                                self._walk_stmt_or_expr(statement, context, path)
+                        finally:
+                            self._pop_site()
                     continue
 
                 if isinstance(node, SFCTransition):
@@ -457,12 +454,9 @@ class _SfcAccessCollector(VariablesAnalyzer):
 
         for node in nodes:
             if isinstance(node, SFCStep):
-                for stmt in node.code.enter or []:
-                    self._walk_stmt_or_expr(stmt, context, path)
-                for stmt in node.code.active or []:
-                    self._walk_stmt_or_expr(stmt, context, path)
-                for stmt in node.code.exit or []:
-                    self._walk_stmt_or_expr(stmt, context, path)
+                for _phase, statements in _iter_step_phase_statements(node):
+                    for statement in statements:
+                        self._walk_stmt_or_expr(statement, context, path)
             elif isinstance(node, SFCTransition):
                 self._walk_stmt_or_expr(node.condition, context, path)
             elif isinstance(node, SFCAlternative):
@@ -693,35 +687,26 @@ class _SfcStepContractCollector(VariablesAnalyzer):
         contract = self._step_contracts.get(step.name.casefold())
 
         base = f"STEP:{step.name}"
-        self._push_site(f"{base}:ENTER")
-        try:
-            _enter_reads, enter_writes = self._capture_block_accesses(
-                step.code.enter or [],
-                context,
-                module_path,
-            )
-        finally:
-            self._pop_site()
+        phase_writes: dict[str, set[CanonicalPath]] = {
+            "ENTER": set(),
+            "ACTIVE": set(),
+            "EXIT": set(),
+        }
+        for phase, statements in _iter_step_phase_statements(step):
+            self._push_site(f"{base}:{phase}")
+            try:
+                _reads, writes = self._capture_block_accesses(
+                    statements,
+                    context,
+                    module_path,
+                )
+            finally:
+                self._pop_site()
+            phase_writes[phase] = writes
 
-        self._push_site(f"{base}:ACTIVE")
-        try:
-            _active_reads, active_writes = self._capture_block_accesses(
-                step.code.active or [],
-                context,
-                module_path,
-            )
-        finally:
-            self._pop_site()
-
-        self._push_site(f"{base}:EXIT")
-        try:
-            _exit_reads, exit_writes = self._capture_block_accesses(
-                step.code.exit or [],
-                context,
-                module_path,
-            )
-        finally:
-            self._pop_site()
+        enter_writes = phase_writes["ENTER"]
+        active_writes = phase_writes["ACTIVE"]
+        exit_writes = phase_writes["EXIT"]
 
         next_state = set(incoming_state)
         next_state.update(enter_writes)

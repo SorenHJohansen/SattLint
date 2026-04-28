@@ -2,9 +2,7 @@
 
 import pytest
 
-from sattlint import constants as const
-from sattlint.analyzers.variable_usage_reporting import analyze_module_localvar_fields
-from sattlint.models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     Equation,
@@ -17,6 +15,8 @@ from sattlint.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattlint import constants as const
+from sattlint.analyzers.variable_usage_reporting import analyze_module_localvar_fields
 
 
 def _varref(s: str) -> dict:

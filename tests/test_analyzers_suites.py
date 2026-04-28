@@ -2,18 +2,7 @@
 
 from typing import Any, cast
 
-from sattlint import constants as const
-from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
-from sattlint.analyzers.dataflow import analyze_dataflow
-from sattlint.analyzers.initial_values import analyze_initial_values
-from sattlint.analyzers.modules import analyze_version_drift
-from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
-from sattlint.analyzers.registry import get_default_analyzers
-from sattlint.analyzers.safety_paths import analyze_safety_paths
-from sattlint.analyzers.sfc import analyze_sfc
-from sattlint.analyzers.taint_paths import analyze_taint_paths
-from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
-from sattlint.models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     Equation,
@@ -35,6 +24,17 @@ from sattlint.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattlint import constants as const
+from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
+from sattlint.analyzers.dataflow import analyze_dataflow
+from sattlint.analyzers.initial_values import analyze_initial_values
+from sattlint.analyzers.modules import analyze_version_drift
+from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
+from sattlint.analyzers.registry import get_default_analyzers
+from sattlint.analyzers.safety_paths import analyze_safety_paths
+from sattlint.analyzers.sfc import analyze_sfc
+from sattlint.analyzers.taint_paths import analyze_taint_paths
+from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 
 
 def _hdr(name: str) -> ModuleHeader:

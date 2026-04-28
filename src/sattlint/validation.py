@@ -8,9 +8,10 @@ from collections.abc import Sequence as AbcSequence
 
 from lark import Tree
 
+from .casefolding import is_anytype_name
 from .analyzers.sattline_builtins import SATTLINE_BUILTINS
 from .grammar import constants as const
-from .models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     Equation,
@@ -267,7 +268,7 @@ _BUILTIN_DATATYPE_NAMES = tuple(datatype.value for datatype in Simple_DataType)
 
 
 def _is_anytype_datatype(datatype: Simple_DataType | str | None) -> bool:
-    return isinstance(datatype, str) and datatype.casefold() == "anytype"
+    return is_anytype_name(datatype)
 
 
 def _split_dotted_name(name: str) -> tuple[str, tuple[str, ...]]:
@@ -338,7 +339,7 @@ def _assignment_type_matches(
     if actual is None or expected is None:
         return True
 
-    if isinstance(expected, str) and expected.casefold() == "anytype":
+    if is_anytype_name(expected):
         return True
 
     if actual == const.GRAMMAR_VALUE_TIME_VALUE:
@@ -612,8 +613,19 @@ def _merge_numeric_types(
     return Simple_DataType.INTEGER
 
 
+def _is_numeric_datatype(datatype: Simple_DataType | str | None) -> bool:
+    return datatype in {Simple_DataType.INTEGER, Simple_DataType.REAL}
+
+
+def _is_boolean_datatype(datatype: Simple_DataType | str | None) -> bool:
+    return datatype == Simple_DataType.BOOLEAN
+
+
+_EQUALITY_COMPARISON_OPERATORS = {"==", "=", "!=", "<>"}
+
+
 def _merge_compatible_types(
-    datatypes: list[Simple_DataType | str | None],
+    datatypes: AbcSequence[Simple_DataType | str | None],
 ) -> Simple_DataType | str | None:
     filtered = [dt for dt in datatypes if dt is not None]
     if not filtered:
@@ -631,6 +643,155 @@ def _merge_compatible_types(
         return Simple_DataType.STRING
 
     return None
+
+
+def _expression_is_zero_literal(node: object) -> bool:
+    if isinstance(node, IntLiteral | int) and not isinstance(node, bool):
+        return int(node) == 0
+    if isinstance(node, FloatLiteral | float):
+        return float(node) == 0.0
+    if isinstance(node, tuple) and len(node) == 2 and node[0] in {const.KEY_PLUS, const.KEY_MINUS}:
+        return _expression_is_zero_literal(node[1])
+    return False
+
+
+def _validate_expression_semantics(
+    node: object,
+    env: dict[str, Variable],
+    type_graph: TypeGraph,
+    context: str,
+) -> None:
+    if isinstance(node, Tree):
+        for child in node.children:
+            _validate_expression_semantics(child, env, type_graph, context)
+        return
+
+    if isinstance(node, list):
+        for item in node:
+            _validate_expression_semantics(item, env, type_graph, context)
+        return
+
+    if isinstance(node, dict):
+        for value in node.values():
+            _validate_expression_semantics(value, env, type_graph, context)
+        return
+
+    if not isinstance(node, tuple) or not node:
+        return
+
+    tag = node[0]
+    if not isinstance(tag, str):
+        for item in node:
+            _validate_expression_semantics(item, env, type_graph, context)
+        return
+
+    if tag == const.KEY_ASSIGN and len(node) == 3:
+        _validate_expression_semantics(node[2], env, type_graph, context)
+        return
+
+    if tag == const.KEY_FUNCTION_CALL and len(node) == 3:
+        for argument in node[2] or []:
+            _validate_expression_semantics(argument, env, type_graph, context)
+        return
+
+    if tag == const.KEY_COMPARE and len(node) == 3:
+        left_type = _infer_expression_datatype(node[1], env, type_graph)
+        _validate_expression_semantics(node[1], env, type_graph, context)
+        for op, rhs in node[2]:
+            operator = str(op)
+            right_type = _infer_expression_datatype(rhs, env, type_graph)
+            if operator in _EQUALITY_COMPARISON_OPERATORS:
+                if (
+                    left_type is not None
+                    and right_type is not None
+                    and _merge_compatible_types((left_type, right_type)) is None
+                ):
+                    raise StructuralValidationError(
+                        f"{context} comparison operator {operator!r} expects compatible operands but got "
+                        f"{_format_datatype(left_type)!r} and {_format_datatype(right_type)!r}"
+                    )
+            else:
+                if left_type is not None and not _is_numeric_datatype(left_type):
+                    raise StructuralValidationError(
+                        f"{context} comparison expects numeric operands but left side has datatype {_format_datatype(left_type)!r}"
+                    )
+                if right_type is not None and not _is_numeric_datatype(right_type):
+                    raise StructuralValidationError(
+                        f"{context} comparison operator {operator!r} expects numeric operands but right side has datatype {_format_datatype(right_type)!r}"
+                    )
+            _validate_expression_semantics(rhs, env, type_graph, context)
+            left_type = right_type if right_type is not None else left_type
+        return
+
+    if tag in {const.GRAMMAR_VALUE_AND, const.GRAMMAR_VALUE_OR} and len(node) == 2:
+        operands = node[1] if isinstance(node[1], list) else [node[1]]
+        for operand in operands:
+            operand_type = _infer_expression_datatype(operand, env, type_graph)
+            if operand_type is not None and not _is_boolean_datatype(operand_type):
+                raise StructuralValidationError(
+                    f"{context} logical operator {str(tag)!r} expects boolean operands but got {_format_datatype(operand_type)!r}"
+                )
+            _validate_expression_semantics(operand, env, type_graph, context)
+        return
+
+    if tag == const.GRAMMAR_VALUE_NOT and len(node) == 2:
+        operand = node[1]
+        operand_type = _infer_expression_datatype(operand, env, type_graph)
+        if operand_type is not None and not _is_boolean_datatype(operand_type):
+            raise StructuralValidationError(
+                f"{context} logical operator {str(tag)!r} expects a boolean operand but got {_format_datatype(operand_type)!r}"
+            )
+        _validate_expression_semantics(operand, env, type_graph, context)
+        return
+
+    if tag in {const.KEY_ADD, const.KEY_MUL} and len(node) == 3:
+        base_type = _infer_expression_datatype(node[1], env, type_graph)
+        if base_type is not None and not _is_numeric_datatype(base_type):
+            raise StructuralValidationError(
+                f"{context} arithmetic expression expects numeric operands but got {_format_datatype(base_type)!r}"
+            )
+        _validate_expression_semantics(node[1], env, type_graph, context)
+        for op, rhs in node[2]:
+            rhs_type = _infer_expression_datatype(rhs, env, type_graph)
+            if rhs_type is not None and not _is_numeric_datatype(rhs_type):
+                raise StructuralValidationError(
+                    f"{context} arithmetic operator {str(op)!r} expects numeric operands but got {_format_datatype(rhs_type)!r}"
+                )
+            if str(op) == "/" and _expression_is_zero_literal(rhs):
+                raise StructuralValidationError(f"{context} division by zero is not allowed")
+            _validate_expression_semantics(rhs, env, type_graph, context)
+        return
+
+    if tag in {const.KEY_PLUS, const.KEY_MINUS} and len(node) == 2:
+        operand = node[1]
+        operand_type = _infer_expression_datatype(operand, env, type_graph)
+        if operand_type is not None and not _is_numeric_datatype(operand_type):
+            raise StructuralValidationError(
+                f"{context} unary operator {str(tag)!r} expects a numeric operand but got {_format_datatype(operand_type)!r}"
+            )
+        _validate_expression_semantics(operand, env, type_graph, context)
+        return
+
+    if tag == const.KEY_TERNARY and len(node) == 3:
+        branch_types: list[Simple_DataType | str | None] = []
+        for branch in node[1]:
+            if isinstance(branch, tuple) and len(branch) == 2:
+                _validate_expression_semantics(branch[0], env, type_graph, context)
+                _validate_expression_semantics(branch[1], env, type_graph, context)
+                branch_types.append(_infer_expression_datatype(branch[1], env, type_graph))
+        _validate_expression_semantics(node[2], env, type_graph, context)
+        branch_types.append(_infer_expression_datatype(node[2], env, type_graph))
+
+        known_types = [datatype for datatype in branch_types if datatype is not None]
+        if len(known_types) >= 2 and _merge_compatible_types(known_types) is None:
+            joined = ", ".join(sorted({_format_datatype(datatype) for datatype in known_types}))
+            raise StructuralValidationError(
+                f"{context} IF-expression branches must have compatible datatypes; got {joined}"
+            )
+        return
+
+    for item in node[1:]:
+        _validate_expression_semantics(item, env, type_graph, context)
 
 
 def _infer_expression_datatype(
@@ -696,7 +857,7 @@ def _builtin_type_matches(
     *,
     direction: str,
 ) -> bool:
-    if isinstance(expected, str) and expected.casefold() == "anytype":
+    if is_anytype_name(expected):
         return True
 
     if isinstance(expected, Simple_DataType):
@@ -892,6 +1053,7 @@ def _validate_statement_list(
     context: str,
 ) -> None:
     for statement in statements:
+        _validate_expression_semantics(statement, env, type_graph, context)
         if (
             isinstance(statement, tuple)
             and len(statement) == 3

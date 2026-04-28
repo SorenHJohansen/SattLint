@@ -5,13 +5,14 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleTypeInstance,
     SingleModule,
     Variable,
 )
+
 from .framework import Issue, format_report_header
 
 SUPPORTED_NAMING_STYLES: tuple[str, ...] = (

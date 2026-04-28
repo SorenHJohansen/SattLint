@@ -10,8 +10,7 @@ from lark import Token, Transformer, Tree, v_args
 
 __all__ = ["SLTransformer"]
 
-from ..grammar import constants as const
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     Equation,
@@ -40,6 +39,8 @@ from ..models.ast_model import (
     SourceSpan,
     Variable,
 )
+
+from ..grammar import constants as const
 
 DEFAULT_INIT = object()
 

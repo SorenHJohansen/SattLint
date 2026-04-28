@@ -13,7 +13,8 @@ from .scope import ScopeContext
 from .symbol_table import SymbolKind
 
 if TYPE_CHECKING:
-    from ..models.ast_model import BasePicture, ModuleTypeDef, ModuleTypeInstance, SingleModule, Variable
+    from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, ModuleTypeInstance, SingleModule, Variable
+
     from .symbol_table import CanonicalSymbolTable
     from .type_graph import TypeGraph
 

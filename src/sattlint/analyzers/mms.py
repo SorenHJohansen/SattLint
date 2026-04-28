@@ -6,8 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..grammar import constants as const
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleTypeDef,
@@ -17,6 +16,8 @@ from ..models.ast_model import (
     SingleModule,
     Variable,
 )
+
+from ..grammar import constants as const
 from ..reporting.icf_report import ICFEntry
 from ..reporting.mms_report import (
     MMSInterfaceHit,

@@ -3,8 +3,9 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 
+from sattline_parser.models.ast_model import BasePicture
+
 from ..core.taint_paths import TaintPathTrace, build_taint_path_traces
-from ..models.ast_model import BasePicture
 from .framework import Issue, format_report_header
 from .variables import VariablesAnalyzer
 

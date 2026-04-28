@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from ..models.ast_model import Simple_DataType, SourceSpan, Variable
+from sattline_parser.models.ast_model import Simple_DataType, SourceSpan, Variable
 
 
 def _format_report_header(report_type: str, target: str, status: str | None = None) -> list[str]:
@@ -31,6 +31,7 @@ class IssueKind(Enum):
     STRING_MAPPING_MISMATCH = "string_mapping_mismatch"
     DATATYPE_DUPLICATION = "datatype_duplication"
     NAME_COLLISION = "name_collision"
+    LAYOUT_OVERLAP = "layout_overlap"
     MIN_MAX_MAPPING_MISMATCH = "min_max_mapping_mismatch"
     MAGIC_NUMBER = "magic_number"
     SHADOWING = "shadowing"
@@ -50,6 +51,7 @@ DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.MIN_MAX_MAPPING_MISMATCH,
     IssueKind.MAGIC_NUMBER,
     IssueKind.NAME_COLLISION,
+    IssueKind.LAYOUT_OVERLAP,
     IssueKind.RESET_CONTAMINATION,
 )
 
@@ -95,6 +97,7 @@ SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.MIN_MAX_MAPPING_MISMATCH: "Min/Max mapping name mismatches",
     IssueKind.MAGIC_NUMBER: "Magic numbers in code",
     IssueKind.NAME_COLLISION: "Name collisions",
+    IssueKind.LAYOUT_OVERLAP: "Overlapping layout elements",
     IssueKind.SHADOWING: "Variable shadowing",
     IssueKind.RESET_CONTAMINATION: "Reset contamination (missing reset writes)",
     IssueKind.IMPLICIT_LATCH: "Implicit latching (missing matching False writes)",
@@ -233,6 +236,10 @@ class VariablesReport:
         return [i for i in self.issues if i.kind is IssueKind.NAME_COLLISION]
 
     @property
+    def layout_overlaps(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.LAYOUT_OVERLAP]
+
+    @property
     def shadowing(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.SHADOWING]
 
@@ -290,6 +297,8 @@ class VariablesReport:
             return self.magic_numbers
         if kind is IssueKind.NAME_COLLISION:
             return self.name_collisions
+        if kind is IssueKind.LAYOUT_OVERLAP:
+            return self.layout_overlaps
         if kind is IssueKind.SHADOWING:
             return self.shadowing
         if kind is IssueKind.RESET_CONTAMINATION:
@@ -613,6 +622,13 @@ class VariablesReport:
                 lines,
                 SECTION_TITLES[IssueKind.NAME_COLLISION],
                 self.name_collisions,
+            )
+            return
+        if kind is IssueKind.LAYOUT_OVERLAP:
+            self._append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.LAYOUT_OVERLAP],
+                self.layout_overlaps,
             )
             return
         if kind is IssueKind.SHADOWING:

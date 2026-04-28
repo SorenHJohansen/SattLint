@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass, field
@@ -20,6 +21,8 @@ from sattlint.editor_api import (
 )
 
 _PROGRAM_SUFFIXES = {".s", ".x"}
+
+log = logging.getLogger("SattLint")
 
 
 def _path_key(path: Path) -> str:
@@ -241,7 +244,10 @@ class WorkspaceSnapshotStore:
             try:
                 future.result(timeout=timeout)
             except TimeoutError:
-                pass
+                log.debug(
+                    "Timed out waiting for workspace snapshot refresh",
+                    extra={"entry_file": str(resolved_entry), "wait_budget": timeout},
+                )
             except Exception as exc:
                 if raise_on_error:
                     raise exc

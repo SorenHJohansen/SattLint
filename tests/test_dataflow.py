@@ -3,11 +3,7 @@ from __future__ import annotations
 import textwrap
 
 from sattline_parser import strip_sl_comments
-from sattlint import constants as const
-from sattlint.analyzers.dataflow import analyze_dataflow
-from sattlint.analyzers.registry import get_default_analyzers
-from sattlint.engine import create_sl_parser
-from sattlint.models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
     ModuleCode,
@@ -19,7 +15,11 @@ from sattlint.models.ast_model import (
     Simple_DataType,
     Variable,
 )
-from sattlint.transformer.sl_transformer import SLTransformer
+from sattline_parser.transformer.sl_transformer import SLTransformer
+from sattlint import constants as const
+from sattlint.analyzers.dataflow import analyze_dataflow
+from sattlint.analyzers.registry import get_default_analyzers
+from sattlint.engine import create_sl_parser
 
 
 def _parse_to_basepicture(localvariables: str, equation_code: str) -> BasePicture:

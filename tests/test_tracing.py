@@ -3,8 +3,12 @@ from pathlib import Path
 from sattlint.tracing import trace_source_file_analysis
 
 
+def _sample_program_path() -> Path:
+    return Path("tests/fixtures/sample_sattline_files/LinterTestProgram.s")
+
+
 def test_trace_source_file_analysis_reports_issue_counts_and_events(tmp_path):
-    source_file = Path("tests/fixtures/sample_sattline_files/LinterTestProgram.s")
+    source_file = _sample_program_path()
     output_path = tmp_path / "trace.json"
 
     payload = trace_source_file_analysis(source_file, output_path=output_path)
@@ -36,7 +40,7 @@ def test_trace_source_file_analysis_redacts_external_paths(tmp_path):
 
 
 def test_trace_source_file_analysis_includes_timing_summary(tmp_path):
-    source_file = Path("tests/fixtures/sample_sattline_files/LinterTestProgram.s")
+    source_file = _sample_program_path()
     output_path = tmp_path / "trace.json"
 
     payload = trace_source_file_analysis(source_file, output_path=output_path)

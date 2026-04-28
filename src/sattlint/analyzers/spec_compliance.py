@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..grammar import constants as const
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleCode,
@@ -20,6 +19,8 @@ from ..models.ast_model import (
     SingleModule,
     Variable,
 )
+
+from ..grammar import constants as const
 from ..resolution.common import format_moduletype_label, resolve_moduletype_def_strict, varname_base, varname_full
 from .framework import Issue, SimpleReport
 

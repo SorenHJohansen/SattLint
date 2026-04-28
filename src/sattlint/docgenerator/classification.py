@@ -3,8 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .. import config as config_module
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleCode,
@@ -14,6 +13,8 @@ from ..models.ast_model import (
     SingleModule,
     Variable,
 )
+
+from .. import config as config_module
 from ..resolution.common import format_moduletype_label, path_startswith_casefold, resolve_moduletype_def_strict
 
 type DocumentableNode = SingleModule | FrameModule | ModuleTypeInstance

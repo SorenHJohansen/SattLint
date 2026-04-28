@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleTypeDef,
@@ -13,6 +13,7 @@ from ..models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from ..reporting.variables_report import IssueKind, VariableIssue, VariablesReport
 from ..resolution.common import resolve_moduletype_def_strict
 

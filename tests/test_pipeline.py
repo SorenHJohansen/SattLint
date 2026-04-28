@@ -2,6 +2,14 @@ import json
 import os
 from types import SimpleNamespace
 
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    ModuleDef,
+    ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    SingleModule,
+)
 from sattlint.analyzers.registry import (
     get_actual_cli_analyzer_keys,
     get_actual_lsp_analyzer_keys,
@@ -26,14 +34,6 @@ from sattlint.devtools.pipeline_artifacts import (
     write_pipeline_artifacts,
 )
 from sattlint.devtools.progress_reporting import ProgressReporter
-from sattlint.models.ast_model import (
-    BasePicture,
-    ModuleDef,
-    ModuleHeader,
-    ModuleTypeDef,
-    ModuleTypeInstance,
-    SingleModule,
-)
 from sattlint.reporting.variables_report import IssueKind
 
 from .helpers.artifact_assertions import (
@@ -2252,7 +2252,7 @@ def test_build_rule_metrics_report_never_triggered_uses_registry():
 
 def test_trace_timing_summary_is_present_and_aggregates_phases():
     """trace_basepicture_analysis includes timing_summary keyed by phase."""
-    from sattlint.models.ast_model import BasePicture, ModuleHeader
+    from sattline_parser.models.ast_model import BasePicture, ModuleHeader
     from sattlint.tracing import trace_basepicture_analysis
 
     bp = BasePicture(

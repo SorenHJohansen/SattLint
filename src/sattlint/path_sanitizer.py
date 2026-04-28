@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path, PureWindowsPath
 
@@ -12,6 +13,8 @@ _OPTION_PATH_PREFIXES = (
     "--trace-target=",
     "--output=",
 )
+
+log = logging.getLogger("SattLint")
 
 
 def _is_windows_absolute(raw_path: str) -> bool:
@@ -57,7 +60,10 @@ def sanitize_path_for_report(
     try:
         return resolved_candidate.relative_to(resolved_repo_root).as_posix()
     except ValueError:
-        pass
+        log.debug(
+            "Path is outside repo root during report sanitization",
+            extra={"raw_path": raw_path, "repo_root": str(resolved_repo_root)},
+        )
 
     if _looks_absolute(raw_path):
         name = _display_name(raw_path)

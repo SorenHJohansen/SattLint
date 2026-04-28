@@ -2,9 +2,7 @@
 
 import pytest
 
-from sattlint import constants as const
-from sattlint.analyzers.variables import VariablesAnalyzer
-from sattlint.models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     Equation,
@@ -16,6 +14,8 @@ from sattlint.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattlint import constants as const
+from sattlint.analyzers.variables import VariablesAnalyzer
 from sattlint.resolution.common import resolve_module_by_strict_path as _resolve_module_by_strict_path
 from sattlint.resolution.common import resolve_moduletype_def_strict as _resolve_moduletype_def_strict
 

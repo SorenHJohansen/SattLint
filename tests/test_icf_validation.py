@@ -1,12 +1,6 @@
 from pathlib import Path
 
-from sattlint.analyzers.icf import (
-    format_icf_file,
-    format_icf_text,
-    parse_icf_file,
-    validate_icf_entries_against_program,
-)
-from sattlint.models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     FrameModule,
@@ -16,6 +10,12 @@ from sattlint.models.ast_model import (
     Simple_DataType,
     SingleModule,
     Variable,
+)
+from sattlint.analyzers.icf import (
+    format_icf_file,
+    format_icf_text,
+    parse_icf_file,
+    validate_icf_entries_against_program,
 )
 from sattlint.reporting.icf_report import ICFEntry
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from ..grammar import constants as const
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleCode,
@@ -15,6 +14,8 @@ from ..models.ast_model import (
     SFCTransitionSub,
     SingleModule,
 )
+
+from ..grammar import constants as const
 from .framework import Issue, SimpleReport
 
 DEFAULT_MODULE_COMPLEXITY_THRESHOLD = 10
