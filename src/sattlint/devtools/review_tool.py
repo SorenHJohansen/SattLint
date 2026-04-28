@@ -5,11 +5,12 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Any
 
 # Import our devtools for reuse
 from .doc_gardener import run_scan as doc_gardener_scan
 from .observability import collect_all_metrics
+
 # We'll import the arch linter function if we refactor it, but for now we'll run as subprocess
 
 ARTIFACTS_DIR = Path("artifacts")
@@ -19,24 +20,21 @@ REVIEW_FILE = ARTIFACTS_DIR / "review_report.json"
 def run_command(cmd: list[str], cwd: Path | None = None) -> tuple[int, str, str]:
     """Run a command and return (returncode, stdout, stderr)."""
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, check=False, cwd=cwd
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=cwd)
         return result.returncode, result.stdout, result.stderr
     except Exception as e:
         return 1, "", str(e)
 
 
-def run_architecture_lint() -> Dict[str, Any]:
+def run_architecture_lint() -> dict[str, Any]:
     """Run the architecture linter and return results."""
-    returncode, stdout, stderr = run_command(
-        [sys.executable, "-m", "sattlint.devtools.layer_linter"]
-    )
+    returncode, stdout, stderr = run_command([sys.executable, "-m", "sattlint.devtools.layer_linter"])
     # Parse output to get violations count
     violations = 0
     if returncode != 0:
         # Try to extract number from output like "Found X architecture violations:"
         import re
+
         match = re.search(r"Found (\d+) architecture violations:", stdout + stderr)
         if match:
             violations = int(match.group(1))
@@ -48,7 +46,7 @@ def run_architecture_lint() -> Dict[str, Any]:
     }
 
 
-def run_doc_gardener() -> Dict[str, Any]:
+def run_doc_gardener() -> dict[str, Any]:
     """Run the doc gardener scan and return results."""
     try:
         result = doc_gardener_scan()
@@ -65,29 +63,25 @@ def run_doc_gardener() -> Dict[str, Any]:
         }
 
 
-def run_tests() -> Dict[str, Any]:
+def run_tests() -> dict[str, Any]:
     """Run the test suite and return results."""
-    returncode, stdout, stderr = run_command(
-        [sys.executable, "-m", "pytest", "tests/", "-v"]
-    )
+    returncode, stdout, stderr = run_command([sys.executable, "-m", "pytest", "tests/", "-v"])
     # Parse pytest output for summary
-    passed = 0
     failed = 0
     skipped = 0
     for line in stdout.splitlines():
         if "passed" in line and "failed" in line and "skipped" in line:
             # Typical pytest summary line: "5 passed, 2 failed, 3 skipped in 0.12s"
             import re
+
             nums = re.findall(r"(\d+)", line)
             if len(nums) >= 3:
-                passed = int(nums[0])
                 failed = int(nums[1])
                 skipped = int(nums[2])
             break
     return {
         "passed": returncode == 0 and failed == 0,
         "returncode": returncode,
-        "passed": passed,
         "failed": failed,
         "skipped": skipped,
         "stdout": stdout,
@@ -95,11 +89,9 @@ def run_tests() -> Dict[str, Any]:
     }
 
 
-def run_linting() -> Dict[str, Any]:
+def run_linting() -> dict[str, Any]:
     """Run ruff linting and return results."""
-    returncode, stdout, stderr = run_command(
-        ["uvx", "ruff", "check", "src"]
-    )
+    returncode, stdout, stderr = run_command(["uvx", "ruff", "check", "src"])
     # Count warnings and errors
     warnings = 0
     errors = 0
@@ -118,11 +110,9 @@ def run_linting() -> Dict[str, Any]:
     }
 
 
-def run_format_check() -> Dict[str, Any]:
+def run_format_check() -> dict[str, Any]:
     """Check code formatting with ruff."""
-    returncode, stdout, stderr = run_command(
-        ["uvx", "ruff", "format", "--check", "src"]
-    )
+    returncode, stdout, stderr = run_command(["uvx", "ruff", "format", "--check", "src"])
     return {
         "passed": returncode == 0,
         "stdout": stdout,
@@ -130,12 +120,12 @@ def run_format_check() -> Dict[str, Any]:
     }
 
 
-def collect_observability() -> Dict[str, Any]:
+def collect_observability() -> dict[str, Any]:
     """Collect current observability metrics."""
     return collect_all_metrics()
 
 
-def run_full_review() -> Dict[str, Any]:
+def run_full_review() -> dict[str, Any]:
     """Run all review checks and return a comprehensive report."""
     print("Running architecture lint...")
     arch_result = run_architecture_lint()
@@ -189,11 +179,11 @@ def run_full_review() -> Dict[str, Any]:
     return report
 
 
-def print_review(report: Dict[str, Any]) -> None:
+def print_review(report: dict[str, Any]) -> None:
     """Print a human-readable summary of the review."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("AGENT REVIEW REPORT")
-    print("="*60)
+    print("=" * 60)
     print(f"Timestamp: {report['timestamp']}")
     print(f"Overall Status: {'PASS' if report['overall_passed'] else 'FAIL'}")
     print("\nSummary:")
@@ -231,7 +221,7 @@ def print_review(report: Dict[str, Any]) -> None:
             print(f"    Line Coverage: {cov.get('line_coverage', 0):.1f}%")
             print(f"    Branch Coverage: {cov.get('branch_coverage', 0):.1f}%")
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
 
 
 def main() -> None:

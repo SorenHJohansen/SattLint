@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from typing import Any
 
+from sattline_parser.models.ast_model import BasePicture
+
 from . import config as config_module
 from . import console as console_module
 from .docgenerator import generate_docx
@@ -11,7 +13,6 @@ from .docgenerator.classification import (
     discover_documentation_unit_candidates,
     document_scope_summary,
 )
-from sattline_parser.models.ast_model import BasePicture
 from .models.project_graph import ProjectGraph
 
 _DOCUMENTATION_SCOPE_STATE = {

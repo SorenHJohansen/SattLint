@@ -21,8 +21,8 @@ from .corpus import (
     run_corpus_suite,
 )
 from .doc_gardener import DocFinding, run_scan
-from .observability import collect_all_metrics, write_metrics, read_metrics
-from .review_tool import run_full_review, print_review
+from .observability import collect_all_metrics, read_metrics, write_metrics
+from .review_tool import print_review, run_full_review
 
 __all__ = [
     "ANALYSIS_DIFF_SCHEMA_KIND",
@@ -40,14 +40,14 @@ __all__ = [
     "CorpusSuiteResult",
     "DocFinding",
     "build_analysis_diff_report",
+    "collect_all_metrics",
     "execute_corpus_case",
     "load_finding_collection",
+    "print_review",
+    "read_metrics",
     "run_corpus_case",
     "run_corpus_suite",
-    "run_scan",
-    "collect_all_metrics",
-    "write_metrics",
-    "read_metrics",
     "run_full_review",
-    "print_review",
+    "run_scan",
+    "write_metrics",
 ]

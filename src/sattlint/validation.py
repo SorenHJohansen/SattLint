@@ -8,9 +8,6 @@ from collections.abc import Sequence as AbcSequence
 
 from lark import Tree
 
-from .casefolding import is_anytype_name
-from .analyzers.sattline_builtins import SATTLINE_BUILTINS
-from .grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -36,6 +33,10 @@ from sattline_parser.models.ast_model import (
     SourceSpan,
     Variable,
 )
+
+from .analyzers.sattline_builtins import SATTLINE_BUILTINS
+from .casefolding import is_anytype_name
+from .grammar import constants as const
 from .resolution.type_graph import TypeGraph
 
 

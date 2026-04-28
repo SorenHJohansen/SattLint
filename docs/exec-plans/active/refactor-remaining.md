@@ -58,7 +58,7 @@ The refactoring proceeds in waves, each producing working, testable output:
 
 Before starting, verify current state:
 ```bash
-cd /home/sorenhj/Workspace/GitHub.com/SattLint
+cd "$(git rev-parse --show-toplevel)"
 pytest tests/test_app.py -v --collect-only
 ```
 

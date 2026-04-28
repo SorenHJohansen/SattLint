@@ -8,12 +8,12 @@ stale or obsolete documentation that does not reflect the real code behavior
 and opens fix-up pull requests."
 """
 
-import os
 import re
 import subprocess
-from datetime import datetime, timedelta
+from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, NamedTuple
+from typing import Any, NamedTuple
 
 # Constants
 DOCS_DIR = Path(__file__).parent.parent.parent.parent / "docs"
@@ -33,13 +33,11 @@ class DocFinding(NamedTuple):
     message: str
 
 
-def scan_agents_md() -> List[DocFinding]:
+def scan_agents_md() -> Sequence[DocFinding]:
     """Check AGENTS.md is under 100 lines and well-structured."""
     findings = []
     if not AGENTS_MD.exists():
-        findings.append(
-            DocFinding("AGENTS.md", 0, "Critical", "missing", "AGENTS.md not found")
-        )
+        findings.append(DocFinding("AGENTS.md", 0, "Critical", "missing", "AGENTS.md not found"))
         return findings
 
     with open(AGENTS_MD) as f:
@@ -62,16 +60,12 @@ def scan_agents_md() -> List[DocFinding]:
     required = ["Quick Reference", "Repo Map", "Key Docs", "Critical Invariants"]
     for section in required:
         if section not in content:
-            findings.append(
-                DocFinding(
-                    "AGENTS.md", 0, "Medium", "structure", f"Missing section: {section}"
-                )
-            )
+            findings.append(DocFinding("AGENTS.md", 0, "Medium", "structure", f"Missing section: {section}"))
 
     return findings
 
 
-def scan_dead_links() -> List[DocFinding]:
+def scan_dead_links() -> Sequence[DocFinding]:
     """Check for dead links in markdown files under docs/."""
     findings = []
     if not DOCS_DIR.exists():
@@ -108,7 +102,7 @@ def scan_dead_links() -> List[DocFinding]:
     return findings
 
 
-def scan_docs_structure() -> List[DocFinding]:
+def scan_docs_structure() -> Sequence[DocFinding]:
     """Validate docs/ directory structure matches harness-engineering layout."""
     findings = []
     required_dirs = ["design-docs", "exec-plans", "references"]
@@ -121,30 +115,22 @@ def scan_docs_structure() -> List[DocFinding]:
 
     for d in required_dirs:
         if not (DOCS_DIR / d).exists():
-            findings.append(
-                DocFinding(
-                    "docs/", 0, "High", "structure", f"Missing directory: docs/{d}"
-                )
-            )
+            findings.append(DocFinding("docs/", 0, "High", "structure", f"Missing directory: docs/{d}"))
 
     for f in required_files:
         if not (DOCS_DIR / f).exists():
-            findings.append(
-                DocFinding(
-                    "docs/", 0, "High", "missing", f"Missing file: docs/{f}"
-                )
-            )
+            findings.append(DocFinding("docs/", 0, "High", "missing", f"Missing file: docs/{f}"))
 
     return findings
 
 
-def scan_stale_docs() -> List[DocFinding]:
+def scan_stale_docs() -> Sequence[DocFinding]:
     """Check if docs are stale compared to code changes (git-based heuristic)."""
     findings = []
     try:
         # Get timestamp for 30 days ago
-        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
-        
+        thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
+
         # Find docs modified more than 30 days ago but code changed recently
         result = subprocess.run(
             ["git", "log", "-1", "--format=%H", "--", "src/"],
@@ -173,14 +159,14 @@ def scan_stale_docs() -> List[DocFinding]:
             if doc_result.returncode == 0 and doc_result.stdout.strip():
                 try:
                     doc_timestamp = float(doc_result.stdout.strip())
-                    doc_date = datetime.utcfromtimestamp(doc_timestamp)
-                    
+                    doc_date = datetime.fromtimestamp(doc_timestamp)
+
                     # Only check docs older than 30 days
                     if doc_date < thirty_days_ago:
                         # Check if doc references code that has changed since doc was last updated
-                        with open(doc, encoding='utf-8') as f:
+                        with open(doc, encoding="utf-8") as f:
                             content = f.read()
-                        
+
                         # Look for code file references
                         code_refs = re.findall(r"`([^`]+\.(?:py|toml|json|yaml|yml))`", content)
                         stale_refs = []
@@ -197,13 +183,13 @@ def scan_stale_docs() -> List[DocFinding]:
                                 if ref_result.returncode == 0 and ref_result.stdout.strip():
                                     try:
                                         ref_timestamp = float(ref_result.stdout.strip())
-                                        ref_date = datetime.utcfromtimestamp(ref_timestamp)
+                                        ref_date = datetime.fromtimestamp(ref_timestamp)
                                         # If code was modified after doc was last updated, it's potentially stale
                                         if ref_date > doc_date:
                                             stale_refs.append(ref)
                                     except ValueError:
                                         pass
-                        
+
                         if stale_refs:
                             findings.append(
                                 DocFinding(
@@ -217,14 +203,14 @@ def scan_stale_docs() -> List[DocFinding]:
                 except ValueError:
                     pass
 
-    except Exception as e:
+    except Exception:
         # Don't fail the entire scan if stale detection fails
         pass
 
     return findings
 
 
-def run_scan() -> Dict[str, any]:
+def run_scan() -> dict[str, Any]:
     """Run full doc-gardening scan. Returns findings + metadata."""
     findings = []
     findings.extend(scan_agents_md())
@@ -233,7 +219,7 @@ def run_scan() -> Dict[str, any]:
     findings.extend(scan_stale_docs())
 
     return {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(UTC).isoformat() + "Z",
         "total_findings": len(findings),
         "by_severity": {
             "Critical": len([f for f in findings if f.severity == "Critical"]),
@@ -252,7 +238,7 @@ def run_scan() -> Dict[str, any]:
     }
 
 
-def update_quality_score(findings: List[DocFinding]) -> None:
+def update_quality_score(findings: Sequence[DocFinding]) -> None:
     """Update docs/quality-score.md with latest scan results."""
     if not QUALITY_SCORE.exists():
         return
@@ -262,20 +248,17 @@ def update_quality_score(findings: List[DocFinding]) -> None:
         content = f.read()
 
     # Add trend entry
-    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     total = len(findings)
-    new_entry = f"| {date_str} | B | Scan: {total} findings | Auto-update |"
 
     if "## Trend" in content:
         parts = content.split("## Trend")
-        parts[1] = parts[1].replace(
-            "|---", f"| {date_str} | B | {total} findings | Scan |\n|---"
-        )
+        parts[1] = parts[1].replace("|---", f"| {date_str} | B | {total} findings | Scan |\n|---")
         with open(QUALITY_SCORE, "w") as f:
             f.write(parts[0] + "## Trend" + parts[1])
 
 
-def update_tech_debt_scan_log(findings: List[DocFinding]) -> None:
+def update_tech_debt_scan_log(findings: Sequence[DocFinding]) -> None:
     """Update docs/exec-plans/tech-debt-tracker.md scan log."""
     if not TECH_DEBT.exists():
         return
@@ -283,7 +266,7 @@ def update_tech_debt_scan_log(findings: List[DocFinding]) -> None:
     with open(TECH_DEBT) as f:
         content = f.read()
 
-    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     finding_summary = f"{len(findings)} findings"
     new_log = f"| {date_str} | {finding_summary} | Doc-gardening scan |"
 
@@ -301,16 +284,18 @@ def update_tech_debt_scan_log(findings: List[DocFinding]) -> None:
                 f.write(parts[0] + "## Scan Log" + parts[1])
 
 
-def open_fixup_pr(findings: List[DocFinding]) -> bool:
+def open_fixup_pr(findings: Sequence[DocFinding]) -> bool:
     """Open a fix-up PR with doc-gardening changes. Returns True if PR opened."""
     if not findings:
         return False
-    
+
     # Check if gh CLI is available
     try:
         result = subprocess.run(
             ["gh", "--version"],
-            capture_output=True, text=True, cwd=DOCS_DIR.parent,
+            capture_output=True,
+            text=True,
+            cwd=DOCS_DIR.parent,
         )
         if result.returncode != 0:
             print("  gh CLI not available, skipping PR creation")
@@ -318,33 +303,35 @@ def open_fixup_pr(findings: List[DocFinding]) -> bool:
     except Exception:
         print("  gh CLI not available, skipping PR creation")
         return False
-    
-    branch = f"doc-gardener-fixup-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
-    
+
+    branch = f"doc-gardener-fixup-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
+
     # Create branch and commit changes
     subprocess.run(["git", "checkout", "-b", branch], capture_output=True, cwd=DOCS_DIR.parent)
     subprocess.run(["git", "add", "docs/", "AGENTS.md"], capture_output=True, cwd=DOCS_DIR.parent)
-    
+
     commit_msg = f"docs: doc-gardener fixup ({len(findings)} findings)\n\n"
     for f in findings[:5]:
         commit_msg += f"- [{f.severity}] {f.file}: {f.message}\n"
     if len(findings) > 5:
         commit_msg += f"- ... and {len(findings) - 5} more\n"
-    
+
     result = subprocess.run(
         ["git", "commit", "-m", commit_msg],
-        capture_output=True, text=True, cwd=DOCS_DIR.parent,
+        capture_output=True,
+        text=True,
+        cwd=DOCS_DIR.parent,
     )
-    
+
     if result.returncode != 0:
         print(f"  No changes to commit: {result.stderr}")
         subprocess.run(["git", "checkout", "main"], capture_output=True, cwd=DOCS_DIR.parent)
         subprocess.run(["git", "branch", "-D", branch], capture_output=True, cwd=DOCS_DIR.parent)
         return False
-    
+
     # Push and create PR
     subprocess.run(["git", "push", "-u", "origin", branch], capture_output=True, cwd=DOCS_DIR.parent)
-    
+
     pr_body = f"""## Doc-Gardening Fix-Up PR
 
 Automated PR from doc-gardening scan.
@@ -358,13 +345,24 @@ Automated PR from doc-gardening scan.
         pr_body += f"| {f.file} | {f.line} | {f.severity} | {f.category} | {f.message} |\n"
     if len(findings) > 10:
         pr_body += f"\n... and {len(findings) - 10} more findings.\n"
-    
+
     result = subprocess.run(
-        ["gh", "pr", "create", "--title", f"docs: doc-gardener fixup ({len(findings)} findings)", 
-         "--body", pr_body, "--label", "automated,documentation"],
-        capture_output=True, text=True, cwd=DOCS_DIR.parent,
+        [
+            "gh",
+            "pr",
+            "create",
+            "--title",
+            f"docs: doc-gardener fixup ({len(findings)} findings)",
+            "--body",
+            pr_body,
+            "--label",
+            "automated,documentation",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=DOCS_DIR.parent,
     )
-    
+
     if result.returncode == 0:
         print(f"  Created PR: {result.stdout.strip()}")
         # Go back to main
@@ -393,7 +391,7 @@ def main() -> None:
     update_quality_score(findings)
     update_tech_debt_scan_log(findings)
     print("\nTracking files updated.")
-    
+
     # Open fix-up PR if there are findings
     if findings:
         print("\nAttempting to open fix-up PR...")

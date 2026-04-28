@@ -34,7 +34,13 @@ Tracked by doc-gardening agent; fails CI when score drops.
 ## Trend
 
 | Date | Avg Grade | Note |
-|------|----------|------|
+| 2026-04-28 | B | 1 findings | Scan |
+| 2026-04-28 | B | 0 findings | Scan |
+|------| 2026-04-28 | B | 1 findings | Scan |
+| 2026-04-28 | B | 0 findings | Scan |
+|----------| 2026-04-28 | B | 1 findings | Scan |
+| 2026-04-28 | B | 0 findings | Scan |
+|------|
 | 2026-04-28 | B | 12 findings | Scan |
 | 2026-04-28 | B | 0 findings | Scan |
 | 2026-04-28 | B | Baseline after docs restructure |
