@@ -4,6 +4,9 @@ name: Quality
 
 on: [push, pull_request]
 
+permissions:
+  contents: read
+
 jobs:
   pyright:
     name: Pyright (${{ matrix.os }})
