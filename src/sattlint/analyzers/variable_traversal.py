@@ -7,8 +7,7 @@ from typing import Any
 
 from lark import Tree
 
-from ..grammar import constants as const
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     FloatLiteral,
     IntLiteral,
     ModuleCode,
@@ -24,6 +23,8 @@ from ..models.ast_model import (
     SFCTransitionSub,
     Variable,
 )
+
+from ..grammar import constants as const
 from ..resolution import AccessKind, decorate_segment
 from ..resolution.common import varname_base
 from ..resolution.scope import ScopeContext

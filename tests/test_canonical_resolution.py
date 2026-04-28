@@ -1,8 +1,6 @@
 """Tests for canonical path resolution across parameter mappings."""
 
-from sattlint import constants as const
-from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
-from sattlint.models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     Equation,
@@ -13,6 +11,8 @@ from sattlint.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattlint import constants as const
+from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 
 
 def _varref(s: str) -> dict:

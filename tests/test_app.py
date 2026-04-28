@@ -10,12 +10,12 @@ from typing import Any, ClassVar, cast
 import pytest
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
+from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
 from sattlint import app
 from sattlint.analyzers import variable_usage_reporting as variables_reporting_module
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.framework import AnalyzerSpec, Issue, SimpleReport
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys
-from sattlint.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.reporting.variables_report import (
     ALL_VARIABLE_ANALYSIS_KINDS,
@@ -1473,7 +1473,7 @@ def test_run_variable_analysis_all_reports_lists_empty_categories(noop_screen, m
 
 
 def test_run_variable_analysis_all_reports_hide_low_confidence_categories(noop_screen, monkeypatch, capsys):
-    from sattlint.models.ast_model import Variable
+    from sattline_parser.models.ast_model import Variable
 
     issue = VariableIssue(
         kind=app.IssueKind.UI_ONLY,
@@ -1510,7 +1510,7 @@ def test_run_variable_analysis_all_reports_hide_low_confidence_categories(noop_s
 
 
 def test_run_variable_analysis_can_render_low_confidence_category_on_request(noop_screen, monkeypatch, capsys):
-    from sattlint.models.ast_model import Variable
+    from sattline_parser.models.ast_model import Variable
 
     issue = VariableIssue(
         kind=app.IssueKind.UI_ONLY,

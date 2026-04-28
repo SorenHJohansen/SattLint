@@ -41,7 +41,7 @@
 - Prefer repo-local commands over IDE abstractions. In this repo, the VS Code Testing UI or generic test runner is unreliable and can use the wrong interpreter or report zero collected tests.
 - Match the first validation step to the surface you changed: use `sattlint syntax-check` for parser or strict-validation work, targeted `pytest` files for Python or CLI behavior, and quick pipeline or audit profiles for devtools and artifact work.
 - Start narrow, then widen. Prefer the smallest real fixture, target file, or focused test module that exercises the change before running broader suites.
-- When creating a new unit, prefer a real copy-based scaffold from `NNEStart`: copy into a new `*Lib` file, keep as many copied modules as practical, add a named unit wrapper module, and have the program file invoke that wrapper.
+- When creating a new SattLine program or library scaffold, always create the `.g`, `.l`, and `.s` triplet: copy from `NNEStart.s` and `NNEStart.l`, create an empty `.g`, and do not create `.x`, `.y`, or `.z` scaffold files. Keep as many copied modules as practical, add a named unit wrapper module, and have the program file invoke that wrapper. **After syntax-check passes, always verify scaffold semantic completeness: main library moduletype must have MODULEPARAMETERS + LOCALVARIABLES + SUBMODULES invoking support-lib types; support library must define all referenced types. Do not treat "syntax-check OK" as "complete"—verify module substance exists.**
 - Propose a concise plan before broad or multi-file changes.
 - Ask for clarification when intended behavior, user-facing semantics, or safety requirements are unclear.
 - Prefer incremental, reviewable changes over large rewrites.
@@ -94,6 +94,36 @@
 - Prefer focused validation first, then broader repo checks when warranted.
 - Do not use the VS Code test runner in this repo; run pytest through the repo venv directly.
 - For first-check command routing by surface, see `.github/skills/validation-routing/references/validation-map.md`.
+
+---
+
+## Unit Scaffolding Semantic Validation (Critical)
+
+When creating or repairing unit scaffolds (main library + support library + program):
+
+**Syntax-check passing does NOT indicate completion.** Syntax validation only confirms grammar; it does not verify module substance.
+
+**Semantic validation checks (mandatory after syntax-check passes):**
+
+1. **Main library unit moduletype must contain:**
+   - At least one MODULEPARAMETER declaration (e.g., `Name`, `TankName`, process parameters)
+   - At least one LOCALVARIABLE for operational state (beyond just a tag string)
+   - At least one SUBMODULE invoking equipment/operation types from support library
+   - GraphObjects with descriptive TextObject labels
+   - **Bare module with only `Tag: string := "299A"` is NOT functional.**
+
+2. **Support library must contain:**
+   - At least one equipment or operation MODULEDEFINITION actually used by main unit
+   - Each MODULETYPE must have relevant MODULEPARAMETERS and LOCALVARIABLES
+   - Every type name referenced in main lib SUBMODULES must be defined here
+   - **Empty TYPEDEFINITIONS section means support lib is non-functional.**
+
+3. **Cross-library type reference verification:**
+   - Grep main library for SUBMODULE invocation type names (e.g., `SprayDryerInlet`)
+   - Verify each type exists as a MODULEDEFINITION in support library TYPEDEFINITIONS
+   - Missing types = unresolvable moduletype at runtime
+
+**Failure response:** If semantic checks fail, **do not mark work complete.** Report which checks failed, what's missing, and fix the module content before closing.
 
 ---
 

@@ -1,8 +1,6 @@
 """Tests for SFC analyzer checks."""
 
-from sattlint import constants as const
-from sattlint.analyzers.sfc import analyze_sfc
-from sattlint.models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleCode,
     ModuleHeader,
@@ -13,6 +11,8 @@ from sattlint.models.ast_model import (
     Simple_DataType,
     Variable,
 )
+from sattlint import constants as const
+from sattlint.analyzers.sfc import analyze_sfc
 
 
 def _hdr(name: str) -> ModuleHeader:

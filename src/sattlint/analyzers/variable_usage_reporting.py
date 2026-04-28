@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import logging
 
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
     SingleModule,
 )
+
 from ..resolution.common import (
     find_all_aliases,
     format_moduletype_label,
@@ -483,12 +484,12 @@ def _find_module_instances(bp: BasePicture, typedef_name: str):
             expected_typedef_name=parent_typedef_name_lower,
             collected_paths=parent_instances,
         ):
-            for m in modules or []:
-                p = [*path, m.header.name]
-                if isinstance(m, ModuleTypeInstance) and m.moduletype_name.lower() == expected_typedef_name:
-                    collected_paths.append(p)
-                if isinstance(m, SingleModule | FrameModule):
-                    find_parent_instances(m.submodules or [], p, expected_typedef_name, collected_paths)
+            for module in modules or []:
+                module_path = [*path, module.header.name]
+                if isinstance(module, ModuleTypeInstance) and module.moduletype_name.lower() == expected_typedef_name:
+                    collected_paths.append(module_path)
+                if isinstance(module, SingleModule | FrameModule):
+                    find_parent_instances(module.submodules or [], module_path, expected_typedef_name, collected_paths)
 
         find_parent_instances(bp.submodules, [bp.header.name])
 

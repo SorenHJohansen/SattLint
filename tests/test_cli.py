@@ -1,6 +1,5 @@
 """CLI behavior tests for SattLint."""
 
-from types import SimpleNamespace
 from typing import cast
 
 import sattlint
@@ -10,7 +9,6 @@ from sattlint import app, app_base
 def _run_base_cli(argv: list[str], **overrides) -> int:
     kwargs = {
         "config_path": app.CONFIG_PATH,
-        "repo_audit_module": SimpleNamespace(main=lambda argv=None: app_base.EXIT_SUCCESS),
         "load_config_fn": lambda path: ({"debug": False}, False),
         "apply_debug_fn": lambda _cfg: None,
         "run_validate_config_command_fn": lambda cfg, *, config_path, default_used: app_base.EXIT_SUCCESS,
@@ -98,12 +96,17 @@ def test_run_cli_format_icf_passes_check_flag():
     assert seen["check"] is True
 
 
-def test_run_cli_repo_audit_passes_through_args():
+def test_run_cli_repo_audit_passes_through_args(monkeypatch):
     seen = {}
+
+    def mock_repo_audit_main(argv=None):
+        seen.update({"argv": argv})
+        return app_base.EXIT_SUCCESS
+
+    monkeypatch.setattr("sattlint.devtools.repo_audit.main", mock_repo_audit_main)
 
     exit_code = _run_base_cli(
         ["repo-audit", "--profile", "quick", "--fail-on", "high"],
-        repo_audit_module=SimpleNamespace(main=lambda argv=None: seen.update({"argv": argv}) or app_base.EXIT_SUCCESS),
     )
 
     assert exit_code == app_base.EXIT_SUCCESS

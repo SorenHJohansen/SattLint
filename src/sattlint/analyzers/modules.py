@@ -6,7 +6,7 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from typing import Any, cast
 
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
     FrameModule,
@@ -17,6 +17,7 @@ from ..models.ast_model import (
     SingleModule,
     Variable,
 )
+
 from .framework import Issue, format_report_header
 
 log = logging.getLogger("SattLint")

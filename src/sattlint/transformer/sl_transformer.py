@@ -1,3 +1,9 @@
-"""Compatibility wrapper for the parser-core transformer."""
+"""Public compatibility wrapper for parser-core transformer.
 
-from sattline_parser.transformer.sl_transformer import *  # noqa: F403
+This module is retained as an external boundary. Internal SattLint code should
+import parser-core symbols from ``sattline_parser.transformer.sl_transformer`` directly.
+"""
+
+from sattline_parser.transformer.sl_transformer import SLTransformer
+
+__all__ = ["SLTransformer"]

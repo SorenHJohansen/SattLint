@@ -1,3 +1,67 @@
-"""Compatibility wrapper for parser-core AST models."""
+"""Public compatibility wrapper for parser-core AST models.
 
-from sattline_parser.models.ast_model import *  # noqa: F403
+This module is retained as an external boundary. Internal SattLint code should
+import parser-core symbols from ``sattline_parser.models.ast_model`` directly.
+"""
+
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    DataType,
+    Equation,
+    FloatLiteral,
+    FrameModule,
+    GraphObject,
+    InteractObject,
+    IntLiteral,
+    ModuleCode,
+    ModuleDef,
+    ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    Sequence,
+    SFCAlternative,
+    SFCBreak,
+    SFCCodeBlocks,
+    SFCFork,
+    SFCParallel,
+    SFCStep,
+    SFCSubsequence,
+    SFCTransition,
+    SFCTransitionSub,
+    Simple_DataType,
+    SingleModule,
+    SourceSpan,
+    Variable,
+)
+
+__all__ = [
+    "BasePicture",
+    "DataType",
+    "Equation",
+    "FloatLiteral",
+    "FrameModule",
+    "GraphObject",
+    "IntLiteral",
+    "InteractObject",
+    "ModuleCode",
+    "ModuleDef",
+    "ModuleHeader",
+    "ModuleTypeDef",
+    "ModuleTypeInstance",
+    "ParameterMapping",
+    "SFCAlternative",
+    "SFCBreak",
+    "SFCCodeBlocks",
+    "SFCFork",
+    "SFCParallel",
+    "SFCStep",
+    "SFCSubsequence",
+    "SFCTransition",
+    "SFCTransitionSub",
+    "Sequence",
+    "Simple_DataType",
+    "SingleModule",
+    "SourceSpan",
+    "Variable",
+]

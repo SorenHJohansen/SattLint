@@ -14,11 +14,7 @@ from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
 
-from sattline_parser.utils.formatter import format_expr
-
-from .. import config as config_module
-from ..analyzers.framework import Issue
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     Sequence,
     SFCAlternative,
     SFCBreak,
@@ -30,6 +26,10 @@ from ..models.ast_model import (
     SFCTransitionSub,
     Variable,
 )
+from sattline_parser.utils.formatter import format_expr
+
+from .. import config as config_module
+from ..analyzers.framework import Issue
 from .classification import (
     DocumentationClassification,
     DocumentedModule,

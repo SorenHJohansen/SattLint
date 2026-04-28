@@ -4,13 +4,7 @@ from docx import Document
 from docx.document import Document as DocClass
 
 from sattline_parser.grammar import constants as const
-from sattlint import config as config_module
-from sattlint.docgenerator.classification import (
-    classify_documentation_structure,
-    discover_documentation_unit_candidates,
-)
-from sattlint.docgenerator.docgen import generate_docx
-from sattlint.models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
     ModuleCode,
@@ -25,6 +19,12 @@ from sattlint.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattlint import config as config_module
+from sattlint.docgenerator.classification import (
+    classify_documentation_structure,
+    discover_documentation_unit_candidates,
+)
+from sattlint.docgenerator.docgen import generate_docx
 
 
 def _hdr(name: str) -> ModuleHeader:

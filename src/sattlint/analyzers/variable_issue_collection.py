@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     FrameModule,
     ModuleTypeInstance,
     Simple_DataType,
@@ -13,6 +13,7 @@ from ..models.ast_model import (
     SourceSpan,
     Variable,
 )
+
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution import AccessKind
 

@@ -9,11 +9,11 @@ from typing import Any, ClassVar, cast
 
 import pytest
 
-from sattlint import app, app_base
+from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
+from sattlint import app, app_base, app_docs, app_graphics
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.framework import AnalyzerSpec, Issue, SimpleReport
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys
-from sattlint.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
 from sattlint.models.project_graph import ProjectGraph
 from sattlint.reporting.variables_report import (
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
@@ -780,6 +780,61 @@ def test_graphics_rules_menu_adds_and_saves_rule(noop_screen, monkeypatch, tmp_p
     assert saved_rules[0]["rules"][0]["relative_module_path"] == "Equipmentmoduler.Stop.L1"
 
 
+def test_prompt_optional_float_list_raises_skipped_on_blank(monkeypatch):
+    monkeypatch.setattr(builtins, "input", make_input([""]))
+
+    with pytest.raises(app_graphics.OptionalPromptSkipped):
+        app_graphics.prompt_optional_float_list("Invocation coords", 5, pause_fn=lambda: None)
+
+
+def test_prompt_optional_float_list_raises_validation_error_on_non_numeric(monkeypatch):
+    pauses: list[str] = []
+    monkeypatch.setattr(builtins, "input", make_input(["x,1,2,3,4"]))
+
+    with pytest.raises(app_graphics.OptionalPromptValidationError):
+        app_graphics.prompt_optional_float_list("Invocation coords", 5, pause_fn=lambda: pauses.append("pause"))
+
+    assert pauses == ["pause"]
+
+
+def test_prompt_optional_bool_raises_validation_error_on_invalid_value(monkeypatch):
+    monkeypatch.setattr(builtins, "input", make_input(["maybe"]))
+
+    with pytest.raises(app_graphics.OptionalPromptValidationError):
+        app_graphics.prompt_optional_bool("Invocation zoomable")
+
+
+def test_pick_or_prompt_graphics_rule_selector_value_raises_on_blank_manual_input(monkeypatch):
+    monkeypatch.setattr(builtins, "input", make_input([""]))
+
+    with pytest.raises(app_graphics.RequiredPromptValidationError):
+        app_graphics.pick_or_prompt_graphics_rule_selector_value(
+            "unit_structure_path",
+            "single",
+            cfg=app.DEFAULT_CONFIG.copy(),
+            discover_graphics_rule_selector_options_fn=lambda *_args, **_kwargs: [],
+        )
+
+
+def test_prompt_graphics_rule_definition_returns_none_on_missing_required_selector(monkeypatch):
+    pauses: list[str] = []
+    monkeypatch.setattr(builtins, "input", make_input(["1"]))
+
+    rule = app_graphics.prompt_graphics_rule_definition_with_config(
+        app.DEFAULT_CONFIG.copy(),
+        prompt_fn=lambda *_args, **_kwargs: "",
+        pause_fn=lambda: pauses.append("pause"),
+        pick_or_prompt_graphics_rule_selector_value_fn=(
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                app_graphics.RequiredPromptValidationError("Selector path is required")
+            )
+        ),
+    )
+
+    assert rule is None
+    assert pauses == ["pause"]
+
+
 def test_pick_or_prompt_graphics_rule_selector_value_picks_discovered_option(monkeypatch):
     monkeypatch.setattr(
         app,
@@ -1003,14 +1058,24 @@ def test_annotate_graphics_entries_with_structure_paths_ignores_wrapper_candidat
     assert all("unit_structure_path" not in entry for entry in annotated)
 
 
-def test_documentation_menu_scope_by_moduletype(noop_screen, monkeypatch):
+def test_documentation_menu_scope_by_moduletype(monkeypatch):
     cfg = deepcopy(app.DEFAULT_CONFIG)
-    app._set_documentation_unit_selection(mode="all")
+    app_docs.set_documentation_unit_selection(mode="all")
     inputs = ["4", "ApplTank, XDilute_221X251XY", "b"]
     monkeypatch.setattr(builtins, "input", make_input(inputs))
 
-    dirty = app.documentation_menu(cfg)
-    selection = app._get_documentation_unit_selection()
+    dirty = app_docs.documentation_menu(
+        cfg,
+        clear_screen_fn=lambda: None,
+        print_menu_fn=app._print_menu,
+        menu_option_factory=lambda key, label, description: app.MenuOption(key, label, description),
+        quit_app_fn=app.quit_app,
+        pause_fn=lambda: None,
+        split_csv_values_fn=app._split_csv_values,
+        iter_loaded_projects_fn=app._iter_loaded_projects,
+        prompt_fn=app.prompt,
+    )
+    selection = app_docs.get_documentation_unit_selection()
 
     assert dirty is True
     assert selection["mode"] == "moduletype_names"

@@ -13,17 +13,17 @@ from sattline_parser import create_parser as parser_core_create_parser
 from sattline_parser import parse_source_file as parser_core_parse_source_file
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.api import describe_parse_error, read_text_with_fallback
-
-from .cache import FileASTCache, FileLookupCache, get_cache_dir
-from .grammar.parser_decode import is_compressed, preprocess_sl_text
-from .graphics_validation import validate_graphics_file
-from .models.ast_model import (
+from sattline_parser.grammar.parser_decode import is_compressed, preprocess_sl_text
+from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     ModuleTypeDef,
 )
+from sattline_parser.transformer.sl_transformer import SLTransformer
+
+from .cache import FileASTCache, FileLookupCache, get_cache_dir
+from .graphics_validation import validate_graphics_file
 from .models.project_graph import ProjectFailure, ProjectGraph
-from .transformer.sl_transformer import SLTransformer
 from .utils.text_processing import find_disallowed_comments
 from .validation import (
     RawSourceValidationError,

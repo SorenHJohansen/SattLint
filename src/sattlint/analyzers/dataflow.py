@@ -5,10 +5,7 @@ from typing import Any, TypeGuard, cast
 
 from lark import Tree
 
-from sattline_parser.utils.formatter import format_expr
-
-from ..grammar import constants as const
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FloatLiteral,
     FrameModule,
@@ -29,6 +26,10 @@ from ..models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattline_parser.utils.formatter import format_expr
+
+from ..casefolding import casefold_key
+from ..grammar import constants as const
 from ..resolution.common import resolve_moduletype_def_strict, varname_base
 from ..resolution.scope import ScopeContext
 from .framework import Issue, SimpleReport
@@ -89,41 +90,67 @@ class DataflowAnalyzer:
     def issues(self) -> list[Issue]:
         return self._issues
 
-    def run(self) -> list[Issue]:
+    def _build_scope_context(
+        self,
+        variables: list[Variable],
+        *,
+        param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]],
+        module_path: list[str],
+        current_library: str | None,
+        parent_context: ScopeContext | None,
+    ) -> ScopeContext:
+        return ScopeContext(
+            env={casefold_key(variable.name): variable for variable in variables},
+            param_mappings=param_mappings,
+            module_path=module_path.copy(),
+            display_module_path=module_path.copy(),
+            current_library=current_library,
+            parent_context=parent_context,
+        )
+
+    def _walk_root_scope(self) -> None:
         root_path = [self.bp.header.name]
-        root_context = ScopeContext(
-            env={variable.name.casefold(): variable for variable in self.bp.localvariables or []},
+        root_variables = list(self.bp.localvariables or [])
+        root_context = self._build_scope_context(
+            root_variables,
             param_mappings={},
-            module_path=root_path.copy(),
-            display_module_path=root_path.copy(),
+            module_path=root_path,
             current_library=getattr(self.bp, "origin_lib", None),
             parent_context=None,
         )
-        root_state = self._seed_state({}, root_path, self.bp.localvariables or [])
+        root_state = self._seed_state({}, root_path, root_variables)
 
         self._walk_module_code(self.bp.modulecode, root_context, root_path, root_state)
         self._walk_modules(self.bp.submodules or [], root_context, root_path, root_state)
 
-        for moduletype in self.bp.moduletype_defs or []:
-            if not self._is_from_root_origin(getattr(moduletype, "origin_file", None)):
-                continue
+    def _iter_root_typedefs(self) -> list[ModuleTypeDef]:
+        return [
+            moduletype
+            for moduletype in (self.bp.moduletype_defs or [])
+            if self._is_from_root_origin(getattr(moduletype, "origin_file", None))
+        ]
+
+    def _build_typedef_seed(
+        self,
+        moduletype: ModuleTypeDef,
+        module_path: list[str],
+    ) -> tuple[ScopeContext, StateMap]:
+        variables = [*(moduletype.moduleparameters or []), *(moduletype.localvariables or [])]
+        context = self._build_scope_context(
+            variables,
+            param_mappings={},
+            module_path=module_path,
+            current_library=moduletype.origin_lib or getattr(self.bp, "origin_lib", None),
+            parent_context=None,
+        )
+        return context, self._seed_state({}, module_path, variables)
+
+    def run(self) -> list[Issue]:
+        self._walk_root_scope()
+
+        for moduletype in self._iter_root_typedefs():
             typedef_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
-            typedef_context = ScopeContext(
-                env={
-                    variable.name.casefold(): variable
-                    for variable in [*(moduletype.moduleparameters or []), *(moduletype.localvariables or [])]
-                },
-                param_mappings={},
-                module_path=typedef_path.copy(),
-                display_module_path=typedef_path.copy(),
-                current_library=moduletype.origin_lib or getattr(self.bp, "origin_lib", None),
-                parent_context=None,
-            )
-            typedef_state = self._seed_state(
-                {},
-                typedef_path,
-                [*(moduletype.moduleparameters or []), *(moduletype.localvariables or [])],
-            )
+            typedef_context, typedef_state = self._build_typedef_seed(moduletype, typedef_path)
             self._walk_typedef(moduletype, typedef_context, typedef_path, typedef_state)
 
         return self._issues
@@ -217,16 +244,13 @@ class DataflowAnalyzer:
         parent_context: ScopeContext,
         module_path: list[str],
     ) -> ScopeContext:
-        env = {variable.name.casefold(): variable for variable in mod.moduleparameters or []}
-        env.update({variable.name.casefold(): variable for variable in mod.localvariables or []})
-        return ScopeContext(
-            env=env,
+        return self._build_scope_context(
+            [*(mod.moduleparameters or []), *(mod.localvariables or [])],
             param_mappings=self._build_parameter_mappings(
                 mod.parametermappings or [],
                 parent_context,
             ),
-            module_path=module_path.copy(),
-            display_module_path=module_path.copy(),
+            module_path=module_path,
             current_library=parent_context.current_library,
             parent_context=parent_context,
         )
@@ -238,16 +262,13 @@ class DataflowAnalyzer:
         parent_context: ScopeContext,
         module_path: list[str],
     ) -> ScopeContext:
-        env = {variable.name.casefold(): variable for variable in moduletype.moduleparameters or []}
-        env.update({variable.name.casefold(): variable for variable in moduletype.localvariables or []})
-        return ScopeContext(
-            env=env,
+        return self._build_scope_context(
+            [*(moduletype.moduleparameters or []), *(moduletype.localvariables or [])],
             param_mappings=self._build_parameter_mappings(
                 instance.parametermappings or [],
                 parent_context,
             ),
-            module_path=module_path.copy(),
-            display_module_path=module_path.copy(),
+            module_path=module_path,
             current_library=moduletype.origin_lib or parent_context.current_library,
             parent_context=parent_context,
         )

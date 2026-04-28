@@ -6,6 +6,8 @@ batch analysis, and editor helpers share a single semantic pipeline.
 
 from pathlib import Path
 
+from sattline_parser.models.ast_model import BasePicture
+
 from .core.semantic import (
     DEFAULT_SAFETY_SIGNAL_KEYWORDS,
     CallSignatureOccurrence,
@@ -30,7 +32,6 @@ from .core.semantic import (
     load_workspace_snapshot as _load_workspace_snapshot,
 )
 from .engine import CodeMode
-from .models.ast_model import BasePicture
 from .semantic_analysis import build_variable_semantic_artifacts
 
 

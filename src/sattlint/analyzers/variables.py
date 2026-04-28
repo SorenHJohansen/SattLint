@@ -9,9 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from ..call_signatures import CallParameterSignature, resolve_call_signature
-from ..grammar import constants as const
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleTypeDef,
@@ -21,6 +19,11 @@ from ..models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattlint.analyzers.layout_geometry import collect_layout_overlap_issues
+
+from ..call_signatures import CallParameterSignature, resolve_call_signature
+from ..casefolding import casefold_key, is_anytype_name
+from ..grammar import constants as const
 from ..models.usage import VariableUsage
 from ..reporting.variables_report import (
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
@@ -216,15 +219,15 @@ def _collect_module_vars(
     mods: list[Any],
     index: dict[str, list[Variable]],
 ) -> None:
-    for m in mods or []:
-        if isinstance(m, SingleModule):
-            for v in m.moduleparameters or []:
-                index.setdefault(v.name.lower(), []).append(v)
-            for v in m.localvariables or []:
-                index.setdefault(v.name.lower(), []).append(v)
-            _collect_module_vars(m.submodules or [], index)
-        elif isinstance(m, FrameModule):
-            _collect_module_vars(m.submodules or [], index)
+    for module in mods or []:
+        if isinstance(module, SingleModule):
+            for variable in module.moduleparameters or []:
+                index.setdefault(variable.name.lower(), []).append(variable)
+            for variable in module.localvariables or []:
+                index.setdefault(variable.name.lower(), []).append(variable)
+            _collect_module_vars(module.submodules or [], index)
+        elif isinstance(module, FrameModule):
+            _collect_module_vars(module.submodules or [], index)
         # ModuleTypeInstance declares no variables
 
 
@@ -354,15 +357,30 @@ class VariablesAnalyzer:
     _add_magic_number_issue = _add_magic_number_issue
     _collect_issues_from_module = _collect_issues_from_module
 
-    def _build_anytype_field_contracts(self) -> dict[int, dict[str, AnyTypeFieldContract]]:
-        typedefs_with_anytype = [
+    def _iter_anytype_typedefs(self) -> list[ModuleTypeDef]:
+        return [
             typedef
             for typedef in (self.bp.moduletype_defs or [])
-            if any(
-                isinstance(variable.datatype, str) and variable.datatype.casefold() == "anytype"
-                for variable in (typedef.moduleparameters or [])
-            )
+            if any(is_anytype_name(variable.datatype) for variable in (typedef.moduleparameters or []))
         ]
+
+    def _build_anytype_parameter_contract(
+        self,
+        extractor: VariablesAnalyzer,
+        variable: Variable,
+    ) -> AnyTypeFieldContract | None:
+        if not is_anytype_name(variable.datatype):
+            return None
+
+        usage = extractor._get_usage(variable)
+        field_paths = sorted(set((usage.field_reads or {}).keys()) | set((usage.field_writes or {}).keys()))
+        if not field_paths:
+            return None
+
+        return AnyTypeFieldContract(field_paths=tuple(field_paths))
+
+    def _build_anytype_field_contracts(self) -> dict[int, dict[str, AnyTypeFieldContract]]:
+        typedefs_with_anytype = self._iter_anytype_typedefs()
         if not typedefs_with_anytype:
             return {}
 
@@ -386,15 +404,11 @@ class VariablesAnalyzer:
 
             parameter_contracts: dict[str, AnyTypeFieldContract] = {}
             for variable in typedef.moduleparameters or []:
-                if not (isinstance(variable.datatype, str) and variable.datatype.casefold() == "anytype"):
+                contract = self._build_anytype_parameter_contract(extractor, variable)
+                if contract is None:
                     continue
 
-                usage = extractor._get_usage(variable)
-                field_paths = sorted(set((usage.field_reads or {}).keys()) | set((usage.field_writes or {}).keys()))
-                if not field_paths:
-                    continue
-
-                parameter_contracts[variable.name.casefold()] = AnyTypeFieldContract(field_paths=tuple(field_paths))
+                parameter_contracts[casefold_key(variable.name)] = contract
 
             if parameter_contracts:
                 contracts[id(typedef)] = parameter_contracts
@@ -1191,8 +1205,8 @@ class VariablesAnalyzer:
                     f"uses unknown record datatype {str(current)!r}."
                 )
 
-            f = rec.fields_by_key.get(seg.casefold())
-            if f is None:
+            field_def = rec.fields_by_key.get(seg.casefold())
+            if field_def is None:
                 available = sorted({fd.name for fd in rec.fields_by_key.values()})
                 close = difflib.get_close_matches(seg, available, n=5, cutoff=0.6)
                 site = self._site_str()
@@ -1213,7 +1227,7 @@ class VariablesAnalyzer:
                     f"Available fields: {available[:50]}" + (f". Close matches: {close}" if close else "")
                 )
 
-            current = f.datatype
+            current = field_def.datatype
 
         return current
 
@@ -1234,7 +1248,7 @@ class VariablesAnalyzer:
             return [()]
 
         # Builtin pseudo-type: cannot be expanded, treat as leaf.
-        if isinstance(root_type, str) and root_type.casefold() == "anytype":
+        if is_anytype_name(root_type):
             return [()]
 
         start = str(root_type)
@@ -1266,7 +1280,7 @@ class VariablesAnalyzer:
                     )
                     results.append(prefix)
                     continue
-                if type_name.casefold() == "anytype":
+                if is_anytype_name(type_name):
                     results.append(prefix)
                     continue
                 if self.fail_loudly:
@@ -1392,6 +1406,138 @@ class VariablesAnalyzer:
 
         return base, field_path
 
+    def _analyze_root_scope(self) -> ScopeContext:
+        root_context = self.context_builder.build_for_basepicture()
+        self._trace("root-context-built", root_symbols=len(root_context.env))
+
+        root_path = [self.bp.header.name]
+        self._walk_module_code(self.bp.modulecode, root_context, path=root_path)
+        self._walk_moduledef(self.bp.moduledef, root_context, path=root_path)
+        self._walk_header_enable(self.bp.header, root_context, path=root_path)
+        self._walk_header_invoke_tails(self.bp.header, root_context, path=root_path)
+        self._walk_header_groupconn(self.bp.header, root_context, path=root_path)
+        self._walk_submodules(self.bp.submodules or [], parent_context=root_context, parent_path=root_path)
+        return root_context
+
+    def _run_post_traversal_analyses(self) -> None:
+        self._detect_datatype_duplications()
+        issue_count_before_reset = len(self._issues)
+        detect_reset_contamination(self.bp, self._issues, self._limit_to_module_path)
+        self._trace(
+            "reset-contamination-scan",
+            added_issue_count=len(self._issues) - issue_count_before_reset,
+        )
+        issue_count_before_latch = len(self._issues)
+        detect_implicit_latching(self.bp, self._issues, self._limit_to_module_path)
+        self._trace(
+            "implicit-latch-scan",
+            added_issue_count=len(self._issues) - issue_count_before_latch,
+        )
+        layout_issues = collect_layout_overlap_issues(
+            self.bp,
+            limit_to_module_path=self._limit_to_module_path,
+        )
+        for issue in layout_issues:
+            self._append_issue(issue)
+        self._trace("layout-overlap-scan", added_issue_count=len(layout_issues))
+        self._effective_output_keys = self._compute_effective_output_keys()
+
+    def _collect_basepicture_issues(self, bp_path: list[str]) -> None:
+        for v in self.bp.localvariables or []:
+            role = "localvariable"
+            usage = self._get_usage(v)
+            if usage.is_unused:
+                self._add_issue(IssueKind.UNUSED, bp_path, v, role=role)
+                continue
+            procedure_status = self._procedure_status_issue(v, usage)
+            if procedure_status is not None:
+                status_role, field_path = procedure_status
+                self._add_issue(IssueKind.PROCEDURE_STATUS, bp_path, v, role=status_role, field_path=field_path)
+                continue
+            elif usage.is_display_only:
+                self._add_issue(IssueKind.UI_ONLY, bp_path, v, role=role)
+            elif usage.is_read_only and not bool(v.const) and self._is_const_candidate(v):
+                self._add_issue(IssueKind.READ_ONLY_NON_CONST, bp_path, v, role=role)
+            elif usage.written and not usage.read:
+                self._add_issue(IssueKind.NEVER_READ, bp_path, v, role=role)
+            elif (
+                usage.read
+                and usage.written
+                and not self._has_output_effect(v, bp_path)
+                and not self._has_procedure_status_binding(v)
+            ):
+                self._add_issue(IssueKind.WRITE_WITHOUT_EFFECT, bp_path, v, role=role)
+
+        for mod in self.bp.submodules or []:
+            self._collect_issues_from_module(mod, path=bp_path)
+
+    def _collect_typedef_issues(self) -> None:
+        if self._limit_to_module_path is not None:
+            return
+
+        for mt in self.bp.moduletype_defs or []:
+            if not self._is_from_root_origin(getattr(mt, "origin_file", None)):
+                continue
+            td_path = [self.bp.header.name, f"TypeDef:{mt.name}"]
+
+            self._analyze_typedef(mt, path=[self.bp.header.name, f"TypeDef:{mt.name}"])
+
+            for v in mt.moduleparameters or []:
+                role = "moduleparameter"
+                usage = self._get_usage(v)
+                if usage.is_unused:
+                    self._add_issue(IssueKind.UNUSED, td_path, v, role=role)
+                    continue
+                procedure_status = self._procedure_status_issue(v, usage)
+                if procedure_status is not None:
+                    status_role, field_path = procedure_status
+                    self._add_issue(IssueKind.PROCEDURE_STATUS, td_path, v, role=status_role, field_path=field_path)
+                    continue
+                elif usage.is_display_only:
+                    self._add_issue(IssueKind.UI_ONLY, td_path, v, role=role)
+                elif (
+                    usage.read
+                    and usage.written
+                    and not self._has_output_effect(v, td_path)
+                    and not self._has_procedure_status_binding(v)
+                ):
+                    self._add_issue(
+                        IssueKind.WRITE_WITHOUT_EFFECT,
+                        td_path,
+                        v,
+                        role=role,
+                    )
+
+            for v in mt.localvariables or []:
+                role = "localvariable"
+                usage = self._get_usage(v)
+                if usage.is_unused:
+                    self._add_issue(IssueKind.UNUSED, td_path, v, role=role)
+                    continue
+                procedure_status = self._procedure_status_issue(v, usage)
+                if procedure_status is not None:
+                    status_role, field_path = procedure_status
+                    self._add_issue(IssueKind.PROCEDURE_STATUS, td_path, v, role=status_role, field_path=field_path)
+                    continue
+                elif usage.is_display_only:
+                    self._add_issue(IssueKind.UI_ONLY, td_path, v, role=role)
+                elif usage.is_read_only and not bool(v.const) and self._is_const_candidate(v):
+                    self._add_issue(IssueKind.READ_ONLY_NON_CONST, td_path, v, role=role)
+                elif usage.written and not usage.read:
+                    self._add_issue(IssueKind.NEVER_READ, td_path, v, role=role)
+                elif (
+                    usage.read
+                    and usage.written
+                    and not self._has_output_effect(v, td_path)
+                    and not self._has_procedure_status_binding(v)
+                ):
+                    self._add_issue(
+                        IssueKind.WRITE_WITHOUT_EFFECT,
+                        td_path,
+                        v,
+                        role=role,
+                    )
+
     # ------------ Entry point ------------
 
     def run(
@@ -1425,135 +1571,19 @@ class VariablesAnalyzer:
                 len(self.bp.moduletype_defs or []),
             )
 
-        # Build root scope context for BasePicture
-        root_context = self.context_builder.build_for_basepicture()
-        self._trace("root-context-built", root_symbols=len(root_context.env))
-
-        # Analyze BasePicture body
-        self._walk_module_code(self.bp.modulecode, root_context, path=[self.bp.header.name])
-        self._walk_moduledef(self.bp.moduledef, root_context, path=[self.bp.header.name])
-        self._walk_header_enable(self.bp.header, root_context, path=[self.bp.header.name])
-        self._walk_header_invoke_tails(self.bp.header, root_context, path=[self.bp.header.name])
-        self._walk_header_groupconn(self.bp.header, root_context, path=[self.bp.header.name])
-
-        # Walk submodules with scope propagation
-        self._walk_submodules(self.bp.submodules or [], parent_context=root_context, parent_path=[self.bp.header.name])
+        self._analyze_root_scope()
 
         if apply_alias_back_propagation:
             self._apply_alias_back_propagation()
             self._propagate_procedure_status_bindings()
             self._trace("alias-back-propagation", alias_link_count=len(self._alias_links))
 
-        self._detect_datatype_duplications()
-        issue_count_before_reset = len(self._issues)
-        detect_reset_contamination(self.bp, self._issues, self._limit_to_module_path)
-        self._trace(
-            "reset-contamination-scan",
-            added_issue_count=len(self._issues) - issue_count_before_reset,
-        )
-        issue_count_before_latch = len(self._issues)
-        detect_implicit_latching(self.bp, self._issues, self._limit_to_module_path)
-        self._trace(
-            "implicit-latch-scan",
-            added_issue_count=len(self._issues) - issue_count_before_latch,
-        )
-        self._effective_output_keys = self._compute_effective_output_keys()
+        self._run_post_traversal_analyses()
 
         # Collect issues across this file
         bp_path = [self.bp.header.name]
-
-        for v in self.bp.localvariables or []:
-            role = "localvariable"
-            usage = self._get_usage(v)
-            if usage.is_unused:
-                self._add_issue(IssueKind.UNUSED, bp_path, v, role=role)
-                continue
-            procedure_status = self._procedure_status_issue(v, usage)
-            if procedure_status is not None:
-                status_role, field_path = procedure_status
-                self._add_issue(IssueKind.PROCEDURE_STATUS, bp_path, v, role=status_role, field_path=field_path)
-                continue
-            elif usage.is_display_only:
-                self._add_issue(IssueKind.UI_ONLY, bp_path, v, role=role)
-            elif usage.is_read_only and not bool(v.const) and self._is_const_candidate(v):
-                self._add_issue(IssueKind.READ_ONLY_NON_CONST, bp_path, v, role=role)
-            elif usage.written and not usage.read:
-                self._add_issue(IssueKind.NEVER_READ, bp_path, v, role=role)
-            elif (
-                usage.read
-                and usage.written
-                and not self._has_output_effect(v, bp_path)
-                and not self._has_procedure_status_binding(v)
-            ):
-                self._add_issue(IssueKind.WRITE_WITHOUT_EFFECT, bp_path, v, role=role)
-
-        for mod in self.bp.submodules or []:
-            self._collect_issues_from_module(mod, path=bp_path)
-
-        if self._limit_to_module_path is None:
-            for mt in self.bp.moduletype_defs or []:
-                if not self._is_from_root_origin(getattr(mt, "origin_file", None)):
-                    continue
-                td_path = [self.bp.header.name, f"TypeDef:{mt.name}"]
-
-                self._analyze_typedef(mt, path=[self.bp.header.name, f"TypeDef:{mt.name}"])
-
-                # moduleparameters: UNUSED only
-                for v in mt.moduleparameters or []:
-                    role = "moduleparameter"
-                    usage = self._get_usage(v)
-                    if usage.is_unused:
-                        self._add_issue(IssueKind.UNUSED, td_path, v, role=role)
-                        continue
-                    procedure_status = self._procedure_status_issue(v, usage)
-                    if procedure_status is not None:
-                        status_role, field_path = procedure_status
-                        self._add_issue(IssueKind.PROCEDURE_STATUS, td_path, v, role=status_role, field_path=field_path)
-                        continue
-                    elif usage.is_display_only:
-                        self._add_issue(IssueKind.UI_ONLY, td_path, v, role=role)
-                    elif (
-                        usage.read
-                        and usage.written
-                        and not self._has_output_effect(v, td_path)
-                        and not self._has_procedure_status_binding(v)
-                    ):
-                        self._add_issue(
-                            IssueKind.WRITE_WITHOUT_EFFECT,
-                            td_path,
-                            v,
-                            role=role,
-                        )
-                # localvariables: UNUSED / READ_ONLY_NON_CONST / NEVER_READ
-                for v in mt.localvariables or []:
-                    role = "localvariable"
-                    usage = self._get_usage(v)
-                    if usage.is_unused:
-                        self._add_issue(IssueKind.UNUSED, td_path, v, role=role)
-                        continue
-                    procedure_status = self._procedure_status_issue(v, usage)
-                    if procedure_status is not None:
-                        status_role, field_path = procedure_status
-                        self._add_issue(IssueKind.PROCEDURE_STATUS, td_path, v, role=status_role, field_path=field_path)
-                        continue
-                    elif usage.is_display_only:
-                        self._add_issue(IssueKind.UI_ONLY, td_path, v, role=role)
-                    elif usage.is_read_only and not bool(v.const) and self._is_const_candidate(v):
-                        self._add_issue(IssueKind.READ_ONLY_NON_CONST, td_path, v, role=role)
-                    elif usage.written and not usage.read:
-                        self._add_issue(IssueKind.NEVER_READ, td_path, v, role=role)
-                    elif (
-                        usage.read
-                        and usage.written
-                        and not self._has_output_effect(v, td_path)
-                        and not self._has_procedure_status_binding(v)
-                    ):
-                        self._add_issue(
-                            IssueKind.WRITE_WITHOUT_EFFECT,
-                            td_path,
-                            v,
-                            role=role,
-                        )
+        self._collect_basepicture_issues(bp_path)
+        self._collect_typedef_issues()
 
         self._add_naming_role_mismatch_issues()
         self._add_global_scope_minimization_issues()
@@ -1596,16 +1626,16 @@ class VariablesAnalyzer:
             # Enforce: cannot have both a parameter and local with same name
             param_keys = {v.name.casefold(): v for v in params}
             local_keys = {v.name.casefold(): v for v in locals_}
-            for k in set(param_keys.keys()) & set(local_keys.keys()):
-                p = param_keys[k]
-                lv = local_keys[k]
+            for key in set(param_keys.keys()) & set(local_keys.keys()):
+                parameter_var = param_keys[key]
+                local_var = local_keys[key]
                 self._append_issue(
                     VariableIssue(
                         kind=IssueKind.NAME_COLLISION,
                         module_path=path.copy(),
-                        variable=lv,
-                        role=f"name collision with parameter {p.name!r}",
-                        source_variable=p,
+                        variable=local_var,
+                        role=f"name collision with parameter {parameter_var.name!r}",
+                        source_variable=parameter_var,
                     )
                 )
 
@@ -1718,251 +1748,250 @@ class VariablesAnalyzer:
                     elif kind == "write":
                         parent_usage.mark_written(loc)
 
+    def _should_walk_submodule_path(self, child_path: list[str]) -> bool:
+        if self._limit_to_module_path is None:
+            return True
+        return path_startswith_casefold(self._limit_to_module_path, child_path) or path_startswith_casefold(
+            child_path, self._limit_to_module_path
+        )
+
+    def _display_path_for_child(
+        self,
+        child: SingleModule | FrameModule | ModuleTypeInstance,
+        parent_context: ScopeContext,
+    ) -> list[str]:
+        child_name = child.header.name
+        if isinstance(child, SingleModule):
+            return [*parent_context.display_module_path, decorate_segment(child_name, "SM")]
+        if isinstance(child, FrameModule):
+            return [*parent_context.display_module_path, decorate_segment(child_name, "FM")]
+        if isinstance(child, ModuleTypeInstance):
+            return [
+                *parent_context.display_module_path,
+                decorate_segment(child_name, "MT", moduletype_name=child.moduletype_name),
+            ]
+        return [*parent_context.display_module_path, child_name]
+
+    def _walk_submodule_headers(
+        self,
+        child: SingleModule | FrameModule | ModuleTypeInstance,
+        inst_context: ScopeContext,
+        child_path: list[str],
+    ) -> None:
+        self._walk_header_enable(child.header, inst_context, path=child_path)
+        self._walk_header_invoke_tails(child.header, inst_context, path=child_path)
+        self._walk_header_groupconn(child.header, inst_context, path=child_path)
+
+    def _walk_singlemodule_subtree(
+        self,
+        child: SingleModule,
+        parent_context: ScopeContext,
+        parent_path: list[str],
+        child_path: list[str],
+        child_display_path: list[str],
+    ) -> None:
+        child_context = self.context_builder.build_for_single(
+            child,
+            parent_context,
+            module_path=child_path,
+            display_module_path=child_display_path,
+        )
+
+        self._walk_moduledef(child.moduledef, child_context, child_path)
+        self._walk_module_code(child.modulecode, child_context, child_path)
+        self._walk_submodules(child.submodules or [], child_context, child_path)
+
+        used_reads: set[str] = {v.name.lower() for v in (child.moduleparameters or []) if self._get_usage(v).read}
+        used_writes: set[str] = {v.name.lower() for v in (child.moduleparameters or []) if self._get_usage(v).written}
+
+        for pm in child.parametermappings or []:
+            source_name = varname_base(pm.source)
+            target_name = varname_base(pm.target)
+
+            if source_name and target_name and not pm.is_source_global:
+                if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
+                    full_source_name = pm.source[const.KEY_VAR_NAME]
+                elif isinstance(pm.source, str):
+                    full_source_name = pm.source
+                else:
+                    continue
+
+                source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(
+                    full_source_name
+                )
+                target_key = target_name.casefold()
+                target_var = child_context.env.get(target_key)
+
+                if source_var and target_var:
+                    mapping_name = source_field_prefix or ""
+                    self._alias_links.append((source_var, target_var, mapping_name))
+
+        for pm in child.parametermappings or []:
+            self._propagate_mapping_to_parent(
+                pm,
+                child_used_reads=used_reads,
+                child_used_writes=used_writes,
+                parent_env=parent_context.env,
+                parent_path=parent_path,
+                external_typename=None,
+                parent_context=parent_context,
+                child_context=child_context,
+            )
+
+        self._check_param_mappings_for_single(
+            child,
+            child_env=child_context.env,
+            parent_env=parent_context.env,
+            parent_path=child_path,
+        )
+
+    def _walk_framemodule_subtree(
+        self,
+        child: FrameModule,
+        parent_context: ScopeContext,
+        child_path: list[str],
+        child_display_path: list[str],
+    ) -> None:
+        frame_context = self._repath_context(
+            parent_context,
+            module_path=child_path,
+            display_module_path=child_display_path,
+        )
+        self._walk_moduledef(child.moduledef, frame_context, child_path)
+        self._walk_module_code(child.modulecode, frame_context, child_path)
+        self._walk_submodules(child.submodules or [], frame_context, child_path)
+
+    def _walk_moduletype_instance_subtree(
+        self,
+        child: ModuleTypeInstance,
+        parent_context: ScopeContext,
+        parent_path: list[str],
+        child_path: list[str],
+        child_display_path: list[str],
+    ) -> None:
+        child_name = child.header.name
+        external = self._is_external_typename(child.moduletype_name)
+        mt: ModuleTypeDef | None = None
+
+        if not external:
+            try:
+                mt = resolve_moduletype_def_strict(
+                    self.bp,
+                    child.moduletype_name,
+                    current_library=parent_context.current_library,
+                    unavailable_libraries=self._unavailable_libraries,
+                )
+            except ValueError:
+                mt = None
+                external = True
+
+        if external and not self._analyzed_target_is_library:
+            return
+
+        if mt is not None and not self._is_from_root_origin(getattr(mt, "origin_file", None)):
+            if not self._analyzed_target_is_library and not self._include_dependency_moduletype_usage:
+                self._check_param_mappings_for_type_instance(
+                    child,
+                    parent_env=parent_context.env,
+                    parent_path=[*parent_path, child_name],
+                    current_library=parent_context.current_library,
+                )
+                return
+            if self._analyzed_target_is_library and not self._include_dependency_moduletype_usage:
+                mt = None
+                external = True
+
+        reads, writes = None, None
+        typedef_context: ScopeContext | None = None
+
+        if mt:
+            mt_key = child.moduletype_name.lower()
+            typedef_context = self.context_builder.build_for_typedef(
+                mt,
+                child,
+                parent_context,
+                module_path=child_path,
+                display_module_path=child_display_path,
+            )
+
+            if mt_key not in self.param_reads_by_typedef and mt_key not in self._analyzing_typedefs:
+                self._analyze_typedef_with_context(mt, typedef_context, path=child_path)
+
+            for pm in child.parametermappings or []:
+                source_name = varname_base(pm.source)
+                target_name = varname_base(pm.target)
+
+                if source_name and target_name and not pm.is_source_global:
+                    if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
+                        full_source_name = pm.source[const.KEY_VAR_NAME]
+                    elif isinstance(pm.source, str):
+                        full_source_name = pm.source
+                    else:
+                        continue
+
+                    source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(
+                        full_source_name
+                    )
+                    target_key = target_name.casefold()
+                    target_var = typedef_context.env.get(target_key)
+
+                    if source_var and target_var:
+                        mapping_name = source_field_prefix or ""
+                        self._alias_links.append((source_var, target_var, mapping_name))
+
+            reads = self.param_reads_by_typedef.get(mt_key, set())
+            writes = self.param_writes_by_typedef.get(mt_key, set())
+
+        for pm in child.parametermappings or []:
+            self._propagate_mapping_to_parent(
+                pm,
+                child_used_reads=reads,
+                child_used_writes=writes,
+                parent_env=parent_context.env,
+                parent_path=parent_path,
+                external_typename=(child.moduletype_name if external else None),
+                parent_context=parent_context,
+                child_context=typedef_context,
+            )
+
+        if mt is not None:
+            self._check_param_mappings_for_type_instance(
+                child,
+                parent_env=parent_context.env,
+                parent_path=[*parent_path, child_name],
+                current_library=parent_context.current_library,
+            )
+
     def _walk_submodules(
         self,
         children: list[SingleModule | FrameModule | ModuleTypeInstance],
         parent_context: ScopeContext,
         parent_path: list[str],
     ) -> None:
-        """Walk submodules with proper scope context propagation."""
+        """Walk submodules with explicit node-type handlers."""
 
         for child in children:
             child_name = child.header.name
             child_path = [*parent_path, child_name]
-
-            # Only traverse:
-            #  - nodes along the path to the selected module, and
-            #  - nodes within the selected module subtree.
-            if self._limit_to_module_path is not None and not (
-                path_startswith_casefold(self._limit_to_module_path, child_path)
-                or path_startswith_casefold(child_path, self._limit_to_module_path)
-            ):
+            if not self._should_walk_submodule_path(child_path):
                 continue
 
-            if isinstance(child, SingleModule):
-                child_display_path = [*parent_context.display_module_path, decorate_segment(child_name, "SM")]
-            elif isinstance(child, FrameModule):
-                child_display_path = [*parent_context.display_module_path, decorate_segment(child_name, "FM")]
-            elif isinstance(child, ModuleTypeInstance):
-                child_display_path = [
-                    *parent_context.display_module_path,
-                    decorate_segment(child_name, "MT", moduletype_name=child.moduletype_name),
-                ]
-            else:
-                child_display_path = [*parent_context.display_module_path, child_name]
-
+            child_display_path = self._display_path_for_child(child, parent_context)
             inst_context = self._repath_context(
                 parent_context,
                 module_path=child_path,
                 display_module_path=child_display_path,
             )
-
-            # Handle header-level enable and groupconn
-            self._walk_header_enable(child.header, inst_context, path=child_path)
-            self._walk_header_invoke_tails(child.header, inst_context, path=child_path)
-            self._walk_header_groupconn(child.header, inst_context, path=child_path)
+            self._walk_submodule_headers(child, inst_context, child_path)
 
             if isinstance(child, SingleModule):
-                # Build scope context with parameter mappings
-                child_context = self.context_builder.build_for_single(
-                    child,
-                    parent_context,
-                    module_path=child_path,
-                    display_module_path=child_display_path,
-                )
-
-                # Use child_context instead of building env dict
-                self._walk_moduledef(child.moduledef, child_context, child_path)
-                self._walk_module_code(child.modulecode, child_context, child_path)
-
-                # Recursively walk submodules with child context
-                self._walk_submodules(
-                    child.submodules or [],
-                    child_context,  # Pass child context, not parent
-                    child_path,
-                )
-
-                # Track parameter usage for propagation (unchanged logic)
-                used_reads: set[str] = {
-                    v.name.lower() for v in (child.moduleparameters or []) if self._get_usage(v).read
-                }
-                used_writes: set[str] = {
-                    v.name.lower() for v in (child.moduleparameters or []) if self._get_usage(v).written
-                }
-
-                # Create alias links with field path information
-                for pm in child.parametermappings or []:
-                    source_name = varname_base(pm.source)
-                    target_name = varname_base(pm.target)
-
-                    if source_name and target_name and not pm.is_source_global:
-                        # Extract field prefix from mapping
-                        if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
-                            full_source_name = pm.source[const.KEY_VAR_NAME]
-                        elif isinstance(pm.source, str):
-                            full_source_name = pm.source
-                        else:
-                            continue
-
-                        # Resolve with field path
-                        source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(
-                            full_source_name
-                        )
-                        target_key = target_name.casefold()
-                        target_var = child_context.env.get(target_key)
-
-                        if source_var and target_var:
-                            # Store only the source field prefix (relative to the source variable).
-                            # This must NOT include the target parameter name.
-                            # Examples:
-                            #   control => Dv        => mapping_name == ""         (Dv.cmd)
-                            #   control => Dv.empty  => mapping_name == "empty"    (Dv.empty.cmd)
-                            mapping_name = source_field_prefix or ""
-
-                            self._alias_links.append((source_var, target_var, mapping_name))
-
-                # Propagate usage (unchanged)
-                for pm in child.parametermappings or []:
-                    self._propagate_mapping_to_parent(
-                        pm,
-                        child_used_reads=used_reads,
-                        child_used_writes=used_writes,
-                        parent_env=parent_context.env,
-                        parent_path=parent_path,
-                        external_typename=None,
-                        parent_context=parent_context,
-                        child_context=child_context,
-                    )
-
-                # Check string type mismatches (unchanged)
-                self._check_param_mappings_for_single(
-                    child,
-                    child_env=child_context.env,
-                    parent_env=parent_context.env,
-                    parent_path=child_path,
-                )
-
+                self._walk_singlemodule_subtree(child, parent_context, parent_path, child_path, child_display_path)
             elif isinstance(child, FrameModule):
-                # FrameModule: no new scope, but access locations should be attributed to the frame's instance path.
-                frame_context = self._repath_context(
-                    parent_context,
-                    module_path=child_path,
-                    display_module_path=child_display_path,
-                )
-                self._walk_moduledef(child.moduledef, frame_context, child_path)
-                self._walk_module_code(child.modulecode, frame_context, child_path)
-
-                self._walk_submodules(
-                    child.submodules or [],
-                    frame_context,
-                    child_path,
-                )
-
+                self._walk_framemodule_subtree(child, parent_context, child_path, child_display_path)
             elif isinstance(child, ModuleTypeInstance):
-                external = self._is_external_typename(child.moduletype_name)
-                mt: ModuleTypeDef | None = None
-
-                if not external:
-                    try:
-                        mt = resolve_moduletype_def_strict(
-                            self.bp,
-                            child.moduletype_name,
-                            current_library=parent_context.current_library,
-                            unavailable_libraries=self._unavailable_libraries,
-                        )
-                    except ValueError:
-                        mt = None
-                        external = True
-
-                if external and not self._analyzed_target_is_library:
-                    continue
-
-                if mt is not None and not self._is_from_root_origin(getattr(mt, "origin_file", None)):
-                    if not self._analyzed_target_is_library and not self._include_dependency_moduletype_usage:
-                        self._check_param_mappings_for_type_instance(
-                            child,
-                            parent_env=parent_context.env,
-                            parent_path=[*parent_path, child_name],
-                            current_library=parent_context.current_library,
-                        )
-                        continue
-                    # For library targets, dependency moduletype instances should still
-                    # influence mapped variables even though we do not analyze the
-                    # dependency body in detail. Treat them like external sinks/sources.
-                    if self._analyzed_target_is_library and not self._include_dependency_moduletype_usage:
-                        mt = None
-                        external = True
-
-                reads, writes = None, None  # Initialize to None
-                typedef_context: ScopeContext | None = None
-
-                if mt:
-                    mt_key = child.moduletype_name.lower()
-
-                    # Build typedef scope context with mappings
-                    typedef_context = self.context_builder.build_for_typedef(
-                        mt,
-                        child,
-                        parent_context,
-                        module_path=child_path,
-                        display_module_path=child_display_path,
-                    )
-
-                    # Analyze typedef if not already done
-                    if mt_key not in self.param_reads_by_typedef and mt_key not in self._analyzing_typedefs:
-                        # Use context-aware analysis
-                        self._analyze_typedef_with_context(mt, typedef_context, path=child_path)
-
-                    # Create alias links with field path information
-                    for pm in child.parametermappings or []:
-                        source_name = varname_base(pm.source)
-                        target_name = varname_base(pm.target)
-
-                        if source_name and target_name and not pm.is_source_global:
-                            if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
-                                full_source_name = pm.source[const.KEY_VAR_NAME]
-                            elif isinstance(pm.source, str):
-                                full_source_name = pm.source
-                            else:
-                                continue
-
-                            # Resolve with field path
-                            source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(
-                                full_source_name
-                            )
-                            target_key = target_name.casefold()
-                            target_var = typedef_context.env.get(target_key)
-
-                            if source_var and target_var:
-                                # Store only the source field prefix (relative to the source variable).
-                                # Do not include the target parameter name.
-                                mapping_name = source_field_prefix or ""
-
-                                self._alias_links.append((source_var, target_var, mapping_name))
-
-                    reads = self.param_reads_by_typedef.get(mt_key, set())
-                    writes = self.param_writes_by_typedef.get(mt_key, set())
-
-                # Propagate usage (unchanged)
-                for pm in child.parametermappings or []:
-                    self._propagate_mapping_to_parent(
-                        pm,
-                        child_used_reads=reads,
-                        child_used_writes=writes,
-                        parent_env=parent_context.env,
-                        parent_path=parent_path,
-                        external_typename=(child.moduletype_name if external else None),
-                        parent_context=parent_context,
-                        child_context=typedef_context,
-                    )
-
-                if mt is not None:
-                    self._check_param_mappings_for_type_instance(
-                        child,
-                        parent_env=parent_context.env,
-                        parent_path=[*parent_path, child_name],
-                        current_library=parent_context.current_library,
-                    )
+                self._walk_moduletype_instance_subtree(
+                    child, parent_context, parent_path, child_path, child_display_path
+                )
 
     def _analyze_single_module_with_context(
         self, mod: SingleModule, context: ScopeContext, path: list[str]
@@ -2236,7 +2265,7 @@ class VariablesAnalyzer:
         complex_vars = [
             (v, path, role)
             for v, path, role in var_locations
-            if not isinstance(v.datatype, Simple_DataType) and v.datatype_text.casefold() != "anytype"
+            if not isinstance(v.datatype, Simple_DataType) and not is_anytype_name(v.datatype_text)
         ]
 
         # Group by declaration scope and datatype name so same user datatype names

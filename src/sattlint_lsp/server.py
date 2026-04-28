@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import threading
 from collections.abc import Sequence
@@ -77,6 +78,8 @@ _DIAGNOSTIC_SNAPSHOT_WAIT_S = 0.15
 _MAX_IDENTIFIER_LENGTH = 20
 _DEFAULT_MAX_COMPLETION_ITEMS = 100
 _DEFAULT_LOCAL_PARSER = IncrementalDocumentParserAdapter()
+_RECOVERABLE_LSP_EXCEPTIONS = (OSError, ValueError, RuntimeError, UnicodeError)
+log = logging.getLogger(__name__)
 
 
 def _is_program_path(path: Path) -> bool:
@@ -728,7 +731,12 @@ def collect_local_definition_locations(
     if local_snapshot is None:
         try:
             local_snapshot = load_source_snapshot(document_path, source_text)
-        except Exception:  # LSP handler — keep broad to prevent server crash
+        except _RECOVERABLE_LSP_EXCEPTIONS as exc:
+            log.warning(
+                "LSP local-definition snapshot failed; fallback=empty path=%s error=%s",
+                document_path,
+                exc,
+            )
             return []
 
     definitions = _local_definition_candidates(
@@ -764,7 +772,12 @@ def collect_local_completion_candidates(
     if local_snapshot is None:
         try:
             local_snapshot = load_source_snapshot(document_path, source_text)
-        except Exception:  # LSP handler — keep broad to prevent server crash
+        except _RECOVERABLE_LSP_EXCEPTIONS as exc:
+            log.warning(
+                "LSP completion snapshot failed; fallback=empty path=%s error=%s",
+                document_path,
+                exc,
+            )
             return []
 
     return collect_completion_candidates(
@@ -958,7 +971,12 @@ def _load_snapshot_bundle_compat(
             return None
     try:
         return _load_snapshot_bundle(ls, document_path)
-    except Exception:  # LSP handler — keep broad to prevent server crash
+    except _RECOVERABLE_LSP_EXCEPTIONS as exc:
+        log.warning(
+            "LSP snapshot compatibility fallback failed; path=%s error=%s",
+            document_path,
+            exc,
+        )
         if raise_on_error:
             raise
         return None
@@ -1225,7 +1243,12 @@ def _publish_closed_document_diagnostics(
                 allow_stale=True,
                 raise_on_error=False,
             )
-        except Exception:  # LSP handler — keep broad to prevent server crash
+        except _RECOVERABLE_LSP_EXCEPTIONS as exc:
+            log.warning(
+                "LSP closed-document snapshot load failed; fallback=entry-diagnostics path=%s error=%s",
+                resolved_path,
+                exc,
+            )
             bundle = None
         if bundle is not None:
             merged = _semantic_diagnostics_for_path(bundle, resolved_path)

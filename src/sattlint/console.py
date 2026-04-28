@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,17 @@ _STATUS_STYLES = {
     "success": "bold green",
     "warning": "bold yellow",
 }
+
+
+def print_output(
+    *objects: object,
+    sep: str = " ",
+    end: str = "\n",
+    file: Any | None = None,
+    flush: bool = False,
+) -> None:
+    """Generic output wrapper for app-facing text while preserving print() semantics."""
+    builtins.print(*objects, sep=sep, end=end, file=file, flush=flush)
 
 
 def has_rich() -> bool:

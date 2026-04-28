@@ -9,16 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
-
-from ..call_signatures import CallSignatureOccurrence, resolve_call_signature
-from ..engine import (
-    CodeMode,
-    SattLineProjectLoader,
-    expected_unavailable_library_reason,
-    merge_project_basepicture,
-)
-from ..grammar import constants as const
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleHeader,
@@ -29,6 +20,15 @@ from ..models.ast_model import (
     SourceSpan,
     Variable,
 )
+
+from ..call_signatures import CallSignatureOccurrence, resolve_call_signature
+from ..engine import (
+    CodeMode,
+    SattLineProjectLoader,
+    expected_unavailable_library_reason,
+    merge_project_basepicture,
+)
+from ..grammar import constants as const
 from ..models.project_graph import ProjectGraph
 from ..reporting.variables_report import VariableIssue
 from ..resolution import CanonicalPath, CanonicalSymbolTable, ContextBuilder, SymbolKind, TypeGraph, decorate_segment

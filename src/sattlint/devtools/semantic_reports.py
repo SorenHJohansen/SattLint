@@ -134,10 +134,10 @@ def build_rule_metrics_report(
 
 
 __all__ = [
-    "build_sattline_semantic_report",
-    "build_rule_metrics_report",
-    "SATTLINE_SEMANTIC_SCHEMA_KIND",
-    "SATTLINE_SEMANTIC_SCHEMA_VERSION",
     "RULE_METRICS_SCHEMA_KIND",
     "RULE_METRICS_SCHEMA_VERSION",
+    "SATTLINE_SEMANTIC_SCHEMA_KIND",
+    "SATTLINE_SEMANTIC_SCHEMA_VERSION",
+    "build_rule_metrics_report",
+    "build_sattline_semantic_report",
 ]

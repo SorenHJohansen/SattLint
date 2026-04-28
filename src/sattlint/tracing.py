@@ -11,16 +11,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .analyzers.dataflow import analyze_dataflow
-from .analyzers.sfc import collect_sfc_reachability_findings
-from .analyzers.variables import analyze_variables
-from .engine import parse_source_file, validate_single_file_syntax
-from .models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleTypeInstance,
     SingleModule,
 )
+
+from .analyzers.dataflow import analyze_dataflow
+from .analyzers.sfc import collect_sfc_reachability_findings
+from .analyzers.variables import analyze_variables
+from .engine import parse_source_file, validate_single_file_syntax
 from .path_sanitizer import sanitize_path_for_report
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

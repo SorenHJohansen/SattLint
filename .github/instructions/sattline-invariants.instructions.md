@@ -25,6 +25,23 @@ applyTo: ["src/**", "tests/**"]
 - Single-file `sattlint syntax-check` rejects freestanding comments directly inside `ModuleCode` before the first `EQUATIONBLOCK` or `SEQUENCE` or `OPENSEQUENCE`.
 - Single-file `syntax-check` remains stricter than workspace loading by design.
 
+## Syntactic vs. Semantic Validity (CRITICAL FOR SCAFFOLDING)
+
+**Syntax-check passing does NOT mean the scaffold is complete or correct.**
+
+A file can be syntactically valid but semantically broken:
+- `TYPEDEFINITIONS Module1 = MODULEDEFINITION DateCode_ 1 ModuleDef ... ENDDEF` with zero SUBMODULES is syntactically correct but a bare shell
+- `SUBMODULES Equipment Invocation (...) : UnknownType` is syntactically correct but references a non-existent type
+- A support library with no TYPEDEFINITIONS is syntactically correct but provides no reusable module types
+
+**For unit scaffolding, always perform semantic validation AFTER syntax-check:**
+1. Main library unit moduletype must declare MODULEPARAMETERS (beyond just Tag)
+2. Main library unit moduletype must declare LOCALVARIABLES for process state
+3. Main library unit moduletype must declare SUBMODULES invoking support-library types
+4. Support library must contain at least one equipment/operation MODULEDEFINITION
+5. Every type referenced in SUBMODULE invocations must be defined in the support library
+6. Do NOT treat "syntax-check OK" as "scaffold complete"—always verify module substance
+
 ## Variable-Analysis Gotchas
 
 - Field-level usage matters. Record access can flow through parameter mappings and nested aliases, not just direct reads or writes.

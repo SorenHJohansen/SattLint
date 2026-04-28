@@ -486,6 +486,104 @@ def _collect_trace_report(trace_target: Path) -> dict[str, Any]:
     return build_trace_report(trace_target)
 
 
+def _run_environment_stage(progress: ProgressReporter) -> dict[str, Any]:
+    progress.start_stage("environment")
+    environment_report = _collect_environment_report()
+    progress.complete_stage("environment")
+    return environment_report
+
+
+def _run_ruff_stage(
+    progress: ProgressReporter, *, python_cmd: list[str]
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    progress.start_stage("ruff")
+    ruff_binary = _resolve_venv_tool("ruff")
+    if ruff_binary:
+        ruff_result = _run_command(
+            "ruff",
+            [ruff_binary, "check", "src", "tests", "--output-format", "json"],
+        )
+    else:
+        ruff_result = _run_command(
+            "ruff",
+            [*python_cmd, "-m", "ruff", "check", "src", "tests", "--output-format", "json"],
+        )
+    ruff_findings = json.loads(ruff_result.stdout or "[]")
+    ruff_report = _command_payload(ruff_result, finding_count=len(ruff_findings), findings=ruff_findings)
+    progress.complete_stage("ruff", detail=f"{len(ruff_findings)} findings")
+    return ruff_report, ruff_findings
+
+
+def _run_pyright_stage(
+    progress: ProgressReporter,
+    *,
+    python_cmd: list[str],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    progress.start_stage("pyright")
+    pyright_binary = _resolve_venv_tool("pyright")
+    if pyright_binary:
+        pyright_result = _run_command(
+            "pyright",
+            [pyright_binary, "--outputjson", "src", "tests"],
+        )
+    else:
+        pyright_result = _run_command(
+            "pyright",
+            [*python_cmd, "-m", "pyright", "--outputjson", "src", "tests"],
+        )
+    pyright_data = json.loads(pyright_result.stdout or "{}")
+    pyright_findings = pyright_data.get("generalDiagnostics", [])
+    pyright_summary = pyright_data.get("summary", {})
+    pyright_error_count = pyright_summary.get("errorCount", 0)
+    pyright_warning_count = pyright_summary.get("warningCount", 0)
+    pyright_report = _command_payload(
+        pyright_result,
+        finding_count=len(pyright_findings),
+        error_count=pyright_error_count,
+        warning_count=pyright_warning_count,
+        effective_exit_code=0 if pyright_error_count == 0 else pyright_result.exit_code,
+        findings=pyright_findings,
+    )
+    progress.complete_stage(
+        "pyright",
+        detail=f"{pyright_error_count} errors, {pyright_warning_count} warnings",
+    )
+    return pyright_report, pyright_findings
+
+
+def _run_pytest_stage(
+    progress: ProgressReporter,
+    *,
+    output_dir: Path,
+    python_cmd: list[str],
+    profile: str,
+) -> dict[str, Any]:
+    junit_path = output_dir / "pytest.junit.xml"
+    progress.start_stage("pytest")
+    pytest_result = _run_command(
+        "pytest",
+        _build_pytest_command(python_cmd, junit_path, profile=profile),
+    )
+    try:
+        pytest_parsed = _parse_pytest_junit(junit_path)
+    except FileNotFoundError:
+        pytest_parsed = {
+            "testcases": [],
+            "summary": {"tests": 0, "failures": 0, "errors": 1, "skipped": 0},
+            "errors": [{"message": f"JUnit XML not generated: {pytest_result.stderr}"}],
+        }
+    pytest_report = _command_payload(pytest_result, **pytest_parsed)
+    progress.complete_stage(
+        "pytest",
+        detail=(
+            f"{pytest_report['summary']['tests']} tests, "
+            f"{pytest_report['summary']['failures']} failures, "
+            f"{pytest_report['summary']['errors']} errors"
+        ),
+    )
+    return pytest_report
+
+
 def _run_pipeline(
     output_dir: Path,
     *,
@@ -585,79 +683,10 @@ def _run_pipeline(
         enabled_artifact_ids=enabled_artifacts,
     )
 
-    progress.start_stage("environment")
-    environment_report = _collect_environment_report()
-    progress.complete_stage("environment")
-
-    progress.start_stage("ruff")
-    ruff_binary = _resolve_venv_tool("ruff")
-    if ruff_binary:
-        ruff_result = _run_command(
-            "ruff",
-            [ruff_binary, "check", "src", "tests", "--output-format", "json"],
-        )
-    else:
-        ruff_result = _run_command(
-            "ruff",
-            [*python_cmd, "-m", "ruff", "check", "src", "tests", "--output-format", "json"],
-        )
-    ruff_findings = json.loads(ruff_result.stdout or "[]")
-    ruff_report = _command_payload(ruff_result, finding_count=len(ruff_findings), findings=ruff_findings)
-    progress.complete_stage("ruff", detail=f"{len(ruff_findings)} findings")
-
-    progress.start_stage("pyright")
-    pyright_binary = _resolve_venv_tool("pyright")
-    if pyright_binary:
-        pyright_result = _run_command(
-            "pyright",
-            [pyright_binary, "--outputjson", "src", "tests"],
-        )
-    else:
-        pyright_result = _run_command(
-            "pyright",
-            [*python_cmd, "-m", "pyright", "--outputjson", "src", "tests"],
-        )
-    pyright_data = json.loads(pyright_result.stdout or "{}")
-    pyright_findings = pyright_data.get("generalDiagnostics", [])
-    pyright_summary = pyright_data.get("summary", {})
-    pyright_error_count = pyright_summary.get("errorCount", 0)
-    pyright_warning_count = pyright_summary.get("warningCount", 0)
-    pyright_report = _command_payload(
-        pyright_result,
-        finding_count=len(pyright_findings),
-        error_count=pyright_error_count,
-        warning_count=pyright_warning_count,
-        effective_exit_code=0 if pyright_error_count == 0 else pyright_result.exit_code,
-        findings=pyright_findings,
-    )
-    progress.complete_stage(
-        "pyright",
-        detail=f"{pyright_error_count} errors, {pyright_warning_count} warnings",
-    )
-
-    junit_path = output_dir / "pytest.junit.xml"
-    progress.start_stage("pytest")
-    pytest_result = _run_command(
-        "pytest",
-        _build_pytest_command(python_cmd, junit_path, profile=profile),
-    )
-    try:
-        pytest_parsed = _parse_pytest_junit(junit_path)
-    except FileNotFoundError:
-        pytest_parsed = {
-            "testcases": [],
-            "summary": {"tests": 0, "failures": 0, "errors": 1, "skipped": 0},
-            "errors": [{"message": f"JUnit XML not generated: {pytest_result.stderr}"}],
-        }
-    pytest_report = _command_payload(pytest_result, **pytest_parsed)
-    progress.complete_stage(
-        "pytest",
-        detail=(
-            f"{pytest_report['summary']['tests']} tests, "
-            f"{pytest_report['summary']['failures']} failures, "
-            f"{pytest_report['summary']['errors']} errors"
-        ),
-    )
+    environment_report = _run_environment_stage(progress)
+    ruff_report, ruff_findings = _run_ruff_stage(progress, python_cmd=python_cmd)
+    pyright_report, pyright_findings = _run_pyright_stage(progress, python_cmd=python_cmd)
+    pytest_report = _run_pytest_stage(progress, output_dir=output_dir, python_cmd=python_cmd, profile=profile)
 
     if run_vulture:
         progress.start_stage("vulture")

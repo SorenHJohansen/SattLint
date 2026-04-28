@@ -5,8 +5,8 @@ from typing import Any, cast
 from lark.lexer import Token
 from lark.tree import Tree
 
+from sattline_parser.models.ast_model import SFCCodeBlocks
 from sattlint import constants as const
-from sattlint.models.ast_model import SFCCodeBlocks
 
 
 def _tok(token_type: str, value: str) -> Token:

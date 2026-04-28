@@ -6,7 +6,8 @@ import importlib
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from ..models.ast_model import BasePicture
+from sattline_parser.models.ast_model import BasePicture
+
 from .issue import Issue, format_report_header
 
 __all__ = [

@@ -1,9 +1,6 @@
 """Tests for state-integrity analyzers: reset contamination, implicit latch, SFC step contract, write-without-effect, hidden global coupling, global scope minimization, high fan-in/out, and variables report summary."""
 
-from sattlint import constants as const
-from sattlint.analyzers.sfc import analyze_sfc
-from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
-from sattlint.models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     Equation,
     ModuleCode,
@@ -17,6 +14,9 @@ from sattlint.models.ast_model import (
     SingleModule,
     Variable,
 )
+from sattlint import constants as const
+from sattlint.analyzers.sfc import analyze_sfc
+from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.reporting.variables_report import (
     ALL_VARIABLE_ANALYSIS_KINDS,
     VariableIssue,

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from sattline_parser.models.ast_model import BasePicture
+
 from .analyzers.framework import AnalysisContext, Issue
 from .analyzers.variables import VariablesAnalyzer
 from .core.diagnostics import (
@@ -14,7 +16,6 @@ from .core.diagnostics import (
     project_variable_issues_by_file,
 )
 from .core.semantic import SemanticAnalysisArtifacts, SymbolDefinition
-from .models.ast_model import BasePicture
 from .models.project_graph import ProjectGraph
 from .reporting.variables_report import VariableIssue
 

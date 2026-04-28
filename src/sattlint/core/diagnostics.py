@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
+
 from ..analyzers.framework import Issue
-from ..models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
 from ..reporting.variables_report import IssueKind, VariableIssue
 
 
@@ -51,6 +52,7 @@ _ISSUE_LABELS = {
     IssueKind.STRING_MAPPING_MISMATCH: "String mapping datatype mismatch",
     IssueKind.DATATYPE_DUPLICATION: "Datatype duplication",
     IssueKind.NAME_COLLISION: "Name collision",
+    IssueKind.LAYOUT_OVERLAP: "Layout elements overlap",
     IssueKind.MIN_MAX_MAPPING_MISMATCH: "Min/Max mapping name mismatch",
     IssueKind.MAGIC_NUMBER: "Magic number",
     IssueKind.SHADOWING: "Variable shadows outer scope",
@@ -114,6 +116,10 @@ _ISSUE_GUIDANCE = {
     IssueKind.NAME_COLLISION: DiagnosticGuidance(
         explanation="Case-insensitive name collisions make the declaration set ambiguous and harder to reason about.",
         suggestion="Rename one of the declarations so the scope has a single canonical name for that concept.",
+    ),
+    IssueKind.LAYOUT_OVERLAP: DiagnosticGuidance(
+        explanation="Overlapping modules or UI elements make the layout ambiguous and often hide one control or display behind another.",
+        suggestion="Move or resize one of the colliding elements so each rectangle occupies its own visible area.",
     ),
     IssueKind.MIN_MAX_MAPPING_MISMATCH: DiagnosticGuidance(
         explanation="Mismatched Min_/Max_ mappings suggest the parameter contract no longer describes the same base signal.",

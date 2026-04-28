@@ -4,22 +4,16 @@ import logging
 from pathlib import Path
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
-from sattlint import constants as const
-from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
-from sattlint.analyzers.loop_output_refactor import analyze_loop_output_refactor
-from sattlint.analyzers.mms import analyze_mms_interface_variables
-from sattlint.analyzers.parameter_drift import analyze_parameter_drift
-from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage
-from sattlint.analyzers.shadowing import analyze_shadowing
-from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
-from sattlint.engine import parse_source_file
-from sattlint.models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     Equation,
     FloatLiteral,
+    GraphObject,
+    InteractObject,
     IntLiteral,
     ModuleCode,
+    ModuleDef,
     ModuleHeader,
     ModuleTypeDef,
     ModuleTypeInstance,
@@ -33,6 +27,15 @@ from sattlint.models.ast_model import (
     SourceSpan,
     Variable,
 )
+from sattlint import constants as const
+from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
+from sattlint.analyzers.loop_output_refactor import analyze_loop_output_refactor
+from sattlint.analyzers.mms import analyze_mms_interface_variables
+from sattlint.analyzers.parameter_drift import analyze_parameter_drift
+from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage
+from sattlint.analyzers.shadowing import analyze_shadowing
+from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
+from sattlint.engine import parse_source_file
 from sattlint.reporting.icf_report import ICFEntry
 from sattlint.reporting.variables_report import (
     VariablesReport,
@@ -1255,6 +1258,68 @@ ENDDEF (*BasePicture*);
     assert usage_by_name["ButtonTypeSource"].read is True
     assert usage_by_name["WidthSource"].ui_read is True
     assert usage_by_name["ButtonTypeSource"].ui_read is True
+
+
+def test_layout_overlap_detects_overlapping_module_invocations():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+    ChildType = MODULEDEFINITION DateCode_ 1
+    ModuleDef
+        ClippingBounds = ( 0.0 , 0.0 ) ( 1.0 , 1.0 )
+    ENDDEF (*ChildType*);
+SUBMODULES
+    ChildA Invocation ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0 ) : ChildType;
+    ChildB Invocation ( 0.5 , 0.5 , 0.0 , 1.0 , 1.0 ) : ChildType;
+ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    overlap_issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.LAYOUT_OVERLAP]
+
+    assert len(overlap_issues) == 1
+    assert overlap_issues[0].role == "module 'ChildA' overlaps module 'ChildB'"
+
+
+def test_layout_overlap_detects_overlapping_graph_and_interact_objects():
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=ModuleDef(
+            graph_objects=[
+                GraphObject(
+                    type="TextObject",
+                    properties={"coords": ((0.0, 0.0), (1.0, 1.0))},
+                )
+            ],
+            interact_objects=[
+                InteractObject(
+                    type="ComBut_",
+                    properties={"coords": [((0.5, 0.5), (1.25, 1.25))]},
+                )
+            ],
+        ),
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    overlap_issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.LAYOUT_OVERLAP]
+
+    assert len(overlap_issues) == 1
+    assert overlap_issues[0].role == "graph object TextObject #1 overlaps interact object ComBut_ #1"
 
 
 def test_ui_only_variable_detected_for_graphics_invar_reads():

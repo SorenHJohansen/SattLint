@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..models.ast_model import Variable
+from sattline_parser.models.ast_model import Variable
 
 
 @dataclass

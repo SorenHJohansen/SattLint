@@ -4,6 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
+
 from sattlint.analyzers.registry import get_declared_lsp_analyzer_keys
 from sattlint.core.diagnostics import SemanticDiagnostic
 from sattlint.editor_api import load_workspace_snapshot
@@ -847,6 +849,45 @@ ENDDEF (*BasePicture*);
     assert len(locations) == 1
     assert locations[0].range.start.line == 7
     assert locations[0].range.start.character == 8
+
+
+def test_collect_local_definition_locations_returns_empty_on_recoverable_snapshot_failure(monkeypatch, tmp_path):
+    source = _source_with_unused_variable()
+    entry_file = tmp_path / "Program" / "Main.s"
+    _write_text(entry_file, source)
+
+    monkeypatch.setattr(
+        "sattlint_lsp.server.load_source_snapshot",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("workspace snapshot unavailable")),
+    )
+
+    locations = collect_local_definition_locations(
+        entry_file,
+        source,
+        line=0,
+        column=0,
+    )
+
+    assert locations == []
+
+
+def test_collect_local_definition_locations_raises_non_recoverable_snapshot_failure(monkeypatch, tmp_path):
+    source = _source_with_unused_variable()
+    entry_file = tmp_path / "Program" / "Main.s"
+    _write_text(entry_file, source)
+
+    monkeypatch.setattr(
+        "sattlint_lsp.server.load_source_snapshot",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt("stop")),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        collect_local_definition_locations(
+            entry_file,
+            source,
+            line=0,
+            column=0,
+        )
 
 
 def test_infer_module_path_from_source_tracks_typedef_modules():

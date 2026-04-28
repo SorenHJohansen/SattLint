@@ -8,8 +8,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, ClassVar, Protocol
 
+from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
+
+from ..casefolding import casefold_key, is_anytype_name
 from ..grammar import constants as const
-from ..models.ast_model import ParameterMapping, Simple_DataType, Variable
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution import TypeGraph
 from ..resolution.common import varname_full
@@ -172,7 +174,8 @@ class ContractMappingValidator:
     ):
         self._type_graph = type_graph
         self._anytype_field_contracts = {
-            owner_id: dict(contracts) for owner_id, contracts in (anytype_field_contracts or {}).items()
+            owner_id: {casefold_key(parameter_name): contract for parameter_name, contract in contracts.items()}
+            for owner_id, contracts in (anytype_field_contracts or {}).items()
         }
 
     def _datatype_key(self, datatype: Simple_DataType | str | None) -> str | None:
@@ -231,7 +234,7 @@ class ContractMappingValidator:
         if not contracts_by_param:
             return []
 
-        contract = contracts_by_param.get(target_variable.name.casefold())
+        contract = contracts_by_param.get(casefold_key(target_variable.name))
         if contract is None or not contract.field_paths:
             return []
 
@@ -339,7 +342,7 @@ class ContractMappingValidator:
         if source_key is None or target_key is None or source_key == target_key:
             return issues
 
-        if target_key == "anytype":
+        if is_anytype_name(target_key):
             return self._check_anytype_field_contracts(
                 pm,
                 tgt_var,

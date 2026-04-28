@@ -13,8 +13,7 @@ from itertools import product
 from pathlib import Path
 from typing import Any
 
-from ..grammar import constants as const
-from ..models.ast_model import (
+from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleCode,
@@ -29,6 +28,8 @@ from ..models.ast_model import (
     SingleModule,
     Variable,
 )
+
+from ..grammar import constants as const
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution.common import path_startswith_casefold
 from .sattline_builtins import get_function_signature
@@ -1027,8 +1028,24 @@ def _collect_stmt_block_paths(
     reset_old_vars_cf: set[str],
     states: list[_PathState],
 ) -> list[_PathState]:
+    return _collect_paths_from_items(
+        stmts,
+        env,
+        reset_ref_cf,
+        reset_old_vars_cf,
+        states,
+    )
+
+
+def _collect_paths_from_items(
+    items: list[Any],
+    env: dict[str, Variable],
+    reset_ref_cf: str,
+    reset_old_vars_cf: set[str],
+    states: list[_PathState],
+) -> list[_PathState]:
     next_states = states
-    for stmt in stmts:
+    for stmt in items:
         next_states = _collect_stmt_paths(
             stmt,
             env,
@@ -1037,6 +1054,113 @@ def _collect_stmt_block_paths(
             next_states,
         )
     return next_states
+
+
+def _collect_if_stmt_paths(
+    branches: list[tuple[Any, list[Any]]] | None,
+    else_block: list[Any] | None,
+    env: dict[str, Variable],
+    reset_ref_cf: str,
+    reset_old_vars_cf: set[str],
+    states: list[_PathState],
+) -> list[_PathState]:
+    branch_outcomes: list[_PathState] = []
+    for state in states:
+        saw_run = False
+        saw_reset = False
+        saw_exact_run = False
+        saw_exact_reset = False
+        branch_matched = False
+
+        for cond, stmts in branches or []:
+            cond_flags = _classify_reset_condition(cond, reset_ref_cf, reset_old_vars_cf)
+            saw_run = saw_run or cond_flags["run"]
+            saw_reset = saw_reset or cond_flags["reset"]
+            saw_exact_run = saw_exact_run or cond_flags["exact_run"]
+            saw_exact_reset = saw_exact_reset or cond_flags["exact_reset"]
+
+            branch_states = _take_condition_branch(state, cond_flags)
+            if not branch_states:
+                continue
+            branch_matched = True
+            branch_outcomes.extend(
+                _collect_stmt_block_paths(
+                    stmts or [],
+                    env,
+                    reset_ref_cf,
+                    reset_old_vars_cf,
+                    branch_states,
+                )
+            )
+
+        fallback_states = _infer_alternative_states(
+            state,
+            saw_run=saw_run,
+            saw_reset=saw_reset,
+            saw_exact_run=saw_exact_run,
+            saw_exact_reset=saw_exact_reset,
+        )
+        if else_block:
+            if fallback_states:
+                branch_outcomes.extend(
+                    _collect_stmt_block_paths(
+                        else_block or [],
+                        env,
+                        reset_ref_cf,
+                        reset_old_vars_cf,
+                        fallback_states,
+                    )
+                )
+        elif fallback_states or not branch_matched:
+            branch_outcomes.extend(fallback_states or [state.clone()])
+    return branch_outcomes or states
+
+
+def _collect_assignment_paths(
+    target: Any,
+    expr: Any,
+    env: dict[str, Variable],
+    reset_ref_cf: str,
+    reset_old_vars_cf: set[str],
+    states: list[_PathState],
+) -> list[_PathState]:
+    assigned_states: list[_PathState] = []
+    for state in states:
+        next_state = state.clone()
+        _record_mode_write(target, env, next_state)
+        assigned_states.extend(
+            _collect_stmt_paths(
+                expr,
+                env,
+                reset_ref_cf,
+                reset_old_vars_cf,
+                [next_state],
+            )
+        )
+    return assigned_states
+
+
+def _collect_function_call_paths(
+    fn_name: str,
+    args: list[Any] | None,
+    env: dict[str, Variable],
+    reset_ref_cf: str,
+    reset_old_vars_cf: set[str],
+    states: list[_PathState],
+) -> list[_PathState]:
+    call_states: list[_PathState] = []
+    for state in states:
+        next_state = state.clone()
+        _record_mode_function_call_writes(fn_name, args or [], env, next_state)
+        arg_states = _collect_paths_from_items(
+            list(args or []),
+            env,
+            reset_ref_cf,
+            reset_old_vars_cf,
+            [next_state],
+        )
+        call_states.extend(arg_states)
+    return call_states
 
 
 def _collect_stmt_paths(
@@ -1049,104 +1173,46 @@ def _collect_stmt_paths(
     if obj is None:
         return states
     if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
-        next_states = states
-        for child in getattr(obj, "children", []):
-            next_states = _collect_stmt_paths(
-                child,
-                env,
-                reset_ref_cf,
-                reset_old_vars_cf,
-                next_states,
-            )
-        return next_states
+        return _collect_paths_from_items(
+            list(getattr(obj, "children", [])),
+            env,
+            reset_ref_cf,
+            reset_old_vars_cf,
+            states,
+        )
 
     if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
         _, branches, else_block = obj
-        branch_outcomes: list[_PathState] = []
-        for state in states:
-            saw_run = False
-            saw_reset = False
-            saw_exact_run = False
-            saw_exact_reset = False
-            branch_matched = False
-
-            for cond, stmts in branches or []:
-                cond_flags = _classify_reset_condition(cond, reset_ref_cf, reset_old_vars_cf)
-                saw_run = saw_run or cond_flags["run"]
-                saw_reset = saw_reset or cond_flags["reset"]
-                saw_exact_run = saw_exact_run or cond_flags["exact_run"]
-                saw_exact_reset = saw_exact_reset or cond_flags["exact_reset"]
-
-                branch_states = _take_condition_branch(state, cond_flags)
-                if not branch_states:
-                    continue
-                branch_matched = True
-                branch_outcomes.extend(
-                    _collect_stmt_block_paths(
-                        stmts or [],
-                        env,
-                        reset_ref_cf,
-                        reset_old_vars_cf,
-                        branch_states,
-                    )
-                )
-
-            fallback_states = _infer_alternative_states(
-                state,
-                saw_run=saw_run,
-                saw_reset=saw_reset,
-                saw_exact_run=saw_exact_run,
-                saw_exact_reset=saw_exact_reset,
-            )
-            if else_block:
-                if fallback_states:
-                    branch_outcomes.extend(
-                        _collect_stmt_block_paths(
-                            else_block or [],
-                            env,
-                            reset_ref_cf,
-                            reset_old_vars_cf,
-                            fallback_states,
-                        )
-                    )
-            elif fallback_states or not branch_matched:
-                branch_outcomes.extend(fallback_states or [state.clone()])
-        return branch_outcomes or states
+        return _collect_if_stmt_paths(
+            branches,
+            else_block,
+            env,
+            reset_ref_cf,
+            reset_old_vars_cf,
+            states,
+        )
 
     if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
         _, target, expr = obj
-        assigned_states: list[_PathState] = []
-        for state in states:
-            next_state = state.clone()
-            _record_mode_write(target, env, next_state)
-            assigned_states.extend(
-                _collect_stmt_paths(
-                    expr,
-                    env,
-                    reset_ref_cf,
-                    reset_old_vars_cf,
-                    [next_state],
-                )
-            )
-        return assigned_states
+        return _collect_assignment_paths(
+            target,
+            expr,
+            env,
+            reset_ref_cf,
+            reset_old_vars_cf,
+            states,
+        )
 
     if isinstance(obj, tuple) and obj and obj[0] == const.KEY_FUNCTION_CALL:
         _, fn_name, args = obj
-        call_states: list[_PathState] = []
-        for state in states:
-            next_state = state.clone()
-            _record_mode_function_call_writes(fn_name, args or [], env, next_state)
-            arg_states = [next_state]
-            for arg in args or []:
-                arg_states = _collect_stmt_paths(
-                    arg,
-                    env,
-                    reset_ref_cf,
-                    reset_old_vars_cf,
-                    arg_states,
-                )
-            call_states.extend(arg_states)
-        return call_states
+        return _collect_function_call_paths(
+            fn_name,
+            args,
+            env,
+            reset_ref_cf,
+            reset_old_vars_cf,
+            states,
+        )
 
     if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_TERNARY, "Ternary"):
         _, branches, else_expr = obj
@@ -1224,16 +1290,13 @@ def _collect_stmt_paths(
         )
 
     if isinstance(obj, tuple) and obj and obj[0] in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND):
-        next_states = states
-        for sub in obj[1] or []:
-            next_states = _collect_stmt_paths(
-                sub,
-                env,
-                reset_ref_cf,
-                reset_old_vars_cf,
-                next_states,
-            )
-        return next_states
+        return _collect_paths_from_items(
+            list(obj[1] or []),
+            env,
+            reset_ref_cf,
+            reset_old_vars_cf,
+            states,
+        )
 
     if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_NOT:
         return _collect_stmt_paths(
@@ -1245,28 +1308,22 @@ def _collect_stmt_paths(
         )
 
     if isinstance(obj, list):
-        next_states = states
-        for item in obj:
-            next_states = _collect_stmt_paths(
-                item,
-                env,
-                reset_ref_cf,
-                reset_old_vars_cf,
-                next_states,
-            )
-        return next_states
+        return _collect_paths_from_items(
+            obj,
+            env,
+            reset_ref_cf,
+            reset_old_vars_cf,
+            states,
+        )
 
     if hasattr(obj, "children"):
-        next_states = states
-        for child in getattr(obj, "children", []):
-            next_states = _collect_stmt_paths(
-                child,
-                env,
-                reset_ref_cf,
-                reset_old_vars_cf,
-                next_states,
-            )
-        return next_states
+        return _collect_paths_from_items(
+            list(getattr(obj, "children", [])),
+            env,
+            reset_ref_cf,
+            reset_old_vars_cf,
+            states,
+        )
 
     return states
 
