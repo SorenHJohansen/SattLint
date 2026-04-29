@@ -4,10 +4,11 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
 
+from sattline_parser.models.ast_model import BasePicture
+
 from . import app_support as app_support_module
 from . import console as console_module
 from . import engine as engine_module
-from .casefolding import casefold_equal, casefold_key
 from .analyzers import variable_usage_reporting as variables_reporting_module
 from .analyzers.comment_code import analyze_comment_code_files
 from .analyzers.framework import AnalysisContext
@@ -25,7 +26,7 @@ from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variable_usage_reporting import debug_variable_usage
 from .analyzers.variables import IssueKind, analyze_variables, filter_variable_report
 from .cache import ASTCache, compute_cache_key, get_cache_dir
-from sattline_parser.models.ast_model import BasePicture
+from .casefolding import casefold_equal, casefold_key
 from .models.project_graph import ProjectGraph
 from .reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, VariablesReport
 

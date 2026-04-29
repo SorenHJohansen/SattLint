@@ -17,6 +17,8 @@ Output format is mandatory for new scaffolds:
 - create `.g` as an empty companion file
 - do not create `.x`, `.y`, or `.z`
 
+Primary source for rules: `docs/references/SattLineApplicationSpec.md` (if available) or request from user.
+
 ## Use When
 
 - Creating a new reusable process unit.
