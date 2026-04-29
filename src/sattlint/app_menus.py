@@ -4,10 +4,11 @@ import sys
 from collections.abc import Callable, Iterator
 from typing import Any
 
+from sattline_parser.models.ast_model import BasePicture
+
 from . import console as console_module
 from . import engine as engine_module
 from .casefolding import casefold_equal
-from sattline_parser.models.ast_model import BasePicture
 from .models.project_graph import ProjectGraph
 
 print = console_module.print_output  # type: ignore[assignment]
