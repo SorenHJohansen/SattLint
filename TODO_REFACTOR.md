@@ -103,7 +103,7 @@ Snapshot caveat:
 - Goal: keep portability clean and prevent reintroduction of machine-specific paths
 - First slice: completed in a prior change; this lane remains closed unless a future audit reintroduces portability findings
 - First validation: markdown consistency review on `.github/skills/sattline-scaffold/SKILL.md`
-- Notes: moved hardcoded path reference `C:\Users\SQHJ\OneDrive - Novo Nordisk\Workspace\HALibs\SattLineApplicationSpec.md` from "Primary source for rules" into the "Inputs To Collect First" section as parameterized guidance: "Reference to HA specification document (typically the SattLine Application Specification for your project)". The file now provides portable, parameterized language instead of exposing machine-specific paths. Markdown consistency review passed.
+- Notes: moved hardcoded path reference `<path-to-spec>` from "Primary source for rules" into the "Inputs To Collect First" section as parameterized guidance: "Reference to HA specification document (typically the SattLine Application Specification for your project)". The file now provides portable, parameterized language instead of exposing machine-specific paths. Markdown consistency review passed.
 
 ### W6. Parser Structural Split: `SLTransformer`
 

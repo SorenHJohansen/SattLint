@@ -382,7 +382,7 @@ def collect_structural_budget_report(
         module_level_private_names = {
             node.name
             for node in getattr(tree, "body", [])
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
             and node.name.startswith("_")
             and not node.name.startswith("__")
             and len(node.name) >= duplicate_private_name_min_length
@@ -392,7 +392,7 @@ def collect_structural_budget_report(
                 private_name_occurrences[name].add(relative_path)
 
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 end_lineno = getattr(node, "end_lineno", None)
                 if end_lineno is None:
                     continue
@@ -409,7 +409,7 @@ def collect_structural_budget_report(
                     )
             elif isinstance(node, ast.ClassDef):
                 method_count = sum(
-                    1 for child in node.body if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    1 for child in node.body if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef)
                 )
                 if method_count > class_method_max_count:
                     classes_over_budget.append(
