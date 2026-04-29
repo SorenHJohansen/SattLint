@@ -15,6 +15,7 @@ from sattline_parser.models.ast_model import BasePicture
 
 from . import app_analysis as app_analysis_module
 from . import app_base as app_base_module
+from . import app_cli_commands as app_cli_commands_module
 from . import app_docs as app_docs_module
 from . import app_graphics as app_graphics_module
 from . import app_menus as app_menus_module
@@ -99,11 +100,11 @@ log = app_base_module.log
 # Helpers
 # ----------------------------
 def _configure_windows_console_api(kernel32, coord_type, buffer_info_type):
-    return app_base_module._configure_windows_console_api(kernel32, coord_type, buffer_info_type)
+    return app_base_module.configure_windows_console_api(kernel32, coord_type, buffer_info_type)
 
 
 def _clear_windows_console() -> None:
-    app_base_module._clear_windows_console()
+    app_base_module.clear_windows_console()
 
 
 def clear_screen():
@@ -163,13 +164,31 @@ def run_cli(argv: list[str]) -> int:
 
 
 def run_validate_config_command(cfg: dict, *, config_path: Path, default_used: bool) -> int:
-    """Validate the SattLint configuration and report any issues."""
-    return EXIT_SUCCESS
+    return app_cli_commands_module.run_validate_config_command(
+        cfg,
+        config_path=config_path,
+        default_used=default_used,
+        self_check_fn=self_check,
+        exit_success=EXIT_SUCCESS,
+        exit_usage_error=EXIT_USAGE_ERROR,
+    )
 
 
 def run_analyze_command(cfg: dict, *, selected_keys: list[str] | None, use_cache: bool) -> int:
-    """Run selected analysis checks against configured targets."""
-    return EXIT_SUCCESS
+    return app_cli_commands_module.run_analyze_command(
+        cfg,
+        selected_keys=selected_keys,
+        use_cache=use_cache,
+        run_checks_fn=lambda local_cfg, local_selected_keys, local_use_cache: app_analysis_module.run_checks(
+            local_cfg,
+            local_selected_keys,
+            iter_loaded_projects_fn=lambda nested_cfg: _iter_loaded_projects(nested_cfg, use_cache=local_use_cache),
+            get_enabled_analyzers_fn=_get_enabled_analyzers,
+            target_is_library_fn=_target_is_library,
+            pause_fn=None,
+        ),
+        exit_success=EXIT_SUCCESS,
+    )
 
 
 def run_docgen_command(
@@ -179,8 +198,19 @@ def run_docgen_command(
     output_dir: str | None = None,
     output_path: str | None = None,
 ) -> int:
-    """Generate DOCX documentation for configured targets."""
-    return EXIT_SUCCESS
+    return app_cli_commands_module.run_docgen_command(
+        cfg,
+        use_cache=use_cache,
+        output_dir=output_dir,
+        output_path=output_path,
+        iter_loaded_projects_fn=lambda local_cfg, local_use_cache: _iter_loaded_projects(
+            local_cfg,
+            use_cache=local_use_cache,
+        ),
+        documentation_unit_selection_fn=_get_documentation_unit_selection,
+        exit_success=EXIT_SUCCESS,
+        exit_usage_error=EXIT_USAGE_ERROR,
+    )
 
 
 def _configured_icf_files(cfg: dict) -> tuple[Path | None, list[Path]]:
@@ -460,7 +490,7 @@ def _iter_loaded_projects(
     *,
     use_cache: bool = True,
 ) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
-    return app_analysis_module._iter_loaded_projects(
+    return app_analysis_module.iter_loaded_projects(
         cfg,
         use_cache=use_cache,
         require_analyzed_targets_fn=_require_analyzed_targets,
@@ -469,11 +499,11 @@ def _iter_loaded_projects(
 
 
 def _source_paths_for_current_target(project_bp, graph) -> set[Path]:
-    return app_analysis_module._source_paths_for_current_target(project_bp, graph)
+    return app_analysis_module.source_paths_for_current_target(project_bp, graph)
 
 
 def _target_is_library(cfg: dict, project_bp, graph) -> bool:
-    return app_analysis_module._target_is_library(cfg, project_bp, graph)
+    return app_analysis_module.target_is_library(cfg, project_bp, graph)
 
 
 def load_project(
@@ -664,7 +694,7 @@ def run_module_find_by_name(cfg: dict):
 
 
 def _parse_index_selection(selection: str, max_index: int) -> list[int]:
-    return app_analysis_module._parse_index_selection(selection, max_index)
+    return app_analysis_module.parse_index_selection(selection, max_index)
 
 
 def run_module_tree_debug(cfg: dict):
@@ -698,7 +728,7 @@ def _get_enabled_analyzers():
 
 
 def _run_checks(cfg: dict, selected_keys: list[str] | None) -> None:
-    app_analysis_module._run_checks(
+    app_analysis_module.run_checks(
         cfg,
         selected_keys,
         iter_loaded_projects_fn=_iter_loaded_projects,

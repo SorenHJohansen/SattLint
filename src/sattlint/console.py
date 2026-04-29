@@ -69,7 +69,7 @@ def print_status(message: str, *, level: str = "info", stderr: bool = False) -> 
             )
             return
 
-    print(f"{prefix} {message}")
+    print_output(f"{prefix} {message}")
 
 
 def print_panel(title: str, body: str, *, stderr: bool = False) -> None:
@@ -79,8 +79,8 @@ def print_panel(title: str, body: str, *, stderr: bool = False) -> None:
             console.print(Panel(body, title=title, expand=False))
             return
 
-    print(f"\n--- {title} ---")
-    print(body)
+    print_output(f"\n--- {title} ---")
+    print_output(body)
 
 
 def print_table(title: str, columns: Sequence[str], rows: Sequence[Sequence[object]]) -> None:
@@ -95,9 +95,9 @@ def print_table(title: str, columns: Sequence[str], rows: Sequence[Sequence[obje
             console.print(table)
             return
 
-    print(title)
+    print_output(title)
     if not rows:
-        print("  (none)")
+        print_output("  (none)")
         return
 
     widths = [len(column) for column in columns]
@@ -108,10 +108,10 @@ def print_table(title: str, columns: Sequence[str], rows: Sequence[Sequence[obje
 
     header = "  ".join(column.ljust(widths[index]) for index, column in enumerate(columns))
     divider = "  ".join("-" * width for width in widths)
-    print(header)
-    print(divider)
+    print_output(header)
+    print_output(divider)
     for row in normalized_rows:
-        print("  ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
+        print_output("  ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
 
 
 def track_items(iterable: Iterable[Any], *, description: str) -> Iterable[Any]:

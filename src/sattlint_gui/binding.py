@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from sattlint.console import print_output
+
 
 @dataclass(frozen=True, slots=True)
 class AnalyzerDescriptor:
@@ -45,7 +47,7 @@ def _capture_output(func, *args, **kwargs) -> BindingResult:
             value = func(*args, **kwargs)
         except Exception as exc:
             ok = False
-            print(f"Error: {exc}")
+            print_output(f"Error: {exc}")
     output = buffer.getvalue().strip()
     if not output:
         output = "OK" if ok else "Failed"
@@ -188,9 +190,9 @@ class SattLintBinding:
                 selected = {key.casefold() for key in selected_keys}
                 analyzers = [spec for spec in analyzers if spec.key.casefold() in selected]
             if not analyzers:
-                print("No matching checks found")
+                print_output("No matching checks found")
                 return
-            print("--- Running checks ---")
+            print_output("--- Running checks ---")
             for target_name, project_bp, graph in app_module._iter_loaded_projects(cfg):
                 context = app_module.AnalysisContext(
                     base_picture=project_bp,
@@ -199,12 +201,12 @@ class SattLintBinding:
                     target_is_library=app_module._target_is_library(cfg, project_bp, graph),
                     config=cfg,
                 )
-                print(f"\n=== Target: {target_name} ===")
+                print_output(f"\n=== Target: {target_name} ===")
                 for spec in analyzers:
-                    print(f"\n=== {spec.name} ({spec.key}) ===")
+                    print_output(f"\n=== {spec.name} ({spec.key}) ===")
                     report = spec.run(context)
                     report = app_module.apply_rule_profile_to_report(spec.key, report, cfg)
-                    print(report.summary())
+                    print_output(report.summary())
 
         return _capture_output(_execute)
 

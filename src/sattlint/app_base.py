@@ -160,6 +160,10 @@ def _configure_windows_console_api(kernel32, coord_type, buffer_info_type):
     kernel32.SetConsoleCursorPosition.restype = wintypes.BOOL
 
 
+def configure_windows_console_api(kernel32, coord_type, buffer_info_type):
+    return _configure_windows_console_api(kernel32, coord_type, buffer_info_type)
+
+
 def _clear_windows_console() -> None:
     import ctypes
     from ctypes import wintypes
@@ -219,6 +223,10 @@ def _clear_windows_console() -> None:
         raise OSError(ctypes.get_last_error(), "FillConsoleOutputAttribute failed")  # type: ignore[reportAttributeAccessIssue]
     if not kernel32.SetConsoleCursorPosition(stdout_handle, origin):
         raise OSError(ctypes.get_last_error(), "SetConsoleCursorPosition failed")  # type: ignore[reportAttributeAccessIssue]
+
+
+def clear_windows_console() -> None:
+    _clear_windows_console()
 
 
 def clear_screen(*, os_module=os, sys_module=sys, clear_windows_console=None):

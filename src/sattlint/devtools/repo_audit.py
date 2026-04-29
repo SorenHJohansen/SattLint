@@ -25,6 +25,7 @@ from sattlint import config as config_module
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
 from sattlint.devtools import coverage_reports as _coverage_reports_module
 from sattlint.devtools import pipeline as pipeline_module
+from sattlint.devtools import structural_reports as structural_reports_module
 from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS, artifact_reports_map
 from sattlint.devtools.pipeline_artifacts import write_json_artifact
 from sattlint.devtools.progress_reporting import ProgressReporter
@@ -1264,6 +1265,70 @@ def _is_leak_finding(finding: Finding) -> bool:
     return finding.category in LEAK_RELEVANT_CATEGORIES or finding.id in LEAK_RELEVANT_FINDING_IDS
 
 
+def _structural_report_location_detail(finding: dict[str, Any]) -> tuple[str | None, str | None]:
+    finding_id = finding["id"]
+    if finding_id in {"structural-source-file-budget", "structural-test-file-budget"}:
+        entries = finding.get("over_budget_files", [])
+        if entries:
+            first_entry = entries[0]
+            return first_entry.get("path"), f"{first_entry.get('line_count')} lines"
+    if finding_id == "structural-function-budget":
+        entries = finding.get("over_budget_functions", [])
+        if entries:
+            first_entry = entries[0]
+            return first_entry.get("path"), f"{first_entry.get('qualname')} spans {first_entry.get('line_span')} lines"
+    if finding_id == "structural-class-budget":
+        entries = finding.get("over_budget_classes", [])
+        if entries:
+            first_entry = entries[0]
+            return first_entry.get(
+                "path"
+            ), f"{first_entry.get('qualname')} defines {first_entry.get('method_count')} methods"
+    if finding_id == "structural-private-helper-duplication":
+        entries = finding.get("repeated_private_names", [])
+        if entries:
+            first_entry = entries[0]
+            first_path = next(iter(first_entry.get("paths", [])), None)
+            return first_path, f"{first_entry.get('name')} repeats across {first_entry.get('file_count')} files"
+    if finding_id == "structural-facade-private-boundary":
+        entries = finding.get("private_entrypoints", [])
+        if entries:
+            first_entry = entries[0]
+            return first_entry.get("path"), f"calls {first_entry.get('target')} at line {first_entry.get('line')}"
+    if finding_id == "structural-budget-ratchet-regression":
+        regressions = finding.get("regressions", [])
+        if regressions:
+            first_regression = regressions[0]
+            return None, (
+                f"{first_regression.get('metric')}: {first_regression.get('actual')} > "
+                f"{first_regression.get('expected_max')}"
+            )
+    return None, None
+
+
+def _find_structural_report_findings(root: Path = REPO_ROOT) -> list[Finding]:
+    architecture_report = structural_reports_module.collect_architecture_report(root)
+    structural_findings: list[Finding] = []
+    for finding in architecture_report.get("findings", []):
+        finding_id = finding.get("id")
+        if not isinstance(finding_id, str) or not finding_id.startswith("structural-"):
+            continue
+        path, detail = _structural_report_location_detail(finding)
+        structural_findings.append(
+            Finding(
+                id=finding_id,
+                category="architecture",
+                severity=str(finding.get("severity", "medium")),
+                confidence="high",
+                message=str(finding.get("message", "Structural report finding.")),
+                path=path,
+                detail=detail,
+                source="structural-reports",
+            )
+        )
+    return structural_findings
+
+
 def collect_custom_findings(
     root: Path = REPO_ROOT,
     *,
@@ -1312,6 +1377,7 @@ def collect_custom_findings(
             ast_by_file=source_context.asts,
         )
     )
+    findings.extend(_find_structural_report_findings(root))
     findings.extend(_find_cli_findings())
     findings.extend(_find_logging_findings(root / "src", content_by_file=source_context.texts))
     findings.extend(_parse_coverage_findings(root, tracked_paths=tracked_paths))

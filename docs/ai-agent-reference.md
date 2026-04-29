@@ -14,7 +14,8 @@ This file supplements `AGENTS.md` with deeper background, examples, and file ref
 - `src/sattlint/` is the application package that consumes the parser core.
 - `src/sattlint/core/semantic.py` contains shared workspace discovery, symbol lookup, references, completions, and snapshot construction.
 - `src/sattlint/core/document.py` contains shared line-index and UTF-16 offset helpers.
-- `src/sattlint/editor_api.py` is a compatibility facade over the shared semantic core.
+- `src/sattlint/editor_api.py` is a public compatibility facade over the shared semantic core.
+- Internal `src/sattlint/**` and `src/sattlint_lsp/**` code should import from `src/sattlint/core/semantic.py` directly and only keep `editor_api` for external compatibility.
 - `src/sattlint_lsp/` contains the external language-server layer.
 - `vscode/sattline-vscode/` contains the no-build VS Code client.
 - `src/sattlint/devtools/pipeline.py` runs the repo-local lint, type, test, dead-code, security, and architecture checks into JSON artifacts.
@@ -249,7 +250,7 @@ Use `--profile quick` for fast local loops. Read `artifacts/analysis/status.json
 
 - `src/sattlint/core/semantic.py`: workspace discovery, symbol lookup, snapshots.
 - `src/sattlint/core/document.py`: shared document and offset helpers.
-- `src/sattlint/editor_api.py`: compatibility facade.
+- `src/sattlint/editor_api.py`: public compatibility facade (external boundary only).
 
 ### Parser Core
 

@@ -19,6 +19,7 @@ from sattline_parser.models.ast_model import (
 from ..reporting.icf_report import (
     ICFEntry,
     ICFResolvedEntry,
+    ICFSkippedEntry,
     ICFValidationIssue,
     ICFValidationReport,
 )
@@ -249,20 +250,22 @@ def _resolve_unit_type_label(
 
 
 def _summarize_signature_diff(
-    reference: tuple[tuple[str, str, str, str], ...], current: tuple[tuple[str, str, str, str], ...]
+    reference: tuple[tuple[str, str, str, str, str], ...], current: tuple[tuple[str, str, str, str, str], ...]
 ) -> str:
-    def _format_signature_entry(entry: tuple[str, str, str, str]) -> str:
-        journal, group, key, value = entry
+    def _format_signature_entry(entry: tuple[str, str, str, str, str]) -> str:
+        operation, journal, group, key, value = entry
         label_parts: list[str] = []
+        if operation:
+            label_parts.append(f"Operation {operation}")
         if journal:
-            label_parts.append(journal)
+            label_parts.append(f"Journal {journal}")
         if group:
-            label_parts.append(group)
-        scope = "/".join(label_parts)
+            label_parts.append(f"Group {group}")
+        scope = " | ".join(label_parts)
         scoped_key = key if not scope else f"[{scope}] {key}"
         return f"{scoped_key} => {value}"
 
-    def _format_entry_list(entries: set[tuple[str, str, str, str]], *, limit: int = 3) -> str:
+    def _format_entry_list(entries: set[tuple[str, str, str, str, str]], *, limit: int = 3) -> str:
         sorted_entries = sorted(entries)
         preview = ", ".join(_format_signature_entry(entry) for entry in sorted_entries[:limit])
         if len(sorted_entries) > limit:
@@ -300,6 +303,7 @@ def parse_icf_file(file_path: Path) -> list[ICFEntry]:
     entries: list[ICFEntry] = []
     section: str | None = None
     unit: str | None = None
+    operation: str | None = None
     journal: str | None = None
     group: str | None = None
 
@@ -319,6 +323,11 @@ def parse_icf_file(file_path: Path) -> list[ICFEntry]:
             tag_key = _cf(tag)
             if tag_key == "unit":
                 unit = label
+                operation = None
+                journal = None
+                group = None
+            elif tag_key == "operation":
+                operation = label
                 journal = None
                 group = None
             elif tag_key == "journal":
@@ -327,6 +336,7 @@ def parse_icf_file(file_path: Path) -> list[ICFEntry]:
             elif tag_key == "group":
                 group = label
             else:
+                operation = None
                 journal = None
                 group = None
             continue
@@ -343,6 +353,7 @@ def parse_icf_file(file_path: Path) -> list[ICFEntry]:
                 key=key.strip(),
                 value=value.strip(),
                 unit=unit,
+                operation=operation,
                 journal=journal,
                 group=group,
             )
@@ -754,10 +765,10 @@ def _validate_unit_structure(
         if len(units) < 2:
             continue
         reference_unit = units[0]
-        signatures: dict[str, tuple[tuple[str, str, str, str], ...]] = {}
+        signatures: dict[str, tuple[tuple[str, str, str, str, str], ...]] = {}
 
         for unit_name in units:
-            signature: list[tuple[str, str, str, str]] = []
+            signature: list[tuple[str, str, str, str, str]] = []
             for entry in unit_entries[unit_name]:
                 program, path = _extract_icf_sattline_ref(entry.value)
                 if path is None:
@@ -769,7 +780,9 @@ def _validate_unit_structure(
                     ]
                     normalized_path = ".".join(normalized_segments)
                     normalized_value = f"{program}:{normalized_path}" if program else normalized_path
-                signature.append((entry.journal or "", entry.group or "", _cf(entry.key), normalized_value))
+                signature.append(
+                    (entry.operation or "", entry.journal or "", entry.group or "", _cf(entry.key), normalized_value)
+                )
             signatures[unit_name] = tuple(signature)
 
         reference_signature = signatures[reference_unit]
@@ -782,7 +795,7 @@ def _validate_unit_structure(
                     entry=unit_entries[unit_name][0],
                     reason="unit structure drift",
                     detail=(
-                        f"unit type {type_label} differs from {reference_unit}: "
+                        f"current unit {unit_name} (unit type {type_label}) differs from reference unit {reference_unit}: "
                         f"{_summarize_signature_diff(reference_signature, current_signature)}"
                     ),
                 )
@@ -802,6 +815,7 @@ def validate_icf_entries_against_program(
     issues: list[ICFValidationIssue] = []
     resolved_entries: list[ICFResolvedEntry] = []
     placeholder_entries: list[ICFEntry] = []
+    skipped_details: list[ICFSkippedEntry] = []
     validated = 0
     valid = 0
     skipped = 0
@@ -809,11 +823,25 @@ def validate_icf_entries_against_program(
     for entry in entries:
         if _is_placeholder_icf_value(entry.value):
             placeholder_entries.append(entry)
+            skipped_details.append(
+                ICFSkippedEntry(
+                    entry=entry,
+                    reason="placeholder value",
+                    detail="matches placeholder pattern X::.",
+                )
+            )
             skipped += 1
             continue
 
         program, path = _extract_icf_sattline_ref(entry.value)
         if program is None or path is None:
+            skipped_details.append(
+                ICFSkippedEntry(
+                    entry=entry,
+                    reason="unparseable SattLine reference",
+                    detail="expected Program:Path value",
+                )
+            )
             skipped += 1
             continue
 
@@ -896,4 +924,5 @@ def validate_icf_entries_against_program(
         skipped_entries=skipped,
         issues=issues,
         resolved_entries=resolved_entries,
+        skipped_details=skipped_details,
     )

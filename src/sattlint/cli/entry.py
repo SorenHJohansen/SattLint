@@ -7,6 +7,7 @@ from contextlib import nullcontext, redirect_stdout
 from pathlib import Path
 
 from ..__version__ import __version__
+from ..console import print_output
 
 EXIT_SUCCESS = 0
 EXIT_USAGE_ERROR = 1
@@ -122,6 +123,7 @@ def run_cli(
 
     if args.command == "repo-audit":
         from ..devtools import repo_audit
+
         try:
             idx = next(i for i, arg in enumerate(argv) if arg == "repo-audit")
             remaining = list(argv[idx + 1 :])
@@ -130,7 +132,7 @@ def run_cli(
         return repo_audit.main(remaining) or exit_success
 
     if leftover:
-        print(f"sattlint: error: unrecognized arguments: {' '.join(leftover)}", file=sys.stderr)
+        print_output(f"sattlint: error: unrecognized arguments: {' '.join(leftover)}", file=sys.stderr)
         return exit_usage_error
 
     if args.command in ("validate-config", "analyze", "docgen", "format-icf"):
@@ -140,7 +142,7 @@ def run_cli(
             cfg, default_used = load_config_fn(resolved_config_path)
             apply_debug_fn(cfg)
         except Exception as exc:
-            print(f"ERROR [config] {exc}", file=sys.stderr)
+            print_output(f"ERROR [config] {exc}", file=sys.stderr)
             return exit_usage_error
 
         if args.command == "validate-config":

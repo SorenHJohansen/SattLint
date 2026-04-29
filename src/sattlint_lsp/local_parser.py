@@ -30,8 +30,9 @@ from sattline_parser.transformer.sl_transformer import SLTransformer
 from sattline_parser.utils.text_processing import strip_sl_comments
 from sattlint.core.ast_tools import iter_variable_refs
 from sattlint.core.document import LineIndex
-from sattlint.editor_api import SemanticSnapshot, build_source_snapshot_from_basepicture
+from sattlint.core.semantic import SemanticSnapshot, build_source_snapshot_from_basepicture
 from sattlint.graphics_validation import validate_graphics_text
+from sattlint.semantic_analysis import build_variable_semantic_artifacts
 from sattlint.utils.text_processing import find_disallowed_comments
 
 _CHECKPOINT_TOKEN_INTERVAL = 64
@@ -141,6 +142,20 @@ def _collect_sequence_step_features(
             )
 
 
+def _collect_sequence_scope_features(
+    sequence: Sequence,
+    *,
+    known_sequences: dict[str, str],
+    available_sequence_features: dict[str, set[str]],
+) -> None:
+    key = sequence.name.casefold()
+    known_sequences.setdefault(key, sequence.name)
+    feature_set = available_sequence_features.setdefault(key, set())
+    if sequence.seqcontrol:
+        feature_set.add("hold")
+        feature_set.add("reset")
+
+
 def _collect_step_auto_variable_diagnostics_for_modulecode(
     modulecode: ModuleCode | None,
     env: dict[str, Variable],
@@ -152,9 +167,16 @@ def _collect_step_auto_variable_diagnostics_for_modulecode(
 
     known_steps: dict[str, str] = {}
     available_features: dict[str, set[str]] = {}
+    known_sequences: dict[str, str] = {}
+    available_sequence_features: dict[str, set[str]] = {}
     for sequence in modulecode.sequences or []:
         if not isinstance(sequence, Sequence):
             continue
+        _collect_sequence_scope_features(
+            sequence,
+            known_sequences=known_sequences,
+            available_sequence_features=available_sequence_features,
+        )
         _collect_sequence_step_features(
             sequence.code or [],
             seqcontrol=bool(sequence.seqcontrol),
@@ -163,7 +185,7 @@ def _collect_step_auto_variable_diagnostics_for_modulecode(
             available_features=available_features,
         )
 
-    if not known_steps:
+    if not known_steps and not known_sequences:
         return
 
     for ref in iter_variable_refs(modulecode):
@@ -183,11 +205,22 @@ def _collect_step_auto_variable_diagnostics_for_modulecode(
         if base_name.casefold() in env:
             continue
 
-        step_name = known_steps.get(base_name.casefold())
+        base_key = base_name.casefold()
+        step_name = known_steps.get(base_key)
         if step_name is None:
-            message = f"{full_name!r} is not available: no sequence step named {base_name!r} exists in this module"
+            sequence_name = known_sequences.get(base_key)
+            if sequence_name is not None and suffix in {"hold", "reset"}:
+                feature_set = available_sequence_features.get(base_key, set())
+                if suffix == "hold" and "hold" not in feature_set:
+                    message = f"{full_name!r} is not available: sequence {sequence_name!r} only exposes .Hold when it enables SeqControl"
+                elif suffix == "reset" and "reset" not in feature_set:
+                    message = f"{full_name!r} is not available: sequence {sequence_name!r} only exposes .Reset when it enables SeqControl"
+                else:
+                    continue
+            else:
+                message = f"{full_name!r} is not available: no sequence step named {base_name!r} exists in this module"
         else:
-            feature_set = available_features.get(base_name.casefold(), set())
+            feature_set = available_features.get(base_key, set())
             if suffix == "hold" and "hold" not in feature_set:
                 message = f"{full_name!r} is not available: step {step_name!r} only exposes .Hold when its sequence enables SeqControl"
             elif suffix == "reset" and "reset" not in feature_set:
@@ -497,7 +530,11 @@ class IncrementalDocumentParserAdapter:
             )
 
         try:
-            snapshot = build_source_snapshot_from_basepicture(state.base_picture, document_path)
+            snapshot = build_source_snapshot_from_basepicture(
+                state.base_picture,
+                document_path,
+                _analysis_provider=build_variable_semantic_artifacts,
+            )
         except VisitError as exc:
             line, column = _extract_error_position(exc)
             message = str(exc.orig_exc) if exc.orig_exc is not None else str(exc)

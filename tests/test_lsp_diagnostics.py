@@ -186,7 +186,9 @@ def test_publish_diagnostics_ignores_dependency_list_documents(monkeypatch, tmp_
         source="Support\nOtherDep\n",
     )
 
-    monkeypatch.setattr("sattlint_lsp.server._document_path", lambda document: tmp_path / "Libs" / "Support.l")
+    monkeypatch.setattr(
+        "sattlint_lsp._server_document._document_path", lambda document: tmp_path / "Libs" / "Support.l"
+    )
 
     _publish_diagnostics(cast(Any, fake_ls), cast(Any, fake_document))
 
@@ -421,6 +423,71 @@ ENDDEF (*BasePicture*);
     assert diagnostics == []
 
 
+def test_collect_syntax_diagnostics_reports_invalid_sequence_scope_auto_variables(tmp_path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    si: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Start
+        SEQTRANSITION Tr1 WAIT_FOR False
+    ENDSEQUENCE
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        IF MainSeq.Reset THEN
+            si = 1;
+        ENDIF;
+        IF MainSeq.Hold THEN
+            si = 2;
+        ENDIF;
+ENDDEF (*BasePicture*);
+""".strip()
+
+    diagnostics = collect_syntax_diagnostics(tmp_path / "Program.s", source)
+
+    assert len(diagnostics) == 2
+    assert any(
+        "sequence 'MainSeq' only exposes .Reset when it enables SeqControl" in diagnostic.message
+        for diagnostic in diagnostics
+    )
+    assert any(
+        "sequence 'MainSeq' only exposes .Hold when it enables SeqControl" in diagnostic.message
+        for diagnostic in diagnostics
+    )
+
+
+def test_collect_syntax_diagnostics_allows_valid_sequence_scope_auto_variables(tmp_path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    si: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq (SeqControl) COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Start
+        SEQTRANSITION Tr1 WAIT_FOR False
+    ENDSEQUENCE
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        IF NOT MainSeq.Reset AND NOT MainSeq.Hold THEN
+            si = 1;
+        ENDIF;
+ENDDEF (*BasePicture*);
+""".strip()
+
+    diagnostics = collect_syntax_diagnostics(tmp_path / "Program.s", source)
+
+    assert diagnostics == []
+
+
 def test_collect_syntax_diagnostics_allows_step_x_without_seqcontrol(tmp_path):
     source = """
 "SyntaxVersion"
@@ -543,8 +610,10 @@ ENDDEF (*BasePicture*);
     def fail_if_called(*args, **kwargs):
         raise AssertionError("semantic snapshot loading should be skipped for didChange")
 
-    monkeypatch.setattr("sattlint_lsp.server._document_path", lambda document: tmp_path / "Program" / "Main.s")
-    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", fail_if_called)
+    monkeypatch.setattr(
+        "sattlint_lsp._server_document._document_path", lambda document: tmp_path / "Program" / "Main.s"
+    )
+    monkeypatch.setattr("sattlint_lsp._server_document._load_snapshot_bundle", fail_if_called)
     monkeypatch.setattr(
         "sattlint_lsp.local_parser.build_source_snapshot_from_basepicture",
         lambda *args, **kwargs: (_ for _ in ()).throw(
@@ -587,7 +656,9 @@ ENDDEF (*BasePicture*);
         source=source,
     )
 
-    monkeypatch.setattr("sattlint_lsp.server._document_path", lambda document: tmp_path / "Program" / "Main.s")
+    monkeypatch.setattr(
+        "sattlint_lsp._server_document._document_path", lambda document: tmp_path / "Program" / "Main.s"
+    )
 
     def fail_if_called(*args, **kwargs):
         raise AssertionError("comment validation should be skipped for didChange")
@@ -635,8 +706,8 @@ ENDDEF (*BasePicture*);
         source=source,
     )
 
-    monkeypatch.setattr("sattlint_lsp.server._document_path", lambda document: entry_file)
-    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", lambda ls, path: bundle)
+    monkeypatch.setattr("sattlint_lsp._server_document._document_path", lambda document: entry_file)
+    monkeypatch.setattr("sattlint_lsp._server_document._load_snapshot_bundle", lambda ls, path: bundle)
 
     _publish_diagnostics(cast(Any, fake_ls), cast(Any, fake_document))
 
@@ -667,9 +738,11 @@ ENDDEF (*BasePicture*);
         source=source,
     )
 
-    monkeypatch.setattr("sattlint_lsp.server._document_path", lambda document: tmp_path / "Program" / "Main.s")
     monkeypatch.setattr(
-        "sattlint_lsp.server._load_snapshot_bundle",
+        "sattlint_lsp._server_document._document_path", lambda document: tmp_path / "Program" / "Main.s"
+    )
+    monkeypatch.setattr(
+        "sattlint_lsp._server_document._load_snapshot_bundle",
         lambda ls, path: (_ for _ in ()).throw(
             type(
                 "WorkspaceFailure",
@@ -857,7 +930,7 @@ def test_collect_local_definition_locations_returns_empty_on_recoverable_snapsho
     _write_text(entry_file, source)
 
     monkeypatch.setattr(
-        "sattlint_lsp.server.load_source_snapshot",
+        "sattlint_lsp._server_helpers.load_source_snapshot",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("workspace snapshot unavailable")),
     )
 
@@ -877,7 +950,7 @@ def test_collect_local_definition_locations_raises_non_recoverable_snapshot_fail
     _write_text(entry_file, source)
 
     monkeypatch.setattr(
-        "sattlint_lsp.server.load_source_snapshot",
+        "sattlint_lsp._server_helpers.load_source_snapshot",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt("stop")),
     )
 
