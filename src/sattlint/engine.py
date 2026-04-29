@@ -50,6 +50,122 @@ def expected_unavailable_library_reason(name: str) -> str | None:
     return _EXPECTED_UNAVAILABLE_LIBRARY_REASONS.get(name.casefold())
 
 
+class CircularDependencyError(RuntimeError):
+    """Exception raised when circular dependencies are detected."""
+
+    def __init__(self, library: str, cycle_path: list[str]):
+        self.library = library
+        self.cycle_path = cycle_path
+        # Format the cycle as: A -> B -> C -> A
+        formatted_cycle = " -> ".join([*cycle_path, cycle_path[0]])
+        super().__init__(f"Circular dependency detected: {formatted_cycle}")
+
+
+class DependencyVersionCompatibilityError(RuntimeError):
+    """Exception raised when conflicting dependency datecodes are detected."""
+
+    def __init__(self, conflicts: list[str]):
+        self.conflicts = conflicts
+        details = "; ".join(conflicts)
+        super().__init__(f"Dependency version compatibility check failed: {details}")
+
+
+def _record_missing_library(
+    graph: ProjectGraph,
+    *,
+    name: str,
+    mode: str,
+    strict: bool,
+    requester: str | None = None,
+) -> None:
+    reason = expected_unavailable_library_reason(name)
+    if reason:
+        graph.unavailable_libraries.add(name.casefold())
+        if requester and requester.casefold() != name.casefold():
+            _record_project_warning(
+                graph,
+                requester,
+                f"dependency '{name}' unavailable: {reason}",
+            )
+        else:
+            _record_project_warning(graph, name, f"unavailable library: {reason}")
+        return
+
+    if requester and requester.casefold() != name.casefold():
+        message = f"Missing code file for dependency '{name}' referenced by '{requester}' ({mode})"
+    else:
+        message = f"Missing code file for '{name}' ({mode})"
+    if strict:
+        raise FileNotFoundError(message)
+    graph.missing.append(message)
+    graph.unavailable_libraries.add(name.casefold())
+
+
+def _collect_dependency_version_conflicts(
+    graph: ProjectGraph,
+    bp: BasePicture,
+    *,
+    library_name: str,
+    source_path: Path,
+) -> list[str]:
+    conflicts: list[str] = []
+    source_label = f"{library_name}/{source_path.name}"
+
+    existing_moduletype_versions: dict[str, set[int]] = {}
+    existing_moduletype_sources: dict[tuple[str, int], set[str]] = {}
+    for existing in graph.moduletype_defs.values():
+        if existing.datecode is None:
+            continue
+        name_key = existing.name.casefold()
+        existing_moduletype_versions.setdefault(name_key, set()).add(existing.datecode)
+        origin_label = f"{existing.origin_lib or 'unknown'}/{existing.origin_file or '?'}"
+        existing_moduletype_sources.setdefault((name_key, existing.datecode), set()).add(origin_label)
+
+    for moduletype in bp.moduletype_defs:
+        if moduletype.datecode is None:
+            continue
+        name_key = moduletype.name.casefold()
+        known_versions = existing_moduletype_versions.get(name_key)
+        if not known_versions or moduletype.datecode in known_versions:
+            continue
+        existing_detail = ", ".join(
+            f"{version} in {', '.join(sorted(existing_moduletype_sources.get((name_key, version), {'unknown/?'})))}"
+            for version in sorted(known_versions)
+        )
+        conflicts.append(
+            f"moduletype '{moduletype.name}' datecode {moduletype.datecode} in {source_label} "
+            f"conflicts with {existing_detail}"
+        )
+
+    existing_datatype_versions: dict[str, set[int]] = {}
+    existing_datatype_sources: dict[tuple[str, int], set[str]] = {}
+    for existing in graph.datatype_defs.values():
+        if existing.datecode is None:
+            continue
+        name_key = existing.name.casefold()
+        existing_datatype_versions.setdefault(name_key, set()).add(existing.datecode)
+        origin_label = f"{existing.origin_lib or 'unknown'}/{existing.origin_file or '?'}"
+        existing_datatype_sources.setdefault((name_key, existing.datecode), set()).add(origin_label)
+
+    for datatype in bp.datatype_defs:
+        if datatype.datecode is None:
+            continue
+        name_key = datatype.name.casefold()
+        known_versions = existing_datatype_versions.get(name_key)
+        if not known_versions or datatype.datecode in known_versions:
+            continue
+        existing_detail = ", ".join(
+            f"{version} in {', '.join(sorted(existing_datatype_sources.get((name_key, version), {'unknown/?'})))}"
+            for version in sorted(known_versions)
+        )
+        conflicts.append(
+            f"datatype '{datatype.name}' datecode {datatype.datecode} in {source_label} "
+            f"conflicts with {existing_detail}"
+        )
+
+    return conflicts
+
+
 @dataclass(frozen=True)
 class SyntaxValidationResult:
     file_path: Path
@@ -307,6 +423,8 @@ def validate_single_file_syntax(
         validate_transformed_basepicture(
             basepic,
             warning_sink=validation_warnings.append,
+            allow_old_state_assignment=target_path.suffix.lower() in {".x", ".z"},
+            allow_unresolved_external_datatypes=target_path.suffix.lower() in {".x", ".z"},
         )
     except UnexpectedInput as exc:
         details = describe_parse_error(exc, src)
@@ -402,7 +520,7 @@ class SattLineProjectLoader(DebugMixin):
         self.parser = create_sl_parser()  # reuse your grammar setup
         self.transformer = SLTransformer()  # reuse your transformer
         self._visited: set[str] = set()
-        self._stack: set[str] = set()  # cycle protection
+        self._visit_stack: list[str] = []  # ordered stack for cycle detection and path reporting
         self._ignored_dirs: set[Path] = set()
         self._lookup_cache = FileLookupCache(get_cache_dir())
         self._ast_cache = FileASTCache(get_cache_dir())
@@ -725,13 +843,12 @@ class SattLineProjectLoader(DebugMixin):
         graph = ProjectGraph()
         code_path = self._find_code(root_name)
         if not code_path:
-            if is_expected_unavailable_library(root_name):
-                graph.unavailable_libraries.add(root_name.casefold())
-                return graph
-            msg = f"Missing code file for '{root_name}' in mode={self.mode.value}"
-            if strict:
-                raise FileNotFoundError(msg)
-            graph.missing.append(msg)
+            _record_missing_library(
+                graph,
+                name=root_name,
+                mode=f"mode={self.mode.value}",
+                strict=strict,
+            )
             return graph
 
         try:
@@ -745,7 +862,7 @@ class SattLineProjectLoader(DebugMixin):
                 return graph
             validate_transformed_basepicture(
                 bp,
-                allow_unresolved_external_datatypes=True,
+                allow_unresolved_external_datatypes=not strict,
                 enforce_unique_submodule_names=False,
                 allow_parameterless_module_mappings=True,
                 warn_unknown_parameter_targets=True,
@@ -779,97 +896,125 @@ class SattLineProjectLoader(DebugMixin):
     ) -> None:
         key = name.lower()
         root_key = getattr(self, "_active_root_key", None)
-        if key in self._visited or key in self._stack:
+
+        # Check if already fully processed
+        if key in self._visited:
             return
-        self._stack.add(key)
 
-        root_code_path: Path | None = None
-        if strict and syntax_check and key == root_key:
-            root_code_path = self._find_code_with_context(name, requester_dir=requester_dir)
-            if root_code_path is not None:
-                _raise_syntax_validation_failure(validate_single_file_syntax(root_code_path, mode=self.mode))
+        # Check for circular dependency before entering processing
+        if key in self._visit_stack:
+            # Construct cycle path from current stack
+            cycle_start_idx = self._visit_stack.index(key)
+            cycle_path = list(self._visit_stack[cycle_start_idx:])
+            raise CircularDependencyError(name, cycle_path)
 
-        # Resolve dependencies first (from non-vendor dirs only)
-        deps_path = self._find_deps_with_context(name, requester_dir=requester_dir)
-        dep_names = self._read_deps(deps_path) if deps_path else []
-        dependency_requester = deps_path.parent if deps_path is not None else requester_dir
+        # Add to processing stack
+        self._visit_stack.append(key)
 
-        # Visit each dep
-        for dep in dep_names:
-            self._visit(dep, graph, strict, requester_dir=dependency_requester, syntax_check=syntax_check)
+        try:
+            root_code_path: Path | None = None
+            if strict and syntax_check and key == root_key:
+                root_code_path = self._find_code_with_context(name, requester_dir=requester_dir)
+                if root_code_path is not None:
+                    _raise_syntax_validation_failure(validate_single_file_syntax(root_code_path, mode=self.mode))
 
-        dep_libs: list[str] = []
-        for dep in dep_names:
-            dep_bp = graph.ast_by_name.get(dep)
-            if dep_bp:
-                origin_lib = getattr(dep_bp, "origin_lib", None)
-                if origin_lib:
-                    dep_libs.append(origin_lib)
-                    continue
-            cached_lib = self._lib_by_name.get(dep.casefold())
-            if cached_lib:
-                dep_libs.append(cached_lib)
+            # Resolve dependencies first (from non-vendor dirs only)
+            deps_path = self._find_deps_with_context(name, requester_dir=requester_dir)
+            dep_names = self._read_deps(deps_path) if deps_path else []
+            dependency_requester = deps_path.parent if deps_path is not None else requester_dir
 
-        # Determine code path
-        code_path = root_code_path or self._find_code_with_context(name, requester_dir=requester_dir)
-        if code_path is not None:
-            try:
-                validation_warnings: list[str] = []
-                bp = self._load_or_parse(code_path)
-                if bp is not None:
-                    try:
-                        validate_transformed_basepicture(
+            # Visit each dep
+            for dep in dep_names:
+                self._visit(dep, graph, strict, requester_dir=dependency_requester, syntax_check=syntax_check)
+
+            dep_libs: list[str] = []
+            for dep in dep_names:
+                dep_bp = graph.ast_by_name.get(dep)
+                if dep_bp:
+                    origin_lib = getattr(dep_bp, "origin_lib", None)
+                    if origin_lib:
+                        dep_libs.append(origin_lib)
+                        continue
+                cached_lib = self._lib_by_name.get(dep.casefold())
+                if cached_lib:
+                    dep_libs.append(cached_lib)
+
+            # Determine code path
+            code_path = root_code_path or self._find_code_with_context(name, requester_dir=requester_dir)
+            if code_path is not None:
+                try:
+                    validation_warnings: list[str] = []
+                    bp = self._load_or_parse(code_path)
+                    if bp is not None:
+                        try:
+                            validate_transformed_basepicture(
+                                bp,
+                                external_datatypes=tuple(graph.datatype_defs.values()),
+                                external_moduletype_defs=tuple(graph.moduletype_defs.values()),
+                                allow_unresolved_external_datatypes=not strict,
+                                enforce_unique_submodule_names=False,
+                                allow_parameterless_module_mappings=True,
+                                warn_unknown_parameter_targets=True,
+                                warn_incompatible_parameter_mappings=True,
+                                warning_sink=validation_warnings.append,
+                            )
+                        except StructuralValidationError as ex:
+                            if key == root_key:
+                                raise
+                            _record_project_warning(graph, name, f"validation warning: {ex}")
+                        for warning in validation_warnings:
+                            _record_project_warning(graph, name, warning)
+                        graph.ast_by_name[name] = bp
+                        lib_name = self._record_library_name(name, code_path)
+                        version_conflicts = _collect_dependency_version_conflicts(
+                            graph,
                             bp,
-                            external_datatypes=tuple(graph.datatype_defs.values()),
-                            external_moduletype_defs=tuple(graph.moduletype_defs.values()),
-                            allow_unresolved_external_datatypes=True,
-                            enforce_unique_submodule_names=False,
-                            allow_parameterless_module_mappings=True,
-                            warn_unknown_parameter_targets=True,
-                            warn_incompatible_parameter_mappings=True,
-                            warning_sink=validation_warnings.append,
+                            library_name=lib_name,
+                            source_path=code_path,
                         )
-                    except StructuralValidationError as ex:
-                        if key == root_key:
-                            raise
-                        _record_project_warning(graph, name, f"validation warning: {ex}")
-                    for warning in validation_warnings:
+                        if version_conflicts:
+                            if strict:
+                                raise DependencyVersionCompatibilityError(version_conflicts)
+                            for conflict in version_conflicts:
+                                _record_project_warning(
+                                    graph,
+                                    name,
+                                    f"version compatibility warning: {conflict}",
+                                )
+                        graph.add_library_dependencies(lib_name, dep_libs)
+                        graph.index_from_basepic(
+                            bp, source_path=code_path, library_name=lib_name
+                        )  # aggregate defs for global analysis [2]
+                    else:
+                        msg = f"{name} transform produced no BasePicture (skipped)"
+                        graph.missing.append(msg)
+                except Exception as ex:
+                    for warning in locals().get("validation_warnings", []):
                         _record_project_warning(graph, name, warning)
-                    graph.ast_by_name[name] = bp
-                    lib_name = self._record_library_name(name, code_path)
-                    graph.add_library_dependencies(lib_name, dep_libs)
-                    graph.index_from_basepic(
-                        bp, source_path=code_path, library_name=lib_name
-                    )  # aggregate defs for global analysis [2]
-                else:
-                    msg = f"{name} transform produced no BasePicture (skipped)"
-                    graph.missing.append(msg)
-            except Exception as ex:
-                for warning in locals().get("validation_warnings", []):
-                    _record_project_warning(graph, name, warning)
-                if strict:
-                    raise
-                _record_project_failure(graph, name, ex)
-        else:
-            # If we skipped vendor dir and the file exists there, mark as ignored vendor
-            v_code = self._find_vendor_code(name)
-            v_deps = self._find_vendor_deps(name)
-            if v_code or v_deps:
-                graph.ignored_vendor.append(f"{name} (vendor: {v_code or v_deps})")
-                # Track as unavailable library for better error messages
-                graph.unavailable_libraries.add(name.lower())
-            elif is_expected_unavailable_library(name):
-                graph.unavailable_libraries.add(name.lower())
+                    if strict:
+                        raise
+                    _record_project_failure(graph, name, ex)
             else:
-                msg = f"Missing code file for '{name}' ({self.mode.value})"
-                if strict:
-                    raise FileNotFoundError(msg)
-                graph.missing.append(msg)
-                # Track as unavailable library
-                graph.unavailable_libraries.add(name.lower())
-
-        self._stack.remove(key)
-        self._visited.add(key)
+                # If we skipped vendor dir and the file exists there, mark as ignored vendor
+                v_code = self._find_vendor_code(name)
+                v_deps = self._find_vendor_deps(name)
+                if v_code or v_deps:
+                    graph.ignored_vendor.append(f"{name} (vendor: {v_code or v_deps})")
+                    # Track as unavailable library for better error messages
+                    graph.unavailable_libraries.add(name.lower())
+                else:
+                    requester_name = self._visit_stack[-2] if len(self._visit_stack) > 1 else None
+                    _record_missing_library(
+                        graph,
+                        name=name,
+                        mode=self.mode.value,
+                        strict=strict,
+                        requester=requester_name,
+                    )
+        finally:
+            # Always remove from processing stack and mark as visited
+            self._visit_stack.remove(key)
+            self._visited.add(key)
 
 
 # ---------- Merge: build a synthetic “project” BasePicture ----------

@@ -1090,7 +1090,7 @@ def test_load_workspace_snapshot_formats_dependency_issues_readably(tmp_path):
     )
     assert "Unavailable libraries (1):" in message
     assert "- controllib (expected proprietary dependency)" in message
-    assert "Validation warnings (1):" in message
+    assert "Validation warnings (2):" in message
     assert (
         "Support: validation warning: BasePicture equation 'Main' uses OLD on non-STATE variable 'ExecuteLocal'"
         in message

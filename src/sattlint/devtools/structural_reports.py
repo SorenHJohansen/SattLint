@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 import json
+from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,10 +27,11 @@ from sattlint.analyzers.registry import (
     get_default_analyzer_catalog,
 )
 from sattlint.app import VARIABLE_ANALYSES
-from sattlint.editor_api import discover_workspace_sources, load_workspace_snapshot
+from sattlint.core.semantic import discover_workspace_sources, load_workspace_snapshot
 from sattlint.path_sanitizer import sanitize_path_for_report
 from sattlint.reporting.variables_report import IssueKind, VariablesReport
 from sattlint.resolution.common import resolve_moduletype_def_strict
+from sattlint.semantic_analysis import build_variable_semantic_artifacts
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 STRUCTURAL_ENTRY_ROOTS = (Path("tests") / "fixtures" / "sample_sattline_files",)
@@ -72,6 +75,387 @@ _GRAPHICS_LAYOUT_COMPARISON_FIELDS = (
     "moduledef.zoomable",
 )
 
+STRUCTURAL_BUDGET_THRESHOLDS = {
+    "source_file_max_lines": 650,
+    "test_file_max_lines": 1200,
+    "function_max_lines": 150,
+    "class_method_max_count": 40,
+    "duplicate_private_name_min_files": 4,
+    "duplicate_private_name_min_length": 5,
+}
+STRUCTURAL_BUDGET_RATCHET_PATH = Path("artifacts") / "analysis" / "structural_budget_ratchet.json"
+FACADE_PRIVATE_BOUNDARY_FILES = frozenset(
+    {
+        "src/sattlint/app.py",
+        "src/sattlint/app_base.py",
+        "src/sattlint/editor_api.py",
+    }
+)
+
+
+def _iter_structural_python_files(repo_root: Path) -> Iterator[tuple[str, Path]]:
+    for path in sorted((repo_root / "src").rglob("*.py")):
+        if path.is_file():
+            yield "src", path
+    for path in sorted((repo_root / "tests").rglob("test_*.py")):
+        if path.is_file():
+            yield "tests", path
+
+
+def _collect_facade_private_entrypoints(tree: ast.AST, *, relative_path: str) -> list[dict[str, Any]]:
+    module_aliases: dict[str, str] = {}
+    imported_private_names: dict[str, str] = {}
+
+    for node in getattr(tree, "body", []):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                local_name = alias.asname or alias.name.rsplit(".", 1)[-1]
+                if local_name.endswith("_module"):
+                    module_aliases[local_name] = alias.name
+        elif isinstance(node, ast.ImportFrom):
+            module_prefix = "." * node.level + (node.module or "")
+            for alias in node.names:
+                local_name = alias.asname or alias.name
+                if local_name.endswith("_module"):
+                    full_module_name = f"{module_prefix}.{alias.name}" if module_prefix else alias.name
+                    module_aliases[local_name] = full_module_name.lstrip(".")
+                if alias.name.startswith("_"):
+                    full_symbol_name = f"{module_prefix}.{alias.name}" if module_prefix else alias.name
+                    imported_private_names[local_name] = full_symbol_name.lstrip(".")
+
+    violations: list[dict[str, Any]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+            target_module = module_aliases.get(node.func.value.id)
+            if target_module and node.func.attr.startswith("_"):
+                violations.append(
+                    {
+                        "path": relative_path,
+                        "line": node.lineno,
+                        "target": f"{target_module}.{node.func.attr}",
+                    }
+                )
+        elif isinstance(node.func, ast.Name):
+            target = imported_private_names.get(node.func.id)
+            if target is not None:
+                violations.append(
+                    {
+                        "path": relative_path,
+                        "line": node.lineno,
+                        "target": target,
+                    }
+                )
+    return sorted(violations, key=lambda item: (item["path"], item["line"], item["target"]))
+
+
+def _summarize_structural_budget_metrics(report: dict[str, Any]) -> dict[str, int]:
+    return {
+        "source_file_over_budget_count": len(report["source_files_over_budget"]),
+        "source_file_max_lines": max((item["line_count"] for item in report["source_files_over_budget"]), default=0),
+        "test_file_over_budget_count": len(report["test_files_over_budget"]),
+        "test_file_max_lines": max((item["line_count"] for item in report["test_files_over_budget"]), default=0),
+        "function_over_budget_count": len(report["functions_over_budget"]),
+        "function_max_lines": max((item["line_span"] for item in report["functions_over_budget"]), default=0),
+        "class_over_budget_count": len(report["classes_over_budget"]),
+        "class_max_methods": max((item["method_count"] for item in report["classes_over_budget"]), default=0),
+        "repeated_private_name_count": len(report["repeated_private_names"]),
+        "repeated_private_name_max_files": max(
+            (item["file_count"] for item in report["repeated_private_names"]),
+            default=0,
+        ),
+        "facade_private_entrypoint_count": len(report["facade_private_entrypoints"]),
+    }
+
+
+def _load_structural_budget_ratchet(
+    repo_root: Path,
+    *,
+    ratchet_path: Path | None = None,
+) -> dict[str, Any]:
+    resolved_path = ratchet_path or (repo_root / STRUCTURAL_BUDGET_RATCHET_PATH)
+    sanitized_path = sanitize_path_for_report(resolved_path, repo_root=repo_root) or resolved_path.as_posix()
+    if not resolved_path.exists():
+        return {"status": "missing", "path": sanitized_path, "metrics": {}}
+
+    try:
+        payload = json.loads(resolved_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return {
+            "status": "invalid",
+            "path": sanitized_path,
+            "metrics": {},
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+        }
+
+    metrics = payload.get("metrics")
+    if not isinstance(metrics, dict) or any(not isinstance(value, int) for value in metrics.values()):
+        return {
+            "status": "invalid",
+            "path": sanitized_path,
+            "metrics": {},
+            "error": "ratchet metrics must be a JSON object with integer values",
+            "error_type": "ValueError",
+        }
+
+    return {
+        "status": "loaded",
+        "path": sanitized_path,
+        "kind": payload.get("kind"),
+        "schema_version": payload.get("schema_version"),
+        "metrics": {key: int(value) for key, value in metrics.items()},
+    }
+
+
+def _evaluate_structural_budget_ratchet(
+    current_metrics: dict[str, int],
+    ratchet_state: dict[str, Any],
+) -> dict[str, Any]:
+    status = ratchet_state["status"]
+    if status != "loaded":
+        return {
+            "status": status,
+            "path": ratchet_state["path"],
+            "expected_metrics": ratchet_state.get("metrics", {}),
+            "current_metrics": current_metrics,
+            "regressions": [],
+            "error": ratchet_state.get("error"),
+            "error_type": ratchet_state.get("error_type"),
+        }
+
+    regressions = [
+        {
+            "metric": metric,
+            "expected_max": expected_value,
+            "actual": current_metrics.get(metric, 0),
+        }
+        for metric, expected_value in sorted(ratchet_state["metrics"].items())
+        if current_metrics.get(metric, 0) > expected_value
+    ]
+    return {
+        "status": "fail" if regressions else "pass",
+        "path": ratchet_state["path"],
+        "expected_metrics": ratchet_state["metrics"],
+        "current_metrics": current_metrics,
+        "regressions": regressions,
+    }
+
+
+def _append_structural_budget_findings(findings: list[dict[str, Any]], structural_budgets: dict[str, Any]) -> None:
+    if structural_budgets["source_files_over_budget"]:
+        findings.append(
+            {
+                "id": "structural-source-file-budget",
+                "severity": "medium",
+                "message": "Some source modules exceed the structural line budget and should be split before they grow further.",
+                "count": len(structural_budgets["source_files_over_budget"]),
+                "over_budget_files": structural_budgets["source_files_over_budget"][:10],
+            }
+        )
+
+    if structural_budgets["test_files_over_budget"]:
+        findings.append(
+            {
+                "id": "structural-test-file-budget",
+                "severity": "medium",
+                "message": "Some test modules exceed the structural line budget and should be split by owning surface.",
+                "count": len(structural_budgets["test_files_over_budget"]),
+                "over_budget_files": structural_budgets["test_files_over_budget"][:10],
+            }
+        )
+
+    if structural_budgets["functions_over_budget"]:
+        findings.append(
+            {
+                "id": "structural-function-budget",
+                "severity": "medium",
+                "message": "Some Python functions exceed the structural function budget and should be decomposed.",
+                "count": len(structural_budgets["functions_over_budget"]),
+                "over_budget_functions": structural_budgets["functions_over_budget"][:10],
+            }
+        )
+
+    if structural_budgets["classes_over_budget"]:
+        findings.append(
+            {
+                "id": "structural-class-budget",
+                "severity": "medium",
+                "message": "Some classes exceed the structural method-count budget and should be split by responsibility.",
+                "count": len(structural_budgets["classes_over_budget"]),
+                "over_budget_classes": structural_budgets["classes_over_budget"][:10],
+            }
+        )
+
+    if structural_budgets["repeated_private_names"]:
+        findings.append(
+            {
+                "id": "structural-private-helper-duplication",
+                "severity": "medium",
+                "message": "Some private helper names repeat across many files, which often signals duplicated local implementations.",
+                "count": len(structural_budgets["repeated_private_names"]),
+                "repeated_private_names": structural_budgets["repeated_private_names"][:10],
+            }
+        )
+
+    if structural_budgets["facade_private_entrypoints"]:
+        findings.append(
+            {
+                "id": "structural-facade-private-boundary",
+                "severity": "medium",
+                "message": "Some facade modules call private cross-module entrypoints instead of stable owner APIs.",
+                "count": len(structural_budgets["facade_private_entrypoints"]),
+                "private_entrypoints": structural_budgets["facade_private_entrypoints"][:10],
+            }
+        )
+
+    if structural_budgets["ratchet"]["status"] == "fail":
+        findings.append(
+            {
+                "id": "structural-budget-ratchet-regression",
+                "severity": "medium",
+                "message": "Structural debt regressed beyond the checked-in ratchet baseline.",
+                "count": len(structural_budgets["ratchet"]["regressions"]),
+                "regressions": structural_budgets["ratchet"]["regressions"],
+                "ratchet_path": structural_budgets["ratchet"]["path"],
+            }
+        )
+
+
+def collect_structural_budget_report(
+    repo_root: Path = REPO_ROOT,
+    *,
+    ratchet_path: Path | None = None,
+) -> dict[str, Any]:
+    source_file_max_lines = STRUCTURAL_BUDGET_THRESHOLDS["source_file_max_lines"]
+    test_file_max_lines = STRUCTURAL_BUDGET_THRESHOLDS["test_file_max_lines"]
+    function_max_lines = STRUCTURAL_BUDGET_THRESHOLDS["function_max_lines"]
+    class_method_max_count = STRUCTURAL_BUDGET_THRESHOLDS["class_method_max_count"]
+    duplicate_private_name_min_files = STRUCTURAL_BUDGET_THRESHOLDS["duplicate_private_name_min_files"]
+    duplicate_private_name_min_length = STRUCTURAL_BUDGET_THRESHOLDS["duplicate_private_name_min_length"]
+
+    source_files_over_budget: list[dict[str, Any]] = []
+    test_files_over_budget: list[dict[str, Any]] = []
+    functions_over_budget: list[dict[str, Any]] = []
+    classes_over_budget: list[dict[str, Any]] = []
+    private_name_occurrences: dict[str, set[str]] = defaultdict(set)
+    facade_private_entrypoints: list[dict[str, Any]] = []
+    scan_failures: list[dict[str, Any]] = []
+
+    for scope, path in _iter_structural_python_files(repo_root):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            scan_failures.append(
+                {
+                    "path": sanitize_path_for_report(path, repo_root=repo_root) or path.as_posix(),
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                }
+            )
+            continue
+
+        relative_path = sanitize_path_for_report(path, repo_root=repo_root) or path.as_posix()
+        line_count = len(text.splitlines())
+        if scope == "src" and line_count > source_file_max_lines and not relative_path.endswith("_builtins.py"):
+            source_files_over_budget.append({"path": relative_path, "line_count": line_count})
+        if scope == "tests" and line_count > test_file_max_lines:
+            test_files_over_budget.append({"path": relative_path, "line_count": line_count})
+
+        try:
+            tree = ast.parse(text, filename=relative_path)
+        except SyntaxError as exc:
+            scan_failures.append(
+                {
+                    "path": relative_path,
+                    "error": exc.msg,
+                    "error_type": type(exc).__name__,
+                    "line": exc.lineno,
+                }
+            )
+            continue
+
+        if relative_path in FACADE_PRIVATE_BOUNDARY_FILES:
+            facade_private_entrypoints.extend(_collect_facade_private_entrypoints(tree, relative_path=relative_path))
+
+        module_level_private_names = {
+            node.name
+            for node in getattr(tree, "body", [])
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name.startswith("_")
+            and not node.name.startswith("__")
+            and len(node.name) >= duplicate_private_name_min_length
+        }
+        if scope == "src":
+            for name in module_level_private_names:
+                private_name_occurrences[name].add(relative_path)
+
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                end_lineno = getattr(node, "end_lineno", None)
+                if end_lineno is None:
+                    continue
+                line_span = end_lineno - node.lineno + 1
+                if line_span > function_max_lines:
+                    functions_over_budget.append(
+                        {
+                            "path": relative_path,
+                            "qualname": node.name,
+                            "line_span": line_span,
+                            "start_line": node.lineno,
+                            "end_line": end_lineno,
+                        }
+                    )
+            elif isinstance(node, ast.ClassDef):
+                method_count = sum(
+                    1 for child in node.body if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                )
+                if method_count > class_method_max_count:
+                    classes_over_budget.append(
+                        {
+                            "path": relative_path,
+                            "qualname": node.name,
+                            "method_count": method_count,
+                            "start_line": node.lineno,
+                            "end_line": getattr(node, "end_lineno", node.lineno),
+                        }
+                    )
+
+    repeated_private_names = [
+        {
+            "name": name,
+            "file_count": len(paths),
+            "paths": sorted(paths),
+        }
+        for name, paths in sorted(private_name_occurrences.items())
+        if len(paths) >= duplicate_private_name_min_files
+    ]
+
+    report = {
+        "thresholds": dict(STRUCTURAL_BUDGET_THRESHOLDS),
+        "source_files_over_budget": sorted(
+            source_files_over_budget, key=lambda item: (-item["line_count"], item["path"])
+        ),
+        "test_files_over_budget": sorted(test_files_over_budget, key=lambda item: (-item["line_count"], item["path"])),
+        "functions_over_budget": sorted(
+            functions_over_budget,
+            key=lambda item: (-item["line_span"], item["path"], item["qualname"]),
+        ),
+        "classes_over_budget": sorted(
+            classes_over_budget,
+            key=lambda item: (-item["method_count"], item["path"], item["qualname"]),
+        ),
+        "repeated_private_names": repeated_private_names,
+        "facade_private_entrypoints": facade_private_entrypoints,
+        "scan_failures": scan_failures,
+    }
+    current_metrics = _summarize_structural_budget_metrics(report)
+    ratchet_state = _load_structural_budget_ratchet(repo_root, ratchet_path=ratchet_path)
+    report["metrics"] = current_metrics
+    report["ratchet"] = _evaluate_structural_budget_ratchet(current_metrics, ratchet_state)
+    return report
+
 
 def collect_phase2_rule_metadata_gate(
     architecture_report: dict[str, Any],
@@ -100,7 +484,12 @@ def collect_phase2_rule_metadata_gate(
     }
 
 
-def collect_architecture_report() -> dict[str, Any]:
+def collect_architecture_report(
+    repo_root: Path = REPO_ROOT,
+    *,
+    ratchet_path: Path | None = None,
+) -> dict[str, Any]:
+    structural_budgets = collect_structural_budget_report(repo_root, ratchet_path=ratchet_path)
     cli_filter_kinds = sorted(
         {issue_kind.value for _label, kinds in VARIABLE_ANALYSES.values() if kinds is not None for issue_kind in kinds}
     )
@@ -293,6 +682,8 @@ def collect_architecture_report() -> dict[str, Any]:
             }
         )
 
+    _append_structural_budget_findings(findings, structural_budgets)
+
     phase2_rule_metadata_gate = collect_phase2_rule_metadata_gate({"findings": findings})
 
     return {
@@ -313,6 +704,7 @@ def collect_architecture_report() -> dict[str, Any]:
         "delivered_output_artifacts": delivered_output_artifacts,
         "cli_variable_filter_issue_kinds": cli_filter_kinds,
         "variables_report_summary_support": summary_supported,
+        "structural_budgets": structural_budgets,
         "phase2_rule_metadata_gate": phase2_rule_metadata_gate,
         "findings": findings,
     }
@@ -366,6 +758,7 @@ def collect_workspace_graph_inputs(
                 entry_file,
                 workspace_root=workspace_root,
                 collect_variable_diagnostics=False,
+                _analysis_provider=build_variable_semantic_artifacts,
             )
         except Exception as exc:
             failures.append(
@@ -561,6 +954,7 @@ def _stream_workspace_graph_reports(
                 workspace_root=workspace_root,
                 discovery=full_discovery,
                 collect_variable_diagnostics=False,
+                _analysis_provider=build_variable_semantic_artifacts,
             )
         except Exception as exc:
             snapshot_failures.append(

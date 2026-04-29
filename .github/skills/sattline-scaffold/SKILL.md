@@ -17,8 +17,6 @@ Output format is mandatory for new scaffolds:
 - create `.g` as an empty companion file
 - do not create `.x`, `.y`, or `.z`
 
-Primary source for rules: `C:\Users\SQHJ\OneDrive - Novo Nordisk\Workspace\HALibs\SattLineApplicationSpec.md`.
-
 ## Use When
 
 - Creating a new reusable process unit.
@@ -32,6 +30,7 @@ Primary source for rules: `C:\Users\SQHJ\OneDrive - Novo Nordisk\Workspace\HALib
 - Program name, example `KaHANewUnitZ5`.
 - Target area or zone id.
 - Closest existing donor unit for dependency baseline.
+- Reference to HA specification document (typically the SattLine Application Specification for your project).
 
 ## Required Architecture
 

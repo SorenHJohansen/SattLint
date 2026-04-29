@@ -598,6 +598,34 @@ ENDDEF (*BasePicture*);
     assert "writes to CONST variable 'Limit'" in result.message
 
 
+def test_validate_single_file_syntax_rejects_const_without_init(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Limit: integer Const;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Limit = 1;
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "ConstNoInit.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.line == 7
+    assert result.message is not None
+    assert "CONST variable" in result.message
+    assert "must have an initial value" in result.message
+
+
 def test_validate_single_file_syntax_rejects_duplicate_submodule_names(tmp_path):
     code = """
 "SyntaxVersion"
@@ -1150,6 +1178,173 @@ ENDDEF (*BasePicture*);
     assert "must not start with SEQSTEP" in result.message
 
 
+def test_validate_single_file_syntax_rejects_consecutive_transitions_in_sequence_path(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Start
+        SEQTRANSITION TrStart WAIT_FOR True
+        SEQTRANSITION TrNext WAIT_FOR True
+        SEQSTEP Running
+    ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "ConsecutiveTransitions.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert "only one transition may execute per cycle" in result.message
+
+
+def test_validate_single_file_syntax_rejects_step_reset_without_seqcontrol(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Flag: boolean := False;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Start
+        SEQTRANSITION TrStart WAIT_FOR Start.Reset
+        SEQSTEP Running
+    ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "StepResetWithoutSeqControl.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert "only exposes .Reset when its sequence enables SeqControl" in result.message
+
+
+def test_validate_single_file_syntax_accepts_step_reset_with_seqcontrol(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    OPENSEQUENCE MainSeq (SeqControl) COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Start
+        SEQTRANSITION TrStart WAIT_FOR Start.Reset
+        SEQSTEP Running
+    ENDOPENSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "StepResetWithSeqControl.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is True
+    assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_rejects_sequence_reset_without_seqcontrol(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    OPENSEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Start
+        SEQTRANSITION TrStart WAIT_FOR MainSeq.Reset
+        SEQSTEP Running
+    ENDOPENSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "SequenceResetWithoutSeqControl.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert "sequence 'MainSeq' only exposes .Reset when it enables SeqControl" in result.message
+
+
+def test_validate_single_file_syntax_accepts_sequence_reset_and_hold_with_seqcontrol(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    si: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    OPENSEQUENCE MainSeq (SeqControl) COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Start
+        SEQTRANSITION TrStart WAIT_FOR False
+        SEQSTEP Running
+    ENDOPENSEQUENCE
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        IF NOT MainSeq.Reset AND NOT MainSeq.Hold THEN
+            si = 1;
+        ENDIF;
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "SequenceResetHoldWithSeqControl.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is True
+    assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_rejects_step_timer_without_seqtimer(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Start
+        SEQTRANSITION TrStart WAIT_FOR Start.T >= 1
+        SEQSTEP Running
+    ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "StepTimerWithoutSeqTimer.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert "only exposes .T when its sequence enables SeqTimer" in result.message
+
+
 def test_validate_single_file_syntax_rejects_old_on_non_state_variable(tmp_path):
     code = """
 "SyntaxVersion"
@@ -1207,6 +1402,32 @@ ENDDEF (*BasePicture*);
 
     assert result.ok is True
     assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_rejects_assignment_to_old_state_access(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Counter: boolean State := False;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Counter:Old = True;
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "AssignOldStateAccess.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert "must not use OLD state access" in result.message
 
 
 def test_validate_single_file_syntax_rejects_old_on_non_state_record_field(tmp_path):

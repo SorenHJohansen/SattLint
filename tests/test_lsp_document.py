@@ -220,7 +220,7 @@ ENDDEF (*BasePicture*);
     def fail_if_called(*args, **kwargs):
         raise AssertionError("load_source_snapshot should not be called when a snapshot is supplied")
 
-    monkeypatch.setattr("sattlint_lsp.server.load_source_snapshot", fail_if_called)
+    monkeypatch.setattr("sattlint_lsp._server_helpers.load_source_snapshot", fail_if_called)
 
     target_line = source.splitlines().index("        Dv = 1;")
     target_column = source.splitlines()[target_line].index("Dv")
@@ -263,7 +263,7 @@ ENDDEF (*BasePicture*);
     def wrapped_build_source_snapshot(*args, **kwargs):
         nonlocal calls
         calls += 1
-        from sattlint.editor_api import build_source_snapshot_from_basepicture as real_build_source_snapshot
+        from sattlint.core.semantic import build_source_snapshot_from_basepicture as real_build_source_snapshot
 
         return real_build_source_snapshot(*args, **kwargs)
 
@@ -403,8 +403,12 @@ def test_publish_closed_document_diagnostics_loads_snapshot_when_cache_is_empty(
     ls = SattLineLanguageServer()
     ls.text_document_publish_diagnostics = lambda params: published.append(params)
 
-    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", lambda server, document_path: fake_bundle)
-    monkeypatch.setattr("sattlint_lsp.server.collect_semantic_diagnostics", lambda bundle, document_path: [diagnostic])
+    monkeypatch.setattr(
+        "sattlint_lsp._server_document._load_snapshot_bundle", lambda server, document_path: fake_bundle
+    )
+    monkeypatch.setattr(
+        "sattlint_lsp._server_helpers.collect_semantic_diagnostics", lambda bundle, document_path: [diagnostic]
+    )
 
     _publish_closed_document_diagnostics(ls, path)
 
@@ -443,7 +447,7 @@ def test_semantic_diagnostics_for_path_reuses_bundle_cache(monkeypatch, tmp_path
         assert document_path == path
         return [diagnostic]
 
-    monkeypatch.setattr("sattlint_lsp.server.collect_semantic_diagnostics", fake_collect)
+    monkeypatch.setattr("sattlint_lsp._server_helpers.collect_semantic_diagnostics", fake_collect)
 
     first = _semantic_diagnostics_for_path(bundle, path)
     second = _semantic_diagnostics_for_path(bundle, path)
@@ -577,7 +581,7 @@ ENDDEF (*BasePicture*);
         ),
     )
 
-    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", lambda ls, path, **kwargs: None)
+    monkeypatch.setattr("sattlint_lsp._server_document._load_snapshot_bundle", lambda ls, path, **kwargs: None)
 
     hover = on_hover(cast(Any, fake_ls), cast(Any, params))
 
@@ -635,7 +639,7 @@ ENDDEF (*BasePicture*);
         context=SimpleNamespace(includeDeclaration=True),
     )
 
-    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", lambda ls, path, **kwargs: None)
+    monkeypatch.setattr("sattlint_lsp._server_document._load_snapshot_bundle", lambda ls, path, **kwargs: None)
 
     locations = on_references(cast(Any, fake_ls), cast(Any, params))
 
@@ -679,7 +683,7 @@ ENDDEF (*BasePicture*);
         new_name="Renamed",
     )
 
-    monkeypatch.setattr("sattlint_lsp.server._load_snapshot_bundle", lambda ls, path, **kwargs: None)
+    monkeypatch.setattr("sattlint_lsp._server_document._load_snapshot_bundle", lambda ls, path, **kwargs: None)
 
     edit = on_rename(cast(Any, fake_ls), cast(Any, params))
 
@@ -929,7 +933,8 @@ ENDDEF (*BasePicture*);
     )
 
     monkeypatch.setattr(
-        "sattlint_lsp.server._load_snapshot_bundle", lambda ls, path: (_ for _ in ()).throw(RuntimeError("boom"))
+        "sattlint_lsp._server_document._load_snapshot_bundle",
+        lambda ls, path: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 
     locations = on_definition(cast(Any, fake_ls), cast(Any, params))
@@ -1003,7 +1008,8 @@ ENDDEF (*BasePicture*);
         ],
     )
     monkeypatch.setattr(
-        "sattlint_lsp.server._load_snapshot_bundle", lambda ls, path: (_ for _ in ()).throw(RuntimeError("boom"))
+        "sattlint_lsp._server_document._load_snapshot_bundle",
+        lambda ls, path: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 
     result = on_completion(cast(Any, fake_ls), cast(Any, params))

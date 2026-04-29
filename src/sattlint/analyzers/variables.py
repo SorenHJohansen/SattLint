@@ -49,6 +49,7 @@ from ..resolution.scope import ScopeContext
 from .reset_contamination import detect_implicit_latching, detect_reset_contamination
 from .sattline_builtins import get_function_signature
 from .usage_tracker import UsageTracker
+from ._variables_effect_flow import EffectFlowTracker
 from .validators import AnyTypeFieldContract, ContractMappingValidator, MinMaxValidator, StringMappingValidator
 from .variable_issue_collection import (
     _add_global_scope_minimization_issues,
@@ -310,6 +311,18 @@ class VariablesAnalyzer:
         self._external_effect_sinks: set[tuple[str, ...]] = set()
         self._effective_output_keys: set[tuple[str, ...]] = set()
         self._procedure_status_bindings: dict[int, list[_ProcedureStatusBinding]] = defaultdict(list)
+
+        # Effect flow tracker helper
+        self._effect_flow_tracker = EffectFlowTracker(
+            effect_flow_edges=self._effect_flow_edges,
+            effect_flow_display_names=self._effect_flow_display_names,
+            external_effect_sinks=self._external_effect_sinks,
+            effective_output_keys=self._effective_output_keys,
+            lookup_global_variable_fn=self._lookup_global_variable,
+            get_usage_fn=self._get_usage,
+            canonical_path_fn=self._canonical_path,
+            record_access_fn=self._record_access,
+        )
 
         # Index BasePicture/global variables (localvariables)
         self._root_env: dict[str, Variable] = {v.name.lower(): v for v in (self.bp.localvariables or [])}
@@ -855,25 +868,14 @@ class VariablesAnalyzer:
         variable: Variable,
         decl_module_path: list[str],
     ) -> tuple[str, ...]:
-        display_segments = (*decl_module_path, variable.name)
-        key = tuple(segment.casefold() for segment in display_segments)
-        self._effect_flow_display_names.setdefault(key, ".".join(display_segments))
-        return key
+        return self._effect_flow_tracker.effect_key_for_variable(variable, decl_module_path)
 
     def _resolve_effect_key(
         self,
         full_ref: str,
         context: ScopeContext,
     ) -> tuple[str, ...] | None:
-        base_name = varname_base(full_ref)
-        if base_name:
-            local_var = context.env.get(base_name.casefold())
-            if local_var is not None:
-                return self._effect_key_for_variable(local_var, context.module_path)
-        variable, _field_path, decl_module_path, _decl_display = context.resolve_variable(full_ref)
-        if variable is None:
-            return None
-        return self._effect_key_for_variable(variable, decl_module_path)
+        return self._effect_flow_tracker.resolve_effect_key(full_ref, context)
 
     def _mapping_source_effect_key(
         self,
@@ -882,76 +884,32 @@ class VariablesAnalyzer:
         parent_env: dict[str, Variable],
         parent_context: ScopeContext | None,
     ) -> tuple[str, ...] | None:
-        if pm.is_source_global:
-            full_source = None
-            if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
-                full_source = pm.source[const.KEY_VAR_NAME]
-            elif isinstance(pm.source, str):
-                full_source = pm.source
-            if not full_source:
-                return None
-            source_base = full_source.split(".", 1)[0]
-            if parent_context is not None:
-                source_var, decl_path, _decl_display = parent_context.resolve_global_name(source_base)
-            else:
-                source_var = parent_env.get(source_base.casefold())
-                decl_path = []
-                if source_var is None:
-                    source_var = self._lookup_global_variable(source_base)
-                    decl_path = [self.bp.header.name] if source_var is not None else []
-            if source_var is None:
-                return None
-            return self._effect_key_for_variable(source_var, decl_path)
-
-        if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
-            full_source = pm.source[const.KEY_VAR_NAME]
-        elif isinstance(pm.source, str):
-            full_source = pm.source
-        else:
-            return None
-
-        if parent_context is not None:
-            return self._resolve_effect_key(full_source, parent_context)
-
-        source_base = varname_base(full_source)
-        if not source_base:
-            return None
-        source_var = parent_env.get(source_base.casefold()) or self._lookup_global_variable(source_base)
-        if source_var is None:
-            return None
-        return self._effect_key_for_variable(source_var, [self.bp.header.name])
+        return self._effect_flow_tracker.mapping_source_effect_key(
+            pm,
+            parent_env=parent_env,
+            parent_context=parent_context,
+        )
 
     def _resolve_local_effect_key(
         self,
         full_ref: str,
         context: ScopeContext,
     ) -> tuple[str, ...] | None:
-        base = full_ref.split(".", 1)[0].lower()
-        variable = context.env.get(base)
-        if variable is None:
-            return None
-        return self._effect_key_for_variable(variable, context.module_path)
+        return self._effect_flow_tracker.resolve_local_effect_key(full_ref, context)
 
     def _resolve_mapped_effect_source_key(
         self,
         full_ref: str,
         context: ScopeContext,
     ) -> tuple[str, ...] | None:
-        base = full_ref.split(".", 1)[0].lower()
-        mapping = context.param_mappings.get(base)
-        if mapping is None:
-            return None
-        source_var, _field_prefix, source_decl_path, _source_decl_display_path = mapping
-        return self._effect_key_for_variable(source_var, source_decl_path)
+        return self._effect_flow_tracker.resolve_mapped_effect_source_key(full_ref, context)
 
     def _record_effect_flow(
         self,
         source_key: tuple[str, ...] | None,
         target_key: tuple[str, ...] | None,
     ) -> None:
-        if source_key is None or target_key is None:
-            return
-        self._effect_flow_edges[source_key].add(target_key)
+        self._effect_flow_tracker.record_effect_flow(source_key, target_key)
 
     def _collect_function_input_effect_keys(
         self,
@@ -959,79 +917,14 @@ class VariablesAnalyzer:
         args: list[Any],
         context: ScopeContext,
     ) -> set[tuple[str, ...]]:
-        if not fn_name:
-            input_sources: set[tuple[str, ...]] = set()
-            for arg in args:
-                input_sources.update(self._collect_expression_effect_sources(arg, context))
-            return input_sources
-
-        fn_key = fn_name.casefold()
-        if fn_key in {"copyvariable", "copyvarnosort"}:
-            if args and isinstance(args[0], dict) and const.KEY_VAR_NAME in args[0]:
-                key = self._resolve_effect_key(args[0][const.KEY_VAR_NAME], context)
-                return {key} if key is not None else set()
-            return set()
-
-        if fn_key == "initvariable":
-            return set()
-
-        sig = get_function_signature(fn_name)
-        if sig is None:
-            fallback_sources: set[tuple[str, ...]] = set()
-            for arg in args:
-                fallback_sources.update(self._collect_expression_effect_sources(arg, context))
-            return fallback_sources
-
-        signature_sources: set[tuple[str, ...]] = set()
-        for idx, arg in enumerate(args):
-            direction = "in"
-            if idx < len(sig.parameters):
-                direction = sig.parameters[idx].direction
-            if direction not in {"in", "in var", "inout"}:
-                continue
-            signature_sources.update(self._collect_expression_effect_sources(arg, context))
-        return signature_sources
+        return self._effect_flow_tracker.collect_function_input_effect_keys(fn_name, args, context)
 
     def _collect_expression_effect_sources(
         self,
         obj: Any,
         context: ScopeContext,
     ) -> set[tuple[str, ...]]:
-        sources: set[tuple[str, ...]] = set()
-
-        if obj is None:
-            return sources
-
-        if isinstance(obj, dict):
-            if const.KEY_VAR_NAME in obj:
-                full_ref = obj[const.KEY_VAR_NAME]
-                key = self._resolve_effect_key(full_ref, context)
-                if key is not None:
-                    sources.add(key)
-                return sources
-            for value in obj.values():
-                sources.update(self._collect_expression_effect_sources(value, context))
-            return sources
-
-        if isinstance(obj, list):
-            for item in obj:
-                sources.update(self._collect_expression_effect_sources(item, context))
-            return sources
-
-        if hasattr(obj, "data"):
-            for child in getattr(obj, "children", []):
-                sources.update(self._collect_expression_effect_sources(child, context))
-            return sources
-
-        if isinstance(obj, tuple):
-            if obj and obj[0] == const.KEY_FUNCTION_CALL:
-                _, fn_name, args = obj
-                return self._collect_function_input_effect_keys(fn_name, args or [], context)
-            for item in obj[1:] if obj and isinstance(obj[0], str) else obj:
-                sources.update(self._collect_expression_effect_sources(item, context))
-            return sources
-
-        return sources
+        return self._effect_flow_tracker.collect_expression_effect_sources(obj, context)
 
     def _record_assignment_effect_flow(
         self,
@@ -1039,9 +932,7 @@ class VariablesAnalyzer:
         expr: Any,
         context: ScopeContext,
     ) -> None:
-        target_key = self._resolve_effect_key(target_ref, context)
-        for source_key in self._collect_expression_effect_sources(expr, context):
-            self._record_effect_flow(source_key, target_key)
+        self._effect_flow_tracker.record_assignment_effect_flow(target_ref, expr, context)
 
     def _record_function_call_effect_flow(
         self,
@@ -1049,91 +940,21 @@ class VariablesAnalyzer:
         args: list[Any],
         context: ScopeContext,
     ) -> None:
-        if not fn_name:
-            return
-
-        fn_key = fn_name.casefold()
-        if fn_key in {"copyvariable", "copyvarnosort"}:
-            if len(args) < 2:
-                return
-            if not (
-                isinstance(args[0], dict)
-                and const.KEY_VAR_NAME in args[0]
-                and isinstance(args[1], dict)
-                and const.KEY_VAR_NAME in args[1]
-            ):
-                return
-            source_key = self._resolve_effect_key(args[0][const.KEY_VAR_NAME], context)
-            target_key = self._resolve_effect_key(args[1][const.KEY_VAR_NAME], context)
-            self._record_effect_flow(source_key, target_key)
-            return
-
-        if fn_key == "initvariable":
-            return
-
-        sig = get_function_signature(fn_name)
-        if sig is None:
-            return
-
-        input_keys: set[tuple[str, ...]] = set()
-        output_keys: set[tuple[str, ...]] = set()
-        for idx, arg in enumerate(args):
-            direction = "in"
-            if idx < len(sig.parameters):
-                direction = sig.parameters[idx].direction
-
-            if direction in {"in", "in var", "inout"}:
-                input_keys.update(self._collect_expression_effect_sources(arg, context))
-
-            if direction in {"out", "inout"} and isinstance(arg, dict) and const.KEY_VAR_NAME in arg:
-                key = self._resolve_effect_key(arg[const.KEY_VAR_NAME], context)
-                if key is not None:
-                    output_keys.add(key)
-
-        for output_key in output_keys:
-            for input_key in input_keys:
-                self._record_effect_flow(input_key, output_key)
+        self._effect_flow_tracker.record_function_call_effect_flow(fn_name, args, context)
 
     def _collect_effect_sink_keys(self) -> set[tuple[str, ...]]:
-        sink_keys = set(self._external_effect_sinks)
-
-        if not self._analyzed_target_is_library:
-            for variable in self.bp.localvariables or []:
-                sink_keys.add(self._effect_key_for_variable(variable, [self.bp.header.name]))
-
-        if self._analyzed_target_is_library:
-            for moduletype in self.bp.moduletype_defs or []:
-                if not self._is_from_root_origin(getattr(moduletype, "origin_file", None)):
-                    continue
-                decl_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
-                for variable in moduletype.moduleparameters or []:
-                    sink_keys.add(self._effect_key_for_variable(variable, decl_path))
-
-        return sink_keys
+        return self._effect_flow_tracker.collect_effect_sink_keys(
+            self.bp,
+            self._analyzed_target_is_library,
+            self._is_from_root_origin,
+        )
 
     def _compute_effective_output_keys(self) -> set[tuple[str, ...]]:
         sink_keys = self._collect_effect_sink_keys()
-        if not sink_keys:
-            return set()
-
-        incoming_edges: dict[tuple[str, ...], set[tuple[str, ...]]] = defaultdict(set)
-        for source_key, target_keys in self._effect_flow_edges.items():
-            for target_key in target_keys:
-                incoming_edges[target_key].add(source_key)
-
-        effective_keys = set(sink_keys)
-        pending = list(sink_keys)
-        while pending:
-            target_key = pending.pop()
-            for source_key in incoming_edges.get(target_key, set()):
-                if source_key in effective_keys:
-                    continue
-                effective_keys.add(source_key)
-                pending.append(source_key)
-        return effective_keys
+        return self._effect_flow_tracker.compute_effective_output_keys(sink_keys)
 
     def _has_output_effect(self, variable: Variable, decl_path: list[str]) -> bool:
-        return self._effect_key_for_variable(variable, decl_path) in self._effective_output_keys
+        return self._effect_flow_tracker.effect_key_for_variable(variable, decl_path) in self._effective_output_keys
 
     def _site_str(self) -> str:
         if not self._site_stack:
@@ -2041,165 +1862,16 @@ class VariablesAnalyzer:
         parent_context: ScopeContext | None = None,
         child_context: ScopeContext | None = None,
     ) -> None:
-        target_name = varname_base(pm.target)
-
-        if child_context is not None and target_name is not None:
-            target_var = child_context.env.get(target_name.casefold())
-            source_key = self._mapping_source_effect_key(
-                pm,
-                parent_env=parent_env,
-                parent_context=parent_context,
-            )
-            if target_var is not None and source_key is not None:
-                target_key = self._effect_key_for_variable(target_var, child_context.module_path)
-                if child_used_reads is not None and target_name in child_used_reads:
-                    self._record_effect_flow(source_key, target_key)
-                if child_used_writes is not None and target_name in child_used_writes:
-                    self._record_effect_flow(target_key, source_key)
-
-        # GLOBAL: resolve by walking up scopes, and only mark if parameter is used
-        if pm.is_source_global:
-            full_source = None
-            if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
-                full_source = pm.source[const.KEY_VAR_NAME]
-            elif isinstance(pm.source, str):
-                full_source = pm.source
-
-            if not full_source:
-                return
-
-            source_parts = full_source.split(".", 1)
-            source_base = source_parts[0]
-            source_field_path = source_parts[1] if len(source_parts) > 1 else ""
-
-            if parent_context is not None:
-                src_var, _decl_path, _decl_display = parent_context.resolve_global_name(source_base)
-            else:
-                src_var = parent_env.get(source_base.lower())
-                if src_var is None:
-                    src_var = self._lookup_global_variable(source_base)
-
-            if src_var is None:
-                return
-
-            # External types: conservatively treat mapping as read+written
-            if external_typename is not None:
-                if parent_context is not None:
-                    source_key = self._resolve_effect_key(full_source, parent_context)
-                    if source_key is not None:
-                        self._external_effect_sinks.add(source_key)
-                external_display_path: list[str] = []
-                if parent_path:
-                    external_display_path.append(decorate_segment(parent_path[0], "BP"))
-                    external_display_path.extend(parent_path[1:])
-                use_context = ScopeContext(
-                    env=parent_env,
-                    param_mappings={},
-                    module_path=parent_path.copy(),
-                    display_module_path=external_display_path,
-                    parent_context=None,
-                )
-
-                if source_field_path:
-                    self._get_usage(src_var).mark_field_read(source_field_path, parent_path)
-                    self._get_usage(src_var).mark_field_written(source_field_path, parent_path)
-
-                    cp = self._canonical_path(parent_path, src_var, source_field_path)
-                    self._record_access(AccessKind.READ, cp, use_context, full_source)
-                    self._record_access(AccessKind.WRITE, cp, use_context, full_source)
-                else:
-                    self._get_usage(src_var).mark_read(parent_path)
-                    self._get_usage(src_var).mark_written(parent_path)
-
-                    cp = self._canonical_path(parent_path, src_var, "")
-                    self._record_access(AccessKind.READ, cp, use_context, full_source)
-                    self._record_access(AccessKind.WRITE, cp, use_context, full_source)
-                return
-
-            if target_name is not None:
-                if child_used_reads is not None and target_name in child_used_reads:
-                    if source_field_path:
-                        self._get_usage(src_var).mark_field_read(source_field_path, parent_path)
-                    else:
-                        self._get_usage(src_var).mark_read(parent_path)
-
-                if child_used_writes is not None and target_name in child_used_writes:
-                    if source_field_path:
-                        self._get_usage(src_var).mark_field_written(source_field_path, parent_path)
-                    else:
-                        self._get_usage(src_var).mark_written(parent_path)
-            return
-
-        # Extract full source path with fields
-        if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
-            full_source = pm.source[const.KEY_VAR_NAME]
-        elif isinstance(pm.source, str):
-            full_source = pm.source
-        else:
-            return
-
-        # Parse the source to get base and field path
-        source_parts = full_source.split(".", 1)
-        source_base = source_parts[0].lower()
-        source_field_path = source_parts[1] if len(source_parts) > 1 else ""
-
-        # Resolve the actual source variable
-        src_var = parent_env.get(source_base)
-        if src_var is None:
-            src_var = self._lookup_global_variable(source_base)
-
-        if src_var is None:
-            return
-
-        # External types: conservatively treat mapping as read+written
-        if external_typename is not None:
-            if parent_context is not None:
-                source_key = self._resolve_effect_key(full_source, parent_context)
-                if source_key is not None:
-                    self._external_effect_sinks.add(source_key)
-            external_mapping_display_path: list[str] = []
-            if parent_path:
-                external_mapping_display_path.append(decorate_segment(parent_path[0], "BP"))
-                external_mapping_display_path.extend(parent_path[1:])
-            use_context = ScopeContext(
-                env=parent_env,
-                param_mappings={},
-                module_path=parent_path.copy(),
-                display_module_path=external_mapping_display_path,
-                parent_context=None,
-            )
-
-            if source_field_path:
-                self._get_usage(src_var).mark_field_read(source_field_path, parent_path)
-                self._get_usage(src_var).mark_field_written(source_field_path, parent_path)
-
-                cp = self._canonical_path(parent_path, src_var, source_field_path)
-                self._record_access(AccessKind.READ, cp, use_context, full_source)
-                self._record_access(AccessKind.WRITE, cp, use_context, full_source)
-            else:
-                self._get_usage(src_var).mark_read(parent_path)
-                self._get_usage(src_var).mark_written(parent_path)
-
-                cp = self._canonical_path(parent_path, src_var, "")
-                self._record_access(AccessKind.READ, cp, use_context, full_source)
-                self._record_access(AccessKind.WRITE, cp, use_context, full_source)
-            return
-
-        # Internal types with field-aware propagation
-        if target_name is not None:
-            # If the child used the parameter for reading
-            if child_used_reads is not None and target_name in child_used_reads:
-                if source_field_path:
-                    self._get_usage(src_var).mark_field_read(source_field_path, parent_path)
-                else:
-                    self._get_usage(src_var).mark_read(parent_path)
-
-            # If the child used the parameter for writing
-            if child_used_writes is not None and target_name in child_used_writes:
-                if source_field_path:
-                    self._get_usage(src_var).mark_field_written(source_field_path, parent_path)
-                else:
-                    self._get_usage(src_var).mark_written(parent_path)
+        self._effect_flow_tracker.propagate_mapping_to_parent(
+            pm,
+            child_used_reads,
+            child_used_writes,
+            parent_env,
+            parent_path,
+            external_typename,
+            parent_context,
+            child_context,
+        )
 
     # ------------ Var lookup helpers ------------
 

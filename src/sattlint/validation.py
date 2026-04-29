@@ -3,21 +3,17 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from collections.abc import Sequence as AbcSequence
+from dataclasses import dataclass
 
 from lark import Tree
 
-from .casefolding import is_anytype_name
-from .analyzers.sattline_builtins import SATTLINE_BUILTINS
-from .grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     Equation,
-    FloatLiteral,
     FrameModule,
-    IntLiteral,
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
@@ -33,41 +29,43 @@ from sattline_parser.models.ast_model import (
     SFCTransitionSub,
     Simple_DataType,
     SingleModule,
-    SourceSpan,
     Variable,
 )
+
+from ._validation_expression import (
+    _infer_expression_datatype,
+    _is_variable_ref_node,
+    _validate_builtin_call_types,
+    _validate_expression_semantics,
+    _validate_no_string_literals_in_calls,
+)
+from ._validation_shared import (
+    RawSourceValidationError,
+    StructuralValidationError,
+    _ref_span,
+    _span_kwargs,
+    _warn_or_raise,
+)
+from ._validation_type_helpers import (
+    _BUILTIN_DATATYPE_NAMES,
+    _assignment_type_matches,
+    _extract_time_literal,
+    _format_datatype,
+    _has_time_literal_marker,
+    _infer_literal_datatype,
+    _is_anytype_datatype,
+    _is_string_simple_type,
+    _is_valid_duration_literal,
+    _is_valid_time_literal,
+    _literal_matches_expected_datatype,
+    _resolve_ref_datatype,
+    _resolve_root_variable,
+    _resolve_variable_field_datatype,
+    _split_dotted_name,
+    _suggest_datatype_name,
+)
+from .grammar import constants as const
 from .resolution.type_graph import TypeGraph
-
-
-class StructuralValidationError(ValueError):
-    def __init__(
-        self,
-        message: str,
-        *,
-        line: int | None = None,
-        column: int | None = None,
-        length: int | None = None,
-    ):
-        super().__init__(message)
-        self.line = line
-        self.column = column
-        self.length = length
-
-
-class RawSourceValidationError(StructuralValidationError):
-    def __init__(
-        self,
-        message: str,
-        *,
-        line: int | None = None,
-        column: int | None = None,
-        length: int | None = None,
-    ):
-        super().__init__(message)
-        self.line = line
-        self.column = column
-        self.length = length
-
 
 _PLAIN_DURATION_LITERAL_RE = re.compile(r"\d+(?:\.\d+)?")
 _DURATION_COMPONENT_PATTERNS = (
@@ -127,235 +125,6 @@ def _validate_identifier(
         raise StructuralValidationError(f"{context} name {name!r} is a reserved SattLine keyword")
 
 
-def _span_kwargs(span: SourceSpan | None) -> dict[str, int]:
-    if span is None:
-        return {}
-    return {"line": span.line, "column": span.column}
-
-
-def _warn_or_raise(
-    message: str,
-    *,
-    warning_sink: Callable[[str], None] | None = None,
-    line: int | None = None,
-    column: int | None = None,
-    length: int | None = None,
-) -> None:
-    if warning_sink is not None:
-        warning_sink(message)
-        return
-    raise StructuralValidationError(
-        message,
-        line=line,
-        column=column,
-        length=length,
-    )
-
-
-def _is_duration_datatype(datatype: Simple_DataType | str | None) -> bool:
-    if isinstance(datatype, Simple_DataType):
-        return datatype == Simple_DataType.DURATION
-    return isinstance(datatype, str) and datatype.casefold() == Simple_DataType.DURATION.value
-
-
-def _is_time_datatype(datatype: Simple_DataType | str | None) -> bool:
-    if isinstance(datatype, Simple_DataType):
-        return datatype == Simple_DataType.TIME
-    return isinstance(datatype, str) and datatype.casefold() == Simple_DataType.TIME.value
-
-
-def _is_valid_duration_literal(value: object) -> bool:
-    if not isinstance(value, str):
-        return False
-
-    text = value.strip()
-    if not text:
-        return False
-
-    if text[0] in "+-":
-        text = text[1:]
-    if not text:
-        return False
-
-    if _PLAIN_DURATION_LITERAL_RE.fullmatch(text):
-        return True
-
-    position = 0
-    matched_component = False
-    for pattern in _DURATION_COMPONENT_PATTERNS:
-        match = pattern.match(text, position)
-        if match is None:
-            continue
-        matched_component = True
-        position = match.end()
-
-    return matched_component and position == len(text)
-
-
-def _has_time_literal_marker(value: object) -> bool:
-    return isinstance(value, dict) and const.GRAMMAR_VALUE_TIME_VALUE in value
-
-
-def _extract_time_literal(value: object) -> str | None:
-    if not isinstance(value, dict) or const.GRAMMAR_VALUE_TIME_VALUE not in value:
-        return None
-    literal = value.get(const.GRAMMAR_VALUE_TIME_VALUE)
-    return literal if isinstance(literal, str) else None
-
-
-def _is_valid_time_literal(value: object) -> bool:
-    return isinstance(value, str) and _TIME_LITERAL_RE.fullmatch(value.strip()) is not None
-
-
-def _ref_span(ref: dict[str, object] | str | None) -> SourceSpan | None:
-    if not isinstance(ref, dict):
-        return None
-    span = ref.get("span")
-    return span if isinstance(span, SourceSpan) else None
-
-
-def _bounded_levenshtein(left: str, right: str, *, max_distance: int = _TYPO_SUGGESTION_MAX_DISTANCE) -> int | None:
-    left_cf = left.casefold()
-    right_cf = right.casefold()
-
-    if left_cf == right_cf:
-        return 0
-    if abs(len(left_cf) - len(right_cf)) > max_distance:
-        return None
-
-    previous = list(range(len(right_cf) + 1))
-    for row_index, left_char in enumerate(left_cf, start=1):
-        current = [row_index]
-        row_min = current[0]
-        for col_index, right_char in enumerate(right_cf, start=1):
-            cost = 0 if left_char == right_char else 1
-            current_value = min(
-                previous[col_index] + 1,
-                current[col_index - 1] + 1,
-                previous[col_index - 1] + cost,
-            )
-            current.append(current_value)
-            row_min = min(row_min, current_value)
-        if row_min > max_distance:
-            return None
-        previous = current
-
-    distance = previous[-1]
-    return distance if distance <= max_distance else None
-
-
-def _suggest_datatype_name(name: str, known_datatypes: AbcSequence[str]) -> str | None:
-    best_match: str | None = None
-    best_distance: int | None = None
-    name_cf = name.casefold()
-    for candidate in known_datatypes:
-        distance = _bounded_levenshtein(name, candidate, max_distance=_TYPO_SUGGESTION_MAX_DISTANCE)
-        if distance is None:
-            continue
-        # Skip candidates that are a strict prefix of the unknown name.
-        # Such names are extensions of the candidate (e.g. 'Timer' extends 'time'),
-        # not misspellings of it.
-        candidate_cf = candidate.casefold()
-        if name_cf.startswith(candidate_cf):
-            continue
-        if best_distance is None or distance < best_distance:
-            best_match = candidate
-            best_distance = distance
-    return best_match
-
-
-_BUILTIN_DATATYPE_NAMES = tuple(datatype.value for datatype in Simple_DataType)
-
-
-def _is_anytype_datatype(datatype: Simple_DataType | str | None) -> bool:
-    return is_anytype_name(datatype)
-
-
-def _split_dotted_name(name: str) -> tuple[str, tuple[str, ...]]:
-    parts = tuple(part for part in str(name).split(".") if part)
-    if not parts:
-        return "", ()
-    return parts[0], parts[1:]
-
-
-def _resolve_variable_field_datatype(
-    variable: Variable,
-    field_path: tuple[str, ...],
-    type_graph: TypeGraph,
-) -> Simple_DataType | str | None:
-    current: Simple_DataType | str = variable.datatype
-    for field_name in field_path:
-        if isinstance(current, Simple_DataType):
-            return None
-        field = type_graph.field(str(current), field_name)
-        if field is None:
-            return None
-        current = field.datatype
-    return current
-
-
-def _infer_literal_datatype(
-    value: object,
-    *,
-    is_duration: bool = False,
-) -> Simple_DataType | str | None:
-    if isinstance(value, bool):
-        return Simple_DataType.BOOLEAN
-    if isinstance(value, IntLiteral | int) and not isinstance(value, bool):
-        return Simple_DataType.INTEGER
-    if isinstance(value, FloatLiteral | float):
-        return Simple_DataType.REAL
-    if is_duration and isinstance(value, str) and _is_valid_duration_literal(value):
-        return Simple_DataType.DURATION
-    if isinstance(value, str):
-        return Simple_DataType.STRING
-    if isinstance(value, dict) and const.GRAMMAR_VALUE_TIME_VALUE in value:
-        return const.GRAMMAR_VALUE_TIME_VALUE
-    return None
-
-
-def _literal_matches_expected_datatype(
-    literal: object,
-    expected: Simple_DataType | str | None,
-    *,
-    is_duration: bool = False,
-) -> bool:
-    if _has_time_literal_marker(literal) and not _is_valid_time_literal(_extract_time_literal(literal)):
-        return False
-
-    actual = _infer_literal_datatype(literal, is_duration=is_duration)
-    if _assignment_type_matches(actual, expected):
-        return True
-
-    return (isinstance(literal, str) and _is_duration_datatype(expected) and _is_valid_duration_literal(literal)) or (
-        isinstance(literal, str) and _is_time_datatype(expected) and _is_valid_time_literal(literal)
-    )
-
-
-def _assignment_type_matches(
-    actual: Simple_DataType | str | None,
-    expected: Simple_DataType | str | None,
-) -> bool:
-    if actual is None or expected is None:
-        return True
-
-    if is_anytype_name(expected):
-        return True
-
-    if actual == const.GRAMMAR_VALUE_TIME_VALUE:
-        return expected in {Simple_DataType.TIME, Simple_DataType.DURATION}
-
-    if isinstance(expected, Simple_DataType):
-        if not isinstance(actual, Simple_DataType):
-            return False
-        return _builtin_type_matches(actual, expected, direction="in")
-
-    if isinstance(actual, Simple_DataType):
-        return False
-
-    return str(actual).casefold() == str(expected).casefold()
-
-
 def _validate_declared_variable(
     variable: Variable,
     context: str,
@@ -363,6 +132,8 @@ def _validate_declared_variable(
     type_graph: TypeGraph,
     known_datatypes: AbcSequence[str],
     allow_unresolved_external_datatypes: bool = False,
+    is_record_field: bool = False,
+    is_parameter: bool = False,
 ) -> None:
     if isinstance(variable.datatype, str):
         if _is_anytype_datatype(variable.datatype):
@@ -375,6 +146,17 @@ def _validate_declared_variable(
                     f"{context} variable {variable.name!r} uses unknown datatype {variable.datatype_text!r}; did you mean {suggestion!r}?",
                     **_span_kwargs(variable.declaration_span),
                 )
+            if not allow_unresolved_external_datatypes:
+                raise StructuralValidationError(
+                    f"{context} variable {variable.name!r} uses unknown datatype {variable.datatype_text!r}",
+                    **_span_kwargs(variable.declaration_span),
+                )
+
+    if not is_parameter and variable.const and variable.init_value is None:
+        raise StructuralValidationError(
+            f"{context} CONST variable {variable.name!r} must have an initial value",
+            **_span_kwargs(variable.declaration_span),
+        )
 
     if variable.init_value is None:
         return
@@ -430,8 +212,18 @@ def _ensure_unique_names(names: list[str], context: str, kind: str) -> None:
         seen[folded] = name
 
 
+def _iter_nested_sequence_nodes(nodes: AbcSequence[object] | None) -> Iterator[object]:
+    for node in nodes or ():
+        yield node
+        if isinstance(node, SFCAlternative | SFCParallel):
+            for branch in node.branches or ():
+                yield from _iter_nested_sequence_nodes(branch)
+        elif isinstance(node, SFCSubsequence | SFCTransitionSub):
+            yield from _iter_nested_sequence_nodes(node.body)
+
+
 def _collect_sequence_labels(nodes: list[object], labels: dict[str, str], context: str) -> None:
-    for node in nodes:
+    for node in _iter_nested_sequence_nodes(nodes):
         label: str | None = None
         if (
             isinstance(node, SFCStep)
@@ -448,25 +240,177 @@ def _collect_sequence_labels(nodes: list[object], labels: dict[str, str], contex
                 )
             labels[folded] = label
 
-        if isinstance(node, SFCAlternative | SFCParallel):
-            for branch in node.branches:
-                _collect_sequence_labels(branch, labels, context)
-        elif isinstance(node, SFCSubsequence | SFCTransitionSub):
-            _collect_sequence_labels(node.body, labels, context)
-
 
 def _collect_label_names(nodes: list[object], names: set[str]) -> None:
     """Collect all step/transition/subsequence label names (case-folded) without duplicate checks."""
-    for node in nodes:
+    for node in _iter_nested_sequence_nodes(nodes):
         if isinstance(node, SFCStep | SFCTransition | SFCSubsequence | SFCTransitionSub):
             label_name = getattr(node, "name", None)
             if isinstance(label_name, str) and label_name:
                 names.add(label_name.casefold())
-        if isinstance(node, SFCAlternative | SFCParallel):
-            for branch in node.branches:
-                _collect_label_names(branch, names)
-        elif isinstance(node, SFCSubsequence | SFCTransitionSub):
-            _collect_label_names(node.body, names)
+
+
+def _collect_sequence_step_features(
+    nodes: list[object],
+    *,
+    seqcontrol: bool,
+    seqtimer: bool,
+    known_steps: dict[str, str],
+    available_features: dict[str, set[str]],
+) -> None:
+    for node in _iter_nested_sequence_nodes(nodes):
+        if isinstance(node, SFCStep):
+            key = node.name.casefold()
+            known_steps.setdefault(key, node.name)
+            features = available_features.setdefault(key, set())
+            features.add("x")
+            if seqcontrol:
+                features.add("hold")
+                features.add("reset")
+            if seqtimer:
+                features.add("t")
+
+
+def _collect_sequence_scope_features(
+    sequence: Sequence,
+    *,
+    known_sequences: dict[str, str],
+    available_sequence_features: dict[str, set[str]],
+) -> None:
+    key = sequence.name.casefold()
+    known_sequences.setdefault(key, sequence.name)
+    features = available_sequence_features.setdefault(key, set())
+    if sequence.seqcontrol:
+        features.add("hold")
+        features.add("reset")
+
+
+def _iter_sequence_node_refs(nodes: list[object]) -> AbcSequence[dict[str, object]]:
+    refs: list[dict[str, object]] = []
+    for node in _iter_nested_sequence_nodes(nodes):
+        if isinstance(node, SFCStep):
+            for statements in (node.code.enter, node.code.active, node.code.exit):
+                for statement in statements or []:
+                    for ref in _iter_variable_refs(statement):
+                        if isinstance(ref, dict):
+                            refs.append(ref)
+            continue
+
+        if isinstance(node, SFCTransition):
+            for ref in _iter_variable_refs(node.condition):
+                if isinstance(ref, dict):
+                    refs.append(ref)
+
+    return refs
+
+
+def _validate_step_auto_variable_refs(
+    modulecode: ModuleCode | None,
+    env: dict[str, Variable],
+    context: str,
+) -> None:
+    if modulecode is None:
+        return
+
+    known_steps: dict[str, str] = {}
+    available_features: dict[str, set[str]] = {}
+    known_sequences: dict[str, str] = {}
+    available_sequence_features: dict[str, set[str]] = {}
+
+    for sequence in modulecode.sequences or []:
+        if not isinstance(sequence, Sequence):
+            continue
+        _collect_sequence_scope_features(
+            sequence,
+            known_sequences=known_sequences,
+            available_sequence_features=available_sequence_features,
+        )
+        _collect_sequence_step_features(
+            sequence.code or [],
+            seqcontrol=bool(sequence.seqcontrol),
+            seqtimer=bool(sequence.seqtimer),
+            known_steps=known_steps,
+            available_features=available_features,
+        )
+
+    if not known_steps and not known_sequences:
+        return
+
+    refs: list[dict[str, object]] = []
+    for equation in modulecode.equations or []:
+        if isinstance(equation, Equation):
+            for statement in equation.code or []:
+                for ref in _iter_variable_refs(statement):
+                    if isinstance(ref, dict):
+                        refs.append(ref)
+    for sequence in modulecode.sequences or []:
+        if isinstance(sequence, Sequence):
+            refs.extend(_iter_sequence_node_refs(sequence.code or []))
+
+    for ref in refs:
+        full_name = ref.get(const.KEY_VAR_NAME)
+        if not isinstance(full_name, str):
+            continue
+
+        base_name, field_path = _split_dotted_name(full_name)
+        if not base_name or len(field_path) != 1:
+            continue
+
+        suffix = field_path[0].casefold()
+        if suffix not in {"x", "hold", "reset", "t"}:
+            continue
+
+        if base_name.casefold() in env:
+            continue
+
+        base_key = base_name.casefold()
+        step_name = known_steps.get(base_key)
+        if step_name is None:
+            sequence_name = known_sequences.get(base_key)
+            if sequence_name is not None and suffix in {"hold", "reset"}:
+                sequence_features = available_sequence_features.get(base_key, set())
+                if suffix == "hold" and "hold" not in sequence_features:
+                    message = (
+                        f"{context} variable reference {full_name!r} is not available: "
+                        f"sequence {sequence_name!r} only exposes .Hold when it enables SeqControl"
+                    )
+                elif suffix == "reset" and "reset" not in sequence_features:
+                    message = (
+                        f"{context} variable reference {full_name!r} is not available: "
+                        f"sequence {sequence_name!r} only exposes .Reset when it enables SeqControl"
+                    )
+                else:
+                    continue
+            else:
+                message = (
+                    f"{context} variable reference {full_name!r} is not available: "
+                    f"no sequence step named {base_name!r} exists in this module"
+                )
+        else:
+            features = available_features.get(base_key, set())
+            if suffix == "hold" and "hold" not in features:
+                message = (
+                    f"{context} variable reference {full_name!r} is not available: "
+                    f"step {step_name!r} only exposes .Hold when its sequence enables SeqControl"
+                )
+            elif suffix == "reset" and "reset" not in features:
+                message = (
+                    f"{context} variable reference {full_name!r} is not available: "
+                    f"step {step_name!r} only exposes .Reset when its sequence enables SeqControl"
+                )
+            elif suffix == "t" and "t" not in features:
+                message = (
+                    f"{context} variable reference {full_name!r} is not available: "
+                    f"step {step_name!r} only exposes .T when its sequence enables SeqTimer"
+                )
+            else:
+                continue
+
+        raise StructuralValidationError(
+            message,
+            **_span_kwargs(_ref_span(ref)),
+            length=max(len(full_name), 1),
+        )
 
 
 def _parallel_branch_trailer(node: object) -> str | None:
@@ -539,518 +483,13 @@ def _validate_variable_refs(
             )
 
 
-_STRING_SIMPLE_TYPES = {
-    Simple_DataType.IDENTSTRING,
-    Simple_DataType.TAGSTRING,
-    Simple_DataType.STRING,
-    Simple_DataType.LINESTRING,
-    Simple_DataType.MAXSTRING,
-}
-
-
-def _format_datatype(datatype: Simple_DataType | str | None) -> str:
-    if datatype is None:
-        return "unknown"
-    if isinstance(datatype, Simple_DataType):
-        return datatype.value
-    return str(datatype)
-
-
-def _is_string_simple_type(datatype: Simple_DataType | str | None) -> bool:
-    return isinstance(datatype, Simple_DataType) and datatype in _STRING_SIMPLE_TYPES
-
-
-def _normalize_builtin_datatype(datatype: str) -> Simple_DataType | str:
-    try:
-        return Simple_DataType.from_any(datatype)
-    except ValueError:
-        return datatype
-
-
-def _resolve_ref_datatype(
-    ref: dict[str, object],
-    env: dict[str, Variable],
-    type_graph: TypeGraph,
-) -> Simple_DataType | str | None:
-    full_name = str(ref[const.KEY_VAR_NAME])
-    parts = [part for part in full_name.split(".") if part]
-    if not parts:
-        return None
-
-    variable = env.get(parts[0].casefold())
-    if variable is None:
-        return None
-
-    current: Simple_DataType | str = variable.datatype
-    for field_name in parts[1:]:
-        if isinstance(current, Simple_DataType):
-            return None
-
-        field = type_graph.field(str(current), field_name)
-        if field is None:
-            return None
-        current = field.datatype
-
-    return current
-
-
-def _resolve_root_variable(ref: dict[str, object], env: dict[str, Variable]) -> Variable | None:
-    full_name = str(ref.get(const.KEY_VAR_NAME, ""))
-    base_name, _field_path = _split_dotted_name(full_name)
-    if not base_name:
-        return None
-    return env.get(base_name.casefold())
-
-
-def _merge_numeric_types(
-    datatypes: AbcSequence[Simple_DataType | str | None],
-) -> Simple_DataType | None:
-    numeric_types = {Simple_DataType.INTEGER, Simple_DataType.REAL}
-    if not datatypes or any(dt not in numeric_types for dt in datatypes):
-        return None
-    if Simple_DataType.REAL in datatypes:
-        return Simple_DataType.REAL
-    return Simple_DataType.INTEGER
-
-
-def _is_numeric_datatype(datatype: Simple_DataType | str | None) -> bool:
-    return datatype in {Simple_DataType.INTEGER, Simple_DataType.REAL}
-
-
-def _is_boolean_datatype(datatype: Simple_DataType | str | None) -> bool:
-    return datatype == Simple_DataType.BOOLEAN
-
-
-_EQUALITY_COMPARISON_OPERATORS = {"==", "=", "!=", "<>"}
-
-
-def _merge_compatible_types(
-    datatypes: AbcSequence[Simple_DataType | str | None],
-) -> Simple_DataType | str | None:
-    filtered = [dt for dt in datatypes if dt is not None]
-    if not filtered:
-        return None
-
-    first = filtered[0]
-    if all(dt == first for dt in filtered[1:]):
-        return first
-
-    numeric = _merge_numeric_types(filtered)
-    if numeric is not None:
-        return numeric
-
-    if all(_is_string_simple_type(dt) for dt in filtered):
-        return Simple_DataType.STRING
-
-    return None
-
-
-def _expression_is_zero_literal(node: object) -> bool:
-    if isinstance(node, IntLiteral | int) and not isinstance(node, bool):
-        return int(node) == 0
-    if isinstance(node, FloatLiteral | float):
-        return float(node) == 0.0
-    if isinstance(node, tuple) and len(node) == 2 and node[0] in {const.KEY_PLUS, const.KEY_MINUS}:
-        return _expression_is_zero_literal(node[1])
-    return False
-
-
-def _validate_expression_semantics(
-    node: object,
-    env: dict[str, Variable],
-    type_graph: TypeGraph,
-    context: str,
-) -> None:
-    if isinstance(node, Tree):
-        for child in node.children:
-            _validate_expression_semantics(child, env, type_graph, context)
-        return
-
-    if isinstance(node, list):
-        for item in node:
-            _validate_expression_semantics(item, env, type_graph, context)
-        return
-
-    if isinstance(node, dict):
-        for value in node.values():
-            _validate_expression_semantics(value, env, type_graph, context)
-        return
-
-    if not isinstance(node, tuple) or not node:
-        return
-
-    tag = node[0]
-    if not isinstance(tag, str):
-        for item in node:
-            _validate_expression_semantics(item, env, type_graph, context)
-        return
-
-    if tag == const.KEY_ASSIGN and len(node) == 3:
-        _validate_expression_semantics(node[2], env, type_graph, context)
-        return
-
-    if tag == const.KEY_FUNCTION_CALL and len(node) == 3:
-        for argument in node[2] or []:
-            _validate_expression_semantics(argument, env, type_graph, context)
-        return
-
-    if tag == const.KEY_COMPARE and len(node) == 3:
-        left_type = _infer_expression_datatype(node[1], env, type_graph)
-        _validate_expression_semantics(node[1], env, type_graph, context)
-        for op, rhs in node[2]:
-            operator = str(op)
-            right_type = _infer_expression_datatype(rhs, env, type_graph)
-            if operator in _EQUALITY_COMPARISON_OPERATORS:
-                if (
-                    left_type is not None
-                    and right_type is not None
-                    and _merge_compatible_types((left_type, right_type)) is None
-                ):
-                    raise StructuralValidationError(
-                        f"{context} comparison operator {operator!r} expects compatible operands but got "
-                        f"{_format_datatype(left_type)!r} and {_format_datatype(right_type)!r}"
-                    )
-            else:
-                if left_type is not None and not _is_numeric_datatype(left_type):
-                    raise StructuralValidationError(
-                        f"{context} comparison expects numeric operands but left side has datatype {_format_datatype(left_type)!r}"
-                    )
-                if right_type is not None and not _is_numeric_datatype(right_type):
-                    raise StructuralValidationError(
-                        f"{context} comparison operator {operator!r} expects numeric operands but right side has datatype {_format_datatype(right_type)!r}"
-                    )
-            _validate_expression_semantics(rhs, env, type_graph, context)
-            left_type = right_type if right_type is not None else left_type
-        return
-
-    if tag in {const.GRAMMAR_VALUE_AND, const.GRAMMAR_VALUE_OR} and len(node) == 2:
-        operands = node[1] if isinstance(node[1], list) else [node[1]]
-        for operand in operands:
-            operand_type = _infer_expression_datatype(operand, env, type_graph)
-            if operand_type is not None and not _is_boolean_datatype(operand_type):
-                raise StructuralValidationError(
-                    f"{context} logical operator {str(tag)!r} expects boolean operands but got {_format_datatype(operand_type)!r}"
-                )
-            _validate_expression_semantics(operand, env, type_graph, context)
-        return
-
-    if tag == const.GRAMMAR_VALUE_NOT and len(node) == 2:
-        operand = node[1]
-        operand_type = _infer_expression_datatype(operand, env, type_graph)
-        if operand_type is not None and not _is_boolean_datatype(operand_type):
-            raise StructuralValidationError(
-                f"{context} logical operator {str(tag)!r} expects a boolean operand but got {_format_datatype(operand_type)!r}"
-            )
-        _validate_expression_semantics(operand, env, type_graph, context)
-        return
-
-    if tag in {const.KEY_ADD, const.KEY_MUL} and len(node) == 3:
-        base_type = _infer_expression_datatype(node[1], env, type_graph)
-        if base_type is not None and not _is_numeric_datatype(base_type):
-            raise StructuralValidationError(
-                f"{context} arithmetic expression expects numeric operands but got {_format_datatype(base_type)!r}"
-            )
-        _validate_expression_semantics(node[1], env, type_graph, context)
-        for op, rhs in node[2]:
-            rhs_type = _infer_expression_datatype(rhs, env, type_graph)
-            if rhs_type is not None and not _is_numeric_datatype(rhs_type):
-                raise StructuralValidationError(
-                    f"{context} arithmetic operator {str(op)!r} expects numeric operands but got {_format_datatype(rhs_type)!r}"
-                )
-            if str(op) == "/" and _expression_is_zero_literal(rhs):
-                raise StructuralValidationError(f"{context} division by zero is not allowed")
-            _validate_expression_semantics(rhs, env, type_graph, context)
-        return
-
-    if tag in {const.KEY_PLUS, const.KEY_MINUS} and len(node) == 2:
-        operand = node[1]
-        operand_type = _infer_expression_datatype(operand, env, type_graph)
-        if operand_type is not None and not _is_numeric_datatype(operand_type):
-            raise StructuralValidationError(
-                f"{context} unary operator {str(tag)!r} expects a numeric operand but got {_format_datatype(operand_type)!r}"
-            )
-        _validate_expression_semantics(operand, env, type_graph, context)
-        return
-
-    if tag == const.KEY_TERNARY and len(node) == 3:
-        branch_types: list[Simple_DataType | str | None] = []
-        for branch in node[1]:
-            if isinstance(branch, tuple) and len(branch) == 2:
-                _validate_expression_semantics(branch[0], env, type_graph, context)
-                _validate_expression_semantics(branch[1], env, type_graph, context)
-                branch_types.append(_infer_expression_datatype(branch[1], env, type_graph))
-        _validate_expression_semantics(node[2], env, type_graph, context)
-        branch_types.append(_infer_expression_datatype(node[2], env, type_graph))
-
-        known_types = [datatype for datatype in branch_types if datatype is not None]
-        if len(known_types) >= 2 and _merge_compatible_types(known_types) is None:
-            joined = ", ".join(sorted({_format_datatype(datatype) for datatype in known_types}))
-            raise StructuralValidationError(
-                f"{context} IF-expression branches must have compatible datatypes; got {joined}"
-            )
-        return
-
-    for item in node[1:]:
-        _validate_expression_semantics(item, env, type_graph, context)
-
-
-def _infer_expression_datatype(
-    node: object,
-    env: dict[str, Variable],
-    type_graph: TypeGraph,
-) -> Simple_DataType | str | None:
-    if isinstance(node, bool):
-        return Simple_DataType.BOOLEAN
-    if isinstance(node, IntLiteral | int) and not isinstance(node, bool):
-        return Simple_DataType.INTEGER
-    if isinstance(node, FloatLiteral | float):
-        return Simple_DataType.REAL
-    if isinstance(node, str):
-        return Simple_DataType.STRING
-
-    if isinstance(node, dict):
-        if const.KEY_VAR_NAME in node:
-            return _resolve_ref_datatype(node, env, type_graph)
-        return None
-
-    if not isinstance(node, tuple) or not node:
-        return None
-
-    tag = node[0]
-    if tag == const.KEY_FUNCTION_CALL and len(node) == 3:
-        builtin = SATTLINE_BUILTINS.get(str(node[1]).casefold())
-        if builtin is None or builtin.return_type is None:
-            return None
-        return _normalize_builtin_datatype(builtin.return_type)
-
-    if tag in (const.KEY_COMPARE, const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND, const.GRAMMAR_VALUE_NOT):
-        return Simple_DataType.BOOLEAN
-
-    if tag in (const.KEY_ADD, const.KEY_MUL) and len(node) == 3:
-        datatypes = [_infer_expression_datatype(node[1], env, type_graph)]
-        datatypes.extend(
-            _infer_expression_datatype(item[1], env, type_graph)
-            for item in node[2]
-            if isinstance(item, tuple) and len(item) == 2
-        )
-        return _merge_numeric_types(datatypes)
-
-    if tag in (const.KEY_PLUS, const.KEY_MINUS) and len(node) == 2:
-        dtype = _infer_expression_datatype(node[1], env, type_graph)
-        return _merge_numeric_types([dtype])
-
-    if tag == const.KEY_TERNARY and len(node) == 3:
-        branch_types = [
-            _infer_expression_datatype(branch[1], env, type_graph)
-            for branch in node[1]
-            if isinstance(branch, tuple) and len(branch) == 2
-        ]
-        branch_types.append(_infer_expression_datatype(node[2], env, type_graph))
-        return _merge_compatible_types(branch_types)
-
-    return None
-
-
-def _builtin_type_matches(
-    actual: Simple_DataType | str,
-    expected: Simple_DataType | str,
-    *,
-    direction: str,
-) -> bool:
-    if is_anytype_name(expected):
-        return True
-
-    if isinstance(expected, Simple_DataType):
-        if not isinstance(actual, Simple_DataType):
-            return False
-
-        if actual == expected:
-            return True
-
-        if _is_string_simple_type(actual) and _is_string_simple_type(expected):
-            return True
-
-        return bool(direction == "in" and expected == Simple_DataType.REAL and actual == Simple_DataType.INTEGER)
-
-    if isinstance(actual, str):
-        return actual.casefold() == expected.casefold()
-
-    return False
-
-
-def _is_variable_ref_node(node: object) -> bool:
-    return isinstance(node, dict) and const.KEY_VAR_NAME in node
-
-
-def _validate_builtin_call_signature(
-    fn_name: str | None,
-    args: list[object],
-    env: dict[str, Variable],
-    type_graph: TypeGraph,
-    context: str,
-) -> None:
-    if not fn_name:
-        return
-
-    builtin = SATTLINE_BUILTINS.get(fn_name.casefold())
-    if builtin is None:
-        return
-
-    expected_arg_count = len(builtin.parameters)
-    actual_arg_count = len(args)
-    if actual_arg_count != expected_arg_count:
-        raise StructuralValidationError(
-            f"{context} call {fn_name!r} has {actual_arg_count} arguments but builtin expects {expected_arg_count}"
-        )
-
-    for index, parameter in enumerate(builtin.parameters, start=1):
-        argument = args[index - 1]
-
-        if parameter.direction in {"in var", "out", "inout"} and not _is_variable_ref_node(argument):
-            raise StructuralValidationError(
-                f"{context} call {fn_name!r} argument {index} must be a variable reference because builtin parameter {parameter.name!r} is {parameter.direction!r}"
-            )
-
-        if parameter.direction in {"out", "inout"} and isinstance(argument, dict) and _is_variable_ref_node(argument):
-            variable = _resolve_root_variable(argument, env)
-            if variable is not None and variable.const:
-                if fn_name.casefold() in {"setstringpos", "getstringpos"} and index == 1:
-                    continue
-                raise StructuralValidationError(
-                    f"{context} call {fn_name!r} argument {index} writes to CONST variable {variable.name!r}",
-                    **_span_kwargs(_ref_span(argument)),
-                )
-
-        actual = _infer_expression_datatype(argument, env, type_graph)
-        if actual is None:
-            continue
-
-        expected = _normalize_builtin_datatype(parameter.datatype)
-        if _builtin_type_matches(actual, expected, direction=parameter.direction):
-            continue
-
-        raise StructuralValidationError(
-            f"{context} call {fn_name!r} argument {index} has datatype {_format_datatype(actual)!r} "
-            f"but builtin parameter {parameter.name!r} expects {_format_datatype(expected)!r}"
-        )
-
-
-def _validate_call_arg_node(node: object, context: str) -> None:
-    if isinstance(node, str):
-        raise StructuralValidationError(
-            f"{context} uses string literal {node!r}; string literals are only allowed in parameter connections"
-        )
-
-    if isinstance(node, Tree):
-        for child in node.children:
-            _validate_call_arg_node(child, context)
-        return
-
-    if isinstance(node, list):
-        for item in node:
-            _validate_call_arg_node(item, context)
-        return
-
-    if isinstance(node, dict):
-        if const.KEY_VAR_NAME in node:
-            return
-
-        for value in node.values():
-            _validate_call_arg_node(value, context)
-        return
-
-    if isinstance(node, tuple):
-        if len(node) == 3 and node[0] == const.KEY_FUNCTION_CALL:
-            fn_name = node[1]
-            args = node[2] or []
-            for index, arg in enumerate(args, start=1):
-                _validate_call_arg_node(
-                    arg,
-                    f"{context} call {fn_name!r} argument {index}",
-                )
-            return
-
-        items = node[1:] if node and isinstance(node[0], str) else node
-        for item in items:
-            _validate_call_arg_node(item, context)
-
-
-def _validate_no_string_literals_in_calls(node: object, context: str) -> None:
-    if isinstance(node, Tree):
-        for child in node.children:
-            _validate_no_string_literals_in_calls(child, context)
-        return
-
-    if isinstance(node, list):
-        for item in node:
-            _validate_no_string_literals_in_calls(item, context)
-        return
-
-    if isinstance(node, dict):
-        if const.KEY_VAR_NAME in node:
-            return
-
-        for value in node.values():
-            _validate_no_string_literals_in_calls(value, context)
-        return
-
-    if isinstance(node, tuple):
-        if len(node) == 3 and node[0] == const.KEY_FUNCTION_CALL:
-            fn_name = node[1]
-            args = node[2] or []
-            for index, arg in enumerate(args, start=1):
-                _validate_call_arg_node(
-                    arg,
-                    f"{context} call {fn_name!r} argument {index}",
-                )
-            return
-
-        for item in node:
-            _validate_no_string_literals_in_calls(item, context)
-
-
-def _validate_builtin_call_types(
-    node: object,
-    env: dict[str, Variable],
-    type_graph: TypeGraph,
-    context: str,
-) -> None:
-    if isinstance(node, Tree):
-        for child in node.children:
-            _validate_builtin_call_types(child, env, type_graph, context)
-        return
-
-    if isinstance(node, list):
-        for item in node:
-            _validate_builtin_call_types(item, env, type_graph, context)
-        return
-
-    if isinstance(node, dict):
-        if const.KEY_VAR_NAME in node:
-            return
-
-        for value in node.values():
-            _validate_builtin_call_types(value, env, type_graph, context)
-        return
-
-    if isinstance(node, tuple):
-        if len(node) == 3 and node[0] == const.KEY_FUNCTION_CALL:
-            fn_name = node[1]
-            args = node[2] or []
-            _validate_builtin_call_signature(fn_name, args, env, type_graph, context)
-            for arg in args:
-                _validate_builtin_call_types(arg, env, type_graph, context)
-            return
-
-        for item in node:
-            _validate_builtin_call_types(item, env, type_graph, context)
-
-
 def _validate_statement_list(
     statements: list[object],
     env: dict[str, Variable],
     type_graph: TypeGraph,
     context: str,
+    *,
+    allow_old_state_assignment: bool,
 ) -> None:
     for statement in statements:
         _validate_expression_semantics(statement, env, type_graph, context)
@@ -1060,6 +499,19 @@ def _validate_statement_list(
             and statement[0] == const.KEY_ASSIGN
             and _is_variable_ref_node(statement[1])
         ):
+            target_ref = statement[1]
+            target_name = str(target_ref.get(const.KEY_VAR_NAME, "<unknown>"))
+            target_state = target_ref.get("state")
+            if (
+                not allow_old_state_assignment
+                and isinstance(target_state, str)
+                and target_state.casefold() == const.GRAMMAR_VALUE_OLD.casefold()
+            ):
+                raise StructuralValidationError(
+                    f"{context} assignment target {target_name!r} must not use OLD state access",
+                    **_span_kwargs(_ref_span(target_ref)),
+                    length=max(len(target_name), 1),
+                )
             variable = _resolve_root_variable(statement[1], env)
             if variable is not None and variable.const:
                 raise StructuralValidationError(
@@ -1092,10 +544,35 @@ def _validate_statement_list(
         _validate_builtin_call_types(statement, env, type_graph, context)
 
 
-def _validate_code_blocks(code, env: dict[str, Variable], type_graph: TypeGraph, context: str) -> None:
-    _validate_statement_list(code.enter, env, type_graph, f"{context} ENTERCODE")
-    _validate_statement_list(code.active, env, type_graph, f"{context} ACTIVECODE")
-    _validate_statement_list(code.exit, env, type_graph, f"{context} EXITCODE")
+def _validate_code_blocks(
+    code,
+    env: dict[str, Variable],
+    type_graph: TypeGraph,
+    context: str,
+    *,
+    allow_old_state_assignment: bool,
+) -> None:
+    _validate_statement_list(
+        code.enter,
+        env,
+        type_graph,
+        f"{context} ENTERCODE",
+        allow_old_state_assignment=allow_old_state_assignment,
+    )
+    _validate_statement_list(
+        code.active,
+        env,
+        type_graph,
+        f"{context} ACTIVECODE",
+        allow_old_state_assignment=allow_old_state_assignment,
+    )
+    _validate_statement_list(
+        code.exit,
+        env,
+        type_graph,
+        f"{context} EXITCODE",
+        allow_old_state_assignment=allow_old_state_assignment,
+    )
 
 
 def _validate_sequence_nodes(
@@ -1108,9 +585,11 @@ def _validate_sequence_nodes(
     type_graph: TypeGraph,
     require_init_step: bool,
     warning_sink: Callable[[str], None] | None = None,
+    allow_old_state_assignment: bool = True,
 ) -> None:
     previous_unit_name: str | None = None
     previous_unit_kind: str | None = None
+    previous_transition_name: str | None = None
     init_steps = 0
     missing_initial_init_step = False
 
@@ -1136,13 +615,31 @@ def _validate_sequence_nodes(
                     f"{context} has step {node.name!r} immediately after "
                     f"{previous_unit_kind} {previous_unit_name!r} without an intervening transition"
                 )
-            _validate_code_blocks(node.code, env, type_graph, f"{context} step {node.name!r}")
+            _validate_code_blocks(
+                node.code,
+                env,
+                type_graph,
+                f"{context} step {node.name!r}",
+                allow_old_state_assignment=allow_old_state_assignment,
+            )
             previous_unit_name = node.name
             previous_unit_kind = "step"
+            previous_transition_name = None
             continue
 
         previous_unit_name = None
         previous_unit_kind = None
+
+        if isinstance(node, SFCTransition | SFCTransitionSub):
+            transition_name = node.name if isinstance(node.name, str) and node.name else "<unnamed>"
+            if previous_transition_name is not None:
+                raise StructuralValidationError(
+                    f"{context} has transition {transition_name!r} immediately after transition "
+                    f"{previous_transition_name!r}; only one transition may execute per cycle in the same sequence path"
+                )
+            previous_transition_name = transition_name
+        else:
+            previous_transition_name = None
 
         if isinstance(node, SFCTransition):
             _validate_identifier(node.name, f"{context} transition")
@@ -1162,6 +659,7 @@ def _validate_sequence_nodes(
                 type_graph=type_graph,
                 require_init_step=False,
                 warning_sink=warning_sink,
+                allow_old_state_assignment=allow_old_state_assignment,
             )
         elif isinstance(node, SFCSubsequence):
             _validate_identifier(node.name, f"{context} subsequence")
@@ -1174,6 +672,7 @@ def _validate_sequence_nodes(
                 type_graph=type_graph,
                 require_init_step=False,
                 warning_sink=warning_sink,
+                allow_old_state_assignment=allow_old_state_assignment,
             )
         elif isinstance(node, SFCAlternative):
             for index, branch in enumerate(node.branches, start=1):
@@ -1186,6 +685,7 @@ def _validate_sequence_nodes(
                     type_graph=type_graph,
                     require_init_step=False,
                     warning_sink=warning_sink,
+                    allow_old_state_assignment=allow_old_state_assignment,
                 )
         elif isinstance(node, SFCParallel):
             for index, branch in enumerate(node.branches, start=1):
@@ -1198,6 +698,7 @@ def _validate_sequence_nodes(
                     type_graph=type_graph,
                     require_init_step=False,
                     warning_sink=warning_sink,
+                    allow_old_state_assignment=allow_old_state_assignment,
                 )
                 if branch:
                     trailer = _parallel_branch_trailer(branch[-1])
@@ -1230,9 +731,12 @@ def _validate_module_code(
     env: dict[str, Variable],
     type_graph: TypeGraph,
     warning_sink: Callable[[str], None] | None = None,
+    allow_old_state_assignment: bool = True,
 ) -> None:
     if modulecode is None:
         return
+
+    _validate_step_auto_variable_refs(modulecode, env, context)
 
     for equation in modulecode.equations or []:
         if isinstance(equation, Equation):
@@ -1242,6 +746,7 @@ def _validate_module_code(
                 env,
                 type_graph,
                 f"{context} equation {equation.name!r}",
+                allow_old_state_assignment=allow_old_state_assignment,
             )
 
     module_label_set: set[str] = set()
@@ -1264,6 +769,7 @@ def _validate_module_code(
                 type_graph=type_graph,
                 require_init_step=True,
                 warning_sink=warning_sink,
+                allow_old_state_assignment=allow_old_state_assignment,
             )
 
 
@@ -1274,6 +780,8 @@ def _validate_variable_list(
     type_graph: TypeGraph | None = None,
     known_datatypes: AbcSequence[str] = (),
     allow_unresolved_external_datatypes: bool = False,
+    is_record_field: bool = False,
+    is_parameter: bool = False,
 ) -> None:
     names = [variable.name for variable in variables or []]
     _ensure_unique_names(names, context, "variable")
@@ -1286,6 +794,8 @@ def _validate_variable_list(
                 type_graph=type_graph,
                 known_datatypes=known_datatypes,
                 allow_unresolved_external_datatypes=allow_unresolved_external_datatypes,
+                is_record_field=is_record_field,
+                is_parameter=is_parameter,
             )
 
 
@@ -1306,6 +816,7 @@ def _validate_datatypes(
             type_graph=type_graph,
             known_datatypes=known_datatypes,
             allow_unresolved_external_datatypes=allow_unresolved_external_datatypes,
+            is_record_field=True,
         )
 
 
@@ -1331,6 +842,15 @@ def _validate_unique_submodule_names(
         seen[key] = name
 
 
+@dataclass(frozen=True)
+class _ModuleValidationPolicy:
+    allow_parameterless_module_mappings: bool = False
+    warn_unknown_parameter_targets: bool = False
+    warn_incompatible_parameter_mappings: bool = False
+    warning_sink: Callable[[str], None] | None = None
+    allow_old_state_assignment: bool = True
+
+
 def _validate_parameter_mappings(
     parametermappings: AbcSequence[ParameterMapping] | None,
     context: str,
@@ -1338,10 +858,7 @@ def _validate_parameter_mappings(
     type_graph: TypeGraph,
     expected_parameters: dict[str, Variable] | None = None,
     source_env: dict[str, Variable] | None = None,
-    allow_parameterless_module_mappings: bool = False,
-    warn_unknown_parameter_targets: bool = False,
-    warn_incompatible_parameter_mappings: bool = False,
-    warning_sink: Callable[[str], None] | None = None,
+    policy: _ModuleValidationPolicy,
 ) -> None:
     seen: dict[str, str] = {}
 
@@ -1371,7 +888,7 @@ def _validate_parameter_mappings(
         base_name, field_path = _split_dotted_name(target_name)
         target_variable = expected_parameters.get(base_name.casefold())
         if target_variable is None:
-            if allow_parameterless_module_mappings and not expected_parameters:
+            if policy.allow_parameterless_module_mappings and not expected_parameters:
                 continue
             continue
 
@@ -1436,7 +953,7 @@ def _validate_parameter_mappings(
         _warn_or_raise(
             f"{context} maps {source_description or 'value'!r} with datatype {_format_datatype(actual_datatype)!r} "
             f"to parameter target {target_name!r} with datatype {_format_datatype(target_datatype)!r}",
-            warning_sink=warning_sink if warn_incompatible_parameter_mappings else None,
+            warning_sink=policy.warning_sink if policy.warn_incompatible_parameter_mappings else None,
             **_span_kwargs(target_span),
         )
 
@@ -1457,11 +974,10 @@ def _validate_module(
     moduletype_index: dict[str, list[ModuleTypeDef]],
     allow_unresolved_external_datatypes: bool = False,
     enforce_unique_submodule_names: bool = True,
-    allow_parameterless_module_mappings: bool = False,
-    warn_unknown_parameter_targets: bool = False,
-    warn_incompatible_parameter_mappings: bool = False,
-    warning_sink: Callable[[str], None] | None = None,
+    policy: _ModuleValidationPolicy | None = None,
 ) -> None:
+    active_policy = policy or _ModuleValidationPolicy()
+
     if isinstance(module, SingleModule):
         _validate_identifier(module.header.name, f"{context} module")
         module_context = f"{context} module {module.header.name!r}"
@@ -1487,17 +1003,15 @@ def _validate_module(
             type_graph=type_graph,
             expected_parameters={variable.name.casefold(): variable for variable in module.moduleparameters or []},
             source_env=parent_env,
-            allow_parameterless_module_mappings=allow_parameterless_module_mappings,
-            warn_unknown_parameter_targets=warn_unknown_parameter_targets,
-            warn_incompatible_parameter_mappings=warn_incompatible_parameter_mappings,
-            warning_sink=warning_sink,
+            policy=active_policy,
         )
         _validate_module_code(
             module.modulecode,
             module_context,
             env,
             type_graph,
-            warning_sink=warning_sink,
+            warning_sink=active_policy.warning_sink,
+            allow_old_state_assignment=active_policy.allow_old_state_assignment,
         )
         _validate_unique_submodule_names(
             module.submodules,
@@ -1514,10 +1028,7 @@ def _validate_module(
                 moduletype_index,
                 allow_unresolved_external_datatypes,
                 enforce_unique_submodule_names,
-                allow_parameterless_module_mappings,
-                warn_unknown_parameter_targets,
-                warn_incompatible_parameter_mappings,
-                warning_sink,
+                policy=active_policy,
             )
         return
 
@@ -1529,7 +1040,8 @@ def _validate_module(
             module_context,
             parent_env,
             type_graph,
-            warning_sink=warning_sink,
+            warning_sink=active_policy.warning_sink,
+            allow_old_state_assignment=active_policy.allow_old_state_assignment,
         )
         _validate_unique_submodule_names(
             module.submodules,
@@ -1546,10 +1058,7 @@ def _validate_module(
                 moduletype_index,
                 allow_unresolved_external_datatypes,
                 enforce_unique_submodule_names,
-                allow_parameterless_module_mappings,
-                warn_unknown_parameter_targets,
-                warn_incompatible_parameter_mappings,
-                warning_sink,
+                policy=active_policy,
             )
         return
 
@@ -1566,10 +1075,7 @@ def _validate_module(
             type_graph=type_graph,
             expected_parameters=expected_parameters,
             source_env=parent_env,
-            allow_parameterless_module_mappings=allow_parameterless_module_mappings,
-            warn_unknown_parameter_targets=warn_unknown_parameter_targets,
-            warn_incompatible_parameter_mappings=warn_incompatible_parameter_mappings,
-            warning_sink=warning_sink,
+            policy=active_policy,
         )
         return
 
@@ -1582,6 +1088,7 @@ def validate_transformed_basepicture(
     allow_unresolved_external_datatypes: bool = False,
     enforce_unique_submodule_names: bool = True,
     allow_parameterless_module_mappings: bool = False,
+    allow_old_state_assignment: bool = True,
     warn_unknown_parameter_targets: bool = False,
     warn_incompatible_parameter_mappings: bool = False,
     warning_sink: Callable[[str], None] | None = None,
@@ -1608,6 +1115,14 @@ def validate_transformed_basepicture(
     moduletype_index: dict[str, list[ModuleTypeDef]] = {}
     for moduletype in available_moduletype_defs:
         moduletype_index.setdefault(moduletype.name.casefold(), []).append(moduletype)
+
+    policy = _ModuleValidationPolicy(
+        allow_parameterless_module_mappings=allow_parameterless_module_mappings,
+        warn_unknown_parameter_targets=warn_unknown_parameter_targets,
+        warn_incompatible_parameter_mappings=warn_incompatible_parameter_mappings,
+        warning_sink=warning_sink,
+        allow_old_state_assignment=allow_old_state_assignment,
+    )
 
     _validate_variable_list(
         basepic.localvariables,
@@ -1636,6 +1151,7 @@ def validate_transformed_basepicture(
                 type_graph=type_graph,
                 known_datatypes=known_datatypes,
                 allow_unresolved_external_datatypes=allow_unresolved_external_datatypes,
+                is_parameter=True,
             )
             _validate_variable_list(
                 moduletype.localvariables,
@@ -1651,7 +1167,8 @@ def validate_transformed_basepicture(
                 moduletype_context,
                 env,
                 type_graph,
-                warning_sink=warning_sink,
+                warning_sink=policy.warning_sink,
+                allow_old_state_assignment=policy.allow_old_state_assignment,
             )
             _validate_unique_submodule_names(
                 moduletype.submodules,
@@ -1668,10 +1185,7 @@ def validate_transformed_basepicture(
                     moduletype_index,
                     allow_unresolved_external_datatypes,
                     enforce_unique_submodule_names,
-                    allow_parameterless_module_mappings,
-                    warn_unknown_parameter_targets,
-                    warn_incompatible_parameter_mappings,
-                    warning_sink,
+                    policy=policy,
                 )
 
     _validate_module_code(
@@ -1679,7 +1193,8 @@ def validate_transformed_basepicture(
         "BasePicture",
         base_env,
         type_graph,
-        warning_sink=warning_sink,
+        warning_sink=policy.warning_sink,
+        allow_old_state_assignment=policy.allow_old_state_assignment,
     )
     _validate_unique_submodule_names(
         basepic.submodules,
@@ -1697,8 +1212,22 @@ def validate_transformed_basepicture(
             moduletype_index,
             allow_unresolved_external_datatypes,
             enforce_unique_submodule_names,
-            allow_parameterless_module_mappings,
-            warn_unknown_parameter_targets,
-            warn_incompatible_parameter_mappings,
-            warning_sink,
+            policy=policy,
         )
+
+
+# Re-exports for backward compatibility with external imports
+__all__ = [
+    "StructuralValidationError",
+    "RawSourceValidationError",
+    "validate_transformed_basepicture",
+    # Type helpers exported to analyzers.validators
+    "_assignment_type_matches",
+    "_extract_time_literal",
+    "_has_time_literal_marker",
+    "_infer_literal_datatype",
+    "_is_valid_time_literal",
+    "_literal_matches_expected_datatype",
+    "_resolve_variable_field_datatype",
+    "_split_dotted_name",
+]

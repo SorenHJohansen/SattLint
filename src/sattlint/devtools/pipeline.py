@@ -584,25 +584,21 @@ def _run_pytest_stage(
     return pytest_report
 
 
-def _run_pipeline(
+def _prepare_pipeline_run(
     output_dir: Path,
     *,
     trace_target: Path | None,
-    profile: str = DEFAULT_PIPELINE_PROFILE,
-    include_vulture: bool | None = None,
-    include_bandit: bool | None = None,
-    baseline_findings: Path | None = None,
-    corpus_manifest_dir: Path | None = None,
-    changed_files: list[str] | None = None,
-    slow_phase_threshold_ms: float = 25.0,
-    phase_budget_ms: float = 50.0,
-    total_budget_ms: float = 250.0,
-    fail_on_drift: bool = False,
-    fail_on_budget: bool = False,
+    profile: str,
+    include_vulture: bool | None,
+    include_bandit: bool | None,
+    baseline_findings: Path | None,
+    corpus_manifest_dir: Path | None,
+    changed_files: list[str] | None,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     if baseline_findings is not None and not baseline_findings.exists():
         raise FileNotFoundError(f"Baseline findings file does not exist: {baseline_findings}")
+
     python_cmd = [_resolve_python_executable()]
     settings = _profile_settings(profile)
     run_vulture = settings["include_vulture"] if include_vulture is None else include_vulture
@@ -666,6 +662,8 @@ def _run_pipeline(
                 "call_graph",
                 "graphics_layout",
                 "impact_analysis",
+                "sattline_semantic",
+                "rule_metrics",
             }
         )
     if run_trace:
@@ -673,8 +671,6 @@ def _run_pipeline(
     enabled_artifacts.add("incremental_analysis")
     if run_coverage_summary:
         enabled_artifacts.add("coverage_summary")
-    if run_structural_reports:
-        enabled_artifacts.update({"sattline_semantic", "rule_metrics"})
 
     artifact_registry_report = build_artifact_registry_report(
         PIPELINE_ARTIFACTS,
@@ -683,11 +679,31 @@ def _run_pipeline(
         enabled_artifact_ids=enabled_artifacts,
     )
 
-    environment_report = _run_environment_stage(progress)
-    ruff_report, ruff_findings = _run_ruff_stage(progress, python_cmd=python_cmd)
-    pyright_report, pyright_findings = _run_pyright_stage(progress, python_cmd=python_cmd)
-    pytest_report = _run_pytest_stage(progress, output_dir=output_dir, python_cmd=python_cmd, profile=profile)
+    return {
+        "artifact_registry_report": artifact_registry_report,
+        "enabled_artifacts": enabled_artifacts,
+        "output_dir": output_dir,
+        "profile": profile,
+        "progress": progress,
+        "python_cmd": python_cmd,
+        "resolved_changed_files": resolved_changed_files,
+        "resolved_corpus_manifest_dir": resolved_corpus_manifest_dir,
+        "run_bandit": run_bandit,
+        "run_corpus": run_corpus,
+        "run_coverage_summary": run_coverage_summary,
+        "run_structural_reports": run_structural_reports,
+        "run_trace": run_trace,
+        "run_vulture": run_vulture,
+        "sanitized_output_dir": sanitized_output_dir,
+    }
 
+
+def _run_vulture_stage(
+    progress: ProgressReporter,
+    *,
+    python_cmd: list[str],
+    run_vulture: bool,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if run_vulture:
         progress.start_stage("vulture")
         vulture_result = _run_command(
@@ -696,13 +712,23 @@ def _run_pipeline(
         )
         vulture_findings = _parse_vulture_output(vulture_result.stdout)
         vulture_report = _command_payload(
-            vulture_result, finding_count=len(vulture_findings), findings=vulture_findings
+            vulture_result,
+            finding_count=len(vulture_findings),
+            findings=vulture_findings,
         )
         progress.complete_stage("vulture", detail=f"{len(vulture_findings)} findings")
-    else:
-        vulture_report = {"tool": "vulture", "skipped": True}
-        progress.skip_stage("vulture", detail="skipped by profile")
+        return vulture_report, vulture_findings
 
+    progress.skip_stage("vulture", detail="skipped by profile")
+    return {"tool": "vulture", "skipped": True}, []
+
+
+def _run_bandit_stage(
+    progress: ProgressReporter,
+    *,
+    python_cmd: list[str],
+    run_bandit: bool,
+) -> dict[str, Any]:
     if run_bandit:
         progress.start_stage("bandit")
         bandit_result = _run_command(
@@ -720,27 +746,36 @@ def _run_pipeline(
             "bandit",
             detail=f"{len(bandit_report.get('findings', []))} findings",
         )
-    else:
-        bandit_report = {"tool": "bandit", "skipped": True}
-        progress.skip_stage("bandit", detail="skipped by profile")
+        return bandit_report
 
-    architecture_report: dict[str, Any] = {"findings": [], "skipped": not run_structural_reports}
-    analyzer_registry_report: dict[str, Any] = {"rules": [], "skipped": not run_structural_reports}
-    dependency_graph_report: dict[str, Any] = {"edges": [], "skipped": not run_structural_reports}
-    call_graph_report: dict[str, Any] = {"edges": [], "skipped": not run_structural_reports}
+    progress.skip_stage("bandit", detail="skipped by profile")
+    return {"tool": "bandit", "skipped": True}
+
+
+def _collect_optional_reports(
+    context: dict[str, Any],
+    *,
+    trace_target: Path | None,
+) -> dict[str, Any]:
+    progress = context["progress"]
+    architecture_report: dict[str, Any] = {"findings": [], "skipped": not context["run_structural_reports"]}
+    analyzer_registry_report: dict[str, Any] = {"rules": [], "skipped": not context["run_structural_reports"]}
+    dependency_graph_report: dict[str, Any] = {"edges": [], "skipped": not context["run_structural_reports"]}
+    call_graph_report: dict[str, Any] = {"edges": [], "skipped": not context["run_structural_reports"]}
     graphics_layout_report: dict[str, Any] = {
         "entries": [],
         "groups": [],
         "findings": [],
-        "skipped": not run_structural_reports,
+        "skipped": not context["run_structural_reports"],
     }
     impact_analysis_report: dict[str, Any] = {
         "library_impacts": [],
         "module_impacts": [],
-        "skipped": not run_structural_reports,
+        "skipped": not context["run_structural_reports"],
     }
     workspace_graph_inputs: WorkspaceGraphInputs | None = None
-    if run_structural_reports:
+
+    if context["run_structural_reports"]:
         progress.start_stage("structural_reports")
         structural_reports = _collect_structural_report_bundle(progress_callback=progress.log)
         architecture_report = structural_reports.architecture_report
@@ -761,25 +796,22 @@ def _run_pipeline(
         progress.skip_stage("structural_reports", detail="skipped by profile")
 
     trace_report: dict[str, Any] | None = None
-    if run_trace:
+    if context["run_trace"]:
         if trace_target is None:
             raise ValueError("trace_target is required when run_trace is enabled")
         trace_target_label = sanitize_path_for_report(trace_target, repo_root=REPO_ROOT) or trace_target.as_posix()
         progress.start_stage("trace", detail=trace_target_label)
         trace_report = _collect_trace_report(trace_target)
-        progress.complete_stage(
-            "trace",
-            detail=trace_target_label,
-        )
+        progress.complete_stage("trace", detail=trace_target_label)
     else:
         progress.skip_stage("trace", detail="skipped by profile")
 
     corpus_results_report: dict[str, Any] | None = None
-    if run_corpus:
+    if context["run_corpus"]:
         progress.start_stage("corpus")
         corpus_results_report = run_corpus_suite(
-            output_dir,
-            manifest_dir=resolved_corpus_manifest_dir,
+            context["output_dir"],
+            manifest_dir=context["resolved_corpus_manifest_dir"],
             repo_root=REPO_ROOT,
             write_results=False,
         ).to_dict()
@@ -793,18 +825,42 @@ def _run_pipeline(
     else:
         progress.skip_stage("corpus", detail="no manifest directory")
 
-    incremental_analysis_report = build_incremental_analysis_report(
-        resolved_changed_files,
-        repo_root=REPO_ROOT,
-        analyzer_registry_report=analyzer_registry_report if run_structural_reports else None,
-    )
+    return {
+        "analyzer_registry_report": analyzer_registry_report,
+        "architecture_report": architecture_report,
+        "call_graph_report": call_graph_report,
+        "corpus_results_report": corpus_results_report,
+        "dependency_graph_report": dependency_graph_report,
+        "graphics_layout_report": graphics_layout_report,
+        "impact_analysis_report": impact_analysis_report,
+        "trace_report": trace_report,
+        "workspace_graph_inputs": workspace_graph_inputs,
+    }
 
+
+def _build_derived_reports(
+    context: dict[str, Any],
+    stage_reports: dict[str, Any],
+    optional_reports: dict[str, Any],
+    *,
+    baseline_findings: Path | None,
+    slow_phase_threshold_ms: float,
+    phase_budget_ms: float,
+    total_budget_ms: float,
+) -> dict[str, Any]:
+    incremental_analysis_report = build_incremental_analysis_report(
+        context["resolved_changed_files"],
+        repo_root=REPO_ROOT,
+        analyzer_registry_report=(
+            optional_reports["analyzer_registry_report"] if context["run_structural_reports"] else None
+        ),
+    )
     coverage_summary_report: dict[str, Any] | None = None
-    if run_coverage_summary:
+    if context["run_coverage_summary"]:
         coverage_summary_report = build_coverage_summary_report(REPO_ROOT)
 
     profiling_summary_report = build_profiling_summary_report(
-        trace_report,
+        optional_reports["trace_report"],
         slow_phase_threshold_ms=slow_phase_threshold_ms,
     )
     performance_budget_report = build_performance_budget_report(
@@ -812,9 +868,6 @@ def _run_pipeline(
         total_budget_ms=total_budget_ms,
         phase_budget_ms=phase_budget_ms,
     )
-
-    sattline_semantic_report: dict[str, Any] | None = None
-    rule_metrics_report: dict[str, Any] | None = None
 
     phase2_rule_metadata_gate = {
         "status": "skipped",
@@ -825,30 +878,41 @@ def _run_pipeline(
         "blocking_rule_ids": [],
         "advisory_rule_ids": [],
     }
-    if run_structural_reports:
-        phase2_rule_metadata_gate = architecture_report.get(
+    if context["run_structural_reports"]:
+        phase2_rule_metadata_gate = optional_reports["architecture_report"].get(
             "phase2_rule_metadata_gate",
             phase2_rule_metadata_gate,
         )
 
-    progress.start_stage("findings")
+    context["progress"].start_stage("findings")
     finding_collection = build_pipeline_finding_collection(
         repo_root=REPO_ROOT,
-        ruff_findings=ruff_findings,
-        pyright_findings=pyright_findings,
-        pytest_report=pytest_report,
-        vulture_findings=[] if vulture_report.get("skipped") else list(vulture_report.get("findings", [])),
-        bandit_findings=[] if bandit_report.get("skipped") else list(bandit_report.get("findings", [])),
-        architecture_findings=list(architecture_report.get("findings", [])),
+        ruff_findings=stage_reports["ruff_findings"],
+        pyright_findings=stage_reports["pyright_findings"],
+        pytest_report=stage_reports["pytest_report"],
+        vulture_findings=(
+            [] if stage_reports["vulture_report"].get("skipped") else list(stage_reports["vulture_report"].get("findings", []))
+        ),
+        bandit_findings=(
+            [] if stage_reports["bandit_report"].get("skipped") else list(stage_reports["bandit_report"].get("findings", []))
+        ),
+        architecture_findings=list(optional_reports["architecture_report"].get("findings", [])),
     )
-    progress.complete_stage("findings", detail=f"{len(finding_collection.findings)} normalized findings")
+    context["progress"].complete_stage(
+        "findings",
+        detail=f"{len(finding_collection.findings)} normalized findings",
+    )
 
-    if run_structural_reports:
-        _findings_dict = finding_collection.to_dict()
-        sattline_semantic_report = build_sattline_semantic_report(_findings_dict)
+    sattline_semantic_report: dict[str, Any] | None = None
+    rule_metrics_report: dict[str, Any] | None = None
+    if context["run_structural_reports"]:
+        findings_dict = finding_collection.to_dict()
+        sattline_semantic_report = build_sattline_semantic_report(findings_dict)
         rule_metrics_report = build_rule_metrics_report(
-            _findings_dict,
-            analyzer_registry_report if not analyzer_registry_report.get("skipped") else None,
+            findings_dict,
+            optional_reports["analyzer_registry_report"]
+            if not optional_reports["analyzer_registry_report"].get("skipped")
+            else None,
         )
 
     analysis_diff_report: dict[str, Any] | None = None
@@ -856,391 +920,591 @@ def _run_pipeline(
         analysis_diff_report = build_analysis_diff_report(
             baseline=load_finding_collection(baseline_findings),
             current=finding_collection,
-            baseline_label=sanitize_path_for_report(baseline_findings, repo_root=REPO_ROOT)
-            or baseline_findings.as_posix(),
+            baseline_label=(
+                sanitize_path_for_report(baseline_findings, repo_root=REPO_ROOT) or baseline_findings.as_posix()
+            ),
             current_label="findings.json",
         )
 
-    findings_schema = finding_collection.schema_metadata
+    return {
+        "analysis_diff_report": analysis_diff_report,
+        "coverage_summary_report": coverage_summary_report,
+        "finding_collection": finding_collection,
+        "findings_schema": finding_collection.schema_metadata,
+        "incremental_analysis_report": incremental_analysis_report,
+        "performance_budget_report": performance_budget_report,
+        "phase2_rule_metadata_gate": phase2_rule_metadata_gate,
+        "profiling_summary_report": profiling_summary_report,
+        "rule_metrics_report": rule_metrics_report,
+        "sattline_semantic_report": sattline_semantic_report,
+    }
 
-    tool_statuses = {
+
+def _build_static_tool_statuses(stage_reports: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
         "ruff": _make_tool_status(
-            status="fail" if ruff_report["exit_code"] != 0 else "pass",
+            status="fail" if stage_reports["ruff_report"]["exit_code"] != 0 else "pass",
             report="ruff.json",
-            raw_exit_code=ruff_report["exit_code"],
-            normalized_exit_code=ruff_report["exit_code"],
-            finding_count=ruff_report.get("finding_count", 0),
-            detail=f"{ruff_report.get('finding_count', 0)} findings",
+            raw_exit_code=stage_reports["ruff_report"]["exit_code"],
+            normalized_exit_code=stage_reports["ruff_report"]["exit_code"],
+            finding_count=stage_reports["ruff_report"].get("finding_count", 0),
+            detail=f"{stage_reports['ruff_report'].get('finding_count', 0)} findings",
         ),
         "pyright": _make_tool_status(
             status=(
                 "fail"
-                if pyright_report.get("error_count", 0) > 0
+                if stage_reports["pyright_report"].get("error_count", 0) > 0
                 else "pass_with_warnings"
-                if pyright_report.get("warning_count", 0) > 0
+                if stage_reports["pyright_report"].get("warning_count", 0) > 0
                 else "pass"
             ),
             report="pyright.json",
-            raw_exit_code=pyright_report["exit_code"],
-            normalized_exit_code=pyright_report["effective_exit_code"],
-            finding_count=pyright_report.get("error_count", 0),
-            note_count=pyright_report.get("warning_count", 0),
+            raw_exit_code=stage_reports["pyright_report"]["exit_code"],
+            normalized_exit_code=stage_reports["pyright_report"]["effective_exit_code"],
+            finding_count=stage_reports["pyright_report"].get("error_count", 0),
+            note_count=stage_reports["pyright_report"].get("warning_count", 0),
             detail=(
-                f"{pyright_report.get('error_count', 0)} errors, {pyright_report.get('warning_count', 0)} warnings"
+                f"{stage_reports['pyright_report'].get('error_count', 0)} errors, "
+                f"{stage_reports['pyright_report'].get('warning_count', 0)} warnings"
             ),
         ),
         "pytest": _make_tool_status(
-            status=("fail" if pytest_report["summary"]["failures"] or pytest_report["summary"]["errors"] else "pass"),
+            status=(
+                "fail"
+                if stage_reports["pytest_report"]["summary"]["failures"]
+                or stage_reports["pytest_report"]["summary"]["errors"]
+                else "pass"
+            ),
             report="pytest.json",
-            raw_exit_code=pytest_report["exit_code"],
-            normalized_exit_code=pytest_report["exit_code"],
-            finding_count=pytest_report["summary"]["failures"] + pytest_report["summary"]["errors"],
+            raw_exit_code=stage_reports["pytest_report"]["exit_code"],
+            normalized_exit_code=stage_reports["pytest_report"]["exit_code"],
+            finding_count=(
+                stage_reports["pytest_report"]["summary"]["failures"]
+                + stage_reports["pytest_report"]["summary"]["errors"]
+            ),
             detail=(
-                f"{pytest_report['summary']['tests']} tests, "
-                f"{pytest_report['summary']['failures']} failures, "
-                f"{pytest_report['summary']['errors']} errors"
+                f"{stage_reports['pytest_report']['summary']['tests']} tests, "
+                f"{stage_reports['pytest_report']['summary']['failures']} failures, "
+                f"{stage_reports['pytest_report']['summary']['errors']} errors"
             ),
         ),
         "vulture": _make_tool_status(
             status=(
                 "skipped"
-                if vulture_report.get("skipped")
+                if stage_reports["vulture_report"].get("skipped")
                 else "fail"
-                if vulture_report.get("finding_count", 0) or vulture_report.get("exit_code", 0) != 0
+                if stage_reports["vulture_report"].get("finding_count", 0)
+                or stage_reports["vulture_report"].get("exit_code", 0) != 0
                 else "pass"
             ),
-            report=None if vulture_report.get("skipped") else "vulture.json",
-            raw_exit_code=vulture_report.get("exit_code"),
-            normalized_exit_code=(0 if vulture_report.get("skipped") else vulture_report.get("exit_code")),
-            finding_count=vulture_report.get("finding_count", 0),
+            report=None if stage_reports["vulture_report"].get("skipped") else "vulture.json",
+            raw_exit_code=stage_reports["vulture_report"].get("exit_code"),
+            normalized_exit_code=(
+                0 if stage_reports["vulture_report"].get("skipped") else stage_reports["vulture_report"].get("exit_code")
+            ),
+            finding_count=stage_reports["vulture_report"].get("finding_count", 0),
             detail=(
                 "skipped by profile"
-                if vulture_report.get("skipped")
-                else f"{vulture_report.get('finding_count', 0)} findings"
+                if stage_reports["vulture_report"].get("skipped")
+                else f"{stage_reports['vulture_report'].get('finding_count', 0)} findings"
             ),
         ),
         "bandit": _make_tool_status(
             status=(
                 "skipped"
-                if bandit_report.get("skipped")
+                if stage_reports["bandit_report"].get("skipped")
                 else "fail"
-                if bandit_report.get("findings")
-                or bandit_report.get("errors")
-                or bandit_report.get("exit_code", 0) != 0
+                if stage_reports["bandit_report"].get("findings")
+                or stage_reports["bandit_report"].get("errors")
+                or stage_reports["bandit_report"].get("exit_code", 0) != 0
                 else "pass"
             ),
-            report=None if bandit_report.get("skipped") else "bandit.json",
-            raw_exit_code=bandit_report.get("exit_code"),
-            normalized_exit_code=(0 if bandit_report.get("skipped") else bandit_report.get("exit_code")),
-            finding_count=len(bandit_report.get("findings", [])),
+            report=None if stage_reports["bandit_report"].get("skipped") else "bandit.json",
+            raw_exit_code=stage_reports["bandit_report"].get("exit_code"),
+            normalized_exit_code=(
+                0 if stage_reports["bandit_report"].get("skipped") else stage_reports["bandit_report"].get("exit_code")
+            ),
+            finding_count=len(stage_reports["bandit_report"].get("findings", [])),
             detail=(
                 "skipped by profile"
-                if bandit_report.get("skipped")
-                else f"{len(bandit_report.get('findings', []))} findings"
+                if stage_reports["bandit_report"].get("skipped")
+                else f"{len(stage_reports['bandit_report'].get('findings', []))} findings"
             ),
         ),
+    }
+
+
+def _build_extended_tool_statuses(
+    optional_reports: dict[str, Any],
+    derived_reports: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    return {
         "corpus": _make_tool_status(
             status=(
                 "skipped"
-                if corpus_results_report is None
+                if optional_reports["corpus_results_report"] is None
                 else "fail"
-                if corpus_results_report["summary"]["failed_count"] > 0
+                if optional_reports["corpus_results_report"]["summary"]["failed_count"] > 0
                 else "pass"
             ),
-            report=None if corpus_results_report is None else CORPUS_RESULTS_FILENAME,
+            report=None if optional_reports["corpus_results_report"] is None else CORPUS_RESULTS_FILENAME,
             raw_exit_code=None,
             normalized_exit_code=(
                 None
-                if corpus_results_report is None
+                if optional_reports["corpus_results_report"] is None
                 else 1
-                if corpus_results_report["summary"]["failed_count"] > 0
+                if optional_reports["corpus_results_report"]["summary"]["failed_count"] > 0
                 else 0
             ),
-            finding_count=(0 if corpus_results_report is None else corpus_results_report["summary"]["failed_count"]),
+            finding_count=(
+                0 if optional_reports["corpus_results_report"] is None else optional_reports["corpus_results_report"]["summary"]["failed_count"]
+            ),
             detail=(
                 "skipped because no manifest directory was provided"
-                if corpus_results_report is None
-                else f"{corpus_results_report['summary']['case_count']} cases, {corpus_results_report['summary']['failed_count']} failed"
+                if optional_reports["corpus_results_report"] is None
+                else (
+                    f"{optional_reports['corpus_results_report']['summary']['case_count']} cases, "
+                    f"{optional_reports['corpus_results_report']['summary']['failed_count']} failed"
+                )
             ),
         ),
         "rule_metadata": _make_tool_status(
             status=(
                 "skipped"
-                if not run_structural_reports
+                if not context["run_structural_reports"]
                 else "fail"
-                if phase2_rule_metadata_gate["status"] == "fail"
+                if derived_reports["phase2_rule_metadata_gate"]["status"] == "fail"
                 else "pass"
             ),
-            report=None if not run_structural_reports else "architecture.json",
-            raw_exit_code=None,
-            normalized_exit_code=(
-                None if not run_structural_reports else 1 if phase2_rule_metadata_gate["status"] == "fail" else 0
-            ),
-            finding_count=len(phase2_rule_metadata_gate["blocking_rule_ids"]),
-            detail=(
-                "skipped by profile"
-                if not run_structural_reports
-                else f"{len(phase2_rule_metadata_gate['blocking_rule_ids'])} rules missing enforced metadata"
-                if phase2_rule_metadata_gate["status"] == "fail"
-                else None
-            ),
-        ),
-        "baseline_drift": _make_tool_status(
-            status=(
-                "skipped"
-                if analysis_diff_report is None
-                else "fail"
-                if fail_on_drift
-                and (
-                    analysis_diff_report["summary"]["new_count"] > 0
-                    or analysis_diff_report["summary"]["resolved_count"] > 0
-                )
-                else "pass"
-            ),
-            report=None if analysis_diff_report is None else "analysis_diff.json",
+            report=None if not context["run_structural_reports"] else "architecture.json",
             raw_exit_code=None,
             normalized_exit_code=(
                 None
-                if analysis_diff_report is None
+                if not context["run_structural_reports"]
+                else 1
+                if derived_reports["phase2_rule_metadata_gate"]["status"] == "fail"
+                else 0
+            ),
+            finding_count=len(derived_reports["phase2_rule_metadata_gate"]["blocking_rule_ids"]),
+            detail=(
+                "skipped by profile"
+                if not context["run_structural_reports"]
+                else (
+                    f"{len(derived_reports['phase2_rule_metadata_gate']['blocking_rule_ids'])} rules missing enforced metadata"
+                    if derived_reports["phase2_rule_metadata_gate"]["status"] == "fail"
+                    else None
+                )
+            ),
+        ),
+    }
+
+
+def _build_core_tool_statuses(
+    stage_reports: dict[str, Any],
+    optional_reports: dict[str, Any],
+    derived_reports: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    tool_statuses = _build_static_tool_statuses(stage_reports)
+    tool_statuses.update(_build_extended_tool_statuses(optional_reports, derived_reports, context))
+    return tool_statuses
+
+
+def _build_policy_tool_statuses(
+    derived_reports: dict[str, Any],
+    *,
+    fail_on_drift: bool,
+    fail_on_budget: bool,
+) -> dict[str, dict[str, Any]]:
+    return {
+        "baseline_drift": _make_tool_status(
+            status=(
+                "skipped"
+                if derived_reports["analysis_diff_report"] is None
+                else "fail"
+                if fail_on_drift
+                and (
+                    derived_reports["analysis_diff_report"]["summary"]["new_count"] > 0
+                    or derived_reports["analysis_diff_report"]["summary"]["resolved_count"] > 0
+                )
+                else "pass"
+            ),
+            report=None if derived_reports["analysis_diff_report"] is None else "analysis_diff.json",
+            raw_exit_code=None,
+            normalized_exit_code=(
+                None
+                if derived_reports["analysis_diff_report"] is None
                 else 1
                 if fail_on_drift
                 and (
-                    analysis_diff_report["summary"]["new_count"] > 0
-                    or analysis_diff_report["summary"]["resolved_count"] > 0
+                    derived_reports["analysis_diff_report"]["summary"]["new_count"] > 0
+                    or derived_reports["analysis_diff_report"]["summary"]["resolved_count"] > 0
                 )
                 else 0
             ),
             finding_count=(
                 0
-                if analysis_diff_report is None
-                else analysis_diff_report["summary"]["new_count"] + analysis_diff_report["summary"]["resolved_count"]
+                if derived_reports["analysis_diff_report"] is None
+                else derived_reports["analysis_diff_report"]["summary"]["new_count"]
+                + derived_reports["analysis_diff_report"]["summary"]["resolved_count"]
             ),
             detail=(
                 "skipped: no baseline supplied"
-                if analysis_diff_report is None
+                if derived_reports["analysis_diff_report"] is None
                 else (
-                    f"{analysis_diff_report['summary']['new_count']} new, "
-                    f"{analysis_diff_report['summary']['resolved_count']} resolved, "
-                    f"{analysis_diff_report['summary']['changed_count']} changed"
+                    f"{derived_reports['analysis_diff_report']['summary']['new_count']} new, "
+                    f"{derived_reports['analysis_diff_report']['summary']['resolved_count']} resolved, "
+                    f"{derived_reports['analysis_diff_report']['summary']['changed_count']} changed"
                 )
             ),
         ),
         "performance_budget": _make_tool_status(
             status=(
                 "skipped"
-                if performance_budget_report is None
+                if derived_reports["performance_budget_report"] is None
                 else "fail"
-                if fail_on_budget and performance_budget_report["status"] == "fail"
+                if fail_on_budget and derived_reports["performance_budget_report"]["status"] == "fail"
                 else "pass_with_notes"
-                if performance_budget_report["status"] == "fail"
+                if derived_reports["performance_budget_report"]["status"] == "fail"
                 else "pass"
             ),
-            report=None if performance_budget_report is None else "performance_budget.json",
+            report=None if derived_reports["performance_budget_report"] is None else "performance_budget.json",
             raw_exit_code=None,
             normalized_exit_code=(
                 None
-                if performance_budget_report is None
+                if derived_reports["performance_budget_report"] is None
                 else 1
-                if fail_on_budget and performance_budget_report["status"] == "fail"
+                if fail_on_budget and derived_reports["performance_budget_report"]["status"] == "fail"
                 else 0
             ),
-            finding_count=0 if performance_budget_report is None else performance_budget_report["violation_count"],
+            finding_count=(
+                0 if derived_reports["performance_budget_report"] is None else derived_reports["performance_budget_report"]["violation_count"]
+            ),
             detail=(
                 "skipped because trace profiling is unavailable"
-                if performance_budget_report is None
-                else f"{performance_budget_report['violation_count']} budget violations"
+                if derived_reports["performance_budget_report"] is None
+                else f"{derived_reports['performance_budget_report']['violation_count']} budget violations"
             ),
         ),
     }
-    overall_status = _overall_status(tool_statuses)
+
+
+def _build_pipeline_tool_exit_codes(
+    stage_reports: dict[str, Any],
+    optional_reports: dict[str, Any],
+    derived_reports: dict[str, Any],
+    context: dict[str, Any],
+    *,
+    fail_on_drift: bool,
+    fail_on_budget: bool,
+) -> dict[str, int | None]:
+    return {
+        "ruff": stage_reports["ruff_report"]["exit_code"],
+        "pyright": stage_reports["pyright_report"]["effective_exit_code"],
+        "pytest": stage_reports["pytest_report"]["exit_code"],
+        "vulture": stage_reports["vulture_report"].get("exit_code"),
+        "bandit": stage_reports["bandit_report"].get("exit_code"),
+        "corpus": (
+            None
+            if optional_reports["corpus_results_report"] is None
+            else 1
+            if optional_reports["corpus_results_report"]["summary"]["failed_count"] > 0
+            else 0
+        ),
+        "rule_metadata": (
+            None
+            if not context["run_structural_reports"]
+            else 1
+            if derived_reports["phase2_rule_metadata_gate"]["status"] == "fail"
+            else 0
+        ),
+        "baseline_drift": (
+            None
+            if derived_reports["analysis_diff_report"] is None
+            else 1
+            if fail_on_drift
+            and (
+                derived_reports["analysis_diff_report"]["summary"]["new_count"] > 0
+                or derived_reports["analysis_diff_report"]["summary"]["resolved_count"] > 0
+            )
+            else 0
+        ),
+        "performance_budget": (
+            None
+            if derived_reports["performance_budget_report"] is None
+            else 1
+            if fail_on_budget and derived_reports["performance_budget_report"]["status"] == "fail"
+            else 0
+        ),
+    }
+
+
+def _build_pipeline_counts(
+    stage_reports: dict[str, Any],
+    optional_reports: dict[str, Any],
+    derived_reports: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, int | float]:
+    incremental_analysis_report = derived_reports["incremental_analysis_report"]
+    profiling_summary_report = derived_reports["profiling_summary_report"]
+    performance_budget_report = derived_reports["performance_budget_report"]
+    return {
+        "baseline_new_findings": 0
+        if derived_reports["analysis_diff_report"] is None
+        else derived_reports["analysis_diff_report"]["summary"]["new_count"],
+        "baseline_resolved_findings": 0
+        if derived_reports["analysis_diff_report"] is None
+        else derived_reports["analysis_diff_report"]["summary"]["resolved_count"],
+        "baseline_changed_findings": 0
+        if derived_reports["analysis_diff_report"] is None
+        else derived_reports["analysis_diff_report"]["summary"]["changed_count"],
+        "baseline_unchanged_findings": 0
+        if derived_reports["analysis_diff_report"] is None
+        else derived_reports["analysis_diff_report"]["summary"]["unchanged_count"],
+        "incremental_changed_file_count": 0
+        if incremental_analysis_report is None
+        else incremental_analysis_report["summary"]["changed_file_count"],
+        "incremental_candidate_analyzer_count": 0
+        if incremental_analysis_report is None
+        else incremental_analysis_report["summary"]["impacted_analyzer_count"],
+        "incremental_blocking_analyzer_count": 0
+        if incremental_analysis_report is None
+        else incremental_analysis_report["summary"]["fallback_analyzer_count"],
+        "normalized_findings": len(derived_reports["finding_collection"].findings),
+        "corpus_case_count": 0
+        if optional_reports["corpus_results_report"] is None
+        else optional_reports["corpus_results_report"]["summary"]["case_count"],
+        "corpus_passed_case_count": 0
+        if optional_reports["corpus_results_report"] is None
+        else optional_reports["corpus_results_report"]["summary"]["passed_count"],
+        "corpus_failed_case_count": 0
+        if optional_reports["corpus_results_report"] is None
+        else optional_reports["corpus_results_report"]["summary"]["failed_count"],
+        "corpus_execution_error_count": 0
+        if optional_reports["corpus_results_report"] is None
+        else optional_reports["corpus_results_report"]["summary"]["execution_error_count"],
+        "ruff_findings": stage_reports["ruff_report"].get("finding_count", 0),
+        "pyright_errors": stage_reports["pyright_report"].get("error_count", 0),
+        "pyright_warnings": stage_reports["pyright_report"].get("warning_count", 0),
+        "pytest_failures": stage_reports["pytest_report"]["summary"]["failures"],
+        "pytest_errors": stage_reports["pytest_report"]["summary"]["errors"],
+        "vulture_findings": stage_reports["vulture_report"].get("finding_count", 0),
+        "bandit_findings": len(stage_reports["bandit_report"].get("findings", [])),
+        "architecture_findings": len(optional_reports["architecture_report"]["findings"]),
+        "semantic_rule_count": len(optional_reports["analyzer_registry_report"]["rules"]),
+        "phase2_rule_metadata_blocking_gaps": len(derived_reports["phase2_rule_metadata_gate"]["blocking_rule_ids"]),
+        "phase2_rule_metadata_advisory_gaps": len(derived_reports["phase2_rule_metadata_gate"]["advisory_rule_ids"]),
+        "dependency_graph_edges": len(optional_reports["dependency_graph_report"]["edges"]),
+        "call_graph_edges": len(optional_reports["call_graph_report"]["edges"]),
+        "graphics_layout_entries": len(optional_reports["graphics_layout_report"]["entries"]),
+        "graphics_layout_groups": len(optional_reports["graphics_layout_report"]["groups"]),
+        "graphics_layout_findings": len(optional_reports["graphics_layout_report"]["findings"]),
+        "impact_analysis_library_nodes": len(optional_reports["impact_analysis_report"]["library_impacts"]),
+        "impact_analysis_module_nodes": len(optional_reports["impact_analysis_report"]["module_impacts"]),
+        "workspace_graph_snapshot_failures": 0
+        if optional_reports["workspace_graph_inputs"] is None
+        else len(optional_reports["workspace_graph_inputs"].snapshot_failures),
+        "trace_dataflow_issues": 0
+        if optional_reports["trace_report"] is None
+        else optional_reports["trace_report"].get("dataflow_analysis", {}).get("issue_count", 0),
+        "trace_unreachable_logic": 0
+        if optional_reports["trace_report"] is None
+        else len(optional_reports["trace_report"].get("heuristics", {}).get("unreachable_logic", [])),
+        "trace_transform_violations": 0
+        if optional_reports["trace_report"] is None
+        else len(optional_reports["trace_report"].get("heuristics", {}).get("transform_invariant_violations", [])),
+        "profiling_total_duration_ms": 0.0
+        if profiling_summary_report is None
+        else profiling_summary_report["total_duration_ms"],
+        "profiling_phase_count": 0
+        if profiling_summary_report is None
+        else profiling_summary_report["summary"]["phase_count"],
+        "profiling_slow_phase_count": 0
+        if profiling_summary_report is None
+        else profiling_summary_report["summary"]["slow_phase_count"],
+        "performance_budget_violation_count": 0
+        if performance_budget_report is None
+        else performance_budget_report["violation_count"],
+    }
+
+
+def _finalize_pipeline_outputs(
+    context: dict[str, Any],
+    stage_reports: dict[str, Any],
+    optional_reports: dict[str, Any],
+    derived_reports: dict[str, Any],
+    *,
+    fail_on_drift: bool,
+    fail_on_budget: bool,
+) -> dict[str, Any]:
+    tool_statuses = _build_core_tool_statuses(stage_reports, optional_reports, derived_reports, context)
+    tool_statuses.update(
+        _build_policy_tool_statuses(
+            derived_reports,
+            fail_on_drift=fail_on_drift,
+            fail_on_budget=fail_on_budget,
+        )
+    )
+    overall_status_value = _overall_status(tool_statuses)
     failing_tools = [name for name, payload in tool_statuses.items() if payload["status"] == "fail"]
     non_blocking_tools = [name for name, payload in tool_statuses.items() if payload["status"] == "pass_with_notes"]
-
     reports = artifact_reports_map(
         PIPELINE_ARTIFACTS,
-        profile=profile,
-        enabled_artifact_ids=enabled_artifacts,
+        profile=context["profile"],
+        enabled_artifact_ids=context["enabled_artifacts"],
     )
 
     status_report = build_pipeline_status_report(
-        profile=profile,
-        sanitized_output_dir=sanitized_output_dir,
-        overall_status_value=overall_status,
+        profile=context["profile"],
+        sanitized_output_dir=context["sanitized_output_dir"],
+        overall_status_value=overall_status_value,
         tool_statuses=tool_statuses,
         failing_tools=failing_tools,
         non_blocking_tools=non_blocking_tools,
-        progress_report=f"{sanitized_output_dir}/progress.json",
-        findings_schema=findings_schema,
+        progress_report=f"{context['sanitized_output_dir']}/progress.json",
+        findings_schema=derived_reports["findings_schema"],
     )
-
     summary = build_pipeline_summary_report(
-        profile=profile,
-        sanitized_output_dir=sanitized_output_dir,
+        profile=context["profile"],
+        sanitized_output_dir=context["sanitized_output_dir"],
         reports=reports,
-        overall_status_value=overall_status,
+        overall_status_value=overall_status_value,
         tool_statuses=tool_statuses,
         failing_tools=failing_tools,
         non_blocking_tools=non_blocking_tools,
-        tool_exit_codes={
-            "ruff": ruff_report["exit_code"],
-            "pyright": pyright_report["effective_exit_code"],
-            "pytest": pytest_report["exit_code"],
-            "vulture": vulture_report.get("exit_code"),
-            "bandit": bandit_report.get("exit_code"),
-            "corpus": (
-                None
-                if corpus_results_report is None
-                else 1
-                if corpus_results_report["summary"]["failed_count"] > 0
-                else 0
-            ),
-            "rule_metadata": (
-                None if not run_structural_reports else 1 if phase2_rule_metadata_gate["status"] == "fail" else 0
-            ),
-            "baseline_drift": (
-                None
-                if analysis_diff_report is None
-                else 1
-                if fail_on_drift
-                and (
-                    analysis_diff_report["summary"]["new_count"] > 0
-                    or analysis_diff_report["summary"]["resolved_count"] > 0
-                )
-                else 0
-                if analysis_diff_report is not None
-                else None
-            ),
-            "performance_budget": (
-                None
-                if performance_budget_report is None
-                else 1
-                if fail_on_budget and performance_budget_report["status"] == "fail"
-                else 0
-            ),
-        },
-        artifact_registry_report=artifact_registry_report,
-        progress_report=f"{sanitized_output_dir}/progress.json",
-        findings_schema=findings_schema,
-        counts={
-            "baseline_new_findings": 0
-            if analysis_diff_report is None
-            else analysis_diff_report["summary"]["new_count"],
-            "baseline_resolved_findings": 0
-            if analysis_diff_report is None
-            else analysis_diff_report["summary"]["resolved_count"],
-            "baseline_changed_findings": 0
-            if analysis_diff_report is None
-            else analysis_diff_report["summary"]["changed_count"],
-            "baseline_unchanged_findings": 0
-            if analysis_diff_report is None
-            else analysis_diff_report["summary"]["unchanged_count"],
-            "incremental_changed_file_count": 0
-            if incremental_analysis_report is None
-            else incremental_analysis_report["summary"]["changed_file_count"],
-            "incremental_candidate_analyzer_count": 0
-            if incremental_analysis_report is None
-            else incremental_analysis_report["summary"]["impacted_analyzer_count"],
-            "incremental_blocking_analyzer_count": 0
-            if incremental_analysis_report is None
-            else incremental_analysis_report["summary"]["fallback_analyzer_count"],
-            "normalized_findings": len(finding_collection.findings),
-            "corpus_case_count": 0 if corpus_results_report is None else corpus_results_report["summary"]["case_count"],
-            "corpus_passed_case_count": 0
-            if corpus_results_report is None
-            else corpus_results_report["summary"]["passed_count"],
-            "corpus_failed_case_count": 0
-            if corpus_results_report is None
-            else corpus_results_report["summary"]["failed_count"],
-            "corpus_execution_error_count": 0
-            if corpus_results_report is None
-            else corpus_results_report["summary"]["execution_error_count"],
-            "ruff_findings": ruff_report.get("finding_count", 0),
-            "pyright_errors": pyright_report.get("error_count", 0),
-            "pyright_warnings": pyright_report.get("warning_count", 0),
-            "pytest_failures": pytest_report["summary"]["failures"],
-            "pytest_errors": pytest_report["summary"]["errors"],
-            "vulture_findings": vulture_report.get("finding_count", 0),
-            "bandit_findings": len(bandit_report.get("findings", [])),
-            "architecture_findings": len(architecture_report["findings"]),
-            "semantic_rule_count": len(analyzer_registry_report["rules"]),
-            "phase2_rule_metadata_blocking_gaps": len(phase2_rule_metadata_gate["blocking_rule_ids"]),
-            "phase2_rule_metadata_advisory_gaps": len(phase2_rule_metadata_gate["advisory_rule_ids"]),
-            "dependency_graph_edges": len(dependency_graph_report["edges"]),
-            "call_graph_edges": len(call_graph_report["edges"]),
-            "graphics_layout_entries": len(graphics_layout_report["entries"]),
-            "graphics_layout_groups": len(graphics_layout_report["groups"]),
-            "graphics_layout_findings": len(graphics_layout_report["findings"]),
-            "impact_analysis_library_nodes": len(impact_analysis_report["library_impacts"]),
-            "impact_analysis_module_nodes": len(impact_analysis_report["module_impacts"]),
-            "workspace_graph_snapshot_failures": 0
-            if workspace_graph_inputs is None
-            else len(workspace_graph_inputs.snapshot_failures),
-            "trace_dataflow_issues": 0
-            if trace_report is None
-            else trace_report.get("dataflow_analysis", {}).get("issue_count", 0),
-            "trace_unreachable_logic": 0
-            if trace_report is None
-            else len(trace_report.get("heuristics", {}).get("unreachable_logic", [])),
-            "trace_transform_violations": 0
-            if trace_report is None
-            else len(trace_report.get("heuristics", {}).get("transform_invariant_violations", [])),
-            "profiling_total_duration_ms": 0.0
-            if profiling_summary_report is None
-            else profiling_summary_report["total_duration_ms"],
-            "profiling_phase_count": 0
-            if profiling_summary_report is None
-            else profiling_summary_report["summary"]["phase_count"],
-            "profiling_slow_phase_count": 0
-            if profiling_summary_report is None
-            else profiling_summary_report["summary"]["slow_phase_count"],
-            "performance_budget_violation_count": 0
-            if performance_budget_report is None
-            else performance_budget_report["violation_count"],
-        },
+        tool_exit_codes=_build_pipeline_tool_exit_codes(
+            stage_reports,
+            optional_reports,
+            derived_reports,
+            context,
+            fail_on_drift=fail_on_drift,
+            fail_on_budget=fail_on_budget,
+        ),
+        artifact_registry_report=context["artifact_registry_report"],
+        progress_report=f"{context['sanitized_output_dir']}/progress.json",
+        findings_schema=derived_reports["findings_schema"],
+        counts=_build_pipeline_counts(stage_reports, optional_reports, derived_reports, context),
     )
 
     artifact_context = PipelineArtifactContext(
         payloads={
-            "progress": progress.to_dict(),
-            "artifact_registry": artifact_registry_report,
-            "environment": environment_report,
-            "ruff": ruff_report,
-            "pyright": pyright_report,
-            "pytest": pytest_report,
-            "vulture": None if vulture_report.get("skipped") else vulture_report,
-            "bandit": None if bandit_report.get("skipped") else bandit_report,
-            "architecture": None if architecture_report.get("skipped") else architecture_report,
-            "analyzer_registry": None if analyzer_registry_report.get("skipped") else analyzer_registry_report,
-            "dependency_graph": None if dependency_graph_report.get("skipped") else dependency_graph_report,
-            "call_graph": None if call_graph_report.get("skipped") else call_graph_report,
-            "graphics_layout": None if graphics_layout_report.get("skipped") else graphics_layout_report,
-            "impact_analysis": None if impact_analysis_report.get("skipped") else impact_analysis_report,
-            "trace": trace_report,
-            "incremental_analysis": incremental_analysis_report,
-            "findings": finding_collection.to_dict(),
-            "analysis_diff": analysis_diff_report,
-            "corpus_results": corpus_results_report,
-            "coverage_summary": coverage_summary_report,
-            "sattline_semantic": sattline_semantic_report,
-            "rule_metrics": rule_metrics_report,
-            "profiling_summary": profiling_summary_report,
-            "performance_budget": performance_budget_report,
+            "progress": context["progress"].to_dict(),
+            "artifact_registry": context["artifact_registry_report"],
+            "environment": stage_reports["environment_report"],
+            "ruff": stage_reports["ruff_report"],
+            "pyright": stage_reports["pyright_report"],
+            "pytest": stage_reports["pytest_report"],
+            "vulture": None if stage_reports["vulture_report"].get("skipped") else stage_reports["vulture_report"],
+            "bandit": None if stage_reports["bandit_report"].get("skipped") else stage_reports["bandit_report"],
+            "architecture": None if optional_reports["architecture_report"].get("skipped") else optional_reports["architecture_report"],
+            "analyzer_registry": None if optional_reports["analyzer_registry_report"].get("skipped") else optional_reports["analyzer_registry_report"],
+            "dependency_graph": None if optional_reports["dependency_graph_report"].get("skipped") else optional_reports["dependency_graph_report"],
+            "call_graph": None if optional_reports["call_graph_report"].get("skipped") else optional_reports["call_graph_report"],
+            "graphics_layout": None if optional_reports["graphics_layout_report"].get("skipped") else optional_reports["graphics_layout_report"],
+            "impact_analysis": None if optional_reports["impact_analysis_report"].get("skipped") else optional_reports["impact_analysis_report"],
+            "trace": optional_reports["trace_report"],
+            "incremental_analysis": derived_reports["incremental_analysis_report"],
+            "findings": derived_reports["finding_collection"].to_dict(),
+            "analysis_diff": derived_reports["analysis_diff_report"],
+            "corpus_results": optional_reports["corpus_results_report"],
+            "coverage_summary": derived_reports["coverage_summary_report"],
+            "sattline_semantic": derived_reports["sattline_semantic_report"],
+            "rule_metrics": derived_reports["rule_metrics_report"],
+            "profiling_summary": derived_reports["profiling_summary_report"],
+            "performance_budget": derived_reports["performance_budget_report"],
             "status": status_report,
             "summary": summary,
         }
     )
-    progress.start_stage("write_artifacts")
+    context["progress"].start_stage("write_artifacts")
     write_pipeline_artifacts(
-        output_dir,
+        context["output_dir"],
         artifacts=PIPELINE_ARTIFACTS,
-        profile=profile,
-        enabled_artifact_ids=enabled_artifacts,
+        profile=context["profile"],
+        enabled_artifact_ids=context["enabled_artifacts"],
         context=artifact_context,
         write_json=write_json_artifact,
     )
-    progress.complete_stage("write_artifacts")
-    progress.finalize(overall_status=overall_status)
+    context["progress"].complete_stage("write_artifacts")
+    context["progress"].finalize(overall_status=overall_status_value)
     return summary
+
+
+def _run_pipeline(
+    output_dir: Path,
+    *,
+    trace_target: Path | None,
+    profile: str = DEFAULT_PIPELINE_PROFILE,
+    include_vulture: bool | None = None,
+    include_bandit: bool | None = None,
+    baseline_findings: Path | None = None,
+    corpus_manifest_dir: Path | None = None,
+    changed_files: list[str] | None = None,
+    slow_phase_threshold_ms: float = 25.0,
+    phase_budget_ms: float = 50.0,
+    total_budget_ms: float = 250.0,
+    fail_on_drift: bool = False,
+    fail_on_budget: bool = False,
+) -> dict[str, Any]:
+    context = _prepare_pipeline_run(
+        output_dir,
+        trace_target=trace_target,
+        profile=profile,
+        include_vulture=include_vulture,
+        include_bandit=include_bandit,
+        baseline_findings=baseline_findings,
+        corpus_manifest_dir=corpus_manifest_dir,
+        changed_files=changed_files,
+    )
+    progress = context["progress"]
+    environment_report = _run_environment_stage(progress)
+    ruff_report, ruff_findings = _run_ruff_stage(progress, python_cmd=context["python_cmd"])
+    pyright_report, pyright_findings = _run_pyright_stage(progress, python_cmd=context["python_cmd"])
+    pytest_report = _run_pytest_stage(
+        progress,
+        output_dir=context["output_dir"],
+        python_cmd=context["python_cmd"],
+        profile=context["profile"],
+    )
+    vulture_report, _vulture_findings = _run_vulture_stage(
+        progress,
+        python_cmd=context["python_cmd"],
+        run_vulture=context["run_vulture"],
+    )
+    bandit_report = _run_bandit_stage(
+        progress,
+        python_cmd=context["python_cmd"],
+        run_bandit=context["run_bandit"],
+    )
+    stage_reports = {
+        "bandit_report": bandit_report,
+        "environment_report": environment_report,
+        "pyright_findings": pyright_findings,
+        "pyright_report": pyright_report,
+        "pytest_report": pytest_report,
+        "ruff_findings": ruff_findings,
+        "ruff_report": ruff_report,
+        "vulture_report": vulture_report,
+    }
+    optional_reports = _collect_optional_reports(context, trace_target=trace_target)
+    derived_reports = _build_derived_reports(
+        context,
+        stage_reports,
+        optional_reports,
+        baseline_findings=baseline_findings,
+        slow_phase_threshold_ms=slow_phase_threshold_ms,
+        phase_budget_ms=phase_budget_ms,
+        total_budget_ms=total_budget_ms,
+    )
+    return _finalize_pipeline_outputs(
+        context,
+        stage_reports,
+        optional_reports,
+        derived_reports,
+        fail_on_drift=fail_on_drift,
+        fail_on_budget=fail_on_budget,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

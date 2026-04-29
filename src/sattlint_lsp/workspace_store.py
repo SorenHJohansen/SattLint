@@ -13,12 +13,13 @@ from typing import Any
 from lsprotocol.types import Diagnostic
 
 from sattline_parser.api import read_text_with_fallback
-from sattlint.editor_api import (
+from sattlint.core.semantic import (
     SemanticSnapshot,
     WorkspaceSourceDiscovery,
     discover_workspace_sources,
     load_workspace_snapshot,
 )
+from sattlint.semantic_analysis import build_variable_semantic_artifacts
 
 _PROGRAM_SUFFIXES = {".s", ".x"}
 
@@ -338,6 +339,7 @@ class WorkspaceSnapshotStore:
             scan_root_only=bool(getattr(settings, "scan_root_only", False)),
             collect_variable_diagnostics=bool(getattr(settings, "enable_variable_diagnostics", True)),
             discovery=discovery,
+            _analysis_provider=build_variable_semantic_artifacts,
         )
         source_files = tuple(
             sorted(

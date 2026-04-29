@@ -209,7 +209,40 @@ def test_icf_validation_skips_placeholder_h_dot_value():
 
     assert report.skipped_entries == 1
     assert report.valid_entries == 0
+    assert len(report.skipped_details) == 1
+    assert report.skipped_details[0].reason == "placeholder value"
     assert not any(issue.reason == "program mismatch" for issue in report.issues)
+    summary = report.summary()
+    assert "Skipped entries:" in summary
+    assert "placeholder value (matches placeholder pattern X::.)" in summary
+
+
+def test_icf_validation_reports_unparseable_reference_as_skipped_detail():
+    bp = BasePicture(
+        header=_header("Program"),
+        submodules=[SingleModule(header=_header("Unit"), moduledef=None)],
+    )
+
+    entries = [
+        _entry(
+            "Tag1",
+            "free_text_without_program_path",
+            unit="Unit",
+            journal="JournalA",
+            group="JournalData_DCStoMES",
+        ),
+    ]
+
+    report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
+
+    assert report.skipped_entries == 1
+    assert report.valid_entries == 0
+    assert len(report.skipped_details) == 1
+    assert report.skipped_details[0].reason == "unparseable SattLine reference"
+    assert report.skipped_details[0].detail == "expected Program:Path value"
+    summary = report.summary()
+    assert "Skipped entries:" in summary
+    assert "unparseable SattLine reference (expected Program:Path value)" in summary
 
 
 def test_icf_validation_placeholder_counts_as_covered_for_completeness():
@@ -846,11 +879,18 @@ def test_icf_validation_flags_unit_structure_drift_within_same_sattline_type_onl
     assert len(drift_issues) == 1
     assert drift_issues[0].entry.unit == "KaHA221B"
     assert drift_issues[0].detail is not None
-    assert drift_issues[0].detail.startswith("unit type ApplTank differs from KaHA221A: missing 1 entries (")
+    assert drift_issues[0].detail.startswith(
+        "current unit KaHA221B (unit type ApplTank) differs from reference unit KaHA221A: missing 1 entries ("
+    )
     assert (
-        "[HygienicStatus/JournalData_DCStoMES] cr_id => Program:StartMaster.<UNIT>.HygienicStatus.T.CR_ID"
+        "[Journal HygienicStatus | Group JournalData_DCStoMES] cr_id => Program:StartMaster.<UNIT>.HygienicStatus.T.CR_ID"
         in drift_issues[0].detail
     )
+    drift_header = next(line for line in summary.splitlines() if "unit structure drift" in line)
+    assert "[Unit KaHA221B]: unit structure drift" in drift_header
+    assert "Journal HygienicStatus" not in drift_header
+    assert "compared units: KaHA221B vs KaHA221A (unit type ApplTank)" in summary
+    assert "action: add these missing entries to current unit" in summary
     assert "OPR_ID =>" not in summary
 
 

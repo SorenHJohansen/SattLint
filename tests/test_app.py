@@ -1347,6 +1347,128 @@ def test_main_returns_error_for_unknown_cli_command(capsys):
     assert "usage:" in captured.err.lower()
 
 
+def test_run_validate_config_command_delegates_to_cli_owner(monkeypatch):
+    seen: dict[str, object] = {}
+
+    def fake_run_validate_config_command(
+        cfg: dict,
+        *,
+        config_path: Path,
+        default_used: bool,
+        self_check_fn,
+        exit_success: int,
+        exit_usage_error: int,
+    ) -> int:
+        seen["cfg"] = cfg
+        seen["config_path"] = config_path
+        seen["default_used"] = default_used
+        seen["self_check_fn"] = self_check_fn
+        seen["exit_success"] = exit_success
+        seen["exit_usage_error"] = exit_usage_error
+        return 77
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "run_validate_config_command",
+        fake_run_validate_config_command,
+    )
+
+    cfg = {"debug": False}
+    result = app.run_validate_config_command(cfg, config_path=Path("custom.toml"), default_used=True)
+
+    assert result == 77
+    assert seen["cfg"] is cfg
+    assert seen["config_path"] == Path("custom.toml")
+    assert seen["default_used"] is True
+    assert seen["self_check_fn"] is app.self_check
+    assert seen["exit_success"] == app.EXIT_SUCCESS
+    assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
+
+
+def test_run_analyze_command_delegates_to_cli_owner(monkeypatch):
+    seen: dict[str, object] = {}
+
+    def fake_run_analyze_command(
+        cfg: dict,
+        *,
+        selected_keys: list[str] | None,
+        use_cache: bool,
+        run_checks_fn,
+        exit_success: int,
+    ) -> int:
+        seen["cfg"] = cfg
+        seen["selected_keys"] = selected_keys
+        seen["use_cache"] = use_cache
+        seen["run_checks_fn"] = run_checks_fn
+        seen["exit_success"] = exit_success
+        return 78
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "run_analyze_command",
+        fake_run_analyze_command,
+    )
+
+    cfg = {"debug": False}
+    result = app.run_analyze_command(cfg, selected_keys=["variables"], use_cache=False)
+
+    assert result == 78
+    assert seen["cfg"] is cfg
+    assert seen["selected_keys"] == ["variables"]
+    assert seen["use_cache"] is False
+    assert callable(seen["run_checks_fn"])
+    assert seen["exit_success"] == app.EXIT_SUCCESS
+
+
+def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
+    seen: dict[str, object] = {}
+
+    def fake_run_docgen_command(
+        cfg: dict,
+        *,
+        use_cache: bool,
+        output_dir: str | None,
+        output_path: str | None,
+        iter_loaded_projects_fn,
+        documentation_unit_selection_fn,
+        exit_success: int,
+        exit_usage_error: int,
+    ) -> int:
+        seen["cfg"] = cfg
+        seen["use_cache"] = use_cache
+        seen["output_dir"] = output_dir
+        seen["output_path"] = output_path
+        seen["iter_loaded_projects_fn"] = iter_loaded_projects_fn
+        seen["documentation_unit_selection_fn"] = documentation_unit_selection_fn
+        seen["exit_success"] = exit_success
+        seen["exit_usage_error"] = exit_usage_error
+        return 79
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "run_docgen_command",
+        fake_run_docgen_command,
+    )
+
+    cfg = {"debug": False}
+    result = app.run_docgen_command(
+        cfg,
+        use_cache=False,
+        output_dir="docs-out",
+        output_path=None,
+    )
+
+    assert result == 79
+    assert seen["cfg"] is cfg
+    assert seen["use_cache"] is False
+    assert seen["output_dir"] == "docs-out"
+    assert seen["output_path"] is None
+    assert callable(seen["iter_loaded_projects_fn"])
+    assert seen["documentation_unit_selection_fn"] is app._get_documentation_unit_selection
+    assert seen["exit_success"] == app.EXIT_SUCCESS
+    assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
+
+
 def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_context):
     if real_context:
         cfg = real_context["cfg"].copy()

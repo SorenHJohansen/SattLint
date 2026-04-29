@@ -32,11 +32,15 @@ def _repo_path(*parts: str) -> Path:
 
 
 def test_internal_modules_do_not_import_parser_compat_wrappers():
-    src_root = _repo_path("src", "sattlint")
+    repo_root = _repo_path()
+    src_roots = (
+        repo_root / "src" / "sattlint",
+        repo_root / "src" / "sattlint_lsp",
+    )
     allowed_wrapper_files = {
-        src_root / "models" / "ast_model.py",
-        src_root / "grammar" / "parser_decode.py",
-        src_root / "transformer" / "sl_transformer.py",
+        repo_root / "src" / "sattlint" / "models" / "ast_model.py",
+        repo_root / "src" / "sattlint" / "grammar" / "parser_decode.py",
+        repo_root / "src" / "sattlint" / "transformer" / "sl_transformer.py",
     }
     forbidden_absolute = {
         "sattlint.models.ast_model",
@@ -50,12 +54,16 @@ def test_internal_modules_do_not_import_parser_compat_wrappers():
     }
 
     violations: list[str] = []
-    for source_file in sorted(src_root.rglob("*.py")):
+    source_files: list[Path] = []
+    for root in src_roots:
+        source_files.extend(sorted(root.rglob("*.py")))
+
+    for source_file in source_files:
         if source_file in allowed_wrapper_files:
             continue
 
         tree = ast.parse(source_file.read_text(encoding="utf-8"), filename=str(source_file))
-        relative_path = source_file.relative_to(_repo_path()).as_posix()
+        relative_path = source_file.relative_to(repo_root).as_posix()
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 module = node.module or ""
@@ -67,6 +75,45 @@ def test_internal_modules_do_not_import_parser_compat_wrappers():
                         violations.append(f"{relative_path}:{node.lineno} imports {alias.name}")
 
     assert not violations, "Internal modules must import parser-core directly:\n" + "\n".join(violations)
+
+
+def test_internal_modules_do_not_import_editor_api_compat_facade():
+    repo_root = _repo_path()
+    src_roots = (
+        repo_root / "src" / "sattlint",
+        repo_root / "src" / "sattlint_lsp",
+    )
+    allowed_wrapper_files = {
+        repo_root / "src" / "sattlint" / "editor_api.py",
+    }
+
+    violations: list[str] = []
+    source_files: list[Path] = []
+    for root in src_roots:
+        source_files.extend(sorted(root.rglob("*.py")))
+
+    for source_file in source_files:
+        if source_file in allowed_wrapper_files:
+            continue
+
+        tree = ast.parse(source_file.read_text(encoding="utf-8"), filename=str(source_file))
+        relative_path = source_file.relative_to(repo_root).as_posix()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if module == "sattlint.editor_api" or (node.level > 0 and module == "editor_api"):
+                    violations.append(f"{relative_path}:{node.lineno} imports {module}")
+                    continue
+                if module == "sattlint":
+                    for alias in node.names:
+                        if alias.name == "editor_api":
+                            violations.append(f"{relative_path}:{node.lineno} imports sattlint.editor_api")
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "sattlint.editor_api":
+                        violations.append(f"{relative_path}:{node.lineno} imports sattlint.editor_api")
+
+    assert not violations, "Internal modules must import semantic-core directly:\n" + "\n".join(violations)
 
 
 def test_ternary_if_has_lowest_precedence():

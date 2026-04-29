@@ -406,6 +406,82 @@ def test_audit_repository_collects_custom_findings_from_tracked_files(tmp_path):
     assert collect_custom_findings.call_args.kwargs["tracked_only"] is True
 
 
+def test_find_structural_report_findings_translates_structural_architecture_findings(tmp_path):
+    architecture_report = {
+        "findings": [
+            {
+                "id": "structural-facade-private-boundary",
+                "severity": "medium",
+                "message": "Facade calls private helper.",
+                "private_entrypoints": [
+                    {
+                        "path": "src/sattlint/app.py",
+                        "line": 42,
+                        "target": "app_analysis._run_checks",
+                    }
+                ],
+            },
+            {
+                "id": "analyzer-exposure-gap",
+                "severity": "medium",
+                "message": "Non-structural finding should stay in architecture report only.",
+            },
+        ]
+    }
+
+    with patch.object(
+        repo_audit.structural_reports_module, "collect_architecture_report", return_value=architecture_report
+    ):
+        findings = repo_audit._find_structural_report_findings(tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0].id == "structural-facade-private-boundary"
+    assert findings[0].path == "src/sattlint/app.py"
+    assert findings[0].detail == "calls app_analysis._run_checks at line 42"
+    assert findings[0].source == "structural-reports"
+
+
+def test_audit_repository_fail_policy_applies_to_structural_findings(tmp_path):
+    pipeline_summary = {
+        "profile": "quick",
+        "output_dir": "<external>/audit/pipeline",
+        "status": {"overall_status": "pass", "tool_statuses": {}},
+    }
+    structural_finding = repo_audit.Finding(
+        "structural-budget-ratchet-regression",
+        "architecture",
+        "medium",
+        "high",
+        "Structural debt regressed beyond ratchet baseline.",
+        detail="function_over_budget_count: 14 > 13",
+        source="structural-reports",
+    )
+
+    with (
+        patch.object(repo_audit, "collect_custom_findings", return_value=[structural_finding]),
+        patch.object(repo_audit, "_find_pipeline_findings", return_value=[]),
+        patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary),
+    ):
+        summary = repo_audit.audit_repository(
+            tmp_path,
+            profile="quick",
+            fail_on="medium",
+            include_generated=False,
+            leaks_only=False,
+            suspicious_identifiers=["SQHJ"],
+            skip_pipeline=False,
+            skip_vulture=False,
+            skip_bandit=False,
+        )
+
+    status_report = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+
+    assert summary["finding_count"] == 1
+    assert summary["findings"][0]["id"] == "structural-budget-ratchet-regression"
+    assert status_report["overall_status"] == "fail"
+    assert status_report["blocking_finding_count"] == 1
+
+
 def test_print_cli_summary_includes_findings_schema(capsys):
     repo_audit._print_cli_summary(
         {
