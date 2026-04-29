@@ -30,12 +30,12 @@ from pygls.lsp.server import LanguageServer
 from ._server_document import (
     _ensure_document_paths,
     _ensure_snapshot_store_configured,
-    _get_or_build_local_snapshot,  # noqa: F401
-    _invalidate_cached_entries_for_path,  # noqa: F401
+    _get_or_build_local_snapshot,
+    _invalidate_cached_entries_for_path,
     _load_snapshot_bundle,  # noqa: F401
     _load_snapshot_bundle_compat,
-    _publish_closed_document_diagnostics,  # noqa: F401
-    _publish_diagnostics,  # noqa: F401
+    _publish_closed_document_diagnostics,
+    _publish_diagnostics,
     _publish_workspace_diagnostics_for_paths,  # noqa: F401
     _record_document_change,
     _record_document_open,

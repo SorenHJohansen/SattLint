@@ -81,7 +81,7 @@ def test_int_plus_real_arithmetic_expression(tmp_path):
 "SyntaxVersion"
 "OriginalFileDate"
 "ProgramDate"
-BasePicture Invocation (0.0, 0.0, 0.0, 1.0, 1.0) : MODULEDEFINITION Test_ 1
+BasePicture Invocation (0.0, 0.0, 0.0, 1.0, 1.0) : MODULEDEFINITION DateCode_ 1
 LOCALVARIABLES
     IntValue: integer := 5;
     RealValue: real := 2.5;
@@ -89,10 +89,8 @@ LOCALVARIABLES
 ModuleDef
 ClippingBounds = (-1.0, -1.0) (1.0, 1.0)
 ModuleCode
-EQUATIONBLOCK
-    Result := IntValue + RealValue;
-ENDBLOCK
-ENDCODE
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Result = IntValue + RealValue;
 ENDDEF
 """
     # Should pass - INT/REAL mixing in arithmetic allowed for legacy code

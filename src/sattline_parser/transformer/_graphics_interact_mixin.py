@@ -6,7 +6,7 @@ and layout specification.
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import cast
 
 from lark import Token, Tree
 

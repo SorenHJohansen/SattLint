@@ -97,7 +97,7 @@ def _validate_expression_semantics(
                     )
                 if right_type is not None and not _is_numeric_datatype(right_type):
                     raise StructuralValidationError(
-                        f"{context} comparison operator {operator!r} expects numeric operands but right side has datatype {_format_datatype(right_type)!r}"
+                        f"{context} comparison expects numeric operands but right side has datatype {_format_datatype(right_type)!r}"
                     )
             _validate_expression_semantics(rhs, env, type_graph, context)
             left_type = right_type if right_type is not None else left_type

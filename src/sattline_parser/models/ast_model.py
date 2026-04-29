@@ -47,6 +47,9 @@ class SourceSpan:
     line: int
     column: int
 
+    def __reduce__(self):
+        return (type(self), (self.line, self.column))
+
 
 class IntLiteral(int):
     span: SourceSpan

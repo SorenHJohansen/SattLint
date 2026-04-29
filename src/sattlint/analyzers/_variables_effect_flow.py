@@ -295,7 +295,9 @@ class EffectFlowTracker:
             for input_key in input_keys:
                 self.record_effect_flow(input_key, output_key)
 
-    def collect_effect_sink_keys(self, bp, analyzed_target_is_library: bool, is_from_root_origin_fn) -> set[tuple[str, ...]]:
+    def collect_effect_sink_keys(
+        self, bp, analyzed_target_is_library: bool, is_from_root_origin_fn
+    ) -> set[tuple[str, ...]]:
         """Collect all variables that should be treated as effect sinks."""
         sink_keys = set(self._external_effect_sinks)
 

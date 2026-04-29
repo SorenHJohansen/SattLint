@@ -1,8 +1,3 @@
-import json
-from types import SimpleNamespace
-
-from sattlint.devtools import pipeline
-
 def test_phase2_rule_metadata_gate_fails_on_enforced_finding():
     """Gate status is 'fail' and rule appears in blocking_rule_ids when an enforced finding is present."""
     from sattlint.devtools.structural_reports import collect_phase2_rule_metadata_gate

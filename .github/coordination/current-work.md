@@ -99,7 +99,7 @@ Shared ledger for concurrent chats and agents in SattLint.
 - Claims: none (released)
 - First validation: markdown consistency review on `.github/skills/sattline-scaffold/SKILL.md`
 - Status: done
-- Notes: moved hardcoded path reference `C:\Users\SQHJ\OneDrive - Novo Nordisk\Workspace\HALibs\SattLineApplicationSpec.md` from "Primary source for rules" into "Inputs To Collect First" section as parameterized guidance. File now provides portable language without exposing machine-specific paths.
+- Notes: moved hardcoded path reference `<path-to-spec>` from "Primary source for rules" into "Inputs To Collect First" section as parameterized guidance. File now provides portable language without exposing machine-specific paths.
 
 ### Workstream pipeline-run-split-063
 
@@ -234,7 +234,7 @@ Shared ledger for concurrent chats and agents in SattLint.
 - Claims: .github/coordination/current-work.md, src/sattlint/cli/entry.py, src/sattlint/console.py, src/sattlint_gui/binding.py
 - First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_cli.py tests/test_gui.py tests/test_app.py tests/test_app_menus.py -x -q --tb=short`
 - Status: active
-- Notes: first slice complete. Replaced direct print() calls with sattlint.console.print_output in src/sattlint/cli/entry.py, src/sattlint/console.py, and src/sattlint_gui/binding.py while preserving existing output text and stderr routing. Focused validation passed: & "c:/Users/SQHJ/OneDrive - Novo Nordisk/Workspace/GitHub.com/SattLint/.venv/Scripts/python.exe" -m pytest --no-cov tests/test_cli.py tests/test_gui.py tests/test_app.py tests/test_app_menus.py -x -q --tb=short (144 passed). Targeted lint passed: & ".venv/Scripts/ruff.exe" check src/sattlint/cli/entry.py src/sattlint/console.py src/sattlint_gui/binding.py.
+- Notes: first slice complete. Replaced direct print() calls with sattlint.console.print_output in src/sattlint/cli/entry.py, src/sattlint/console.py, and src/sattlint_gui/binding.py while preserving existing output text and stderr routing. Focused validation passed: `sattlint check-tests-command` (144 passed). Targeted lint passed: `sattlint lint-cli-files`.
 
 ### Workstream app-facade-cli-owner-050
 
@@ -391,7 +391,7 @@ Shared ledger for concurrent chats and agents in SattLint.
 - Claims: none
 - First validation: `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/SattLineUnitTests/TestXDilute231X.s`
 - Status: done
-- Notes: added three focused `.s/.l` test pairs under `Libs/HA/SattLineUnitTests` using the target libraries' own self-test invocation patterns; validation passed with `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/SattLineUnitTests/TestXDilute231X.s`, `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/SattLineUnitTests/TestSoejle251D.s`, and `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/SattLineUnitTests/TestMPCSoejle22C.s`. `KaHAMPCSøjleLib` exposes 221C and 241C internally, so the new MPC test exercises the generic exported `Soejle` surface under a 22C-oriented test name.
+- Notes: added three focused `.s/.l` test pairs under `Libs/HA/SattLineUnitTests` using the target libraries' own self-test invocation patterns; validation passed with `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/SattLineUnitTests/TestXDilute231X.s`, `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/SattLineUnitTests/TestSoejle251D.s`, and `& ".venv/Scripts/sattlint.exe" syntax-check Libs/HA/SattLineUnitTests/TestMPCSoejle22C.s`. `KaHAMPCSï¿½jleLib` exposes 221C and 241C internally, so the new MPC test exercises the generic exported `Soejle` surface under a 22C-oriented test name.
 
 ### Workstream todo-gui-explorer-031
 
@@ -490,7 +490,7 @@ Shared ledger for concurrent chats and agents in SattLint.
 - Claims: none
 - First validation: direct single-file ICF validation for `KaHAApplZ4.icf`
 - Status: done
-- Notes: repaired lossy `S jle` and `L b` spellings to canonical `Søjle` and `Løb` forms in units `KaHA251A` and `KaHA251B`. Direct single-file validation for `KaHAApplZ4.icf` cleared those invalid-field and missing-parameter issues; one unrelated remaining `unit structure drift` issue remains for `KaHA251Y` `LOGBATCHID1` casing.
+- Notes: repaired lossy `S jle` and `L b` spellings to canonical `Sï¿½jle` and `Lï¿½b` forms in units `KaHA251A` and `KaHA251B`. Direct single-file validation for `KaHAApplZ4.icf` cleared those invalid-field and missing-parameter issues; one unrelated remaining `unit structure drift` issue remains for `KaHA251Y` `LOGBATCHID1` casing.
 
 ### Workstream parallel-branch-terminal-022
 
@@ -584,7 +584,7 @@ Shared ledger for concurrent chats and agents in SattLint.
 ### Workstream gui-phase4-summaries-014
 
 - Owner: current chat
-- Goal: Phase 4 — structured summaries, two-pane Results view, run-bundle action
+- Goal: Phase 4 ï¿½ structured summaries, two-pane Results view, run-bundle action
 - Claims: none
 - First validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_gui.py -x -q --tb=short`
 - Status: done

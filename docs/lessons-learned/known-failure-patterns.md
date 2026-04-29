@@ -5,9 +5,9 @@ Agents should learn from prior mistakes. Update after each root-cause analysis.
 ## Past Root Causes
 
 ### Hardcoded Machine Paths
-- **Pattern**: Absolute paths like `/home/sorenhj/...` or `C:\Users\SQHJ\...` in committed files.
+- **Pattern**: Absolute paths in committed files (e.g., `/repo/path` or `<drive>:\path`).
 - **Root cause**: Developers copying local paths into docs/examples without converting to repo-relative.
-- **Fix**: Use repo-relative paths or config-driven paths. Grep for `/home/` and `C:\Users` in CI.
+- **Fix**: Use repo-relative paths or config-driven paths. Grep for absolute path patterns in CI.
 - **Prevention**: Pre-commit hook or audit rule for absolute paths.
 
 ### Unused Imports Accumulation

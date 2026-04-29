@@ -891,10 +891,14 @@ def _build_derived_reports(
         pyright_findings=stage_reports["pyright_findings"],
         pytest_report=stage_reports["pytest_report"],
         vulture_findings=(
-            [] if stage_reports["vulture_report"].get("skipped") else list(stage_reports["vulture_report"].get("findings", []))
+            []
+            if stage_reports["vulture_report"].get("skipped")
+            else list(stage_reports["vulture_report"].get("findings", []))
         ),
         bandit_findings=(
-            [] if stage_reports["bandit_report"].get("skipped") else list(stage_reports["bandit_report"].get("findings", []))
+            []
+            if stage_reports["bandit_report"].get("skipped")
+            else list(stage_reports["bandit_report"].get("findings", []))
         ),
         architecture_findings=list(optional_reports["architecture_report"].get("findings", [])),
     )
@@ -926,6 +930,17 @@ def _build_derived_reports(
             current_label="findings.json",
         )
 
+    mutation_results: dict[str, Any] | None = None
+    if context.get("run_mutation_analysis") and finding_collection is not None:
+        from sattlint.devtools.mutation_engine import run_mutation_analysis
+
+        target = context.get("mutation_target") or DEFAULT_TRACE_TARGET
+        if target.exists():
+            mutation_results = run_mutation_analysis(
+                target,
+                finding_collection,
+            ).to_dict()
+
     return {
         "analysis_diff_report": analysis_diff_report,
         "coverage_summary_report": coverage_summary_report,
@@ -937,6 +952,7 @@ def _build_derived_reports(
         "profiling_summary_report": profiling_summary_report,
         "rule_metrics_report": rule_metrics_report,
         "sattline_semantic_report": sattline_semantic_report,
+        "mutation_results": mutation_results,
     }
 
 
@@ -1000,7 +1016,9 @@ def _build_static_tool_statuses(stage_reports: dict[str, Any]) -> dict[str, dict
             report=None if stage_reports["vulture_report"].get("skipped") else "vulture.json",
             raw_exit_code=stage_reports["vulture_report"].get("exit_code"),
             normalized_exit_code=(
-                0 if stage_reports["vulture_report"].get("skipped") else stage_reports["vulture_report"].get("exit_code")
+                0
+                if stage_reports["vulture_report"].get("skipped")
+                else stage_reports["vulture_report"].get("exit_code")
             ),
             finding_count=stage_reports["vulture_report"].get("finding_count", 0),
             detail=(
@@ -1058,7 +1076,9 @@ def _build_extended_tool_statuses(
                 else 0
             ),
             finding_count=(
-                0 if optional_reports["corpus_results_report"] is None else optional_reports["corpus_results_report"]["summary"]["failed_count"]
+                0
+                if optional_reports["corpus_results_report"] is None
+                else optional_reports["corpus_results_report"]["summary"]["failed_count"]
             ),
             detail=(
                 "skipped because no manifest directory was provided"
@@ -1179,7 +1199,9 @@ def _build_policy_tool_statuses(
                 else 0
             ),
             finding_count=(
-                0 if derived_reports["performance_budget_report"] is None else derived_reports["performance_budget_report"]["violation_count"]
+                0
+                if derived_reports["performance_budget_report"] is None
+                else derived_reports["performance_budget_report"]["violation_count"]
             ),
             detail=(
                 "skipped because trace profiling is unavailable"
@@ -1329,6 +1351,35 @@ def _build_pipeline_counts(
     }
 
 
+def _check_core_invariants(
+    derived_reports: dict[str, Any],
+    context: dict[str, Any],
+) -> list[str]:
+    """Hard-fail enforcement: verify core invariants before emitting artifacts."""
+    violations: list[str] = []
+    finding_collection = derived_reports.get("finding_collection")
+    if finding_collection is None:
+        return violations
+
+    findings = finding_collection.findings
+    # Invariant: no duplicate finding IDs across the collection
+    seen_ids: set[str] = set()
+    for f in findings:
+        fid = getattr(f, "id", None)
+        if fid and fid in seen_ids:
+            violations.append(f"Duplicate finding ID: {fid}")
+        if fid:
+            seen_ids.add(fid)
+
+    # Invariant: transform-invariant violations must be reported
+    trace_report = derived_reports.get("trace_report") or {}
+    transform_violations = trace_report.get("heuristics", {}).get("transform_invariant_violations", [])
+    if transform_violations:
+        violations.append(f"Transform invariant violations: {len(transform_violations)}")
+
+    return violations
+
+
 def _finalize_pipeline_outputs(
     context: dict[str, Any],
     stage_reports: dict[str, Any],
@@ -1397,12 +1448,24 @@ def _finalize_pipeline_outputs(
             "pytest": stage_reports["pytest_report"],
             "vulture": None if stage_reports["vulture_report"].get("skipped") else stage_reports["vulture_report"],
             "bandit": None if stage_reports["bandit_report"].get("skipped") else stage_reports["bandit_report"],
-            "architecture": None if optional_reports["architecture_report"].get("skipped") else optional_reports["architecture_report"],
-            "analyzer_registry": None if optional_reports["analyzer_registry_report"].get("skipped") else optional_reports["analyzer_registry_report"],
-            "dependency_graph": None if optional_reports["dependency_graph_report"].get("skipped") else optional_reports["dependency_graph_report"],
-            "call_graph": None if optional_reports["call_graph_report"].get("skipped") else optional_reports["call_graph_report"],
-            "graphics_layout": None if optional_reports["graphics_layout_report"].get("skipped") else optional_reports["graphics_layout_report"],
-            "impact_analysis": None if optional_reports["impact_analysis_report"].get("skipped") else optional_reports["impact_analysis_report"],
+            "architecture": None
+            if optional_reports["architecture_report"].get("skipped")
+            else optional_reports["architecture_report"],
+            "analyzer_registry": None
+            if optional_reports["analyzer_registry_report"].get("skipped")
+            else optional_reports["analyzer_registry_report"],
+            "dependency_graph": None
+            if optional_reports["dependency_graph_report"].get("skipped")
+            else optional_reports["dependency_graph_report"],
+            "call_graph": None
+            if optional_reports["call_graph_report"].get("skipped")
+            else optional_reports["call_graph_report"],
+            "graphics_layout": None
+            if optional_reports["graphics_layout_report"].get("skipped")
+            else optional_reports["graphics_layout_report"],
+            "impact_analysis": None
+            if optional_reports["impact_analysis_report"].get("skipped")
+            else optional_reports["impact_analysis_report"],
             "trace": optional_reports["trace_report"],
             "incremental_analysis": derived_reports["incremental_analysis_report"],
             "findings": derived_reports["finding_collection"].to_dict(),
@@ -1497,6 +1560,11 @@ def _run_pipeline(
         phase_budget_ms=phase_budget_ms,
         total_budget_ms=total_budget_ms,
     )
+    # Hard-fail invariant enforcement (ID 23: Core invariant checks)
+    invariant_violations = _check_core_invariants(derived_reports, context)
+    if invariant_violations:
+        for v in invariant_violations:
+            print(f"INVARIANT VIOLATION: {v}")
     return _finalize_pipeline_outputs(
         context,
         stage_reports,

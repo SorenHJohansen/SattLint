@@ -38,10 +38,7 @@ from sattlint.reporting.variables_report import IssueKind
 
 from .helpers.artifact_assertions import (
     assert_analysis_diff_report,
-    assert_artifact_registry_report,
-    assert_corpus_results_report,
     assert_findings_collection,
-    assert_findings_schema,
 )
 
 
@@ -1131,5 +1128,3 @@ def test_collect_impact_analysis_report_aggregates_reverse_dependencies(tmp_path
     assert main_module_impact["transitive_symbols"] == ["Main.ExecuteLocal", "Main.Guard.Seen"]
     assert main_module_impact["direct_symbol_count"] == 1
     assert main_module_impact["transitive_symbol_count"] == 2
-
-

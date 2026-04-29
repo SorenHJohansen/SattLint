@@ -4,11 +4,11 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
-from . import app_docs as app_docs_module
+from sattline_parser.models.ast_model import BasePicture
+
 from . import config as config_module
 from . import console as console_module
 from .docgenerator import generate_docx
-from sattline_parser.models.ast_model import BasePicture
 from .models.project_graph import ProjectGraph
 
 emit_output = console_module.print_output  # type: ignore[assignment]

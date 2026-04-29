@@ -36,7 +36,7 @@ moduletype_par_transfer:    variable_name "=>" GLOBAL_KW? DURATION_VALUE? (value
 frame_module:               "(" FRAME_MODULE ")"
 scan_group:                 "(" GROUPCONN "=" GLOBAL_KW? variable_name ")"
 invoke_coord:               REAL coord_tail* "," REAL coord_tail* "," REAL coord_tail* "," REAL coord_tail* "," REAL coord_tail*
-sl_datecode:                DATECODE_PREFIX SL_DATECODE
+sl_datecode:                NAME SL_DATECODE
 
 // ============================================================================
 // TYPE DEFINITIONS - DATA TYPES (RECORDS)
@@ -317,7 +317,7 @@ MODULEPARAMETERS.10:        "{GRAMMAR_VALUE_MODULEPARAMETERS}"
 LOCALVARIABLES.10:          "{GRAMMAR_VALUE_LOCALVARIABLES}"
 GRAPHOBJECTS.10:            "{GRAMMAR_VALUE_GRAPHOBJECTS}"
 INTERACTOBJECTS.10:         "{GRAMMAR_VALUE_INTERACTOBJECTS}"
-DATECODE_PREFIX.10:         "{GRAMMAR_VALUE_DATECODE_PREFIX}"
+DATECODE_PREFIX.50:         "{GRAMMAR_REGEX_DATECODE_PREFIX}"
 GROUPCONN.10:               "{GRAMMAR_VALUE_GROUPCONN}"
 // Sequence and code blocks
 SEQCONTROL.10:               "{GRAMMAR_VALUE_SEQCONTROL}"

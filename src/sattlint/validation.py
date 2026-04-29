@@ -1218,9 +1218,8 @@ def validate_transformed_basepicture(
 
 # Re-exports for backward compatibility with external imports
 __all__ = [
-    "StructuralValidationError",
     "RawSourceValidationError",
-    "validate_transformed_basepicture",
+    "StructuralValidationError",
     # Type helpers exported to analyzers.validators
     "_assignment_type_matches",
     "_extract_time_literal",
@@ -1230,4 +1229,5 @@ __all__ = [
     "_literal_matches_expected_datatype",
     "_resolve_variable_field_datatype",
     "_split_dotted_name",
+    "validate_transformed_basepicture",
 ]

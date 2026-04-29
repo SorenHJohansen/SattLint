@@ -6,6 +6,7 @@ import os
 import sys
 import tomllib
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -222,6 +223,122 @@ def get_graphics_rules_path(config_path: Path | None = None) -> Path:
     return resolved_config_path.with_name("graphics_rules.json")
 
 
+VALID_TOP_LEVEL_KEYS = frozenset(
+    {
+        "analyzed_programs_and_libraries",
+        "mode",
+        "scan_root_only",
+        "fast_cache_validation",
+        "debug",
+        "program_dir",
+        "ABB_lib_dir",
+        "icf_dir",
+        "other_lib_dirs",
+        "analysis",
+        "documentation",
+        "ignore_ABB_lib",
+    }
+)
+
+VALID_ANALYSIS_KEYS = frozenset({"sfc", "naming", "rule_profiles"})
+VALID_NAMING_TARGETS = frozenset({"variables", "modules", "instances"})
+VALID_NAMING_STYLES = frozenset({"infer", "pascal", "camel", "snake", "upper_snake", "lower", "upper"})
+
+
+@dataclass(frozen=True, slots=True)
+class ConfigValidationError:
+    key_path: str
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class ConfigValidationResult:
+    passed: bool
+    errors: tuple[ConfigValidationError, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "passed": self.passed,
+            "errors": [{"key_path": e.key_path, "message": e.message} for e in self.errors],
+        }
+
+
+def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
+    errors: list[ConfigValidationError] = []
+
+    for key in cfg:
+        if key not in VALID_TOP_LEVEL_KEYS:
+            errors.append(
+                ConfigValidationError(
+                    key_path=key,
+                    message=f"Unknown config key '{key}'. Expected one of: {', '.join(sorted(VALID_TOP_LEVEL_KEYS))}",
+                )
+            )
+
+    mode = cfg.get("mode")
+    if mode is not None and mode not in {"official", "draft"}:
+        errors.append(
+            ConfigValidationError(
+                key_path="mode",
+                message=f"Invalid mode '{mode}'. Expected 'official' or 'draft'.",
+            )
+        )
+
+    analysis = cfg.get("analysis")
+    if analysis is not None and not isinstance(analysis, dict):
+        errors.append(
+            ConfigValidationError(
+                key_path="analysis",
+                message="analysis must be a table/object.",
+            )
+        )
+    elif isinstance(analysis, dict):
+        for key in analysis:
+            if key not in VALID_ANALYSIS_KEYS:
+                errors.append(
+                    ConfigValidationError(
+                        key_path=f"analysis.{key}",
+                        message=f"Unknown analysis key '{key}'. Expected one of: {', '.join(sorted(VALID_ANALYSIS_KEYS))}",
+                    )
+                )
+
+        naming = analysis.get("naming")
+        if naming is not None and isinstance(naming, dict):
+            for target in naming:
+                if target not in VALID_NAMING_TARGETS:
+                    errors.append(
+                        ConfigValidationError(
+                            key_path=f"analysis.naming.{target}",
+                            message=f"Unknown naming target '{target}'. Expected one of: {', '.join(sorted(VALID_NAMING_TARGETS))}",
+                        )
+                    )
+                else:
+                    target_rule = naming[target]
+                    if isinstance(target_rule, dict):
+                        style = target_rule.get("style")
+                        if style is not None and style not in VALID_NAMING_STYLES:
+                            errors.append(
+                                ConfigValidationError(
+                                    key_path=f"analysis.naming.{target}.style",
+                                    message=f"Invalid style '{style}'. Expected one of: {', '.join(sorted(VALID_NAMING_STYLES))}",
+                                )
+                            )
+
+    documentation = cfg.get("documentation")
+    if documentation is not None and not isinstance(documentation, dict):
+        errors.append(
+            ConfigValidationError(
+                key_path="documentation",
+                message="documentation must be a table/object.",
+            )
+        )
+
+    return ConfigValidationResult(
+        passed=len(errors) == 0,
+        errors=tuple(errors),
+    )
+
+
 def load_config(path: Path) -> tuple[dict, bool]:
     if not path.exists():
         print(f"⚠ No config found, creating default: {path}")
@@ -233,6 +350,11 @@ def load_config(path: Path) -> tuple[dict, bool]:
         cfg = tomllib.load(f)
 
     cfg = _normalize_documentation_rule_keys(cfg)
+
+    validation = validate_config(cfg)
+    if not validation.passed:
+        for error in validation.errors:
+            print(f"⚠ Config warning [{error.key_path}]: {error.message}")
 
     merged = _deep_merge_dict(DEFAULT_CONFIG, cfg)
     merged.pop("ignore_ABB_lib", None)

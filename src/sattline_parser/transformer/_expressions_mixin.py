@@ -71,9 +71,9 @@ class _ExpressionsMixin:
 
     def compare(self, items):
         """Grammar compare -> (expr OP expr | expr)."""
-        # Build tuples of comparisons
+        # Expected output: (KEY_COMPARE, [left, right1, right2, ...], [(op1, right1), (op2, right2), ...])
         values = []
-        ops = []
+        pairs = []  # (operator, right) pairs
         current_op = None
         for it in items:
             if isinstance(it, Token):
@@ -81,16 +81,16 @@ class _ExpressionsMixin:
             elif it is not None and not isinstance(it, Token):
                 values.append(it)
                 if current_op is not None:
-                    ops.append(current_op)
+                    pairs.append((current_op, it))
                     current_op = None
         if len(values) == 1:
             return values[0]
-        return (const.KEY_COMPARE, values, ops)
+        return (const.KEY_COMPARE, values, pairs)
 
     def additive_expression(self, items):
         """Grammar additive_expression -> (expr + expr | expr - expr | expr)."""
         values = []
-        ops = []
+        pairs = []  # (operator, right) pairs
         current_op = None
         for it in items:
             if isinstance(it, Token):
@@ -98,16 +98,16 @@ class _ExpressionsMixin:
             elif it is not None and not isinstance(it, Token):
                 values.append(it)
                 if current_op is not None:
-                    ops.append(current_op)
+                    pairs.append((current_op, it))
                     current_op = None
         if len(values) == 1:
             return values[0]
-        return (const.KEY_ADD, values, ops)
+        return (const.KEY_ADD, values, pairs)
 
     def multiplicative_expression(self, items):
         """Grammar multiplicative_expression -> (expr * expr | expr / expr | expr)."""
         values = []
-        ops = []
+        pairs = []  # (operator, right) pairs
         current_op = None
         for it in items:
             if isinstance(it, Token):
@@ -115,11 +115,11 @@ class _ExpressionsMixin:
             elif it is not None and not isinstance(it, Token):
                 values.append(it)
                 if current_op is not None:
-                    ops.append(current_op)
+                    pairs.append((current_op, it))
                     current_op = None
         if len(values) == 1:
             return values[0]
-        return (const.KEY_MUL, values, ops)
+        return (const.KEY_MUL, values, pairs)
 
     def unary_expression(self, items):
         """Grammar unary_expression -> (- expr | + expr | expr)."""
