@@ -4,11 +4,11 @@ This document describes the requirements for an execution plan ("ExecPlan"), a d
 
 ## How to use ExecPlans and PLANS.md
 
-When authoring an executable specification (ExecPlan), follow this document _to the letter_. If it is not in your context, refresh your memory by reading the entire PLANS.md file. Be thorough in reading (and re-reading) source material to produce an accurate specification. When creating a spec, start from the skeleton and flesh it out as you do your research.
+When authoring an executable specification (ExecPlan), follow this document *to the letter*. If it is not in your context, refresh your memory by reading the entire PLANS.md file. Be thorough in reading (and re-reading) source material to produce an accurate specification. When creating a spec, start from the skeleton and flesh it out as you do your research.
 
 When implementing an executable specification (ExecPlan), do not prompt the user for "next steps"; simply proceed to the next milestone. Keep all sections up to date, add or split entries in the list at every stopping point to affirmatively state the progress made and next steps. Resolve ambiguities autonomously, and commit frequently.
 
-When discussing an executable specification (ExecPlan), record decisions in a log in the spec for posterity; it should be unambiguously clear why any change to the specification was made. ExecPlans are living documents, and it should always be possible to restart from _only_ the ExecPlan and no other work.
+When discussing an executable specification (ExecPlan), record decisions in a log in the spec for posterity; it should be unambiguously clear why any change to the specification was made. ExecPlans are living documents, and it should always be possible to restart from *only* the ExecPlan and no other work.
 
 When researching a design with challenging requirements or significant unknowns, use milestones to implement proof of concepts, "toy implementations", etc., that allow validating whether the user's proposal is feasible. Read the source code of libraries by finding or acquiring them, research deeply, and include prototypes to guide a fuller implementation.
 
@@ -16,11 +16,11 @@ When researching a design with challenging requirements or significant unknowns,
 
 NON-NEGOTIABLE REQUIREMENTS:
 
-* Every ExecPlan must be fully self-contained. Self-contained means that in its current form it contains all knowledge and instructions needed for a novice to succeed.
-* Every ExecPlan is a living document. Contributors are required to revise it as progress is made, as discoveries occur, and as design decisions are finalized. Each revision must remain fully self-contained.
-* Every ExecPlan must enable a complete novice to implement the feature end-to-end without prior knowledge of this repo.
-* Every ExecPlan must produce a demonstrably working behavior, not merely code changes to "meet a definition".
-* Every ExecPlan must define every term of art in plain language or do not use it.
+- Every ExecPlan must be fully self-contained. Self-contained means that in its current form it contains all knowledge and instructions needed for a novice to succeed.
+- Every ExecPlan is a living document. Contributors are required to revise it as progress is made, as discoveries occur, and as design decisions are finalized. Each revision must remain fully self-contained.
+- Every ExecPlan must enable a complete novice to implement the feature end-to-end without prior knowledge of this repo.
+- Every ExecPlan must produce a demonstrably working behavior, not merely code changes to "meet a definition".
+- Every ExecPlan must define every term of art in plain language or do not use it.
 
 Purpose and intent come first. Begin by explaining, in a few sentences, why the work matters from a user's perspective: what someone can do after this change that they could not do before, and how to see it working. Then guide the reader through the exact steps to achieve that outcome, including what to edit, what to run, and what they should observe.
 
@@ -52,7 +52,7 @@ Capture evidence. When your steps produce terminal output, short diffs, or logs,
 
 ## Directory Structure
 
-```
+```text
 docs/exec-plans/
   index.md            # This file - template and index
   active/             # Currently in-flight plans
@@ -64,13 +64,20 @@ docs/exec-plans/
 
 Place new ExecPlans in `docs/exec-plans/active/`. Use the skeleton below.
 
+Do not track specific active plans in this file. Treat this file as a template and policy reference only.
+
+For the current active plan list and execution ordering, use:
+
+- `docs/exec-plans/tech-debt-tracker.md` - active technical debt, retired-source ledger, and scan history.
+- `docs/exec-plans/feature-roadmap.md` - planned new capabilities (analyzers, tooling, GUI).
+
 ## Completed Plans
 
-Move completed ExecPlans to `docs/exec-plans/completed/` when finished. These serve as historical records and learning resources for future work.
+If all items in an ExecPlan `Progress` checklist are complete, move that plan from `docs/exec-plans/active/` to `docs/exec-plans/completed/` in the same change and update any affected index or tracker references; do not maintain a completed-plan list in this index.
 
 ## Skeleton of a Good ExecPlan
 
-# <Short, action-oriented description>
+\# \<Short, action-oriented description\>
 
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 

@@ -20,7 +20,7 @@ _DOCUMENTATION_SCOPE_STATE = {
     "instance_paths": [],
     "moduletype_names": [],
 }
-print = console_module.print_output  # type: ignore[assignment]
+emit_output = console_module.print_output  # type: ignore[assignment]
 
 
 def get_documentation_unit_selection() -> dict:
@@ -64,14 +64,14 @@ def preview_documentation_candidates_for_target(
         unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
     )
     candidates = discover_documentation_unit_candidates(classification)
-    print(f"\n=== Target: {target_name} ===")
+    emit_output(f"\n=== Target: {target_name} ===")
     if not candidates:
-        print("⚠ No unit candidates detected.")
+        emit_output("⚠ No unit candidates detected.")
         return
 
     for index, entry in enumerate(candidates, 1):
         summary = document_scope_summary(entry, classification)
-        print(
+        emit_output(
             f"  {index}. {entry.short_path} | type={entry.moduletype_label or entry.kind} | "
             f"ops={summary['ops']} em={summary['em']} "
             f"rp={summary['rp']} ep={summary['ep']} up={summary['up']}"
@@ -84,7 +84,7 @@ def preview_documentation_unit_candidates(
     iter_loaded_projects_fn: Callable[[dict], Iterator[tuple[str, BasePicture, ProjectGraph]]],
     pause_fn: Callable[[], None],
 ) -> None:
-    print("\n--- Documentation Unit Candidates ---")
+    emit_output("\n--- Documentation Unit Candidates ---")
     for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
         preview_documentation_candidates_for_target(target_name, project_bp, graph, cfg)
     pause_fn()
@@ -95,20 +95,20 @@ def configure_documentation_scope_by_moduletype(
     split_csv_values_fn: Callable[[str], list[str]],
     pause_fn: Callable[[], None],
 ) -> bool:
-    print("\n--- Documentation Scope by Unit ModuleType ---")
-    print("Enter one or more unit moduletype names (comma-separated).")
-    print("Example: ApplTank, XDilute_221X251XY")
+    emit_output("\n--- Documentation Scope by Unit ModuleType ---")
+    emit_output("Enter one or more unit moduletype names (comma-separated).")
+    emit_output("Example: ApplTank, XDilute_221X251XY")
     raw = input("> ").strip()
     values = split_csv_values_fn(raw)
     if not values:
-        print("❌ No moduletype names provided")
+        emit_output("❌ No moduletype names provided")
         pause_fn()
         return False
     set_documentation_unit_selection(
         mode="moduletype_names",
         moduletype_names=values,
     )
-    print("✔ Documentation scope updated")
+    emit_output("✔ Documentation scope updated")
     pause_fn()
     return True
 
@@ -118,27 +118,27 @@ def configure_documentation_scope_by_instance_path(
     split_csv_values_fn: Callable[[str], list[str]],
     pause_fn: Callable[[], None],
 ) -> bool:
-    print("\n--- Documentation Scope by Unit Instance Path ---")
-    print("Enter one or more unit instance paths (comma-separated).")
-    print("Use the candidate preview to find valid paths.")
+    emit_output("\n--- Documentation Scope by Unit Instance Path ---")
+    emit_output("Enter one or more unit instance paths (comma-separated).")
+    emit_output("Use the candidate preview to find valid paths.")
     raw = input("> ").strip()
     values = split_csv_values_fn(raw)
     if not values:
-        print("❌ No instance paths provided")
+        emit_output("❌ No instance paths provided")
         pause_fn()
         return False
     set_documentation_unit_selection(
         mode="instance_paths",
         instance_paths=values,
     )
-    print("✔ Documentation scope updated")
+    emit_output("✔ Documentation scope updated")
     pause_fn()
     return True
 
 
 def reset_documentation_scope(*, pause_fn: Callable[[], None]) -> bool:
     set_documentation_unit_selection(mode="all")
-    print("✔ Documentation scope reset to all units")
+    emit_output("✔ Documentation scope reset to all units")
     pause_fn()
     return True
 
@@ -150,7 +150,7 @@ def run_generate_documentation(
     prompt_fn: Callable[[str, str | None], str],
     pause_fn: Callable[[], None],
 ) -> None:
-    print("\n--- Generate Documentation ---")
+    emit_output("\n--- Generate Documentation ---")
     documentation_cfg = config_module.get_documentation_config(cfg)
     documentation_cfg["units"] = get_documentation_unit_selection()
 
@@ -162,16 +162,16 @@ def run_generate_documentation(
         )
         scope = classification.scope
         if scope and scope.mode != "all" and not (scope.roots or []):
-            print(f"\n=== Target: {target_name} ===")
-            print("⚠ No unit roots matched the configured documentation scope; skipping target.")
+            emit_output(f"\n=== Target: {target_name} ===")
+            emit_output("⚠ No unit roots matched the configured documentation scope; skipping target.")
             if scope.unmatched_values:
-                print("Unmatched scope filters: " + ", ".join(scope.unmatched_values))
+                emit_output("Unmatched scope filters: " + ", ".join(scope.unmatched_values))
             continue
 
         default_name = f"{target_name}_FS.docx"
         out_name = prompt_fn(f"Output DOCX for {target_name}", default_name)
         if scope and scope.roots:
-            print(f"Selected units for {target_name}: " + ", ".join(entry.short_path for entry in scope.roots))
+            emit_output(f"Selected units for {target_name}: " + ", ".join(entry.short_path for entry in scope.roots))
         generate_docx(
             project_bp,
             out_name,
@@ -216,7 +216,7 @@ def documentation_menu(
                 "Preview candidates first if you want to scope the output to specific units."
             ),
         )
-        print(
+        emit_output(
             "\nCurrent scope: "
             + (
                 "all units"
@@ -257,5 +257,5 @@ def documentation_menu(
                 pause_fn=pause_fn,
             )
         else:
-            print("Invalid choice.")
+            emit_output("Invalid choice.")
             pause_fn()

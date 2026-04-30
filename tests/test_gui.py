@@ -1,5 +1,8 @@
+import runpy
 from types import SimpleNamespace
 from typing import Any, cast
+
+import pytest
 
 from sattlint_gui import binding, main
 from sattlint_gui import gui as package_gui
@@ -616,3 +619,129 @@ def test_analyze_frame_run_bundle_combines_va_and_checks_output():
     assert result.ok is True
     assert "[Variable Analysis]" in result.output
     assert "[Checks]" in result.output
+
+
+def test_gui_main_module_exits_with_gui_return_code(monkeypatch):
+    monkeypatch.setattr("sattlint_gui.main.gui", lambda: 7)
+
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("sattlint_gui.__main__", run_name="__main__")
+
+    assert exc.value.code == 7
+
+
+def test_theme_resolve_theme_uses_default_and_custom_theme():
+    from sattlint_gui.theme import SattLintTheme, resolve_theme
+
+    class FakeWidget:
+        def __init__(self, root) -> None:
+            self._root = root
+
+        def winfo_toplevel(self):
+            return self._root
+
+    assert resolve_theme(None) == DEFAULT_THEME
+
+    custom = SattLintTheme(bg_main="#fbfbee", accent="#001ba3")
+    themed_widget = FakeWidget(SimpleNamespace(theme=custom))
+    unthemed_widget = FakeWidget(SimpleNamespace(theme="not-a-theme"))
+
+    assert resolve_theme(themed_widget) == custom
+    assert resolve_theme(unthemed_widget) == DEFAULT_THEME
+
+
+def test_sidebar_frame_selection_handlers_without_tk_widgets():
+    class FakeButton:
+        def __init__(self) -> None:
+            self.style = ""
+
+        def configure(self, *, style: str) -> None:
+            self.style = style
+
+    events: list[str] = []
+    sidebar = SimpleNamespace(_buttons={"Analyze": FakeButton(), "Results": FakeButton()})
+
+    from sattlint_gui.frames.sidebar import SidebarFrame
+
+    sidebar.set_selected = lambda name: SidebarFrame.set_selected(sidebar, name)
+
+    SidebarFrame.set_selected(sidebar, "Results")
+    SidebarFrame._handle_select(sidebar, "Analyze", lambda name: events.append(name))
+
+    assert sidebar._buttons["Results"].style == "Nav.TButton"
+    assert sidebar._buttons["Analyze"].style == "Selected.Nav.TButton"
+    assert events == ["Analyze"]
+
+
+def test_results_frame_history_selection_and_bounds():
+    class FakeHistoryBox:
+        def __init__(self) -> None:
+            self._selection = ()
+
+        def curselection(self):
+            return self._selection
+
+    class FakeDetail:
+        def __init__(self) -> None:
+            self.text = ""
+
+        def set_text(self, text: str) -> None:
+            self.text = text
+
+    frame = cast(Any, ResultsFrame.__new__(ResultsFrame))
+    frame._entries = [("[00:00:01] One", "one"), ("[00:00:02] Two", "two")]
+    frame._detail = FakeDetail()
+    frame._history_box = FakeHistoryBox()
+
+    frame._history_box._selection = (1,)
+    frame._on_history_select(None)
+    assert "two" in frame._detail.text
+
+    frame._detail.text = "unchanged"
+    frame._show_entry(20)
+    assert frame._detail.text == "unchanged"
+
+
+def test_docs_frame_browse_output_dir_updates_preview(monkeypatch):
+    events: list[str] = []
+
+    class FakeStringVar:
+        def __init__(self, value: str = "") -> None:
+            self.value = value
+
+        def get(self) -> str:
+            return self.value
+
+        def set(self, value: str) -> None:
+            self.value = value
+
+    frame = cast(Any, DocsFrame.__new__(DocsFrame))
+    frame.output_dir_var = FakeStringVar("old")
+    frame._refresh_preview = lambda: events.append("preview")
+
+    monkeypatch.setattr("sattlint_gui.frames.docs_frame.filedialog.askdirectory", lambda **_kwargs: "new-dir")
+    frame._browse_output_dir()
+
+    assert frame.output_dir_var.get() == "new-dir"
+    assert events == ["preview"]
+
+
+def test_docs_frame_browse_output_dir_ignores_cancel(monkeypatch):
+    class FakeStringVar:
+        def __init__(self, value: str = "") -> None:
+            self.value = value
+
+        def get(self) -> str:
+            return self.value
+
+        def set(self, value: str) -> None:
+            self.value = value
+
+    frame = cast(Any, DocsFrame.__new__(DocsFrame))
+    frame.output_dir_var = FakeStringVar("old")
+    frame._refresh_preview = lambda: (_ for _ in ()).throw(RuntimeError("should not refresh"))
+
+    monkeypatch.setattr("sattlint_gui.frames.docs_frame.filedialog.askdirectory", lambda **_kwargs: "")
+    frame._browse_output_dir()
+
+    assert frame.output_dir_var.get() == "old"

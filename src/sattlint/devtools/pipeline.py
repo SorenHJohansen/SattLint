@@ -891,10 +891,14 @@ def _build_derived_reports(
         pyright_findings=stage_reports["pyright_findings"],
         pytest_report=stage_reports["pytest_report"],
         vulture_findings=(
-            [] if stage_reports["vulture_report"].get("skipped") else list(stage_reports["vulture_report"].get("findings", []))
+            []
+            if stage_reports["vulture_report"].get("skipped")
+            else list(stage_reports["vulture_report"].get("findings", []))
         ),
         bandit_findings=(
-            [] if stage_reports["bandit_report"].get("skipped") else list(stage_reports["bandit_report"].get("findings", []))
+            []
+            if stage_reports["bandit_report"].get("skipped")
+            else list(stage_reports["bandit_report"].get("findings", []))
         ),
         architecture_findings=list(optional_reports["architecture_report"].get("findings", [])),
     )
@@ -1000,7 +1004,9 @@ def _build_static_tool_statuses(stage_reports: dict[str, Any]) -> dict[str, dict
             report=None if stage_reports["vulture_report"].get("skipped") else "vulture.json",
             raw_exit_code=stage_reports["vulture_report"].get("exit_code"),
             normalized_exit_code=(
-                0 if stage_reports["vulture_report"].get("skipped") else stage_reports["vulture_report"].get("exit_code")
+                0
+                if stage_reports["vulture_report"].get("skipped")
+                else stage_reports["vulture_report"].get("exit_code")
             ),
             finding_count=stage_reports["vulture_report"].get("finding_count", 0),
             detail=(
@@ -1058,7 +1064,9 @@ def _build_extended_tool_statuses(
                 else 0
             ),
             finding_count=(
-                0 if optional_reports["corpus_results_report"] is None else optional_reports["corpus_results_report"]["summary"]["failed_count"]
+                0
+                if optional_reports["corpus_results_report"] is None
+                else optional_reports["corpus_results_report"]["summary"]["failed_count"]
             ),
             detail=(
                 "skipped because no manifest directory was provided"
@@ -1091,7 +1099,8 @@ def _build_extended_tool_statuses(
                 "skipped by profile"
                 if not context["run_structural_reports"]
                 else (
-                    f"{len(derived_reports['phase2_rule_metadata_gate']['blocking_rule_ids'])} rules missing enforced metadata"
+                    f"{len(derived_reports['phase2_rule_metadata_gate']['blocking_rule_ids'])} "
+                    "rules missing enforced metadata"
                     if derived_reports["phase2_rule_metadata_gate"]["status"] == "fail"
                     else None
                 )
@@ -1179,7 +1188,9 @@ def _build_policy_tool_statuses(
                 else 0
             ),
             finding_count=(
-                0 if derived_reports["performance_budget_report"] is None else derived_reports["performance_budget_report"]["violation_count"]
+                0
+                if derived_reports["performance_budget_report"] is None
+                else derived_reports["performance_budget_report"]["violation_count"]
             ),
             detail=(
                 "skipped because trace profiling is unavailable"
@@ -1397,12 +1408,24 @@ def _finalize_pipeline_outputs(
             "pytest": stage_reports["pytest_report"],
             "vulture": None if stage_reports["vulture_report"].get("skipped") else stage_reports["vulture_report"],
             "bandit": None if stage_reports["bandit_report"].get("skipped") else stage_reports["bandit_report"],
-            "architecture": None if optional_reports["architecture_report"].get("skipped") else optional_reports["architecture_report"],
-            "analyzer_registry": None if optional_reports["analyzer_registry_report"].get("skipped") else optional_reports["analyzer_registry_report"],
-            "dependency_graph": None if optional_reports["dependency_graph_report"].get("skipped") else optional_reports["dependency_graph_report"],
-            "call_graph": None if optional_reports["call_graph_report"].get("skipped") else optional_reports["call_graph_report"],
-            "graphics_layout": None if optional_reports["graphics_layout_report"].get("skipped") else optional_reports["graphics_layout_report"],
-            "impact_analysis": None if optional_reports["impact_analysis_report"].get("skipped") else optional_reports["impact_analysis_report"],
+            "architecture": None
+            if optional_reports["architecture_report"].get("skipped")
+            else optional_reports["architecture_report"],
+            "analyzer_registry": None
+            if optional_reports["analyzer_registry_report"].get("skipped")
+            else optional_reports["analyzer_registry_report"],
+            "dependency_graph": None
+            if optional_reports["dependency_graph_report"].get("skipped")
+            else optional_reports["dependency_graph_report"],
+            "call_graph": None
+            if optional_reports["call_graph_report"].get("skipped")
+            else optional_reports["call_graph_report"],
+            "graphics_layout": None
+            if optional_reports["graphics_layout_report"].get("skipped")
+            else optional_reports["graphics_layout_report"],
+            "impact_analysis": None
+            if optional_reports["impact_analysis_report"].get("skipped")
+            else optional_reports["impact_analysis_report"],
             "trace": optional_reports["trace_report"],
             "incremental_analysis": derived_reports["incremental_analysis_report"],
             "findings": derived_reports["finding_collection"].to_dict(),

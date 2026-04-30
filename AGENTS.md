@@ -10,6 +10,7 @@
 **Boundaries:** Code/commits/PRs written normal. No terse mode for security warnings or irreversible actions.
 
 **Key Docs:**
+
 - `docs/context-loading-order.md` - Load context in priority order, stop when sufficient.
 - `docs/lessons-learned/known-failure-patterns.md` - Past root causes, anti-patterns, migration lessons.
 - `docs/design-docs/core-beliefs.md` - Golden principles, agent legibility rules.
@@ -18,7 +19,7 @@
 ## Repo Map
 
 | Path | Purpose |
-|------|---------|
+| ------ | --------- |
 | `src/sattline_parser/` | Parser core: grammar, transformer, AST models |
 | `src/sattlint/` | CLI, config, analyzers, reporting, doc generation |
 | `src/sattlint/core/` | Shared semantic/document helpers for editor code |
@@ -44,6 +45,7 @@ See `.github/instructions/sattline-invariants.instructions.md` for `src/**` and 
 - Root cause before remedy: analyze bug class, prefer shared fix over local patch.
 - Prefer incremental, reviewable changes over large rewrites. Propose plan before broad changes.
 - When adding AI customizations, optimize for lower context waste.
+- When an ExecPlan checklist is fully complete, move it from `docs/exec-plans/active/` to `docs/exec-plans/completed/` in the same change and update affected indexes or trackers.
 
 ## Change Boundaries
 
@@ -81,4 +83,6 @@ See `.github/instructions/repo-audit.instructions.md` (auto-loaded for `src/satt
 - Tests added/updated. Validation commands run. Docs updated on material change.
 - LSP restarted if `src/sattlint_lsp/`, `src/sattlint/core/`, `editor_api.py`, or `vscode/` touched.
 
-*Last updated: 2026-04-28*
+## Last Updated
+
+2026-04-28

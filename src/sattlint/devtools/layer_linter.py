@@ -35,6 +35,31 @@ class ArchViolation:
     message: str
 
 
+def _resolve_current_module(file_path: Path) -> tuple[str, int]:
+    """Resolve the current module name and owning layer from a repo-relative file path."""
+    rel_path = file_path.relative_to(Path.cwd())
+    parts = list(rel_path.parts)
+    if not parts:
+        return ".", -1
+
+    source_root = parts[0]
+    if source_root == "src" and len(parts) > 1:
+        module_parts = parts[1:]
+    elif source_root == "vscode":
+        module_parts = parts[1:] if len(parts) > 1 else []
+    else:
+        module_parts = parts
+
+    if module_parts and module_parts[-1].endswith(".py"):
+        module_parts[-1] = module_parts[-1][:-3]
+    if module_parts and module_parts[-1] == "__init__":
+        module_parts = module_parts[:-1]
+
+    current_module = ".".join(module_parts) or "."
+    current_layer_key = current_module if source_root == "src" else source_root
+    return current_module, get_layer_for_module(current_layer_key)
+
+
 def get_layer_for_module(module_name: str) -> int:
     """Get the layer number for a given module name."""
     # Check for exact matches first
@@ -62,23 +87,10 @@ def check_file_for_arch_violations(file_path: Path) -> list[ArchViolation]:
         # Get the module name of the current file
         # We'll compute relative to src/ or vscode/ root
         try:
-            rel_path = file_path.relative_to(Path.cwd())
-            # Convert path to module name
-            parts = list(rel_path.parts)
-            if parts[-1].endswith(".py"):
-                parts[-1] = parts[-1][:-3]  # Remove .py
-            # If it's __init__.py, we remove it and use the directory as module
-            if parts[-1] == "__init__":
-                parts = parts[:-1]
-            current_module = ".".join(parts)
-            # If the module is empty (e.g., file is at root), we skip
-            if not current_module:
-                current_module = "."  # placeholder
+            current_module, current_layer = _resolve_current_module(file_path)
         except ValueError:
             # File is not under current working directory, skip
             return violations
-
-        current_layer = get_layer_for_module(current_module.split(".")[0] if "." in current_module else current_module)
 
         # Visit all imports
         for node in ast.walk(tree):
@@ -92,11 +104,16 @@ def check_file_for_arch_violations(file_path: Path) -> list[ArchViolation]:
                         module_name.split(".")[0] if "." in module_name else module_name
                     )
                     if imported_layer != -1 and current_layer != -1 and imported_layer > current_layer:
+                        message = (
+                            f"Invalid dependency: {current_module} (layer {current_layer}) imports "
+                            f"{module_name} (layer {imported_layer}). Fix: move code to same or lower "
+                            "layer, or introduce interface in Providers layer."
+                        )
                         violations.append(
                             ArchViolation(
                                 file=str(file_path),
                                 line=node.lineno,
-                                message=f"Invalid dependency: {current_module} (layer {current_layer}) imports {module_name} (layer {imported_layer}). Fix: move code to same or lower layer, or introduce interface in Providers layer.",
+                                message=message,
                             )
                         )
             elif isinstance(node, ast.ImportFrom):
@@ -109,11 +126,16 @@ def check_file_for_arch_violations(file_path: Path) -> list[ArchViolation]:
                     continue
                 imported_layer = get_layer_for_module(module_name.split(".")[0] if "." in module_name else module_name)
                 if imported_layer != -1 and current_layer != -1 and imported_layer > current_layer:
+                    message = (
+                        f"Invalid dependency: {current_module} (layer {current_layer}) imports from "
+                        f"{module_name} (layer {imported_layer}). Fix: move code to same or lower "
+                        "layer, or introduce interface in Providers layer."
+                    )
                     violations.append(
                         ArchViolation(
                             file=str(file_path),
                             line=node.lineno,
-                            message=f"Invalid dependency: {current_module} (layer {current_layer}) imports from {module_name} (layer {imported_layer}). Fix: move code to same or lower layer, or introduce interface in Providers layer.",
+                            message=message,
                         )
                     )
     except Exception:

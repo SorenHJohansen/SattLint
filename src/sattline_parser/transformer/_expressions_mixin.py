@@ -71,55 +71,48 @@ class _ExpressionsMixin:
 
     def compare(self, items):
         """Grammar compare -> (expr OP expr | expr)."""
-        # Build tuples of comparisons
-        values = []
-        ops = []
-        current_op = None
-        for it in items:
-            if isinstance(it, Token):
-                current_op = it
-            elif it is not None and not isinstance(it, Token):
-                values.append(it)
-                if current_op is not None:
-                    ops.append(current_op)
-                    current_op = None
-        if len(values) == 1:
-            return values[0]
-        return (const.KEY_COMPARE, values, ops)
+        values = [it for it in items if it is not None and not isinstance(it, Token)]
+        operators = [str(it) for it in items if isinstance(it, Token)]
+        if len(values) <= 1:
+            return values[0] if values else None
+
+        pairs: list[tuple[str, Any]] = []
+        for index, operator in enumerate(operators):
+            rhs_index = index + 1
+            if rhs_index >= len(values):
+                break
+            pairs.append((operator, values[rhs_index]))
+        return (const.KEY_COMPARE, values[0], pairs)
 
     def additive_expression(self, items):
         """Grammar additive_expression -> (expr + expr | expr - expr | expr)."""
-        values = []
-        ops = []
-        current_op = None
-        for it in items:
-            if isinstance(it, Token):
-                current_op = it
-            elif it is not None and not isinstance(it, Token):
-                values.append(it)
-                if current_op is not None:
-                    ops.append(current_op)
-                    current_op = None
-        if len(values) == 1:
-            return values[0]
-        return (const.KEY_ADD, values, ops)
+        values = [it for it in items if it is not None and not isinstance(it, Token)]
+        operators = [str(it) for it in items if isinstance(it, Token)]
+        if len(values) <= 1:
+            return values[0] if values else None
+
+        pairs: list[tuple[str, Any]] = []
+        for index, operator in enumerate(operators):
+            rhs_index = index + 1
+            if rhs_index >= len(values):
+                break
+            pairs.append((operator, values[rhs_index]))
+        return (const.KEY_ADD, values[0], pairs)
 
     def multiplicative_expression(self, items):
         """Grammar multiplicative_expression -> (expr * expr | expr / expr | expr)."""
-        values = []
-        ops = []
-        current_op = None
-        for it in items:
-            if isinstance(it, Token):
-                current_op = it
-            elif it is not None and not isinstance(it, Token):
-                values.append(it)
-                if current_op is not None:
-                    ops.append(current_op)
-                    current_op = None
-        if len(values) == 1:
-            return values[0]
-        return (const.KEY_MUL, values, ops)
+        values = [it for it in items if it is not None and not isinstance(it, Token)]
+        operators = [str(it) for it in items if isinstance(it, Token)]
+        if len(values) <= 1:
+            return values[0] if values else None
+
+        pairs: list[tuple[str, Any]] = []
+        for index, operator in enumerate(operators):
+            rhs_index = index + 1
+            if rhs_index >= len(values):
+                break
+            pairs.append((operator, values[rhs_index]))
+        return (const.KEY_MUL, values[0], pairs)
 
     def unary_expression(self, items):
         """Grammar unary_expression -> (- expr | + expr | expr)."""

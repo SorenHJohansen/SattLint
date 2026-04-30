@@ -38,10 +38,7 @@ from sattlint.reporting.variables_report import IssueKind
 
 from .helpers.artifact_assertions import (
     assert_analysis_diff_report,
-    assert_artifact_registry_report,
-    assert_corpus_results_report,
     assert_findings_collection,
-    assert_findings_schema,
 )
 
 
@@ -1133,3 +1130,760 @@ def test_collect_impact_analysis_report_aggregates_reverse_dependencies(tmp_path
     assert main_module_impact["transitive_symbol_count"] == 2
 
 
+def test_progress_reporter_fail_stage_marks_overall_failed(tmp_path):
+    reporter = ProgressReporter(
+        kind="sattlint.test.progress",
+        title="Test",
+        output_dir=tmp_path,
+        write_json=lambda path, payload: None,
+        stages=[("one", "Stage one"), ("two", "Stage two")],
+        emit_stdout=False,
+    )
+
+    reporter.start_stage("one")
+    reporter.fail_stage("one", detail="something went wrong")
+
+    payload = reporter.to_dict()
+
+    assert payload["overall_status"] == "failed"
+    failed = next(s for s in payload["stages"] if s["key"] == "one")
+    assert failed["status"] == "failed"
+    assert failed["detail"] == "something went wrong"
+
+
+def test_progress_reporter_complete_stage_without_prior_start_sets_started_at(tmp_path):
+    reporter = ProgressReporter(
+        kind="sattlint.test.progress",
+        title="Test",
+        output_dir=tmp_path,
+        write_json=lambda path, payload: None,
+        stages=[("one", "Stage one")],
+        emit_stdout=False,
+    )
+
+    reporter.complete_stage("one")
+
+    stage = reporter.to_dict()["stages"][0]
+    assert stage["status"] == "completed"
+    assert stage["started_at"] is not None
+
+
+def test_progress_reporter_active_stage_payload_returns_active_stage(tmp_path):
+    reporter = ProgressReporter(
+        kind="sattlint.test.progress",
+        title="Test",
+        output_dir=tmp_path,
+        write_json=lambda path, payload: None,
+        stages=[("one", "Stage one"), ("two", "Stage two")],
+        emit_stdout=False,
+    )
+
+    reporter.start_stage("two")
+    payload = reporter.to_dict()
+
+    assert payload["active_stage"] is not None
+    assert payload["active_stage"]["key"] == "two"
+    assert payload["active_stage"]["label"] == "Stage two"
+
+
+def test_progress_reporter_fail_stage_without_start_sets_started_at(tmp_path):
+    reporter = ProgressReporter(
+        kind="sattlint.test.progress",
+        title="Test",
+        output_dir=tmp_path,
+        write_json=lambda path, payload: None,
+        stages=[("one", "Stage one")],
+        emit_stdout=False,
+    )
+
+    reporter.fail_stage("one")
+
+    stage = reporter.to_dict()["stages"][0]
+    assert stage["status"] == "failed"
+    assert stage["started_at"] is not None
+
+
+def test_progress_reporter_fail_stage_emits_stdout(tmp_path, capsys):
+    reporter = ProgressReporter(
+        kind="sattlint.test.progress",
+        title="Test",
+        output_dir=tmp_path,
+        write_json=lambda path, payload: None,
+        stages=[("one", "Stage one")],
+        emit_stdout=True,
+    )
+
+    reporter.fail_stage("one", detail="exploded")
+
+    captured = capsys.readouterr()
+    assert "failed Stage one" in captured.out
+    assert "exploded" in captured.out
+
+
+def test_progress_reporter_stage_raises_on_unknown_key(tmp_path):
+    import pytest
+
+    reporter = ProgressReporter(
+        kind="sattlint.test.progress",
+        title="Test",
+        output_dir=tmp_path,
+        write_json=lambda path, payload: None,
+        stages=[("one", "Stage one")],
+        emit_stdout=False,
+    )
+
+    with pytest.raises(KeyError, match="Unknown progress stage"):
+        reporter.start_stage("no-such-key")
+
+
+# --- artifact_registry.py line 23 (is_available), line 24-39 (to_dict) ---
+def test_artifact_definition_is_available_false_when_not_in_profile(tmp_path):
+    from sattlint.devtools.artifact_registry import ArtifactDefinition
+
+    ad = ArtifactDefinition(
+        artifact_id="test",
+        filename="test.json",
+        producer="test",
+        schema_kind="sattlint.test",
+        schema_version=1,
+        profiles=("full",),
+    )
+    assert ad.is_available(profile="quick") is False
+    assert ad.is_available(profile="full") is True
+    assert ad.is_available(profile="full", enabled=False) is False
+
+
+def test_artifact_definition_to_dict_returns_expected_shape():
+    from sattlint.devtools.artifact_registry import ArtifactDefinition
+
+    ad = ArtifactDefinition(
+        artifact_id="my-art",
+        filename="my-art.json",
+        producer="producer",
+        schema_kind="sattlint.myart",
+        schema_version=2,
+        profiles=("quick", "full"),
+        optional=True,
+        blocking=False,
+    )
+    result = ad.to_dict(enabled=True)
+    assert result["artifact_id"] == "my-art"
+    assert result["profiles"] == ["quick", "full"]
+    assert result["optional"] is True
+    assert result["enabled"] is True
+
+
+# --- tool_reports.py lines 26, 34, 35 (build_command_report) ---
+def test_build_command_report_returns_expected_keys(tmp_path):
+    from types import SimpleNamespace
+
+    from sattlint.devtools.tool_reports import build_command_report
+
+    result_obj = SimpleNamespace(
+        name="mytool",
+        command=["mytool", "--flag"],
+        exit_code=0,
+        duration_seconds=1.23,
+        stdout="ok",
+        stderr="",
+    )
+    report = build_command_report(result_obj, repo_root=tmp_path, extra_key="extra_val")
+    assert report["tool"] == "mytool"
+    assert report["exit_code"] == 0
+    assert report["extra_key"] == "extra_val"
+
+
+# --- issue.py lines 10-13 (format_report_header) ---
+def test_format_report_header_includes_status_when_given():
+    from sattlint.analyzers.issue import format_report_header
+
+    lines = format_report_header("varcheck", "Main.s", status="pass")
+    assert "Report: varcheck" in lines
+    assert "Target: Main.s" in lines
+    assert "Status: pass" in lines
+
+
+def test_format_report_header_omits_status_when_none():
+    from sattlint.analyzers.issue import format_report_header
+
+    lines = format_report_header("varcheck", "Main.s")
+    assert len(lines) == 2
+
+
+# --- sattline_builtins.py line 2090 (is_builtin_function) ---
+def test_is_builtin_function_returns_true_for_known_function():
+    from sattlint.analyzers.sattline_builtins import is_builtin_function
+
+    assert is_builtin_function("CopyVariable") is True
+    assert is_builtin_function("copyvariable") is True
+    assert is_builtin_function("nonexistent_xyz") is False
+
+
+# --- call_signatures.py: channel_kind async-operation branch, status_parameters, resolve_call_signature ---
+def test_call_parameter_signature_channel_kind_returns_async_operation():
+    from sattlint.call_signatures import CallParameterSignature
+
+    p = CallParameterSignature(
+        name="AsyncOperation",
+        datatype="AsyncOperation",
+        direction="inout",
+        sorting="RS/WS",
+        ownership="RO/WO",
+    )
+    assert p.channel_kind == "async-operation"
+    assert p.is_status_channel is True
+
+
+def test_resolve_call_signature_returns_signature_for_known_builtin():
+    from sattlint.call_signatures import resolve_call_signature
+
+    sig = resolve_call_signature("CopyVariable")
+    assert sig is not None
+    assert sig.name == "copyvariable"
+    status_params = sig.status_parameters
+    assert len(status_params) > 0
+
+
+# --- call_signatures.py lines 59 (early return) and 63 (builtin not found) ---
+def test_resolve_call_signature_returns_none_for_falsy_name():
+    from sattlint.call_signatures import resolve_call_signature
+
+    assert resolve_call_signature(None) is None
+    assert resolve_call_signature("") is None
+
+
+def test_resolve_call_signature_returns_none_for_unknown_builtin():
+    from sattlint.call_signatures import resolve_call_signature
+
+    assert resolve_call_signature("NonExistentFunctionXyz123") is None
+
+
+# --- casefolding.py lines 13, 17-28 ---
+def test_casefold_equal_compares_case_insensitively():
+    from sattlint.casefolding import casefold_equal
+
+    assert casefold_equal("Hello", "hello") is True
+    assert casefold_equal("FOO", "bar") is False
+
+
+def test_dedupe_casefolded_strings_removes_duplicates_and_empties():
+    from sattlint.casefolding import dedupe_casefolded_strings
+
+    result = dedupe_casefolded_strings(["Alpha", "alpha", "", "Beta", "BETA"])
+    assert result == ["Alpha", "Beta"]
+
+
+# --- _validation_shared.py: RawSourceValidationError, _span_kwargs, _warn_or_raise, _ref_span ---
+def test_raw_source_validation_error_stores_line_and_column():
+    from sattlint._validation_shared import RawSourceValidationError
+
+    err = RawSourceValidationError("bad input", line=5, column=10, length=3)
+    assert err.line == 5
+    assert err.column == 10
+    assert err.length == 3
+    assert str(err) == "bad input"
+
+
+def test_span_kwargs_returns_line_and_column_from_span():
+    from sattline_parser.models.ast_model import SourceSpan
+    from sattlint._validation_shared import _span_kwargs
+
+    span = SourceSpan(line=3, column=7)
+    result = _span_kwargs(span)
+    assert result == {"line": 3, "column": 7}
+
+
+def test_warn_or_raise_raises_when_no_sink():
+    import pytest
+
+    from sattlint._validation_shared import StructuralValidationError, _warn_or_raise
+
+    with pytest.raises(StructuralValidationError, match="something bad"):
+        _warn_or_raise("something bad", line=1, column=2, length=5)
+
+
+def test_ref_span_returns_span_from_dict_with_span():
+    from sattline_parser.models.ast_model import SourceSpan
+    from sattlint._validation_shared import _ref_span
+
+    span = SourceSpan(line=1, column=0)
+    result = _ref_span({"span": span})
+    assert result is span
+
+
+def test_ref_span_returns_none_for_non_dict():
+    from sattlint._validation_shared import _ref_span
+
+    assert _ref_span(None) is None
+    assert _ref_span("string") is None
+
+
+# --- coverage_reports.py: skipped when no coverage.xml, high severity branch ---
+def test_build_coverage_summary_report_skipped_when_no_xml(tmp_path):
+    from sattlint.devtools.coverage_reports import build_coverage_summary_report
+
+    result = build_coverage_summary_report(tmp_path)
+    assert result["skipped"] is True
+    assert result["skip_reason"] == "coverage.xml not found"
+    assert result["modules"] == []
+
+
+def test_build_coverage_summary_report_flags_high_severity(tmp_path):
+    from sattlint.devtools.coverage_reports import build_coverage_summary_report
+
+    xml_content = """<?xml version="1.0" ?>
+<coverage>
+  <packages><package><classes>
+    <class filename="src/sattlint/bad_module.py" line-rate="0.05" lines-valid="100" lines-covered="5">
+      <lines/>
+    </class>
+  </classes></package></packages>
+</coverage>"""
+    (tmp_path / "coverage.xml").write_text(xml_content, encoding="utf-8")
+    result = build_coverage_summary_report(tmp_path)
+    findings = result["findings"]
+    assert any(f["severity"] == "high" for f in findings)
+
+
+# --- resolution/paths.py: CanonicalPath.join() no-arg, ModuleSegment.display() branches ---
+def test_canonical_path_join_no_args_returns_self():
+    from sattlint.resolution.paths import CanonicalPath
+
+    cp = CanonicalPath(("Main", "Guard"))
+    assert cp.join() is cp
+
+
+def test_module_segment_display_variants():
+    from sattlint.resolution.paths import ModuleSegment
+
+    assert ModuleSegment("Guard", "SM").display() == "Guard<SM>"
+    assert ModuleSegment("Loop", "FM").display() == "Loop<FM>"
+    assert ModuleSegment("T1", "TD").display() == "T1<TD>"
+    assert ModuleSegment("Root", "BP").display() == "Root<BP>"
+    assert ModuleSegment("UTI", "MT", "MyType").display() == "UTI<MT:MyType>"
+
+
+# --- resolution/scope.py: param mapping prefix-only and no-prefix branches, resolve_global_name ---
+def test_scope_context_resolve_variable_prefix_only_mapping():
+    from sattline_parser.models.ast_model import Variable
+    from sattlint.resolution.scope import ScopeContext
+
+    src_var = Variable(name="Dv", datatype="UserType")
+    ctx = ScopeContext(
+        env={"dv": src_var},
+        param_mappings={"sig": (src_var, "I.WT001", ["Lib", "Main"], ["Lib", "Main"])},
+        module_path=["Main"],
+        display_module_path=["Main"],
+    )
+    var, full_field_path, _, _ = ctx.resolve_variable("sig")
+    assert var is src_var
+    assert full_field_path == "I.WT001"
+
+
+def test_scope_context_resolve_variable_no_prefix_mapping():
+    from sattline_parser.models.ast_model import Variable
+    from sattlint.resolution.scope import ScopeContext
+
+    src_var = Variable(name="Dv", datatype="UserType")
+    ctx = ScopeContext(
+        env={},
+        param_mappings={"sig": (src_var, "", ["Lib"], ["Lib"])},
+        module_path=["Main"],
+        display_module_path=["Main"],
+    )
+    var, full_field_path, _, _ = ctx.resolve_variable("sig")
+    assert var is src_var
+    assert full_field_path == ""
+
+
+def test_scope_context_resolve_global_name_empty_returns_none():
+    from sattlint.resolution.scope import ScopeContext
+
+    ctx = ScopeContext(
+        env={},
+        param_mappings={},
+        module_path=["Main"],
+        display_module_path=["Main"],
+    )
+    var, _, _ = ctx.resolve_global_name("")
+    assert var is None
+
+
+def test_scope_context_resolve_global_name_walks_parent():
+    from sattline_parser.models.ast_model import Variable
+    from sattlint.resolution.scope import ScopeContext
+
+    parent_var = Variable(name="GlobVar", datatype="Integer")
+    parent_ctx = ScopeContext(
+        env={"globvar": parent_var},
+        param_mappings={},
+        module_path=["Root"],
+        display_module_path=["Root"],
+    )
+    child_ctx = ScopeContext(
+        env={},
+        param_mappings={},
+        module_path=["Root", "Child"],
+        display_module_path=["Root", "Child"],
+        parent_context=parent_ctx,
+    )
+    var, _, _ = child_ctx.resolve_global_name("GlobVar")
+    assert var is parent_var
+
+
+# --- contracts/findings.py ---
+def test_finding_location_to_dict_and_from_mapping():
+    from sattlint.contracts.findings import FindingLocation
+
+    loc = FindingLocation(path="Main.s", line=5, column=3, symbol="Var1", module_path=("Main", "Guard"))
+    d = loc.to_dict()
+    assert d["path"] == "Main.s"
+    assert d["line"] == 5
+    assert d["module_path"] == ["Main", "Guard"]
+
+    from_payload = FindingLocation.from_mapping({"path": "Foo.s", "line": "10", "module_path": ["A", "B"]})
+    assert from_payload.path == "Foo.s"
+    assert from_payload.line == 10
+    assert from_payload.module_path == ("A", "B")
+
+
+def test_finding_location_from_mapping_uses_file_fallback():
+    from sattlint.contracts.findings import FindingLocation
+
+    loc = FindingLocation.from_mapping({"file": "Alt.s"})
+    assert loc.path == "Alt.s"
+
+
+def test_finding_record_default_fingerprint_is_set():
+    from sattlint.contracts.findings import FindingRecord
+
+    r = FindingRecord(
+        id="r1",
+        rule_id="var.unused",
+        category="variable",
+        severity="warning",
+        confidence="high",
+        message="Unused variable X",
+        source="test",
+    )
+    assert r.fingerprint is not None
+    assert "var.unused" in r.fingerprint
+
+
+def test_finding_record_to_dict_round_trip_via_from_dict():
+    from sattlint.contracts.findings import FindingRecord
+
+    original = FindingRecord(
+        id="r2",
+        rule_id="scope.leak",
+        category="scope",
+        severity="info",
+        confidence="medium",
+        message="Scope issue",
+        source="test",
+        detail="some detail",
+        suggestion="fix it",
+    )
+    d = original.to_dict()
+    restored = FindingRecord.from_dict(d)
+    assert restored.rule_id == "scope.leak"
+    assert restored.detail == "some detail"
+    assert restored.suggestion == "fix it"
+
+
+def test_finding_record_from_mapping_with_explicit_source():
+    from sattlint.contracts.findings import FindingRecord
+
+    r = FindingRecord.from_mapping(
+        {"rule_id": "x.y", "category": "cat", "severity": "err", "confidence": "low", "message": "msg"},
+        source="manual",
+        analyzer="myanalyzer",
+    )
+    assert r.source == "manual"
+    assert r.analyzer == "myanalyzer"
+
+
+def test_finding_collection_to_dict_and_from_dict():
+    from sattlint.contracts.findings import FindingCollection, FindingRecord
+
+    rec = FindingRecord(id="f1", rule_id="r1", category="c", severity="s", confidence="c2", message="m", source="s2")
+    coll = FindingCollection(findings=(rec,))
+    d = coll.to_dict()
+    assert d["finding_count"] == 1
+
+    restored = FindingCollection.from_dict(d)
+    assert len(restored.findings) == 1
+    assert restored.findings[0].rule_id == "r1"
+
+
+# --- path_sanitizer.py ---
+def test_sanitize_path_for_report_returns_relative_for_repo_subpath(tmp_path):
+    from sattlint.path_sanitizer import sanitize_path_for_report
+
+    sub = tmp_path / "src" / "main.py"
+    result = sanitize_path_for_report(sub, repo_root=tmp_path)
+    assert result == "src/main.py"
+
+
+def test_sanitize_path_for_report_returns_none_for_none():
+    from pathlib import Path
+
+    from sattlint.path_sanitizer import sanitize_path_for_report
+
+    result = sanitize_path_for_report(None, repo_root=Path("."))
+    assert result is None
+
+
+def test_sanitize_path_for_report_external_absolute_path(tmp_path):
+    import tempfile
+    from pathlib import Path
+
+    from sattlint.path_sanitizer import sanitize_path_for_report
+
+    # Create a path outside of tmp_path but absolute
+    other = Path(tempfile.gettempdir()) / "some_other" / "file.py"
+    result = sanitize_path_for_report(other, repo_root=tmp_path)
+    # Should be external/<filename> or external
+    assert result is not None
+    assert "file.py" in result or result == "<external>"
+
+
+def test_sanitize_command_for_report_strips_absolute_path_args(tmp_path):
+    from sattlint.path_sanitizer import sanitize_command_for_report
+
+    sub = tmp_path / "src" / "main.py"
+    sub.parent.mkdir(parents=True, exist_ok=True)
+    cmd = ["pytest", f"--output-dir={sub}", str(sub)]
+    result = sanitize_command_for_report(cmd, repo_root=tmp_path)
+    assert result[0] == "pytest"
+    assert "src/main.py" in result[1]
+
+
+# --- analyzers/framework.py: SimpleReport.summary() with note, with issues ---
+def test_simple_report_summary_with_note():
+    from sattlint.analyzers.framework import SimpleReport
+
+    report = SimpleReport(name="TestReport", note="Check this info")
+    summary = report.summary()
+    assert "Check this info" in summary
+
+
+def test_simple_report_summary_no_issues_ok():
+    from sattlint.analyzers.framework import SimpleReport
+
+    report = SimpleReport(name="TestReport")
+    summary = report.summary()
+    assert "No issues found" in summary
+
+
+def test_simple_report_summary_with_issues():
+    from sattlint.analyzers.framework import Issue, SimpleReport
+
+    issue = Issue(kind="test.issue", message="Something is wrong", module_path=["Main", "Guard"])
+    report = SimpleReport(name="TestReport", issues=[issue])
+    summary = report.summary()
+    assert "Findings:" in summary
+    assert "Something is wrong" in summary
+
+
+# --- models/usage.py: all branches ---
+def test_variable_usage_mark_read_ui_and_non_ui():
+    from sattlint.models.usage import VariableUsage
+
+    u = VariableUsage()
+    assert u.is_unused is True
+    u.mark_read(["Main", "Guard"])
+    assert u.read is True
+    assert u.non_ui_read is True
+    assert u.is_read_only is True
+    u.mark_ui_read(["Main", "Display"])
+    assert u.ui_read is True
+    assert u.is_display_only is False  # has non_ui_read too
+
+
+def test_variable_usage_mark_field_read_ui():
+    from sattlint.models.usage import VariableUsage
+
+    u = VariableUsage()
+    u.mark_field_read("Level.Value", ["Main", "Guard"], ui=True)
+    assert u.ui_read is True
+    assert "Level.Value" in u.field_reads
+
+
+def test_variable_usage_mark_field_read_non_ui():
+    from sattlint.models.usage import VariableUsage
+
+    u = VariableUsage()
+    u.mark_field_read("Level.Value", ["Main", "Guard"])
+    assert u.non_ui_read is True
+
+
+def test_variable_usage_mark_written_and_mark_field_written():
+    from sattlint.models.usage import VariableUsage
+
+    u = VariableUsage()
+    u.mark_written(["Main", "Guard"])
+    assert u.written is True
+    u.mark_field_written("Level.Value", ["Main", "Guard"])
+    assert "Level.Value" in u.field_writes
+
+
+def test_variable_usage_distinct_reader_writer_counts():
+    from sattlint.models.usage import VariableUsage
+
+    u = VariableUsage()
+    u.mark_read(["Main", "Guard"])
+    u.mark_read(["Main", "Guard"])
+    u.mark_read(["Main", "Observer"])
+    u.mark_field_read("Level", ["Main", "Extra"])
+    assert u.distinct_reader_count == 3
+
+    u.mark_written(["Main", "Guard"])
+    u.mark_field_written("Level", ["Main", "Guard"])
+    assert u.distinct_writer_count == 1
+
+
+def test_variable_usage_is_display_only():
+    from sattlint.models.usage import VariableUsage
+
+    u = VariableUsage()
+    u.mark_ui_read(["Main", "Display"])
+    assert u.is_display_only is True
+
+
+# --- resolution/type_graph.py: TypeGraph operations ---
+def test_type_graph_has_record_and_field():
+    from types import SimpleNamespace
+
+    from sattlint.resolution.type_graph import TypeGraph
+
+    dt = SimpleNamespace(
+        name="RecordType",
+        var_list=[
+            SimpleNamespace(name="Value", datatype="Integer", state=False),
+            SimpleNamespace(name="Status", datatype="Integer", state=False),
+        ],
+    )
+    graph = TypeGraph.from_datatypes([dt])
+    assert graph.has_record("RecordType") is True
+    assert graph.has_record("Unknown") is False
+    assert graph.record("RecordType") is not None
+    assert graph.field("RecordType", "Value") is not None
+    assert graph.field("RecordType", "Nonexistent") is None
+    assert graph.field("Unknown", "Value") is None
+    assert graph.field_type("RecordType", "Value") == "Integer"
+    assert graph.field_type("Missing", "x") is None
+
+
+def test_type_graph_iter_leaf_field_paths_simple_type():
+    from sattline_parser.models.ast_model import Simple_DataType
+    from sattlint.resolution.type_graph import TypeGraph
+
+    graph = TypeGraph({})
+    paths = list(graph.iter_leaf_field_paths(Simple_DataType.INTEGER))
+    assert paths == [()]
+
+
+def test_type_graph_iter_leaf_field_paths_unknown_type():
+    from sattlint.resolution.type_graph import TypeGraph
+
+    graph = TypeGraph({})
+    paths = list(graph.iter_leaf_field_paths("UnknownType"))
+    assert paths == [()]
+
+
+def test_type_graph_iter_leaf_field_paths_nested_record():
+    from types import SimpleNamespace
+
+    from sattline_parser.models.ast_model import Simple_DataType
+    from sattlint.resolution.type_graph import TypeGraph
+
+    # RecordA has field "FieldA" of type Integer (Simple_DataType)
+    dt = SimpleNamespace(
+        name="RecordA",
+        var_list=[SimpleNamespace(name="FieldA", datatype=Simple_DataType.INTEGER, state=False)],
+    )
+    graph = TypeGraph.from_datatypes([dt])
+    paths = list(graph.iter_leaf_field_paths("RecordA"))
+    assert ("FieldA",) in paths
+
+
+def test_type_graph_iter_all_addressable_paths():
+    from types import SimpleNamespace
+
+    from sattline_parser.models.ast_model import Simple_DataType, Variable
+    from sattlint.resolution.type_graph import TypeGraph
+
+    dt = SimpleNamespace(
+        name="RootType",
+        var_list=[SimpleNamespace(name="Field1", datatype=Simple_DataType.INTEGER, state=False)],
+    )
+    graph = TypeGraph.from_datatypes([dt])
+    root_var = Variable(name="Dv", datatype="RootType")
+    paths = list(graph.iter_all_addressable_paths(root_var))
+    assert ("Field1",) in paths
+
+
+# --- console.py: print_output, has_rich, print_status fallback, print_panel fallback,
+#     print_table empty rows, print_table with rows, track_items ---
+def test_print_output_writes_to_stdout(capsys):
+    from sattlint.console import print_output
+
+    print_output("hello", "world", sep="-")
+    captured = capsys.readouterr()
+    assert "hello-world" in captured.out
+
+
+def test_has_rich_returns_bool():
+    from sattlint.console import has_rich
+
+    assert isinstance(has_rich(), bool)
+
+
+def test_print_status_fallback_no_rich(capsys, monkeypatch):
+    import sattlint.console as console_mod
+
+    monkeypatch.setattr(console_mod, "_RICH_AVAILABLE", False)
+    console_mod.print_status("test message", level="error")
+    captured = capsys.readouterr()
+    assert "ERROR" in captured.out
+    assert "test message" in captured.out
+
+
+def test_print_panel_fallback_no_rich(capsys, monkeypatch):
+    import sattlint.console as console_mod
+
+    monkeypatch.setattr(console_mod, "_RICH_AVAILABLE", False)
+    console_mod.print_panel("My Title", "Panel body text")
+    captured = capsys.readouterr()
+    assert "My Title" in captured.out
+    assert "Panel body text" in captured.out
+
+
+def test_print_table_empty_rows_no_rich(capsys, monkeypatch):
+    import sattlint.console as console_mod
+
+    monkeypatch.setattr(console_mod, "_RICH_AVAILABLE", False)
+    console_mod.print_table("My Table", ["Col1", "Col2"], [])
+    captured = capsys.readouterr()
+    assert "My Table" in captured.out
+    assert "(none)" in captured.out
+
+
+def test_print_table_with_rows_no_rich(capsys, monkeypatch):
+    import sattlint.console as console_mod
+
+    monkeypatch.setattr(console_mod, "_RICH_AVAILABLE", False)
+    console_mod.print_table("My Table", ["Name", "Value"], [["alpha", "1"], ["beta", "2"]])
+    captured = capsys.readouterr()
+    assert "alpha" in captured.out
+    assert "beta" in captured.out
+
+
+def test_track_items_returns_iterable_without_rich(monkeypatch):
+    import sattlint.console as console_mod
+
+    monkeypatch.setattr(console_mod, "_RICH_AVAILABLE", False)
+    items = [1, 2, 3]
+    result = list(console_mod.track_items(items, description="Loading"))
+    assert result == [1, 2, 3]

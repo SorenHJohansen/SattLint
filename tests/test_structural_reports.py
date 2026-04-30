@@ -187,3 +187,94 @@ def test_collect_structural_budget_report_flags_facade_private_entrypoints_and_r
             "actual": 1,
         }
     ]
+
+
+def test_load_structural_budget_ratchet_returns_invalid_on_bad_json(tmp_path):
+    ratchet = tmp_path / "ratchet.json"
+    ratchet.write_text("not valid json{", encoding="utf-8")
+
+    result = structural_reports._load_structural_budget_ratchet(tmp_path, ratchet_path=ratchet)
+
+    assert result["status"] == "invalid"
+    assert result["metrics"] == {}
+    assert "error" in result
+
+
+def test_load_structural_budget_ratchet_returns_invalid_on_non_int_metrics(tmp_path):
+    ratchet = tmp_path / "ratchet.json"
+    import json
+
+    ratchet.write_text(
+        json.dumps({"kind": "k", "schema_version": 1, "metrics": {"count": "not_an_int"}}),
+        encoding="utf-8",
+    )
+
+    result = structural_reports._load_structural_budget_ratchet(tmp_path, ratchet_path=ratchet)
+
+    assert result["status"] == "invalid"
+    assert "ratchet metrics" in result["error"]
+
+
+def test_collect_structural_budget_report_records_scan_failure_for_syntax_error(tmp_path):
+    broken = tmp_path / "src" / "pkg" / "broken_syntax.py"
+    broken.parent.mkdir(parents=True, exist_ok=True)
+    broken.write_text("def bad syntax here((\n", encoding="utf-8")
+
+    report = structural_reports.collect_structural_budget_report(tmp_path)
+
+    failures = [f for f in report["scan_failures"] if "broken_syntax.py" in f.get("path", "")]
+    assert len(failures) == 1
+    assert failures[0]["error_type"] == "SyntaxError"
+
+
+def test_collect_facade_private_entrypoints_detects_importfrom_direct_private_call():
+    import ast as _ast
+
+    source = "from . import _helper_func\n\ndef run():\n    return _helper_func()\n"
+    tree = _ast.parse(source)
+
+    violations = structural_reports._collect_facade_private_entrypoints(tree, relative_path="src/sattlint/app.py")
+
+    assert any(v["target"].endswith("_helper_func") for v in violations)
+
+
+def test_collect_architecture_report_flags_missing_acceptance_tests(monkeypatch):
+    empty_budget = {
+        "thresholds": dict(structural_reports.STRUCTURAL_BUDGET_THRESHOLDS),
+        "source_files_over_budget": [],
+        "test_files_over_budget": [],
+        "functions_over_budget": [],
+        "classes_over_budget": [],
+        "repeated_private_names": [],
+        "facade_private_entrypoints": [],
+        "metrics": {"facade_private_entrypoint_count": 0},
+        "ratchet": {
+            "status": "pass",
+            "path": "ratchet.json",
+            "expected_metrics": {},
+            "current_metrics": {},
+            "regressions": [],
+        },
+        "scan_failures": [],
+    }
+    fake_spec = SimpleNamespace(key="no-tests-analyzer", enabled=True, supports_live_diagnostics=False)
+    fake_delivery = SimpleNamespace(
+        cli_exposed=False, lsp_exposed=False, exposed_via=[], acceptance_tests=[], output_artifacts=[]
+    )
+    fake_analyzer = SimpleNamespace(spec=fake_spec, delivery=fake_delivery, summary_output="no-tests-analyzer.summary")
+    monkeypatch.setattr(structural_reports, "collect_structural_budget_report", lambda *a, **k: empty_budget)
+    monkeypatch.setattr(
+        structural_reports,
+        "get_default_analyzer_catalog",
+        lambda: SimpleNamespace(analyzers=[fake_analyzer], rules=[]),
+    )
+    monkeypatch.setattr(structural_reports, "get_declared_cli_analyzer_keys", lambda: [])
+    monkeypatch.setattr(structural_reports, "get_actual_cli_analyzer_keys", lambda: [])
+    monkeypatch.setattr(structural_reports, "get_declared_lsp_analyzer_keys", lambda: [])
+    monkeypatch.setattr(structural_reports, "get_actual_lsp_analyzer_keys", lambda: [])
+    monkeypatch.setattr(structural_reports, "VARIABLE_ANALYSES", {})
+
+    report = structural_reports.collect_architecture_report()
+    finding_ids = {f["id"] for f in report["findings"]}
+
+    assert "analyzer-acceptance-test-gap" in finding_ids

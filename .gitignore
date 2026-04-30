@@ -22,6 +22,18 @@
 *.icf
 *.cfg
 
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+dist/
+build/
+
 # Project outputs
 artifacts/
 *.docx

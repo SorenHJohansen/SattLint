@@ -20,6 +20,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import config as config_module
+from sattlint.docgenerator import configgen
 from sattlint.docgenerator.classification import (
     classify_documentation_structure,
     discover_documentation_unit_candidates,
@@ -50,6 +51,11 @@ def _table_text(document: DocClass) -> list[str]:
     return [
         cell.text.strip() for table in document.tables for row in table.rows for cell in row.cells if cell.text.strip()
     ]
+
+
+def _write_text(path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
 
 
 def _build_documentation_fixture() -> BasePicture:
@@ -656,3 +662,464 @@ def test_generate_docx_renders_sfc_sequences_as_tables(tmp_path):
     assert "NOT(Dv.Tara_execute) AND \nNOT(ProfibusError)" in table_text
     assert not any("SFCStep(" in text for text in table_text)
     assert not any("SFCTransition(" in text for text in table_text)
+
+
+def test_configgen_parse_configuration_file_extracts_programs_and_libraries(tmp_path):
+    config_file = tmp_path / "Configuration" / "KaGC_Allf.k"
+    _write_text(
+        config_file,
+        'Configuration ( Version "v1" Date "2026-04-29" Name "IgnoredByParser" )\n'
+        'Program ( Name "MainProgram.z" Directory "UnitLib" MainProgram True )\n'
+        'Program ( Name "SupportProgram" Directory "UnitLib" MainProgram False )\n'
+        'Library ( Name "CommonLib.z" Directory "ProjectLib" )\n',
+    )
+
+    parser = configgen.ConfigurationFileParser()
+
+    info = parser.parse_configuration_file(config_file)
+
+    assert info is not None
+    assert info.config_name == "KaGC_Allf"
+    assert info.version == "v1"
+    assert info.date == "2026-04-29"
+    assert info.main_program == "MainProgram"
+    assert info.programs == [
+        {"name": "MainProgram", "directory": "UnitLib", "main_program": True},
+        {"name": "SupportProgram", "directory": "UnitLib", "main_program": False},
+    ]
+    assert info.libraries == [{"name": "CommonLib", "directory": "ProjectLib"}]
+
+
+def test_configgen_parse_configuration_file_returns_none_without_header(tmp_path):
+    config_file = tmp_path / "Configuration" / "Broken.k"
+    _write_text(config_file, 'Program ( Name "MainProgram.z" Directory "UnitLib" MainProgram True )\n')
+
+    parser = configgen.ConfigurationFileParser()
+
+    assert parser.parse_configuration_file(config_file) is None
+
+
+def test_configgen_extractor_get_component_info_reads_dependencies_ip_slc_and_units(tmp_path):
+    root = tmp_path / "ProjectRoot"
+    for relative in ["unitlib", "projectlib", "nnelib", "SL_Library", "Configuration"]:
+        (root / relative).mkdir(parents=True)
+
+    z_file = root / "unitlib" / "PBSLC123.z"
+    _write_text(z_file, "CommonLib.z\nIOHelpers.z\n")
+    _write_text(z_file.with_suffix(".q"), '( Name "10.0.0.7" )\n')
+    _write_text(z_file.with_suffix(".x"), 'pMixer : pType;\npFilter "UF" : pType ;\n')
+
+    extractor = configgen.SattLineConfigExtractor(root)
+
+    component = extractor.get_component_info(z_file, "Program", True, {"PBSLC123": "10.0.0.7"})
+
+    assert component.name == "PBSLC123"
+    assert component.type == "Program"
+    assert component.dependencies == ["CommonLib", "IOHelpers"]
+    assert component.ip_address == "10.0.0.7"
+    assert component.slc == "SLC123"
+    assert component.units == "(2) Filter, Mixer"
+
+
+def test_configgen_workstation_mapper_is_case_insensitive():
+    mapper = configgen.WorkstationMapper()
+
+    assert mapper.get_workstations("kagc_op_utilf.z") == ["LOP01", "OP06", "OP07"]
+    assert mapper.get_physical_location("OPC01") == "Server Room"
+    assert mapper.get_physical_location("UNKNOWN") == "Unknown Location"
+
+
+def test_configgen_main_returns_2_for_invalid_root(tmp_path, capsys):
+    invalid_root = tmp_path / "missing-root"
+
+    result = configgen.main([str(invalid_root)])
+
+    captured = capsys.readouterr()
+    assert result == 2
+    assert "Invalid root directory" in captured.err
+
+
+def test_configgen_main_generates_output_with_stubbed_components(tmp_path, monkeypatch, capsys):
+    root_dir = tmp_path / "root"
+    root_dir.mkdir()
+    output_path = tmp_path / "out.xlsx"
+    captured = {}
+
+    class StubExtractor:
+        def __init__(self, root):
+            captured["extractor_root"] = root
+
+    class StubGenerator:
+        def __init__(self, extractor):
+            captured["generator_extractor"] = extractor
+
+        def generate(self, output):
+            captured["output"] = output
+
+    monkeypatch.setattr(configgen, "SattLineConfigExtractor", StubExtractor)
+    monkeypatch.setattr(configgen, "ExcelGenerator", StubGenerator)
+
+    result = configgen.main([str(root_dir), "--output", str(output_path)])
+
+    captured_output = capsys.readouterr().out
+    assert result == 0
+    assert captured["extractor_root"] == root_dir.resolve()
+    assert captured["output"] == output_path.resolve()
+    assert "Configuration Excel file generated successfully" in captured_output
+
+
+def test_configgen_style_manager_applies_header_styling():
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+
+    style_manager = configgen.StyleManager()
+    cell = ws["A1"]
+    cell.value = "Test Header"
+    style_manager.apply_header_style(cell)
+
+    assert cell.font.bold is True
+    assert cell.font.size == 11
+    assert "4472C4" in cell.fill.start_color.rgb
+
+
+def test_configgen_worksheet_helper_setup_headers():
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    style_manager = configgen.StyleManager()
+    headers = ["ID", "Name", "Value"]
+
+    configgen.WorksheetHelper.setup_headers(ws, headers, style_manager)
+
+    assert ws["A1"].value == "ID"
+    assert ws["B1"].value == "Name"
+    assert ws["C1"].value == "Value"
+    assert ws["A1"].font.bold is True
+
+
+def test_configgen_worksheet_helper_create_table():
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+
+    configgen.WorksheetHelper.create_table(ws, "TestTable", "A1:C3")
+
+    assert len(ws.tables) == 1
+    assert ws.tables["TestTable"] is not None
+
+
+def test_configgen_worksheet_helper_auto_fit_columns():
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws["A1"] = "Short"
+    ws["B1"] = "This is a much longer value that should increase column width"
+
+    configgen.WorksheetHelper.auto_fit_columns(ws, max_width=60)
+
+    assert ws.column_dimensions["A"].width > 0
+    assert ws.column_dimensions["B"].width >= ws.column_dimensions["A"].width
+
+
+def test_configgen_aggregate_slc_numbers_matches_component_case_insensitive():
+    component_data = [
+        configgen.ComponentInfo(
+            name="PBSLC123", type="Program", ip_address="10.0.0.1", slc="SLC123", units="(2) A, B", dependencies=[]
+        ),
+        configgen.ComponentInfo(
+            name="OpsStation", type="Program", ip_address="10.0.0.2", slc="No SLC", units="(0) ", dependencies=[]
+        ),
+    ]
+    config = {"programs": ["pbslc123", "OpsStation"]}
+    generator = configgen.ExcelGenerator.__new__(configgen.ExcelGenerator)
+
+    result = generator._aggregate_slc_numbers(config, component_data)
+
+    assert result == "SLC123"
+
+
+def test_configgen_aggregate_units_extracts_from_format():
+    component_data = [
+        configgen.ComponentInfo(
+            name="Prog1",
+            type="Program",
+            ip_address="10.0.0.1",
+            slc="SLC123",
+            units="(3) UnitA, UnitB, UnitC",
+            dependencies=[],
+        ),
+        configgen.ComponentInfo(
+            name="Prog2",
+            type="Program",
+            ip_address="10.0.0.2",
+            slc="No SLC",
+            units="(1) UnitD",
+            dependencies=[],
+        ),
+    ]
+    config = {"programs": ["Prog1", "Prog2"]}
+    generator = configgen.ExcelGenerator.__new__(configgen.ExcelGenerator)
+
+    result = generator._aggregate_units(config, component_data)
+
+    assert "UnitA" in result
+    assert "UnitB" in result
+    assert "UnitC" in result
+    assert "UnitD" in result
+    assert result.startswith("(")
+
+
+def test_configgen_format_units_for_station_returns_no_units_for_invalid_input():
+    generator = configgen.ExcelGenerator.__new__(configgen.ExcelGenerator)
+
+    assert generator._format_units_for_station("") == "No units assigned"
+    assert generator._format_units_for_station("No X-File") == "No units assigned"
+    assert generator._format_units_for_station("Error reading X-File") == "No units assigned"
+
+
+def test_configgen_format_units_for_station_extracts_from_paren_format():
+    generator = configgen.ExcelGenerator.__new__(configgen.ExcelGenerator)
+
+    result = generator._format_units_for_station("(3) UnitA, UnitB, UnitC")
+
+    assert result == "UnitA, UnitB, UnitC"
+
+
+def test_configgen_determine_station_type_classifies_by_prefix():
+    generator = configgen.ExcelGenerator.__new__(configgen.ExcelGenerator)
+
+    assert generator._determine_station_type("LOP01") == "Local Operator Panel"
+    assert generator._determine_station_type("OP06") == "Operator Station"
+    assert generator._determine_station_type("OPC01") == "Operator Station"
+    assert generator._determine_station_type("PRG01") == "Programmer Station"
+    assert generator._determine_station_type("Journal Server 1 Primary") == "Journal Server"
+    assert generator._determine_station_type("UNKNOWN") == "Special System"
+
+
+def test_configgen_populate_components_sheet_writes_rows_and_returns_count():
+    generator = configgen.ExcelGenerator(extractor=object())
+    component_data = [
+        configgen.ComponentInfo(
+            name="PBSLC123",
+            type="Program",
+            ip_address="10.0.0.1",
+            slc="SLC123",
+            units="(2) UnitA, UnitB",
+            dependencies=["CommonLib"],
+        ),
+        configgen.ComponentInfo(
+            name="CommonLib",
+            type="Project Library",
+            ip_address="N/A",
+            slc="No SLC",
+            units="No X-File",
+            dependencies=[],
+        ),
+    ]
+
+    row_count = generator._populate_components_sheet(component_data)
+
+    assert row_count == 3
+    assert generator.components_ws["A1"].value == "ID"
+    assert generator.components_ws["B2"].value == "PBSLC123"
+    assert generator.components_ws["F3"].value == "Project Library"
+
+
+def test_configgen_populate_dependencies_sheet_uses_case_insensitive_type_lookup():
+    generator = configgen.ExcelGenerator(extractor=object())
+    generator.all_component_data = [
+        configgen.ComponentInfo(
+            name="PBSLC123",
+            type="Program",
+            ip_address="10.0.0.1",
+            slc="SLC123",
+            units="(1) UnitA",
+            dependencies=["CommonLib"],
+        ),
+        configgen.ComponentInfo(
+            name="CommonLib",
+            type="Project Library",
+            ip_address="N/A",
+            slc="No SLC",
+            units="No X-File",
+            dependencies=[],
+        ),
+    ]
+
+    row_count = generator._populate_dependencies_sheet([("pbslc123", "commonlib"), ("UnknownComp", "UnknownLib")])
+
+    assert row_count == 3
+    assert generator.dependencies_ws["C2"].value == "Program"
+    assert generator.dependencies_ws["E2"].value == "Project Library"
+    assert generator.dependencies_ws["C3"].value == "Unknown"
+    assert generator.dependencies_ws["E3"].value == "Unknown"
+
+
+def test_configgen_create_dashboard_sets_title_and_merge():
+    generator = configgen.ExcelGenerator(extractor=object())
+
+    generator._create_dashboard(2, 2)
+
+    assert "A1:H1" in [str(rng) for rng in generator.dashboard_ws.merged_cells.ranges]
+    assert generator.dashboard_ws["A1"].value == "SattLine Configuration Dashboard"
+    assert generator.dashboard_ws.row_dimensions[1].height == 30
+
+
+def test_configgen_create_configuration_summary_sheet_no_configs_writes_message():
+    class StubExtractor:
+        def parse_all_configuration_files(self):
+            return []
+
+    generator = configgen.ExcelGenerator(extractor=StubExtractor())
+
+    generator._create_configuration_summary_sheet()
+
+    ws = generator.wb["Configuration Summary"]
+    assert ws["A3"].value == "No configuration files found or parsing failed"
+
+
+def test_configgen_create_configuration_summary_sheet_builds_rows_and_table():
+    class StubExtractor:
+        def parse_all_configuration_files(self):
+            return [
+                configgen.ConfigurationFileInfo(
+                    config_name="kBConfig.z",
+                    version="1.0",
+                    date="2026-04-29",
+                    main_program="ProgB",
+                    programs=[{"name": "ProgB", "directory": "unitlib", "main_program": True}],
+                    libraries=[{"name": "LibB", "directory": "projectlib"}],
+                ),
+                configgen.ConfigurationFileInfo(
+                    config_name="kAConfig.z",
+                    version="2.0",
+                    date="2026-04-30",
+                    main_program="ProgA",
+                    programs=[{"name": "ProgA", "directory": "unitlib", "main_program": True}],
+                    libraries=[{"name": "LibA", "directory": "projectlib"}],
+                ),
+            ]
+
+    generator = configgen.ExcelGenerator(extractor=StubExtractor())
+
+    generator._create_configuration_summary_sheet()
+
+    ws = generator.wb["Configuration Summary"]
+    assert ws["A4"].value == "kAConfig.z"
+    assert ws["A5"].value == "kBConfig.z"
+    assert "ConfigurationSummary" in ws.tables
+
+
+def test_configgen_create_configuration_details_sheet_builds_program_and_library_rows():
+    class StubExtractor:
+        def parse_all_configuration_files(self):
+            return [
+                configgen.ConfigurationFileInfo(
+                    config_name="kMain.z",
+                    version="3.1",
+                    date="2026-04-29",
+                    main_program="ProgMain",
+                    programs=[{"name": "ProgMain", "directory": "unitlib", "main_program": True}],
+                    libraries=[{"name": "CommonLib", "directory": "projectlib"}],
+                )
+            ]
+
+    generator = configgen.ExcelGenerator(extractor=StubExtractor())
+
+    generator._create_configuration_details_sheet()
+
+    ws = generator.wb["Configuration Details"]
+    assert ws["A4"].value == "kMain.z"
+    assert ws["B4"].value == "Program"
+    assert ws["B5"].value == "Library"
+    assert "ConfigurationDetails" in ws.tables
+
+
+def test_configgen_build_station_configurations_adds_transitive_non_program_libraries():
+    class StubExtractor:
+        def parse_all_configuration_files(self):
+            return [
+                configgen.ConfigurationFileInfo(
+                    config_name="KaGc_AllF",
+                    version="1.0",
+                    date="2026-04-29",
+                    main_program="ProgA",
+                    programs=[{"name": "ProgA", "directory": "unitlib", "main_program": True}],
+                    libraries=[{"name": "DeclaredLib", "directory": "projectlib"}],
+                )
+            ]
+
+    generator = configgen.ExcelGenerator(extractor=StubExtractor())
+    generator.workstation_mapper.workstation_map = {"KaGC_Allf": ["OP11"]}
+    generator.workstation_mapper.physical_locations = {"OP11": "Control Room 3"}
+
+    component_data = [
+        configgen.ComponentInfo(
+            name="proga",
+            type="Program",
+            ip_address="10.0.0.1",
+            slc="SLC100",
+            units="(1) UnitA",
+            dependencies=["declaredlib", "TransitiveLib", "ProgB"],
+        ),
+        configgen.ComponentInfo(
+            name="DeclaredLib",
+            type="Project Library",
+            ip_address="N/A",
+            slc="No SLC",
+            units="N/A",
+            dependencies=[],
+        ),
+        configgen.ComponentInfo(
+            name="transitivelib",
+            type="SG Library",
+            ip_address="N/A",
+            slc="No SLC",
+            units="N/A",
+            dependencies=[],
+        ),
+        configgen.ComponentInfo(
+            name="ProgB",
+            type="Program",
+            ip_address="10.0.0.2",
+            slc="SLC101",
+            units="(1) UnitB",
+            dependencies=[],
+        ),
+    ]
+
+    result = generator._build_station_configurations(component_data)
+
+    assert result["OP11"]["config_file"] == "KaGC_Allf"
+    assert result["OP11"]["type"] == "Operator Station"
+    assert result["OP11"]["programs"] == ["ProgA"]
+    assert result["OP11"]["libraries"] == ["DeclaredLib", "TransitiveLib"]
+
+
+def test_configgen_create_station_configuration_sheet_writes_defaults_for_missing_config_data():
+    class StubExtractor:
+        def parse_all_configuration_files(self):
+            return []
+
+    generator = configgen.ExcelGenerator(extractor=StubExtractor())
+    generator.workstation_mapper.workstation_map = {"KaGC_Missing": ["OP99"]}
+    generator.workstation_mapper.physical_locations = {"OP99": "Lab"}
+
+    generator._create_station_configuration_sheet([])
+
+    ws = generator.wb["Station Configuration"]
+    assert ws["A4"].value == "OP99"
+    assert ws["B4"].value == "Operator Station"
+    assert ws["C4"].value == "Lab"
+    assert ws["D4"].value == "KaGC_Missing"
+    assert ws["E4"].value == "No SLC"
+    assert ws["F4"].value == "No programs"
+    assert ws["G4"].value == "No libraries"
+    assert ws["H4"].value == "No units assigned"
+    assert ws["I4"].value == "N/A"
+    assert "StationConfiguration" in ws.tables

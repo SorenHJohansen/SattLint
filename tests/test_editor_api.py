@@ -17,11 +17,14 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
+from sattlint.core import semantic as semantic_core
+from sattlint.core.semantic import WorkspaceSourceDiscovery
 from sattlint.editor_api import (
     build_source_snapshot_from_basepicture,
     discover_workspace_sources,
     load_workspace_snapshot,
 )
+from sattlint.models.project_graph import ProjectGraph
 
 
 def _write_text(path: Path, content: str) -> None:
@@ -1085,8 +1088,8 @@ def test_load_workspace_snapshot_formats_dependency_issues_readably(tmp_path):
 
     message = str(exc_info.value)
     assert (
-        "Target 'Main' failed parse/transform: BasePicture equation 'Main' uses OLD on non-STATE variable 'ExecuteLocal'"
-        in message
+        "Target 'Main' failed parse/transform: BasePicture equation 'Main' "
+        "uses OLD on non-STATE variable 'ExecuteLocal'" in message
     )
     assert "Unavailable libraries (1):" in message
     assert "- controllib (expected proprietary dependency)" in message
@@ -1096,3 +1099,87 @@ def test_load_workspace_snapshot_formats_dependency_issues_readably(tmp_path):
         in message
     )
     assert "Missing: [" not in message
+
+
+# --- sattlint/__init__.py lines 15 and 30 ---
+def test_sattlint_package_discover_workspace_sources_wrapper(tmp_path):
+    import sattlint
+
+    discovery = sattlint.discover_workspace_sources(tmp_path)
+    assert discovery is not None
+
+
+def test_workspace_source_discovery_locate_source_file_prefers_cluster_then_extension(tmp_path):
+    root = tmp_path.resolve()
+    project_dir = root / "Libs" / "HA" / "ProjectLib"
+    sibling_dir = root / "Libs" / "HA" / "NNELib"
+    fallback_dir = root / "SharedLib"
+
+    requester = project_dir / "Main.s"
+    local_dep = project_dir / "Support.s"
+    sibling_dep = sibling_dir / "Support.x"
+    fallback_dep = fallback_dir / "Support.s"
+
+    for path in (requester, local_dep, sibling_dep, fallback_dep):
+        _write_text(path, '"x"\n"y"\n"z"\n')
+
+    discovery = WorkspaceSourceDiscovery(
+        workspace_root=root,
+        source_dirs=(project_dir, sibling_dir, fallback_dir),
+        program_files=(requester, local_dep, sibling_dep, fallback_dep),
+        dependency_files=(),
+        abb_lib_dir=None,
+        program_files_by_stem={
+            "main": (requester,),
+            "support": (local_dep, sibling_dep, fallback_dep),
+        },
+        dependency_files_by_stem={},
+    )
+
+    assert discovery.shared_library_root_for(project_dir) == root / "Libs" / "HA"
+    assert (
+        discovery.locate_source_file(
+            "Support",
+            extensions=[".s", ".x"],
+            requester_dir=project_dir,
+        )
+        == local_dep
+    )
+    assert (
+        discovery.locate_source_file(
+            "Support",
+            extensions=[".x", ".s"],
+            requester_dir=sibling_dir,
+        )
+        == sibling_dep
+    )
+
+
+def test_semantic_helpers_format_workspace_failure_and_misc_branches(tmp_path):
+    graph = ProjectGraph()
+    graph.ast_by_name = {"Main": cast(Any, object()), "Support": cast(Any, object())}
+    graph.missing = [
+        "Main parse/transform error: root issue",
+        "Support parse/transform error: dependency issue",
+    ]
+    graph.unavailable_libraries = ["controllib", "VendorLib"]
+    graph.warnings = ["w1", "w2"]
+
+    message = semantic_core._format_workspace_snapshot_failure("Main", graph, detail="root issue")
+    assert "Target 'Main' failed parse/transform: root issue" in message
+    assert "Resolved targets (2): Main, Support" in message
+    assert "Unavailable libraries (2):" in message
+    assert "Other dependency issues (1):" in message
+    assert "Validation warnings (2):" in message
+
+    assert semantic_core._format_name_list(["A", "B"], limit=3) == "A, B"
+    assert semantic_core._format_name_list(["A", "B", "C"], limit=2).startswith("A, B, ... (+1 more)")
+
+    assert semantic_core._normalize_mode("draft").value == "draft"
+    with pytest.raises(ValueError):
+        semantic_core._normalize_mode("invalid-mode")
+
+    assert semantic_core._source_file_key(Path("A/B/Main.S")) == "main.s"
+    assert semantic_core._source_file_key(None) is None
+    assert semantic_core._identifier_contains_column(5, "Value", 7) is True
+    assert semantic_core._identifier_contains_column(0, "Value", 7) is False

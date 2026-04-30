@@ -16,6 +16,16 @@ from sattline_parser.models.ast_model import (
 )
 from sattlint import constants as const
 from sattlint.analyzers.variables import VariablesAnalyzer
+from sattlint.resolution.common import (
+    find_all_aliases,
+    find_all_aliases_upstream,
+    find_module_by_name,
+    find_var_in_scope,
+    get_module_path,
+    is_external_to_module,
+    varname_base,
+    varname_full,
+)
 from sattlint.resolution.common import resolve_module_by_strict_path as _resolve_module_by_strict_path
 from sattlint.resolution.common import resolve_moduletype_def_strict as _resolve_moduletype_def_strict
 
@@ -213,3 +223,82 @@ def test_analyzer_uses_library_scoped_moduletype_defs():
     analyzer.run()
 
     assert not any("unknown field 'Active'" in warning for warning in analyzer.analysis_warnings)
+
+
+def test_resolve_module_by_strict_path_rejects_empty_or_invalid_paths():
+    bp = BasePicture(header=_header("BasePicture"), submodules=[])
+
+    with pytest.raises(ValueError, match="Empty module path"):
+        _resolve_module_by_strict_path(bp, "")
+    with pytest.raises(ValueError, match="cannot continue past"):
+        _resolve_module_by_strict_path(bp, "BasePicture")
+    with pytest.raises(ValueError, match="Invalid module path syntax"):
+        _resolve_module_by_strict_path(bp, "Child..Leaf")
+
+
+def test_resolve_module_by_strict_path_reports_close_matches_for_unknown_segment():
+    bp = BasePicture(
+        header=_header("BasePicture"),
+        submodules=[SingleModule(header=_header("Dilute"), moduledef=None)],
+    )
+
+    with pytest.raises(ValueError, match="Close matches"):
+        _resolve_module_by_strict_path(bp, "Delute")
+
+
+def test_module_lookup_and_scope_helpers_cover_typedef_and_regular_paths():
+    local = Variable(name="LocalOnly", datatype=Simple_DataType.INTEGER)
+    mp = Variable(name="FromParam", datatype=Simple_DataType.INTEGER)
+    child = SingleModule(
+        header=_header("Child"),
+        moduledef=None,
+        localvariables=[local],
+        moduleparameters=[mp],
+        submodules=[],
+    )
+    typedef = ModuleTypeDef(name="MyType", localvariables=[Variable(name="TypeLocal", datatype="integer")])
+    bp = BasePicture(
+        header=_header("BasePicture"),
+        moduletype_defs=[typedef],
+        localvariables=[Variable(name="RootVar", datatype=Simple_DataType.BOOLEAN)],
+        submodules=[child],
+    )
+
+    assert find_module_by_name(bp, "mytype") is typedef
+    assert find_module_by_name(bp, "child") is child
+    assert find_module_by_name(bp, "missing") is None
+
+    assert get_module_path(bp, typedef) == ["BasePicture", "TypeDef:MyType"]
+    assert get_module_path(bp, child) == ["BasePicture", "Child"]
+
+    assert is_external_to_module(["BasePicture", "Child"], ["BasePicture", "Child"]) is False
+    assert is_external_to_module(["BasePicture"], ["BasePicture", "Child"]) is True
+    assert is_external_to_module(["BasePicture", "TypeDef:MyType", "Inner"], ["BasePicture", "TypeDef:MyType"]) is False
+    assert is_external_to_module(["BasePicture", "Other"], ["BasePicture", "TypeDef:MyType"]) is True
+
+    assert find_var_in_scope(bp, ["BasePicture", "Child", "Leaf"], "LocalOnly") is local
+    assert find_var_in_scope(bp, ["BasePicture", "Child", "Leaf"], "FromParam") is mp
+    assert find_var_in_scope(bp, ["BasePicture", "Child", "Leaf"], "RootVar") is bp.localvariables[0]
+    assert find_var_in_scope(bp, ["BasePicture", "Child", "Leaf"], "NotThere") is None
+
+
+def test_varname_and_alias_helpers_cover_valid_and_invalid_inputs():
+    const_ref = {const.KEY_VAR_NAME: "Root.Signal.Value"}
+    assert varname_base(const_ref) == "root"
+    assert varname_base("Root.Signal") == "root"
+    assert varname_base(42) is None
+
+    assert varname_full(const_ref) == "Root.Signal.Value"
+    assert varname_full("Root.Signal") == "Root.Signal"
+    assert varname_full(None) is None
+
+    root = Variable(name="Root", datatype=Simple_DataType.INTEGER)
+    child = Variable(name="Child", datatype=Simple_DataType.INTEGER)
+    leaf = Variable(name="Leaf", datatype=Simple_DataType.INTEGER)
+    alias_links = [
+        (root, child, "A"),
+        (child, leaf, "B"),
+    ]
+
+    assert find_all_aliases(root, alias_links) == [(child, "A"), (leaf, "A.B")]
+    assert find_all_aliases_upstream(leaf, alias_links) == [(child, "B"), (root, "A.B")]

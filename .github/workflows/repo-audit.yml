@@ -43,6 +43,14 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system -e ".[dev]"
 
+      - name: Lint Markdown
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        uses: DavidAnson/markdownlint-cli2-action@v20
+        with:
+          config: .markdownlint.json
+          globs: |
+            **/*.md
+
       - name: Build distributions
         if: ${{ matrix.run_build }}
         run: python -m build

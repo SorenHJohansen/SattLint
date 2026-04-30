@@ -3,6 +3,7 @@
 This guide covers setting up a development environment for contributing to SattLint.
 
 ## Prerequisites
+
 - Python 3.13 or newer
 - Git
 - A SattLine codebase for testing
@@ -12,6 +13,7 @@ This guide covers setting up a development environment for contributing to SattL
 ### Option 1: Linux or macOS
 
 #### 1. Install Dependencies
+
 ```bash
 # Install Python 3.13 (via your preferred method: pyenv, mise, uv, or system package)
 
@@ -28,7 +30,9 @@ pip install -e .[dev]
 ```
 
 #### 2. Editor Setup
+
 Configure your editor with:
+
 - Python language server (pyright or pylance)
 - Ruff for linting and formatting
 - Pyright for type checking
@@ -37,7 +41,8 @@ Consult your editor's documentation for the appropriate LSP and formatter plugin
 
 ### Option 2: Windows with Visual Studio Code
 
-#### 1. Install Dependencies
+#### 1. Install Dependencies (Windows)
+
 ```powershell
 # Install Python from python.org or Windows Store
 # Clone repository
@@ -70,7 +75,9 @@ npm run package:vsix
 ```
 
 #### 2. VS Code Configuration
+
 The repository includes `.vscode/settings.json` which configures:
+
 - Cross-platform Python interpreter discovery via `.venv`
 - Ruff for linting
 - Pyright for type checking
@@ -80,6 +87,7 @@ The repository includes `.vscode/settings.json` which configures:
 ## Development Workflow
 
 ### Code Quality
+
 All code quality tools are configured in `pyproject.toml`:
 
 ```bash
@@ -113,6 +121,7 @@ The canonical audit entry point is `sattlint-repo-audit`.
 - The full details remain in `artifacts/audit/summary.json`, `artifacts/audit/findings.json`, and `artifacts/audit/pipeline/`.
 
 ### Running Tests
+
 ```bash
 # Run all tests
 pytest
@@ -127,13 +136,12 @@ pytest tests/test_cli.py
 The repository currently enforces a ratcheted minimum coverage threshold in `pyproject.toml`.
 Raise that threshold incrementally as test surface expands instead of jumping directly to the long-term target.
 
-### Pre-commit Hooks (Optional)
+### Local Setup
+
 ```bash
-# Install hooks from the repo's configured toolchain
 pip install -e .[dev]
 pre-commit install
-
-# This will run formatting, linting, and type checks before each commit
+pre-commit run --all-files
 ```
 
 ## Project Structure
@@ -158,9 +166,11 @@ pre-commit install
 ## Platform-Specific Notes
 
 ### Windows-Specific Tool
+
 Note: `src/sattlint/docgenerator/configgen.py` generates Excel configuration workbooks and now requires an explicit root directory argument instead of relying on a workstation-specific default path. It is not required for core SattLint functionality.
 
 ### Cross-Platform Compatibility
+
 - Use `pathlib.Path` for file operations
 - Avoid hard-coded paths in new code
 - Keep `.vscode/settings.json` platform-neutral by pointing at the virtual environment root instead of OS-specific executables

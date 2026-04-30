@@ -8,12 +8,15 @@ from typing import Any, cast
 from sattline_parser.models.ast_model import BasePicture
 
 from . import config as config_module
+from . import console as console_module
 from . import graphics_rules as graphics_rules_module
 from .docgenerator.classification import (
     classify_documentation_structure,
     discover_documentation_unit_candidates,
 )
 from .models.project_graph import ProjectGraph
+
+emit_output = console_module.print_output  # type: ignore[assignment]
 
 LoadedProjectIterator = Callable[[dict[str, Any]], Iterator[tuple[str, BasePicture, ProjectGraph]]]
 
@@ -39,24 +42,24 @@ def _format_config_scalar(value: object) -> str:
 
 
 def _print_config_section(title: str, rows: list[tuple[str, object]]) -> None:
-    print(title)
+    emit_output(title)
     if not rows:
-        print("  (none)")
+        emit_output("  (none)")
         return
 
     label_width = max(len(label) for label, _ in rows)
     for label, value in rows:
-        print(f"  {label:<{label_width}}  {_format_config_scalar(value)}")
+        emit_output(f"  {label:<{label_width}}  {_format_config_scalar(value)}")
 
 
 def _print_config_list(title: str, items: list[object]) -> None:
-    print(title)
+    emit_output(title)
     if not items:
-        print("  (none)")
+        emit_output("  (none)")
         return
 
     for index, item in enumerate(items, 1):
-        print(f"  [{index}] {_format_config_scalar(item)}")
+        emit_output(f"  [{index}] {_format_config_scalar(item)}")
 
 
 def show_config(
@@ -90,20 +93,20 @@ def show_config(
         ("icf_dir", cfg["icf_dir"]),
     ]
 
-    print("\nCurrent Configuration")
-    print("=" * 21)
-    print()
+    emit_output("\nCurrent Configuration")
+    emit_output("=" * 21)
+    emit_output()
     _print_config_list(
         "Analyzed Programs And Libraries",
         list(cfg["analyzed_programs_and_libraries"]),
     )
-    print()
+    emit_output()
     _print_config_section("General", general_rows)
-    print()
+    emit_output()
     _print_config_section("Directories", directory_rows)
-    print()
+    emit_output()
     _print_config_list("Other Library Directories", list(cfg["other_lib_dirs"]))
-    print()
+    emit_output()
     _print_config_section(
         "Graphics Rules",
         [
@@ -112,21 +115,21 @@ def show_config(
         ],
     )
     if graphics_rules_payload and graphics_rules_payload.get("rules"):
-        print("Configured Graphics Rule Selectors")
+        emit_output("Configured Graphics Rule Selectors")
         for index, rule in enumerate(graphics_rules_payload.get("rules", []), start=1):
-            print(f"  [{index}] {graphics_rule_config_line_fn(rule)}")
-    print()
-    print("Documentation Classifications")
+            emit_output(f"  [{index}] {graphics_rule_config_line_fn(rule)}")
+    emit_output()
+    emit_output("Documentation Classifications")
     for category, rule in documentation_cfg.get("classifications", {}).items():
         active_rules = [(key, ", ".join(str(value) for value in values)) for key, values in rule.items() if values]
-        print(f"  {category}")
+        emit_output(f"  {category}")
         if not active_rules:
-            print("    (none)")
+            emit_output("    (none)")
             continue
         label_width = max(len(key) for key, _ in active_rules)
         for key, value in active_rules:
-            print(f"    {key:<{label_width}}  {value}")
-    print()
+            emit_output(f"    {key:<{label_width}}  {value}")
+    emit_output()
 
 
 def flatten_graphics_expected_fields(
@@ -213,15 +216,15 @@ def graphics_rule_config_line(rule: dict[str, Any]) -> str:
 
 
 def print_graphics_rules_summary(path: Path, rules: dict[str, Any], *, dirty: bool) -> None:
-    print("Graphics Rules")
-    print("=" * 14)
-    print(f"Path: {path}")
-    print(f"Status: {'unsaved changes' if dirty else 'saved'}")
-    print()
+    emit_output("Graphics Rules")
+    emit_output("=" * 14)
+    emit_output(f"Path: {path}")
+    emit_output(f"Status: {'unsaved changes' if dirty else 'saved'}")
+    emit_output()
 
     configured_rules = list(rules.get("rules", []))
     if not configured_rules:
-        print("No graphics rules configured yet.")
+        emit_output("No graphics rules configured yet.")
         return
 
     headers = ("#", "Kind", "Scope", "Selector", "Fields", "Description")
@@ -248,10 +251,10 @@ def print_graphics_rules_summary(path: Path, rules: dict[str, Any], *, dirty: bo
 
     header_line = "  ".join(header.ljust(widths[index]) for index, header in enumerate(headers))
     separator_line = "  ".join("-" * widths[index] for index in range(len(headers)))
-    print(header_line)
-    print(separator_line)
+    emit_output(header_line)
+    emit_output(separator_line)
     for row in rows:
-        print(
+        emit_output(
             "  ".join(truncate_table_cell(value, widths[index]).ljust(widths[index]) for index, value in enumerate(row))
         )
 
@@ -279,11 +282,11 @@ def prompt_optional_float_list(label: str, expected_count: int, *, pause_fn: Cal
     try:
         values = [float(part.strip()) for part in raw.split(",")]
     except ValueError as exc:
-        print("? Must be numeric")
+        emit_output("? Must be numeric")
         pause_fn()
         raise OptionalPromptValidationError("Must be numeric") from exc
     if len(values) != expected_count:
-        print(f"? Expected {expected_count} values")
+        emit_output(f"? Expected {expected_count} values")
         pause_fn()
         raise OptionalPromptValidationError(f"Expected {expected_count} values")
     return values
@@ -304,7 +307,7 @@ def prompt_optional_bool(label: str) -> bool:
         return True
     if raw in {"n", "no", "false", "0"}:
         return False
-    print("? Enter y or n")
+    emit_output("? Enter y or n")
     raise OptionalPromptValidationError("Enter y or n")
 
 
@@ -318,10 +321,10 @@ def optional_prompt_or_none(prompt_fn: Callable[[], Any]) -> Any | None:
 
 
 def prompt_graphics_rule_kind() -> str:
-    print("\nChoose graphics rule target kind:")
-    print("  1) Frame")
-    print("  2) Single module")
-    print("  3) ModuleType")
+    emit_output("\nChoose graphics rule target kind:")
+    emit_output("  1) Frame")
+    emit_output("  2) Single module")
+    emit_output("  3) ModuleType")
     while True:
         choice = input("> ").strip().lower()
         if choice == "1":
@@ -330,7 +333,7 @@ def prompt_graphics_rule_kind() -> str:
             return "single"
         if choice == "3":
             return "moduletype"
-        print("? Choose 1, 2, or 3")
+        emit_output("? Choose 1, 2, or 3")
 
 
 def selector_prompt_text(selector_field: str) -> str:
@@ -428,13 +431,13 @@ def pick_or_prompt_graphics_rule_selector_value(
     prompt_text = selector_prompt_text(selector_field)
 
     if options:
-        print(f"\nAvailable {prompt_text.lower()} values:")
+        emit_output(f"\nAvailable {prompt_text.lower()} values:")
         for index, option in enumerate(options, start=1):
-            print(
+            emit_output(
                 f"  {index}) {option['selector_value']} "
                 f"[{option['count']} matches across {option['target_count']} targets]"
             )
-        print("  m) Enter manually")
+        emit_output("  m) Enter manually")
 
         while True:
             raw = input("> ").strip().lower()
@@ -443,15 +446,15 @@ def pick_or_prompt_graphics_rule_selector_value(
             try:
                 selected_index = int(raw) - 1
             except ValueError:
-                print("? Choose an index or 'm'")
+                emit_output("? Choose an index or 'm'")
                 continue
             if 0 <= selected_index < len(options):
                 return str(options[selected_index]["selector_value"])
-            print("? Invalid index")
+            emit_output("? Invalid index")
 
     selector_value = input(f"{prompt_text}: ").strip()
     if not selector_value:
-        print("? Selector path is required")
+        emit_output("? Selector path is required")
         raise RequiredPromptValidationError("Selector path is required")
     return selector_value
 
@@ -465,10 +468,10 @@ def prompt_graphics_rule_selector(
     if module_kind == "frame":
         selector_field = "relative_module_path"
     elif module_kind == "single":
-        print("\nChoose selector scope:")
-        print("  1) Relative module path")
-        print("  2) Unit structure path")
-        print("  3) Equipment module structure path")
+        emit_output("\nChoose selector scope:")
+        emit_output("  1) Relative module path")
+        emit_output("  2) Unit structure path")
+        emit_output("  3) Equipment module structure path")
         while True:
             choice = input("> ").strip().lower()
             if choice == "1":
@@ -480,12 +483,12 @@ def prompt_graphics_rule_selector(
             if choice == "3":
                 selector_field = "equipment_module_structure_path"
                 break
-            print("? Choose 1, 2, or 3")
+            emit_output("? Choose 1, 2, or 3")
     else:
-        print("\nChoose ModuleType selector scope:")
-        print("  1) Relative module path")
-        print("  2) Unit structure path")
-        print("  3) Equipment module structure path")
+        emit_output("\nChoose ModuleType selector scope:")
+        emit_output("  1) Relative module path")
+        emit_output("  2) Unit structure path")
+        emit_output("  3) Equipment module structure path")
         while True:
             choice = input("> ").strip().lower()
             if choice == "1":
@@ -497,7 +500,7 @@ def prompt_graphics_rule_selector(
             if choice == "3":
                 selector_field = "equipment_module_structure_path"
                 break
-            print("? Choose 1, 2, or 3")
+            emit_output("? Choose 1, 2, or 3")
 
     selector_value = pick_or_prompt_graphics_rule_selector_value_fn(
         selector_field,
@@ -620,7 +623,7 @@ def prompt_graphics_rule_definition_with_config(
     pause_fn: Callable[[], None],
     pick_or_prompt_graphics_rule_selector_value_fn: Callable[..., str],
 ) -> dict[str, Any] | None:
-    print("\nEnter graphics rule values. Leave optional fields blank to skip them.")
+    emit_output("\nEnter graphics rule values. Leave optional fields blank to skip them.")
     module_kind = prompt_graphics_rule_kind()
 
     module_name = ""
@@ -632,7 +635,7 @@ def prompt_graphics_rule_definition_with_config(
     if module_kind == "moduletype":
         moduletype_name = prompt_fn("ModuleType name")
         if not moduletype_name:
-            print("? ModuleType name is required")
+            emit_output("? ModuleType name is required")
             pause_fn()
             return None
         try:
@@ -720,7 +723,7 @@ def prompt_graphics_rule_definition_with_config(
         try:
             moduledef["grid"] = float(moduledef_grid)
         except ValueError:
-            print("? ModuleDef grid must be numeric")
+            emit_output("? ModuleDef grid must be numeric")
             pause_fn()
             return None
 
@@ -735,7 +738,7 @@ def prompt_graphics_rule_definition_with_config(
         expected["moduledef"] = moduledef
 
     if not expected:
-        print("? At least one expected graphics field is required")
+        emit_output("? At least one expected graphics field is required")
         pause_fn()
         return None
 
@@ -806,7 +809,7 @@ def graphics_rules_menu(
     while True:
         clear_screen_fn()
         print_graphics_rules_summary(rules_path, rules, dirty=dirty)
-        print()
+        emit_output()
         print_menu_fn(
             "Graphics rules",
             [
@@ -838,12 +841,12 @@ def graphics_rules_menu(
             if rule is None:
                 continue
             updated = graphics_rules_module.upsert_graphics_rule(rules, rule)
-            print("Updated existing graphics rule" if updated else "Added graphics rule")
+            emit_output("Updated existing graphics rule" if updated else "Added graphics rule")
             dirty = True
             pause_fn()
         elif c == "2":
             if not rules.get("rules"):
-                print("? No graphics rules configured")
+                emit_output("? No graphics rules configured")
                 pause_fn()
                 continue
             idx_text = prompt_fn("Index to remove")
@@ -851,10 +854,10 @@ def graphics_rules_menu(
                 idx = int(idx_text) - 1
                 removed = graphics_rules_module.remove_graphics_rule(rules, idx)
             except (ValueError, IndexError):
-                print("? Invalid index")
+                emit_output("? Invalid index")
                 pause_fn()
                 continue
-            print(f"Removed {graphics_rule_label_fn(removed)}")
+            emit_output(f"Removed {graphics_rule_label_fn(removed)}")
             dirty = True
             pause_fn()
         elif c == "3":
@@ -862,7 +865,7 @@ def graphics_rules_menu(
             dirty = False
             pause_fn()
         else:
-            print("Invalid choice.")
+            emit_output("Invalid choice.")
             pause_fn()
 
 
@@ -875,11 +878,11 @@ def run_graphics_rules_validation(
     collect_graphics_layout_entries_for_target_fn: Callable[[str, BasePicture, ProjectGraph], list[dict[str, Any]]],
     pause_fn: Callable[[], None],
 ) -> None:
-    print("\n--- Validate Graphics Rules ---")
+    emit_output("\n--- Validate Graphics Rules ---")
     rules_path = get_graphics_rules_path_fn()
     rules, _created = load_graphics_rules_fn(rules_path)
     if not rules.get("rules"):
-        print("? No graphics rules configured. Open Setup -> Edit graphics rules to add rules first.")
+        emit_output("? No graphics rules configured. Open Setup -> Edit graphics rules to add rules first.")
         pause_fn()
         return
 
@@ -896,9 +899,9 @@ def run_graphics_rules_validation(
                 target_name=target_name,
                 rules_path=rules_path,
             )
-            print(f"\n=== Target: {target_name} ===")
-            print(report.summary())
+            emit_output(f"\n=== Target: {target_name} ===")
+            emit_output(report.summary())
         except Exception as exc:
-            print(f"? Error during graphics rules validation for {target_name}: {exc}")
+            emit_output(f"? Error during graphics rules validation for {target_name}: {exc}")
 
     pause_fn()

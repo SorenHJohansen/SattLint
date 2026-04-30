@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1] - 2026-04-23
 
-### Added
+### Added in 0.1.1
 
 - Static analysis, parser validation, documentation generation, and LSP tooling for SattLine projects.
 - Non-interactive `syntax-check` CLI command for strict single-file validation.

@@ -36,7 +36,7 @@ from .models.project_graph import ProjectGraph
 VARIABLE_ANALYSES = app_analysis_module.VARIABLE_ANALYSES
 HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = app_analysis_module.HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
 LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = app_analysis_module.LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
-print = console_module.print_output  # type: ignore[assignment]
+emit_output = console_module.print_output  # type: ignore[assignment]
 
 
 EXIT_SUCCESS: int = 0
@@ -86,7 +86,7 @@ def load_graphics_rules(path: Path | None = None):
 
 def save_graphics_rules(path: Path, rules: dict[str, Any]) -> None:
     app_graphics_module.save_graphics_rules(path, rules)
-    print("Graphics rules saved")
+    emit_output("Graphics rules saved")
 
 
 def self_check(cfg: dict) -> bool:
@@ -854,7 +854,7 @@ def main(argv: list[str] | None = None) -> int:
         cfg, default_used = load_config(CONFIG_PATH)
         apply_debug(cfg)
         if default_used:
-            print("Warning: Default config created. Open Setup before running analysis.")
+            emit_output("Warning: Default config created. Open Setup before running analysis.")
             pause()
         else:
             if not self_check(cfg) and not confirm("Self-check failed. Continue?"):

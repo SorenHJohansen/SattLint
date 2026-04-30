@@ -1,40 +1,19 @@
 import json
-import os
 from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import (
     BasePicture,
-    ModuleDef,
     ModuleHeader,
-    ModuleTypeDef,
-    ModuleTypeInstance,
-    SingleModule,
 )
-from sattlint.analyzers.registry import (
-    get_actual_cli_analyzer_keys,
-    get_actual_lsp_analyzer_keys,
-    get_declared_cli_analyzer_keys,
-    get_declared_lsp_analyzer_keys,
-)
-from sattlint.analyzers.sattline_semantics import (
-    SattLineSemanticsReport,
-    SemanticIssue,
-    SemanticRule,
-)
-from sattlint.contracts import FindingCollection, FindingRecord
-from sattlint.devtools import corpus, pipeline, structural_reports
+from sattlint.devtools import corpus, pipeline
 from sattlint.devtools.artifact_registry import ArtifactDefinition
-from sattlint.devtools.baselines import build_analysis_diff_report
-from sattlint.devtools.finding_exports import build_pipeline_finding_collection
 from sattlint.devtools.pipeline_artifacts import (
     PipelineArtifactContext,
     PipelineArtifactProducer,
-    validate_pipeline_artifact_producers,
-    write_json_artifact,
     write_pipeline_artifacts,
 )
-from sattlint.devtools.progress_reporting import ProgressReporter
-from sattlint.reporting.variables_report import IssueKind
+from sattlint.devtools.status_reports import overall_status
+from sattlint.models.project_graph import ProjectGraph
 
 from .helpers.artifact_assertions import (
     assert_analysis_diff_report,
@@ -532,7 +511,9 @@ def _patched_run_command(name, command, cwd=pipeline.REPO_ROOT):
 
 def _patch_skipped_coverage_summary(monkeypatch):
     monkeypatch.setattr(
-        pipeline, "build_coverage_summary_report", lambda repo_root: {"kind": "sattlint.coverage_summary", "skipped": True}
+        pipeline,
+        "build_coverage_summary_report",
+        lambda repo_root: {"kind": "sattlint.coverage_summary", "skipped": True},
     )
 
 
@@ -962,6 +943,219 @@ def test_run_pipeline_emits_coverage_summary_when_coverage_xml_exists(monkeypatc
 
 # ---------------------------------------------------------------------------
 # ID21: Phase2 rule acceptance gate tests
+
+
+def test_overall_status_returns_pass_with_notes_when_no_fail_but_some_notes():
+    statuses = {
+        "tool_a": {"status": "pass_with_notes"},
+        "tool_b": {"status": "pass"},
+    }
+
+    result = overall_status(statuses)
+
+    assert result == "pass_with_notes"
+
+
+def test_project_graph_add_library_dependencies_ignores_none_library_name():
+    graph = ProjectGraph()
+
+    graph.add_library_dependencies(None, ["dep_a", "dep_b"])
+
+    assert graph.library_dependencies == {}
+
+
+def test_write_pipeline_artifacts_skips_artifact_with_none_payload(tmp_path):
+    written: list[str] = []
+
+    context = PipelineArtifactContext(payloads={})
+
+    artifact_ids = write_pipeline_artifacts(
+        tmp_path,
+        artifacts=(
+            ArtifactDefinition(
+                "status",
+                "status.json",
+                "status_payload",
+                "sattlint.pipeline.status",
+                1,
+                profiles=("quick",),
+            ),
+        ),
+        profile="quick",
+        enabled_artifact_ids={"status"},
+        context=context,
+        write_json=lambda path, payload: written.append(path.name),
+        producers=(
+            PipelineArtifactProducer(
+                "status_payload",
+                lambda artifact_context: None,
+            ),
+        ),
+    )
+
+    assert artifact_ids == ()
+    assert written == []
+
+
 # ---------------------------------------------------------------------------
 
 
+# --- status_reports.py: build_tool_status, build_pipeline_status_report, build_pipeline_summary_report ---
+def test_build_tool_status_with_note_count_and_detail():
+    from sattlint.devtools.status_reports import build_tool_status
+
+    result = build_tool_status(
+        status="pass_with_notes",
+        report="vars.json",
+        raw_exit_code=0,
+        normalized_exit_code=0,
+        finding_count=0,
+        note_count=3,
+        detail="3 suggestions",
+    )
+    assert result["note_count"] == 3
+    assert result["detail"] == "3 suggestions"
+
+
+def test_build_tool_status_without_optional_fields():
+    from sattlint.devtools.status_reports import build_tool_status
+
+    result = build_tool_status(
+        status="pass",
+        report=None,
+        raw_exit_code=None,
+        normalized_exit_code=None,
+    )
+    assert "note_count" not in result
+    assert "detail" not in result
+
+
+def test_build_pipeline_status_report_with_progress_and_findings():
+    from sattlint.devtools.status_reports import build_pipeline_status_report
+
+    result = build_pipeline_status_report(
+        profile="full",
+        sanitized_output_dir="output",
+        overall_status_value="pass",
+        tool_statuses={},
+        failing_tools=[],
+        non_blocking_tools=[],
+        progress_report="output/progress.json",
+        findings_schema={"kind": "sattlint.findings"},
+    )
+    assert result["profile"] == "full"
+    assert result["progress_report"] == "output/progress.json"
+    assert result["findings_schema"]["kind"] == "sattlint.findings"
+
+
+def test_build_pipeline_summary_report_includes_all_fields():
+    from sattlint.devtools.status_reports import build_pipeline_summary_report
+
+    result = build_pipeline_summary_report(
+        profile="quick",
+        sanitized_output_dir="out",
+        reports={"vars": "out/vars.json"},
+        overall_status_value="pass",
+        tool_statuses={},
+        failing_tools=[],
+        non_blocking_tools=[],
+        tool_exit_codes={"vars": 0},
+        artifact_registry_report={},
+        counts={},
+        progress_report="out/progress.json",
+        findings_schema={"kind": "sattlint.findings"},
+    )
+    assert result["profile"] == "quick"
+    assert result["progress_report"] == "out/progress.json"
+    assert result["findings_schema"] is not None
+
+
+# --- models/project_graph.py: add_library_dependencies, index_from_basepic ---
+def test_project_graph_add_library_dependencies_adds_deps():
+    from sattlint.models.project_graph import ProjectGraph
+
+    graph = ProjectGraph()
+    graph.add_library_dependencies("MyLib", ["DepA", "DepB", ""])
+    assert "deplib" not in graph.library_dependencies
+    assert graph.library_dependencies.get("mylib") == {"depa", "depb"}
+
+
+def test_project_graph_index_from_basepic_sets_origin(tmp_path):
+    from sattlint.models.project_graph import ProjectGraph
+
+    header = ModuleHeader(name="TestProgram", invoke_coord=(0, 0, 0, 0, 0))
+    bp = BasePicture(
+        header=header,
+        name="TestProgram",
+        moduletype_defs=[],
+        datatype_defs=[],
+    )
+    graph = ProjectGraph()
+    source = tmp_path / "TestProgram.s"
+    source.touch()
+    graph.index_from_basepic(bp, source_path=source, library_name="MyLib")
+    assert source in graph.source_files
+    assert bp.origin_file == "TestProgram.s"
+    assert bp.origin_lib == "MyLib"
+
+
+# --- devtools/derived_reports.py: build_incremental_analysis_report, build_profiling_summary_report ---
+def test_build_incremental_analysis_report_returns_none_for_empty_files(tmp_path):
+    from sattlint.devtools.derived_reports import build_incremental_analysis_report
+
+    result = build_incremental_analysis_report([], repo_root=tmp_path)
+    assert result is None
+
+
+def test_build_incremental_analysis_report_full_mode_for_core_changes(tmp_path):
+    from sattlint.devtools.derived_reports import build_incremental_analysis_report
+
+    result = build_incremental_analysis_report(
+        ["src/sattlint/engine.py"],
+        repo_root=tmp_path,
+        analyzer_registry_report={"analyzers": []},
+    )
+    assert result is not None
+    assert result["mode"] == "full"
+    assert "shared semantic" in " ".join(result["fallback_reasons"])
+
+
+def test_build_incremental_analysis_report_mixed_mode_for_program_file(tmp_path):
+    from sattlint.devtools.derived_reports import build_incremental_analysis_report
+
+    result = build_incremental_analysis_report(
+        ["src/programs/Main.s"],
+        repo_root=tmp_path,
+        analyzer_registry_report={
+            "analyzers": [
+                {"key": "variables", "supports_incremental": True},
+                {"key": "dataflow", "supports_incremental": False},
+            ]
+        },
+    )
+    assert result is not None
+    assert result["mode"] in {"mixed", "incremental", "none"}
+
+
+def test_build_profiling_summary_report_returns_none_for_none_input():
+    from sattlint.devtools.derived_reports import build_profiling_summary_report
+
+    result = build_profiling_summary_report(None, slow_phase_threshold_ms=500.0)
+    assert result is None
+
+
+def test_build_profiling_summary_report_identifies_slow_phases():
+    from sattlint.devtools.derived_reports import build_profiling_summary_report
+
+    trace = {
+        "source_file": "Main.s",
+        "basepicture_name": "Main",
+        "timing_summary": {
+            "variables": {"event_count": 10, "span_ms": 1200.0},
+            "syntax": {"event_count": 3, "span_ms": 50.0},
+        },
+        "events": [{"time_offset_ms": 1200.0}],
+    }
+    result = build_profiling_summary_report(trace, slow_phase_threshold_ms=500.0)
+    assert result is not None
+    assert result["summary"]["slow_phase_count"] == 1

@@ -55,7 +55,6 @@ jobs:
 
       - name: Run doc-gardener scan
         run: sattlint-doc-gardener
-        continue-on-error:
 
   layer-lint:
     name: Layer Linter

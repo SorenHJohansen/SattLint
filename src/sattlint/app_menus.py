@@ -11,7 +11,7 @@ from . import engine as engine_module
 from .casefolding import casefold_equal
 from .models.project_graph import ProjectGraph
 
-print = console_module.print_output  # type: ignore[assignment]
+emit_output = console_module.print_output  # type: ignore[assignment]
 
 
 def _build_config_menu_options(menu_option_factory: Callable[[str, str, str], Any]) -> list[Any]:
@@ -43,11 +43,11 @@ def _add_analysis_target(
 ) -> bool:
     new = prompt_fn("Program/library name to add", None)
     if not target_exists_fn(new, cfg):
-        print("❌ Target not found in configured directories")
+        emit_output("❌ Target not found in configured directories")
         pause_fn()
         return False
     if any(casefold_equal(existing, new) for existing in cfg["analyzed_programs_and_libraries"]):
-        print("⚠ Target already listed")
+        emit_output("⚠ Target already listed")
         pause_fn()
         return False
     if not confirm_fn(f"Add '{new}' to analyzed_programs_and_libraries?"):
@@ -65,19 +65,19 @@ def _remove_analysis_target(
 ) -> bool:
     targets = cfg["analyzed_programs_and_libraries"]
     if not targets:
-        print("⚠ No analyzed targets configured")
+        emit_output("⚠ No analyzed targets configured")
         pause_fn()
         return False
 
-    print("\nCurrent analyzed_programs_and_libraries:")
+    emit_output("\nCurrent analyzed_programs_and_libraries:")
     for index, target in enumerate(targets, 1):
-        print(f"{index}. {target}")
+        emit_output(f"{index}. {target}")
 
     idx_txt = prompt_fn("Index to remove", None)
     try:
         idx = int(idx_txt) - 1
     except ValueError:
-        print("❌ Invalid index")
+        emit_output("❌ Invalid index")
         pause_fn()
         return False
 
@@ -126,9 +126,9 @@ def _edit_other_lib_dirs(
     confirm_fn: Callable[[str], bool],
 ) -> bool:
     libs = cfg["other_lib_dirs"]
-    print("\nCurrent other_lib_dirs:")
+    emit_output("\nCurrent other_lib_dirs:")
     for index, path in enumerate(libs, 1):
-        print(f"{index}. {path}")
+        emit_output(f"{index}. {path}")
     if confirm_fn("Add new entry?"):
         libs.append(prompt_fn("Path", None))
         return True
@@ -200,8 +200,8 @@ def dump_menu(
                 engine_module.dump_dependency_graph((project_bp, graph))
         elif choice == "4" and confirm_fn("Dump variable report?"):
             for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-                print(f"\n=== Target: {target_name} ===")
-                print(
+                emit_output(f"\n=== Target: {target_name} ===")
+                emit_output(
                     analyze_variables_fn(
                         project_bp,
                         debug=cfg.get("debug", False),
@@ -210,7 +210,7 @@ def dump_menu(
                     ).summary()
                 )
         else:
-            print("Invalid choice.")
+            emit_output("Invalid choice.")
 
 
 def config_menu(
@@ -372,7 +372,7 @@ def config_menu(
         elif choice == "12":
             graphics_rules_menu_fn(cfg)
         else:
-            print("Invalid choice.", flush=True)
+            emit_output("Invalid choice.", flush=True)
             pause_fn()
 
 
@@ -425,10 +425,10 @@ def tools_menu(
                 "Force refresh cached AST?"
             ):
                 force_refresh_ast_fn(cfg)
-                print("? AST cache refreshed")
+                emit_output("? AST cache refreshed")
                 pause_fn()
         else:
-            print("Invalid choice.")
+            emit_output("Invalid choice.")
             pause_fn()
 
 
@@ -494,4 +494,4 @@ def run_main_loop(
             quit_app_fn()
 
         else:
-            print("Invalid choice.", flush=True)
+            emit_output("Invalid choice.", flush=True)
