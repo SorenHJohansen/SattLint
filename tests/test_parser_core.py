@@ -1,16 +1,20 @@
-"""Tests for grammar coverage and parser-core behaviour (parse_source_text, source spans, flags, and identifier rules)."""
+"""Tests for grammar coverage and parser-core behaviour.
+
+Covers parse_source_text, source spans, flags, and identifier rules.
+"""
 
 import ast
 from pathlib import Path
 
 import pytest
-from lark.exceptions import UnexpectedCharacters
+from lark.exceptions import UnexpectedCharacters, UnexpectedEOF, UnexpectedToken
 
 from sattline_parser import api as parser_api
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser import strip_sl_comments
 from sattline_parser.models.ast_model import (
     BasePicture,
+    ModuleHeader,
     ModuleTypeInstance,
 )
 from sattline_parser.transformer.sl_transformer import SLTransformer
@@ -275,6 +279,173 @@ def test_create_parser_uses_regex_and_disk_cache(monkeypatch, tmp_path):
     assert options["parser"] == "lalr"
 
 
+def test_create_sl_parser_delegates_to_create_parser(monkeypatch):
+    sentinel = object()
+    captured: dict[str, object] = {}
+
+    def fake_create_parser(*, strict: bool = False):
+        captured["strict"] = strict
+        return sentinel
+
+    monkeypatch.setattr(parser_api, "create_parser", fake_create_parser)
+
+    parser = parser_api.create_sl_parser(strict=True)
+
+    assert parser is sentinel
+    assert captured == {"strict": True}
+
+
+def test_unexpected_input_summary_formats_eof_token_and_character_variants():
+    class FakeUnexpectedEOF(UnexpectedEOF):
+        def __init__(self) -> None:
+            self._expected_reads = 0
+
+        def __getattribute__(self, name: str):
+            if name == "expected":
+                reads = object.__getattribute__(self, "_expected_reads")
+                object.__setattr__(self, "_expected_reads", reads + 1)
+                if reads == 0:
+                    return []
+                return {"ENDDEF", "LOCALVARIABLES"}
+            return object.__getattribute__(self, name)
+
+        def __str__(self) -> str:
+            return "Unexpected end of input"
+
+    class FakeUnexpectedToken(UnexpectedToken):
+        def __init__(self) -> None:
+            self._expected_reads = 0
+            self.token = "BADTOKEN"
+
+        def __getattribute__(self, name: str):
+            if name == "expected":
+                reads = object.__getattribute__(self, "_expected_reads")
+                object.__setattr__(self, "_expected_reads", reads + 1)
+                if reads == 0:
+                    return []
+                return {"ENDDEF", "LOCALVARIABLES"}
+            return object.__getattribute__(self, name)
+
+        def __str__(self) -> str:
+            return "Unexpected token BADTOKEN"
+
+    class FakeUnexpectedCharacters(UnexpectedCharacters):
+        def __init__(self) -> None:
+            pass
+
+        def __str__(self) -> str:
+            return "Invalid character."
+
+    eof_summary = parser_api._unexpected_input_summary(FakeUnexpectedEOF())
+    token_summary = parser_api._unexpected_input_summary(FakeUnexpectedToken())
+    char_summary = parser_api._unexpected_input_summary(FakeUnexpectedCharacters())
+
+    assert eof_summary == "Unexpected end of input. Expected one of: ENDDEF, LOCALVARIABLES"
+    assert token_summary == "Unexpected token 'BADTOKEN'. Expected one of: ENDDEF, LOCALVARIABLES"
+    assert char_summary == "Invalid character"
+
+
+def test_describe_parse_error_falls_back_to_plain_exception_message():
+    class PlainFailure(Exception):
+        def __init__(self) -> None:
+            super().__init__("plain failure")
+            self.line = 7
+            self.column = 11
+
+    details = parser_api.describe_parse_error(PlainFailure(), "ignored")
+
+    assert details.message == "plain failure"
+    assert details.line == 7
+    assert details.column == 11
+
+
+def test_read_text_with_fallback_accepts_cp1252_bytes(tmp_path):
+    source_file = tmp_path / "cp1252.k"
+    source_file.write_bytes("Søren".encode("cp1252"))
+
+    assert parser_api.read_text_with_fallback(source_file) == "Søren"
+
+
+def test_read_text_with_fallback_falls_back_to_latin1(tmp_path):
+    source_file = tmp_path / "latin1.bin"
+    source_file.write_bytes(b"\x81A")
+
+    assert parser_api.read_text_with_fallback(source_file) == "\x81A"
+
+
+def test_load_source_text_decodes_compressed_sources_and_emits_debug(monkeypatch, tmp_path):
+    events: list[str] = []
+
+    monkeypatch.setattr(parser_api, "_read_text_simple", lambda path: "compressed-body")
+    monkeypatch.setattr(parser_api, "is_compressed", lambda text: text == "compressed-body")
+    monkeypatch.setattr(parser_api, "preprocess_sl_text", lambda text: ("decoded-source", {"kind": "compressed"}))
+
+    loaded = parser_api.load_source_text(tmp_path / "Program.s", debug=events.append)
+
+    assert loaded == "decoded-source"
+    assert events == [
+        f"Parsing file: {tmp_path / 'Program.s'}",
+        "Compressed format detected; decoding before parsing",
+    ]
+
+
+def test_parse_source_text_reports_parse_tree_attach_failure(monkeypatch):
+    events: list[str] = []
+    tree = object()
+    basepic = BasePicture(header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)))
+
+    class FakeParser:
+        def parse(self, text: str):
+            assert text == "A = 1;"
+            return tree
+
+    class FakeTransformer:
+        def transform(self, payload):
+            assert payload is tree
+            return basepic
+
+    def guarded_setattr(self, name, value):
+        if name == "parse_tree":
+            raise AttributeError("read-only")
+        object.__setattr__(self, name, value)
+
+    monkeypatch.setattr(BasePicture, "__setattr__", guarded_setattr)
+    result = parser_api.parse_source_text(
+        "A = 1;", parser=FakeParser(), transformer=FakeTransformer(), debug=events.append
+    )
+
+    assert result is basepic
+    assert events == [
+        "Parse OK, transforming with SLTransformer",
+        "BasePicture does not allow dynamic attributes; parse tree not attached",
+        "Transform result type: BasePicture",
+    ]
+
+
+def test_parse_source_text_raises_when_transformer_returns_non_basepicture():
+    events: list[str] = []
+    tree = object()
+
+    class FakeParser:
+        def parse(self, text: str):
+            assert text == "A = 1;"
+            return tree
+
+    class FakeTransformer:
+        def transform(self, payload):
+            assert payload is tree
+            return "not-a-basepicture"
+
+    with pytest.raises(RuntimeError, match="Transform result is not BasePicture"):
+        parser_api.parse_source_text("A = 1;", parser=FakeParser(), transformer=FakeTransformer(), debug=events.append)
+
+    assert events == [
+        "Parse OK, transforming with SLTransformer",
+        "BasePicture does not allow dynamic attributes; parse tree not attached",
+        "Transform result type: str",
+    ]
+
+
 def test_parser_core_strict_mode_compiles_cleanly():
     parser = parser_api.create_parser(strict=True)
 
@@ -308,25 +479,27 @@ ENDDEF (*BasePicture*);
 
 
 def test_parser_core_accepts_clipping_bounds_and_interact_tail_sequences():
-    code = """
-"SyntaxVersion"
-"OriginalFileDate"
-"ProgramDate"
-BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
-ModuleDef
-    ClippingBounds = ( -1.0 , -3.12 : InVar_ "PanelResize" ClippingBounds = -2.33 -3.12 0.0 : InVar_ 0.0 100.0 : InVar_ 1.0 ) ( 1.0 , 0.22 )
-    InteractObjects :
-        TextBox_ ( 0.02 , 1.165 ) ( 0.48 , 1.245 )
-            Real_Value
-            "" : InVar_ LitString "+L2" 0
-            Variable = 0.0 : OutVar_ "Plant.Real1"
-            OpMin = 0.0 : InVar_ -1.0E+10
-            OpMax = 100.0 : InVar_ 1.0E+10
-            Event_Text_ = "" : InVar_ LitString "Real1"
-            Event_Severity_ = 0 : InVar_ "Severity"
-            LeftAligned Abs_ Decimal_
-ENDDEF (*BasePicture*);
-"""
+    code = (
+        '"SyntaxVersion"\n'
+        '"OriginalFileDate"\n'
+        '"ProgramDate"\n'
+        "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1\n"
+        "ModuleDef\n"
+        '    ClippingBounds = ( -1.0 , -3.12 : InVar_ "PanelResize" '
+        "ClippingBounds = -2.33 -3.12 0.0 : InVar_ 0.0 100.0 : InVar_ "
+        "1.0 ) ( 1.0 , 0.22 )\n"
+        "    InteractObjects :\n"
+        "        TextBox_ ( 0.02 , 1.165 ) ( 0.48 , 1.245 )\n"
+        "            Real_Value\n"
+        '            "" : InVar_ LitString "+L2" 0\n'
+        '            Variable = 0.0 : OutVar_ "Plant.Real1"\n'
+        "            OpMin = 0.0 : InVar_ -1.0E+10\n"
+        "            OpMax = 100.0 : InVar_ 1.0E+10\n"
+        '            Event_Text_ = "" : InVar_ LitString "Real1"\n'
+        '            Event_Severity_ = 0 : InVar_ "Severity"\n'
+        "            LeftAligned Abs_ Decimal_\n"
+        "ENDDEF (*BasePicture*);\n"
+    )
 
     bp = parser_core_parse_source_text(code)
 
@@ -337,18 +510,18 @@ ENDDEF (*BasePicture*);
 
 
 def test_parser_core_accepts_interact_flag_plus_textobject_assignment():
-    code = """
-"SyntaxVersion"
-"OriginalFileDate"
-"ProgramDate"
-BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
-ModuleDef
-    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-    InteractObjects :
-        ComBut_ ( 0.0 , 0.0 ) ( 1.0 , 1.0 )
-            Abs_ TextObject = "" : InVar_ LitString "Start Sim"
-ENDDEF (*BasePicture*);
-"""
+    code = (
+        '"SyntaxVersion"\n'
+        '"OriginalFileDate"\n'
+        '"ProgramDate"\n'
+        "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1\n"
+        "ModuleDef\n"
+        "    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "    InteractObjects :\n"
+        "        ComBut_ ( 0.0 , 0.0 ) ( 1.0 , 1.0 )\n"
+        '            Abs_ TextObject = "" : InVar_ LitString "Start Sim"\n'
+        "ENDDEF (*BasePicture*);\n"
+    )
 
     bp = parser_core_parse_source_text(code)
 
@@ -359,21 +532,23 @@ ENDDEF (*BasePicture*);
 
 
 def test_parser_core_accepts_combutproc_mixed_plain_and_tailed_args():
-    code = """
-"SyntaxVersion"
-"OriginalFileDate"
-"ProgramDate"
-BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
-ModuleDef
-    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-    InteractObjects :
-        ComButProc_ ( 0.0 , 0.0 ) ( 1.0 , 1.0 )
-            ToggleWindow
-            "" : InVar_ LitString "-+GainPanel" "" : InVar_ LitString "Calibration"
-            False : InVar_ True 0.0 0.0 0.0 : InVar_ 0.23 0.0 False 0 0 False 0
-            Variable = 0.0
-ENDDEF (*BasePicture*);
-"""
+    code = (
+        '"SyntaxVersion"\n'
+        '"OriginalFileDate"\n'
+        '"ProgramDate"\n'
+        "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1\n"
+        "ModuleDef\n"
+        "    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "    InteractObjects :\n"
+        "        ComButProc_ ( 0.0 , 0.0 ) ( 1.0 , 1.0 )\n"
+        "            ToggleWindow\n"
+        '            "" : InVar_ LitString "-+GainPanel" '
+        '"" : InVar_ LitString "Calibration"\n'
+        "            False : InVar_ True 0.0 0.0 0.0 : InVar_ 0.23 0.0 "
+        "False 0 0 False 0\n"
+        "            Variable = 0.0\n"
+        "ENDDEF (*BasePicture*);\n"
+    )
 
     bp = parser_core_parse_source_text(code)
 

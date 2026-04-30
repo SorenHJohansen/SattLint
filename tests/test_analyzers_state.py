@@ -1,4 +1,9 @@
-"""Tests for state-integrity analyzers: reset contamination, implicit latch, SFC step contract, write-without-effect, hidden global coupling, global scope minimization, high fan-in/out, and variables report summary."""
+"""Tests for state-integrity analyzers.
+
+Covers reset contamination, implicit latch, SFC step contract,
+write-without-effect, hidden global coupling, global scope minimization,
+high fan-in/out, and variables report summary.
+"""
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -15,6 +20,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
+from sattlint.analyzers._variables_effect_flow import EffectFlowTracker
 from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.reporting.variables_report import (
@@ -22,6 +28,7 @@ from sattlint.reporting.variables_report import (
     VariableIssue,
     VariablesReport,
 )
+from sattlint.resolution.scope import ScopeContext
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -1142,7 +1149,7 @@ def test_variables_report_summary_includes_name_collisions():
     assert "Sections:" in summary
     assert "  - Name collisions: 1" in summary
     assert "Name collisions" in summary
-    assert ("BasePicture.TypeDef:Unit :: Value (integer) | " "name collision with parameter 'Value'") in summary
+    assert ("BasePicture.TypeDef:Unit :: Value (integer) | name collision with parameter 'Value'") in summary
 
 
 def test_variables_report_summary_includes_write_without_effect_section():
@@ -1283,3 +1290,60 @@ def test_variables_report_summary_keeps_filtered_empty_output_scoped():
     assert "Reset contamination (missing reset writes)" in summary
     assert "      none" in summary
     assert "Unused variables" not in summary
+
+
+def test_effect_flow_tracker_computes_effective_outputs_via_reverse_edges():
+    edges = {
+        ("root", "source"): {("root", "mid")},
+        ("root", "mid"): {("root", "sink")},
+    }
+    tracker = EffectFlowTracker(
+        effect_flow_edges=edges,
+        effect_flow_display_names={},
+        external_effect_sinks=set(),
+        effective_output_keys=set(),
+        lookup_global_variable_fn=lambda _name: None,
+        get_usage_fn=lambda _var: None,
+        canonical_path_fn=lambda _path, _var, _field: None,
+        record_access_fn=lambda _kind, _path, _ctx, _ref: None,
+    )
+
+    effective = tracker.compute_effective_output_keys({("root", "sink")})
+
+    assert effective == {
+        ("root", "source"),
+        ("root", "mid"),
+        ("root", "sink"),
+    }
+
+
+def test_effect_flow_tracker_copyvariable_inputs_only_include_source():
+    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
+    target = Variable(name="Target", datatype=Simple_DataType.INTEGER)
+    context = ScopeContext(
+        env={"source": source, "target": target},
+        param_mappings={},
+        module_path=["Root"],
+        display_module_path=["Root"],
+        parent_context=None,
+    )
+    tracker = EffectFlowTracker(
+        effect_flow_edges={},
+        effect_flow_display_names={},
+        external_effect_sinks=set(),
+        effective_output_keys=set(),
+        lookup_global_variable_fn=lambda _name: None,
+        get_usage_fn=lambda _var: None,
+        canonical_path_fn=lambda _path, _var, _field: None,
+        record_access_fn=lambda _kind, _path, _ctx, _ref: None,
+    )
+
+    sources = tracker.collect_function_input_effect_keys(
+        "CopyVariable",
+        [_varref("Source"), _varref("Target")],
+        context,
+    )
+    init_sources = tracker.collect_function_input_effect_keys("InitVariable", [_varref("Source")], context)
+
+    assert sources == {("root", "source")}
+    assert init_sources == set()

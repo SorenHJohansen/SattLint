@@ -25,7 +25,7 @@ logging.basicConfig(format="%(message)s", level=logging.INFO)
 logging.getLogger().setLevel(logging.INFO)
 
 log = logging.getLogger("SattLint")
-print = console_module.print_output  # type: ignore[assignment]
+emit_output = console_module.print_output  # type: ignore[assignment]
 
 
 def load_config(path: Path):
@@ -34,7 +34,7 @@ def load_config(path: Path):
 
 def save_config(path: Path, cfg: dict) -> None:
     config_module.save_config(path, cfg)
-    print("Config saved")
+    emit_output("Config saved")
 
 
 def self_check(cfg: dict) -> bool:
@@ -75,17 +75,17 @@ def _format_syntax_warning(file_path: Path, message: str) -> str:
 def run_syntax_check_command(file_path: str) -> int:
     target_path = Path(file_path)
     if not target_path.exists() or not target_path.is_file():
-        print(f"ERROR [io] {target_path}: File not found", file=sys.stderr)
+        emit_output(f"ERROR [io] {target_path}: File not found", file=sys.stderr)
         return EXIT_USAGE_ERROR
 
     result = engine_module.validate_single_file_syntax(target_path)
     if result.ok:
         for warning in result.warnings:
-            print(_format_syntax_warning(result.file_path, warning), file=sys.stderr)
-        print("OK")
+            emit_output(_format_syntax_warning(result.file_path, warning), file=sys.stderr)
+        emit_output("OK")
         return EXIT_SUCCESS
 
-    print(_format_syntax_error(result), file=sys.stderr)
+    emit_output(_format_syntax_error(result), file=sys.stderr)
     return EXIT_USAGE_ERROR
 
 

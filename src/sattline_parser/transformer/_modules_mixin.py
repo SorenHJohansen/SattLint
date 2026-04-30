@@ -429,7 +429,6 @@ class _ModulesMixin:
 
     def moduletype_par_transfer(self, items) -> ParameterMapping:
         """Grammar moduletype_par_transfer -> ParameterMapping (variable => value)."""
-        from sattline_parser.transformer._tokens_mixin import DEFAULT_INIT
 
         if not items:
             raise ValueError("moduletype_par_transfer received empty items")
@@ -639,6 +638,54 @@ class _ModulesMixin:
                 tree = cast(Tree, it)
                 variables = tree.children
         return Tree(const.GRAMMAR_VALUE_LOCALVARIABLES, variables)
+
+    def submodules(self, items):
+        """Grammar submodules -> Tree of module invocation nodes."""
+        submodule_items: list[SingleModule | FrameModule | ModuleTypeInstance] = []
+        for item in _flatten_items(items):
+            if isinstance(item, SingleModule | FrameModule | ModuleTypeInstance):
+                submodule_items.append(item)
+        return Tree(const.GRAMMAR_VALUE_SUBMODULES, submodule_items)  # type: ignore[arg-type]  # type: ignore[arg-type]
+
+    @v_args(meta=True)
+    def record(self, meta, items) -> DataType:
+        """Grammar record -> DataType definition with optional description and fields."""
+        name: str | None = None
+        description: str | None = None
+        datecode: int | None = None
+        fields: list[Variable] = []
+
+        for item in items:
+            if isinstance(item, str):
+                if name is None:
+                    name = item
+                elif description is None:
+                    description = item
+            elif isinstance(item, int) and datecode is None:
+                datecode = item
+            elif isinstance(item, Tree) and item.data == const.TREE_TAG_VAR_LIST:
+                fields = [child for child in item.children if isinstance(child, Variable)]
+
+        if name is None:
+            raise ValueError("record is missing datatype name")
+
+        return DataType(
+            name=name,
+            description=description,
+            datecode=datecode,
+            var_list=fields,
+            declaration_span=_meta_span(meta),
+        )
+
+    def datatype_typedefinitions(self, items) -> Tree:
+        """Grammar datatype_typedefinitions -> Tree of DataType records."""
+        records: list[DataType] = []
+        for item in items:
+            if isinstance(item, DataType):
+                records.append(item)
+            elif isinstance(item, Tree):
+                records.extend([child for child in item.children if isinstance(child, DataType)])
+        return Tree(const.TREE_TAG_DATATYPE_LIST, records)  # type: ignore[arg-type]  # type: ignore[arg-type]
 
     # ---- Module definitions and layout ----
 

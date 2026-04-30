@@ -4,6 +4,12 @@ Living document of known technical debt in SattLint.
 Updated by doc-gardening agent and human developers.
 Last scan: 2026-04-28
 
+Canonical consolidated register for active debt:
+
+- `docs/exec-plans/tech-debt-ai-first.md`
+
+This tracker remains valid for legacy TD-* entries and scan history.
+
 ## Active Debt
 
 | ID | Area | Description | Severity | Planned Fix |
@@ -27,6 +33,8 @@ Last scan: 2026-04-28
 
 | Date | Findings | Action Taken |
 |------|-----------|--------------|
+| 2026-04-29 | 1 findings | Doc-gardening scan |
+| 2026-04-29 | 1 findings | Doc-gardening scan |
 | 2026-04-28 | 0 findings | Doc-gardening scan |
 | 2026-04-28 | 1 findings | Doc-gardening scan |
 | 2026-04-28 | 0 findings | Doc-gardening scan |

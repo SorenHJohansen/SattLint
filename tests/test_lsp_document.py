@@ -1,4 +1,8 @@
-"""Tests for LSP document state, incremental parsing, local snapshots, workspace diagnostics, on_hover / on_references / on_rename / on_definition / on_completion handlers."""
+"""Tests for LSP document state and request handlers.
+
+Covers incremental parsing, local snapshots, workspace diagnostics,
+and hover, reference, rename, definition, and completion handlers.
+"""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,8 +30,12 @@ from sattlint_lsp.server import (
     collect_local_definition_locations,
     on_completion,
     on_definition,
+    on_did_change,
     on_did_close,
+    on_did_open,
+    on_did_save,
     on_hover,
+    on_initialize,
     on_references,
     on_rename,
 )
@@ -1057,3 +1065,212 @@ def test_on_completion_ignores_dependency_list_documents(monkeypatch, tmp_path):
     result = on_completion(cast(Any, fake_ls), cast(Any, params))
 
     assert result.items == []
+
+
+# --- document_state.py: apply_content_changes no-range (full replace),
+#     apply_changes fallback, has_analysis branches ---
+def test_apply_content_changes_full_replace_when_no_range():
+    from types import SimpleNamespace
+
+    from sattlint_lsp.document_state import apply_content_changes
+
+    change = SimpleNamespace(text="new full content\nsecond line", range=None)
+    result_text, ranges = apply_content_changes("old text", [change])
+    assert result_text == "new full content\nsecond line"
+    assert ranges == ((0, 1),)
+
+
+def test_apply_content_changes_empty_list_returns_original():
+    from sattlint_lsp.document_state import apply_content_changes
+
+    result_text, ranges = apply_content_changes("original", [])
+    assert result_text == "original"
+    assert ranges == ()
+
+
+def test_document_state_has_analysis_checks_version_and_flags(tmp_path):
+    from sattlint_lsp.document_state import DocumentState
+
+    state = DocumentState(uri="file:///test.s", path=tmp_path / "test.s", version=3, text="content")
+    # No analysis stored yet
+    assert state.has_analysis(include_comment_validation=False) is False
+
+    # Simulate analysis stored at version 3
+    state.analysis_version = 3
+    state.analysis_includes_comment_validation = False
+    assert state.has_analysis(include_comment_validation=False) is True
+    assert state.has_analysis(include_comment_validation=True) is False
+    assert state.has_analysis(include_comment_validation=False, require_snapshot=True) is False
+
+
+def test_document_state_replace_text_clears_analysis(tmp_path):
+    from sattlint_lsp.document_state import DocumentState
+
+    state = DocumentState(uri="file:///test.s", path=tmp_path / "test.s", version=1, text="old")
+    state.analysis_version = 1
+    state.replace_text(version=2, text="new text", is_dirty=True)
+    assert state.text == "new text"
+    assert state.version == 2
+    assert state.analysis_version == -1
+
+
+def test_document_state_apply_changes_fallback_on_error(tmp_path):
+    from types import SimpleNamespace
+
+    from sattlint_lsp.document_state import DocumentState
+
+    state = DocumentState(uri="file:///test.s", path=tmp_path / "test.s", version=1, text="original")
+    # Pass a malformed change that triggers fallback
+    bad_change = SimpleNamespace(
+        text="X",
+        range=SimpleNamespace(
+            start=SimpleNamespace(line=-999, character=-999),
+            end=SimpleNamespace(line=-999, character=-999),
+        ),
+    )
+    fallback = "fallback text"
+    state.apply_changes(version=2, content_changes=[bad_change], fallback_text=fallback)
+    # Should use fallback since offset calculation fails
+    assert state.version == 2
+    assert state.is_dirty is True
+
+
+# --- core/document.py: LineIndex methods ---
+def test_line_index_line_start_offset_edge_cases():
+    from sattlint.core.document import LineIndex
+
+    idx = LineIndex.from_text("Hello\nWorld\n")
+    assert idx.line_start_offset(0) == 0
+    assert idx.line_start_offset(1) == 6
+    assert idx.line_start_offset(-1) == 0
+    assert idx.line_start_offset(100) == len("Hello\nWorld\n")
+
+
+def test_line_index_line_text_strips_newlines():
+    from sattlint.core.document import LineIndex
+
+    idx = LineIndex.from_text("Line1\r\nLine2\nLine3")
+    assert idx.line_text(0) == "Line1"
+    assert idx.line_text(1) == "Line2"
+    assert idx.line_text(2) == "Line3"
+    assert idx.line_text(-1) == ""
+
+
+def test_line_index_position_to_offset_basics():
+    from sattlint.core.document import LineIndex
+
+    idx = LineIndex.from_text("Hello\nWorld")
+    assert idx.position_to_offset(0, 0) == 0
+    assert idx.position_to_offset(0, 5) == 5
+    assert idx.position_to_offset(1, 0) == 6
+    assert idx.position_to_offset(100, 0) == len("Hello\nWorld")
+
+
+def test_utf16_index_to_codepoint_offset():
+    from sattlint.core.document import utf16_index_to_codepoint_offset
+
+    assert utf16_index_to_codepoint_offset("abc", 0) == 0
+    assert utf16_index_to_codepoint_offset("abc", 2) == 2
+    assert utf16_index_to_codepoint_offset("abc", 100) == 3
+
+
+def test_on_initialize_resets_server_state_and_prefers_root_uri(monkeypatch, tmp_path):
+    ls = SattLineLanguageServer()
+    ls.document_states["file:///old.s"] = DocumentState(
+        uri="file:///old.s",
+        path=tmp_path / "old.s",
+        version=1,
+        text="x",
+    )
+    ls.document_paths[(tmp_path / "old.s").resolve()] = "file:///old.s"
+    ls.entry_diagnostics["entry"] = {}
+    ls.published_workspace_diagnostics[(tmp_path / "old.s").resolve()] = ()
+    ls.entry_scan_generation["entry"] = 1
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        "sattlint_lsp.server._ensure_snapshot_store_configured", lambda current_ls: calls.append("configured") or True
+    )
+    monkeypatch.setattr(
+        "sattlint_lsp.server._schedule_workspace_scan", lambda current_ls, entry_files=None: calls.append("scan")
+    )
+
+    params = SimpleNamespace(
+        initialization_options={"workspaceDiagnosticsMode": "background"},
+        root_uri=tmp_path.resolve().as_uri(),
+        root_path=str(tmp_path / "ignored"),
+    )
+
+    on_initialize(ls, cast(Any, params))
+
+    assert ls.workspace_root == tmp_path.resolve()
+    assert ls.settings.workspace_diagnostics_mode == "background"
+    assert ls.document_states == {}
+    assert ls.document_paths == {}
+    assert ls.entry_diagnostics == {}
+    assert ls.published_workspace_diagnostics == {}
+    assert ls.entry_scan_generation == {}
+    assert calls == ["configured", "scan"]
+
+
+def test_on_did_open_and_change_ignore_non_diagnostic_documents(monkeypatch, tmp_path):
+    path = (tmp_path / "notes.txt").resolve()
+    uri = path.as_uri()
+    published = []
+
+    ls = SimpleNamespace(
+        workspace=SimpleNamespace(
+            get_text_document=lambda requested_uri: SimpleNamespace(uri=requested_uri, source="text", version=2)
+        ),
+        text_document_publish_diagnostics=lambda params: published.append(params),
+        document_states={uri: DocumentState(uri=uri, path=path, version=1, text="old")},
+        document_paths={path: uri},
+    )
+
+    monkeypatch.setattr("sattlint_lsp.server._document_path", lambda document: path)
+
+    open_params = SimpleNamespace(text_document=SimpleNamespace(uri=uri, version=2, text="text"))
+    on_did_open(ls, cast(Any, open_params))
+
+    assert uri not in ls.document_states
+    assert path not in ls.document_paths
+    assert published[-1].uri == uri
+    assert published[-1].diagnostics == []
+
+    ls.document_states[uri] = DocumentState(uri=uri, path=path, version=2, text="old")
+    ls.document_paths[path] = uri
+    change_params = SimpleNamespace(
+        text_document=SimpleNamespace(uri=uri, version=3),
+        content_changes=[SimpleNamespace(text="new")],
+    )
+    on_did_change(ls, cast(Any, change_params))
+
+    assert uri not in ls.document_states
+    assert path not in ls.document_paths
+    assert published[-1].uri == uri
+    assert published[-1].diagnostics == []
+
+
+def test_on_did_save_ignores_non_diagnostic_documents(monkeypatch, tmp_path):
+    path = (tmp_path / "notes.txt").resolve()
+    uri = path.as_uri()
+    published = []
+
+    ls = SimpleNamespace(
+        workspace=SimpleNamespace(
+            get_text_document=lambda requested_uri: SimpleNamespace(uri=requested_uri, source="saved", version=4)
+        ),
+        text_document_publish_diagnostics=lambda params: published.append(params),
+        document_states={uri: DocumentState(uri=uri, path=path, version=3, text="old")},
+        document_paths={path: uri},
+    )
+
+    monkeypatch.setattr("sattlint_lsp.server._document_path", lambda document: path)
+
+    save_params = SimpleNamespace(text_document=SimpleNamespace(uri=uri))
+    on_did_save(ls, cast(Any, save_params))
+
+    assert uri not in ls.document_states
+    assert path not in ls.document_paths
+    assert published[-1].uri == uri
+    assert published[-1].diagnostics == []

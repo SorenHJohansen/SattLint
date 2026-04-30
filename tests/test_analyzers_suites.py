@@ -1,4 +1,9 @@
-"""Tests for full-suite analyzers: SFC parallel write race, dataflow, variables analyzer suites, version drift, initial values, naming consistency, alarm integrity, safety paths, and taint paths."""
+"""Tests for full-suite analyzers.
+
+Covers SFC parallel write race, dataflow, variables analyzer suites,
+version drift, initial values, naming consistency, alarm integrity,
+safety paths, and taint paths.
+"""
 
 from typing import Any, cast
 
@@ -25,15 +30,28 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
+from sattlint.analyzers._sfc_guard_logic import _normalize_guard_signature
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.dataflow import analyze_dataflow
 from sattlint.analyzers.initial_values import analyze_initial_values
-from sattlint.analyzers.modules import analyze_version_drift
+from sattlint.analyzers.mms import (
+    _extract_external_tag,
+    _find_parameter_mapping,
+    _find_variable,
+    _normalize_external_tag,
+    _tag_family_key,
+)
+from sattlint.analyzers.modules import (
+    _collect_named_item_diffs,
+    _normalize_ast_value,
+    analyze_version_drift,
+)
 from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
 from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.analyzers.safety_paths import analyze_safety_paths
 from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.taint_paths import analyze_taint_paths
+from sattlint.analyzers.variable_usage_reporting import _find_module_instances, analyze_datatype_usage
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 
 
@@ -1729,3 +1747,166 @@ def test_taint_paths_analyzer_is_enabled_by_default():
 
     assert "taint-paths" in specs
     assert specs["taint-paths"].enabled is True
+
+
+def test_mms_tag_helpers_normalize_external_tags_and_family_keys():
+    assert _normalize_external_tag("  Unit.Area.Tag42  ") == "unit.area.tag42"
+    assert _normalize_external_tag("12345") is None
+    assert _tag_family_key("Plant-AB12.PV") == "plant|ab|12|pv"
+    assert _tag_family_key("   ") is None
+
+
+def test_mms_mapping_helpers_match_casefold_names():
+    mapping = ParameterMapping(
+        target=_varref("WriteData"),
+        source_type=const.TREE_TAG_VARIABLE_NAME,
+        is_duration=False,
+        is_source_global=False,
+        source=_varref("OutTag"),
+        source_literal=None,
+    )
+    variables = [Variable(name="RemoteVarName", datatype=Simple_DataType.TAGSTRING, init_value="TagA")]
+
+    found_mapping = _find_parameter_mapping([mapping], "writedata")
+    found_variable = _find_variable(variables, "remotevarname")
+
+    assert found_mapping is mapping
+    assert found_variable is variables[0]
+
+
+def test_mms_extract_external_tag_uses_literal_parameter_mapping_value():
+    instance = ModuleTypeInstance(
+        header=_hdr("MmsWrite"),
+        moduletype_name="MMSWriteVar",
+        parametermappings=[
+            ParameterMapping(
+                target=_varref("Tag"),
+                source_type=const.KEY_VALUE,
+                is_duration=False,
+                is_source_global=False,
+                source_literal="Plant.Unit.Tag01",
+            )
+        ],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[instance],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    tag = _extract_external_tag(bp, ["Root", "MmsWrite"], instance, None)
+
+    assert tag == "Plant.Unit.Tag01"
+
+
+def test_variable_usage_datatype_report_returns_not_found_message():
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    report = analyze_datatype_usage(bp, "MissingValue")
+
+    assert report == "Variable 'MissingValue' not found."
+
+
+def test_find_module_instances_includes_direct_and_typedef_expansions():
+    parent_typedef = ModuleTypeDef(
+        name="ParentType",
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("WantedAlias"),
+                moduletype_name="WantedType",
+                parametermappings=[],
+            )
+        ],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[parent_typedef],
+        localvariables=[],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("DirectWanted"),
+                moduletype_name="WantedType",
+                parametermappings=[],
+            ),
+            ModuleTypeInstance(
+                header=_hdr("ParentInstance"),
+                moduletype_name="ParentType",
+                parametermappings=[],
+            ),
+        ],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    results = _find_module_instances(bp, "WantedType")
+    paths = {tuple(path) for _module, path in results}
+
+    assert ("Root", "DirectWanted") in paths
+    assert ("Root", "ParentInstance", "WantedAlias") in paths
+
+
+def test_module_diff_helpers_detect_modified_and_variant_only_names():
+    variant_items = [
+        {
+            "alpha": ("Alpha", ("int", 1)),
+            "beta": ("Beta", ("int", 2)),
+        },
+        {
+            "alpha": ("Alpha", ("int", 3)),
+            "gamma": ("Gamma", ("int", 4)),
+        },
+    ]
+
+    common, only_in_variant, modified = _collect_named_item_diffs(variant_items)
+
+    assert common == ["Alpha"]
+    assert only_in_variant == {1: ["Beta"], 2: ["Gamma"]}
+    assert "Alpha" in modified
+
+
+def test_module_ast_normalizer_casefolds_names_and_ignores_position_fields():
+    normalized_dict = _normalize_ast_value(
+        {
+            "var_name": "MiXeD",
+            "state": "NeW",
+            "position": (1.0, 2.0),
+        }
+    )
+    normalized_var = _normalize_ast_value(Variable(name="FlowRate", datatype=Simple_DataType.INTEGER))
+
+    assert "position" not in repr(normalized_dict)
+    assert "mixed" in repr(normalized_dict)
+    assert "new" in repr(normalized_dict)
+    assert "flowrate" in repr(normalized_var)
+
+
+def test_sfc_guard_signature_collapses_contradictory_and_expression_to_false():
+    signature = _normalize_guard_signature(
+        (
+            const.GRAMMAR_VALUE_AND,
+            [
+                _varref("Permit"),
+                (const.GRAMMAR_VALUE_NOT, _varref("Permit")),
+            ],
+        )
+    )
+
+    assert signature == ("bool", False)

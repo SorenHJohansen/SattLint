@@ -28,10 +28,10 @@ This section talks briefly about various important directories and data structur
 
 This is the **parser core** of SattLint. It contains the Lark grammar, the transformer, and AST models.
 
--   `grammar/` contains the `.lark` grammar file and Lark-specific configuration
--   `transformer/` contains the transformation logic from parse tree to AST
--   `models/` contains the AST node definitions (data classes)
--   `utils/` contains parser utilities
+- `grammar/` contains the `.lark` grammar file and Lark-specific configuration
+- `transformer/` contains the transformation logic from parse tree to AST
+- `models/` contains the AST node definitions (data classes)
+- `utils/` contains parser utilities
 
 **Architecture Invariant:** the parser is independent of the particular analysis backend. It transforms SattLine source text into an AST and nothing more. This independence allows us to parse both source code and macro input. It should also unlock efficient light-parsing approaches.
 
@@ -41,14 +41,14 @@ This is the **parser core** of SattLint. It contains the Lark grammar, the trans
 
 This is the **main application** crate. It contains the CLI, configuration, analyzers, and reporting.
 
--   `analyzers/` contains 30+ registered analysis passes
--   `core/` contains shared semantic helpers (symbol lookup, completions)
--   `models/` contains application-level data structures
--   `transformer/` contains AST transformation for analysis
--   `reporting/` contains output formatters and reporters
--   `resolution/` contains symbol resolution logic
--   `contracts/` contains contract definitions
--   `devtools/` contains developer tooling (pipeline, audit, corpus)
+- `analyzers/` contains 30+ registered analysis passes
+- `core/` contains shared semantic helpers (symbol lookup, completions)
+- `models/` contains application-level data structures
+- `transformer/` contains AST transformation for analysis
+- `reporting/` contains output formatters and reporters
+- `resolution/` contains symbol resolution logic
+- `contracts/` contains contract definitions
+- `devtools/` contains developer tooling (pipeline, audit, corpus)
 
 **Architecture Invariant:** `sattlint/` knows about the SattLine domain but nothing about LSP or specific editor integrations. This is the **API Boundary** for library usage.
 
@@ -68,8 +68,8 @@ Name resolution, type inference, and dataflow analysis all happen here.
 
 This crate implements the **Language Server Protocol** server.
 
--   `server.py` contains the LSP server implementation
--   `workspace_store.py` contains the incremental parsing and workspace snapshot logic
+- `server.py` contains the LSP server implementation
+- `workspace_store.py` contains the incremental parsing and workspace snapshot logic
 
 **Architecture Invariant:** `sattlint_lsp` is the only crate that knows about LSP and JSON-RPC. If you want to expose a data structure to LSP, create a serializable counterpart here and manually convert between the two.
 
@@ -85,13 +85,13 @@ This is an **API Boundary**. If you want to use SattLint as a library for a cust
 
 Developer tooling for analysis and validation workflows:
 
--   `pipeline.py` runs batch analysis
--   `repo_audit.py` checks public-readiness
--   `corpus.py` runs corpus-based tests
--   `arch_linter.py` enforces layered architecture
--   `doc_gardener.py` scans for stale documentation
--   `observability.py` collects metrics
--   `review_tool.py` runs comprehensive reviews
+- `pipeline.py` runs batch analysis
+- `repo_audit.py` checks public-readiness
+- `corpus.py` runs corpus-based tests
+- `arch_linter.py` enforces layered architecture
+- `doc_gardener.py` scans for stale documentation
+- `observability.py` collects metrics
+- `review_tool.py` runs comprehensive reviews
 
 ### `src/sattlint_gui/`
 
@@ -151,6 +151,7 @@ Internals need to deal with broken code, but this is not an error condition. Sat
 SattLint is a long-running process, so it's important to understand what's going on inside.
 
 The observability module collects:
+
 - Test metrics (passed/failed/skipped)
 - Coverage metrics (line/branch coverage)
 - Lint metrics (warnings/errors)
@@ -171,6 +172,7 @@ We enforce architecture constraints mechanically via `arch_linter.py`:
 ### Documentation Quality
 
 We treat documentation as code. The `doc_gardener.py` tool:
+
 - Checks AGENTS.md is under 100 lines
 - Validates dead links
 - Scans for stale docs (not updated when code changed)

@@ -1,9 +1,14 @@
 """CLI behavior tests for SattLint."""
 
+from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
+
+import pytest
 
 import sattlint
 from sattlint import app, app_base
+from sattlint.cli import entry as cli_entry
 
 
 def _run_base_cli(argv: list[str], **overrides) -> int:
@@ -121,3 +126,154 @@ def test_run_cli_quiet_suppresses_stdout(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert exit_code == app_base.EXIT_SUCCESS
     assert captured.out == ""
+
+
+class _FakeParser:
+    def __init__(self, args=None, leftover=None, *, raises=None):
+        self._args = args
+        self._leftover = leftover or []
+        self._raises = raises
+        self.usage_stream = None
+
+    def parse_known_args(self, _argv):
+        if self._raises is not None:
+            raise self._raises
+        return self._args, self._leftover
+
+    def print_usage(self, stream):
+        self.usage_stream = stream
+
+
+def test_cli_entry_returns_parser_system_exit_code():
+    parser = _FakeParser(raises=SystemExit(2))
+
+    exit_code = cli_entry.run_cli(
+        ["--bad"],
+        config_path=Path("config.toml"),
+        build_cli_parser_fn=lambda: parser,
+    )
+
+    assert exit_code == 2
+
+
+def test_cli_entry_syntax_check_requires_handler():
+    parser = _FakeParser(
+        args=SimpleNamespace(command="syntax-check", file="prog.s", config=None, no_cache=False, quiet=False)
+    )
+
+    with pytest.raises(RuntimeError, match="syntax-check handler is required"):
+        cli_entry.run_cli(
+            ["syntax-check", "prog.s"],
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: parser,
+        )
+
+
+def test_cli_entry_reports_leftover_arguments(capsys):
+    parser = _FakeParser(
+        args=SimpleNamespace(command="analyze", checks=[], config=None, no_cache=False, quiet=False),
+        leftover=["--unknown"],
+    )
+
+    exit_code = cli_entry.run_cli(
+        ["analyze", "--unknown"],
+        config_path=Path("config.toml"),
+        build_cli_parser_fn=lambda: parser,
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == cli_entry.EXIT_USAGE_ERROR
+    assert "unrecognized arguments" in captured.err
+
+
+def test_cli_entry_returns_usage_error_when_config_load_fails(capsys):
+    parser = _FakeParser(
+        args=SimpleNamespace(command="validate-config", checks=[], config=None, no_cache=False, quiet=False),
+    )
+
+    exit_code = cli_entry.run_cli(
+        ["validate-config"],
+        config_path=Path("config.toml"),
+        build_cli_parser_fn=lambda: parser,
+        load_config_fn=lambda _path: (_ for _ in ()).throw(RuntimeError("bad config")),
+        apply_debug_fn=lambda _cfg: None,
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == cli_entry.EXIT_USAGE_ERROR
+    assert "ERROR [config]" in captured.err
+
+
+def test_cli_entry_validate_config_requires_handler():
+    parser = _FakeParser(
+        args=SimpleNamespace(command="validate-config", checks=[], config=None, no_cache=False, quiet=False),
+    )
+
+    with pytest.raises(RuntimeError, match="validate-config handler is required"):
+        cli_entry.run_cli(
+            ["validate-config"],
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: parser,
+            load_config_fn=lambda _path: ({"debug": False}, False),
+            apply_debug_fn=lambda _cfg: None,
+        )
+
+
+def test_cli_entry_analyze_requires_handler():
+    parser = _FakeParser(
+        args=SimpleNamespace(command="analyze", checks=[], config=None, no_cache=False, quiet=False),
+    )
+
+    with pytest.raises(RuntimeError, match="analyze handler is required"):
+        cli_entry.run_cli(
+            ["analyze"],
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: parser,
+            load_config_fn=lambda _path: ({"debug": False}, False),
+            apply_debug_fn=lambda _cfg: None,
+        )
+
+
+def test_cli_entry_docgen_requires_handler():
+    parser = _FakeParser(
+        args=SimpleNamespace(command="docgen", checks=[], config=None, no_cache=False, quiet=False),
+    )
+
+    with pytest.raises(RuntimeError, match="docgen handler is required"):
+        cli_entry.run_cli(
+            ["docgen"],
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: parser,
+            load_config_fn=lambda _path: ({"debug": False}, False),
+            apply_debug_fn=lambda _cfg: None,
+        )
+
+
+def test_cli_entry_format_icf_requires_handler():
+    parser = _FakeParser(
+        args=SimpleNamespace(command="format-icf", checks=[], config=None, no_cache=False, quiet=False),
+    )
+
+    with pytest.raises(RuntimeError, match="format-icf handler is required"):
+        cli_entry.run_cli(
+            ["format-icf"],
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: parser,
+            load_config_fn=lambda _path: ({"debug": False}, False),
+            apply_debug_fn=lambda _cfg: None,
+        )
+
+
+def test_cli_entry_prints_usage_when_no_command_selected():
+    parser = _FakeParser(
+        args=SimpleNamespace(command=None, checks=[], config=None, no_cache=False, quiet=False),
+    )
+
+    exit_code = cli_entry.run_cli(
+        [],
+        config_path=Path("config.toml"),
+        build_cli_parser_fn=lambda: parser,
+    )
+
+    assert exit_code == cli_entry.EXIT_USAGE_ERROR
+    assert parser.usage_stream is not None

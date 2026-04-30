@@ -2,7 +2,8 @@
 
 Status: reverse-engineered working note.
 
-This document captures what can be confirmed today about serialized composite-object files with `.g` and `.y` extensions in this repo. In current SattLine file pairing, `.g` is the serialized composite sidecar for draft program files, while `.y` is the serialized composite sidecar for official program files. It is intentionally conservative: fields are marked from repeated observation in repo samples, matching `.s` or `.x` source names, and existing SattLine graphics prose. Unknowns stay unknown.
+This document captures what can be confirmed today about serialized composite-object files with `.g` and `.y` extensions in this repo.
+In current SattLine file pairing, `.g` is the serialized composite sidecar for draft program files, while `.y` is the serialized composite sidecar for official program files. It is intentionally conservative: fields are marked from repeated observation in repo samples, matching `.s` or `.x` source names, and existing SattLine graphics prose. Unknowns stay unknown.
 
 ## Scope
 
@@ -41,21 +42,21 @@ Main samples used for the first pass:
 
 High-confidence observations from sampled files:
 
-0. File pairing follows program mode:
+- File pairing follows program mode:
 
 - draft program files use `.s` with `.g`
 - official program files use `.x` with `.y`
 - this document therefore treats `.g` as draft-sidecar and `.y` as official-sidecar
 
-1. Both `.g` and `.y` files start with a quoted syntax-version header.
+- Both `.g` and `.y` files start with a quoted syntax-version header.
 
 ```text
 " Syntax version 2.23, date: 2026-04-14-14:20:05.290 N "
 ```
 
-2. Files then contain a flat sequence of serialized records.
+- Files then contain a flat sequence of serialized records.
 
-3. A record starts with a small integer family code. Observed families so far:
+- A record starts with a small integer family code. Observed families so far:
 
 - `5`: table-driven composite records, including `PictureDisplay` and `StringSelector`
 - `4`: event-list or alarm-list style records
@@ -64,15 +65,15 @@ High-confidence observations from sampled files:
 
 These family codes are now confirmed to match exactly between draft `.g` files and official `.y` files.
 
-4. Every sampled record ends with a single trailing `0` line.
+- Every sampled record ends with a single trailing `0` line.
 
-5. In sampled families `1`, `4`, and `5`, the lines immediately after the family code carry the placement rectangle. The last two values on the second line plus the two values on the third line behave like `(x1, y1) -> (x2, y2)`.
+- In sampled families `1`, `4`, and `5`, the lines immediately after the family code carry the placement rectangle. The last two values on the second line plus the two values on the third line behave like `(x1, y1) -> (x2, y2)`.
 
-6. The first numeric line after the rectangle appears to be a style, colour, or frame code. It repeats in later payload lines often enough that it is probably not a count.
+- The first numeric line after the rectangle appears to be a style, colour, or frame code. It repeats in later payload lines often enough that it is probably not a count.
 
-7. The next numeric line often acts like a subtype or payload discriminator inside the family.
+- The next numeric line often acts like a subtype or payload discriminator inside the family.
 
-8. Composite-object payloads are loaded in encounter order. In the `.s` or `.x` source, the graphics stream only shows `CompositeObject`; the next serialized record in the companion `.g` or `.y` file is then consumed as the payload for that placeholder.
+- Composite-object payloads are loaded in encounter order. In the `.s` or `.x` source, the graphics stream only shows `CompositeObject`; the next serialized record in the companion `.g` or `.y` file is then consumed as the payload for that placeholder.
 
 ## Family `5`: Table-Driven Composite Records
 
@@ -161,7 +162,7 @@ User-confirmed picture-display fields from live examples:
 - the line immediately before that flag is the zoomable source, either literal or variable
 - the first line of the record can carry an activate variable, like modules do
 - the numeric line before subtype `2` is the default line colour for the picture display
- - the first payload line after subtype `2` can also carry an optional line-colour variable binding
+- the first payload line after subtype `2` can also carry an optional line-colour variable binding
 
  ```text
 5
@@ -180,7 +181,7 @@ f
 Current field map:
 
 | Position | Confidence | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | family code `5` | high | composite record family |
 | rectangle lines | high | placement rectangle |
 | first line `Lit ...` or `Var ...` before rectangle end | high | activate source, literal or variable |
@@ -344,7 +345,7 @@ Mean
 Current field map:
 
 | Position | Confidence | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | family code `5` | high | composite record family |
 | rectangle lines | high | placement rectangle |
 | style code line | medium | visual or frame style code |
@@ -424,7 +425,7 @@ Sample block:
 Current field map:
 
 | Position | Confidence | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | family code `4` | medium | list-widget record family |
 | four reals on next line | high | placement rectangle |
 | trailing token `EventList.ListObject` | high | bound list object path |

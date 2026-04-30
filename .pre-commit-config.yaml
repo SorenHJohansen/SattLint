@@ -1,19 +1,25 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.0
+    rev: v0.11.0
     hooks:
       - id: ruff
-        args: [--fix, --unsafe-fixes]
+        args: [--fix, --select, "E,F,W,I"]
       - id: ruff-format
 
   - repo: local
     hooks:
       - id: pyright
         name: pyright
-        language: python
-        entry: pyright
-        additional_dependencies: [pyright>=1.1.380]
+        language: system
+        entry: .venv/Scripts/pyright.exe
         pass_filenames: false
+      - id: sattlint-syntax-check
+        name: SattLint syntax-check (staged SattLine files)
+        language: system
+        entry: .venv/Scripts/python.exe -m sattlint syntax-check
+        files: \.(g|l|s)$
+        exclude: ^tests/fixtures/invalid/
+        pass_filenames: true
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -22,5 +28,8 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-toml
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
       - id: check-added-large-files
         args: ['--maxkb=500']

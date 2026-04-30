@@ -117,7 +117,11 @@ class ConfigurationFileParser:
             main_program = next((p["name"] for p in programs if p["main_program"]), "None")
 
             log.info(
-                f"✓ Parsed {config_file.name}: Config='{config_name}', {len(programs)} programs, {len(libraries)} libraries"
+                "Parsed %s: Config=%r, %d programs, %d libraries",
+                config_file.name,
+                config_name,
+                len(programs),
+                len(libraries),
             )
 
             return ConfigurationFileInfo(
@@ -666,7 +670,7 @@ class ExcelGenerator:
             ws.cell(row=current_row, column=8, value=units_served)
 
             # IP addresses
-            ws.cell(row=current_row, column=9, value=config.get("ip_address", "N/A"))
+            ws.cell(row=current_row, column=9, value=config.get("ip_address") or "N/A")
 
             current_row += 1
 

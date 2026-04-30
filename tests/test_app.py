@@ -11,7 +11,7 @@ import pytest
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
-from sattlint import app
+from sattlint import app, app_docs
 from sattlint.analyzers import variable_usage_reporting as variables_reporting_module
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.framework import AnalyzerSpec, Issue, SimpleReport
@@ -1467,6 +1467,136 @@ def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
     assert seen["documentation_unit_selection_fn"] is app._get_documentation_unit_selection
     assert seen["exit_success"] == app.EXIT_SUCCESS
     assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
+
+
+def test_cli_owner_run_docgen_command_rejects_empty_project_set(capsys):
+    cfg = {"documentation": {}}
+
+    exit_code = app.app_cli_commands_module.run_docgen_command(
+        cfg,
+        use_cache=True,
+        output_dir=None,
+        output_path=None,
+        iter_loaded_projects_fn=lambda *_args, **_kwargs: iter(()),
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert "No analyzed targets configured" in out
+
+
+def test_cli_owner_run_docgen_command_rejects_output_path_for_multiple_targets(capsys):
+    cfg = {"documentation": {}}
+    projects = [
+        ("TargetA", object(), SimpleNamespace(unavailable_libraries=set())),
+        ("TargetB", object(), SimpleNamespace(unavailable_libraries=set())),
+    ]
+
+    exit_code = app.app_cli_commands_module.run_docgen_command(
+        cfg,
+        use_cache=True,
+        output_dir=None,
+        output_path="single.docx",
+        iter_loaded_projects_fn=lambda *_args, **_kwargs: iter(projects),
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert "output_path requires exactly one configured target" in out
+
+
+def test_cli_owner_run_docgen_command_writes_output_dir_file(tmp_path, monkeypatch):
+    generated: list[tuple[str, set[str]]] = []
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "generate_docx",
+        lambda _bp, out_name, documentation_config, unavailable_libraries: generated.append(
+            (out_name, set(unavailable_libraries))
+        ),
+    )
+
+    cfg = {"documentation": {"classifications": {}}}
+    output_dir = tmp_path / "docs"
+    projects = [("TargetA", object(), SimpleNamespace(unavailable_libraries={"ControlLib"}))]
+
+    exit_code = app.app_cli_commands_module.run_docgen_command(
+        cfg,
+        use_cache=True,
+        output_dir=str(output_dir),
+        output_path=None,
+        iter_loaded_projects_fn=lambda *_args, **_kwargs: iter(projects),
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    assert output_dir.exists()
+    assert generated == [(str(output_dir / "TargetA_FS.docx"), {"ControlLib"})]
+
+
+def test_preview_documentation_candidates_for_target_handles_empty_candidates(monkeypatch, capsys):
+    monkeypatch.setattr(app_docs, "classify_documentation_structure", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(app_docs, "discover_documentation_unit_candidates", lambda *_args, **_kwargs: [])
+
+    app_docs.preview_documentation_candidates_for_target(
+        "TargetA",
+        cast(BasePicture, SimpleNamespace()),
+        cast(ProjectGraph, SimpleNamespace(unavailable_libraries=set())),
+        cfg={"documentation": {}},
+    )
+
+    out = capsys.readouterr().out
+    assert "=== Target: TargetA ===" in out
+    assert "No unit candidates detected." in out
+
+
+def test_run_generate_documentation_skips_unmatched_scoped_target(monkeypatch, capsys):
+    class _Scope(SimpleNamespace):
+        mode = "instance_paths"
+        roots = []
+        unmatched_values = ["Missing.Unit"]
+
+    classification = SimpleNamespace(scope=_Scope())
+    monkeypatch.setattr(app_docs, "classify_documentation_structure", lambda *_args, **_kwargs: classification)
+    monkeypatch.setattr(
+        app_docs, "generate_docx", lambda *_args, **_kwargs: pytest.fail("generate_docx should not run")
+    )
+
+    pauses: list[str] = []
+    app_docs.run_generate_documentation(
+        cfg={"documentation": {}},
+        iter_loaded_projects_fn=lambda _cfg: iter(
+            [("TargetA", object(), SimpleNamespace(unavailable_libraries={"ControlLib"}))]
+        ),
+        prompt_fn=lambda _msg, default: default or "out.docx",
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    out = capsys.readouterr().out
+    assert "No unit roots matched the configured documentation scope; skipping target." in out
+    assert "Unmatched scope filters: Missing.Unit" in out
+    assert pauses == ["pause"]
+
+
+def test_configure_documentation_scope_by_instance_path_rejects_empty_input(monkeypatch):
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": "")
+    pauses: list[str] = []
+
+    changed = app_docs.configure_documentation_scope_by_instance_path(
+        split_csv_values_fn=lambda raw: [item.strip() for item in raw.split(",") if item.strip()],
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert changed is False
+    assert pauses == ["pause"]
 
 
 def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_context):

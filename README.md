@@ -6,24 +6,35 @@ This guide is written for coworkers who just want to get it running quickly. No 
 
 ---
 
+## AI-First Repository Docs
+
+For AI contributors and multi-agent work, start here:
+
+- `AGENTS.md`
+- `docs/context-loading-order.md`
+- `docs/exec-plans/completed/ai-first-repo-hardening.md`
+- `docs/exec-plans/tech-debt-tracker.md`
+
+---
+
 ## What SattLint Does
 
 SattLint can help you:
 
-* check whether a SattLine file parses correctly
-* analyze a full program or library together with its dependencies
-* find issues such as unused variables, written-but-never-read variables, and shadowing
-* generate FS-style Word documentation as a `.docx` file
-* inspect parser outputs when something looks wrong
+- check whether a SattLine file parses correctly
+- analyze a full program or library together with its dependencies
+- find issues such as unused variables, written-but-never-read variables, and shadowing
+- generate FS-style Word documentation as a `.docx` file
+- inspect parser outputs when something looks wrong
 
 ---
 
 ## What You Need
 
-* Windows or Linux
-* Python **3.13 or newer**
-* **pipx** (used to install and run SattLint cleanly)
-* A local copy of your SattLine code
+- Windows or Linux
+- Python **3.13 or newer**
+- **pipx** (used to install and run SattLint cleanly)
+- A local copy of your SattLine code
 
 ---
 
@@ -35,13 +46,13 @@ You need a local copy of the SattLint folder.
 
 Use one of these:
 
-* Download the repository as a ZIP file and extract it
-* Copy the SattLint folder from a coworker or shared drive
+- Download the repository as a ZIP file and extract it
+- Copy the SattLint folder from a coworker or shared drive
 
 Example locations:
 
-* Linux: `~/SattLint`
-* Windows: `C:\Tools\SattLint`
+- Linux: `~/SattLint`
+- Windows: `C:\Tools\SattLint`
 
 ---
 
@@ -116,6 +127,8 @@ sattlint --config path/to/config.toml --verbose validate-config
 sattlint --quiet repo-audit --profile quick
 ```
 
+For the full command surface and script entry points, see `docs/references/cli-commands.md`.
+
 ---
 
 ## Updating SattLint
@@ -135,10 +148,10 @@ pipx reinstall sattlint
 
 The first time SattLint runs, it creates a config file automatically.
 
-* **Windows:**
+- **Windows:**
   `%APPDATA%\sattlint\config.toml`
 
-* **Linux:**
+- **Linux:**
   `~/.config/sattlint/config.toml`
 
 ### Configure it
@@ -149,12 +162,12 @@ The first time SattLint runs, it creates a config file automatically.
 
 3. Set:
 
-  * `program_dir` -> your SattLine program folder
-  * `ABB_lib_dir` -> shared or ABB libraries
-  * `other_lib_dirs` -> any additional libraries
-  * `analyzed_programs_and_libraries` -> what to analyze
-  * `10) Change icf_dir` -> directory used for ICF validation and formatting
-  * `12) Edit graphics rules` -> define expected module invocation or clipping rules saved in JSON
+    - `program_dir` -> your SattLine program folder
+    - `ABB_lib_dir` -> shared or ABB libraries
+    - `other_lib_dirs` -> any additional libraries
+    - `analyzed_programs_and_libraries` -> what to analyze
+    - `10) Change icf_dir` -> directory used for ICF validation and formatting
+    - `12) Edit graphics rules` -> define expected module invocation or clipping rules saved in JSON
 
 4. Save with `9) Save configuration`
 
@@ -165,8 +178,8 @@ The first time SattLint runs, it creates a config file automatically.
 **Important:**
 Use names *without file extensions*
 
-+ `MyProgram`
-- `MyProgram.s`
+- `MyProgram`
+- ~~`MyProgram.s`~~
 
 ---
 
@@ -190,23 +203,23 @@ sattlint-gui
 
 Main menu:
 
-* `1) Analyze` -> run curated checks, variable reports, and registry-backed analyzers
-* `2) Documentation` -> preview unit scope and generate Word docs
-* `3) Setup` -> change paths, targets, mode, and cache settings
-* `4) Tools` -> run self-check, inspect dumps, and refresh cached ASTs
-* `5) Help` -> first-time guidance and workflow explanations
+- `1) Analyze` -> run curated checks, variable reports, and registry-backed analyzers
+- `2) Documentation` -> preview unit scope and generate Word docs
+- `3) Setup` -> change paths, targets, mode, and cache settings
+- `4) Tools` -> run self-check, inspect dumps, and refresh cached ASTs
+- `5) Help` -> first-time guidance and workflow explanations
 
 Inside `Analyze`, use `Full analyzer suite` for a broad pass and the focused submenus when you want specific reports or debugging tools.
 
 Graphics layout specification workflow:
 
-* `3) Setup` -> `12) Edit graphics rules` to add or update expected invocation coordinates, invocation flags, and clipping-related values
-* Use `unit:` selectors when a module should look the same in every detected unit, for example `unit:L1` or `unit:L1.L2.UnitControl`
-* Use `equipment:` selectors when a module should look the same inside every equipment module, for example `equipment:L1.L2.EquipModPanelShort`
-* Exact relative paths are still available for one-off cases, but the normalized `unit:` and `equipment:` selectors avoid hardcoding unit names such as `ApplTank` or equipment-module names such as `Empty`
-* Moduletype rules still identify modules by resolved `ModuleType` name and can optionally be narrowed with `unit:`, `equipment:`, or exact-path selectors
-* `1) Analyze` -> `3) Structure & modules` -> `4) Validate graphics rules` to report modules that are not to spec
-* `4) Tools` -> `1) Self-check diagnostics` to confirm the graphics rules JSON path and whether the file is valid
+- `3) Setup` -> `12) Edit graphics rules` to add or update expected invocation coordinates, invocation flags, and clipping-related values
+- Use `unit:` selectors when a module should look the same in every detected unit, for example `unit:L1` or `unit:L1.L2.UnitControl`
+- Use `equipment:` selectors when a module should look the same inside every equipment module, for example `equipment:L1.L2.EquipModPanelShort`
+- Exact relative paths are still available for one-off cases, but the normalized `unit:` and `equipment:` selectors avoid hardcoding unit names such as `ApplTank` or equipment-module names such as `Empty`
+- Moduletype rules still identify modules by resolved `ModuleType` name and can optionally be narrowed with `unit:`, `equipment:`, or exact-path selectors
+- `1) Analyze` -> `3) Structure & modules` -> `4) Validate graphics rules` to report modules that are not to spec
+- `4) Tools` -> `1) Self-check diagnostics` to confirm the graphics rules JSON path and whether the file is valid
 
 ---
 
@@ -220,8 +233,8 @@ sattlint syntax-check /path/to/Program.s
 
 Output:
 
-* `OK` → valid file
-* Error message → invalid file
+- `OK` → valid file
+- Error message → invalid file
 
 ---
 
@@ -251,39 +264,39 @@ The GUI opens with a dark-themed interface. It reuses the same config file, anal
 
 ### Features
 
-**Analyze View**
+#### Analyze View
 
-* Load and review configured targets
-* Browse and enable/disable individual analyzers
-* Run Variable Analysis to find unused and written-but-never-read variables
-* Run Checks to execute all enabled analyzers in sequence
-* Run Bundle to combine Variable Analysis + Checks output
-* Stream results and output directly to the Results view
+- Load and review configured targets
+- Browse and enable/disable individual analyzers
+- Run Variable Analysis to find unused and written-but-never-read variables
+- Run Checks to execute all enabled analyzers in sequence
+- Run Bundle to combine Variable Analysis + Checks output
+- Stream results and output directly to the Results view
 
-**Config View**
+#### Config View
 
-* Edit and save configuration in a focused JSON editor
-* Load config from disk
-* No need to restart the app after changes
+- Edit and save configuration in a focused JSON editor
+- Load config from disk
+- No need to restart the app after changes
 
-**Documentation View**
+#### Documentation View
 
-* Preview configured targets and output location
-* Choose an output directory for `.docx` files
-* Generate Word documentation for all configured targets in one step
-* Watch generation progress and output in real-time
+- Preview configured targets and output location
+- Choose an output directory for `.docx` files
+- Generate Word documentation for all configured targets in one step
+- Watch generation progress and output in real-time
 
-**Tools View**
+#### Tools View
 
-* Run self-check diagnostics
-* Review enabled analyzers
-* Ensure AST cache is populated for fast analysis
+- Run self-check diagnostics
+- Review enabled analyzers
+- Ensure AST cache is populated for fast analysis
 
-**Results View**
+#### Results View
 
-* History of all analysis and documentation runs (timestamped)
-* Detailed output viewer showing target summaries and issue counts
-* Auto-formatted summaries with syntax highlighting
+- History of all analysis and documentation runs (timestamped)
+- Detailed output viewer showing target summaries and issue counts
+- Auto-formatted summaries with syntax highlighting
 
 ### Typical Workflow
 
@@ -297,10 +310,10 @@ The GUI opens with a dark-themed interface. It reuses the same config file, anal
 
 ### Keyboard & Mouse
 
-* **Sidebar**: Click view names to switch between Analyze, Config, Docs, Tools, and Results
-* **Buttons**: Click action buttons to start tasks (no right-click menu)
-* **History**: Click history entries in Results view to see details
-* **Scrolling**: All text areas support scrollbars
+- **Sidebar**: Click view names to switch between Analyze, Config, Docs, Tools, and Results
+- **Buttons**: Click action buttons to start tasks (no right-click menu)
+- **History**: Click history entries in Results view to see details
+- **Scrolling**: All text areas support scrollbars
 
 ### Status Bar
 
@@ -348,9 +361,9 @@ pipx reinstall sattlint
 
 Check:
 
-* Names have no extensions
-* Paths in config are correct
-* Mode (`official` / `draft`) matches files
+- Names have no extensions
+- Paths in config are correct
+- Mode (`official` / `draft`) matches files
 
 ---
 
@@ -358,8 +371,8 @@ Check:
 
 Add missing folders to:
 
-* `ABB_lib_dir`
-* `other_lib_dirs`
+- `ABB_lib_dir`
+- `other_lib_dirs`
 
 ---
 
@@ -367,7 +380,7 @@ Add missing folders to:
 
 Run:
 
-```
+```text
 6) Force refresh cached AST
 ```
 
@@ -389,7 +402,7 @@ This README is focused on usage.
 
 For development setup, tests, and tooling, see:
 
-```
+```text
 CONTRIBUTING.md
 ```
 

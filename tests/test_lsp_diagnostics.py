@@ -1,4 +1,8 @@
-"""Tests for LSP entry-file resolution, diagnostic publishing (syntax and semantic), module-path inference, completion candidates, and definition/reference resolution."""
+"""Tests for LSP entry-file resolution and diagnostics.
+
+Covers syntax and semantic publishing, module-path inference,
+completion candidates, and definition/reference resolution.
+"""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,7 +12,10 @@ import pytest
 
 from sattlint.analyzers.registry import get_declared_lsp_analyzer_keys
 from sattlint.core.diagnostics import SemanticDiagnostic
+from sattlint.core.semantic import WorkspaceSourceDiscovery
 from sattlint.editor_api import load_workspace_snapshot
+from sattlint_lsp import _server_helpers as lsp_helpers
+from sattlint_lsp import workspace_store as lsp_workspace_store
 from sattlint_lsp.local_parser import FullDocumentParserAdapter
 from sattlint_lsp.server import (
     LspSettings,
@@ -1026,3 +1033,133 @@ ENDDEF (*BasePicture*);
     labels = {item.label for item in items}
 
     assert "LocalVar" in labels
+
+
+def test_lsp_helper_request_validation_covers_valid_and_invalid_shapes():
+    assert lsp_helpers._validated_text_document_uri(SimpleNamespace(text_document=SimpleNamespace(uri=""))) is None
+    assert (
+        lsp_helpers._validated_text_document_uri(SimpleNamespace(text_document=SimpleNamespace(uri="file:///Main.s")))
+        == "file:///Main.s"
+    )
+
+    valid_position = SimpleNamespace(
+        text_document=SimpleNamespace(uri="file:///Main.s"),
+        position=SimpleNamespace(line=3, character=4),
+    )
+    assert lsp_helpers._validated_text_document_position(valid_position) == ("file:///Main.s", 3, 4)
+    assert (
+        lsp_helpers._validated_text_document_position(
+            SimpleNamespace(
+                text_document=SimpleNamespace(uri="file:///Main.s"),
+                position=SimpleNamespace(line=-1, character=4),
+            )
+        )
+        is None
+    )
+
+    valid_open = SimpleNamespace(
+        text_document=SimpleNamespace(uri="file:///Main.s", version=2, text="abc"),
+    )
+    assert lsp_helpers._validated_open_request(valid_open) == ("file:///Main.s", 2, "abc")
+    assert (
+        lsp_helpers._validated_open_request(
+            SimpleNamespace(text_document=SimpleNamespace(uri="file:///Main.s", version="2", text="abc"))
+        )
+        is None
+    )
+
+    valid_change = SimpleNamespace(
+        text_document=SimpleNamespace(uri="file:///Main.s", version=4),
+        content_changes=(SimpleNamespace(text="x"),),
+    )
+    change_request = lsp_helpers._validated_change_request(valid_change)
+    assert change_request is not None
+    assert change_request[0] == "file:///Main.s"
+    assert change_request[1] == 4
+    assert len(change_request[2]) == 1
+    assert change_request[2][0].text == "x"
+    assert (
+        lsp_helpers._validated_change_request(
+            SimpleNamespace(text_document=SimpleNamespace(uri="file:///Main.s", version=4), content_changes="bad")
+        )
+        is None
+    )
+
+    valid_rename = SimpleNamespace(
+        text_document=SimpleNamespace(uri="file:///Main.s"),
+        position=SimpleNamespace(line=0, character=0),
+        new_name="Renamed",
+    )
+    assert lsp_helpers._validated_rename_request(valid_rename) == ("file:///Main.s", 0, 0, "Renamed")
+    assert (
+        lsp_helpers._validated_rename_request(
+            SimpleNamespace(
+                text_document=SimpleNamespace(uri="file:///Main.s"),
+                position=SimpleNamespace(line=0, character=0),
+                new_name=1,
+            )
+        )
+        is None
+    )
+
+
+def test_lsp_workspace_diagnostics_mode_and_rename_target_validation():
+    assert lsp_helpers._normalize_workspace_diagnostics_mode("off") == "off"
+    assert lsp_helpers._normalize_workspace_diagnostics_mode("background") == "background"
+    assert lsp_helpers._normalize_workspace_diagnostics_mode("unexpected") == "background"
+
+    lsp_helpers._validate_rename_target("OkName")
+    lsp_helpers._validate_rename_target("'Quoted Name'")
+
+    with pytest.raises(ValueError, match="valid SattLine identifier"):
+        lsp_helpers._validate_rename_target("bad name with spaces")
+    with pytest.raises(ValueError, match="exceeds"):
+        lsp_helpers._validate_rename_target("ABCDEFGHIJKLMNOPQRSTU")
+
+
+def test_workspace_entry_files_prefers_unreferenced_programs(tmp_path):
+    prog_a = tmp_path / "Programs" / "A.s"
+    prog_b = tmp_path / "Programs" / "B.s"
+    dep = tmp_path / "Programs" / "Main.l"
+    _write_text(prog_a, '"x"\n"y"\n"z"\n')
+    _write_text(prog_b, '"x"\n"y"\n"z"\n')
+    _write_text(dep, "A\n")
+
+    discovery = WorkspaceSourceDiscovery(
+        workspace_root=tmp_path,
+        source_dirs=(prog_a.parent.resolve(),),
+        program_files=(prog_a.resolve(), prog_b.resolve()),
+        dependency_files=(dep.resolve(),),
+        program_files_by_stem={
+            "a": (prog_a.resolve(),),
+            "b": (prog_b.resolve(),),
+        },
+        dependency_files_by_stem={"main": (dep.resolve(),)},
+    )
+
+    assert lsp_workspace_store._workspace_entry_files(discovery) == (prog_b.resolve(),)
+
+
+def test_workspace_entry_files_falls_back_when_all_programs_are_referenced(tmp_path):
+    prog_a = tmp_path / "Programs" / "A.s"
+    prog_b = tmp_path / "Programs" / "B.s"
+    dep = tmp_path / "Programs" / "Main.l"
+    _write_text(prog_a, '"x"\n"y"\n"z"\n')
+    _write_text(prog_b, '"x"\n"y"\n"z"\n')
+    _write_text(dep, "A\nB\n")
+
+    discovery = WorkspaceSourceDiscovery(
+        workspace_root=tmp_path,
+        source_dirs=(prog_a.parent.resolve(),),
+        program_files=(prog_a.resolve(), prog_b.resolve()),
+        dependency_files=(dep.resolve(),),
+        program_files_by_stem={
+            "a": (prog_a.resolve(),),
+            "b": (prog_b.resolve(),),
+        },
+        dependency_files_by_stem={"main": (dep.resolve(),)},
+    )
+
+    assert lsp_workspace_store._workspace_entry_files(discovery) == tuple(
+        sorted((prog_a.resolve(), prog_b.resolve()), key=lambda p: p.as_posix().casefold())
+    )

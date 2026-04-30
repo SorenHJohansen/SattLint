@@ -6,23 +6,29 @@ Part of harness-engineering progressive disclosure strategy.
 ## Core Principles
 
 | Doc | Purpose | Status | Owner |
-|-----|---------|--------|-------|
+| ----- | --------- | -------- | ------- |
 | [core-beliefs.md](core-beliefs.md) | Golden principles, agent legibility rules | Active | All agents |
 | [index.md](index.md) | This file | Active | All agents |
 
 ## Architecture
 
 | Doc | Purpose | Status | Owner |
-|-----|---------|--------|-------|
+| ----- | --------- | -------- | ------- |
 | [../../ARCHITECTURE.md](../../ARCHITECTURE.md) | Top-level domain map, layering | Active | All agents |
 | (add domain-specific architecture docs here) | | | |
 
 ## Execution Plans
 
 | Plan | Purpose | Status | Owner |
-|------|---------|--------|-------|
+| ------ | --------- | -------- | ------- |
 | [../exec-plans/tech-debt-tracker.md](../exec-plans/tech-debt-tracker.md) | Known technical debt | Active | Doc-gardening agent |
 | (add active plans here as `../exec-plans/active/*.md`) | | | |
+
+## References
+
+| Doc | Purpose | Status | Owner |
+| ----- | --------- | -------- | ------- |
+| [../references/cli-commands.md](../references/cli-commands.md) | Canonical CLI scripts and major command usage | Active | CLI docs |
 
 ## Verification Status
 
