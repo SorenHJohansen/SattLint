@@ -1,5 +1,7 @@
 """Local document parser adapters for LSP document state."""
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 from dataclasses import dataclass

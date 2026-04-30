@@ -612,7 +612,8 @@ def _execute_workspace_case(
     root_bp = graph.ast_by_name.get(target_path.stem)
     if root_bp is None:
         raise RuntimeError(
-            f"Target {target_path.stem!r} was not parsed. Resolved targets: {sorted(graph.ast_by_name)}; missing: {graph.missing}"
+            f"Target {target_path.stem!r} was not parsed. "
+            f"Resolved targets: {sorted(graph.ast_by_name)}; missing: {graph.missing}"
         )
 
     project_bp = engine_module.merge_project_basepicture(root_bp, graph)

@@ -105,9 +105,7 @@ Definitions used in this plan:
 
 ## Concrete Steps
 
-Run from repository root:
-
-    cd "c:/Users/SQHJ/OneDrive - Novo Nordisk/Workspace/GitHub.com/SattLint"
+Run commands from repository root.
 
 Review markdown inventory:
 

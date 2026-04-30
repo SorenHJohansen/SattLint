@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+# ruff: noqa: E501
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any

@@ -13,6 +13,8 @@ from sattline_parser.models.ast_model import (
 )
 from sattlint import constants as const
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
+from sattlint.resolution.access_graph import AccessEvent, AccessGraph, AccessKind
+from sattlint.resolution.paths import CanonicalPath, ModuleSegment, decorate_segment
 
 
 def _varref(s: str) -> dict:
@@ -148,3 +150,50 @@ def test_disallows_param_and_local_name_collision_in_same_scope():
     analyzer.run()
 
     assert any(i.kind is IssueKind.NAME_COLLISION for i in analyzer.issues)
+
+
+def test_access_graph_indexes_events_by_casefolded_canonical_path():
+    graph = AccessGraph()
+    read_event = AccessEvent(
+        kind=AccessKind.READ,
+        canonical_path=CanonicalPath(("Root", "Signal")),
+        use_module_path=("Root",),
+        use_display_path=("Root",),
+        syntactic_ref="Signal",
+    )
+    write_event = AccessEvent(
+        kind=AccessKind.WRITE,
+        canonical_path=CanonicalPath(("root", "signal")),
+        use_module_path=("Root",),
+        use_display_path=("Root",),
+        syntactic_ref="signal",
+    )
+
+    graph.add(read_event)
+    graph.add(write_event)
+
+    assert graph.events == [read_event, write_event]
+    assert graph.by_path_key[("root", "signal")] == [read_event, write_event]
+
+
+def test_resolution_path_helpers_cover_display_join_and_decorators():
+    path = CanonicalPath(("Root", "Signal"))
+
+    assert path.key() == ("root", "signal")
+    assert path.join() is path
+    assert path.join("Field").segments == ("Root", "Signal", "Field")
+    assert str(path) == "Root.Signal"
+
+    assert ModuleSegment(name="PumpType", kind="MT", moduletype_name="Motor").display() == "PumpType<MT:Motor>"
+    assert ModuleSegment(name="Single", kind="SM").display() == "Single<SM>"
+    assert ModuleSegment(name="Frame", kind="FM").display() == "Frame<FM>"
+    assert ModuleSegment(name="TypeDef", kind="TD").display() == "TypeDef<TD>"
+    assert ModuleSegment(name="Base", kind="BP").display() == "Base<BP>"
+    assert ModuleSegment(name="Other", kind="MT").display() == "Other"
+
+    assert decorate_segment("PumpType", "MT", "Motor") == "PumpType<MT:Motor>"
+    assert decorate_segment("Single", "SM") == "Single<SM>"
+    assert decorate_segment("Frame", "FM") == "Frame<FM>"
+    assert decorate_segment("TypeDef", "TD") == "TypeDef<TD>"
+    assert decorate_segment("Base", "BP") == "Base<BP>"
+    assert decorate_segment("Other", "MT") == "Other"

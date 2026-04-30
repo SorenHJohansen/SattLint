@@ -1,7 +1,10 @@
 """Agent review tool: runs a comprehensive review of code changes for agent consumption."""
 
 import json
-import subprocess
+import shutil
+
+# Internal review tool invokes trusted local commands.
+import subprocess  # nosec B404
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -20,7 +23,15 @@ REVIEW_FILE = ARTIFACTS_DIR / "review_report.json"
 def run_command(cmd: list[str], cwd: Path | None = None) -> tuple[int, str, str]:
     """Run a command and return (returncode, stdout, stderr)."""
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=cwd)
+        resolved = [shutil.which(cmd[0]) or cmd[0], *cmd[1:]]
+        # Review tool runs internally constructed argv lists only.
+        result = subprocess.run(  # nosec B603
+            resolved,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=cwd,
+        )
         return result.returncode, result.stdout, result.stderr
     except Exception as e:
         return 1, "", str(e)

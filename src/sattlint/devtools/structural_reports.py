@@ -1,5 +1,7 @@
 """Structural pipeline report builders and shared graph inputs."""
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import ast

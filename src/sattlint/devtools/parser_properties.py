@@ -15,9 +15,10 @@ def generate_simple_program() -> str:
     variables = ["x", "y", "temp", "flag"]
     values = ["1", "0", "TRUE", "FALSE", "3.14"]
 
-    name = random.choice(names)
-    var = random.choice(variables)
-    val = random.choice(values)
+    # Property helper uses non-cryptographic sampling.
+    name = random.choice(names)  # nosec B311
+    var = random.choice(variables)  # nosec B311
+    val = random.choice(values)  # nosec B311
 
     return f"""
 PROGRAM {name}
@@ -32,7 +33,8 @@ END_PROGRAM
 def generate_simple_module() -> str:
     """Generate a minimal valid SattLine module."""
     names = ["ModuleA", "ChildMod", "Worker"]
-    var = random.choice(["a", "b", "cnt"])
+    # Property helper uses non-cryptographic sampling.
+    var = random.choice(["a", "b", "cnt"])  # nosec B311
 
     return f"""
 MODULE {names[0]}
@@ -48,8 +50,10 @@ def assert_parser_deterministic(source: str) -> None:
     bp1 = parser_core_parse_source_text(source)
     bp2 = parser_core_parse_source_text(source)
 
-    assert bp1.header.name == bp2.header.name
-    assert len(bp1.submodules) == len(bp2.submodules)
+    if bp1.header.name != bp2.header.name:
+        raise AssertionError("parser output changed header name across identical parses")
+    if len(bp1.submodules) != len(bp2.submodules):
+        raise AssertionError("parser output changed submodule count across identical parses")
 
 
 def assert_valid_program_has_no_crash(source: str) -> bool:

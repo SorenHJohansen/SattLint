@@ -1,6 +1,8 @@
 import json
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -69,6 +71,95 @@ def test_find_unused_config_keys_reports_unreferenced_key(tmp_path):
     assert findings[0].message == "Config key 'unused' appears to be declared but unused."
 
 
+def test_build_local_import_graph_skips_type_checking_and_resolves_relative_imports(tmp_path):
+    source_root = tmp_path / "src"
+    package_dir = source_root / "pkg"
+    package_dir.mkdir(parents=True)
+    module_a = package_dir / "a.py"
+    module_b = package_dir / "b.py"
+    module_c = package_dir / "c.py"
+
+    graph = repo_audit._build_local_import_graph(
+        source_root,
+        content_by_file={
+            module_a: "import pkg.b\n",
+            module_b: (
+                "from typing import TYPE_CHECKING\nfrom .c import helper\nif TYPE_CHECKING:\n    import pkg.a\n"
+            ),
+            module_c: "helper = object()\n",
+        },
+    )
+
+    assert graph == {
+        "pkg.a": {"pkg.b"},
+        "pkg.b": {"pkg.c"},
+        "pkg.c": set(),
+    }
+
+
+def test_find_import_cycles_returns_back_edge_cycle():
+    graph = {
+        "pkg.a": {"pkg.b"},
+        "pkg.b": {"pkg.c"},
+        "pkg.c": {"pkg.a"},
+        "pkg.d": set(),
+    }
+
+    assert repo_audit._find_import_cycles(graph) == [["pkg.a", "pkg.b", "pkg.c", "pkg.a"]]
+
+
+def test_find_architecture_findings_reports_cycle_size_and_core_coupling(tmp_path):
+    source_root = tmp_path / "src"
+    package_dir = source_root / "pkg"
+    semantic_path = source_root / "sattlint" / "core" / "semantic.py"
+    package_dir.mkdir(parents=True)
+    semantic_path.parent.mkdir(parents=True)
+    module_a = package_dir / "a.py"
+    module_b = package_dir / "b.py"
+    oversized = package_dir / "oversized.py"
+    semantic_path.write_text(
+        "from sattlint.analyzers.variables import VariablesAnalyzer\n",
+        encoding="utf-8",
+    )
+
+    findings = repo_audit._find_architecture_findings(
+        source_root,
+        content_by_file={
+            module_a: "import pkg.b\n",
+            module_b: "import pkg.a\n",
+            oversized: "\n".join("value = 1" for _ in range(repo_audit.OVERSIZED_MODULE_LINE_LIMIT)),
+            semantic_path: "from sattlint.analyzers.variables import VariablesAnalyzer\n",
+        },
+    )
+
+    finding_ids = {finding.id for finding in findings}
+    cycle_finding = next(finding for finding in findings if finding.id == "import-cycle")
+    oversized_finding = next(finding for finding in findings if finding.id == "oversized-module")
+    coupling_finding = next(finding for finding in findings if finding.id == "core-analyzer-coupling")
+
+    assert finding_ids >= {"import-cycle", "oversized-module", "core-analyzer-coupling"}
+    assert cycle_finding.severity == "high"
+    assert cycle_finding.detail == "pkg.a -> pkg.b -> pkg.a"
+    assert oversized_finding.severity == "medium"
+    assert f"{repo_audit.OVERSIZED_MODULE_LINE_LIMIT} non-empty lines" == oversized_finding.detail
+    assert coupling_finding.path is not None
+
+
+def test_find_cli_findings_flags_missing_parser_and_subcommand_descriptions(monkeypatch):
+    parser = SimpleNamespace(
+        description=None,
+        _actions=[SimpleNamespace(choices={"syntax-check": SimpleNamespace(description=None)})],
+    )
+    monkeypatch.setattr(repo_audit.app_module, "build_cli_parser", lambda: parser)
+
+    findings = repo_audit._find_cli_findings()
+
+    assert [finding.id for finding in findings] == [
+        "cli-missing-description",
+        "cli-missing-subcommand-description",
+    ]
+
+
 def test_line_findings_redact_email_and_flag_path(tmp_path):
     sample = tmp_path / "sample.py"
     text = 'EMAIL = "person@example.com"\nROOT = r"C:/Users/SQHJ/Workspace"\n'
@@ -124,6 +215,143 @@ def test_line_findings_flag_secret_assignment_suffix_names(tmp_path):
     findings = repo_audit._line_findings(sample, text, set(), root=tmp_path)
 
     assert any(finding.id == "secret-assignment" for finding in findings)
+
+
+def test_repo_audit_read_text_rejects_binary_and_falls_back_to_cp1252(tmp_path):
+    binary_file = tmp_path / "sample.bin"
+    binary_file.write_bytes(b"abc\x00def")
+
+    with pytest.raises(ValueError, match="binary"):
+        repo_audit._read_text(binary_file)
+
+    encoded_file = tmp_path / "cp1252.txt"
+    encoded_file.write_bytes('author = "S\xf8ren"\n'.encode("cp1252"))
+
+    assert repo_audit._read_text(encoded_file) == 'author = "S\xf8ren"\n'
+
+
+def test_list_tracked_repo_paths_returns_none_for_missing_git_and_failures(tmp_path):
+    with patch("sattlint.devtools.repo_audit.shutil.which", return_value=None):
+        assert repo_audit._list_tracked_repo_paths(tmp_path) is None
+
+    with (
+        patch("sattlint.devtools.repo_audit.shutil.which", return_value="git"),
+        patch("sattlint.devtools.repo_audit.subprocess.run", side_effect=OSError("git missing")),
+    ):
+        assert repo_audit._list_tracked_repo_paths(tmp_path) is None
+
+    completed = subprocess.CompletedProcess(args=["git", "ls-files", "-z"], returncode=1, stdout=b"", stderr=b"")
+    with (
+        patch("sattlint.devtools.repo_audit.shutil.which", return_value="git"),
+        patch("sattlint.devtools.repo_audit.subprocess.run", return_value=completed),
+    ):
+        assert repo_audit._list_tracked_repo_paths(tmp_path) is None
+
+
+def test_iter_repo_file_candidates_filters_generated_suffixes_and_large_files(tmp_path):
+    readme = tmp_path / "README"
+    readme.write_text("docs\n", encoding="utf-8")
+    source_file = tmp_path / "src" / "sample.py"
+    source_file.parent.mkdir(parents=True)
+    source_file.write_text("print('ok')\n", encoding="utf-8")
+    generated_file = tmp_path / "artifacts" / "audit" / "report.json"
+    generated_file.parent.mkdir(parents=True)
+    generated_file.write_text("{}\n", encoding="utf-8")
+    binary_suffix = tmp_path / "src" / "sample.bin"
+    binary_suffix.write_bytes(b"bin")
+    oversized = tmp_path / "src" / "huge.txt"
+    oversized.write_bytes(b"a" * 2_000_001)
+
+    files = {
+        path.relative_to(tmp_path).as_posix()
+        for path in repo_audit._iter_repo_file_candidates(tmp_path, include_generated=False)
+    }
+    generated_files = {
+        path.relative_to(tmp_path).as_posix()
+        for path in repo_audit._iter_repo_file_candidates(tmp_path, include_generated=True)
+    }
+
+    assert files == {"README", "src/sample.py"}
+    assert generated_files == {"README", "artifacts/audit/report.json", "src/sample.py"}
+
+
+def test_iter_tracked_repo_file_candidates_skips_missing_dirs_and_large_files(tmp_path):
+    source_file = tmp_path / "src" / "sample.py"
+    source_file.parent.mkdir(parents=True)
+    source_file.write_text("print('ok')\n", encoding="utf-8")
+    readme = tmp_path / "README"
+    readme.write_text("docs\n", encoding="utf-8")
+    generated_file = tmp_path / "artifacts" / "audit" / "report.json"
+    generated_file.parent.mkdir(parents=True)
+    generated_file.write_text("{}\n", encoding="utf-8")
+    venv_file = tmp_path / ".venv-local" / "Lib" / "site-packages" / "skip.py"
+    venv_file.parent.mkdir(parents=True)
+    venv_file.write_text("print('skip')\n", encoding="utf-8")
+    huge = tmp_path / "src" / "huge.txt"
+    huge.write_bytes(b"a" * 2_000_001)
+    directory = tmp_path / "docs"
+    directory.mkdir()
+
+    tracked_paths = (
+        "src/sample.py",
+        "README",
+        "artifacts/audit/report.json",
+        ".venv-local/Lib/site-packages/skip.py",
+        "src/huge.txt",
+        "docs",
+        "missing.py",
+    )
+
+    with patch.object(repo_audit, "_list_tracked_repo_paths", return_value=tracked_paths):
+        files = {
+            path.relative_to(tmp_path).as_posix()
+            for path in repo_audit._iter_tracked_repo_file_candidates(tmp_path, include_generated=False)
+        }
+
+    with patch.object(repo_audit, "_list_tracked_repo_paths", return_value=tracked_paths):
+        generated_files = {
+            path.relative_to(tmp_path).as_posix()
+            for path in repo_audit._iter_tracked_repo_file_candidates(tmp_path, include_generated=True)
+        }
+
+    assert files == {"README", "src/sample.py"}
+    assert generated_files == {"README", "artifacts/audit/report.json", "src/sample.py"}
+
+
+def test_iter_repo_text_entries_yields_text_and_skips_binary(tmp_path):
+    text_file = tmp_path / "src" / "sample.py"
+    text_file.parent.mkdir(parents=True)
+    text_file.write_text("VALUE = 1\n", encoding="utf-8")
+    binary_file = tmp_path / "src" / "sample.txt"
+    binary_file.write_bytes(b"bad\x00text")
+
+    entries = list(repo_audit._iter_repo_text_entries(tmp_path, include_generated=False, tracked_only=False))
+
+    assert len(entries) == 1
+    assert entries[0][0] == text_file
+    assert entries[0][1].splitlines() == ["VALUE = 1"]
+
+
+def test_repo_audit_redaction_and_severity_helpers_cover_default_paths():
+    assert repo_audit._redact_value("secret") == "<redacted>"
+    assert repo_audit._redact_value("supersecret") == "su...et"
+    assert repo_audit._redact_email("person@example.com") == "p***@example.com"
+    assert repo_audit._redact_email("@example.com") == "<redacted-email>"
+    assert repo_audit._severity_for_path("tests/test_app.py", "high") == "medium"
+    assert repo_audit._severity_for_path("Libs/HA/example.x", "high") == "medium"
+    assert repo_audit._severity_for_path("README.md", "high") == "high"
+
+
+def test_parse_coverage_findings_handles_missing_file_and_parse_error(tmp_path):
+    from xml.etree.ElementTree import ParseError
+
+    assert repo_audit._parse_coverage_findings(tmp_path) == []
+
+    coverage_path = tmp_path / "coverage.xml"
+    coverage_path.write_text("<coverage>", encoding="utf-8")
+
+    with pytest.raises(ParseError, match="no element found"):
+        repo_audit._parse_coverage_findings(tmp_path)
 
 
 def test_load_pyproject_accepts_cp1252_toml(tmp_path):
@@ -333,6 +561,71 @@ def test_find_pipeline_findings_prefers_normalized_findings_report(tmp_path):
     assert findings[0].source == "ruff"
     assert findings[0].path == "src/sample.py"
     assert findings[0].line == 4
+
+
+def test_find_pipeline_findings_ignores_allowlisted_bandit_noise(tmp_path):
+    findings_path = tmp_path / "findings.json"
+    findings_path.write_text(
+        json.dumps(
+            {
+                "kind": "sattlint.findings",
+                "schema_version": 1,
+                "finding_count": 2,
+                "findings": [
+                    {
+                        "id": "bandit-b603",
+                        "rule_id": "bandit.b603",
+                        "category": "security",
+                        "severity": "medium",
+                        "confidence": "high",
+                        "message": "subprocess call - check for execution of untrusted input.",
+                        "source": "bandit",
+                        "analyzer": "bandit",
+                        "artifact": "findings",
+                        "location": {
+                            "path": "src/sattlint/devtools/doc_gardener.py",
+                            "line": 445,
+                            "column": None,
+                            "symbol": None,
+                            "module_path": [],
+                        },
+                        "fingerprint": "bandit.b603|src/sattlint/devtools/doc_gardener.py|445||subprocess call",
+                        "detail": None,
+                        "suggestion": None,
+                        "data": {},
+                    },
+                    {
+                        "id": "bandit-b314",
+                        "rule_id": "bandit.b314",
+                        "category": "security",
+                        "severity": "medium",
+                        "confidence": "high",
+                        "message": "Unsafe XML parse.",
+                        "source": "bandit",
+                        "analyzer": "bandit",
+                        "artifact": "findings",
+                        "location": {
+                            "path": "src/sattlint/devtools/observability.py",
+                            "line": 49,
+                            "column": None,
+                            "symbol": None,
+                            "module_path": [],
+                        },
+                        "fingerprint": "bandit.b314|src/sattlint/devtools/observability.py|49||Unsafe XML parse.",
+                        "detail": None,
+                        "suggestion": None,
+                        "data": {},
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    findings = repo_audit._find_pipeline_findings(tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0].id == "bandit-b314"
 
 
 def test_audit_repository_writes_status_file_and_forwards_profile(tmp_path):
@@ -635,6 +928,294 @@ def test_doc_gardener_flags_markdown_mojibake(tmp_path):
     assert len(findings) == 1
     assert findings[0].category == "encoding"
     assert findings[0].file == "docs/exec-plans/active/ai-first-repo-hardening.md"
+
+
+def test_doc_gardener_read_text_falls_back_to_cp1252(tmp_path):
+    sample = tmp_path / "notes.md"
+    sample.write_bytes("Author: S\xf8ren\n".encode("cp1252"))
+
+    assert doc_gardener._read_text(sample) == "Author: S\xf8ren\n"
+
+
+def test_doc_gardener_iter_markdown_files_skips_venv_and_non_markdown(tmp_path):
+    markdown = tmp_path / "docs" / "guide.md"
+    markdown.parent.mkdir(parents=True)
+    markdown.write_text("guide\n", encoding="utf-8")
+    text_file = tmp_path / "notes.txt"
+    text_file.write_text("notes\n", encoding="utf-8")
+    python_file = tmp_path / "script.py"
+    python_file.write_text("print('nope')\n", encoding="utf-8")
+    skipped = tmp_path / ".venv-docs" / "skip.md"
+    skipped.parent.mkdir(parents=True)
+    skipped.write_text("skip\n", encoding="utf-8")
+
+    with patch.object(doc_gardener, "REPO_ROOT", tmp_path):
+        files = {path.relative_to(tmp_path).as_posix() for path in doc_gardener._iter_markdown_files()}
+
+    assert files == {"docs/guide.md", "notes.txt"}
+
+
+def test_doc_gardener_parse_markdown_table_handles_invalid_rows_and_section_breaks():
+    rows = doc_gardener._parse_markdown_table(
+        [
+            "ignored intro",
+            "## Target Section",
+            "",
+            "| Col A | Col B |",
+            "|---|---|",
+            "| keep | row |",
+            "| too | many | cells |",
+            "not a table row",
+            "| skipped | after break |",
+        ],
+        "## Target Section",
+    )
+
+    assert rows == [(6, {"Col A": "keep", "Col B": "row"})]
+
+
+def test_doc_gardener_scan_agents_md_reports_missing_and_structure_findings(tmp_path):
+    with _patch_doc_gardener_paths(tmp_path):
+        missing_findings = doc_gardener.scan_agents_md()
+
+    assert missing_findings == [doc_gardener.DocFinding("AGENTS.md", 0, "Critical", "missing", "AGENTS.md not found")]
+
+    agents = tmp_path / "AGENTS.md"
+    agents.write_text("line\n" * 101, encoding="utf-8")
+
+    with _patch_doc_gardener_paths(tmp_path):
+        findings = doc_gardener.scan_agents_md()
+
+    assert any(finding.category == "too_long" for finding in findings)
+    assert {finding.message for finding in findings if finding.category == "structure"} == {
+        "Missing section: Quick Reference",
+        "Missing section: Repo Map",
+        "Missing section: Key Docs",
+        "Missing section: Critical Invariants",
+    }
+
+
+def test_doc_gardener_scan_dead_links_and_structure_findings(tmp_path):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir(parents=True)
+    valid_target = docs_dir / "existing.md"
+    valid_target.write_text("exists\n", encoding="utf-8")
+    readme = docs_dir / "index.md"
+    readme.write_text(
+        "[good](existing.md)\n[bad](missing.md)\n[ext](https://example.com)\n[anchor](#here)\n[mail](mailto:test@example.com)\n",
+        encoding="utf-8",
+    )
+
+    with _patch_doc_gardener_paths(tmp_path):
+        dead_link_findings = doc_gardener.scan_dead_links()
+        structure_findings = doc_gardener.scan_docs_structure()
+
+    assert dead_link_findings == [
+        doc_gardener.DocFinding("docs/index.md", 2, "Medium", "dead_link", "Broken link: missing.md")
+    ]
+    assert any(finding.message == "Missing directory: docs/design-docs" for finding in structure_findings)
+    assert any(finding.message == "Missing file: docs/design-docs/core-beliefs.md" for finding in structure_findings)
+
+
+def test_doc_gardener_scan_ai_first_source_drift_reports_missing_ledger_section(tmp_path):
+    tech_debt = tmp_path / "docs" / "exec-plans" / "tech-debt-tracker.md"
+    tech_debt.parent.mkdir(parents=True)
+    tech_debt.write_text("# Tracker\n", encoding="utf-8")
+
+    with _patch_doc_gardener_paths(tmp_path):
+        findings = doc_gardener.scan_ai_first_source_drift()
+
+    assert findings == [
+        doc_gardener.DocFinding(
+            "docs/exec-plans/tech-debt-tracker.md",
+            1,
+            "High",
+            "structure",
+            "Missing consolidation source ledger in the canonical tech debt tracker.",
+        )
+    ]
+
+
+def test_doc_gardener_scan_ai_first_source_drift_reports_row_and_digest_issues(tmp_path):
+    tech_debt = tmp_path / "docs" / "exec-plans" / "tech-debt-tracker.md"
+    tech_debt.parent.mkdir(parents=True)
+    (tmp_path / "TODO_GUI.md").write_text("gui drift\n", encoding="utf-8")
+    (tmp_path / "TODO_REFACTOR.md").write_text("retired but present\n", encoding="utf-8")
+
+    tech_debt.write_text(
+        "\n".join(
+            [
+                "## Consolidation Source Ledger",
+                "| Source | State | Sync Basis |",
+                "| --- | --- | --- |",
+                "| TODO_GUI.md | active | sha1:deadbeefdead |",
+                "| TODO_REFACTOR.md | retired | sha1:ignored |",
+                "| TODO_TOOLS.md | active | manual-sync |",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with _patch_doc_gardener_paths(tmp_path):
+        findings = doc_gardener.scan_ai_first_source_drift()
+
+    messages = {finding.message for finding in findings}
+    assert any(
+        message.startswith("TODO_GUI.md drifted from the source-ledger sync basis (sha1:deadbeefdead != sha1:")
+        for message in messages
+    )
+    assert "TODO_REFACTOR.md exists but the source ledger marks it retired." in messages
+    assert "Canonical tech debt tracker is missing a source-ledger row for TODO_SATTLINT.md." in messages
+    assert "TODO_TOOLS.md is marked active in the source ledger but the file is missing." in messages
+
+
+def test_doc_gardener_scan_ai_first_status_drift_reports_mismatch(tmp_path):
+    current_work = tmp_path / ".github" / "coordination" / "current-work.md"
+    current_work.parent.mkdir(parents=True)
+    current_work.write_text(
+        "\n".join(
+            [
+                "### Workstream W1-something",
+                "- Status: active",
+                "",
+                "### Workstream W2",
+                "- Status: blocked",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    tech_debt = tmp_path / "docs" / "exec-plans" / "tech-debt-tracker.md"
+    tech_debt.parent.mkdir(parents=True)
+    tech_debt.write_text(
+        "\n".join(
+            [
+                "## Program B: Refactor And Architecture Debt",
+                "| Debt ID | Status |",
+                "| --- | --- |",
+                "| W1 | Done |",
+                "| W2 | blocked |",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with _patch_doc_gardener_paths(tmp_path):
+        findings = doc_gardener.scan_ai_first_status_drift()
+
+    assert findings == [
+        doc_gardener.DocFinding(
+            "docs/exec-plans/tech-debt-tracker.md",
+            4,
+            "Medium",
+            "stale_status",
+            "W1 status is 'Done' but current-work tracks 'In progress'.",
+        )
+    ]
+
+
+def test_doc_gardener_run_scan_aggregates_findings(monkeypatch):
+    monkeypatch.setattr(
+        doc_gardener,
+        "scan_agents_md",
+        lambda: [doc_gardener.DocFinding("AGENTS.md", 1, "High", "missing", "missing")],
+    )
+    monkeypatch.setattr(
+        doc_gardener,
+        "scan_dead_links",
+        lambda: [doc_gardener.DocFinding("docs/index.md", 2, "Medium", "dead_link", "dead")],
+    )
+    monkeypatch.setattr(doc_gardener, "scan_docs_structure", lambda: [])
+    monkeypatch.setattr(doc_gardener, "scan_markdown_encoding_artifacts", lambda: [])
+    monkeypatch.setattr(doc_gardener, "scan_ai_first_source_drift", lambda: [])
+    monkeypatch.setattr(doc_gardener, "scan_ai_first_status_drift", lambda: [])
+    monkeypatch.setattr(doc_gardener, "scan_stale_docs", lambda: [])
+
+    result = doc_gardener.run_scan()
+
+    assert result["total_findings"] == 2
+    assert result["by_severity"]["High"] == 1
+    assert result["by_severity"]["Medium"] == 1
+    assert result["by_category"]["missing"] == 1
+    assert result["by_category"]["dead_link"] == 1
+    assert len(result["findings"]) == 2
+
+
+def test_doc_gardener_updates_quality_score_and_scan_log(tmp_path):
+    class _FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 4, 30, 12, 0, tzinfo=UTC)
+
+    quality_score = tmp_path / "docs" / "quality-score.md"
+    quality_score.parent.mkdir(parents=True)
+    quality_score.write_text(
+        "## Trend\n| Date | Grade | Notes | Source |\n|---|---|---|---|\n",
+        encoding="utf-8",
+    )
+    tech_debt = tmp_path / "docs" / "exec-plans" / "tech-debt-tracker.md"
+    tech_debt.parent.mkdir(parents=True, exist_ok=True)
+    tech_debt.write_text(
+        "## Scan Log\n| Date | Summary | Notes | Source |\n|---|---|---|---|\n",
+        encoding="utf-8",
+    )
+    findings = [doc_gardener.DocFinding("docs/index.md", 2, "Medium", "dead_link", "Broken link")]
+
+    with _patch_doc_gardener_paths(tmp_path), patch.object(doc_gardener, "datetime", _FixedDateTime):
+        doc_gardener.update_quality_score(findings)
+        doc_gardener.update_tech_debt_scan_log(findings)
+
+    assert "| 2026-04-30 | B | 1 findings | Scan |" in quality_score.read_text(encoding="utf-8")
+    assert "| 2026-04-30 | 1 findings | Doc-gardening scan |" in tech_debt.read_text(encoding="utf-8")
+
+
+def test_doc_gardener_main_updates_logs_without_exit_when_clean(monkeypatch, capsys):
+    monkeypatch.setattr(
+        doc_gardener,
+        "run_scan",
+        lambda: {
+            "total_findings": 0,
+            "by_severity": dict.fromkeys(doc_gardener.SEVERITY_ORDER, 0),
+            "by_category": dict.fromkeys(doc_gardener.CATEGORY_ORDER, 0),
+            "findings": [],
+        },
+    )
+    monkeypatch.setattr(doc_gardener, "update_quality_score", lambda findings: None)
+    monkeypatch.setattr(doc_gardener, "update_tech_debt_scan_log", lambda findings: None)
+    monkeypatch.setattr(doc_gardener, "open_fixup_pr", lambda findings: pytest.fail("PR should not open when clean"))
+
+    doc_gardener.main()
+
+    out = capsys.readouterr().out
+    assert "Doc-gardening scan complete: 0 findings" in out
+    assert "Tracking files updated." in out
+
+
+def test_doc_gardener_main_opens_pr_and_exits_when_findings_exist(monkeypatch, capsys):
+    finding = doc_gardener.DocFinding("docs/index.md", 2, "Medium", "dead_link", "Broken link")
+    monkeypatch.setattr(
+        doc_gardener,
+        "run_scan",
+        lambda: {
+            "total_findings": 1,
+            "by_severity": {severity: (1 if severity == "Medium" else 0) for severity in doc_gardener.SEVERITY_ORDER},
+            "by_category": {
+                category: (1 if category == "dead_link" else 0) for category in doc_gardener.CATEGORY_ORDER
+            },
+            "findings": [finding._asdict()],
+        },
+    )
+    monkeypatch.setattr(doc_gardener, "update_quality_score", lambda findings: None)
+    monkeypatch.setattr(doc_gardener, "update_tech_debt_scan_log", lambda findings: None)
+    opened: list[tuple[doc_gardener.DocFinding, ...]] = []
+    monkeypatch.setattr(doc_gardener, "open_fixup_pr", lambda findings: opened.append(tuple(findings)) or True)
+
+    with pytest.raises(SystemExit, match="1"):
+        doc_gardener.main()
+
+    out = capsys.readouterr().out
+    assert "[Medium] docs/index.md:2 - Broken link" in out
+    assert "Attempting to open fix-up PR..." in out
+    assert opened == [(finding,)]
 
 
 def test_doc_gardener_flags_retired_source_file_reintroduced(tmp_path):

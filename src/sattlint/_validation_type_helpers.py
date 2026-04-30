@@ -348,6 +348,9 @@ def _assignment_type_matches(
     if actual is None or expected is None:
         return True
 
+    if is_anytype_name(actual):
+        return True
+
     if is_anytype_name(expected):
         return True
 

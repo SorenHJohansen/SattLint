@@ -1,6 +1,9 @@
 """Tests for validate_single_file_syntax, validate_transformed_basepicture, workspace-mode rules, compressed library sources, and builtin type checks."""
 
+# ruff: noqa: E501
+
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -8,11 +11,23 @@ from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser import strip_sl_comments
 from sattline_parser.models.ast_model import (
     BasePicture,
+    DataType,
+    Equation,
+    ModuleCode,
     ModuleHeader,
+    ParameterMapping,
+    Sequence,
+    SFCBreak,
+    SFCCodeBlocks,
+    SFCFork,
+    SFCStep,
+    SFCTransition,
+    SFCTransitionSub,
     Simple_DataType,
     Variable,
 )
 from sattline_parser.transformer.sl_transformer import SLTransformer
+from sattlint import validation as validation_module
 from sattlint.engine import (
     StructuralValidationError,
     _load_source_text,
@@ -20,6 +35,7 @@ from sattlint.engine import (
     validate_single_file_syntax,
     validate_transformed_basepicture,
 )
+from sattlint.resolution.type_graph import TypeGraph
 
 
 def _parse_to_basepicture(text: str):
@@ -30,6 +46,13 @@ def _parse_to_basepicture(text: str):
 
 def _repo_path(*parts: str) -> Path:
     return Path(__file__).resolve().parents[1].joinpath(*parts)
+
+
+def _var_ref(name: object, *, state: str | None = None) -> dict[str, object]:
+    ref = {validation_module.const.KEY_VAR_NAME: name}
+    if state is not None:
+        ref["state"] = state
+    return ref
 
 
 def test_validate_single_file_syntax_rejects_comment_outside_equation_or_sequence(tmp_path):
@@ -285,6 +308,32 @@ ENDDEF (*BasePicture*);
     assert result.message is not None
     assert "reserved SattLine keyword" in result.message
     assert "InteractObjects" in result.message
+
+
+def test_validate_single_file_syntax_allows_colour_as_moduletype_local_variable_name(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+    LowPresColumnIcon = MODULEDEFINITION DateCode_ 2
+    LOCALVARIABLES
+        Colour: integer := 0;
+    ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    ENDDEF (*LowPresColumnIcon*);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "ColourIdentifier.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is True
+    assert result.stage == "ok"
 
 
 def test_validate_single_file_syntax_accepts_program_name_at_limit(tmp_path):
@@ -598,7 +647,7 @@ ENDDEF (*BasePicture*);
     assert "writes to CONST variable 'Limit'" in result.message
 
 
-def test_validate_single_file_syntax_rejects_const_without_init(tmp_path):
+def test_validate_single_file_syntax_accepts_const_without_init(tmp_path):
     code = """
 "SyntaxVersion"
 "OriginalFileDate"
@@ -608,9 +657,6 @@ LOCALVARIABLES
     Limit: integer Const;
 ModuleDef
 ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-ModuleCode
-    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
-        Limit = 1;
 ENDDEF (*BasePicture*);
 """
     source_file = tmp_path / "ConstNoInit.s"
@@ -618,12 +664,8 @@ ENDDEF (*BasePicture*);
 
     result = validate_single_file_syntax(source_file)
 
-    assert result.ok is False
-    assert result.stage == "validation"
-    assert result.line == 7
-    assert result.message is not None
-    assert "CONST variable" in result.message
-    assert "must have an initial value" in result.message
+    assert result.ok is True
+    assert result.stage == "ok"
 
 
 def test_validate_single_file_syntax_rejects_duplicate_submodule_names(tmp_path):
@@ -1010,6 +1052,61 @@ ENDDEF (*BasePicture*);
     assert result.stage == "ok"
 
 
+def test_validate_single_file_syntax_accepts_relational_comparison_with_anytype(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Wildcard: AnyType;
+    Flag: boolean := False;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Flag = Wildcard < 10;
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "AnyTypeComparison.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is True
+    assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_accepts_exitcode_arithmetic_with_anytype(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    OprTemp: AnyType;
+    Counter: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE OperationSequence COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP InitValues
+            EXITCODE
+                Counter = OprTemp + 1;
+        SEQTRANSITION WAIT_FOR True
+        SEQSTEP Done
+    ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "AnyTypeExitCodeArithmetic.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is True
+    assert result.stage == "ok"
+
+
 def test_validate_single_file_syntax_rejects_unknown_seqfork_target(tmp_path):
     code = """
 "SyntaxVersion"
@@ -1042,6 +1139,61 @@ ENDDEF (*BasePicture*);
     assert result.stage == "validation"
     assert result.message is not None
     assert "SEQFORK target 'MissingTarget'" in result.message
+
+
+def test_validate_single_file_syntax_accepts_duplicate_sequence_labels_when_unused(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Init
+        SEQTRANSITION Run WAIT_FOR True
+        SEQSTEP run
+        SEQTRANSITION TrDone WAIT_FOR True
+    ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "DuplicateSequenceLabelsUnused.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is True
+    assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_rejects_ambiguous_seqfork_target(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Init
+        SEQTRANSITION TrStart WAIT_FOR True
+        SEQSTEP Run
+        SEQTRANSITION Run WAIT_FOR True
+            SEQFORK Run
+    ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "AmbiguousSeqForkTarget.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert "ambiguous SEQFORK target 'Run'" in result.message
 
 
 def test_validate_single_file_syntax_accepts_seqfork_after_step_without_seqbreak(tmp_path):
@@ -1428,6 +1580,332 @@ ENDDEF (*BasePicture*);
     assert result.stage == "validation"
     assert result.message is not None
     assert "must not use OLD state access" in result.message
+
+
+def test_validation_internal_reserved_keywords_skip_non_string_grammar_values(monkeypatch):
+    monkeypatch.setattr(validation_module.const, "GRAMMAR_VALUE_FAKE_NUMBER", 123, raising=False)
+
+    reserved = validation_module._build_reserved_identifier_keywords()
+
+    assert "123" not in reserved
+
+
+def test_validation_internal_declared_variable_returns_for_untyped_literal(monkeypatch):
+    variable = Variable(name="Value", datatype=Simple_DataType.INTEGER, init_value=object())
+
+    monkeypatch.setattr(validation_module, "_infer_literal_datatype", lambda *args, **kwargs: None)
+
+    validation_module._validate_declared_variable(
+        variable,
+        "test",
+        type_graph=TypeGraph.from_datatypes([]),
+        known_datatypes=(),
+    )
+
+
+def test_validation_internal_declared_variable_returns_for_workspace_external_datatype():
+    variable = Variable(name="Value", datatype="ExternalType", init_value=1)
+
+    validation_module._validate_declared_variable(
+        variable,
+        "test",
+        type_graph=TypeGraph.from_datatypes([]),
+        known_datatypes=(),
+        allow_unresolved_external_datatypes=True,
+    )
+
+
+def test_validation_internal_collect_sequence_labels_keeps_first_casefolded_label():
+    nodes = [
+        SFCStep(kind="init", name="Start", code=SFCCodeBlocks()),
+        SFCTransition(name="Run", condition=True),
+        SFCStep(kind="step", name="run", code=SFCCodeBlocks()),
+    ]
+
+    labels: dict[str, str] = {}
+
+    validation_module._collect_sequence_labels(nodes, labels, "test sequence")
+
+    assert labels == {"start": "Start", "run": "Run"}
+
+
+def test_validation_internal_validate_sequence_nodes_warns_for_multiple_init_steps():
+    warnings: list[str] = []
+    nodes = [
+        SFCStep(kind="init", name="Start", code=SFCCodeBlocks()),
+        SFCTransition(name="TrStart", condition=True),
+        SFCStep(kind="init", name="Restart", code=SFCCodeBlocks()),
+    ]
+
+    validation_module._validate_sequence_nodes(
+        nodes,
+        "test sequence",
+        labels={},
+        label_counts={},
+        env={},
+        type_graph=TypeGraph.from_datatypes([]),
+        require_init_step=True,
+        warning_sink=warnings.append,
+    )
+
+    assert any("outside the first position" in warning for warning in warnings)
+    assert any("must contain exactly one SEQINITSTEP" in warning for warning in warnings)
+
+
+def test_validation_internal_iter_sequence_node_refs_collects_step_and_transition_refs():
+    refs = validation_module._iter_sequence_node_refs(
+        [
+            SFCStep(
+                kind="step",
+                name="Running",
+                code=SFCCodeBlocks(
+                    enter=[_var_ref("Start.Hold")],
+                    active=[(_var_ref("Start.Reset"),)],
+                    exit=[],
+                ),
+            ),
+            SFCTransition(name="TrDone", condition=_var_ref("Running.T")),
+        ]
+    )
+
+    assert refs == [_var_ref("Start.Hold"), _var_ref("Start.Reset"), _var_ref("Running.T")]
+
+
+def test_validation_internal_step_auto_variable_refs_cover_skip_and_hold_paths():
+    validation_module._validate_step_auto_variable_refs(None, {}, "test module")
+
+    modulecode = ModuleCode(
+        sequences=cast(
+            Any,
+            [
+                object(),
+                Sequence(
+                    name="MainSeq",
+                    type="sequence",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[SFCStep(kind="init", name="Start", code=SFCCodeBlocks())],
+                ),
+            ],
+        ),
+        equations=[
+            Equation(
+                name="Main",
+                position=(0.0, 0.0),
+                size=(1.0, 1.0),
+                code=[
+                    _var_ref(123),
+                    _var_ref("Local.Reset"),
+                    _var_ref("MainSeq.Hold"),
+                ],
+            )
+        ],
+    )
+
+    with pytest.raises(StructuralValidationError, match=r"sequence 'MainSeq' only exposes \.Hold"):
+        validation_module._validate_step_auto_variable_refs(
+            modulecode,
+            {"local": Variable(name="Local", datatype=Simple_DataType.BOOLEAN)},
+            "test module",
+        )
+
+
+@pytest.mark.parametrize(
+    ("ref_name", "expected_message"),
+    [
+        ("Missing.Reset", "no sequence step named 'Missing' exists in this module"),
+        ("Start.Hold", "step 'Start' only exposes .Hold when its sequence enables SeqControl"),
+    ],
+)
+def test_validation_internal_step_auto_variable_refs_reports_missing_and_step_hold(ref_name, expected_message):
+    modulecode = ModuleCode(
+        sequences=[
+            Sequence(
+                name="MainSeq",
+                type="sequence",
+                position=(0.0, 0.0),
+                size=(1.0, 1.0),
+                code=[SFCStep(kind="init", name="Start", code=SFCCodeBlocks())],
+            )
+        ],
+        equations=[
+            Equation(
+                name="Main",
+                position=(0.0, 0.0),
+                size=(1.0, 1.0),
+                code=[_var_ref(ref_name)],
+            )
+        ],
+    )
+
+    with pytest.raises(StructuralValidationError, match=expected_message):
+        validation_module._validate_step_auto_variable_refs(modulecode, {}, "test module")
+
+
+def test_validation_internal_parallel_branch_trailer_recognizes_all_branch_markers():
+    assert validation_module._parallel_branch_trailer(SFCTransitionSub(name="Tr", body=[])) == "SUBSEQTRANSITION"
+    assert validation_module._parallel_branch_trailer(SFCFork(target="Target")) == "SEQFORK"
+    assert validation_module._parallel_branch_trailer(SFCBreak()) == "SEQBREAK"
+
+
+def test_validation_internal_variable_refs_skip_unknown_roots_and_simple_field_access():
+    validation_module._validate_variable_refs(
+        [
+            _var_ref("Missing", state="Old"),
+            _var_ref("Counter.Child", state="Old"),
+        ],
+        {"counter": Variable(name="Counter", datatype=Simple_DataType.INTEGER, state=False)},
+        TypeGraph.from_datatypes([]),
+        "test module",
+    )
+
+
+def test_validation_internal_parameter_mappings_cover_skip_and_target_branches():
+    policy = validation_module._ModuleValidationPolicy()
+
+    validation_module._validate_parameter_mappings(
+        cast(
+            Any,
+            [
+                object(),
+                ParameterMapping(
+                    target=_var_ref("Value"),
+                    source_type="value",
+                    is_duration=False,
+                    is_source_global=False,
+                    source_literal=1,
+                ),
+            ],
+        ),
+        "test module",
+        type_graph=TypeGraph.from_datatypes([]),
+        expected_parameters={"value": Variable(name="Value", datatype=Simple_DataType.INTEGER)},
+        policy=policy,
+    )
+
+    with pytest.raises(StructuralValidationError, match="uses field access on non-record parameter 'Value'"):
+        validation_module._validate_parameter_mappings(
+            [
+                ParameterMapping(
+                    target=_var_ref("Value.Child"),
+                    source_type="value",
+                    is_duration=False,
+                    is_source_global=False,
+                    source_literal=1,
+                )
+            ],
+            "test module",
+            type_graph=TypeGraph.from_datatypes([]),
+            expected_parameters={"value": Variable(name="Value", datatype=Simple_DataType.INTEGER)},
+            policy=policy,
+        )
+
+    record_graph = TypeGraph.from_datatypes(
+        [
+            DataType(
+                name="RecordParam",
+                description=None,
+                datecode=1,
+                var_list=[Variable(name="Present", datatype=Simple_DataType.INTEGER)],
+            )
+        ]
+    )
+    with pytest.raises(StructuralValidationError, match=r"parameter mapping target 'Config\.Missing' does not exist"):
+        validation_module._validate_parameter_mappings(
+            [
+                ParameterMapping(
+                    target=_var_ref("Config.Missing"),
+                    source_type="value",
+                    is_duration=False,
+                    is_source_global=False,
+                    source_literal=1,
+                )
+            ],
+            "test module",
+            type_graph=record_graph,
+            expected_parameters={"config": Variable(name="Config", datatype="RecordParam")},
+            policy=policy,
+        )
+
+    validation_module._validate_parameter_mappings(
+        [
+            ParameterMapping(
+                target=_var_ref("External.Child"),
+                source_type="value",
+                is_duration=False,
+                is_source_global=False,
+                source_literal=1,
+            )
+        ],
+        "test module",
+        type_graph=TypeGraph.from_datatypes([]),
+        expected_parameters={"external": Variable(name="External", datatype="UnresolvedExternalType")},
+        policy=policy,
+    )
+
+
+def test_validation_internal_parameter_mappings_fallback_to_target_variable_datatype(monkeypatch):
+    monkeypatch.setattr(validation_module, "_resolve_variable_field_datatype", lambda *args, **kwargs: None)
+
+    validation_module._validate_parameter_mappings(
+        [
+            ParameterMapping(
+                target=_var_ref("Value"),
+                source_type="value",
+                is_duration=False,
+                is_source_global=False,
+                source_literal=1,
+            )
+        ],
+        "test module",
+        type_graph=TypeGraph.from_datatypes([]),
+        expected_parameters={"value": Variable(name="Value", datatype=Simple_DataType.INTEGER)},
+        policy=validation_module._ModuleValidationPolicy(),
+    )
+
+
+@pytest.mark.parametrize(
+    ("target_name", "datatype", "source_literal", "is_duration", "expected_message"),
+    [
+        (
+            "Delay",
+            Simple_DataType.DURATION,
+            "bad",
+            True,
+            "maps invalid duration literal 'bad' to parameter target 'Delay'",
+        ),
+        (
+            "Stamp",
+            Simple_DataType.TIME,
+            {validation_module.const.GRAMMAR_VALUE_TIME_VALUE: "bad"},
+            False,
+            "maps invalid time literal 'bad' to parameter target 'Stamp'",
+        ),
+    ],
+)
+def test_validation_internal_parameter_mappings_reject_invalid_literal_shapes(
+    target_name,
+    datatype,
+    source_literal,
+    is_duration,
+    expected_message,
+):
+    with pytest.raises(StructuralValidationError, match=expected_message):
+        validation_module._validate_parameter_mappings(
+            [
+                ParameterMapping(
+                    target=_var_ref(target_name),
+                    source_type="value",
+                    is_duration=is_duration,
+                    is_source_global=False,
+                    source_literal=source_literal,
+                )
+            ],
+            "test module",
+            type_graph=TypeGraph.from_datatypes([]),
+            expected_parameters={target_name.casefold(): Variable(name=target_name, datatype=datatype)},
+            policy=validation_module._ModuleValidationPolicy(),
+        )
 
 
 def test_validate_single_file_syntax_rejects_old_on_non_state_record_field(tmp_path):

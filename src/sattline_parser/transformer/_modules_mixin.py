@@ -343,7 +343,7 @@ class _ModulesMixin:
                 elif ch.type in (const.TOKEN_NEW, const.TOKEN_OLD):
                     state = ch.type.lower()
             elif isinstance(ch, str):
-                if ch.lower() in (const.GRAMMAR_VALUE_NEW, const.GRAMMAR_VALUE_OLD):
+                if ch.lower() in (const.GRAMMAR_VALUE_NEW.lower(), const.GRAMMAR_VALUE_OLD.lower()):
                     state = ch.lower()
                 elif ch == ".":
                     parts.append(".")
@@ -645,7 +645,7 @@ class _ModulesMixin:
         for item in _flatten_items(items):
             if isinstance(item, SingleModule | FrameModule | ModuleTypeInstance):
                 submodule_items.append(item)
-        return Tree(const.GRAMMAR_VALUE_SUBMODULES, submodule_items)  # type: ignore[arg-type]  # type: ignore[arg-type]
+        return Tree(const.TREE_TAG_SUBMODULES, submodule_items)  # type: ignore[arg-type]
 
     @v_args(meta=True)
     def record(self, meta, items) -> DataType:

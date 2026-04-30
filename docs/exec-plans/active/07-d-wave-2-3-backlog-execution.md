@@ -85,9 +85,7 @@ Backlog gating: D-025 and D-035 are not implemented by default. Promote only whe
 
 ## Concrete Steps
 
-Run commands from repository root:
-
-    cd "c:/Users/SQHJ/OneDrive - Novo Nordisk/Workspace/GitHub.com/SattLint"
+Run commands from repository root.
 
 Milestone A first validation:
 

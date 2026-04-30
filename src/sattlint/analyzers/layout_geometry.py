@@ -20,6 +20,7 @@ _Rect = tuple[float, float, float, float]
 class _PlacedRect:
     label: str
     rect: _Rect
+    layer: str | None = None
 
 
 def _path_key(path: list[str]) -> tuple[str, ...]:
@@ -64,12 +65,41 @@ def _normalize_rect(coords: object) -> _Rect | None:
     return None
 
 
-def _module_rect(child: SingleModule | FrameModule | ModuleTypeInstance) -> _PlacedRect | None:
+def _normalize_layer(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _clip_rect(child: SingleModule | FrameModule | ModuleTypeInstance) -> _Rect | None:
+    moduledef = getattr(child, "moduledef", None)
+    clipping_bounds = getattr(moduledef, "clipping_bounds", None)
+    if clipping_bounds is None:
+        return None
+    local_rect = _normalize_rect(clipping_bounds)
+    if local_rect is None:
+        return None
+
     x, y, _rotation, width, height = child.header.invoke_coord
-    rect = _point_pair_to_rect((x, y), (x + width, y + height))
+    return _point_pair_to_rect(
+        (x + (local_rect[0] * width), y + (local_rect[1] * height)),
+        (x + (local_rect[2] * width), y + (local_rect[3] * height)),
+    )
+
+
+def _module_rect(child: SingleModule | FrameModule | ModuleTypeInstance) -> _PlacedRect | None:
+    rect = _clip_rect(child)
+    if rect is None:
+        x, y, _rotation, width, height = child.header.invoke_coord
+        rect = _point_pair_to_rect((x, y), (x + width, y + height))
     if rect is None:
         return None
-    return _PlacedRect(label=f"module '{child.header.name}'", rect=rect)
+    return _PlacedRect(
+        label=f"module '{child.header.name}'",
+        rect=rect,
+        layer=_normalize_layer(getattr(child.header, "layer_info", None)),
+    )
 
 
 def _collect_object_rects(objects: list[object], *, category: str) -> list[_PlacedRect]:
@@ -80,7 +110,13 @@ def _collect_object_rects(objects: list[object], *, category: str) -> list[_Plac
         if rect is None:
             continue
         object_type = getattr(obj, "type", category)
-        rects.append(_PlacedRect(label=f"{category} {object_type} #{index}", rect=rect))
+        rects.append(
+            _PlacedRect(
+                label=f"{category} {object_type} #{index}",
+                rect=rect,
+                layer=_normalize_layer(properties.get("layer")),
+            )
+        )
     return rects
 
 
@@ -94,6 +130,8 @@ def _append_overlap_issues(
     rects: list[_PlacedRect],
 ) -> None:
     for left, right in combinations(rects, 2):
+        if left.layer is not None and right.layer is not None and left.layer != right.layer:
+            continue
         if not _rects_overlap(left.rect, right.rect):
             continue
         issues.append(

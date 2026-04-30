@@ -130,7 +130,11 @@ class Variable:
                 raise
 
     def __str__(self) -> str:
-        return f"Name: {self.name!r}, Datatype: {self.datatype!r}, Global: {self.global_var}, Const: {self.const}, State: {self.state}, Init_value : {self.init_value!r}, Description: {self.description!r}"
+        return (
+            f"Name: {self.name!r}, Datatype: {self.datatype!r}, Global: {self.global_var}, "
+            f"Const: {self.const}, State: {self.state}, Init_value : {self.init_value!r}, "
+            f"Description: {self.description!r}"
+        )
 
 
 @dataclass

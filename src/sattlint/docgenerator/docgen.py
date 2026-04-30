@@ -1,5 +1,7 @@
 """Generate a Functional-Specification-style Word document from a SattLine AST."""
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import logging

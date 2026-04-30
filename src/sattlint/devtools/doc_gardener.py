@@ -8,9 +8,14 @@ stale or obsolete documentation that does not reflect the real code behavior
 and opens fix-up pull requests."
 """
 
+# ruff: noqa: RUF001
+
 import hashlib
 import re
-import subprocess
+import shutil
+
+# Internal doc-gardener intentionally invokes trusted git and gh CLIs.
+import subprocess  # nosec B404
 from collections import Counter
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, timedelta
@@ -39,10 +44,10 @@ MOJIBAKE_TOKENS = (
     "â€”",
     "â€“",
     "â€˜",
-    "â€™",
+    "\u00e2\u20ac\u2122",
     "â€œ",
     "â€�",
-    "Â ",
+    "\u00c2 ",
 )
 SEVERITY_ORDER = ("Critical", "High", "Medium", "Low")
 CATEGORY_ORDER = (
@@ -55,6 +60,24 @@ CATEGORY_ORDER = (
     "drift",
     "stale_status",
 )
+
+
+def _resolve_cli(tool_name: str) -> str:
+    resolved = shutil.which(tool_name)
+    if resolved is None:
+        raise FileNotFoundError(tool_name)
+    return resolved
+
+
+def _run_repo_cli(tool_name: str, args: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    # Commands are fixed internal git/gh invocations with explicit argv lists.
+    return subprocess.run(  # nosec B603
+        [_resolve_cli(tool_name), *args],
+        capture_output=True,
+        text=True,
+        cwd=DOCS_DIR.parent,
+        check=False,
+    )
 
 
 class DocFinding(NamedTuple):
@@ -178,7 +201,7 @@ def _parse_current_work_statuses(text: str) -> dict[str, str]:
 
 def _source_sync_digest(path: Path) -> str:
     content = _read_text(path).replace("\r\n", "\n").strip()
-    return hashlib.sha1(content.encode("utf-8")).hexdigest()[:12]
+    return hashlib.sha1(content.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
 
 
 def scan_agents_md() -> Sequence[DocFinding]:
@@ -224,26 +247,29 @@ def scan_dead_links() -> Sequence[DocFinding]:
     for md_file in md_files:
         try:
             lines = _read_text(md_file).splitlines(keepends=True)
-            for line_num, line in enumerate(lines, 1):
-                for match in link_pattern.finditer(line):
-                    link = match.group(2)
-                    # Skip external links, anchors, mailto
-                    if link.startswith(("http", "#", "mailto")):
-                        continue
-                    # Resolve relative to docs dir
-                    target = (md_file.parent / link).resolve()
-                    if not target.exists():
-                        findings.append(
-                            DocFinding(
-                                _relative_path(md_file),
-                                line_num,
-                                "Medium",
-                                "dead_link",
-                                f"Broken link: {link}",
-                            )
-                        )
         except Exception:
-            pass
+            lines = None
+        if lines is None:
+            continue
+
+        for line_num, line in enumerate(lines, 1):
+            for match in link_pattern.finditer(line):
+                link = match.group(2)
+                # Skip external links, anchors, mailto
+                if link.startswith(("http", "#", "mailto")):
+                    continue
+                # Resolve relative to docs dir
+                target = (md_file.parent / link).resolve()
+                if not target.exists():
+                    findings.append(
+                        DocFinding(
+                            _relative_path(md_file),
+                            line_num,
+                            "Medium",
+                            "dead_link",
+                            f"Broken link: {link}",
+                        )
+                    )
 
     return findings
 
@@ -442,12 +468,7 @@ def scan_stale_docs() -> Sequence[DocFinding]:
         thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
 
         # Find docs modified more than 30 days ago but code changed recently
-        result = subprocess.run(
-            ["git", "log", "-1", "--format=%H", "--", "src/"],
-            capture_output=True,
-            text=True,
-            cwd=DOCS_DIR.parent,
-        )
+        result = _run_repo_cli("git", ["log", "-1", "--format=%H", "--", "src/"])
         if result.returncode != 0:
             return findings
 
@@ -460,12 +481,7 @@ def scan_stale_docs() -> Sequence[DocFinding]:
         for doc in md_files:
             rel_path = doc.relative_to(DOCS_DIR.parent)
             # Get doc's last commit timestamp
-            doc_result = subprocess.run(
-                ["git", "log", "-1", "--format=%ct", "--", str(rel_path)],
-                capture_output=True,
-                text=True,
-                cwd=DOCS_DIR.parent,
-            )
+            doc_result = _run_repo_cli("git", ["log", "-1", "--format=%ct", "--", str(rel_path)])
             if doc_result.returncode == 0 and doc_result.stdout.strip():
                 try:
                     doc_timestamp = float(doc_result.stdout.strip())
@@ -483,12 +499,7 @@ def scan_stale_docs() -> Sequence[DocFinding]:
                             ref_path = DOCS_DIR.parent / ref
                             if ref_path.exists():
                                 # Get when this code file was last modified
-                                ref_result = subprocess.run(
-                                    ["git", "log", "-1", "--format=%ct", "--", str(ref)],
-                                    capture_output=True,
-                                    text=True,
-                                    cwd=DOCS_DIR.parent,
-                                )
+                                ref_result = _run_repo_cli("git", ["log", "-1", "--format=%ct", "--", str(ref)])
                                 if ref_result.returncode == 0 and ref_result.stdout.strip():
                                     try:
                                         ref_timestamp = float(ref_result.stdout.strip())
@@ -518,7 +529,7 @@ def scan_stale_docs() -> Sequence[DocFinding]:
 
     except Exception:
         # Don't fail the entire scan if stale detection fails
-        pass
+        return findings
 
     return findings
 
@@ -595,12 +606,7 @@ def open_fixup_pr(findings: Sequence[DocFinding]) -> bool:
 
     # Check if gh CLI is available
     try:
-        result = subprocess.run(
-            ["gh", "--version"],
-            capture_output=True,
-            text=True,
-            cwd=DOCS_DIR.parent,
-        )
+        result = _run_repo_cli("gh", ["--version"])
         if result.returncode != 0:
             print("  gh CLI not available, skipping PR creation")
             return False
@@ -611,8 +617,8 @@ def open_fixup_pr(findings: Sequence[DocFinding]) -> bool:
     branch = f"doc-gardener-fixup-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
 
     # Create branch and commit changes
-    subprocess.run(["git", "checkout", "-b", branch], capture_output=True, cwd=DOCS_DIR.parent)
-    subprocess.run(["git", "add", "docs/", "AGENTS.md"], capture_output=True, cwd=DOCS_DIR.parent)
+    _run_repo_cli("git", ["checkout", "-b", branch])
+    _run_repo_cli("git", ["add", "docs/", "AGENTS.md"])
 
     commit_msg = f"docs: doc-gardener fixup ({len(findings)} findings)\n\n"
     for f in findings[:5]:
@@ -620,21 +626,16 @@ def open_fixup_pr(findings: Sequence[DocFinding]) -> bool:
     if len(findings) > 5:
         commit_msg += f"- ... and {len(findings) - 5} more\n"
 
-    result = subprocess.run(
-        ["git", "commit", "-m", commit_msg],
-        capture_output=True,
-        text=True,
-        cwd=DOCS_DIR.parent,
-    )
+    result = _run_repo_cli("git", ["commit", "-m", commit_msg])
 
     if result.returncode != 0:
         print(f"  No changes to commit: {result.stderr}")
-        subprocess.run(["git", "checkout", "main"], capture_output=True, cwd=DOCS_DIR.parent)
-        subprocess.run(["git", "branch", "-D", branch], capture_output=True, cwd=DOCS_DIR.parent)
+        _run_repo_cli("git", ["checkout", "main"])
+        _run_repo_cli("git", ["branch", "-D", branch])
         return False
 
     # Push and create PR
-    subprocess.run(["git", "push", "-u", "origin", branch], capture_output=True, cwd=DOCS_DIR.parent)
+    _run_repo_cli("git", ["push", "-u", "origin", branch])
 
     pr_body = f"""## Doc-Gardening Fix-Up PR
 
@@ -650,9 +651,9 @@ Automated PR from doc-gardening scan.
     if len(findings) > 10:
         pr_body += f"\n... and {len(findings) - 10} more findings.\n"
 
-    result = subprocess.run(
+    result = _run_repo_cli(
+        "gh",
         [
-            "gh",
             "pr",
             "create",
             "--title",
@@ -662,19 +663,16 @@ Automated PR from doc-gardening scan.
             "--label",
             "automated,documentation",
         ],
-        capture_output=True,
-        text=True,
-        cwd=DOCS_DIR.parent,
     )
 
     if result.returncode == 0:
         print(f"  Created PR: {result.stdout.strip()}")
         # Go back to main
-        subprocess.run(["git", "checkout", "main"], capture_output=True, cwd=DOCS_DIR.parent)
+        _run_repo_cli("git", ["checkout", "main"])
         return True
     else:
         print(f"  Failed to create PR: {result.stderr}")
-        subprocess.run(["git", "checkout", "main"], capture_output=True, cwd=DOCS_DIR.parent)
+        _run_repo_cli("git", ["checkout", "main"])
         return False
 
 

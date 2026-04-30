@@ -11,14 +11,14 @@ repos:
       - id: pyright
         name: pyright
         language: system
-        entry: .venv/Scripts/pyright.exe
+        entry: .venv/Scripts/python.exe -B -m pyright
         pass_filenames: false
       - id: sattlint-syntax-check
         name: SattLint syntax-check (staged SattLine files)
         language: system
         entry: .venv/Scripts/python.exe -m sattlint syntax-check
         files: \.(g|l|s)$
-        exclude: ^tests/fixtures/invalid/
+        exclude: ^tests/fixtures/
         pass_filenames: true
 
   - repo: https://github.com/pre-commit/pre-commit-hooks

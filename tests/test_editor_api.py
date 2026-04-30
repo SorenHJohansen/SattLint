@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -1162,7 +1163,7 @@ def test_semantic_helpers_format_workspace_failure_and_misc_branches(tmp_path):
         "Main parse/transform error: root issue",
         "Support parse/transform error: dependency issue",
     ]
-    graph.unavailable_libraries = ["controllib", "VendorLib"]
+    graph.unavailable_libraries = {"controllib", "VendorLib"}
     graph.warnings = ["w1", "w2"]
 
     message = semantic_core._format_workspace_snapshot_failure("Main", graph, detail="root issue")
@@ -1183,3 +1184,127 @@ def test_semantic_helpers_format_workspace_failure_and_misc_branches(tmp_path):
     assert semantic_core._source_file_key(None) is None
     assert semantic_core._identifier_contains_column(5, "Value", 7) is True
     assert semantic_core._identifier_contains_column(0, "Value", 7) is False
+
+
+def test_semantic_helpers_cover_path_and_datatype_edges(tmp_path, monkeypatch):
+    assert semantic_core._format_datatype(None) is None
+    assert semantic_core._format_datatype(Simple_DataType.INTEGER) == "integer"
+    assert semantic_core._format_datatype("CustomType") == "CustomType"
+    assert semantic_core._cf("MiXeD") == "mixed"
+    assert semantic_core._path_startswith(("BasePicture", "Child"), ("basepicture",)) is True
+    assert semantic_core._path_startswith(("BasePicture",), ("BasePicture", "Child")) is False
+    assert semantic_core._first_branch_under(tmp_path, tmp_path) is None
+    assert semantic_core._first_branch_under(tmp_path, tmp_path / "Libs" / "Support") == "libs"
+    assert semantic_core._first_branch_under(tmp_path / "Other", tmp_path / "Libs" / "Support") is None
+
+    broken = tmp_path / "broken"
+
+    def _raise_oserror(self, *args, **kwargs):
+        raise OSError("boom")
+
+    monkeypatch.setattr(type(broken), "resolve", _raise_oserror, raising=False)
+    assert semantic_core._resolved_path(None) is None
+    assert semantic_core._resolved_path(broken) == broken
+
+
+def test_workspace_source_discovery_orders_sources_and_mixed_extensions(tmp_path):
+    root = tmp_path.resolve()
+    project_dir = root / "Libs" / "HA" / "ProjectLib"
+    sibling_dir = root / "Libs" / "HA" / "SiblingLib"
+    shared_dir = root / "SharedLib"
+    abb_dir = root / "ABB_lib"
+
+    requester = project_dir / "Main.s"
+    local_program = project_dir / "Support.s"
+    sibling_program = sibling_dir / "Support.x"
+    local_dependency = project_dir / "Support.z"
+    abb_dependency = abb_dir / "Vendor.z"
+
+    for path in (requester, local_program, sibling_program, local_dependency, abb_dependency):
+        _write_text(path, '"x"\n"y"\n"z"\n')
+
+    discovery = WorkspaceSourceDiscovery(
+        workspace_root=root,
+        source_dirs=(shared_dir, sibling_dir, project_dir, abb_dir),
+        program_files=(requester, local_program, sibling_program),
+        dependency_files=(local_dependency, abb_dependency),
+        abb_lib_dir=abb_dir,
+        program_files_by_stem={
+            "main": (requester,),
+            "support": (local_program, sibling_program),
+        },
+        dependency_files_by_stem={
+            "support": (local_dependency,),
+            "vendor": (abb_dependency,),
+        },
+    )
+
+    assert discovery.ordered_source_dirs_for(project_dir) == (
+        project_dir,
+        sibling_dir,
+        shared_dir,
+        abb_dir,
+    )
+    assert discovery.other_lib_dirs_for(requester) == (sibling_dir, shared_dir, project_dir, abb_dir)
+    assert discovery.shared_library_root_for(root.parent / "Outside") is None
+    assert discovery.locate_source_file("Support", extensions=[], requester_dir=project_dir) is None
+    assert (
+        discovery.locate_source_file("Support", extensions=[".z", ".s"], requester_dir=project_dir) == local_dependency
+    )
+    assert discovery.locate_source_file("Vendor", extensions=[".z"], requester_dir=project_dir) == abb_dependency
+
+
+def test_workspace_snapshot_lookup_and_diagnostic_edges(tmp_path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+    MyRec = RECORD DateCode_ 2
+        Value: integer;
+    ENDDEF (*MyRec*);
+LOCALVARIABLES
+    Dv: integer := 0;
+    Rec: MyRec;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Dv = Rec.Value;
+ENDDEF (*BasePicture*);
+""".strip()
+
+    entry_file = tmp_path / "Program" / "Main.s"
+    _write_text(entry_file, source)
+
+    snapshot = load_workspace_snapshot(
+        entry_file,
+        workspace_root=tmp_path,
+        collect_variable_diagnostics=False,
+    )
+
+    assert snapshot.list_symbols("v", roots_only=True, limit=1)[0].canonical_path == "BasePicture.Dv"
+    assert snapshot.find_definitions("") == []
+    assert [definition.canonical_path for definition in snapshot.find_definitions("Value", limit=1)] == [
+        "BasePicture.Rec.Value"
+    ]
+    assert snapshot.find_definitions_at(tmp_path / "Program" / "Missing.s", 1, 1) == []
+    assert snapshot.find_references_to("Missing") == []
+    assert snapshot.find_accesses_to("Missing") == []
+    assert snapshot.find_references_at(tmp_path / "Program" / "Missing.s", 1, 1) == []
+
+    scoped = cast(Any, SimpleNamespace(source_library="Other"))
+    unscoped = cast(Any, SimpleNamespace(source_library=None))
+    snapshot._semantic_diagnostics_by_file[entry_file.name.casefold()] = (scoped, unscoped)
+    assert snapshot.semantic_diagnostics_for_path(entry_file) == (unscoped,)
+
+    single = cast(Any, SimpleNamespace(source_library="Scoped"))
+    snapshot._semantic_diagnostics_by_file["single.s"] = (single,)
+    assert snapshot.semantic_diagnostics_for_path(tmp_path / "Scoped" / "Single.s") == (single,)
+
+    snapshot._semantic_diagnostics_by_file["ambiguous.s"] = (
+        cast(Any, SimpleNamespace(source_library="Alpha")),
+        cast(Any, SimpleNamespace(source_library="Beta")),
+    )
+    assert snapshot.semantic_diagnostics_for_path(tmp_path / "Gamma" / "Ambiguous.s") == ()

@@ -264,7 +264,10 @@ def main() -> int:
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "allow",
-                "additionalContext": "Claimed-file guard failed open. Review .github/hooks/scripts/claimed_files_guard.py if this repeats.",
+                "additionalContext": (
+                    "Claimed-file guard failed open. Review "
+                    ".github/hooks/scripts/claimed_files_guard.py if this repeats."
+                ),
             },
         }
         sys.stdout.write(json.dumps(fallback))

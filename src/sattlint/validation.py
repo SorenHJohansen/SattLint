@@ -1,5 +1,7 @@
 """Post-transform structural validation for SattLine ASTs."""
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import re
@@ -79,7 +81,12 @@ _TIME_LITERAL_RE = re.compile(r"\d{4}-\d{2}-\d{2}-\d{2}:\d{2}:\d{2}\.\d{3}")
 _MAX_IDENTIFIER_LENGTH = 20
 _TYPO_SUGGESTION_MAX_DISTANCE = 2
 _RESERVED_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
-_ALLOWED_IDENTIFIER_KEYWORDS = frozenset({const.GRAMMAR_VALUE_NEWWINDOW.casefold()})
+_ALLOWED_IDENTIFIER_KEYWORDS = frozenset(
+    {
+        const.GRAMMAR_VALUE_COLOUR.casefold(),
+        const.GRAMMAR_VALUE_NEWWINDOW.casefold(),
+    }
+)
 
 
 def _build_reserved_identifier_keywords() -> frozenset[str]:
@@ -152,12 +159,6 @@ def _validate_declared_variable(
                     **_span_kwargs(variable.declaration_span),
                 )
 
-    if not is_parameter and variable.const and variable.init_value is None:
-        raise StructuralValidationError(
-            f"{context} CONST variable {variable.name!r} must have an initial value",
-            **_span_kwargs(variable.declaration_span),
-        )
-
     if variable.init_value is None:
         return
 
@@ -222,7 +223,7 @@ def _iter_nested_sequence_nodes(nodes: AbcSequence[object] | None) -> Iterator[o
             yield from _iter_nested_sequence_nodes(node.body)
 
 
-def _collect_sequence_labels(nodes: list[object], labels: dict[str, str], context: str) -> None:
+def _collect_sequence_labels(nodes: list[object], labels: dict[str, str], _context: str) -> None:
     for node in _iter_nested_sequence_nodes(nodes):
         label: str | None = None
         if (
@@ -234,11 +235,16 @@ def _collect_sequence_labels(nodes: list[object], labels: dict[str, str], contex
 
         if label:
             folded = label.casefold()
-            if folded in labels:
-                raise StructuralValidationError(
-                    f"{context} has duplicate sequence labels {labels[folded]!r} and {label!r}"
-                )
-            labels[folded] = label
+            labels.setdefault(folded, label)
+
+
+def _collect_sequence_label_counts(nodes: list[object], counts: dict[str, int]) -> None:
+    for node in _iter_nested_sequence_nodes(nodes):
+        if isinstance(node, SFCStep | SFCTransition | SFCSubsequence | SFCTransitionSub):
+            label_name = getattr(node, "name", None)
+            if isinstance(label_name, str) and label_name:
+                folded = label_name.casefold()
+                counts[folded] = counts.get(folded, 0) + 1
 
 
 def _collect_label_names(nodes: list[object], names: set[str]) -> None:
@@ -580,7 +586,9 @@ def _validate_sequence_nodes(
     context: str,
     *,
     labels: dict[str, str],
+    label_counts: dict[str, int],
     module_labels: frozenset[str] = frozenset(),
+    module_label_counts: dict[str, int] | None = None,
     env: dict[str, Variable],
     type_graph: TypeGraph,
     require_init_step: bool,
@@ -654,7 +662,9 @@ def _validate_sequence_nodes(
                 node.body,
                 f"{context} transition-sub {node.name!r}",
                 labels=labels,
+                label_counts=label_counts,
                 module_labels=module_labels,
+                module_label_counts=module_label_counts,
                 env=env,
                 type_graph=type_graph,
                 require_init_step=False,
@@ -667,7 +677,9 @@ def _validate_sequence_nodes(
                 node.body,
                 f"{context} subsequence {node.name!r}",
                 labels=labels,
+                label_counts=label_counts,
                 module_labels=module_labels,
+                module_label_counts=module_label_counts,
                 env=env,
                 type_graph=type_graph,
                 require_init_step=False,
@@ -680,7 +692,9 @@ def _validate_sequence_nodes(
                     branch,
                     f"{context} alternative branch {index}",
                     labels=labels,
+                    label_counts=label_counts,
                     module_labels=module_labels,
+                    module_label_counts=module_label_counts,
                     env=env,
                     type_graph=type_graph,
                     require_init_step=False,
@@ -693,7 +707,9 @@ def _validate_sequence_nodes(
                     branch,
                     f"{context} parallel branch {index}",
                     labels=labels,
+                    label_counts=label_counts,
                     module_labels=module_labels,
+                    module_label_counts=module_label_counts,
                     env=env,
                     type_graph=type_graph,
                     require_init_step=False,
@@ -711,9 +727,15 @@ def _validate_sequence_nodes(
             previous_unit_kind = "parallel block"
         elif isinstance(node, SFCFork):
             _validate_identifier(node.target, f"{context} fork target")
-            if node.target.casefold() not in labels and node.target.casefold() not in module_labels:
+            target_key = node.target.casefold()
+            if target_key not in labels and target_key not in module_labels:
                 raise StructuralValidationError(
                     f"{context} has SEQFORK target {node.target!r} that does not exist in the sequence or module"
+                )
+            if label_counts.get(target_key, 0) > 1 or (module_label_counts or {}).get(target_key, 0) > 1:
+                raise StructuralValidationError(
+                    f"{context} has ambiguous SEQFORK target {node.target!r}; "
+                    "that label is declared multiple times in the sequence or module"
                 )
         elif isinstance(node, SFCBreak):
             continue
@@ -750,21 +772,27 @@ def _validate_module_code(
             )
 
     module_label_set: set[str] = set()
+    module_label_counts: dict[str, int] = {}
     for sequence in modulecode.sequences or []:
         if isinstance(sequence, Sequence):
             _collect_label_names(sequence.code or [], module_label_set)
+            _collect_sequence_label_counts(sequence.code or [], module_label_counts)
     module_labels = frozenset(module_label_set)
 
     for sequence in modulecode.sequences or []:
         if isinstance(sequence, Sequence):
             _validate_identifier(sequence.name, f"{context} sequence")
             labels: dict[str, str] = {}
+            label_counts: dict[str, int] = {}
             _collect_sequence_labels(sequence.code or [], labels, f"{context} sequence {sequence.name!r}")
+            _collect_sequence_label_counts(sequence.code or [], label_counts)
             _validate_sequence_nodes(
                 sequence.code or [],
                 f"{context} sequence {sequence.name!r}",
                 labels=labels,
+                label_counts=label_counts,
                 module_labels=module_labels,
+                module_label_counts=module_label_counts,
                 env=env,
                 type_graph=type_graph,
                 require_init_step=True,

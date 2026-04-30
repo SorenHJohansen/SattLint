@@ -1,5 +1,7 @@
 """Expression semantics validation and builtin call type checking for SattLine."""
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 from lark import Tree
@@ -16,6 +18,7 @@ from ._validation_type_helpers import (
     _builtin_type_matches,
     _expression_is_zero_literal,
     _format_datatype,
+    _is_anytype_datatype,
     _is_boolean_datatype,
     _is_numeric_datatype,
     _merge_compatible_types,
@@ -84,6 +87,8 @@ def _validate_expression_semantics(
                 if (
                     left_type is not None
                     and right_type is not None
+                    and not _is_anytype_datatype(left_type)
+                    and not _is_anytype_datatype(right_type)
                     and _merge_compatible_types((left_type, right_type)) is None
                 ):
                     raise StructuralValidationError(
@@ -91,11 +96,19 @@ def _validate_expression_semantics(
                         f"{_format_datatype(left_type)!r} and {_format_datatype(right_type)!r}"
                     )
             else:
-                if left_type is not None and not _is_numeric_datatype(left_type):
+                if (
+                    left_type is not None
+                    and not _is_anytype_datatype(left_type)
+                    and not _is_numeric_datatype(left_type)
+                ):
                     raise StructuralValidationError(
                         f"{context} comparison expects numeric operands but left side has datatype {_format_datatype(left_type)!r}"
                     )
-                if right_type is not None and not _is_numeric_datatype(right_type):
+                if (
+                    right_type is not None
+                    and not _is_anytype_datatype(right_type)
+                    and not _is_numeric_datatype(right_type)
+                ):
                     raise StructuralValidationError(
                         f"{context} comparison expects numeric operands but right side has datatype {_format_datatype(right_type)!r}"
                     )
@@ -126,14 +139,14 @@ def _validate_expression_semantics(
 
     if tag in {const.KEY_ADD, const.KEY_MUL} and len(node) == 3:
         base_type = _infer_expression_datatype(node[1], env, type_graph)
-        if base_type is not None and not _is_numeric_datatype(base_type):
+        if base_type is not None and not _is_anytype_datatype(base_type) and not _is_numeric_datatype(base_type):
             raise StructuralValidationError(
                 f"{context} arithmetic expression expects numeric operands but got {_format_datatype(base_type)!r}"
             )
         _validate_expression_semantics(node[1], env, type_graph, context)
         for op, rhs in node[2]:
             rhs_type = _infer_expression_datatype(rhs, env, type_graph)
-            if rhs_type is not None and not _is_numeric_datatype(rhs_type):
+            if rhs_type is not None and not _is_anytype_datatype(rhs_type) and not _is_numeric_datatype(rhs_type):
                 raise StructuralValidationError(
                     f"{context} arithmetic operator {str(op)!r} expects numeric operands but got {_format_datatype(rhs_type)!r}"
                 )
@@ -145,7 +158,11 @@ def _validate_expression_semantics(
     if tag in {const.KEY_PLUS, const.KEY_MINUS} and len(node) == 2:
         operand = node[1]
         operand_type = _infer_expression_datatype(operand, env, type_graph)
-        if operand_type is not None and not _is_numeric_datatype(operand_type):
+        if (
+            operand_type is not None
+            and not _is_anytype_datatype(operand_type)
+            and not _is_numeric_datatype(operand_type)
+        ):
             raise StructuralValidationError(
                 f"{context} unary operator {str(tag)!r} expects a numeric operand but got {_format_datatype(operand_type)!r}"
             )
