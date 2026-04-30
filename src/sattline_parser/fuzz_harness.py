@@ -194,7 +194,8 @@ def generate_random_text(
     result = []
     current_length = 0
     while current_length < length:
-        token = random.choice(tokens)
+        # Fuzz harness intentionally uses non-cryptographic randomness.
+        token = random.choice(tokens)  # nosec B311
         if current_length + len(token) <= length:
             result.append(token)
             current_length += len(token)

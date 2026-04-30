@@ -1,10 +1,12 @@
 """Observability tooling: exposes metrics and logs for agent consumption."""
 
 import json
-import subprocess
+import subprocess  # nosec B404 - internal devtool wrapper runs trusted local commands only
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from defusedxml import ElementTree
 
 ARTIFACTS_DIR = Path("artifacts")
 OBSERVABILITY_FILE = ARTIFACTS_DIR / "observability.json"
@@ -13,7 +15,12 @@ OBSERVABILITY_FILE = ARTIFACTS_DIR / "observability.json"
 def run_command(cmd: list[str]) -> tuple[int, str, str]:
     """Run a command and return (returncode, stdout, stderr)."""
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        result = subprocess.run(  # nosec B603 - trusted internal command list for local devtools only
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         return result.returncode, result.stdout, result.stderr
     except Exception as e:
         return 1, "", str(e)
@@ -44,10 +51,10 @@ def get_coverage_metrics() -> dict[str, Any]:
     coverage_file = ARTIFACTS_DIR / "coverage.xml"
     if coverage_file.exists():
         try:
-            import xml.etree.ElementTree as ET
-
-            tree = ET.parse(coverage_file)
+            tree = ElementTree.parse(coverage_file)
             root = tree.getroot()
+            if root is None:
+                return metrics
             # Get line-rate and branch-rate from the root coverage element
             line_rate = root.get("line-rate")
             branch_rate = root.get("branch-rate")
@@ -56,7 +63,7 @@ def get_coverage_metrics() -> dict[str, Any]:
             if branch_rate is not None:
                 metrics["branch_coverage"] = float(branch_rate) * 100
         except Exception:
-            pass
+            return metrics
     return metrics
 
 

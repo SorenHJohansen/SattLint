@@ -93,6 +93,70 @@ def test_resolves_same_library_prefers_draft_source_file():
     assert resolved is mt_source
 
 
+def test_resolution_helper_source_preference_and_label_edges():
+    from sattlint.resolution.common import (
+        dedupe_moduletype_defs,
+        format_moduletype_label,
+        narrow_matches_by_source_preference,
+        path_startswith_casefold,
+        preferred_source_extensions,
+    )
+
+    draft = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="KaHAXDiluteLib.s")
+    duplicate = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="KaHAXDiluteLib.s")
+    official = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="KaHAXModullLib.x")
+    bare = ModuleTypeDef(name="Bare")
+
+    assert path_startswith_casefold(["BasePicture", "Child"], ["basepicture"]) is True
+    assert path_startswith_casefold(["BasePicture"], ["BasePicture", "Child"]) is False
+    assert path_startswith_casefold(["BasePicture", "Child"], ["BasePicture", "Other"]) is False
+
+    assert format_moduletype_label(draft) == "Lib1:CIP (KaHAXDiluteLib.s)"
+    assert format_moduletype_label(ModuleTypeDef(name="CIP", origin_lib="Lib1")) == "Lib1:CIP"
+    assert format_moduletype_label(bare) == "Bare"
+
+    assert dedupe_moduletype_defs([draft, duplicate, official, bare]) == [draft, official, bare]
+    assert preferred_source_extensions("Root.s") == [".s", ".x"]
+    assert preferred_source_extensions("Root.x") == [".x", ".s"]
+    assert preferred_source_extensions(None) == []
+    assert preferred_source_extensions("Root.txt") == []
+
+    assert narrow_matches_by_source_preference([draft], [".x"]) == [draft]
+    assert narrow_matches_by_source_preference([draft, official], []) == [draft, official]
+    assert narrow_matches_by_source_preference([draft, official], [".s", ".x"]) == [draft]
+    assert narrow_matches_by_source_preference([bare, ModuleTypeDef(name="Other")], [".s"]) == [
+        bare,
+        ModuleTypeDef(name="Other"),
+    ]
+
+
+def test_resolve_moduletype_strict_uses_origin_library_and_reports_missing_or_ambiguous():
+    local = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="LocalA.txt")
+    local_other = ModuleTypeDef(name="CIP", origin_lib="Lib1", origin_file="LocalB.txt")
+    dependency = ModuleTypeDef(name="CIP", origin_lib="Lib2", origin_file="Dep.s")
+    bp = BasePicture(
+        header=_header(),
+        origin_lib="Lib1",
+        moduletype_defs=[local, local_other, dependency],
+        library_dependencies={"lib1": ["lib2"]},
+    )
+
+    with pytest.raises(ValueError, match="Ambiguous moduletype 'CIP'") as exc_info:
+        _resolve_moduletype_def_strict(bp, "CIP")
+
+    message = str(exc_info.value)
+    assert "Lib1:CIP (LocalA.txt)" in message
+    assert "Lib1:CIP (LocalB.txt)" in message
+
+    missing_bp = BasePicture(header=_header(), origin_lib="Lib1", moduletype_defs=[])
+    with pytest.raises(ValueError, match="Some libraries are unavailable"):
+        _resolve_moduletype_def_strict(
+            missing_bp,
+            "MissingType",
+            unavailable_libraries={"ControlLib"},
+        )
+
+
 def test_strict_path_prefers_enclosing_draft_moduletype_definition():
     transfer_source = ModuleTypeDef(
         name="Transfer",

@@ -9,7 +9,9 @@ import os
 import platform
 import re
 import shutil
-import subprocess  # nosec B404 - pipeline intentionally executes trusted local developer tools
+
+# Pipeline intentionally executes trusted local developer tools.
+import subprocess  # nosec B404
 import sys
 import time
 import tomllib
@@ -175,7 +177,8 @@ def _resolve_venv_tool(tool_name: str) -> str | None:
 
 def _run_command(name: str, command: list[str], *, cwd: Path = REPO_ROOT) -> CommandResult:
     start = time.perf_counter()
-    completed = subprocess.run(  # nosec B603 - command list is constructed internally
+    # Command list is constructed internally.
+    completed = subprocess.run(  # nosec B603
         command,
         cwd=cwd,
         capture_output=True,
@@ -195,8 +198,12 @@ def _run_command(name: str, command: list[str], *, cwd: Path = REPO_ROOT) -> Com
 
 def _detect_changed_files(*, repo_root: Path = REPO_ROOT) -> list[str]:
     try:
-        completed = subprocess.run(  # nosec B603 - fixed internal git command
-            ["git", "status", "--porcelain", "--untracked-files=all"],
+        git_executable = shutil.which("git")
+        if git_executable is None:
+            return []
+        # Fixed internal git command.
+        completed = subprocess.run(  # nosec B603
+            [git_executable, "status", "--porcelain", "--untracked-files=all"],
             cwd=repo_root,
             capture_output=True,
             text=True,
@@ -559,11 +566,25 @@ def _run_pytest_stage(
     profile: str,
 ) -> dict[str, Any]:
     junit_path = output_dir / "pytest.junit.xml"
+    coverage_data_path = output_dir / ".coverage.pytest"
     progress.start_stage("pytest")
-    pytest_result = _run_command(
-        "pytest",
-        _build_pytest_command(python_cmd, junit_path, profile=profile),
-    )
+    try:
+        coverage_data_path.unlink()
+    except FileNotFoundError:
+        pass
+
+    previous_coverage_file = os.environ.get("COVERAGE_FILE")
+    os.environ["COVERAGE_FILE"] = str(coverage_data_path)
+    try:
+        pytest_result = _run_command(
+            "pytest",
+            _build_pytest_command(python_cmd, junit_path, profile=profile),
+        )
+    finally:
+        if previous_coverage_file is None:
+            os.environ.pop("COVERAGE_FILE", None)
+        else:
+            os.environ["COVERAGE_FILE"] = previous_coverage_file
     try:
         pytest_parsed = _parse_pytest_junit(junit_path)
     except FileNotFoundError:
@@ -1363,14 +1384,14 @@ def _check_core_invariants(
         return violations
 
     findings = finding_collection.findings
-    # Invariant: no duplicate finding IDs across the collection
-    seen_ids: set[str] = set()
+    # Invariant: no duplicate finding fingerprints across the collection
+    seen_fingerprints: set[str] = set()
     for f in findings:
-        fid = getattr(f, "id", None)
-        if fid and fid in seen_ids:
-            violations.append(f"Duplicate finding ID: {fid}")
-        if fid:
-            seen_ids.add(fid)
+        fingerprint = getattr(f, "fingerprint", None) or getattr(f, "id", None)
+        if fingerprint and fingerprint in seen_fingerprints:
+            violations.append(f"Duplicate finding fingerprint: {fingerprint}")
+        if fingerprint:
+            seen_fingerprints.add(fingerprint)
 
     # Invariant: transform-invariant violations must be reported
     trace_report = derived_reports.get("trace_report") or {}

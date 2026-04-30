@@ -457,6 +457,54 @@ def test_run_pipeline_quick_profile_skips_optional_reports(monkeypatch, tmp_path
     assert status_report["tool_statuses"]["rule_metadata"]["status"] == "skipped"
 
 
+def test_run_pytest_stage_uses_isolated_coverage_file_and_restores_environment(monkeypatch, tmp_path):
+    observed_coverage_files: list[str | None] = []
+
+    monkeypatch.setenv("COVERAGE_FILE", "stale.coverage")
+
+    def write_json(path, payload) -> None:
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    def fake_run_command(name, command, cwd=pipeline.REPO_ROOT):
+        observed_coverage_files.append(pipeline.os.environ.get("COVERAGE_FILE"))
+        return pipeline.CommandResult(
+            name=name,
+            command=command,
+            exit_code=0,
+            duration_seconds=0.0,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(pipeline, "_run_command", fake_run_command)
+    monkeypatch.setattr(
+        pipeline,
+        "_parse_pytest_junit",
+        lambda xml_path: {
+            "summary": {"tests": 1, "failures": 0, "errors": 0, "skipped": 0},
+            "testcases": [],
+        },
+    )
+
+    report = pipeline._run_pytest_stage(
+        pipeline.ProgressReporter(
+            kind="sattlint.pipeline.progress",
+            title="Pipeline",
+            output_dir=tmp_path,
+            write_json=write_json,
+            stages=[("pytest", "Run pytest")],
+            emit_stdout=False,
+        ),
+        output_dir=tmp_path,
+        python_cmd=["python"],
+        profile="full",
+    )
+
+    assert observed_coverage_files == [str(tmp_path / ".coverage.pytest")]
+    assert pipeline.os.environ.get("COVERAGE_FILE") == "stale.coverage"
+    assert report["summary"] == {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}
+
+
 # --- ID 10: Baseline regression enforcement tests ---
 
 
@@ -507,6 +555,60 @@ def _patched_run_command(name, command, cwd=pipeline.REPO_ROOT):
         stdout="[]" if name == "ruff" else "",
         stderr="",
     )
+
+
+def test_run_pipeline_prints_core_invariant_violations(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(
+        pipeline,
+        "_prepare_pipeline_run",
+        lambda output_dir, **kwargs: {
+            "progress": SimpleNamespace(),
+            "python_cmd": "python",
+            "output_dir": output_dir,
+            "profile": kwargs["profile"],
+            "run_vulture": False,
+            "run_bandit": False,
+        },
+    )
+    monkeypatch.setattr(pipeline, "_run_environment_stage", lambda progress: {"python": {"executable": "python"}})
+    monkeypatch.setattr(pipeline, "_run_ruff_stage", lambda progress, python_cmd: ({}, []))
+    monkeypatch.setattr(pipeline, "_run_pyright_stage", lambda progress, python_cmd: ({}, []))
+    monkeypatch.setattr(pipeline, "_run_pytest_stage", lambda progress, output_dir, python_cmd, profile: {})
+    monkeypatch.setattr(pipeline, "_run_vulture_stage", lambda progress, python_cmd, run_vulture: ({}, []))
+    monkeypatch.setattr(pipeline, "_run_bandit_stage", lambda progress, python_cmd, run_bandit: {})
+    monkeypatch.setattr(pipeline, "_collect_optional_reports", lambda context, trace_target=None: {})
+    monkeypatch.setattr(
+        pipeline,
+        "_build_derived_reports",
+        lambda context, stage_reports, optional_reports, **kwargs: {
+            "finding_collection": SimpleNamespace(
+                findings=[
+                    SimpleNamespace(fingerprint="dup-a"),
+                    SimpleNamespace(id="dup-a"),
+                ]
+            ),
+            "trace_report": {"heuristics": {"transform_invariant_violations": ["v1"]}},
+        },
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_finalize_pipeline_outputs",
+        lambda context, stage_reports, optional_reports, derived_reports, **kwargs: {"status": "pass"},
+    )
+
+    summary = pipeline._run_pipeline(
+        tmp_path,
+        trace_target=None,
+        profile="quick",
+        include_vulture=False,
+        include_bandit=False,
+    )
+
+    captured = capsys.readouterr()
+
+    assert summary == {"status": "pass"}
+    assert "INVARIANT VIOLATION: Duplicate finding fingerprint: dup-a" in captured.out
+    assert "INVARIANT VIOLATION: Transform invariant violations: 1" in captured.out
 
 
 def _patch_skipped_coverage_summary(monkeypatch):

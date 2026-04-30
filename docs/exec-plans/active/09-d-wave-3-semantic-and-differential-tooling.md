@@ -63,9 +63,7 @@ Milestone C (D-034): implement differential analysis that compares known baselin
 
 ## Concrete Steps
 
-Run from repository root:
-
-    cd "c:/Users/SQHJ/OneDrive - Novo Nordisk/Workspace/GitHub.com/SattLint"
+Run commands from repository root.
 
 Milestone A first validation:
 

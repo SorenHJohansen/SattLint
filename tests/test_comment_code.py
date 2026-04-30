@@ -455,7 +455,7 @@ BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
 ModuleCode
 EQUATIONBLOCK Main :
     Message = "(* not a comment *) and ""quoted"" text";
-    PathValue = "C:\\Temp\\(* keep *)";
+    PathValue = ".\\Temp\\(* keep *)";
 ENDDEF (*BasePicture*);
 """
 
@@ -472,11 +472,11 @@ def test_strip_sl_comments_removes_nested_comments_and_optional_semicolon():
 
 def test_strip_sl_comments_preserves_strings_with_comment_tokens_and_backslashes():
     stripped = text_processing.strip_sl_comments(
-        'Message = "(* keep *) and ""quoted"" text";\nPathValue = "C:\\\\Temp\\\\(* keep *)";\n(* remove me *) ;\n'
+        'Message = "(* keep *) and ""quoted"" text";\nPathValue = ".\\\\Temp\\\\(* keep *)";\n(* remove me *) ;\n'
     )
 
     assert '"(* keep *) and ""quoted"" text"' in stripped
-    assert '"C:\\\\Temp\\\\(* keep *)"' in stripped
+    assert '".\\\\Temp\\\\(* keep *)"' in stripped
     assert "remove me" not in stripped
     assert stripped.endswith(" \n")
 

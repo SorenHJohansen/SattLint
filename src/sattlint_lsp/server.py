@@ -69,12 +69,12 @@ from ._server_helpers import (
     _validated_rename_request,
     _validated_text_document_position,
     _validated_text_document_uri,
-    build_source_path_index,  # noqa: F401
+    build_source_path_index,
     collect_completion_candidates,
     collect_local_completion_candidates,
     collect_local_definition_locations,
     collect_semantic_diagnostics,  # noqa: F401
-    collect_syntax_diagnostics,  # noqa: F401
+    collect_syntax_diagnostics,
     infer_module_path_from_source,  # noqa: F401
     resolve_definition_path,  # noqa: F401
     resolve_entry_file,  # noqa: F401
@@ -102,6 +102,9 @@ class SattLineLanguageServer(LanguageServer):
 
 
 server = SattLineLanguageServer()
+
+# Keep selected helper re-exports visible to external tests and tooling.
+_PUBLIC_SERVER_HELPERS = (build_source_path_index, collect_syntax_diagnostics)
 
 
 @server.feature("initialize")

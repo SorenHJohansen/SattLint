@@ -1,6 +1,7 @@
 import json
 import os
 from types import SimpleNamespace
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -251,6 +252,187 @@ def test_collect_analyzer_registry_report_exposes_semantic_layer_sources():
         {"variables", "dataflow", "sfc", "alarm-integrity", "safety-paths"}
     )
     assert sum(semantic_layer["source_rule_counts"].values()) == len(report["rules"])
+
+
+def test_build_pipeline_tool_exit_codes_cover_optional_and_policy_paths():
+    stage_reports = {
+        "ruff_report": {"exit_code": 0},
+        "pyright_report": {"effective_exit_code": 1},
+        "pytest_report": {"exit_code": 2},
+        "vulture_report": {"exit_code": 3},
+        "bandit_report": {"exit_code": 4},
+    }
+
+    failing_codes = pipeline._build_pipeline_tool_exit_codes(
+        stage_reports,
+        {"corpus_results_report": {"summary": {"failed_count": 2}}},
+        {
+            "phase2_rule_metadata_gate": {"status": "fail"},
+            "analysis_diff_report": {"summary": {"new_count": 1, "resolved_count": 0}},
+            "performance_budget_report": {"status": "fail"},
+        },
+        {"run_structural_reports": True},
+        fail_on_drift=True,
+        fail_on_budget=True,
+    )
+    neutral_codes = pipeline._build_pipeline_tool_exit_codes(
+        stage_reports,
+        {"corpus_results_report": None},
+        {
+            "phase2_rule_metadata_gate": {"status": "pass"},
+            "analysis_diff_report": None,
+            "performance_budget_report": None,
+        },
+        {"run_structural_reports": False},
+        fail_on_drift=False,
+        fail_on_budget=False,
+    )
+
+    assert failing_codes == {
+        "ruff": 0,
+        "pyright": 1,
+        "pytest": 2,
+        "vulture": 3,
+        "bandit": 4,
+        "corpus": 1,
+        "rule_metadata": 1,
+        "baseline_drift": 1,
+        "performance_budget": 1,
+    }
+    assert neutral_codes == {
+        "ruff": 0,
+        "pyright": 1,
+        "pytest": 2,
+        "vulture": 3,
+        "bandit": 4,
+        "corpus": None,
+        "rule_metadata": None,
+        "baseline_drift": None,
+        "performance_budget": None,
+    }
+
+
+def test_build_pipeline_counts_rolls_up_optional_and_derived_metrics():
+    counts = pipeline._build_pipeline_counts(
+        {
+            "ruff_report": {"finding_count": 5},
+            "pyright_report": {"error_count": 2, "warning_count": 3},
+            "pytest_report": {"summary": {"failures": 1, "errors": 4}},
+            "vulture_report": {"finding_count": 6},
+            "bandit_report": {"findings": [{}, {}]},
+        },
+        {
+            "corpus_results_report": {
+                "summary": {
+                    "case_count": 7,
+                    "passed_count": 5,
+                    "failed_count": 1,
+                    "execution_error_count": 1,
+                }
+            },
+            "architecture_report": {"findings": [{}, {}]},
+            "analyzer_registry_report": {"rules": [{}, {}, {}]},
+            "dependency_graph_report": {"edges": [{}, {}]},
+            "call_graph_report": {"edges": [{}]},
+            "graphics_layout_report": {"entries": [{}, {}], "groups": [{}], "findings": [{}, {}, {}]},
+            "impact_analysis_report": {"library_impacts": [{}], "module_impacts": [{}, {}]},
+            "workspace_graph_inputs": SimpleNamespace(snapshot_failures=["a", "b"]),
+            "trace_report": {
+                "dataflow_analysis": {"issue_count": 8},
+                "heuristics": {
+                    "unreachable_logic": ["x"],
+                    "transform_invariant_violations": ["v1", "v2"],
+                },
+            },
+        },
+        {
+            "analysis_diff_report": {
+                "summary": {
+                    "new_count": 9,
+                    "resolved_count": 4,
+                    "changed_count": 3,
+                    "unchanged_count": 2,
+                }
+            },
+            "incremental_analysis_report": {
+                "summary": {
+                    "changed_file_count": 10,
+                    "impacted_analyzer_count": 11,
+                    "fallback_analyzer_count": 12,
+                }
+            },
+            "finding_collection": SimpleNamespace(findings=[1, 2, 3, 4]),
+            "phase2_rule_metadata_gate": {"blocking_rule_ids": ["r1", "r2"], "advisory_rule_ids": ["r3"]},
+            "profiling_summary_report": {
+                "total_duration_ms": 13.5,
+                "summary": {"phase_count": 14, "slow_phase_count": 15},
+            },
+            "performance_budget_report": {"violation_count": 16},
+        },
+        {},
+    )
+
+    assert counts == {
+        "baseline_new_findings": 9,
+        "baseline_resolved_findings": 4,
+        "baseline_changed_findings": 3,
+        "baseline_unchanged_findings": 2,
+        "incremental_changed_file_count": 10,
+        "incremental_candidate_analyzer_count": 11,
+        "incremental_blocking_analyzer_count": 12,
+        "normalized_findings": 4,
+        "corpus_case_count": 7,
+        "corpus_passed_case_count": 5,
+        "corpus_failed_case_count": 1,
+        "corpus_execution_error_count": 1,
+        "ruff_findings": 5,
+        "pyright_errors": 2,
+        "pyright_warnings": 3,
+        "pytest_failures": 1,
+        "pytest_errors": 4,
+        "vulture_findings": 6,
+        "bandit_findings": 2,
+        "architecture_findings": 2,
+        "semantic_rule_count": 3,
+        "phase2_rule_metadata_blocking_gaps": 2,
+        "phase2_rule_metadata_advisory_gaps": 1,
+        "dependency_graph_edges": 2,
+        "call_graph_edges": 1,
+        "graphics_layout_entries": 2,
+        "graphics_layout_groups": 1,
+        "graphics_layout_findings": 3,
+        "impact_analysis_library_nodes": 1,
+        "impact_analysis_module_nodes": 2,
+        "workspace_graph_snapshot_failures": 2,
+        "trace_dataflow_issues": 8,
+        "trace_unreachable_logic": 1,
+        "trace_transform_violations": 2,
+        "profiling_total_duration_ms": 13.5,
+        "profiling_phase_count": 14,
+        "profiling_slow_phase_count": 15,
+        "performance_budget_violation_count": 16,
+    }
+
+
+def test_check_core_invariants_reports_duplicate_fingerprints_and_transform_violations():
+    violations = pipeline._check_core_invariants(
+        {
+            "finding_collection": SimpleNamespace(
+                findings=[
+                    SimpleNamespace(fingerprint="fp-a"),
+                    SimpleNamespace(id="fp-a"),
+                    SimpleNamespace(fingerprint="fp-b"),
+                ]
+            ),
+            "trace_report": {"heuristics": {"transform_invariant_violations": ["v1", "v2"]}},
+        },
+        {},
+    )
+
+    assert violations == [
+        "Duplicate finding fingerprint: fp-a",
+        "Transform invariant violations: 2",
+    ]
 
 
 def test_corpus_semantic_findings_include_guidance_fields(tmp_path):
@@ -1287,7 +1469,7 @@ def test_build_command_report_returns_expected_keys(tmp_path):
         stdout="ok",
         stderr="",
     )
-    report = build_command_report(result_obj, repo_root=tmp_path, extra_key="extra_val")
+    report = build_command_report(cast(Any, result_obj), repo_root=tmp_path, extra_key="extra_val")
     assert report["tool"] == "mytool"
     assert report["exit_code"] == 0
     assert report["extra_key"] == "extra_val"
@@ -1416,6 +1598,7 @@ def test_ref_span_returns_none_for_non_dict():
 
     assert _ref_span(None) is None
     assert _ref_span("string") is None
+    assert _ref_span({"span": "not-a-span"}) is None
 
 
 # --- coverage_reports.py: skipped when no coverage.xml, high severity branch ---

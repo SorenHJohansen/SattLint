@@ -287,7 +287,9 @@ def _publish_diagnostics(
                 uri=document.uri,
                 diagnostics=[
                     _diagnostic_from_message(
-                        "Could not determine the root program for this file. Set sattlineLsp.entryFile in VS Code when editing libraries in multi-program workspaces.",
+                        "Could not determine the root program for this file. Set "
+                        "sattlineLsp.entryFile in VS Code when editing libraries in "
+                        "multi-program workspaces.",
                         1,
                         1,
                     )

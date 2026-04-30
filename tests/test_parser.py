@@ -265,6 +265,6 @@ class TestCorpusRegressionSmoke:
             result = fuzz_parse_text(content, input_desc=f"invalid:{file_path}")
             # Invalid files should not crash the parser
             # (they may parse successfully due to lenient parsing)
-            assert result.error is None or _is_expected_parse_error(
-                result.error
-            ), f"Parser crashed on {file_path}: {result.error}"
+            assert result.error is None or _is_expected_parse_error(result.error), (
+                f"Parser crashed on {file_path}: {result.error}"
+            )

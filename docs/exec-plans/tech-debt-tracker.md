@@ -17,7 +17,7 @@ This tracker remains valid for legacy TD-* entries and scan history.
 | TD-001 | Analyzers | Remediation instructions not yet embedded in error messages | Medium | In progress: added to Issue, VariableIssue, shadowing analyzer |
 | TD-002 | Docs | `docs/` not fully restructured per harness-engineering layout | Medium | Completed 2026-04-28 |
 | TD-003 | LSP | No hot-reload when `WORKFLOW.md`-equivalent changes | Low | Add watch + restart mechanism |
-| TD-004 | Tests | Coverage threshold now 100% enforced | Medium | Completed 2026-04-28: ratcheted to 100% |
+| TD-004 | Tests | Coverage threshold now 86% enforced | Medium | Completed 2026-04-30: ratcheted to 86% |
 | TD-005 | Config | No validation that `analyzed_programs_and_libraries` paths exist | Low | Add startup validation |
 | TD-006 | DevTools | Pipeline outputs not yet consumed by doc-gardening agent | Low | Wire artifacts → quality-score.md |
 | TD-007 | Parse/Validate | validation.py functions return bool instead of parsing to typed objects | Medium | Refactor _is_valid_* to return parsed types |

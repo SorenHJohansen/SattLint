@@ -1,5 +1,7 @@
 """Tests for variable-quality analyzers: MMS, loop output, parameter drift, cyclomatic complexity, scan-loop resource, min/max, contract mismatch, magic numbers, shadowing, variables analysis, and datatype duplication."""
 
+# ruff: noqa: E501
+
 import logging
 from pathlib import Path
 
@@ -235,6 +237,176 @@ def test_mms_interface_flags_naming_drift_from_icf_entries():
     assert len(naming_drift_issues) == 1
     assert "ResultText" in naming_drift_issues[0].message
     assert "RESULT_TEXT" in naming_drift_issues[0].message
+
+
+def test_mms_interface_collects_nested_typedef_mappings_and_write_locations():
+    wrapper = ModuleTypeDef(
+        name="WriterWrapper",
+        moduleparameters=[Variable(name="MappedOut", datatype=Simple_DataType.INTEGER)],
+        localvariables=[],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("SendToOpc"),
+                moduletype_name="MMSWriteVar",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("WriteData"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("MappedOut"),
+                        source_literal=None,
+                    ),
+                    ParameterMapping(
+                        target=_varref("RemoteVarName"),
+                        source_type=const.KEY_VALUE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=None,
+                        source_literal="Plant.Result",
+                    ),
+                ],
+            )
+        ],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+        origin_file="Program.s",
+    )
+    unit = SingleModule(
+        header=_hdr("Unit"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[Variable(name="ExportValue", datatype=Simple_DataType.INTEGER)],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("Wrapper"),
+                moduletype_name="WriterWrapper",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("MappedOut"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("ExportValue"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (const.KEY_ASSIGN, _varref("ExportValue"), IntLiteral(1)),
+                    ],
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[wrapper],
+        localvariables=[],
+        submodules=[unit],
+        modulecode=None,
+        moduledef=None,
+        origin_file="Program.s",
+    )
+
+    report = analyze_mms_interface_variables(bp)
+
+    assert report.issues == []
+    assert len(report.hits) == 1
+    hit = report.hits[0]
+    assert hit.module_path == ["Program", "Unit", "Wrapper", "SendToOpc"]
+    assert hit.source_variable == "ExportValue"
+    assert hit.write_note is None
+    assert any(field_path == "" for field_path, _locations in hit.write_fields)
+    assert any(
+        path == ("Program", "Unit") and count == 1
+        for _field_path, locations in hit.write_fields
+        for path, count in locations
+    )
+
+
+def test_mms_interface_uses_moduletype_default_tags_for_duplicate_and_dead_tag_checks():
+    mms_write_type = ModuleTypeDef(
+        name="MMSWriteVar",
+        moduleparameters=[Variable(name="Tag", datatype=Simple_DataType.STRING, init_value="Plant.Default.Tag")],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+    )
+    unit = SingleModule(
+        header=_hdr("Unit"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="FirstValue", datatype=Simple_DataType.INTEGER),
+            Variable(name="SecondValue", datatype=Simple_DataType.INTEGER),
+        ],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("SenderA"),
+                moduletype_name="MMSWriteVar",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("WriteData"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("FirstValue"),
+                        source_literal=None,
+                    )
+                ],
+            ),
+            ModuleTypeInstance(
+                header=_hdr("SenderB"),
+                moduletype_name="MMSWriteVar",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("WriteData"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("SecondValue"),
+                        source_literal=None,
+                    )
+                ],
+            ),
+        ],
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Program"),
+        datatype_defs=[],
+        moduletype_defs=[mms_write_type],
+        localvariables=[],
+        submodules=[unit],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    report = analyze_mms_interface_variables(bp)
+
+    duplicate_issues = [issue for issue in report.issues if issue.kind == "mms.duplicate_tag"]
+    dead_tag_issues = [issue for issue in report.issues if issue.kind == "mms.dead_tag"]
+
+    assert len(report.hits) == 2
+    assert len(duplicate_issues) == 1
+    assert duplicate_issues[0].data is not None
+    assert duplicate_issues[0].data["tag"] == "Plant.Default.Tag"
+    assert len(dead_tag_issues) == 2
+    assert all("Plant.Default.Tag" in issue.message for issue in dead_tag_issues)
 
 
 def test_loop_output_refactor_detects_cycle_across_equations_and_active_step():
@@ -1092,6 +1264,90 @@ def test_required_parameter_connection_flags_unmapped_used_single_module_paramet
     assert issues[0].role == "required parameter connection missing for 'RequiredValue'"
 
 
+def test_required_parameter_name_helper_caches_only_runtime_used_parameters():
+    typedef = ModuleTypeDef(
+        name="ChildType",
+        moduleparameters=[
+            Variable(name="RequiredValue", datatype=Simple_DataType.INTEGER),
+            Variable(name="UnusedValue", datatype=Simple_DataType.INTEGER),
+        ],
+        localvariables=[Variable(name="Mirror", datatype=Simple_DataType.INTEGER)],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="UseParam",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[(const.KEY_ASSIGN, _varref("Mirror"), _varref("RequiredValue"))],
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[typedef],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+
+    first = analyzer._get_required_parameter_names_for_typedef(typedef)
+    second = analyzer._get_required_parameter_names_for_typedef(typedef)
+
+    assert first == {"requiredvalue": "RequiredValue"}
+    assert second == first
+    assert analyzer._required_parameter_names_by_owner[id(typedef)] == first
+
+
+def test_anytype_contracts_collect_read_and_write_field_paths():
+    typedef = ModuleTypeDef(
+        name="ChildType",
+        moduleparameters=[Variable(name="Payload", datatype="AnyType")],
+        localvariables=[
+            Variable(name="Mirror", datatype=Simple_DataType.INTEGER),
+            Variable(name="Source", datatype=Simple_DataType.INTEGER),
+        ],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="UsePayload",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (const.KEY_ASSIGN, _varref("Mirror"), _varref("Payload.FieldA")),
+                        (const.KEY_ASSIGN, _varref("Payload.FieldB"), _varref("Source")),
+                    ],
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[typedef],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+
+    contracts = analyzer._anytype_field_contracts_by_owner[id(typedef)]
+
+    assert contracts["payload"].field_paths == ("FieldA", "FieldB")
+
+
 def test_magic_number_detection_in_equations_and_sfc():
     eq = Equation(
         name="Main",
@@ -1289,6 +1545,93 @@ ENDDEF (*BasePicture*);
     assert overlap_issues[0].role == "module 'ChildA' overlaps module 'ChildB'"
 
 
+def test_layout_overlap_ignores_modules_on_different_layers():
+    child_moduledef = ModuleDef(clipping_bounds=((-1.0, -1.0), (1.0, 1.0)))
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[
+            SingleModule(
+                header=ModuleHeader(
+                    name="Layer1",
+                    invoke_coord=(0.0, 0.0, 0.0, 0.1, 0.1),
+                    layer_info="1",
+                ),
+                moduledef=child_moduledef,
+                moduleparameters=[],
+                localvariables=[],
+                submodules=[],
+                modulecode=None,
+                parametermappings=[],
+            ),
+            SingleModule(
+                header=ModuleHeader(
+                    name="Layer2",
+                    invoke_coord=(0.02, 0.02, 0.0, 0.1, 0.1),
+                    layer_info="2",
+                ),
+                moduledef=child_moduledef,
+                moduleparameters=[],
+                localvariables=[],
+                submodules=[],
+                modulecode=None,
+                parametermappings=[],
+            ),
+        ],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    overlap_issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.LAYOUT_OVERLAP]
+
+    assert overlap_issues == []
+
+
+def test_layout_overlap_uses_module_clipping_bounds_for_visible_overlap():
+    child_moduledef = ModuleDef(clipping_bounds=((-1.0, -1.0), (1.0, 1.0)))
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[
+            SingleModule(
+                header=ModuleHeader(name="ChildA", invoke_coord=(0.0, 0.0, 0.0, 0.1, 0.1)),
+                moduledef=child_moduledef,
+                moduleparameters=[],
+                localvariables=[],
+                submodules=[],
+                modulecode=None,
+                parametermappings=[],
+            ),
+            SingleModule(
+                header=ModuleHeader(name="ChildB", invoke_coord=(0.1, 0.1, 0.0, 0.1, 0.1)),
+                moduledef=child_moduledef,
+                moduleparameters=[],
+                localvariables=[],
+                submodules=[],
+                modulecode=None,
+                parametermappings=[],
+            ),
+        ],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    overlap_issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.LAYOUT_OVERLAP]
+
+    assert len(overlap_issues) == 1
+    assert overlap_issues[0].role == "module 'ChildA' overlaps module 'ChildB'"
+
+
 def test_layout_overlap_detects_overlapping_graph_and_interact_objects():
     bp = BasePicture(
         header=_hdr("BasePicture"),
@@ -1320,6 +1663,38 @@ def test_layout_overlap_detects_overlapping_graph_and_interact_objects():
 
     assert len(overlap_issues) == 1
     assert overlap_issues[0].role == "graph object TextObject #1 overlaps interact object ComBut_ #1"
+
+
+def test_layout_overlap_ignores_objects_on_different_layers():
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=ModuleDef(
+            graph_objects=[
+                GraphObject(
+                    type="TextObject",
+                    properties={"coords": ((0.0, 0.0), (1.0, 1.0)), "layer": 1},
+                )
+            ],
+            interact_objects=[
+                InteractObject(
+                    type="ComBut_",
+                    properties={"coords": [((0.5, 0.5), (1.25, 1.25))], "layer": 2},
+                )
+            ],
+        ),
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    overlap_issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.LAYOUT_OVERLAP]
+
+    assert overlap_issues == []
 
 
 def test_ui_only_variable_detected_for_graphics_invar_reads():

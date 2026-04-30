@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# ruff: noqa: E501
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -17,7 +18,13 @@ from sattlint.analyzers.icf import (
     parse_icf_file,
     validate_icf_entries_against_program,
 )
-from sattlint.reporting.icf_report import ICFEntry
+from sattlint.reporting.icf_report import (
+    ICFEntry,
+    ICFSkippedEntry,
+    ICFValidationIssue,
+    ICFValidationReport,
+    _format_drift_detail,
+)
 
 
 def _header(name: str) -> ModuleHeader:
@@ -1055,3 +1062,84 @@ def test_icf_validation_treats_acssignoff_meaning_as_optional_parameter_field():
 
     assert report.valid_entries == 8
     assert not any(issue.reason == "missing journal parameter fields" for issue in report.issues)
+
+
+def test_icf_report_formats_extra_entries_and_ordering_guidance():
+    lines = _format_drift_detail(
+        "current unit KaHA221B (unit type ApplTank) differs from reference unit KaHA221A: "
+        "extra 1 entries ([Group JournalData_DCStoMES] TagB => Program:StartMaster.<UNIT>.TagB); "
+        "entry ordering differs (first mismatch at position 2: expected TagA but found TagB)"
+    )
+
+    assert "      compared units: KaHA221B vs KaHA221A (unit type ApplTank)" in lines
+    assert "      - extra 1 entries" in lines
+    assert "        action: remove these extra entries from current unit" in lines
+    assert "      - entry ordering differs" in lines
+    assert "        first mismatch position: 2" in lines
+    assert any(line.strip().startswith("expected: TagA") for line in lines)
+    assert any(line.strip().startswith("found: TagB") for line in lines)
+    assert "        action: reorder current unit entries to match reference unit order" in lines
+
+
+def test_icf_report_summary_uses_section_fallback_and_skipped_context_details():
+    report = ICFValidationReport(
+        icf_file=Path("Program.icf"),
+        program_name="Program",
+        total_entries=3,
+        validated_entries=1,
+        valid_entries=0,
+        skipped_entries=2,
+        issues=[
+            ICFValidationIssue(
+                entry=ICFEntry(
+                    file_path=Path("Program.icf"),
+                    line_no=1,
+                    section="Recipe_Parameters",
+                    key="Tag1",
+                    value="Program:Unit.Tag1",
+                ),
+                reason="invalid mapping",
+                detail="value type mismatch",
+            )
+        ],
+        skipped_details=[
+            ICFSkippedEntry(
+                entry=ICFEntry(
+                    file_path=Path("Program.icf"),
+                    line_no=2,
+                    section=None,
+                    key="Tag2",
+                    value="Program:Unit.Tag2",
+                    operation="Transfer",
+                    journal="JournalA",
+                    group="GroupA",
+                ),
+                reason="placeholder value",
+                detail="matches placeholder pattern X::.",
+            ),
+            ICFSkippedEntry(
+                entry=ICFEntry(
+                    file_path=Path("Program.icf"),
+                    line_no=3,
+                    section="SectionOnly",
+                    key="Tag3",
+                    value="Program:Unit.Tag3",
+                ),
+                reason="ignored entry",
+            ),
+        ],
+    )
+
+    summary = report.summary()
+
+    assert "Invalid entries:" in summary
+    assert (
+        "Program.icf:1 [Recipe_Parameters] Tag1 => Program:Unit.Tag1: invalid mapping (value type mismatch)" in summary
+    )
+    assert "Skipped entries:" in summary
+    assert (
+        "Program.icf:2 [Operation Transfer | Journal JournalA | Group GroupA] Tag2 => Program:Unit.Tag2: placeholder value"
+        in summary
+    )
+    assert "(matches placeholder pattern X::.)" in summary
+    assert "Program.icf:3 [SectionOnly] Tag3 => Program:Unit.Tag3: ignored entry" in summary

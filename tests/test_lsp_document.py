@@ -1135,6 +1135,61 @@ def test_document_state_apply_changes_fallback_on_error(tmp_path):
     assert state.is_dirty is True
 
 
+def test_server_document_helpers_track_state_paths_and_source_text(tmp_path):
+    from sattlint_lsp._server_document import (
+        _document_state_for_path,
+        _ensure_document_paths,
+        _record_document_change,
+        _source_text_for_document,
+    )
+
+    path = (tmp_path / "Program" / "Main.s").resolve()
+    moved_path = (tmp_path / "Program" / "Renamed.s").resolve()
+    uri = path.as_uri()
+    document = cast(Any, SimpleNamespace(uri=uri, source="document text", version=1))
+    ls = cast(Any, SimpleNamespace(document_states={}, document_paths=None))
+
+    assert _document_state_for_path(ls, path) is None
+    assert _source_text_for_document(ls, document) == "document text"
+
+    document_paths = _ensure_document_paths(ls)
+    assert document_paths == {}
+    assert ls.document_paths is document_paths
+
+    created = _record_document_change(
+        ls,
+        path,
+        uri=uri,
+        version=1,
+        content_changes=[SimpleNamespace(range=None, text="created text")],
+        fallback_text="fallback text",
+    )
+
+    assert created.text == "created text"
+    assert created.version == 1
+    assert ls.document_paths[path] == uri
+    assert _document_state_for_path(ls, path) is created
+    assert _source_text_for_document(ls, document) == "created text"
+
+    ls.document_paths[path] = uri
+    created.path = path
+
+    updated = _record_document_change(
+        ls,
+        moved_path,
+        uri=uri,
+        version=2,
+        content_changes=[SimpleNamespace(range=None, text="moved text")],
+        fallback_text="fallback text",
+    )
+
+    assert updated is created
+    assert updated.path == moved_path
+    assert updated.text == "moved text"
+    assert path not in ls.document_paths
+    assert ls.document_paths[moved_path] == uri
+
+
 # --- core/document.py: LineIndex methods ---
 def test_line_index_line_start_offset_edge_cases():
     from sattlint.core.document import LineIndex
@@ -1230,7 +1285,7 @@ def test_on_did_open_and_change_ignore_non_diagnostic_documents(monkeypatch, tmp
     monkeypatch.setattr("sattlint_lsp.server._document_path", lambda document: path)
 
     open_params = SimpleNamespace(text_document=SimpleNamespace(uri=uri, version=2, text="text"))
-    on_did_open(ls, cast(Any, open_params))
+    on_did_open(cast(Any, ls), cast(Any, open_params))
 
     assert uri not in ls.document_states
     assert path not in ls.document_paths
@@ -1243,7 +1298,7 @@ def test_on_did_open_and_change_ignore_non_diagnostic_documents(monkeypatch, tmp
         text_document=SimpleNamespace(uri=uri, version=3),
         content_changes=[SimpleNamespace(text="new")],
     )
-    on_did_change(ls, cast(Any, change_params))
+    on_did_change(cast(Any, ls), cast(Any, change_params))
 
     assert uri not in ls.document_states
     assert path not in ls.document_paths
@@ -1268,7 +1323,7 @@ def test_on_did_save_ignores_non_diagnostic_documents(monkeypatch, tmp_path):
     monkeypatch.setattr("sattlint_lsp.server._document_path", lambda document: path)
 
     save_params = SimpleNamespace(text_document=SimpleNamespace(uri=uri))
-    on_did_save(ls, cast(Any, save_params))
+    on_did_save(cast(Any, ls), cast(Any, save_params))
 
     assert uri not in ls.document_states
     assert path not in ls.document_paths

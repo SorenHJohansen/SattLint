@@ -5,7 +5,7 @@ import os
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
-from typing import ClassVar
+from typing import Any, ClassVar, cast
 
 import pytest
 
@@ -512,6 +512,720 @@ def test_run_variable_analysis_marks_library_targets(noop_screen, monkeypatch):
     app_analysis.run_variable_analysis(cfg, None)
 
     assert captured["analyzed_target_is_library"] is True
+
+
+def test_print_validation_warnings_truncates(monkeypatch):
+    lines: list[str] = []
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    app_analysis._print_validation_warnings(["warn1", "warn2", "warn3"], limit=2)
+
+    assert lines == [
+        "Validation warnings (3):",
+        "  - warn1",
+        "  - warn2",
+        "  - ... (+1 more)",
+    ]
+
+
+def test_cache_key_for_target_adds_analysis_target(monkeypatch):
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        app_analysis,
+        "compute_cache_key",
+        lambda cfg: captured.update({"cfg": cfg.copy()}) or "cache-key",
+    )
+
+    cfg = {"mode": "official"}
+    result = app_analysis._cache_key_for_target(cfg, "TargetA")
+
+    assert result == "cache-key"
+    assert cfg == {"mode": "official"}
+    assert captured["cfg"] == {"mode": "official", "analysis_target": "TargetA"}
+
+
+def test_source_paths_for_current_target_falls_back_to_header_name():
+    project_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"), origin_file=None)
+    graph = SimpleNamespace(source_files={Path("libs/Other.s"), Path("programs/TargetA.s")})
+
+    result = app_analysis.source_paths_for_current_target(project_bp, graph)
+
+    assert result == {Path("programs/TargetA.s")}
+
+
+def test_target_is_library_returns_false_without_matching_source_paths():
+    cfg = {"program_dir": "programs"}
+    project_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"), origin_file="Missing.s")
+    graph = SimpleNamespace(source_files=set())
+
+    assert app_analysis._target_is_library(cfg, project_bp, graph) is False
+
+
+def test_run_datatype_usage_analysis_rejects_empty_input(monkeypatch):
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": "   ")
+    pauses: list[str] = []
+    lines: list[str] = []
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(
+        app_analysis, "_iter_loaded_projects", lambda *_args, **_kwargs: pytest.fail("should not load projects")
+    )
+
+    app_analysis.run_datatype_usage_analysis(app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause"))
+
+    assert "No variable name provided" in "\n".join(lines)
+    assert pauses == ["pause"]
+
+
+def test_run_datatype_usage_analysis_reports_errors_and_pauses(monkeypatch):
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": "FlowVar")
+    pauses: list[str] = []
+    lines: list[str] = []
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(
+        app_analysis,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("TargetA", "bp-a", SimpleNamespace(unavailable_libraries={"ControlLib"}))]),
+    )
+    monkeypatch.setattr(
+        variables_reporting_module,
+        "analyze_datatype_usage",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    app_analysis.run_datatype_usage_analysis(app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause"))
+
+    assert any("Error during analysis for TargetA: boom" in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_parse_index_selection_supports_ranges_and_filters_invalid_tokens():
+    assert app_analysis.parse_index_selection("1, 3-5, 8-6, bad, 11", 8) == [1, 3, 4, 5, 6, 7, 8]
+
+
+def test_run_module_duplicates_analysis_rejects_empty_name(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": "   ")
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    app_analysis.run_module_duplicates_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        iter_loaded_projects_fn=lambda *_args, **_kwargs: pytest.fail("should not load projects"),
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("No module name provided" in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_run_module_duplicates_analysis_uses_selected_instances(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+    matches = [
+        (["Root", "Area", "PumpA"], SimpleNamespace(datecode=101)),
+        (["Root", "Area", "PumpB"], SimpleNamespace(datecode=None)),
+        (["Root", "Area", "PumpC"], SimpleNamespace(datecode=303)),
+    ]
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(builtins, "input", make_input(["Pump", "1, 3-2"]))
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(app_analysis, "find_modules_by_name", lambda *_args, **_kwargs: matches)
+    monkeypatch.setattr(
+        app_analysis,
+        "compare_modules",
+        lambda selected: captured.update({"selected": selected})
+        or SimpleNamespace(summary=lambda: "comparison summary"),
+    )
+    monkeypatch.setattr(
+        app_analysis,
+        "analyze_module_duplicates",
+        lambda *_args, **_kwargs: pytest.fail("should use explicit comparison path"),
+    )
+
+    app_analysis.run_module_duplicates_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", SimpleNamespace())])),
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert captured["selected"] == matches
+    assert any("Found 3 instance(s) for 'Pump':" in line for line in lines)
+    assert any("comparison summary" in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_run_module_duplicates_analysis_requires_two_selected_instances(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+    matches = [
+        (["Root", "PumpA"], SimpleNamespace(datecode=101)),
+        (["Root", "PumpB"], SimpleNamespace(datecode=202)),
+    ]
+
+    monkeypatch.setattr(builtins, "input", make_input(["Pump", "1"]))
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(app_analysis, "find_modules_by_name", lambda *_args, **_kwargs: matches)
+    monkeypatch.setattr(
+        app_analysis,
+        "compare_modules",
+        lambda *_args, **_kwargs: pytest.fail("should skip compare when fewer than two indices are selected"),
+    )
+
+    app_analysis.run_module_duplicates_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", SimpleNamespace())])),
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("Need at least two instances to compare; skipping." in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_run_module_find_by_name_lists_matches_and_reports_errors(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    def fake_find_modules(_project_bp, module_name, debug=False):
+        if module_name == "Pump":
+            return [(["Root", "PumpA"], SimpleNamespace(datecode=101))]
+        if module_name == "Missing":
+            return []
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": "Pump, Missing, Boom")
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(app_analysis, "find_modules_by_name", fake_find_modules)
+
+    app_analysis.run_module_find_by_name(
+        app.DEFAULT_CONFIG.copy(),
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", SimpleNamespace())])),
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("Found 1 module instance(s) for 'Pump':" in line for line in lines)
+    assert any("No modules found with name 'Missing'." in line for line in lines)
+    assert any("Error during search: boom" in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_run_module_tree_debug_uses_default_depth_on_invalid_input(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(
+        app_analysis,
+        "debug_module_structure",
+        lambda project_bp, max_depth=0: captured.update({"project_bp": project_bp, "max_depth": max_depth}),
+    )
+
+    app_analysis.run_module_tree_debug(
+        app.DEFAULT_CONFIG.copy(),
+        prompt_fn=lambda _message, _default: "not-a-number",
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", SimpleNamespace())])),
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert captured == {"project_bp": "bp", "max_depth": 10}
+    assert any("Invalid depth; using default 10" in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_run_checks_reports_no_matching_checks_and_pauses(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    app_analysis.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["missing-check"],
+        get_enabled_analyzers_fn=lambda: [SimpleNamespace(key="variables", name="Variables")],
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("No matching checks found" in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_run_icf_validation_covers_missing_dir_invalid_dir_and_empty_file_list(monkeypatch, tmp_path):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    app_analysis.run_icf_validation(
+        app.DEFAULT_CONFIG.copy(),
+        configured_icf_files_fn=lambda _cfg: (None, []),
+        load_program_ast_fn=lambda *_args, **_kwargs: pytest.fail("should not load program"),
+        pause_fn=lambda: pauses.append("pause-none"),
+    )
+
+    missing_dir = tmp_path / "missing-icf"
+    app_analysis.run_icf_validation(
+        app.DEFAULT_CONFIG.copy(),
+        configured_icf_files_fn=lambda _cfg: (missing_dir, [missing_dir / "ProgramA.icf"]),
+        load_program_ast_fn=lambda *_args, **_kwargs: pytest.fail("should not load program"),
+        pause_fn=lambda: pauses.append("pause-missing"),
+    )
+
+    valid_dir = tmp_path / "icf"
+    valid_dir.mkdir()
+    app_analysis.run_icf_validation(
+        app.DEFAULT_CONFIG.copy(),
+        configured_icf_files_fn=lambda _cfg: (valid_dir, []),
+        load_program_ast_fn=lambda *_args, **_kwargs: pytest.fail("should not load program"),
+        pause_fn=lambda: pauses.append("pause-empty"),
+    )
+
+    assert any("icf_dir is not set in the config" in line for line in lines)
+    assert any(f"icf_dir does not exist or is not a directory: {missing_dir}" in line for line in lines)
+    assert any(f"No .icf files found in {valid_dir}" in line for line in lines)
+    assert pauses == ["pause-none", "pause-missing", "pause-empty"]
+
+
+def test_run_module_localvar_analysis_rejects_empty_module_path_and_variable(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(builtins, "input", make_input(["", "UnitA", ""]))
+
+    def load_project_fn(_cfg):
+        return (SimpleNamespace(header=SimpleNamespace(name="BasePicture")), SimpleNamespace())
+
+    app_analysis.run_module_localvar_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        load_project_fn=cast(Any, load_project_fn),
+        pause_fn=lambda: pauses.append("pause-module"),
+    )
+    app_analysis.run_module_localvar_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        load_project_fn=cast(Any, load_project_fn),
+        pause_fn=lambda: pauses.append("pause-var"),
+    )
+
+    assert any("No module path provided" in line for line in lines)
+    assert any("No variable name provided" in line for line in lines)
+    assert pauses == ["pause-module", "pause-var"]
+
+
+def test_run_module_localvar_analysis_reports_success_and_errors(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(builtins, "input", make_input(["UnitA", "Dv"]))
+
+    reporting_module = pytest.importorskip("sattlint.analyzers.variable_usage_reporting")
+    monkeypatch.setattr(reporting_module, "analyze_module_localvar_fields", lambda *_args, **_kwargs: "field report")
+
+    app_analysis.run_module_localvar_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        load_project_fn=cast(
+            Any,
+            lambda _cfg: (SimpleNamespace(header=SimpleNamespace(name="BasePicture")), SimpleNamespace()),
+        ),
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    ("TargetA", "bp-a", SimpleNamespace()),
+                    ("TargetB", "bp-b", SimpleNamespace()),
+                ]
+            ),
+        ),
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("=== Target: TargetA ===" in line for line in lines)
+    assert any("field report" in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_menu_wrappers_delegate_to_underlying_callbacks():
+    calls: list[tuple[str, object]] = []
+
+    app_analysis.run_analysis_menu(app.DEFAULT_CONFIG.copy(), analysis_menu_fn=lambda cfg: calls.append(("run", cfg)))
+    app_analysis.variable_analysis_menu(
+        app.DEFAULT_CONFIG.copy(), analysis_menu_fn=lambda cfg: calls.append(("var", cfg))
+    )
+    app_analysis.run_checks_menu(
+        app.DEFAULT_CONFIG.copy(),
+        run_checks_fn=lambda cfg, selected: calls.append(("checks", selected if selected is not None else cfg)),
+    )
+
+    assert calls[0][0] == "run"
+    assert calls[1][0] == "var"
+    assert calls[2] == ("checks", app.DEFAULT_CONFIG.copy())
+
+
+def test_run_mms_interface_analysis_reports_summary_and_errors(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    def fake_mms(project_bp, debug=False, config=None):
+        if project_bp == "bp-b":
+            raise RuntimeError("boom")
+        return SimpleNamespace(summary=lambda: "mms summary")
+
+    monkeypatch.setattr(app_analysis, "analyze_mms_interface_variables", fake_mms)
+
+    app_analysis.run_mms_interface_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    ("TargetA", "bp-a", SimpleNamespace()),
+                    ("TargetB", "bp-b", SimpleNamespace()),
+                ]
+            ),
+        ),
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("mms summary" in line for line in lines)
+    assert any("Error during analysis for TargetB: boom" in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_run_icf_validation_reports_entryless_files_load_failures_and_summary(monkeypatch, tmp_path):
+    lines: list[str] = []
+    pauses: list[str] = []
+    icf_dir = tmp_path / "icf"
+    icf_dir.mkdir()
+    empty_file = icf_dir / "Empty.icf"
+    broken_file = icf_dir / "Broken.icf"
+    valid_file = icf_dir / "Valid.icf"
+    for path in (empty_file, broken_file, valid_file):
+        path.write_text("dummy", encoding="utf-8")
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(
+        app_analysis,
+        "parse_icf_file",
+        lambda path: [] if path.name == "Empty.icf" else [SimpleNamespace()],
+    )
+    monkeypatch.setattr(app_analysis.engine_module, "merge_project_basepicture", lambda bp, _graph: bp)
+
+    def fake_load_program(_cfg, program_name):
+        if program_name == "Broken":
+            raise RuntimeError("load failed")
+        return "bp-valid", SimpleNamespace(ast_by_name={})
+
+    def fake_validate(program_bp, entries, expected_program, debug=False, moduletype_index=None):
+        assert program_bp == "bp-valid"
+        assert expected_program == "Valid"
+        return SimpleNamespace(
+            total_entries=3,
+            valid_entries=2,
+            issues=[object()],
+            skipped_entries=1,
+            summary=lambda: "icf report",
+        )
+
+    app_analysis.run_icf_validation(
+        app.DEFAULT_CONFIG.copy(),
+        configured_icf_files_fn=lambda _cfg: (icf_dir, [empty_file, broken_file, valid_file]),
+        load_program_ast_fn=cast(Any, fake_load_program),
+        validate_icf_entries_against_program_fn=fake_validate,
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("Empty.icf: no entries found" in line for line in lines)
+    assert any("Broken.icf: failed to load program 'Broken': load failed" in line for line in lines)
+    assert any("icf report" in line for line in lines)
+    assert any("Files processed: 3" in line for line in lines)
+    assert any("Files failed: 1" in line for line in lines)
+    assert any("Entries: 3" in line for line in lines)
+    assert any("Valid: 2" in line for line in lines)
+    assert any("Invalid: 1" in line for line in lines)
+    assert any("Skipped: 1" in line for line in lines)
+    assert pauses == ["pause"]
+
+
+def test_run_debug_variable_usage_and_comment_code_analysis_cover_empty_success_and_error(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(builtins, "input", make_input(["", "FlowVar"]))
+    monkeypatch.setattr(
+        app_analysis, "debug_variable_usage", lambda bp, var_name, debug=False: f"debug:{bp}:{var_name}"
+    )
+    monkeypatch.setattr(
+        app_analysis,
+        "analyze_comment_code_files",
+        lambda paths, root_name: SimpleNamespace(
+            summary=lambda: f"comment:{root_name}:{sorted(str(path) for path in paths)}"
+        ),
+    )
+
+    app_analysis.run_debug_variable_usage(app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause-empty"))
+    app_analysis.run_debug_variable_usage(
+        app.DEFAULT_CONFIG.copy(),
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    ("TargetA", "bp-a", SimpleNamespace()),
+                    ("TargetB", "bp-b", SimpleNamespace()),
+                ]
+            ),
+        ),
+        pause_fn=lambda: pauses.append("pause-debug"),
+    )
+    app_analysis.run_comment_code_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [("TargetA", SimpleNamespace(header=SimpleNamespace(name="Root")), "graph")]
+            ),
+        ),
+        source_paths_for_current_target_fn=lambda _project_bp, _graph: {Path("A.s"), Path("B.s")},
+        pause_fn=lambda: pauses.append("pause-comment"),
+    )
+
+    assert any("No variable name provided" in line for line in lines)
+    assert any("debug:bp-a:FlowVar" in line for line in lines)
+    assert any("debug:bp-b:FlowVar" in line for line in lines)
+    assert any("comment:Root:['A.s', 'B.s']" in line for line in lines)
+    assert pauses == ["pause-empty", "pause-debug", "pause-comment"]
+
+
+def test_run_advanced_datatype_analysis_covers_back_compare_and_debug_branches(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(builtins, "input", make_input(["b", "2", "Pump", "3", "FlowVar"]))
+    monkeypatch.setattr(variables_reporting_module, "debug_variable_usage", lambda *_args, **_kwargs: "debug report")
+
+    app_analysis.run_advanced_datatype_analysis(app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause-back"))
+    app_analysis.run_advanced_datatype_analysis(
+        app.DEFAULT_CONFIG.copy(), pause_fn=lambda: pauses.append("pause-compare")
+    )
+    app_analysis.run_advanced_datatype_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter([("TargetA", "bp-a", SimpleNamespace())]),
+        ),
+        pause_fn=lambda: pauses.append("pause-debug"),
+    )
+
+    assert any("Module comparison analysis not yet implemented" in line for line in lines)
+    assert any("debug report" in line for line in lines)
+    assert pauses == ["pause-back", "pause-compare", "pause-debug"]
+
+
+def test_load_project_returns_cached_project_without_building_loader(monkeypatch):
+    cached_project = ("bp-cached", SimpleNamespace())
+
+    class FakeCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def load(self, key):
+            assert key == "cache-key"
+            return {"project": cached_project}
+
+    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
+    monkeypatch.setattr(app_analysis, "get_cache_dir", lambda: Path("cache-dir"))
+    monkeypatch.setattr(
+        app_analysis.engine_module,
+        "SattLineProjectLoader",
+        lambda **_kwargs: pytest.fail("loader should not be created"),
+    )
+
+    result = app_analysis.load_project(
+        {
+            "program_dir": "programs",
+            "other_lib_dirs": [],
+            "ABB_lib_dir": "abb",
+            "mode": "draft",
+            "scan_root_only": True,
+            "debug": False,
+            "analyzed_programs_and_libraries": ["TargetA"],
+        },
+        cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
+    )
+
+    assert result == cached_project
+
+
+def test_load_project_raises_target_load_error_when_root_program_missing(monkeypatch):
+    class FakeCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def load(self, key):
+            return None
+
+        def save(self, key, **kwargs):
+            pytest.fail("cache should not be saved when root program is missing")
+
+    class FakeLoader:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def resolve(self, target_name, strict=False):
+            return SimpleNamespace(
+                ast_by_name={"Dependency": "bp-dependency"},
+                missing=["dep parse error"],
+                warnings=["dep warning"],
+                source_files={Path("programs/Dependency.s")},
+            )
+
+        def _find_deps_with_context(self, target_name, requester_dir):
+            return Path("programs/TargetA.l")
+
+        def _read_deps(self, deps_path):
+            return ["Dependency"]
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
+    monkeypatch.setattr(app_analysis, "get_cache_dir", lambda: Path("cache-dir"))
+    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
+
+    def fake_error_factory(target_name, **kwargs):
+        captured.update({"target_name": target_name, **kwargs})
+        return RuntimeError(f"missing {target_name}")
+
+    with pytest.raises(RuntimeError, match="missing TargetA"):
+        app_analysis.load_project(
+            {
+                "program_dir": "programs",
+                "other_lib_dirs": ["libs"],
+                "ABB_lib_dir": "abb",
+                "mode": "draft",
+                "scan_root_only": False,
+                "debug": True,
+                "analyzed_programs_and_libraries": ["TargetA"],
+            },
+            target_load_error_factory=fake_error_factory,
+        )
+
+    assert captured == {
+        "target_name": "TargetA",
+        "resolved": ["Dependency"],
+        "missing": ["dep parse error"],
+        "warnings": ["dep warning"],
+        "direct_dependencies": ["Dependency"],
+    }
+
+
+def test_load_program_ast_raises_when_program_was_not_parsed(monkeypatch):
+    class FakeLoader:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def resolve(self, program_name, strict=False):
+            return SimpleNamespace(ast_by_name={"Other": "bp-other"})
+
+    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
+
+    with pytest.raises(RuntimeError, match="Program 'TargetA' not parsed"):
+        app_analysis.load_program_ast(
+            {
+                "program_dir": "programs",
+                "other_lib_dirs": [],
+                "ABB_lib_dir": "abb",
+                "mode": "draft",
+                "scan_root_only": True,
+                "debug": False,
+            },
+            "TargetA",
+        )
+
+
+def test_force_refresh_ast_clears_cache_entries_and_reloads_all_targets():
+    cache_clears: list[str] = []
+    load_calls: list[tuple[str, bool, bool]] = []
+
+    class FakeCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def clear(self, key):
+            cache_clears.append(key)
+
+    result = app_analysis.force_refresh_ast(
+        {"analyzed_programs_and_libraries": ["TargetA", "TargetB"]},
+        cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
+        load_project_fn=cast(
+            Any,
+            lambda _cfg, target_name=None, use_cache=True, use_file_ast_cache=True: (
+                load_calls.append(((target_name or ""), use_cache, use_file_ast_cache))
+                or (f"bp-{target_name or ''}", SimpleNamespace())
+            ),
+        ),
+        ast_cache_cls=cast(Any, FakeCache),
+        get_cache_dir_fn=lambda: Path("cache-dir"),
+    )
+
+    assert cache_clears == ["key:TargetA", "key:TargetB"]
+    assert load_calls == [("TargetA", False, False), ("TargetB", False, False)]
+    assert result == ("bp-TargetB", SimpleNamespace())
+
+
+def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypatch):
+    lines: list[str] = []
+    load_calls: list[str] = []
+
+    class FakeCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def load(self, key):
+            mapping = {
+                "key:Fresh": {"name": "Fresh", "files": ["a"]},
+                "key:Stale": {"name": "Stale", "files": ["a"]},
+                "key:Old": {"name": "Old"},
+                "key:Broken": None,
+            }
+            return mapping[key]
+
+        def validate(self, cached, fast=False):
+            return cached == {"name": "Fresh", "files": ["a"]} and fast is False
+
+    def fake_load_project(_cfg, target_name=None, use_cache=True, use_file_ast_cache=True):
+        resolved_target = target_name or ""
+        load_calls.append(resolved_target)
+        if target_name == "Broken":
+            raise RuntimeError("boom")
+        return (f"bp-{resolved_target}", SimpleNamespace())
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    ok = app_analysis.ensure_ast_cache(
+        {
+            "analyzed_programs_and_libraries": ["Fresh", "Stale", "Old", "Broken"],
+            "fast_cache_validation": True,
+        },
+        cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
+        load_project_fn=cast(Any, fake_load_project),
+        ast_cache_cls=cast(Any, FakeCache),
+        get_cache_dir_fn=lambda: Path("cache-dir"),
+    )
+
+    assert ok is False
+    assert load_calls == ["Stale", "Old", "Broken"]
+    assert any("Checking AST cache for Fresh..." in line for line in lines)
+    assert any("AST cache OK" in line for line in lines)
+    assert any("AST cache stale; rebuilding" in line for line in lines)
+    assert any("AST cache missing file manifest; rebuilding" in line for line in lines)
+    assert any("AST cache missing; building" in line for line in lines)
+    assert any("AST cache updated" in line for line in lines)
+    assert any("Failed to build AST cache for Broken: boom" in line for line in lines)
 
 
 def test_variable_usage_submenu_exposes_min_max_report(noop_screen, monkeypatch):

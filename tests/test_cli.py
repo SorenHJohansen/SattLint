@@ -1,8 +1,9 @@
 """CLI behavior tests for SattLint."""
 
+import runpy
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -42,6 +43,62 @@ def test_run_cli_without_command_returns_usage_error():
 
 def test_package_exports_version():
     assert sattlint.__version__ == "0.1.1"
+
+
+def test_package_root_exports_forward_workspace_helpers(monkeypatch):
+    discovery = SimpleNamespace(tag="discovery")
+    snapshot = SimpleNamespace(tag="snapshot")
+    seen = {}
+
+    def fake_discover_workspace_sources(workspace_root):
+        seen["workspace_root"] = workspace_root
+        return discovery
+
+    def fake_load_workspace_snapshot(entry_file, **kwargs):
+        seen["entry_file"] = entry_file
+        seen["kwargs"] = kwargs
+        return snapshot
+
+    monkeypatch.setattr(sattlint, "_discover_workspace_sources", fake_discover_workspace_sources)
+    monkeypatch.setattr(sattlint, "_load_workspace_snapshot", fake_load_workspace_snapshot)
+
+    workspace_root = Path("workspace")
+    entry_file = Path("program.s")
+    result_discovery = sattlint.discover_workspace_sources(workspace_root)
+    result_snapshot = sattlint.load_workspace_snapshot(
+        entry_file,
+        workspace_root=workspace_root,
+        discovery=cast(Any, discovery),
+        mode="strict",
+        other_lib_dirs=[Path("lib")],
+        abb_lib_dir=Path("abb"),
+        scan_root_only=True,
+        debug=True,
+        collect_variable_diagnostics=False,
+    )
+
+    assert result_discovery is discovery
+    assert result_snapshot is snapshot
+    assert seen["workspace_root"] == workspace_root
+    assert seen["entry_file"] == entry_file
+    assert seen["kwargs"]["workspace_root"] == workspace_root
+    assert seen["kwargs"]["discovery"] is discovery
+    assert seen["kwargs"]["mode"] == "strict"
+    assert seen["kwargs"]["other_lib_dirs"] == [Path("lib")]
+    assert seen["kwargs"]["abb_lib_dir"] == Path("abb")
+    assert seen["kwargs"]["scan_root_only"] is True
+    assert seen["kwargs"]["debug"] is True
+    assert seen["kwargs"]["collect_variable_diagnostics"] is False
+    assert seen["kwargs"]["_analysis_provider"] is sattlint.build_variable_semantic_artifacts
+
+
+def test_module_entrypoint_exits_with_cli_status(monkeypatch):
+    monkeypatch.setattr(app, "cli", lambda: 7)
+
+    with pytest.raises(SystemExit, match="7") as exc_info:
+        runpy.run_module("sattlint.__main__", run_name="__main__")
+
+    assert exc_info.value.code == 7
 
 
 def test_run_cli_version_flag(capsys):

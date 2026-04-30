@@ -9,10 +9,13 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from lsprotocol.types import CompletionItem as LspCompletionItem
+from lsprotocol.types import CompletionItemKind, Diagnostic, DiagnosticSeverity, Position, Range
 
+from sattline_parser.models.ast_model import SourceSpan
 from sattlint.analyzers.registry import get_declared_lsp_analyzer_keys
 from sattlint.core.diagnostics import SemanticDiagnostic
-from sattlint.core.semantic import WorkspaceSourceDiscovery
+from sattlint.core.semantic import SymbolDefinition, SymbolReference, WorkspaceSourceDiscovery
 from sattlint.editor_api import load_workspace_snapshot
 from sattlint_lsp import _server_helpers as lsp_helpers
 from sattlint_lsp import workspace_store as lsp_workspace_store
@@ -1117,6 +1120,388 @@ def test_lsp_workspace_diagnostics_mode_and_rename_target_validation():
         lsp_helpers._validate_rename_target("ABCDEFGHIJKLMNOPQRSTU")
 
 
+def test_lsp_helper_path_range_and_message_utilities_cover_edge_cases(tmp_path):
+    assert lsp_helpers._is_program_path(Path("Main.S"))
+    assert lsp_helpers._is_diagnostic_path(Path("Main.G"))
+    assert lsp_helpers._path_startswith(("BasePicture", "Child"), ("basepicture",))
+    assert not lsp_helpers._path_startswith(("BasePicture",), ("BasePicture", "Child"))
+
+    no_span_definition = SymbolDefinition(
+        canonical_path="BasePicture.Child.LocalVar",
+        kind="local",
+        datatype="integer",
+        declaration_module_path=("BasePicture", "Child"),
+        display_module_path=("BasePicture", "Child"),
+        declaration_span=None,
+    )
+    assert lsp_helpers._range_for_definition(no_span_definition) is None
+
+    field_definition = SymbolDefinition(
+        canonical_path="BasePicture.Child.LocalVar",
+        kind="local",
+        datatype="integer",
+        declaration_module_path=("BasePicture", "Child"),
+        display_module_path=("BasePicture", "Child"),
+        field_path="Child.LocalVar",
+        declaration_span=SourceSpan(4, 2),
+    )
+    field_range = lsp_helpers._range_for_definition(field_definition)
+    assert field_range is not None
+    assert field_range.start.line == 3
+    assert field_range.start.character == 1
+    assert field_range.end.character == 9
+
+    default_diagnostic = lsp_helpers._diagnostic_from_message("broken", None, None)
+    assert default_diagnostic.severity == DiagnosticSeverity.Error
+    assert default_diagnostic.range.start.line == 0
+    assert default_diagnostic.range.end.character == 1
+
+    explicit_diagnostic = lsp_helpers._diagnostic_from_message("broken", 2, 3)
+    assert explicit_diagnostic.range.start.line == 1
+    assert explicit_diagnostic.range.start.character == 2
+    assert explicit_diagnostic.range.end.character == 10
+
+    failure_message = "\n\n  Root cause\nResolved targets (2)\n- LibA\n"
+    assert lsp_helpers._root_workspace_failure_message(failure_message) == "Root cause"
+    assert lsp_helpers._root_workspace_failure_message("\n\n") == "\n\n"
+
+    document_path = tmp_path / "Program" / "Main.s"
+    _write_text(document_path, '"x"\n"y"\n"z"\n')
+    assert lsp_helpers._document_uri_for_path(document_path).casefold() == document_path.resolve().as_uri().casefold()
+
+
+def test_lsp_helper_request_settings_and_merge_helpers_cover_optional_branches(tmp_path):
+    assert lsp_helpers._validated_text_document_uri(SimpleNamespace(text_document=SimpleNamespace(uri=1))) is None
+    assert (
+        lsp_helpers._validated_text_document_position(
+            SimpleNamespace(
+                text_document=SimpleNamespace(uri="file:///Main.s"),
+                position=SimpleNamespace(line=1, character="bad"),
+            )
+        )
+        is None
+    )
+    assert lsp_helpers._validated_change_request(
+        SimpleNamespace(
+            text_document=SimpleNamespace(uri="file:///Main.s", version=4),
+            content_changes=None,
+        )
+    ) == ("file:///Main.s", 4, [])
+    assert (
+        lsp_helpers._validated_rename_request(
+            SimpleNamespace(
+                text_document=SimpleNamespace(uri="file:///Main.s"),
+                position=SimpleNamespace(line=-1, character=0),
+                new_name="Renamed",
+            )
+        )
+        is None
+    )
+
+    assert LspSettings.from_initialization_options(None) == LspSettings()
+
+    settings = LspSettings.from_initialization_options(
+        {
+            "entryFile": " Program/Main.s ",
+            "mode": " RELEASE ",
+            "scanRootOnly": 1,
+            "enableVariableDiagnostics": 0,
+            "workspaceDiagnosticsMode": " OFF ",
+            "maxCompletionItems": "0",
+        }
+    )
+    assert settings.entry_file == "Program/Main.s"
+    assert settings.mode == "release"
+    assert settings.scan_root_only is True
+    assert settings.enable_variable_diagnostics is False
+    assert settings.workspace_diagnostics_mode == "off"
+    assert settings.max_completion_items == 1
+    assert LspSettings.from_initialization_options({"maxCompletionItems": "bad"}).max_completion_items == 100
+
+    diagnostic_b = Diagnostic(
+        range=Range(start=Position(line=3, character=0), end=Position(line=3, character=1)),
+        message="later",
+        severity=DiagnosticSeverity.Warning,
+        source="sattlint",
+    )
+    diagnostic_a = Diagnostic(
+        range=Range(start=Position(line=1, character=0), end=Position(line=1, character=1)),
+        message="earlier",
+        severity=DiagnosticSeverity.Warning,
+        source="sattlint",
+    )
+    merged_diagnostics = lsp_helpers._merge_unique_diagnostics((diagnostic_b,), (diagnostic_a, diagnostic_a))
+    assert tuple(d.message for d in merged_diagnostics) == ("earlier", "later")
+
+    local_definition = SymbolDefinition(
+        canonical_path="BasePicture.Child.LocalVar",
+        kind="local",
+        datatype="integer",
+        declaration_module_path=("BasePicture", "Child"),
+        display_module_path=("BasePicture", "Child"),
+        source_file="Main.s",
+        source_library="Program",
+        declaration_span=SourceSpan(4, 2),
+    )
+    parent_definition = SymbolDefinition(
+        canonical_path="BasePicture.Child.LocalVar",
+        kind="local",
+        datatype="integer",
+        declaration_module_path=("BasePicture",),
+        display_module_path=("BasePicture",),
+        source_file="Main.s",
+        source_library="Program",
+        declaration_span=SourceSpan(4, 2),
+    )
+    unrelated_definition = SymbolDefinition(
+        canonical_path="Elsewhere.Value",
+        kind="local",
+        datatype="integer",
+        declaration_module_path=("Elsewhere",),
+        display_module_path=("Elsewhere",),
+        source_file="Other.s",
+        source_library="Program",
+        declaration_span=SourceSpan(8, 4),
+    )
+    assert lsp_helpers._filter_visible_definitions([parent_definition, local_definition], "BasePicture.Child") == [
+        local_definition,
+        parent_definition,
+    ]
+    assert lsp_helpers._filter_visible_definitions([unrelated_definition], "BasePicture.Child") == [
+        unrelated_definition
+    ]
+
+    assert lsp_helpers._reference_expr_at_position("Alpha.Beta = 1;", line=0, column=6) == "Alpha.Beta"
+    assert lsp_helpers._reference_expr_at_position("Alpha.Beta = 1;", line=0, column=20) is None
+    assert lsp_helpers._reference_expr_at_position("Alpha.Beta = 1;", line=2, column=0) is None
+
+    assert lsp_helpers._semantic_completion_kind("local") == CompletionItemKind.Variable
+    assert lsp_helpers._semantic_completion_kind("field") == CompletionItemKind.Field
+    assert lsp_helpers._semantic_completion_kind("frame") == CompletionItemKind.Module
+    assert lsp_helpers._semantic_completion_kind("other") == CompletionItemKind.Text
+
+    primary_path = tmp_path / "Program" / "Main.s"
+    alternate_path = tmp_path / "Libs" / "Support" / "Main.s"
+    extra_path = tmp_path / "Libs" / "Backup" / "Main.s"
+    _write_text(primary_path, '"x"\n"y"\n"z"\n')
+    _write_text(alternate_path, '"x"\n"y"\n"z"\n')
+    _write_text(extra_path, '"x"\n"y"\n"z"\n')
+    direct_bundle = cast(
+        Any,
+        SimpleNamespace(
+            source_paths_by_key={("main.s", "program"): primary_path.resolve()},
+            source_paths_by_name={"main.s": (primary_path.resolve(), alternate_path.resolve())},
+        ),
+    )
+    unique_bundle = cast(
+        Any,
+        SimpleNamespace(
+            source_paths_by_key={},
+            source_paths_by_name={"single.s": (alternate_path.resolve(),)},
+        ),
+    )
+    ambiguous_bundle = cast(
+        Any,
+        SimpleNamespace(
+            source_paths_by_key={},
+            source_paths_by_name={"main.s": (primary_path.resolve(), alternate_path.resolve())},
+        ),
+    )
+    assert lsp_helpers._resolve_bundle_source_path(direct_bundle, "Main.s", "Program") == primary_path.resolve()
+    assert lsp_helpers._resolve_bundle_source_path(unique_bundle, "Single.s", None) == alternate_path.resolve()
+    assert lsp_helpers._resolve_bundle_source_path(ambiguous_bundle, "Main.s", None) is None
+
+    duplicate_definition = SymbolDefinition(
+        canonical_path="basepicture.child.localvar",
+        kind="local",
+        datatype="integer",
+        declaration_module_path=("BasePicture", "Child"),
+        display_module_path=("BasePicture", "Child"),
+        source_file="Main.s",
+        source_library="Program",
+        declaration_span=SourceSpan(4, 2),
+    )
+    merged_definitions = lsp_helpers._merge_definitions(
+        [local_definition], [duplicate_definition, unrelated_definition]
+    )
+    assert merged_definitions == [local_definition, unrelated_definition]
+
+    preferred_item = LspCompletionItem(label="Beta", kind=CompletionItemKind.Field)
+    fallback_item = LspCompletionItem(label="alpha", kind=CompletionItemKind.Variable)
+    duplicate_item = LspCompletionItem(label="Alpha", kind=CompletionItemKind.Variable)
+    merged_items = lsp_helpers._merge_completion_items([preferred_item], [fallback_item, duplicate_item], limit=2)
+    assert [(item.label, item.kind) for item in merged_items] == [
+        ("alpha", CompletionItemKind.Variable),
+        ("Beta", CompletionItemKind.Field),
+    ]
+
+    local_reference = SymbolReference(
+        canonical_path="BasePicture.Child.LocalVar",
+        source_file="Main.s",
+        source_library="Program",
+        line=9,
+        column=13,
+        length=8,
+        text="LocalVar",
+    )
+    duplicate_reference = SymbolReference(
+        canonical_path="basepicture.child.localvar",
+        source_file="main.s",
+        source_library="program",
+        line=9,
+        column=13,
+        length=8,
+        text="LocalVar",
+    )
+    external_reference = SymbolReference(
+        canonical_path="Elsewhere.Value",
+        source_file="Other.s",
+        source_library="Support",
+        line=4,
+        column=2,
+        length=5,
+        text="Value",
+    )
+    merged_references = lsp_helpers._merge_references([local_reference], [duplicate_reference, external_reference])
+    assert merged_references == [local_reference, external_reference]
+
+
+def test_lsp_helper_location_and_edit_helpers_cover_local_workspace_and_missing_targets(tmp_path):
+    active_document = tmp_path / "Program" / "Main.s"
+    dependency_document = tmp_path / "Libs" / "Support" / "Dep.s"
+    _write_text(active_document, '"x"\n"y"\n"z"\n')
+    _write_text(dependency_document, '"x"\n"y"\n"z"\n')
+    active_uri = active_document.resolve().as_uri()
+    dependency_uri = dependency_document.resolve().as_uri()
+
+    bundle = cast(
+        Any,
+        SimpleNamespace(
+            source_paths_by_key={("dep.s", "support"): dependency_document.resolve()},
+            source_paths_by_name={"dep.s": (dependency_document.resolve(),)},
+        ),
+    )
+
+    local_definition = SymbolDefinition(
+        canonical_path="BasePicture.LocalVar",
+        kind="local",
+        datatype="integer",
+        declaration_module_path=("BasePicture",),
+        display_module_path=("BasePicture",),
+        source_file="Main.s",
+        source_library="Program",
+        declaration_span=SourceSpan(3, 5),
+    )
+    dependency_definition = SymbolDefinition(
+        canonical_path="Support.Value",
+        kind="field",
+        datatype="integer",
+        declaration_module_path=("Support",),
+        display_module_path=("Support",),
+        source_file="Dep.s",
+        source_library="Support",
+        declaration_span=SourceSpan(6, 3),
+    )
+    no_span_definition = SymbolDefinition(
+        canonical_path="Missing.Value",
+        kind="field",
+        datatype="integer",
+        declaration_module_path=("Missing",),
+        display_module_path=("Missing",),
+        source_file="Missing.s",
+        source_library="Support",
+        declaration_span=None,
+    )
+    unresolved_definition = SymbolDefinition(
+        canonical_path="Unknown.Value",
+        kind="field",
+        datatype="integer",
+        declaration_module_path=("Unknown",),
+        display_module_path=("Unknown",),
+        source_file="Unknown.s",
+        source_library="Support",
+        declaration_span=SourceSpan(1, 1),
+    )
+
+    definition_locations = lsp_helpers._definition_locations_from_candidates(
+        [no_span_definition, local_definition, dependency_definition, unresolved_definition],
+        bundle=bundle,
+        local_snapshot=cast(Any, object()),
+        active_document_path=active_document,
+    )
+    assert [location.uri.casefold() for location in definition_locations] == [
+        active_uri.casefold(),
+        dependency_uri.casefold(),
+    ]
+
+    local_reference = SymbolReference(
+        canonical_path="BasePicture.LocalVar",
+        source_file="Main.s",
+        source_library="Program",
+        line=7,
+        column=3,
+        length=8,
+        text="LocalVar",
+    )
+    dependency_reference = SymbolReference(
+        canonical_path="Support.Value",
+        source_file="Dep.s",
+        source_library="Support",
+        line=2,
+        column=1,
+        length=5,
+        text="Value",
+    )
+    missing_reference = SymbolReference(
+        canonical_path="Missing.Value",
+        source_file="Missing.s",
+        source_library="Support",
+        line=1,
+        column=1,
+        length=5,
+        text="Value",
+    )
+    reference_locations = lsp_helpers._reference_locations_from_matches(
+        [local_reference, dependency_reference, missing_reference],
+        bundle=bundle,
+        active_document_path=active_document,
+    )
+    assert [location.uri.casefold() for location in reference_locations] == [
+        active_uri.casefold(),
+        dependency_uri.casefold(),
+    ]
+
+    merged_locations = lsp_helpers._merge_locations(
+        [reference_locations[1]], [reference_locations[0], reference_locations[1]]
+    )
+    assert merged_locations == [reference_locations[1], reference_locations[0]]
+
+    local_definition_uri = lsp_helpers._definition_uri(
+        local_definition, bundle=None, active_document_path=active_document
+    )
+    assert local_definition_uri is not None
+    assert local_definition_uri.casefold() == active_uri.casefold()
+    assert lsp_helpers._definition_uri(dependency_definition, bundle=None, active_document_path=active_document) is None
+    dependency_definition_uri = lsp_helpers._definition_uri(
+        dependency_definition, bundle=bundle, active_document_path=active_document
+    )
+    assert dependency_definition_uri is not None
+    assert dependency_definition_uri.casefold() == dependency_uri.casefold()
+
+    workspace_edits: dict[str, list[Any]] = {}
+    edit_range = Range(start=Position(line=0, character=0), end=Position(line=0, character=1))
+    lsp_helpers._append_workspace_edit(workspace_edits, active_uri, edit_range, "A")
+    lsp_helpers._append_workspace_edit(workspace_edits, active_uri, edit_range, "B")
+    assert [edit.new_text for edit in workspace_edits[active_uri]] == ["A", "B"]
+
+    hover = lsp_helpers._build_hover(dependency_definition)
+    assert hover is not None
+    hover_contents = cast(Any, hover.contents)
+    assert "**Value**" in hover_contents.value
+    assert "Kind: field" in hover_contents.value
+    assert "Path: Support.Value" in hover_contents.value
+
+
 def test_workspace_entry_files_prefers_unreferenced_programs(tmp_path):
     prog_a = tmp_path / "Programs" / "A.s"
     prog_b = tmp_path / "Programs" / "B.s"
@@ -1163,3 +1548,110 @@ def test_workspace_entry_files_falls_back_when_all_programs_are_referenced(tmp_p
     assert lsp_workspace_store._workspace_entry_files(discovery) == tuple(
         sorted((prog_a.resolve(), prog_b.resolve()), key=lambda p: p.as_posix().casefold())
     )
+
+
+def test_workspace_snapshot_store_resolve_entry_file_edges(tmp_path):
+    store = lsp_workspace_store.WorkspaceSnapshotStore()
+    workspace_root = tmp_path.resolve()
+    program = tmp_path / "Programs" / "Main.s"
+    other_program = tmp_path / "Programs" / "Other.s"
+    library = tmp_path / "Libs" / "Support.l"
+
+    _write_text(program, '"x"\n"y"\n"z"\n')
+    _write_text(other_program, '"x"\n"y"\n"z"\n')
+    _write_text(library, "Support\n")
+
+    assert store.resolve_entry_file(library) is None
+
+    discovery = WorkspaceSourceDiscovery(
+        workspace_root=workspace_root,
+        source_dirs=(program.parent.resolve(), library.parent.resolve()),
+        program_files=(program.resolve(),),
+        dependency_files=(library.resolve(),),
+        program_files_by_stem={"main": (program.resolve(),)},
+        dependency_files_by_stem={"support": (library.resolve(),)},
+    )
+    store._workspace_root = workspace_root
+    store._discovery = discovery
+    store._settings = SimpleNamespace(entry_file="Programs/missing.txt")
+    store._entry_files = (program.resolve(),)
+
+    assert store.resolve_entry_file(library) == program.resolve()
+
+    store._settings = SimpleNamespace(entry_file="Programs/Main.s")
+    store._entry_files = (program.resolve(), other_program.resolve())
+    assert store.resolve_entry_file(library) == program.resolve()
+
+    store._settings = SimpleNamespace(entry_file="Programs/missing.txt")
+    assert store.resolve_entry_file(library) is None
+
+
+def test_workspace_snapshot_store_cache_prefetch_and_invalidation_edges(tmp_path, monkeypatch):
+    from concurrent.futures import Future
+
+    store = lsp_workspace_store.WorkspaceSnapshotStore()
+    workspace_root = tmp_path.resolve()
+    entry = (tmp_path / "Programs" / "Main.s").resolve()
+    sibling = (tmp_path / "Programs" / "Other.s").resolve()
+    dependency = (tmp_path / "Libs" / "Support.l").resolve()
+
+    for path in (entry, sibling, dependency):
+        _write_text(path, '"x"\n"y"\n"z"\n')
+
+    store._workspace_root = workspace_root
+    store._settings = SimpleNamespace(entry_file="")
+    store._discovery = WorkspaceSourceDiscovery(
+        workspace_root=workspace_root,
+        source_dirs=(entry.parent,),
+        program_files=(entry, sibling),
+        dependency_files=(dependency,),
+        program_files_by_stem={
+            "main": (entry,),
+            "other": (sibling,),
+        },
+        dependency_files_by_stem={"support": (dependency,)},
+    )
+    store._entry_files = (entry, sibling)
+
+    state_entry = store._state_for_entry_locked(entry)
+    state_sibling = store._state_for_entry_locked(sibling)
+    bundle = SnapshotBundle(
+        snapshot=cast(Any, object()),
+        source_paths_by_name={},
+        source_paths_by_key={},
+        entry_file=entry,
+        cache_key=state_entry.cache_key,
+        source_files=(entry,),
+    )
+    state_entry.bundle = bundle
+    state_entry.stale = False
+    state_entry.last_error = RuntimeError("old error")
+    state_sibling.stale = True
+
+    submitted: list[Path] = []
+
+    def _submit_refresh(state):
+        submitted.append(state.entry_file)
+        future = Future()
+        future.set_result(bundle)
+        state.future = future
+        return future
+
+    monkeypatch.setattr(store, "_submit_refresh_locked", _submit_refresh)
+
+    assert store.prefetch_entries() == (sibling,)
+    assert store.get_cached_bundle(entry) is bundle
+    state_entry.stale = True
+    assert store.get_cached_bundle(entry, allow_stale=False) is None
+    assert store.get_cached_bundle(entry, allow_stale=True) is bundle
+    assert store.last_error_for_entry(entry) is state_entry.last_error
+    assert store.last_error_for_entry(tmp_path / "missing.s") is None
+
+    store._source_file_to_entry_keys[dependency] = {state_entry.cache_key, "missing"}
+    affected = store.invalidate_path(dependency)
+    assert affected == (entry,)
+    assert state_entry.stale is True
+    assert state_entry.generation == 1
+    assert state_entry.last_error is None
+
+    assert store.get_affected_entry_keys(entry) == (state_entry.cache_key,)

@@ -68,9 +68,7 @@ Phase 4 (If promoted): convert this file into an active implementation plan by r
 
 ## Concrete Steps
 
-Run from repository root:
-
-    cd "c:/Users/SQHJ/OneDrive - Novo Nordisk/Workspace/GitHub.com/SattLint"
+Run commands from repository root.
 
 Readiness checks:
 

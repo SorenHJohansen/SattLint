@@ -114,11 +114,12 @@ def run_mutation_analysis(
     for kind in mutation_kinds:
         mutated_sources = _mutate_literal(source, literal_type="bool" if "bool" in kind else "numeric")
         for mutated in mutated_sources:
+            bp: BasePicture | None
             try:
-                bp: BasePicture | None = parser_core_parse_source_text(mutated)
-                if bp is None:
-                    continue
+                bp = parser_core_parse_source_text(mutated)
             except Exception:
+                bp = None
+            if bp is None:
                 continue
 
             location = f"{source_file.as_posix()}"

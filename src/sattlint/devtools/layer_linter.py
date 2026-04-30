@@ -140,7 +140,7 @@ def check_file_for_arch_violations(file_path: Path) -> list[ArchViolation]:
                     )
     except Exception:
         # If we can't parse the file, skip it (but we might want to log this)
-        pass
+        return violations
 
     return violations
 

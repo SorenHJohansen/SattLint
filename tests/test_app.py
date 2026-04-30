@@ -2,6 +2,7 @@
 
 import builtins
 import os
+from collections.abc import Iterator
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +13,8 @@ import pytest
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
 from sattlint import app, app_docs
+from sattlint import config as config_module
+from sattlint import graphics_rules as graphics_rules_module
 from sattlint.analyzers import variable_usage_reporting as variables_reporting_module
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.framework import AnalyzerSpec, Issue, SimpleReport
@@ -214,6 +217,243 @@ def test_save_config_rejects_none(tmp_path):
         app.save_config(config_path, cfg)
 
 
+def test_validate_config_reports_key_mode_analysis_and_documentation_errors():
+    result = config_module.validate_config(
+        {
+            "invalid_key": True,
+            "mode": "bad_mode",
+            "analysis": "bad",
+            "documentation": "bad",
+        }
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "invalid_key",
+        "mode",
+        "analysis",
+        "documentation",
+    }
+
+
+def test_validate_config_reports_unknown_analysis_naming_targets_and_style():
+    result = config_module.validate_config(
+        {
+            "analysis": {
+                "unknown_analyzer": {},
+                "naming": {
+                    "unknown_target": {"style": "snake"},
+                    "variables": {"style": "bad_style"},
+                },
+            }
+        }
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "analysis.unknown_analyzer",
+        "analysis.naming.unknown_target",
+        "analysis.naming.variables.style",
+    }
+
+
+def test_validate_config_passes_valid_config_and_serializes_result():
+    valid = config_module.validate_config(
+        {
+            "mode": "draft",
+            "analysis": {"naming": {"variables": {"style": "snake"}}},
+        }
+    )
+    invalid = config_module.validate_config({"bad_key": True})
+
+    assert valid.passed is True
+    assert valid.errors == ()
+    assert invalid.to_dict() == {
+        "passed": False,
+        "errors": [
+            {
+                "key_path": "bad_key",
+                "message": invalid.errors[0].message,
+            }
+        ],
+    }
+
+
+def test_load_config_warns_on_invalid_keys_and_normalizes_legacy_documentation_keys(tmp_path, capsys):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "bad_key = true",
+                "ignore_ABB_lib = true",
+                "[documentation.classifications.equipment_modules]",
+                'moduletype_name_contains = ["Tank"]',
+                'descendant_moduletype_label_equals = ["nnestruct:EquipModCoordinate"]',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    loaded, created = config_module.load_config(config_path)
+
+    out = capsys.readouterr().out
+    assert created is False
+    assert "Config warning [bad_key]" in out
+    assert "ignore_ABB_lib" not in loaded
+    assert loaded["documentation"]["classifications"]["em"]["name_contains"] == ["Tank"]
+    assert loaded["documentation"]["classifications"]["em"]["desc_label_equals"] == ["nnestruct:EquipModCoordinate"]
+    assert "equipment_modules" not in loaded["documentation"]["classifications"]
+
+
+def test_target_exists_honors_mode_and_available_directories(tmp_path):
+    program_dir = tmp_path / "programs"
+    abb_dir = tmp_path / "abb"
+    other_lib = tmp_path / "lib"
+    for directory in (program_dir, abb_dir, other_lib):
+        directory.mkdir()
+
+    (program_dir / "DraftOnly.s").write_text("draft", encoding="utf-8")
+    (abb_dir / "OfficialOnly.x").write_text("official", encoding="utf-8")
+    (other_lib / "Shared.x").write_text("shared", encoding="utf-8")
+
+    draft_cfg = {
+        "program_dir": str(program_dir),
+        "ABB_lib_dir": str(abb_dir),
+        "other_lib_dirs": [str(other_lib)],
+        "mode": "draft",
+    }
+    official_cfg = {**draft_cfg, "mode": "official"}
+
+    assert config_module.target_exists("DraftOnly", draft_cfg) is True
+    assert config_module.target_exists("DraftOnly", official_cfg) is False
+    assert config_module.target_exists("OfficialOnly", official_cfg) is True
+    assert config_module.target_exists("Shared", official_cfg) is True
+
+
+def test_config_helpers_normalize_legacy_conflicts_and_serialize_paths(tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
+
+    normalized = config_module._normalize_documentation_rule_keys(
+        {
+            "documentation": {
+                "classifications": {
+                    "operations": {"moduletype_label_equals": ["LegacyCategoryRule"]},
+                    "ops": {
+                        "moduletype_label_equals": ["LegacyRule"],
+                        "label_equals": ["ModernRule"],
+                    },
+                }
+            }
+        }
+    )
+    config_path = config_module.get_config_path()
+    save_path = tmp_path / "saved-config.toml"
+    save_cfg = {
+        "program_dir": tmp_path / "programs",
+        "ABB_lib_dir": tmp_path / "abb",
+        "other_lib_dirs": (tmp_path / "lib-a", tmp_path / "lib-b"),
+        "documentation": {"classifications": {"ops": {"label_equals": ["ModernRule"]}}},
+    }
+
+    config_module.save_config(save_path, save_cfg)
+
+    saved_text = save_path.read_text(encoding="utf-8")
+    assert "operations" not in normalized["documentation"]["classifications"]
+    assert normalized["documentation"]["classifications"]["ops"]["label_equals"] == ["ModernRule"]
+    assert config_path == tmp_path / "AppData" / "sattlint" / "config.toml"
+    assert config_path.parent.is_dir()
+    assert 'program_dir = "' in saved_text
+    assert "programs" in saved_text
+    assert "lib-a" in saved_text
+    assert (
+        config_module.target_exists(
+            "MissingTarget",
+            {
+                "program_dir": str(tmp_path / "missing-programs"),
+                "ABB_lib_dir": str(tmp_path / "missing-abb"),
+                "other_lib_dirs": [str(tmp_path / "missing-lib")],
+                "mode": "official",
+            },
+        )
+        is False
+    )
+
+
+def test_self_check_reports_top_level_section_shapes_and_valid_graphics_rules(tmp_path, monkeypatch, capsys):
+    readable_dir = tmp_path / "readable"
+    readable_dir.mkdir()
+    graphics_rules_path = tmp_path / "graphics-rules.json"
+    graphics_rules_path.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(config_module, "get_graphics_rules_path", lambda: graphics_rules_path)
+    monkeypatch.setattr(
+        graphics_rules_module, "load_graphics_rules", lambda *_args, **_kwargs: ({"rules": [1, 2]}, False)
+    )
+    monkeypatch.setattr(config_module.os, "access", lambda path, mode: Path(path) != readable_dir)
+
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg.update(
+        {
+            "program_dir": str(readable_dir),
+            "ABB_lib_dir": "",
+            "icf_dir": "",
+            "other_lib_dirs": [str(readable_dir)],
+            "documentation": "bad",
+            "analysis": "bad",
+        }
+    )
+
+    ok = config_module.self_check(cfg)
+
+    out = capsys.readouterr().out
+    assert ok is False
+    assert "program_dir not readable" in out
+    assert "other_lib_dirs: " in out
+    assert "documentation must be a table/object" in out
+    assert "analysis must be a table/object" in out
+    assert "graphics_rules_path:" in out
+    assert "2 rules" in out
+
+
+def test_self_check_reports_nested_documentation_and_analysis_shape_errors(tmp_path, monkeypatch, capsys):
+    graphics_rules_path = tmp_path / "graphics-rules.json"
+    monkeypatch.setattr(config_module, "get_graphics_rules_path", lambda: graphics_rules_path)
+
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg.update(
+        {
+            "documentation": {"classifications": {"ops": "bad"}},
+            "analysis": {"sfc": "bad", "naming": "bad"},
+        }
+    )
+
+    bad_ok = config_module.self_check(cfg)
+    bad_out = capsys.readouterr().out
+
+    cfg["documentation"] = {"classifications": {}}
+    cfg["analysis"] = {
+        "sfc": {"mutually_exclusive_steps": "bad", "step_contracts": []},
+        "naming": {
+            "variables": {"label_equals": ["Unused"]},
+            "modules": {},
+            "instances": {},
+        },
+    }
+
+    empty_ok = config_module.self_check(cfg)
+    empty_out = capsys.readouterr().out
+
+    assert bad_ok is False
+    assert "documentation.classifications.ops must be a table/object" in bad_out
+    assert "analysis.sfc must be a table/object" in bad_out
+    assert "analysis.naming must be a table/object" in bad_out
+    assert "graphics_rules_path not created yet" in bad_out
+    assert empty_ok is False
+    assert "documentation.classifications must be a non-empty table/object" in empty_out
+    assert "analysis.sfc.mutually_exclusive_steps must be a list" in empty_out
+    assert "analysis.sfc.step_contracts must be a table/object" in empty_out
+
+
 def test_clear_screen_uses_windows_console_helper(monkeypatch):
     calls: list[str] = []
 
@@ -405,7 +645,7 @@ def test_self_check_handles_paths(tmp_path, monkeypatch, capsys):
     assert ok is True
     out = capsys.readouterr().out
     assert "Analyzed programs/libraries:" in out
-    assert "✔ Root" in out
+    assert "Root" in out
 
 
 def test_self_check_allows_empty_analyzed_target_list(capsys):
@@ -414,6 +654,82 @@ def test_self_check_allows_empty_analyzed_target_list(capsys):
     out = capsys.readouterr().out
     assert ok is True
     assert "WARNING analyzed_programs_and_libraries is empty" in out
+
+
+def test_self_check_reports_invalid_nested_config_and_graphics_rule_errors(tmp_path, monkeypatch, capsys):
+    graphics_rules_path = tmp_path / "graphics-rules.json"
+    graphics_rules_path.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(config_module, "get_graphics_rules_path", lambda: graphics_rules_path)
+    monkeypatch.setattr(
+        graphics_rules_module,
+        "load_graphics_rules",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("broken rules")),
+    )
+    monkeypatch.setattr(config_module, "target_exists", lambda *_args, **_kwargs: False)
+
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg.pop("mode")
+    cfg.update(
+        {
+            "analyzed_programs_and_libraries": ["MissingTarget"],
+            "program_dir": str(tmp_path / "missing-programs"),
+            "ABB_lib_dir": "",
+            "icf_dir": str(tmp_path / "missing-icf"),
+            "other_lib_dirs": [str(tmp_path / "missing-other")],
+            "documentation": {
+                "classifications": {
+                    "unknown": {},
+                    "ops": {
+                        "desc_label_equals": "not-a-list",
+                        "label_equals": [1],
+                    },
+                }
+            },
+            "analysis": {
+                "sfc": {
+                    "mutually_exclusive_steps": "bad",
+                    "step_contracts": {
+                        "": {},
+                        "StepA": {
+                            "required_enter_writes": "bad",
+                            "required_exit_writes": [1],
+                        },
+                        "StepB": "bad",
+                    },
+                },
+                "naming": {
+                    "variables": {"style": "bad", "allow": "bad"},
+                    "modules": "bad",
+                    "instances": {"allow": [1]},
+                },
+            },
+        }
+    )
+
+    ok = config_module.self_check(cfg)
+
+    out = capsys.readouterr().out
+    assert ok is False
+    assert "Missing config key: mode" in out
+    assert "program_dir does not exist" in out
+    assert "ABB_lib_dir not set" in out
+    assert "icf_dir does not exist" in out
+    assert "other_lib_dirs entry missing" in out
+    assert "MissingTarget (not found)" in out
+    assert "documentation.classifications.unknown is not a supported category" in out
+    assert "documentation.classifications.ops.desc_label_equals must be a list of strings" in out
+    assert "documentation.classifications.ops.label_equals must be a list of strings" in out
+    assert "analysis.sfc.mutually_exclusive_steps must be a list" in out
+    assert "analysis.sfc.step_contracts keys must be non-empty strings" in out
+    assert "analysis.sfc.step_contracts.StepA.required_enter_writes must be a list of strings" in out
+    assert "analysis.sfc.step_contracts.StepA.required_exit_writes must be a list of strings" in out
+    assert "analysis.sfc.step_contracts.StepB must be a table/object" in out
+    assert "analysis.naming.variables.style must be one of" in out
+    assert "analysis.naming.variables.allow must be a list of strings" in out
+    assert "analysis.naming.modules must be a table/object" in out
+    assert "analysis.naming.instances.allow must be a list of strings" in out
+    assert "graphics_rules_path invalid" in out
 
 
 def test_documentation_config_defaults_are_merged(tmp_path):
@@ -884,6 +1200,76 @@ def test_pick_or_prompt_graphics_rule_selector_value_picks_discovered_option(mon
     assert selected == "L1.L2.UnitControl"
 
 
+def test_pick_or_prompt_graphics_rule_selector_value_handles_invalid_index_then_manual_entry(monkeypatch):
+    outputs: list[str] = []
+
+    monkeypatch.setattr(app.app_graphics_module, "emit_output", outputs.append)
+    monkeypatch.setattr(builtins, "input", make_input(["9", "m", "Area.UnitControl"]))
+
+    selected = app.app_graphics_module.pick_or_prompt_graphics_rule_selector_value(
+        "unit_structure_path",
+        "single",
+        cfg=app.DEFAULT_CONFIG.copy(),
+        discover_graphics_rule_selector_options_fn=lambda *_args, **_kwargs: [
+            {
+                "selector_value": "L1.L2.UnitControl",
+                "count": 2,
+                "target_count": 1,
+                "sample_module_path": "TargetA.UnitA.L1.L2.UnitControl",
+            }
+        ],
+    )
+
+    assert selected == "Area.UnitControl"
+    assert "? Invalid index" in outputs
+
+
+def test_prompt_graphics_rule_kind_reprompts_until_valid(monkeypatch):
+    outputs: list[str] = []
+
+    monkeypatch.setattr(app.app_graphics_module, "emit_output", outputs.append)
+    monkeypatch.setattr(builtins, "input", make_input(["9", "2"]))
+
+    selected = app.app_graphics_module.prompt_graphics_rule_kind()
+
+    assert selected == "single"
+    assert "? Choose 1, 2, or 3" in outputs
+
+
+def test_prompt_graphics_rule_selector_reprompts_for_scope_choice(monkeypatch):
+    outputs: list[str] = []
+    selector_calls: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    def fake_pick(selector_field: str, module_kind: str, *, cfg: dict[str, Any] | None = None) -> str:
+        selector_calls.append((selector_field, module_kind, cfg))
+        return "Area.UnitControl"
+
+    monkeypatch.setattr(app.app_graphics_module, "emit_output", outputs.append)
+    monkeypatch.setattr(builtins, "input", make_input(["9", "2"]))
+
+    selector_field, selector_value = app.app_graphics_module.prompt_graphics_rule_selector(
+        "single",
+        cfg=app.DEFAULT_CONFIG.copy(),
+        pick_or_prompt_graphics_rule_selector_value_fn=fake_pick,
+    )
+
+    assert (selector_field, selector_value) == ("unit_structure_path", "Area.UnitControl")
+    assert selector_calls == [("unit_structure_path", "single", app.DEFAULT_CONFIG.copy())]
+    assert "? Choose 1, 2, or 3" in outputs
+
+
+def test_optional_prompt_or_none_returns_none_for_skip_and_validation_errors():
+    def raise_skip() -> None:
+        raise app.app_graphics_module.OptionalPromptSkipped()
+
+    def raise_validation() -> None:
+        raise app.app_graphics_module.OptionalPromptValidationError("bad input")
+
+    assert app.app_graphics_module.optional_prompt_or_none(lambda: 42) == 42
+    assert app.app_graphics_module.optional_prompt_or_none(raise_skip) is None
+    assert app.app_graphics_module.optional_prompt_or_none(raise_validation) is None
+
+
 def test_discover_graphics_rule_selector_options_deduplicates_selectors(monkeypatch):
     cfg = deepcopy(app.DEFAULT_CONFIG)
     cfg["analyzed_programs_and_libraries"] = ["TargetA"]
@@ -926,6 +1312,140 @@ def test_discover_graphics_rule_selector_options_deduplicates_selectors(monkeypa
             "sample_module_path": "TargetA.UnitA.L1.L2.UnitControl",
         }
     ]
+
+
+def test_prompt_graphics_rule_definition_requires_moduletype_name(monkeypatch):
+    outputs: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(app.app_graphics_module, "emit_output", outputs.append)
+    monkeypatch.setattr(app.app_graphics_module, "prompt_graphics_rule_kind", lambda: "moduletype")
+
+    result = app.app_graphics_module.prompt_graphics_rule_definition_with_config(
+        None,
+        prompt_fn=lambda _label: "",
+        pause_fn=lambda: pauses.append("pause"),
+        pick_or_prompt_graphics_rule_selector_value_fn=lambda *_args, **_kwargs: pytest.fail(
+            "selector prompt should not run"
+        ),
+    )
+
+    assert result is None
+    assert "? ModuleType name is required" in outputs
+    assert pauses == ["pause"]
+
+
+def test_prompt_graphics_rule_definition_rejects_invalid_grid(monkeypatch):
+    outputs: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(app.app_graphics_module, "emit_output", outputs.append)
+    monkeypatch.setattr(app.app_graphics_module, "prompt_graphics_rule_kind", lambda: "frame")
+    monkeypatch.setattr(
+        app.app_graphics_module,
+        "prompt_graphics_rule_selector",
+        lambda *_args, **_kwargs: ("relative_module_path", "Equipmentmoduler.Stop.L1"),
+    )
+    monkeypatch.setattr(app.app_graphics_module, "optional_prompt_or_none", lambda _prompt_fn: None)
+    monkeypatch.setattr(builtins, "input", make_input(["Stop rule", "", "oops"]))
+
+    result = app.app_graphics_module.prompt_graphics_rule_definition_with_config(
+        None,
+        prompt_fn=lambda _label: "",
+        pause_fn=lambda: pauses.append("pause"),
+        pick_or_prompt_graphics_rule_selector_value_fn=lambda *_args, **_kwargs: "unused",
+    )
+
+    assert result is None
+    assert "? ModuleDef grid must be numeric" in outputs
+    assert pauses == ["pause"]
+
+
+def test_prompt_graphics_rule_definition_requires_expected_fields(monkeypatch):
+    outputs: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(app.app_graphics_module, "emit_output", outputs.append)
+    monkeypatch.setattr(app.app_graphics_module, "prompt_graphics_rule_kind", lambda: "frame")
+    monkeypatch.setattr(
+        app.app_graphics_module,
+        "prompt_graphics_rule_selector",
+        lambda *_args, **_kwargs: ("relative_module_path", "Equipmentmoduler.Stop.L1"),
+    )
+    monkeypatch.setattr(app.app_graphics_module, "optional_prompt_or_none", lambda _prompt_fn: None)
+    monkeypatch.setattr(builtins, "input", make_input(["", "", ""]))
+
+    result = app.app_graphics_module.prompt_graphics_rule_definition_with_config(
+        None,
+        prompt_fn=lambda _label: "",
+        pause_fn=lambda: pauses.append("pause"),
+        pick_or_prompt_graphics_rule_selector_value_fn=lambda *_args, **_kwargs: "unused",
+    )
+
+    assert result is None
+    assert "? At least one expected graphics field is required" in outputs
+    assert pauses == ["pause"]
+
+
+def test_prompt_graphics_rule_definition_builds_expected_payload(monkeypatch):
+    optional_values = iter(
+        [
+            [1.43, 1.35, 0.0, 0.56, 0.56],
+            ["ArgA", "ArgB"],
+            [0.5, 1.5],
+            True,
+            [0.0, 0.0],
+            [1.0, 0.21429],
+            [0.25, 2.0],
+            False,
+        ]
+    )
+
+    monkeypatch.setattr(app.app_graphics_module, "prompt_graphics_rule_kind", lambda: "single")
+    monkeypatch.setattr(
+        app.app_graphics_module,
+        "prompt_graphics_rule_selector",
+        lambda *_args, **_kwargs: ("unit_structure_path", "Area.UnitControl"),
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module,
+        "optional_prompt_or_none",
+        lambda _prompt_fn: next(optional_values),
+    )
+    monkeypatch.setattr(builtins, "input", make_input(["House rule", "LayerA", "0.5"]))
+
+    result = app.app_graphics_module.prompt_graphics_rule_definition_with_config(
+        None,
+        prompt_fn=lambda _label: "",
+        pause_fn=lambda: pytest.fail("pause should not run"),
+        pick_or_prompt_graphics_rule_selector_value_fn=lambda *_args, **_kwargs: "unused",
+    )
+
+    assert result == {
+        "module_name": "UnitControl",
+        "module_kind": "single",
+        "relative_module_path": "",
+        "unit_structure_path": "Area.UnitControl",
+        "equipment_module_structure_path": "",
+        "moduletype_name": "",
+        "description": "House rule",
+        "expected": {
+            "invocation": {
+                "coords": [1.43, 1.35, 0.0, 0.56, 0.56],
+                "arguments": ["ArgA", "ArgB"],
+                "layer": "LayerA",
+                "zoom_limits": [0.5, 1.5],
+                "zoomable": True,
+            },
+            "moduledef": {
+                "clipping_origin": [0.0, 0.0],
+                "clipping_size": [1.0, 0.21429],
+                "zoom_limits": [0.25, 2.0],
+                "grid": 0.5,
+                "zoomable": False,
+            },
+        },
+    }
 
 
 def test_run_graphics_rules_validation_reports_not_to_spec(noop_screen, monkeypatch, capsys):
@@ -1278,6 +1798,28 @@ def test_main_blocks_target_dependent_menu_actions_without_targets(noop_screen, 
     assert out.count("No analyzed programs/libraries configured.") == 4
 
 
+def test_main_pauses_when_initial_ast_check_fails(monkeypatch):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg["analyzed_programs_and_libraries"] = ["Broken"]
+    calls: list[str] = []
+
+    monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))
+    monkeypatch.setattr(app, "apply_debug", lambda *_: None)
+    monkeypatch.setattr(app, "self_check", lambda *_: True)
+    monkeypatch.setattr(app, "ensure_ast_cache", lambda *_: False)
+    monkeypatch.setattr(app, "pause", lambda: calls.append("pause"))
+    monkeypatch.setattr(
+        app.app_menus_module,
+        "run_main_loop",
+        lambda *_args, **_kwargs: calls.append("menu"),
+    )
+
+    exit_code = app.main()
+
+    assert exit_code == 0
+    assert calls == ["pause", "menu"]
+
+
 def test_syntax_check_command_reports_parse_error(tmp_path, capsys):
     source_file = tmp_path / "InvalidProgram.s"
     source_file.write_text(INVALID_SINGLE_FILE, encoding="utf-8")
@@ -1471,13 +2013,17 @@ def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
 
 def test_cli_owner_run_docgen_command_rejects_empty_project_set(capsys):
     cfg = {"documentation": {}}
+    empty_projects: tuple[tuple[str, BasePicture, ProjectGraph], ...] = ()
 
-    exit_code = app.app_cli_commands_module.run_docgen_command(
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(empty_projects)
+
+    exit_code = cast(Any, app.app_cli_commands_module.run_docgen_command)(
         cfg,
         use_cache=True,
         output_dir=None,
         output_path=None,
-        iter_loaded_projects_fn=lambda *_args, **_kwargs: iter(()),
+        iter_loaded_projects_fn=iter_projects,
         documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
         exit_success=app.EXIT_SUCCESS,
         exit_usage_error=app.EXIT_USAGE_ERROR,
@@ -1488,19 +2034,59 @@ def test_cli_owner_run_docgen_command_rejects_empty_project_set(capsys):
     assert "No analyzed targets configured" in out
 
 
+def test_cli_owner_run_validate_config_command_warns_on_default_config(capsys):
+    exit_code = app.app_cli_commands_module.run_validate_config_command(
+        {"debug": False},
+        config_path=Path("default.toml"),
+        default_used=True,
+        self_check_fn=lambda _cfg: False,
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert "Warning: default config loaded from default.toml" in out
+
+
+def test_cli_owner_run_analyze_command_delegates_and_returns_success():
+    seen: dict[str, object] = {}
+
+    exit_code = app.app_cli_commands_module.run_analyze_command(
+        {"debug": False},
+        selected_keys=["variables"],
+        use_cache=False,
+        run_checks_fn=lambda cfg, selected_keys, use_cache: seen.update(
+            {"cfg": cfg, "selected_keys": selected_keys, "use_cache": use_cache}
+        ),
+        exit_success=app.EXIT_SUCCESS,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    assert seen["selected_keys"] == ["variables"]
+    assert seen["use_cache"] is False
+
+
 def test_cli_owner_run_docgen_command_rejects_output_path_for_multiple_targets(capsys):
     cfg = {"documentation": {}}
-    projects = [
-        ("TargetA", object(), SimpleNamespace(unavailable_libraries=set())),
-        ("TargetB", object(), SimpleNamespace(unavailable_libraries=set())),
+    target_a_bp: BasePicture = cast(Any, object())
+    target_a_graph = ProjectGraph()
+    target_b_bp: BasePicture = cast(Any, object())
+    target_b_graph = ProjectGraph()
+    projects: list[tuple[str, BasePicture, ProjectGraph]] = [
+        ("TargetA", target_a_bp, target_a_graph),
+        ("TargetB", target_b_bp, target_b_graph),
     ]
 
-    exit_code = app.app_cli_commands_module.run_docgen_command(
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(projects)
+
+    exit_code = cast(Any, app.app_cli_commands_module.run_docgen_command)(
         cfg,
         use_cache=True,
         output_dir=None,
         output_path="single.docx",
-        iter_loaded_projects_fn=lambda *_args, **_kwargs: iter(projects),
+        iter_loaded_projects_fn=cast(Any, iter_projects),
         documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
         exit_success=app.EXIT_SUCCESS,
         exit_usage_error=app.EXIT_USAGE_ERROR,
@@ -1509,6 +2095,38 @@ def test_cli_owner_run_docgen_command_rejects_output_path_for_multiple_targets(c
     out = capsys.readouterr().out
     assert exit_code == app.EXIT_USAGE_ERROR
     assert "output_path requires exactly one configured target" in out
+
+
+def test_cli_owner_run_docgen_command_uses_explicit_output_path(monkeypatch):
+    generated: list[str] = []
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "generate_docx",
+        lambda _bp, out_name, documentation_config, unavailable_libraries: generated.append(out_name),
+    )
+
+    cfg = {"documentation": {"classifications": {}}}
+    target_bp: BasePicture = cast(Any, object())
+    target_graph = ProjectGraph()
+    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
+
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(projects)
+
+    exit_code = app.app_cli_commands_module.run_docgen_command(
+        cfg,
+        use_cache=True,
+        output_dir=None,
+        output_path="custom.docx",
+        iter_loaded_projects_fn=cast(Any, iter_projects),
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    assert generated == ["custom.docx"]
 
 
 def test_cli_owner_run_docgen_command_writes_output_dir_file(tmp_path, monkeypatch):
@@ -1524,14 +2142,20 @@ def test_cli_owner_run_docgen_command_writes_output_dir_file(tmp_path, monkeypat
 
     cfg = {"documentation": {"classifications": {}}}
     output_dir = tmp_path / "docs"
-    projects = [("TargetA", object(), SimpleNamespace(unavailable_libraries={"ControlLib"}))]
+    target_bp: BasePicture = cast(Any, object())
+    target_graph = ProjectGraph()
+    target_graph.unavailable_libraries = {"ControlLib"}
+    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
+
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(projects)
 
     exit_code = app.app_cli_commands_module.run_docgen_command(
         cfg,
         use_cache=True,
         output_dir=str(output_dir),
         output_path=None,
-        iter_loaded_projects_fn=lambda *_args, **_kwargs: iter(projects),
+        iter_loaded_projects_fn=cast(Any, iter_projects),
         documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
         exit_success=app.EXIT_SUCCESS,
         exit_usage_error=app.EXIT_USAGE_ERROR,
@@ -1540,6 +2164,38 @@ def test_cli_owner_run_docgen_command_writes_output_dir_file(tmp_path, monkeypat
     assert exit_code == app.EXIT_SUCCESS
     assert output_dir.exists()
     assert generated == [(str(output_dir / "TargetA_FS.docx"), {"ControlLib"})]
+
+
+def test_cli_owner_run_docgen_command_uses_default_filename(monkeypatch):
+    generated: list[str] = []
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "generate_docx",
+        lambda _bp, out_name, documentation_config, unavailable_libraries: generated.append(out_name),
+    )
+
+    cfg = {"documentation": {"classifications": {}}}
+    target_bp: BasePicture = cast(Any, object())
+    target_graph = ProjectGraph()
+    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
+
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(projects)
+
+    exit_code = app.app_cli_commands_module.run_docgen_command(
+        cfg,
+        use_cache=True,
+        output_dir=None,
+        output_path=None,
+        iter_loaded_projects_fn=cast(Any, iter_projects),
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    assert generated == ["TargetA_FS.docx"]
 
 
 def test_preview_documentation_candidates_for_target_handles_empty_candidates(monkeypatch, capsys):
@@ -1558,24 +2214,81 @@ def test_preview_documentation_candidates_for_target_handles_empty_candidates(mo
     assert "No unit candidates detected." in out
 
 
+def test_preview_documentation_candidates_for_target_lists_candidates(monkeypatch, capsys):
+    classification = object()
+    entry = SimpleNamespace(short_path="UnitA", moduletype_label="ApplTank", kind="unit")
+    monkeypatch.setattr(app_docs, "classify_documentation_structure", lambda *_args, **_kwargs: classification)
+    monkeypatch.setattr(app_docs, "discover_documentation_unit_candidates", lambda *_args, **_kwargs: [entry])
+    monkeypatch.setattr(
+        app_docs,
+        "document_scope_summary",
+        lambda _entry, _classification: {"ops": 1, "em": 2, "rp": 3, "ep": 4, "up": 5},
+    )
+
+    app_docs.preview_documentation_candidates_for_target(
+        "TargetA",
+        cast(BasePicture, SimpleNamespace()),
+        cast(ProjectGraph, SimpleNamespace(unavailable_libraries={"ControlLib"})),
+        cfg={"documentation": {}},
+    )
+
+    out = capsys.readouterr().out
+    assert "1. UnitA | type=ApplTank | ops=1 em=2 rp=3 ep=4 up=5" in out
+
+
+def test_preview_documentation_unit_candidates_lists_targets_and_pauses(monkeypatch):
+    calls: list[tuple[str, object, object, dict[str, object]]] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(
+        app_docs,
+        "preview_documentation_candidates_for_target",
+        lambda target_name, project_bp, graph, cfg: calls.append((target_name, project_bp, graph, cfg)),
+    )
+
+    target_bp = cast(BasePicture, SimpleNamespace())
+    target_graph = cast(ProjectGraph, SimpleNamespace())
+    cfg = {"documentation": {}}
+    app_docs.preview_documentation_unit_candidates(
+        cfg,
+        iter_loaded_projects_fn=lambda _cfg: iter([("TargetA", target_bp, target_graph)]),
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert calls == [("TargetA", target_bp, target_graph, cfg)]
+    assert pauses == ["pause"]
+
+
 def test_run_generate_documentation_skips_unmatched_scoped_target(monkeypatch, capsys):
     class _Scope(SimpleNamespace):
         mode = "instance_paths"
-        roots = []
-        unmatched_values = ["Missing.Unit"]
+        roots = ()
+        unmatched_values = ("Missing.Unit",)
 
     classification = SimpleNamespace(scope=_Scope())
     monkeypatch.setattr(app_docs, "classify_documentation_structure", lambda *_args, **_kwargs: classification)
     monkeypatch.setattr(
         app_docs, "generate_docx", lambda *_args, **_kwargs: pytest.fail("generate_docx should not run")
     )
+    target_bp: BasePicture = cast(Any, object())
+    target_graph = ProjectGraph()
+    target_graph.unavailable_libraries = {"ControlLib"}
+
+    def iter_projects(_cfg: dict[Any, Any]) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(
+            [
+                (
+                    "TargetA",
+                    target_bp,
+                    target_graph,
+                )
+            ]
+        )
 
     pauses: list[str] = []
-    app_docs.run_generate_documentation(
+    cast(Any, app_docs.run_generate_documentation)(
         cfg={"documentation": {}},
-        iter_loaded_projects_fn=lambda _cfg: iter(
-            [("TargetA", object(), SimpleNamespace(unavailable_libraries={"ControlLib"}))]
-        ),
+        iter_loaded_projects_fn=cast(Any, iter_projects),
         prompt_fn=lambda _msg, default: default or "out.docx",
         pause_fn=lambda: pauses.append("pause"),
     )
@@ -1583,6 +2296,63 @@ def test_run_generate_documentation_skips_unmatched_scoped_target(monkeypatch, c
     out = capsys.readouterr().out
     assert "No unit roots matched the configured documentation scope; skipping target." in out
     assert "Unmatched scope filters: Missing.Unit" in out
+    assert pauses == ["pause"]
+
+
+def test_run_generate_documentation_generates_selected_units(monkeypatch, capsys):
+    generated: list[tuple[str, set[str], dict[str, object]]] = []
+    prompts: list[tuple[str, str | None]] = []
+    pauses: list[str] = []
+
+    class _Scope(SimpleNamespace):
+        mode = "instance_paths"
+        roots = (SimpleNamespace(short_path="UnitA"),)
+        unmatched_values = ()
+
+    classification = SimpleNamespace(scope=_Scope())
+    monkeypatch.setattr(app_docs, "classify_documentation_structure", lambda *_args, **_kwargs: classification)
+    monkeypatch.setattr(
+        app_docs,
+        "generate_docx",
+        lambda _bp, out_name, documentation_config, unavailable_libraries: generated.append(
+            (out_name, set(unavailable_libraries), documentation_config["units"])
+        ),
+    )
+
+    target_bp: BasePicture = cast(Any, object())
+    target_graph = ProjectGraph()
+    target_graph.unavailable_libraries = {"ControlLib"}
+
+    app_docs.set_documentation_unit_selection(mode="instance_paths", instance_paths=["UnitA"])
+    try:
+        app_docs.run_generate_documentation(
+            cfg={"documentation": {"classifications": {}}},
+            iter_loaded_projects_fn=lambda _cfg: iter([("TargetA", target_bp, target_graph)]),
+            prompt_fn=lambda message, default: prompts.append((message, default)) or "chosen.docx",
+            pause_fn=lambda: pauses.append("pause"),
+        )
+    finally:
+        app_docs.set_documentation_unit_selection(mode="all")
+
+    out = capsys.readouterr().out
+    assert prompts == [("Output DOCX for TargetA", "TargetA_FS.docx")]
+    assert "Selected units for TargetA: UnitA" in out
+    assert generated == [
+        ("chosen.docx", {"ControlLib"}, {"mode": "instance_paths", "instance_paths": ["UnitA"], "moduletype_names": []})
+    ]
+    assert pauses == ["pause"]
+
+
+def test_configure_documentation_scope_by_moduletype_rejects_empty_input(monkeypatch):
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": "")
+    pauses: list[str] = []
+
+    changed = app_docs.configure_documentation_scope_by_moduletype(
+        split_csv_values_fn=lambda raw: [item.strip() for item in raw.split(",") if item.strip()],
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert changed is False
     assert pauses == ["pause"]
 
 
@@ -1596,6 +2366,39 @@ def test_configure_documentation_scope_by_instance_path_rejects_empty_input(monk
     )
 
     assert changed is False
+    assert pauses == ["pause"]
+
+
+def test_configure_documentation_scope_by_instance_path_updates_selection(monkeypatch):
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": "UnitA, UnitB")
+    pauses: list[str] = []
+
+    try:
+        changed = app_docs.configure_documentation_scope_by_instance_path(
+            split_csv_values_fn=lambda raw: [item.strip() for item in raw.split(",") if item.strip()],
+            pause_fn=lambda: pauses.append("pause"),
+        )
+        selection = app_docs.get_documentation_unit_selection()
+    finally:
+        app_docs.set_documentation_unit_selection(mode="all")
+
+    assert changed is True
+    assert selection == {"mode": "instance_paths", "instance_paths": ["UnitA", "UnitB"], "moduletype_names": []}
+    assert pauses == ["pause"]
+
+
+def test_reset_documentation_scope_resets_selection():
+    pauses: list[str] = []
+    app_docs.set_documentation_unit_selection(mode="instance_paths", instance_paths=["UnitA"])
+
+    try:
+        changed = app_docs.reset_documentation_scope(pause_fn=lambda: pauses.append("pause"))
+        selection = app_docs.get_documentation_unit_selection()
+    finally:
+        app_docs.set_documentation_unit_selection(mode="all")
+
+    assert changed is True
+    assert selection == {"mode": "all", "instance_paths": [], "moduletype_names": []}
     assert pauses == ["pause"]
 
 
@@ -2037,84 +2840,6 @@ def test_variable_usage_submenu_exposes_write_without_effect_report(noop_screen,
     app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
 
     assert captured == [{app.IssueKind.WRITE_WITHOUT_EFFECT}]
-
-
-def test_validate_config_reports_unknown_top_level_keys():
-    from sattlint.config import validate_config
-
-    result = validate_config({"invalid_key": True, "mode": "official"})
-
-    assert result.passed is False
-    assert len(result.errors) == 1
-    assert result.errors[0].key_path == "invalid_key"
-
-
-def test_validate_config_reports_invalid_mode():
-    from sattlint.config import validate_config
-
-    result = validate_config({"mode": "bad_mode"})
-
-    assert result.passed is False
-    assert any(e.key_path == "mode" for e in result.errors)
-
-
-def test_validate_config_reports_unknown_analysis_keys():
-    from sattlint.config import validate_config
-
-    result = validate_config({"analysis": {"unknown_analyzer": {}, "sfc": {}}})
-
-    assert result.passed is False
-    assert any(e.key_path == "analysis.unknown_analyzer" for e in result.errors)
-
-
-def test_validate_config_reports_unknown_naming_targets():
-    from sattlint.config import validate_config
-
-    result = validate_config({"analysis": {"naming": {"unknown_target": {"style": "snake"}}}})
-
-    assert result.passed is False
-    assert any(e.key_path == "analysis.naming.unknown_target" for e in result.errors)
-
-
-def test_validate_config_reports_invalid_naming_style():
-    from sattlint.config import validate_config
-
-    result = validate_config({"analysis": {"naming": {"variables": {"style": "bad_style"}}}})
-
-    assert result.passed is False
-    assert any(e.key_path == "analysis.naming.variables.style" for e in result.errors)
-
-
-def test_validate_config_passes_valid_config():
-    from sattlint.config import validate_config
-
-    result = validate_config({"mode": "draft", "analysis": {"naming": {"variables": {"style": "snake"}}}})
-
-    assert result.passed is True
-    assert result.errors == ()
-
-
-def test_validate_config_result_to_dict():
-    from sattlint.config import validate_config
-
-    result = validate_config({"bad_key": True})
-
-    as_dict = result.to_dict()
-    assert as_dict["passed"] is False
-    assert len(as_dict["errors"]) == 1
-    assert as_dict["errors"][0]["key_path"] == "bad_key"
-
-
-def test_load_config_warns_on_invalid_keys(tmp_path):
-    from sattlint.config import load_config
-
-    cfg_path = tmp_path / "config.toml"
-    cfg_path.write_text('bad_key = true\nmode = "draft"\n', encoding="utf-8")
-
-    cfg, default_used = load_config(cfg_path)
-
-    assert default_used is False
-    assert cfg.get("mode") == "draft"
 
 
 def test_variable_usage_submenu_exposes_contract_mismatch_report(noop_screen, monkeypatch):

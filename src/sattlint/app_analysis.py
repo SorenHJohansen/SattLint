@@ -678,7 +678,8 @@ def analyzer_catalog_menu(
             options,
             intro=(
                 "This view exposes the registry-backed analyzers directly. "
-                "Only the default analyzer set is exposed here so low-confidence analyzers never run from the CLI suite."
+                "Only the default analyzer set is exposed here so low-confidence analyzers "
+                "never run from the CLI suite."
             ),
         )
 

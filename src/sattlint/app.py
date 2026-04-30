@@ -859,8 +859,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             if not self_check(cfg) and not confirm("Self-check failed. Continue?"):
                 return 0
-            if _has_analyzed_targets(cfg):
-                ensure_ast_cache(cfg)
+            if _has_analyzed_targets(cfg) and not ensure_ast_cache(cfg):
+                pause()
         app_menus_module.run_main_loop(
             cfg,
             clear_screen_fn=clear_screen,

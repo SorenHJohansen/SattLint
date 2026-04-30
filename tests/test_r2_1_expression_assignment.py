@@ -60,6 +60,17 @@ def test_real_to_int_assignment_rejected(tmp_path):
     _assert_validation_error(result, "real", "integer")
 
 
+def test_anytype_expression_assignment_to_real_allowed(tmp_path):
+    code = _program(
+        declarations="   Flag: boolean := True;\n   Wildcard: AnyType;\n   RealValue: real := 0.0;",
+        statement="RealValue = IF Flag THEN Wildcard ELSE Wildcard ENDIF;",
+    )
+
+    result = _write_and_validate(tmp_path, "AnyTypeExpressionToReal.s", code)
+
+    assert result.ok is True, result.message
+
+
 def test_int_plus_real_arithmetic_expression(tmp_path):
     code = _program(
         declarations="   IntValue: integer := 5;\n   RealValue: real := 2.5;\n   Result: real := 0.0;",

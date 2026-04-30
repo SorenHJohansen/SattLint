@@ -1,5 +1,7 @@
 """Module comparison, version drift analysis, and debug helpers."""
 
+# ruff: noqa: E501
+
 import logging
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field, fields, is_dataclass
