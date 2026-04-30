@@ -723,6 +723,36 @@ class SemanticSnapshot:
             return candidates
         return ()
 
+    def to_snapshot_dict(self) -> dict[str, Any]:
+        """Serialize symbol resolution state for invariant verification."""
+        return {
+            "entry_file": str(self.entry_file),
+            "workspace_root": str(self.workspace_root),
+            "definitions": [
+                {
+                    "canonical_path": d.canonical_path,
+                    "kind": d.kind,
+                    "datatype": d.datatype,
+                    "declaration_module_path": list(d.declaration_module_path),
+                    "display_module_path": list(d.display_module_path),
+                    "field_path": d.field_path,
+                    "source_file": d.source_file,
+                    "source_library": d.source_library,
+                }
+                for d in self.definitions
+            ],
+            "call_signatures": [
+                {
+                    "name": c.name,
+                    "call_kind": c.call_kind,
+                    "module_path": list(c.module_path),
+                    "source_file": c.source_file,
+                    "source_library": c.source_library,
+                }
+                for c in self.call_signatures
+            ],
+        }
+
     def find_call_signatures(
         self,
         query: str = "",

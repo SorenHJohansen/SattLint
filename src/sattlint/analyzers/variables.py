@@ -46,10 +46,9 @@ from ..resolution.common import (
 )
 from ..resolution.context_builder import ContextBuilder
 from ..resolution.scope import ScopeContext
-from .reset_contamination import detect_implicit_latching, detect_reset_contamination
-from .sattline_builtins import get_function_signature
-from .usage_tracker import UsageTracker
 from ._variables_effect_flow import EffectFlowTracker
+from .reset_contamination import detect_implicit_latching, detect_reset_contamination
+from .usage_tracker import UsageTracker
 from .validators import AnyTypeFieldContract, ContractMappingValidator, MinMaxValidator, StringMappingValidator
 from .variable_issue_collection import (
     _add_global_scope_minimization_issues,

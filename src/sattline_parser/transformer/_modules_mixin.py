@@ -197,7 +197,7 @@ class _ModulesMixin:
                     moduletype_defs.extend([x for x in tree.children if isinstance(x, ModuleTypeDef)])
                 elif tree.data == const.GRAMMAR_VALUE_LOCALVARIABLES:
                     localvariables.extend([x for x in tree.children if isinstance(x, Variable)])
-                elif tree.data == const.GRAMMAR_VALUE_SUBMODULES:
+                elif tree.data == const.TREE_TAG_SUBMODULES:
                     for ch in tree.children:
                         if isinstance(ch, list):
                             submodules.extend(
@@ -254,7 +254,7 @@ class _ModulesMixin:
                     moduleparameters.extend([x for x in tree.children if isinstance(x, Variable)])
                 elif tree.data == const.GRAMMAR_VALUE_LOCALVARIABLES:
                     localvariables.extend([x for x in tree.children if isinstance(x, Variable)])
-                elif tree.data == const.GRAMMAR_VALUE_SUBMODULES:
+                elif tree.data == const.TREE_TAG_SUBMODULES:
                     for ch in tree.children:
                         if isinstance(ch, list):
                             submodules.extend(
@@ -387,7 +387,7 @@ class _ModulesMixin:
                     moduleparameters.extend([x for x in it.children if isinstance(x, Variable)])
                 elif it.data == const.GRAMMAR_VALUE_LOCALVARIABLES:
                     localvariables.extend([x for x in it.children if isinstance(x, Variable)])
-                elif it.data == const.GRAMMAR_VALUE_SUBMODULES:
+                elif it.data == const.TREE_TAG_SUBMODULES:
                     for ch in it.children:
                         if isinstance(ch, list):
                             submodules.extend(

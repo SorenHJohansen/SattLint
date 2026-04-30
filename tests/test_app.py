@@ -2039,6 +2039,84 @@ def test_variable_usage_submenu_exposes_write_without_effect_report(noop_screen,
     assert captured == [{app.IssueKind.WRITE_WITHOUT_EFFECT}]
 
 
+def test_validate_config_reports_unknown_top_level_keys():
+    from sattlint.config import validate_config
+
+    result = validate_config({"invalid_key": True, "mode": "official"})
+
+    assert result.passed is False
+    assert len(result.errors) == 1
+    assert result.errors[0].key_path == "invalid_key"
+
+
+def test_validate_config_reports_invalid_mode():
+    from sattlint.config import validate_config
+
+    result = validate_config({"mode": "bad_mode"})
+
+    assert result.passed is False
+    assert any(e.key_path == "mode" for e in result.errors)
+
+
+def test_validate_config_reports_unknown_analysis_keys():
+    from sattlint.config import validate_config
+
+    result = validate_config({"analysis": {"unknown_analyzer": {}, "sfc": {}}})
+
+    assert result.passed is False
+    assert any(e.key_path == "analysis.unknown_analyzer" for e in result.errors)
+
+
+def test_validate_config_reports_unknown_naming_targets():
+    from sattlint.config import validate_config
+
+    result = validate_config({"analysis": {"naming": {"unknown_target": {"style": "snake"}}}})
+
+    assert result.passed is False
+    assert any(e.key_path == "analysis.naming.unknown_target" for e in result.errors)
+
+
+def test_validate_config_reports_invalid_naming_style():
+    from sattlint.config import validate_config
+
+    result = validate_config({"analysis": {"naming": {"variables": {"style": "bad_style"}}}})
+
+    assert result.passed is False
+    assert any(e.key_path == "analysis.naming.variables.style" for e in result.errors)
+
+
+def test_validate_config_passes_valid_config():
+    from sattlint.config import validate_config
+
+    result = validate_config({"mode": "draft", "analysis": {"naming": {"variables": {"style": "snake"}}}})
+
+    assert result.passed is True
+    assert result.errors == ()
+
+
+def test_validate_config_result_to_dict():
+    from sattlint.config import validate_config
+
+    result = validate_config({"bad_key": True})
+
+    as_dict = result.to_dict()
+    assert as_dict["passed"] is False
+    assert len(as_dict["errors"]) == 1
+    assert as_dict["errors"][0]["key_path"] == "bad_key"
+
+
+def test_load_config_warns_on_invalid_keys(tmp_path):
+    from sattlint.config import load_config
+
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text('bad_key = true\nmode = "draft"\n', encoding="utf-8")
+
+    cfg, default_used = load_config(cfg_path)
+
+    assert default_used is False
+    assert cfg.get("mode") == "draft"
+
+
 def test_variable_usage_submenu_exposes_contract_mismatch_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))

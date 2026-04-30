@@ -216,7 +216,7 @@ def _summary_output_for_analyzer(analyzer_key: str) -> str:
 def _base_delivery_metadata_by_analyzer() -> dict[str, AnalyzerDeliveryMetadata]:
     shared_fixtures = ("tests/fixtures/sample_sattline_files",)
     return {
-        SEMANTIC_LAYER_ANALYZER_KEY: AnalyzerDeliveryMetadata(
+        "sattline-semantics": AnalyzerDeliveryMetadata(
             scope="workspace",
             implementation_bucket="shared-semantic-core",
             lsp_exposed=True,
@@ -225,6 +225,17 @@ def _base_delivery_metadata_by_analyzer() -> dict[str, AnalyzerDeliveryMetadata]
                 "tests/test_pipeline.py",
             ),
             min_fixture_set=shared_fixtures,
+        ),
+        "symbolic_lite": AnalyzerDeliveryMetadata(
+            scope="cross-module",
+            implementation_bucket="shared-semantic-core",
+            acceptance_tests=(
+                "tests/test_dataflow.py",
+                "tests/test_sattline_semantics.py",
+            ),
+            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY,),
+            min_fixture_set=shared_fixtures,
+            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY,),
         ),
         "variables": AnalyzerDeliveryMetadata(
             scope="workspace",

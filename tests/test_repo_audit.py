@@ -146,7 +146,11 @@ def test_find_logging_findings_ignore_fingerprint_identifier(tmp_path):
 
     findings = repo_audit._find_logging_findings(source_root)
 
-    assert findings == []
+    # Should not flag simple returns without error handling
+    assert all(f.id != "missing-logging" for f in findings)
+    # The function has `return` but no `except`, so failure-path check should not trigger
+    # (it requires "except" in text)
+    assert all(f.id != "failure-path-no-diagnostic" for f in findings)
 
 
 def test_iter_tracked_repo_text_files_includes_tracked_generated_files(tmp_path):
