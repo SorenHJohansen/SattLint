@@ -993,6 +993,37 @@ def _find_logging_findings(
                     suggestion="Keep prints in CLI entry points; use logging or reports in library code.",
                 )
             )
+        # Missing logging: library modules with error handling but no logging
+        if rel_path not in ALLOWED_PRINT_MODULES and "except" in text:
+            has_logging = "logging" in text or "logger" in text.lower()
+            if not has_logging:
+                findings.append(
+                    Finding(
+                        id="missing-logging",
+                        category="logging-observability",
+                        severity="low",
+                        confidence="medium",
+                        message="Library module has error handling but no logging statements.",
+                        path=rel_path,
+                        suggestion="Add logging for exception paths in library code.",
+                    )
+                )
+        # Failure-path instrumentation: functions with error handling but no diagnostics
+        if "def " in text and ("try:" in text or "except" in text or "raise " in text):
+            text.splitlines()
+            has_any_diagnostic = "logging" in text or "logger" in text.lower() or PRINT_CALL_RE.search(text)
+            if not has_any_diagnostic:
+                findings.append(
+                    Finding(
+                        id="failure-path-no-diagnostic",
+                        category="logging-observability",
+                        severity="low",
+                        confidence="low",
+                        message="Function has early returns or raises but no diagnostic output.",
+                        path=rel_path,
+                        suggestion="Add logging or structured error reporting for failure paths.",
+                    )
+                )
     return findings
 
 
@@ -1326,6 +1357,58 @@ def _find_structural_report_findings(root: Path = REPO_ROOT) -> list[Finding]:
                 source="structural-reports",
             )
         )
+    # Richer maintainability heuristics
+    source_context = _build_python_source_scan_context(root / "src")
+    for path, ast_tree in source_context.asts.items():
+        rel_path = _relative_path(path)
+        if rel_path in SKIP_SELF_SCAN_PATHS:
+            continue
+        # Overloaded function: too many top-level functions in one module
+        function_defs = [node for node in ast.walk(ast_tree) if isinstance(node, ast.FunctionDef)]
+        if len(function_defs) > 20:
+            structural_findings.append(
+                Finding(
+                    id="maintainability-overloaded-module",
+                    category="maintainability",
+                    severity="low",
+                    confidence="medium",
+                    message=f"Module has {len(function_defs)} functions; consider splitting.",
+                    path=rel_path,
+                    detail=f"function_count={len(function_defs)}",
+                    suggestion="Split large modules into smaller, focused modules.",
+                )
+            )
+        # Weak test detection: test files with no assertions
+        if rel_path.startswith("tests/") and "test_" in rel_path:
+            has_assertion = any(
+                isinstance(node, ast.Assert | ast.Raise)
+                or (
+                    isinstance(node, ast.Expr)
+                    and isinstance(node.value, ast.Call)
+                    and (
+                        (isinstance(node.value.func, ast.Name) and node.value.func.id in ("assert",))
+                        or (
+                            isinstance(node.value.func, ast.Attribute)
+                            and node.value.func.attr == "raises"
+                            and isinstance(node.value.func.value, ast.Name)
+                            and node.value.func.value.id == "pytest"
+                        )
+                    )
+                )
+                for node in ast.walk(ast_tree)
+            )
+            if not has_assertion:
+                structural_findings.append(
+                    Finding(
+                        id="weak-test-no-assertions",
+                        category="test-quality",
+                        severity="low",
+                        confidence="medium",
+                        message="Test file contains no assertions or raises.",
+                        path=rel_path,
+                        suggestion="Add meaningful assertions to test functions.",
+                    )
+                )
     return structural_findings
 
 

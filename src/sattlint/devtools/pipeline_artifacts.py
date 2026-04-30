@@ -32,6 +32,10 @@ def payload_from_context(key: str) -> Callable[[PipelineArtifactContext], dict[s
     return _build_payload
 
 
+def _build_none_payload(_context: PipelineArtifactContext) -> None:
+    return None
+
+
 DEFAULT_PIPELINE_ARTIFACT_PRODUCERS: tuple[PipelineArtifactProducer, ...] = (
     PipelineArtifactProducer("progress", payload_from_context("progress")),
     PipelineArtifactProducer("artifact_registry", payload_from_context("artifact_registry")),
@@ -57,8 +61,14 @@ DEFAULT_PIPELINE_ARTIFACT_PRODUCERS: tuple[PipelineArtifactProducer, ...] = (
     PipelineArtifactProducer("rule_metrics", payload_from_context("rule_metrics")),
     PipelineArtifactProducer("profiling_summary", payload_from_context("profiling_summary")),
     PipelineArtifactProducer("performance_budget", payload_from_context("performance_budget")),
+    PipelineArtifactProducer("mutation_results", payload_from_context("mutation_results")),
     PipelineArtifactProducer("status", payload_from_context("status")),
     PipelineArtifactProducer("summary", payload_from_context("summary")),
+    PipelineArtifactProducer("accuracy_metrics", _build_none_payload),
+    PipelineArtifactProducer("ai_templates", _build_none_payload),
+    PipelineArtifactProducer("differential", _build_none_payload),
+    PipelineArtifactProducer("production_summary", _build_none_payload),
+    PipelineArtifactProducer("symbolic_summary", _build_none_payload),
 )
 
 
