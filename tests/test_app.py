@@ -332,6 +332,7 @@ def test_target_exists_honors_mode_and_available_directories(tmp_path):
 
 def test_config_helpers_normalize_legacy_conflicts_and_serialize_paths(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
 
     normalized = config_module._normalize_documentation_rule_keys(
         {
@@ -360,7 +361,12 @@ def test_config_helpers_normalize_legacy_conflicts_and_serialize_paths(tmp_path,
     saved_text = save_path.read_text(encoding="utf-8")
     assert "operations" not in normalized["documentation"]["classifications"]
     assert normalized["documentation"]["classifications"]["ops"]["label_equals"] == ["ModernRule"]
-    assert config_path == tmp_path / "AppData" / "sattlint" / "config.toml"
+    expected_config_path = (
+        tmp_path / "AppData" / "sattlint" / "config.toml"
+        if config_module.os.name == "nt"
+        else tmp_path / "xdg-config" / "sattlint" / "config.toml"
+    )
+    assert config_path == expected_config_path
     assert config_path.parent.is_dir()
     assert 'program_dir = "' in saved_text
     assert "programs" in saved_text
