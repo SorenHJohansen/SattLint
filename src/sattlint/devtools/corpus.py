@@ -551,6 +551,8 @@ def _build_strict_finding_collection(
     if result.ok:
         return FindingCollection(())
     rule_id = f"syntax.{result.stage}"
+    path = sanitize_path_for_report(result.file_path, repo_root=repo_root)
+    command = f"sattlint syntax-check {path}" if path else None
     finding = FindingRecord(
         id=rule_id,
         rule_id=rule_id,
@@ -562,10 +564,13 @@ def _build_strict_finding_collection(
         analyzer="syntax-check",
         artifact="findings",
         location=FindingLocation(
-            path=sanitize_path_for_report(result.file_path, repo_root=repo_root),
+            path=path,
             line=result.line,
             column=result.column,
         ),
+        owner_surface="syntax-check",
+        minimal_reproducer=command,
+        suggested_next_command=command,
         data={
             "stage": result.stage,
         },

@@ -51,6 +51,13 @@ repos:
         args: [-m, pytest, -q, --tb=short]
         pass_filenames: false
         always_run: true
+      - id: ratchet-policy
+        name: Ratchet policy gate
+        language: system
+        entry: python scripts/run_repo_python.py
+        args: [scripts/check_ratchet_policy.py]
+        pass_filenames: false
+        always_run: true
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

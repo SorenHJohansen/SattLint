@@ -106,10 +106,13 @@ pytest tests/ -v
 # Run tests with the enforced coverage baseline
 pytest -q --tb=short
 
+# Run the local pre-push gate (includes repo-wide pytest-quality and ratchet-policy hooks)
+python -m pre_commit run --all-files
+
 # Audit installed Python dependencies
 pip-audit
 
-# Run the repository audit
+# Run the repository audit report (audit and CI workflow)
 sattlint-repo-audit --profile full --output-dir artifacts/audit
 ```
 
@@ -141,8 +144,10 @@ Raise that threshold incrementally as test surface expands instead of jumping di
 ```bash
 pip install -e .[dev]
 pre-commit install
-pre-commit run --all-files
+python -m pre_commit run --all-files
 ```
+
+Use `python -m pre_commit run --all-files` as the local pre-push gate. It runs the repo-wide pre-commit hooks, including `pytest-quality` and `ratchet-policy`.
 
 ## Project Structure
 

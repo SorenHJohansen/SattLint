@@ -271,7 +271,6 @@ def test_clear_screen_falls_back_to_cls_before_ansi(monkeypatch):
     assert writes == []
 
 
-@pytest.mark.skipif(os.name != "nt", reason="Windows-specific")
 def test_configure_windows_console_api_sets_wide_char_signature():
     import ctypes
 

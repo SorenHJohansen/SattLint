@@ -26,6 +26,7 @@ PIPELINE_ROUTE_CASES = {
 
 REPO_AUDIT_ROUTE_CASES = {
     "text-scan": ("README.md", "LICENSE"),
+    "local-ci-parity": ("tests/test_repo_audit.py", "LICENSE"),
     "documented-commands": ("docs/references/cli-commands.md", "src/sattline_parser/api.py"),
     "unused-config-keys": ("src/sattlint/config.py", "README.md"),
     "architecture": ("src/sattlint/devtools/repo_audit.py", "README.md"),
@@ -34,6 +35,7 @@ REPO_AUDIT_ROUTE_CASES = {
     "logging": ("src/sattlint/devtools/repo_audit.py", "README.md"),
     "ai-gc": ("src/sattlint/devtools/ai_gc.py", "README.md"),
     "ignored-repo-paths": ("scripts/run_repo_python.py", "README.md"),
+    "harness-freshness": ("AGENTS.md", "README.md"),
     "coverage": ("coverage.xml", "README.md"),
     "public-readiness": ("SECURITY.md", "src/sattlint/devtools/repo_audit.py"),
     "verify-recommendations": ("src/sattlint/devtools/pipeline_checks.py", "src/sattlint/config.py"),

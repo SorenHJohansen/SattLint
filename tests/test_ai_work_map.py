@@ -9,6 +9,7 @@ from sattlint.devtools.ai_work_map import (
     build_session_context_map,
     render_ai_work_map,
     render_session_context_map,
+    verify_ai_harness_freshness,
 )
 
 
@@ -17,11 +18,14 @@ def test_build_ai_work_map_contains_validation_routes_and_catalogs():
 
     assert manifest["kind"] == "sattlint.ai_work_map"
     assert manifest["schema_version"] == 1
+    assert manifest["default_entrypoint"]["id"] == "planning-context"
     assert any(route["surface"].startswith("Parser, grammar") for route in manifest["validation_routes"])
+    assert any(rule["id"] == "focused-validation-first" for rule in manifest["blocking_invariant_rules"])
     assert any(entry["name"] == "CLI App Instructions" for entry in manifest["instructions"])
     assert any(entry["name"] == "CLI App Menu" for entry in manifest["agents"])
     assert any(check["id"] == "ruff" for check in manifest["pipeline_checks"])
     assert any(check["id"] == "documented-commands" for check in manifest["repo_audit_checks"])
+    assert any(check["id"] == "harness-freshness" for check in manifest["repo_audit_checks"])
 
 
 def test_build_ai_work_map_collects_owner_suite_plans():
@@ -43,6 +47,7 @@ def test_build_session_context_map_keeps_only_session_start_routing_fields():
 
     assert manifest["kind"] == "sattlint.ai_session_context_map"
     assert manifest["schema_version"] == 1
+    assert manifest["default_entrypoint"]["id"] == "planning-context"
     assert "pipeline_checks" not in manifest
     assert "repo_audit_checks" not in manifest
     assert "validation_routes" not in manifest
@@ -72,9 +77,14 @@ def test_build_planning_context_returns_agent_instruction_and_owner_suite_matche
     )
 
     assert planning["primary_agent"] == "CLI App Menu"
+    assert planning["owner_surfaces"] == ["cli"]
+    assert planning["owner_test_targets"] == ["tests/test_repo_audit.py"]
     assert any(item["name"] == "CLI App Instructions" for item in planning["instruction_files"])
     assert any("tests/test_app.py" in suite["tests"] for suite in planning["nearest_owner_suites"])
     assert any("tests/test_app.py" in command for command in planning["first_validation_commands"])
+    assert planning["finish_gate_template"]["selected_surface"] == "repo-audit"
+    assert any(rule["id"] == "focused-validation-first" for rule in planning["blocking_invariants"])
+    assert any(rule["id"] == "cli-menu-tests-stay-in-sync" for rule in planning["blocking_invariants"])
 
 
 def test_build_planning_context_session_map_supports_session_start_without_full_catalogs():
@@ -88,6 +98,8 @@ def test_build_planning_context_session_map_supports_session_start_without_full_
     assert planning["primary_agent"] == "CLI App Menu"
     assert any("tests/test_app.py" in suite["tests"] for suite in planning["nearest_owner_suites"])
     assert planning["first_validation_commands"]
+    assert planning["finish_gate_template"] is None
+    assert any(rule["id"] == "focused-validation-first" for rule in planning["blocking_invariants"])
 
 
 def test_parse_frontmatter_handles_plain_files_lists_and_booleans(tmp_path):
@@ -259,8 +271,156 @@ def test_main_write_check_and_stdout_modes(tmp_path, monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out) == {"kind": "work"}
 
 
+def test_verify_ai_harness_freshness_reports_generated_map_and_metadata_drift(tmp_path):
+    (tmp_path / "src" / "sattlint").mkdir(parents=True)
+    (tmp_path / "src" / "sattlint" / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    output_path = tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
+    session_output_path = (
+        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-session-context-map.json"
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    session_output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text('{"kind": "stale"}\n', encoding="utf-8")
+    session_output_path.write_text('{"kind": "stale-session"}\n', encoding="utf-8")
+
+    work_map = {
+        "instructions": [
+            {
+                "name": "Live Instruction",
+                "file_path": ".github/instructions/live.instructions.md",
+                "apply_to": ["src/sattlint/app.py", "docs/missing/**"],
+            },
+            {
+                "name": "Broken Instruction",
+                "file_path": ".github/instructions/broken.instructions.md",
+                "apply_to": [],
+            },
+        ],
+        "agents": [
+            {
+                "name": "Live Agent",
+                "file_path": ".github/agents/live.agent.md",
+                "user_invocable": True,
+            },
+            {
+                "name": "Orphan Agent",
+                "file_path": ".github/agents/orphan.agent.md",
+                "user_invocable": True,
+            },
+            {
+                "name": "Internal Agent",
+                "file_path": ".github/agents/internal.agent.md",
+                "user_invocable": False,
+            },
+        ],
+        "agent_routing": [
+            {
+                "agent_name": "Live Agent",
+                "path_globs": ["src/sattlint/app.py", "docs/ghost/**"],
+                "owner_surface_keywords": ["cli"],
+                "selected_surfaces": ["repo-audit"],
+            },
+            {
+                "agent_name": "Missing Agent",
+                "path_globs": ["src/sattlint/app.py"],
+                "owner_surface_keywords": ["cli"],
+                "selected_surfaces": ["repo-audit"],
+            },
+        ],
+    }
+    session_context_map = {"kind": "session-map", "instructions": [], "agents": []}
+
+    report = verify_ai_harness_freshness(
+        work_map=work_map,
+        session_context_map=session_context_map,
+        repo_root=tmp_path,
+        output_path=output_path,
+        session_output_path=session_output_path,
+    )
+
+    assert report["status"] == "fail"
+    assert {issue["issue_id"] for issue in report["issues"]} == {
+        "generated-ai-work-map-drift",
+        "generated-ai-session-context-map-drift",
+        "stale-instruction-applyto-glob",
+        "orphaned-instruction",
+        "stale-agent-routing-glob",
+        "dangling-agent-routing",
+        "orphaned-agent",
+    }
+
+
+def test_verify_ai_harness_freshness_passes_for_live_metadata(tmp_path):
+    (tmp_path / "src" / "sattlint").mkdir(parents=True)
+    (tmp_path / "src" / "sattlint" / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    output_path = tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
+    session_output_path = (
+        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-session-context-map.json"
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    session_output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    work_map = {
+        "instructions": [
+            {
+                "name": "CLI App Instructions",
+                "file_path": ".github/instructions/cli-app.instructions.md",
+                "apply_to": ["src/sattlint/app.py"],
+            }
+        ],
+        "agents": [
+            {
+                "name": "CLI App Menu",
+                "file_path": ".github/agents/cli-app-menu.agent.md",
+                "user_invocable": True,
+            }
+        ],
+        "agent_routing": [
+            {
+                "agent_name": "CLI App Menu",
+                "path_globs": ["src/sattlint/app.py"],
+                "owner_surface_keywords": ["cli"],
+                "selected_surfaces": ["repo-audit"],
+            }
+        ],
+    }
+    session_context_map = {"kind": "session-map", "instructions": [], "agents": []}
+    output_path.write_text(json.dumps(work_map, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    session_output_path.write_text(json.dumps(session_context_map, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    report = verify_ai_harness_freshness(
+        work_map=work_map,
+        session_context_map=session_context_map,
+        repo_root=tmp_path,
+        output_path=output_path,
+        session_output_path=session_output_path,
+    )
+
+    assert report["status"] == "pass"
+    assert report["issues"] == []
+
+
 def test_build_planning_context_ignores_invalid_entries_and_matches_owner_surfaces():
     work_map = {
+        "default_entrypoint": {"id": "planning-context"},
+        "finish_gate_templates": [
+            {
+                "selected_surface": "repo-audit",
+                "command": "repo-audit --finish-gate",
+                "description": "repo",
+                "includes": ["ruff"],
+            }
+        ],
+        "blocking_invariant_rules": [
+            {
+                "id": "focused-validation-first",
+                "summary": "focused",
+                "details": "details",
+                "selected_surfaces": ["repo-audit"],
+                "path_globs": [],
+            },
+            "ignore-me",
+        ],
         "pipeline_checks": ["ignore-me"],
         "repo_audit_checks": [
             {
@@ -319,6 +479,7 @@ def test_build_planning_context_ignores_invalid_entries_and_matches_owner_surfac
     )
 
     assert planning["primary_agent"] == "CLI App Menu"
+    assert planning["default_entrypoint"] == {"id": "planning-context"}
     assert planning["instruction_files"] == [
         {
             "name": "CLI App Instructions",
@@ -327,5 +488,21 @@ def test_build_planning_context_ignores_invalid_entries_and_matches_owner_surfac
             "matched_files": ["src/sattlint/app.py"],
         }
     ]
+    assert planning["owner_surfaces"] == ["cli"]
+    assert planning["owner_test_targets"] == ["tests/test_app.py"]
     assert planning["nearest_owner_suites"][0]["matched_targets"] == ["src/sattlint/app.py"]
     assert planning["first_validation_commands"] == ["pytest tests/test_app.py -x -q --tb=short"]
+    assert planning["finish_gate_template"] == {
+        "selected_surface": "repo-audit",
+        "command": "repo-audit --finish-gate",
+        "description": "repo",
+        "includes": ["ruff"],
+    }
+    assert planning["blocking_invariants"] == [
+        {
+            "id": "focused-validation-first",
+            "summary": "focused",
+            "details": "details",
+            "matched_files": [],
+        }
+    ]

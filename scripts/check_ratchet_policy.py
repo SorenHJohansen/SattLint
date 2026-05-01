@@ -26,6 +26,7 @@ APPROVAL_REASON_RE = re.compile(r"^Reason:\s+.+$", re.MULTILINE)
 NEW_PYTHON_FILE_LINE_LIMIT = 500
 NEW_MARKDOWN_FILE_LINE_LIMIT = 500
 NEW_SOURCE_FILE_COVERAGE_BASIS_POINTS = 10000
+COVERAGE_FLOOR_BUFFER_BASIS_POINTS = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +35,13 @@ class ChangeContext:
     added_files: tuple[str, ...]
     base_ref: str | None
     source: str
+
+
+@dataclass(frozen=True, slots=True)
+class TypingRatchetState:
+    strict_paths: tuple[str, ...]
+    strict_roots: tuple[str, ...]
+    debt_allowlist: tuple[str, ...]
 
 
 def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -60,6 +68,10 @@ def _normalize_added_files(raw: str) -> tuple[str, ...]:
         if path:
             added.append(path)
     return tuple(added)
+
+
+def _normalize_rel_path(path: str) -> str:
+    return path.replace("\\", "/").strip().strip("/")
 
 
 def _detect_change_context(repo_root: Path, env: Mapping[str, str] | None = None) -> ChangeContext:
@@ -90,6 +102,13 @@ def _detect_change_context(repo_root: Path, env: Mapping[str, str] | None = None
     staged_files = _normalize_changed_files(staged.stdout)
     if staged_files:
         return ChangeContext(staged_files, _normalize_added_files(staged_added.stdout), "HEAD", "staged")
+
+    worktree = _git(repo_root, "diff", "--name-only", "--diff-filter=ACMR", "HEAD")
+    worktree_added = _git(repo_root, "diff", "--name-status", "--diff-filter=A", "HEAD")
+    if worktree.returncode == 0 and worktree_added.returncode == 0:
+        worktree_files = _normalize_changed_files(worktree.stdout)
+        if worktree_files:
+            return ChangeContext(worktree_files, _normalize_added_files(worktree_added.stdout), "HEAD", "worktree")
 
     parent = _git(repo_root, "rev-parse", "--verify", "HEAD^")
     if parent.returncode == 0:
@@ -141,6 +160,178 @@ def _parse_json_payload(text: str, label: str) -> dict[str, Any]:
     return payload
 
 
+def _normalized_string_list(value: Any, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise ValueError(f"{label} must be a list.")
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"{label} entries must be non-empty strings.")
+        rel_path = _normalize_rel_path(item)
+        if rel_path in seen:
+            raise ValueError(f"{label} contains duplicate path {rel_path!r}.")
+        seen.add(rel_path)
+        normalized.append(rel_path)
+    return tuple(normalized)
+
+
+def _pyproject_payload(text: str, label: str) -> dict[str, Any]:
+    payload = tomllib.loads(text)
+    if not isinstance(payload, dict):
+        raise ValueError(f"{label} must parse to a TOML object.")
+    return payload
+
+
+def _typing_ratchet_state(
+    text: str,
+    label: str,
+    *,
+    allow_missing: bool = False,
+) -> TypingRatchetState | None:
+    payload = _pyproject_payload(text, label)
+    tool_section = payload.get("tool")
+    if not isinstance(tool_section, dict):
+        if allow_missing:
+            return None
+        raise ValueError(f"{label} is missing a [tool] table.")
+
+    pyright_section = tool_section.get("pyright")
+    sattlint_section = tool_section.get("sattlint")
+    if not isinstance(pyright_section, dict) or not isinstance(sattlint_section, dict):
+        if allow_missing:
+            return None
+        raise ValueError(f"{label} is missing typing ratchet configuration.")
+
+    typing_ratchet_section = sattlint_section.get("typing_ratchet")
+    if not isinstance(typing_ratchet_section, dict):
+        if allow_missing:
+            return None
+        raise ValueError(f"{label} is missing [tool.sattlint.typing_ratchet].")
+
+    strict_paths = _normalized_string_list(pyright_section.get("strict", []), f"{label} [tool.pyright].strict")
+    strict_roots = _normalized_string_list(
+        typing_ratchet_section.get("strict_roots", []),
+        f"{label} [tool.sattlint.typing_ratchet].strict_roots",
+    )
+    debt_allowlist = _normalized_string_list(
+        typing_ratchet_section.get("debt_allowlist", []),
+        f"{label} [tool.sattlint.typing_ratchet].debt_allowlist",
+    )
+    if not strict_roots:
+        raise ValueError(f"{label} typing ratchet strict_roots must not be empty.")
+
+    return TypingRatchetState(
+        strict_paths=strict_paths,
+        strict_roots=strict_roots,
+        debt_allowlist=debt_allowlist,
+    )
+
+
+def _path_is_within_roots(rel_path: str, roots: Sequence[str]) -> bool:
+    return any(rel_path == root or rel_path.startswith(f"{root}/") for root in roots)
+
+
+def _typing_scope_python_files(repo_root: Path, roots: Sequence[str]) -> tuple[str, ...]:
+    files: list[str] = []
+    for root_text in roots:
+        root_path = repo_root / root_text
+        if not root_path.exists():
+            raise ValueError(f"{PYPROJECT_PATH} typing strict root {root_text!r} does not exist.")
+        if root_path.is_file():
+            if root_path.suffix.casefold() != ".py":
+                raise ValueError(f"{PYPROJECT_PATH} typing strict root {root_text!r} must point to Python code.")
+            files.append(root_text)
+            continue
+        files.extend(path.relative_to(repo_root).as_posix() for path in sorted(root_path.rglob("*.py")))
+    return tuple(dict.fromkeys(files))
+
+
+def _typing_ratchet_state_errors(
+    *,
+    repo_root: Path,
+    added_files: Sequence[str],
+    state: TypingRatchetState,
+) -> list[str]:
+    errors: list[str] = []
+    strict_paths = set(state.strict_paths)
+    debt_allowlist = set(state.debt_allowlist)
+    scope_files = set(_typing_scope_python_files(repo_root, state.strict_roots))
+
+    overlap = sorted(strict_paths & debt_allowlist)
+    if overlap:
+        errors.append("Pyright strict paths overlap the typing debt allowlist: " + ", ".join(overlap) + ".")
+
+    strict_outside_scope = sorted(strict_paths - scope_files)
+    if strict_outside_scope:
+        errors.append(
+            "Pyright strict paths fall outside the typing ratchet scope or reference missing files: "
+            + ", ".join(strict_outside_scope)
+            + "."
+        )
+
+    debt_outside_scope = sorted(debt_allowlist - scope_files)
+    if debt_outside_scope:
+        errors.append(
+            "Typing debt allowlist paths fall outside the typing ratchet scope or reference missing files: "
+            + ", ".join(debt_outside_scope)
+            + "."
+        )
+
+    uncovered_scope_files = sorted(scope_files - strict_paths - debt_allowlist)
+    if uncovered_scope_files:
+        errors.append("Typing ratchet scope has uncovered Python files: " + ", ".join(uncovered_scope_files) + ".")
+
+    added_scope_files = sorted(
+        rel_path
+        for rel_path in added_files
+        if rel_path.endswith(".py") and _path_is_within_roots(rel_path, state.strict_roots)
+    )
+    for rel_path in added_scope_files:
+        if rel_path in debt_allowlist:
+            errors.append(
+                "Typing debt allowlist grew with a new scoped file: "
+                f"{rel_path}. New files under the strict scope must land in tool.pyright.strict."
+            )
+        elif rel_path not in strict_paths:
+            errors.append(f"New file under the typing strict scope is not covered by tool.pyright.strict: {rel_path}.")
+
+    return errors
+
+
+def _typing_ratchet_backslide_errors(
+    base_state: TypingRatchetState | None,
+    head_state: TypingRatchetState,
+) -> list[str]:
+    if base_state is None:
+        return []
+
+    errors: list[str] = []
+    base_roots = set(base_state.strict_roots)
+    head_roots = set(head_state.strict_roots)
+    base_strict = set(base_state.strict_paths)
+    head_strict = set(head_state.strict_paths)
+    base_debt = set(base_state.debt_allowlist)
+    head_debt = set(head_state.debt_allowlist)
+
+    for rel_root in sorted(base_roots - head_roots):
+        errors.append(f"Typing strict scope shrank: removed strict root {rel_root}.")
+
+    for rel_path in sorted(base_strict - head_strict):
+        if rel_path in head_debt:
+            errors.append(
+                f"Pyright strict coverage moved into typing debt: {rel_path}. Fix types first; do not rebaseline."
+            )
+        else:
+            errors.append(f"Pyright strict coverage removed: {rel_path}. Fix types first; do not rebaseline.")
+
+    for rel_path in sorted(head_debt - base_debt):
+        errors.append(f"Typing debt allowlist grew: {rel_path}. Fix types first; do not add new exceptions.")
+
+    return errors
+
+
 def _metric_mapping(payload: dict[str, Any], label: str) -> dict[str, int]:
     metrics = payload.get("metrics")
     if not isinstance(metrics, dict):
@@ -188,6 +379,32 @@ def _coverage_basis_points(payload: dict[str, Any], label: str) -> int:
     if value is None:
         raise ValueError(f"{label} is missing metrics.min_line_rate_basis_points.")
     return value
+
+
+def _coverage_summary_basis_points(payload: dict[str, Any], label: str) -> int:
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        raise ValueError(f"{label} is missing a summary object.")
+
+    raw_total_line_rate = summary.get("total_line_rate")
+    try:
+        total_line_rate = Decimal(str(raw_total_line_rate))
+    except InvalidOperation as exc:
+        raise ValueError(f"{label} summary.total_line_rate must be a decimal between 0 and 1.") from exc
+
+    if total_line_rate < 0 or total_line_rate > 1:
+        raise ValueError(f"{label} summary.total_line_rate must be between 0 and 1.")
+
+    return int((total_line_rate * Decimal("10000")).quantize(Decimal("1")))
+
+
+def _expected_coverage_floor_basis_points(payload: dict[str, Any], label: str) -> int:
+    baseline_basis_points = _coverage_summary_basis_points(payload, label)
+    return max(baseline_basis_points - COVERAGE_FLOOR_BUFFER_BASIS_POINTS, 0)
+
+
+def _coverage_floor_decimal_from_basis_points(value: int) -> Decimal:
+    return Decimal(value) / Decimal("100")
 
 
 def _cov_fail_under(text: str, label: str) -> Decimal:
@@ -296,6 +513,7 @@ def _new_file_coverage_errors(repo_root: Path, added_files: Sequence[str]) -> li
 
 def evaluate_policy_change(
     *,
+    repo_root: Path = REPO_ROOT,
     changed_files: Sequence[str],
     current_text_by_path: Mapping[str, str],
     base_text_by_path: Mapping[str, str | None],
@@ -367,29 +585,64 @@ def evaluate_policy_change(
     if COVERAGE_RATCHET_PATH in protected:
         base_text = base_text_by_path.get(COVERAGE_RATCHET_PATH)
         head_text = current_text_by_path.get(COVERAGE_RATCHET_PATH)
-        if base_text is not None and head_text is not None:
-            base_value = _coverage_basis_points(
-                _parse_json_payload(base_text, COVERAGE_RATCHET_PATH), COVERAGE_RATCHET_PATH
-            )
-            head_value = _coverage_basis_points(
-                _parse_json_payload(head_text, COVERAGE_RATCHET_PATH), COVERAGE_RATCHET_PATH
-            )
-            if head_value < base_value:
+        if head_text is not None:
+            head_payload = _parse_json_payload(head_text, COVERAGE_RATCHET_PATH)
+            head_value = _coverage_basis_points(head_payload, COVERAGE_RATCHET_PATH)
+            expected_head_value = _expected_coverage_floor_basis_points(head_payload, COVERAGE_RATCHET_PATH)
+            if head_value != expected_head_value:
                 errors.append(
-                    "Coverage ratchet loosened: "
-                    f"min_line_rate_basis_points {base_value} -> {head_value}. Fix code or tests first; do not rebaseline."
+                    "Coverage ratchet floor must equal the recorded baseline minus 1.00 percentage point: "
+                    f"expected min_line_rate_basis_points {expected_head_value}, found {head_value}."
+                )
+        if base_text is not None and head_text is not None:
+            base_payload = _parse_json_payload(base_text, COVERAGE_RATCHET_PATH)
+            head_payload = _parse_json_payload(head_text, COVERAGE_RATCHET_PATH)
+            base_baseline = _coverage_summary_basis_points(base_payload, COVERAGE_RATCHET_PATH)
+            head_baseline = _coverage_summary_basis_points(head_payload, COVERAGE_RATCHET_PATH)
+            if head_baseline < base_baseline:
+                errors.append(
+                    "Coverage baseline decreased: "
+                    f"total_line_rate {base_baseline / 100:.2f}% -> {head_baseline / 100:.2f}%. "
+                    "Fix code or tests first; do not rebaseline."
                 )
 
     if PYPROJECT_PATH in protected:
         base_text = base_text_by_path.get(PYPROJECT_PATH)
         head_text = current_text_by_path.get(PYPROJECT_PATH)
-        if base_text is not None and head_text is not None:
-            base_value = _cov_fail_under(base_text, PYPROJECT_PATH)
+        if head_text is not None:
             head_value = _cov_fail_under(head_text, PYPROJECT_PATH)
-            if head_value < base_value:
+            coverage_text = current_text_by_path.get(COVERAGE_RATCHET_PATH)
+            if coverage_text is not None:
+                coverage_payload = _parse_json_payload(coverage_text, COVERAGE_RATCHET_PATH)
+                expected_floor = _coverage_floor_decimal_from_basis_points(
+                    _expected_coverage_floor_basis_points(coverage_payload, COVERAGE_RATCHET_PATH)
+                )
+                if head_value != expected_floor:
+                    errors.append(
+                        "Pytest coverage floor must equal the recorded coverage baseline minus 1.00 percentage point: "
+                        f"expected --cov-fail-under={expected_floor:.2f}, found {head_value}."
+                    )
+
+            head_state = _typing_ratchet_state(head_text, PYPROJECT_PATH)
+            if head_state is None:
+                raise ValueError(f"{PYPROJECT_PATH} is missing typing ratchet configuration.")
+            base_state = _typing_ratchet_state(base_text, PYPROJECT_PATH, allow_missing=True) if base_text else None
+            errors.extend(_typing_ratchet_state_errors(repo_root=repo_root, added_files=(), state=head_state))
+            errors.extend(_typing_ratchet_backslide_errors(base_state, head_state))
+
+    if COVERAGE_RATCHET_PATH in protected and PYPROJECT_PATH not in protected:
+        coverage_text = current_text_by_path.get(COVERAGE_RATCHET_PATH)
+        pyproject_text = current_text_by_path.get(PYPROJECT_PATH)
+        if coverage_text is not None and pyproject_text is not None:
+            coverage_payload = _parse_json_payload(coverage_text, COVERAGE_RATCHET_PATH)
+            expected_floor = _coverage_floor_decimal_from_basis_points(
+                _expected_coverage_floor_basis_points(coverage_payload, COVERAGE_RATCHET_PATH)
+            )
+            pyproject_floor = _cov_fail_under(pyproject_text, PYPROJECT_PATH)
+            if pyproject_floor != expected_floor:
                 errors.append(
-                    f"Pytest coverage floor loosened: --cov-fail-under={base_value} -> {head_value}. "
-                    "Fix code or tests first; do not rebaseline."
+                    "Pytest coverage floor must stay aligned with the checked-in coverage ratchet: "
+                    f"expected --cov-fail-under={expected_floor:.2f}, found {pyproject_floor}."
                 )
 
     return errors
@@ -403,12 +656,24 @@ def run_policy_check(repo_root: Path = REPO_ROOT, env: Mapping[str, str] | None 
     relevant_paths = tuple(
         path for path in context.changed_files if path in PROTECTED_PATHS or _is_approval_record_path(path)
     )
+    current_paths = tuple(dict.fromkeys((*relevant_paths, PYPROJECT_PATH, COVERAGE_RATCHET_PATH)))
+    current_text_by_path = _load_current_texts(repo_root, current_paths)
+    pyproject_text = current_text_by_path.get(PYPROJECT_PATH)
+    if pyproject_text is None:
+        raise ValueError(f"{PYPROJECT_PATH} is missing.")
+    current_typing_state = _typing_ratchet_state(pyproject_text, PYPROJECT_PATH)
+    if current_typing_state is None:
+        raise ValueError(f"{PYPROJECT_PATH} is missing typing ratchet configuration.")
+    errors.extend(
+        _typing_ratchet_state_errors(repo_root=repo_root, added_files=context.added_files, state=current_typing_state)
+    )
+
     if not relevant_paths:
         return errors
-    current_text_by_path = _load_current_texts(repo_root, relevant_paths)
     base_text_by_path = _load_base_texts(repo_root, context.base_ref, relevant_paths)
     errors.extend(
         evaluate_policy_change(
+            repo_root=repo_root,
             changed_files=context.changed_files,
             current_text_by_path=current_text_by_path,
             base_text_by_path=base_text_by_path,

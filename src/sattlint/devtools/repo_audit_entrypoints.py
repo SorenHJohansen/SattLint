@@ -19,6 +19,7 @@ from sattlint.path_sanitizer import sanitize_path_for_report
 
 REPO_AUDIT_FINDING_CHECK_IDS = (
     "text-scan",
+    "local-ci-parity",
     "documented-commands",
     "unused-config-keys",
     "architecture",
@@ -27,6 +28,7 @@ REPO_AUDIT_FINDING_CHECK_IDS = (
     "logging",
     "ai-gc",
     "ignored-repo-paths",
+    "harness-freshness",
     "coverage",
     "public-readiness",
     "verify-recommendations",
@@ -59,6 +61,26 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
             "profiles": ("quick", "full"),
             "runner": repo_audit._run_text_scan_check,
             "owner_surface": "text-scan",
+            "estimated_cost": "low",
+            "path_globs": (
+                "README.md",
+                "CONTRIBUTING.md",
+                "SECURITY.md",
+                "docs/**",
+                ".github/**",
+                "src/**/*.py",
+                "tests/**/*.py",
+                "scripts/**/*.py",
+                "pyproject.toml",
+            ),
+            "owner_test_targets": ("tests/test_repo_audit.py",),
+        },
+        {
+            "id": "local-ci-parity",
+            "label": "Detect local-versus-CI parity drift in paths, test guards, and local dependency roots",
+            "profiles": ("quick", "full"),
+            "runner": repo_audit._run_local_ci_parity_check,
+            "owner_surface": "local-ci-parity",
             "estimated_cost": "low",
             "path_globs": (
                 "README.md",
@@ -180,7 +202,7 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
         },
         {
             "id": "ignored-repo-paths",
-            "label": "Detect references to ignored repo-local paths",
+            "label": "Detect ignored repo-local dependency references",
             "profiles": ("quick", "full"),
             "runner": repo_audit._run_ignored_repo_paths_check,
             "owner_surface": "path-safety",
@@ -191,6 +213,30 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "scripts/**/*.py",
             ),
             "owner_test_targets": ("tests/test_repo_audit.py",),
+        },
+        {
+            "id": "harness-freshness",
+            "label": "Enforce AI harness freshness for instructions, agents, links, and generated maps",
+            "profiles": ("quick", "full"),
+            "runner": repo_audit._run_harness_freshness_check,
+            "owner_surface": "harness-freshness",
+            "estimated_cost": "low",
+            "path_globs": (
+                "AGENTS.md",
+                ".github/agents/**",
+                ".github/instructions/**",
+                ".github/skills/**",
+                "docs/context-loading-order.md",
+                "docs/design-docs/core-beliefs.md",
+                "docs/references/ai-agent-reference.md",
+                "src/sattlint/devtools/ai_work_map.py",
+                "src/sattlint/devtools/doc_gardener.py",
+                "src/sattlint/devtools/repo_audit.py",
+                "src/sattlint/devtools/repo_audit_entrypoints.py",
+                "tests/test_ai_work_map.py",
+                "tests/test_repo_audit.py",
+            ),
+            "owner_test_targets": ("tests/test_ai_work_map.py", "tests/test_repo_audit.py"),
         },
         {
             "id": "coverage",
@@ -253,6 +299,8 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
 
 
 def _run_verify_recommendations_check(_context: Any) -> list[Any]:
+    from sattlint.devtools import ai_work_map as ai_work_map_module
+
     repo_audit = _repo_audit_module()
     output_dir = repo_audit.DEFAULT_OUTPUT_DIR
     pipeline_catalog = pipeline_module.build_pipeline_check_catalog(
@@ -277,6 +325,49 @@ def _run_verify_recommendations_check(_context: Any) -> list[Any]:
                     source="verify-recommendations",
                 )
             )
+    generated_artifacts = (
+        (
+            ai_work_map_module.DEFAULT_OUTPUT_PATH,
+            ai_work_map_module.render_ai_work_map(),
+            "ai-work-map",
+        ),
+        (
+            ai_work_map_module.DEFAULT_SESSION_CONTEXT_OUTPUT_PATH,
+            ai_work_map_module.render_session_context_map(),
+            "ai-session-context-map",
+        ),
+    )
+    regenerate_command = "python -m sattlint.devtools.ai_work_map --write"
+    for artifact_path, expected, artifact_id in generated_artifacts:
+        actual = artifact_path.read_text(encoding="utf-8") if artifact_path.exists() else None
+        if actual == expected:
+            continue
+        try:
+            relative_path = artifact_path.relative_to(repo_audit.REPO_ROOT).as_posix()
+        except ValueError:
+            relative_path = artifact_path.as_posix()
+        findings.append(
+            repo_audit.Finding(
+                id=f"recommendation-generated-artifact-drift-{artifact_id}",
+                category="feature-wiring",
+                severity="high",
+                confidence="high",
+                message=(
+                    f"Checked-in generated routing artifact '{relative_path}' is stale. Regenerate with "
+                    f"'{regenerate_command}'."
+                ),
+                detail=json.dumps(
+                    {
+                        "artifact_id": artifact_id,
+                        "artifact_path": relative_path,
+                        "regenerate_command": regenerate_command,
+                    },
+                    sort_keys=True,
+                ),
+                path=relative_path,
+                source="verify-recommendations",
+            )
+        )
     return findings
 
 
@@ -370,17 +461,24 @@ def _build_repo_audit_finish_gate_commands(
                 "argv": pyright_argv,
             }
         )
-    owner_test_targets = _owner_test_targets_for_checks(recommended_checks)
-    if owner_test_targets:
-        pytest_argv = [*python_command, "-m", "pytest", "--no-cov", *owner_test_targets, "-x", "-q", "--tb=short"]
-        commands.append(
-            {
-                "id": "owner-pytest",
-                "label": "Run owner pytest targets for the recommended checks",
-                "command": _shell_command(pytest_argv),
-                "argv": pytest_argv,
-            }
-        )
+    ratchet_policy_argv = [*python_command, "scripts/check_ratchet_policy.py"]
+    commands.append(
+        {
+            "id": "ratchet-policy",
+            "label": "Run ratchet policy",
+            "command": _shell_command(ratchet_policy_argv),
+            "argv": ratchet_policy_argv,
+        }
+    )
+    coverage_output_path = output_dir / "coverage_proof.xml"
+    owner_pytest_step = pipeline_module._build_owner_pytest_step(
+        changed_files=normalized_changed_files,
+        recommended_checks=recommended_checks,
+        python_command=python_command,
+        coverage_output_path=coverage_output_path,
+    )
+    if owner_pytest_step is not None:
+        commands.append(owner_pytest_step)
     return commands
 
 
@@ -415,15 +513,20 @@ def _normalize_repo_audit_finding_checks(selected_checks: Iterable[str] | None) 
         return None
     supported = set(REPO_AUDIT_FINDING_CHECK_IDS)
     normalized: list[str] = []
-    for raw_check in selected_checks:
-        check_id = raw_check.strip()
-        if not check_id:
-            continue
-        if check_id not in supported:
+    seen: set[str] = set()
+    for check_id in selected_checks:
+        normalized_id = str(check_id).strip()
+        if not normalized_id:
+            raise ValueError("At least one non-empty repo-audit finding check is required when selecting checks.")
+        if normalized_id not in supported:
             supported_text = ", ".join(sorted(supported))
-            raise ValueError(f"Unsupported repo-audit finding check: {check_id}. Supported: {supported_text}")
-        if check_id not in normalized:
-            normalized.append(check_id)
+            raise ValueError(
+                f"Unsupported repo-audit finding check '{normalized_id}'. Supported checks: {supported_text}."
+            )
+        if normalized_id in seen:
+            continue
+        seen.add(normalized_id)
+        normalized.append(normalized_id)
     if not normalized:
         raise ValueError("At least one non-empty repo-audit finding check is required when selecting checks.")
     return tuple(normalized)
@@ -658,6 +761,10 @@ def build_repo_audit_check_recommendations(
         "suggested_finish_gate_commands": [entry["command"] for entry in suggested_finish_gate_commands],
         "recommended_checks": recommended_checks,
         "skipped_checks": skipped_checks,
+        "proof_requirements": pipeline_module.build_change_proof_requirements(
+            changed_files=changed_file_list,
+            recommended_checks=recommended_checks,
+        ),
         "why_this_gate": _build_recommendation_why_this_gate(
             changed_files=changed_file_list,
             recommended_checks=recommended_checks,
@@ -685,6 +792,8 @@ def collect_custom_findings(
         tracked_only=tracked_only,
         suspicious_identifiers=suspicious_identifiers,
     )
+    if selected_check_set is None or {"text-scan", "local-ci-parity"} & selected_check_set:
+        context = repo_audit._with_shared_text_line_findings(context)
     for definition in repo_audit._repo_audit_finding_check_definitions():
         if selected_check_set is not None and definition["id"] not in selected_check_set:
             continue
@@ -1181,6 +1290,10 @@ def run_recommended_repo_audit_finish_gate(
         fail_on=fail_on,
         changed_files=changed_files,
     )
+    proof_requirements = recommendation.get("proof_requirements") or pipeline_module.build_change_proof_requirements(
+        changed_files=recommendation.get("changed_files", []),
+        recommended_checks=recommendation.get("recommended_checks", []),
+    )
     summary = run_recommended_repo_audit_slice(
         output_dir,
         profile=profile,
@@ -1205,6 +1318,11 @@ def run_recommended_repo_audit_finish_gate(
     )[1:]
     step_reports: list[dict[str, Any]] = []
     finish_gate_status = "pass"
+    coverage_proof: dict[str, Any] = {
+        "status": "not-required",
+        "mode": "skipped",
+        "coverage_path": None,
+    }
     for step in finish_gate_steps:
         result = pipeline_module._run_command(step["id"], step["argv"])
         step_status = "pass" if result.exit_code == 0 else "fail"
@@ -1220,6 +1338,36 @@ def run_recommended_repo_audit_finish_gate(
                 "status": step_status,
             }
         )
+    if proof_requirements["focused_behavior_test"]["status"] == "missing":
+        finish_gate_status = "fail"
+        step_reports.append(
+            {
+                "id": "focused-behavior-test",
+                "label": "Require focused owner pytest for changed code",
+                "command": "",
+                "exit_code": None,
+                "duration_seconds": 0.0,
+                "status": "fail",
+                "detail": proof_requirements["focused_behavior_test"]["reason"],
+            }
+        )
+    coverage_step = next((step for step in finish_gate_steps if step["id"] == "owner-pytest-coverage"), None)
+    if coverage_step is not None:
+        coverage_proof = pipeline_module.evaluate_change_scoped_coverage_proof(
+            repo_root=_repo_audit_module().REPO_ROOT,
+            coverage_output_path=Path(str(coverage_step["coverage_output_path"])),
+            changed_files=recommendation["changed_files"],
+        )
+        if coverage_proof["status"] == "fail":
+            finish_gate_status = "fail"
+    elif proof_requirements["coverage"]["required"]:
+        coverage_proof = {
+            "status": "fail",
+            "mode": "skipped",
+            "coverage_path": None,
+            "reason": "Focused coverage proof is required for changed source files but no owner pytest coverage step was available.",
+        }
+        finish_gate_status = "fail"
     finish_gate_report = {
         "kind": "sattlint.repo_audit.finish_gate",
         "schema_version": 1,
@@ -1228,6 +1376,8 @@ def run_recommended_repo_audit_finish_gate(
         "commands": step_reports,
         "changed_files": recommendation["changed_files"],
         "owner_test_targets": _owner_test_targets_for_checks(recommendation["recommended_checks"]),
+        "proof_requirements": proof_requirements,
+        "coverage_proof": coverage_proof,
     }
     write_json_artifact(output_dir / "finish_gate.json", finish_gate_report)
     summary["finish_gate"] = finish_gate_report
@@ -1259,6 +1409,53 @@ def _selected_surface_and_reason(recommendation: dict[str, Any]) -> tuple[str, s
     )
 
 
+def _build_selected_finish_gate_plan(
+    *,
+    profile: str,
+    output_dir: Path,
+    fail_on: str,
+    selected_surface: str,
+    changed_files: Iterable[str],
+    planning_context: dict[str, Any],
+    recommendation: dict[str, Any],
+) -> dict[str, Any]:
+    repo_audit = _repo_audit_module()
+    normalized_changed_files = normalize_changed_files(changed_files)
+    finish_gate_template = planning_context.get("finish_gate_template")
+    if not isinstance(finish_gate_template, dict):
+        finish_gate_template = {}
+
+    if selected_surface == "pipeline":
+        selected_output_dir = output_dir / repo_audit.PIPELINE_OUTPUT_DIRNAME
+        surface_recommendation = pipeline_module.build_pipeline_check_recommendations(
+            profile=profile,
+            output_dir=selected_output_dir,
+            changed_files=normalized_changed_files,
+        )
+        command_list = list(surface_recommendation.get("suggested_finish_gate_commands", []))
+        recommended_check_ids = list(surface_recommendation.get("recommended_check_ids", []))
+    else:
+        selected_output_dir = output_dir
+        surface_recommendation = recommendation
+        command_list = list(recommendation.get("suggested_finish_gate_commands", []))
+        recommended_check_ids = list(recommendation.get("recommended_check_ids", []))
+
+    sanitized_selected_output_dir = (
+        sanitize_path_for_report(selected_output_dir.resolve(), repo_root=repo_audit.REPO_ROOT)
+        or selected_output_dir.resolve().as_posix()
+    )
+    return {
+        "selected_surface": selected_surface,
+        "output_dir": sanitized_selected_output_dir,
+        "command": None if not command_list else command_list[0],
+        "commands": command_list,
+        "description": str(finish_gate_template.get("description", "")),
+        "includes": [str(item) for item in finish_gate_template.get("includes", []) if str(item).strip()],
+        "owner_test_targets": list(planning_context.get("owner_test_targets", [])),
+        "recommended_check_ids": recommended_check_ids,
+    }
+
+
 def build_check_my_changes_planning_report(
     *,
     profile: str = "full",
@@ -1279,22 +1476,40 @@ def build_check_my_changes_planning_report(
         fail_on=fail_on,
         changed_files=changed_files,
     )
+    proof_requirements = recommendation.get("proof_requirements") or pipeline_module.build_change_proof_requirements(
+        changed_files=recommendation.get("changed_files", []),
+        recommended_checks=recommendation.get("recommended_checks", []),
+    )
     selected_surface, selected_reason = _selected_surface_and_reason(recommendation)
     planning_context = ai_work_map_module.build_planning_context(
         changed_files=recommendation["changed_files"],
         recommended_check_ids=recommendation["recommended_check_ids"],
         selected_surface=selected_surface,
     )
+    finish_gate = _build_selected_finish_gate_plan(
+        profile=profile,
+        output_dir=resolved_output_dir,
+        fail_on=fail_on,
+        selected_surface=selected_surface,
+        changed_files=recommendation["changed_files"],
+        planning_context=planning_context,
+        recommendation=recommendation,
+    )
+    planning_context["finish_gate"] = finish_gate
     return {
         "kind": "sattlint.planning_context",
         "schema_version": 1,
         "generated_by": "sattlint.devtools.repo_audit_entrypoints",
+        "default_entrypoint": dict(planning_context.get("default_entrypoint", {})),
         "profile": profile,
         "fail_on": fail_on,
         "output_dir": sanitized_output_dir,
         "changed_files": recommendation["changed_files"],
+        "owning_surface": selected_surface,
         "selected_surface": selected_surface,
         "selected_reason": selected_reason,
+        "finish_gate": finish_gate,
+        "proof_requirements": proof_requirements,
         "planning_context": planning_context,
         "recommendation": {
             "fallback_required": recommendation["fallback_required"],
@@ -1505,6 +1720,7 @@ def run_check_my_changes(
         "overall_status": overall_status,
         "finish_gate_status": finish_gate_status,
         "reports": reports,
+        "proof_requirements": planning_report.get("proof_requirements", {}),
         "planning_context": planning_context,
         "ai_feedback": ai_feedback,
         "recommendation": {

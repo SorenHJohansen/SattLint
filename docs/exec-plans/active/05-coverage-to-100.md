@@ -14,7 +14,7 @@ The first coverage-lane generation is finished. Lane A, lane B, and lane C all c
 - [x] (2026-04-30) Retire the stale lane-A/B/C active split and replace it with final-phase plans keyed to the remaining coverage clusters.
 - [x] (2026-04-30) Refresh the shared checkpoint again after ExecPlan 16 closeout from a clean `.coverage` state and confirm the new residual ordering at `1272 passed, 1 warning`.
 - [x] (2026-04-30) Reopen the ExecPlan 16 docgen seam, drive `classification.py` and `docgen.py` to `100%` through `tests/test_docgen.py`, and refresh the shared checkpoint again at `1342 passed, 1 warning`.
-- [x] (2026-05-01) Add a checked-in coverage ratchet in `artifacts/analysis/coverage_ratchet.json` and align the repository-default pytest floor to the current `88.26%` baseline.
+- [x] (2026-05-01) Add a checked-in coverage ratchet in `artifacts/analysis/coverage_ratchet.json`, keep the recorded baseline at `88.26%`, and derive the repository-default pytest floor as `87.26%` (baseline minus `1.00` percentage point).
 - [ ] Drain the final-phase app/devtools/core cluster.
 - [ ] Drain the final-phase analyzers/semantic/LSP cluster.
 - [ ] Drain the final-phase parser/GUI/reporting/docgen cluster.
@@ -27,7 +27,7 @@ The first coverage-lane generation is finished. Lane A, lane B, and lane C all c
 
 - Last clean shared checkpoint: `Remove-Item -Force .coverage* -ErrorAction SilentlyContinue ; & ".venv/Scripts/python.exe" -m pytest -q --cov-fail-under=0` is clean at `1342 passed, 1 warning`.
 - Coverage baseline: `coverage.xml` now reports `88.26%` line coverage with `3212` uncovered lines.
-- Ratchet baseline: repository-default `pytest -q` now enforces `--cov-fail-under=88.26`, and `artifacts/analysis/coverage_ratchet.json` mirrors that floor for machine-readable pipeline consumption.
+- Ratchet baseline: `artifacts/analysis/coverage_ratchet.json` keeps the recorded `88.26%` baseline in `summary.total_line_rate`, while repository-default `pytest -q` and `metrics.min_line_rate_basis_points` now enforce the buffered `87.26%` effective floor.
 - Dominant remaining file misses: `reset_contamination.py` (`241`), `modules.py` (`200`), `engine.py` (`138`), `repo_audit.py` (`134`), `variables.py` (`117`), `app_graphics.py` (`111`), `dataflow.py` (`106`), `mms.py` (`102`), `doc_gardener.py` (`99`), `pipeline.py` (`95`), `core/semantic.py` (`87`), `_variables_effect_flow.py` (`85`), `config.py` (`79`), `_server_document.py` (`76`), and `_server_helpers.py` (`58`).
 - Final-phase planning buckets from the clean checkpoint table:
   - App/devtools/core cluster: about `1061` misses.

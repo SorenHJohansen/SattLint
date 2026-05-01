@@ -28,7 +28,8 @@ def _fake_repo_audit_module(tmp_path: Path, summaries: list[dict[str, object]]) 
         REPO_ROOT=tmp_path,
         _repo_audit_entrypoints=SimpleNamespace(
             build_check_my_changes_planning_report=lambda **kwargs: {
-                "planning_context": {"primary_agent": "CLI App Menu"}
+                "kind": "sattlint.planning_context",
+                "planning_context": {"primary_agent": "CLI App Menu"},
             }
         ),
         build_repo_audit_check_catalog=lambda **kwargs: {"kind": "catalog", "checks": []},
@@ -80,7 +81,10 @@ def test_repo_audit_cli_main_machine_readable_branches(monkeypatch, tmp_path, ca
     assert json.loads(capsys.readouterr().out) == {"kind": "sattlint.ai_gc", "summary": {"failure_count": 0}}
 
     assert repo_audit_cli.main(["--planning-context", "--output-dir", str(tmp_path)]) == 0
-    assert json.loads(capsys.readouterr().out) == {"primary_agent": "CLI App Menu"}
+    assert json.loads(capsys.readouterr().out) == {
+        "kind": "sattlint.planning_context",
+        "planning_context": {"primary_agent": "CLI App Menu"},
+    }
 
     assert repo_audit_cli.main(["--check-my-changes", "--output-dir", str(tmp_path)]) == 0
     assert json.loads(capsys.readouterr().out) == {"kind": "sattlint.check_my_changes", "overall_status": "pass"}

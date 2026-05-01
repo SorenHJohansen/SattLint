@@ -297,6 +297,10 @@ def test_execute_corpus_case_strict_writes_case_artifacts(tmp_path):
     assert result.execution_error is None
     assert_findings_collection(findings_report, finding_count=1)
     assert findings_report["findings"][0]["rule_id"] == "syntax.parse"
+    assert findings_report["findings"][0]["file"] == "Broken.s"
+    assert findings_report["findings"][0]["owner_surface"] == "syntax-check"
+    assert findings_report["findings"][0]["minimal_reproducer"] == "sattlint syntax-check Broken.s"
+    assert findings_report["findings"][0]["suggested_next_command"] == "sattlint syntax-check Broken.s"
     assert status_report["execution_status"] == "ok"
     assert status_report["validation_ok"] is False
     assert_findings_schema(status_report)

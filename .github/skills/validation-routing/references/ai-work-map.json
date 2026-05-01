@@ -78,6 +78,7 @@
         "architecture",
         "coverage",
         "feature-wiring",
+        "harness",
         "logging",
         "path-safety",
         "public-readiness",
@@ -162,6 +163,119 @@
       "user_invocable": true
     }
   ],
+  "blocking_invariant_rules": [
+    {
+      "details": "Do not widen scope before that check when a narrow executable validation exists.",
+      "id": "focused-validation-first",
+      "path_globs": [],
+      "selected_surfaces": [
+        "session-start",
+        "pipeline",
+        "repo-audit"
+      ],
+      "summary": "Run the first focused executable validation immediately after the first substantive edit."
+    },
+    {
+      "details": "Targeted pytest or repo-local tool commands are the expected first validation path in this repo.",
+      "id": "repo-venv-validation",
+      "path_globs": [],
+      "selected_surfaces": [
+        "session-start",
+        "pipeline",
+        "repo-audit"
+      ],
+      "summary": "Use repo venv commands, not the VS Code test runner, for first validation."
+    },
+    {
+      "details": "Python finish gates require focused behavior validation plus touched-file Ruff and Pyright checks.",
+      "id": "python-finish-gate-clean",
+      "path_globs": [
+        "src/**/*.py",
+        "tests/**/*.py",
+        "scripts/**/*.py"
+      ],
+      "selected_surfaces": [
+        "session-start",
+        "pipeline",
+        "repo-audit"
+      ],
+      "summary": "Do not finish Python edits with touched-file Ruff or Pyright errors."
+    },
+    {
+      "details": "Use owner-suite validation or quick repo audit after the narrow check for shared infra or cross-subsystem wiring.",
+      "id": "shared-infra-widen-after-focused-check",
+      "path_globs": [
+        "src/sattlint/devtools/**",
+        ".github/hooks/**",
+        ".github/instructions/**",
+        ".github/skills/**"
+      ],
+      "selected_surfaces": [
+        "pipeline",
+        "repo-audit"
+      ],
+      "summary": "Shared infra and devtools changes widen only after the focused check passes."
+    },
+    {
+      "details": "CLI menu invariants require the interactive app tests to move with the menu surface.",
+      "id": "cli-menu-tests-stay-in-sync",
+      "path_globs": [
+        "src/sattlint/app.py"
+      ],
+      "selected_surfaces": [
+        "session-start",
+        "pipeline",
+        "repo-audit"
+      ],
+      "summary": "If CLI menu layout or numbering changes, update tests/test_app.py in the same change."
+    },
+    {
+      "details": "Run sattlineLsp.restartServer after changes under the editor or workspace loading surfaces.",
+      "id": "restart-lsp-after-editor-surface-edits",
+      "path_globs": [
+        "src/sattlint/core/**",
+        "src/sattlint_lsp/**",
+        "src/sattlint/editor_api.py",
+        "vscode/sattline-vscode/**"
+      ],
+      "selected_surfaces": [
+        "session-start",
+        "pipeline",
+        "repo-audit"
+      ],
+      "summary": "Restart the language server after semantic core, LSP, editor_api, or VS Code client edits."
+    }
+  ],
+  "default_entrypoint": {
+    "command": "sattlint-repo-audit --profile full --planning-context --output-dir artifacts/audit",
+    "companion_command": "sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit",
+    "description": "Default machine entrypoint for agents. Returns changed files, owning surface, instruction files, first focused validation, finish-gate plan, and blocking invariants in one response.",
+    "id": "planning-context"
+  },
+  "finish_gate_templates": [
+    {
+      "command": "sattlint-analysis-pipeline --profile full --run-recommended-finish-gate --output-dir artifacts/audit/pipeline",
+      "description": "Shared-pipeline finish gate for changes that do not need repo-audit-specific checks.",
+      "includes": [
+        "recommended pipeline slice",
+        "touched-file Ruff",
+        "touched-file Pyright",
+        "owner pytest targets"
+      ],
+      "selected_surface": "pipeline"
+    },
+    {
+      "command": "sattlint-repo-audit --profile full --run-recommended-finish-gate --output-dir artifacts/audit",
+      "description": "Combined repo-audit finish gate for changes that require repo-audit-specific checks.",
+      "includes": [
+        "recommended repo-audit slice",
+        "touched-file Ruff",
+        "touched-file Pyright",
+        "owner pytest targets"
+      ],
+      "selected_surface": "repo-audit"
+    }
+  ],
   "generated_by": "sattlint.devtools.ai_work_map",
   "generated_from": {
     "active_exec_plans": "docs/exec-plans/active/*.md",
@@ -230,8 +344,7 @@
         "src/sattlint/devtools/**",
         "tests/test_repo_audit.py",
         "tests/test_pipeline.py",
-        "tests/test_artifact_contracts.py",
-        "TODO_TOOLS.md"
+        "tests/test_artifact_contracts.py"
       ],
       "description": "Use when changing repo audit checks, pipeline artifacts, public-readiness scans, portability checks, or devtools JSON outputs in SattLint. Covers preferred seams and focused validation.",
       "file_path": ".github/instructions/repo-audit.instructions.md",
@@ -672,6 +785,28 @@
       "source": "repo-audit"
     },
     {
+      "command": "sattlint-repo-audit --profile full --check local-ci-parity --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map",
+      "estimated_cost": "low",
+      "id": "local-ci-parity",
+      "label": "Detect local-versus-CI parity drift in paths, test guards, and local dependency roots",
+      "owner_surface": "local-ci-parity",
+      "owner_test_targets": [
+        "tests/test_repo_audit.py"
+      ],
+      "path_globs": [
+        "README.md",
+        "CONTRIBUTING.md",
+        "SECURITY.md",
+        "docs/**",
+        ".github/**",
+        "src/**/*.py",
+        "tests/**/*.py",
+        "scripts/**/*.py",
+        "pyproject.toml"
+      ],
+      "source": "repo-audit"
+    },
+    {
       "command": "sattlint-repo-audit --profile full --check documented-commands --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map",
       "estimated_cost": "low",
       "id": "documented-commands",
@@ -796,7 +931,7 @@
       "command": "sattlint-repo-audit --profile full --check ignored-repo-paths --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map",
       "estimated_cost": "low",
       "id": "ignored-repo-paths",
-      "label": "Detect references to ignored repo-local paths",
+      "label": "Detect ignored repo-local dependency references",
       "owner_surface": "path-safety",
       "owner_test_targets": [
         "tests/test_repo_audit.py"
@@ -805,6 +940,33 @@
         "src/**/*.py",
         "tests/**/*.py",
         "scripts/**/*.py"
+      ],
+      "source": "repo-audit"
+    },
+    {
+      "command": "sattlint-repo-audit --profile full --check harness-freshness --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map",
+      "estimated_cost": "low",
+      "id": "harness-freshness",
+      "label": "Enforce AI harness freshness for instructions, agents, links, and generated maps",
+      "owner_surface": "harness-freshness",
+      "owner_test_targets": [
+        "tests/test_ai_work_map.py",
+        "tests/test_repo_audit.py"
+      ],
+      "path_globs": [
+        "AGENTS.md",
+        ".github/agents/**",
+        ".github/instructions/**",
+        ".github/skills/**",
+        "docs/context-loading-order.md",
+        "docs/design-docs/core-beliefs.md",
+        "docs/references/ai-agent-reference.md",
+        "src/sattlint/devtools/ai_work_map.py",
+        "src/sattlint/devtools/doc_gardener.py",
+        "src/sattlint/devtools/repo_audit.py",
+        "src/sattlint/devtools/repo_audit_entrypoints.py",
+        "tests/test_ai_work_map.py",
+        "tests/test_repo_audit.py"
       ],
       "source": "repo-audit"
     },
@@ -974,12 +1136,10 @@
     },
     {
       "commands": [
-        "& \".venv/Scripts/pre-commit.exe\" run --all-files",
-        "& \".venv/Scripts/python.exe\" -m pytest",
+        "& \".venv/Scripts/python.exe\" -m pre_commit run --all-files",
         "Repo Verify"
       ],
       "notes": [
-        "then",
         "Full gate procedure and reporting live in ."
       ],
       "surface": "Final repo gate"

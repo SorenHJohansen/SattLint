@@ -1,7 +1,7 @@
 ---
 description: "Use when changing repo audit checks, pipeline artifacts, public-readiness scans, portability checks, or devtools JSON outputs in SattLint. Covers preferred seams and focused validation."
 name: "Repo Audit Instructions"
-applyTo: ["src/sattlint/devtools/**", "tests/test_repo_audit.py", "tests/test_pipeline.py", "tests/test_artifact_contracts.py", "TODO_TOOLS.md"]
+applyTo: ["src/sattlint/devtools/**", "tests/test_repo_audit.py", "tests/test_pipeline.py", "tests/test_artifact_contracts.py"]
 ---
 # Repo Audit
 

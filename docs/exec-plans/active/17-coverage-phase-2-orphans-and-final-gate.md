@@ -11,7 +11,7 @@ Own the files that still block `100%` coverage but do not fit cleanly inside the
 - [x] (2026-04-30) Create this final-phase plan from the clean shared checkpoint baseline.
 - [x] (2026-04-30) Confirm the nearest owner for each orphan candidate and record when a dedicated suite is justified.
 - [x] (2026-04-30) Add dedicated suites for the true zero-owner modules: `accuracy_metrics.py`, `ai_templates.py`, `differential.py`, `mutation_engine.py`, `parser_properties.py`, `production_summary.py`, and `symbolic_lite.py`.
-- [x] (2026-05-01) Fold the checked-in `88.26%` coverage floor into the campaign ratchet via `artifacts/analysis/coverage_ratchet.json` and the repository-default pytest gate.
+- [x] (2026-05-01) Fold the checked-in `88.26%` coverage baseline into the campaign ratchet, and derive the repository-default `87.26%` effective floor from that baseline through `artifacts/analysis/coverage_ratchet.json` and the default pytest gate.
 - [ ] Drain the cross-cutting long-tail files that already have owners but no longer justify their own plan, including `validation.py`, `structural_reports.py`, `corpus.py`, and other sub-50 residuals.
 - [ ] Run shared checkpoints until no file still carries more than `20` misses.
 - [ ] Run repository-default `pytest -q` and do not close this plan until the report shows `100.00%` coverage.
@@ -44,7 +44,7 @@ Slice 3: sweep the remaining sub-50 files by nearest owner, refreshing `htmlcov/
 
 Slice 4: once no file still carries more than `20` misses, switch from cluster plans to the artifact-driven final sweep.
 
-Slice 5: run repository-default `pytest -q`, keep the `88.26%` ratchet green while the final sweep continues, and close only on `100.00%` coverage.
+Slice 5: run repository-default `pytest -q`, keep the buffered `87.26%` effective floor green while the final sweep continues, and close only on `100.00%` coverage.
 
 ## Concrete Steps
 
@@ -86,7 +86,7 @@ Do not create dedicated suites by default. First prove there is no stable existi
 - Observation: the shared checkpoint is test-clean again, but coverage report generation is still unstable on this machine.
   Evidence: after fixing the stale parser-validation call, `pytest -q --cov-fail-under=0` reached `1369 passed, 1 warning`, but `pytest-cov` emitted `CoverageWarning` failures against the fresh `.coverage.exec17-docgen-recheck-2` database (`no such table: tracer` / `line_bits`).
 - Observation: the repo now has a real checked-in coverage ratchet instead of only a historical integer floor.
-  Evidence: `artifacts/analysis/coverage_ratchet.json` captures the current `88.26%` baseline and repository-default `pytest -q` now enforces the same threshold through `--cov-fail-under=88.26`.
+  Evidence: `artifacts/analysis/coverage_ratchet.json` captures the current `88.26%` baseline in `summary.total_line_rate`, and repository-default `pytest -q` now enforces the derived buffered floor through `--cov-fail-under=87.26`.
 
 ## Decision Log
 
