@@ -201,6 +201,15 @@
 - Status: done
 - Notes: Added focused owner tests in `tests/test_analyzers_suites.py` for `variable_usage_reporting.py` and `modules.py` helper/reporting seams, plus `tests/test_analyzers_variables.py` coverage for `mms.py` nested typedef recursion and default-tag paths. Focused validations passed: `tests/test_analyzers_suites.py` -> `52 passed`, `tests/test_analyzers_variables.py` -> `44 passed`. Clean shared checkpoint passed with `1236 passed, 1 warning`; refreshed lane totals now put lane B at about `1253` misses, below lane A at about `1335`, so backlog-dominance acceptance is met.
 
+### Workstream merge-fix-tech-debt-tracker-2026-05-01
+
+- Owner: Copilot
+- Goal: Resolve the active merge conflict in the tech debt tracker without dropping legacy summary data.
+- Claims: .github/coordination/current-work.md, docs/exec-plans/tech-debt-tracker.md
+- First validation: rg -n "^(<<<<<<<|=======|>>>>>>>)" docs/exec-plans/tech-debt-tracker.md .github/coordination/current-work.md
+- Status: done
+- Notes: Conflict resolved by keeping the expanded T-series tracker structure and preserving the legacy TD table as a summary block. Validation passed: `rg -n "^(<<<<<<<|=======|>>>>>>>)" docs/exec-plans/tech-debt-tracker.md .github/coordination/current-work.md` returned no matches; git merge-conflicts list is empty.
+
 ### Workstream coverage-lane-c-closeout-2026-04-30
 
 - Owner: Copilot

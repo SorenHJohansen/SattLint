@@ -635,8 +635,9 @@ def test_run_module_duplicates_analysis_uses_selected_instances(monkeypatch):
     monkeypatch.setattr(
         app_analysis,
         "compare_modules",
-        lambda selected: captured.update({"selected": selected})
-        or SimpleNamespace(summary=lambda: "comparison summary"),
+        lambda selected: (
+            captured.update({"selected": selected}) or SimpleNamespace(summary=lambda: "comparison summary")
+        ),
     )
     monkeypatch.setattr(
         app_analysis,
