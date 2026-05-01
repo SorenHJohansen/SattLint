@@ -5,6 +5,7 @@ AI implementation plan for the SattLint tooling roadmap. Each item is a discrete
 Last updated: `2026-04-24`. Repo state baseline: `2026-04-21`.
 
 **AI agent rules:**
+
 - Read AGENTS.md and relevant `.github/instructions/` files before starting any item.
 - Check `.github/coordination/current-work.md` and claim touched files before editing.
 - Follow the implementation order in each item. Do not skip to CLI/LSP exposure before tests and machine-readable outputs are settled.
@@ -18,6 +19,7 @@ Last updated: `2026-04-24`. Repo state baseline: `2026-04-21`.
 ## Repo State and Seams
 
 **Already shipped (do not re-implement):**
+
 - Normalized findings: `src/sattlint/contracts/findings.py`
 - Artifact registry: `src/sattlint/devtools/artifact_registry.py`
 - Baseline/diff helpers: `src/sattlint/devtools/baselines.py`
@@ -67,6 +69,7 @@ Implement these first — existing infrastructure covers most of the work. Full 
 Items are ordered by suggested implementation sequence. Open items (`Completed: No`) are the AI's work queue. Implement in ID order unless a dependency or coordination reason requires otherwise.
 
 **Rationale for ordering:**
+
 - IDs 1–9: shared outputs, semantic-core artifacts, observability — build these first so CI gates, baselines, and quality checks have stable data.
 - IDs 10–21: validation/regression infrastructure — ship behind measurable safeguards.
 - IDs 22–37: higher-cost experimentation, repo-audit expansion, docs/AI workflows — after core tooling loop is stable.

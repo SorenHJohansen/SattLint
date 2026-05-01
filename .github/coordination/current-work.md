@@ -210,6 +210,15 @@
 - Status: done
 - Notes: Conflict resolved by keeping the expanded T-series tracker structure and preserving the legacy TD table as a summary block. Validation passed: `rg -n "^(<<<<<<<|=======|>>>>>>>)" docs/exec-plans/tech-debt-tracker.md .github/coordination/current-work.md` returned no matches; git merge-conflicts list is empty.
 
+### Workstream local-commit-ci-parity-2026-05-01
+
+- Owner: Copilot
+- Goal: Block local commits when the same repo-wide quality gates currently failing in CI are red.
+- Claims: .github/coordination/current-work.md, .github/workflows/typing.yml, .markdownlint.json, .markdownlintignore, .pre-commit-config.yaml, docs/exec-plans/tech-debt-tracker.md, scripts/run_markdownlint.py, scripts/run_repo_python.py, src/sattlint/, tests/test_repo_audit.py
+- First validation: .venv\Scripts\python.exe -m pre_commit validate-config
+- Status: done
+- Notes: Local commit gating now mirrors the repo-wide CI quality checks through repo-local pre-commit hooks, WSL-backed markdownlint, and repo-venv Python wrappers. Follow-up validations passed, including targeted pytest, repo-audit profiles, and `pip-audit --skip-editable` after removing the temporary CVE ignore.
+
 ### Workstream coverage-lane-c-closeout-2026-04-30
 
 - Owner: Copilot

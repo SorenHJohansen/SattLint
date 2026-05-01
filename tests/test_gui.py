@@ -260,9 +260,9 @@ def test_config_frame_browse_directory_and_target_addition_without_tk_widgets(mo
     ConfigFrame._browse_directory(frame, cast(Any, variable))
     assert variable.get() == ""
 
-    monkeypatch.setattr("sattlint_gui.frames.config_frame.filedialog.askdirectory", lambda **_kwargs: "C:/Programs")
+    monkeypatch.setattr("sattlint_gui.frames.config_frame.filedialog.askdirectory", lambda **_kwargs: "Programs")
     ConfigFrame._browse_directory(frame, cast(Any, variable))
-    assert variable.get() == "C:/Programs"
+    assert variable.get() == "Programs"
 
     monkeypatch.setattr(
         "sattlint_gui.frames.config_frame.messagebox.showwarning", lambda _title, msg, **_k: warnings.append(msg)

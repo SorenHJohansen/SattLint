@@ -265,6 +265,7 @@ Valve and actuator supervision:
 **ASCIIArrayToString(Array, Str, Status)** — Convert ASCII array to string
 
 ### ASCII Codes (Common)
+
 | Code | Character |
 |------|-----------|
 | 48-57 | 0-9 |
@@ -343,6 +344,7 @@ Valve and actuator supervision:
 **ReadSystemString(SysVarId, Value, Status)**
 
 ### Common System Variables
+
 | ID | Name | Type | Description |
 |----|------|------|-------------|
 | 1 | SysTime | Time | System time |
@@ -414,6 +416,7 @@ Valve and actuator supervision:
 ## Status Codes
 
 ### Procedure Status
+
 | Code | Meaning |
 |------|---------|
 | 0 | OK |
@@ -425,6 +428,7 @@ Valve and actuator supervision:
 | -6 | Access denied |
 
 ### AsyncOperation Status
+
 | Code | Meaning |
 |------|---------|
 | 0 | Pending |
@@ -436,27 +440,32 @@ Valve and actuator supervision:
 ## Best Practices
 
 ### String Handling
+
 - Check status after operations
 - Respect maximum lengths
 - Use appropriate string types
 
 ### Time Operations
+
 - Use TimeRecords for components
 - Watch for time zone issues
 - Duration for intervals
 
 ### File Operations
+
 - Always use async operations
 - Check AsyncOperation status
 - Close files when done
 - Handle errors gracefully
 
 ### Variable Distribution
+
 - Use WriteVar/ReadVar for small data
 - Use WriteLongVar for large records
 - Always check status
 
 ### Arrays and Queues
+
 - Check bounds
 - Handle full queue conditions
 - Delete when done to free memory

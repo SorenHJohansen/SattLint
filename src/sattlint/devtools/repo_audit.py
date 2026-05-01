@@ -1,7 +1,5 @@
 """Repository audit runner for portability, security, wiring, and public-readiness checks."""
 
-# ruff: noqa: E501
-
 from __future__ import annotations
 
 import argparse
@@ -126,7 +124,7 @@ LOCAL_ENDPOINT_RE = re.compile(r"\b(?:localhost|127(?:\.\d{1,3}){3}|[a-z0-9-]+\.
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(?:[a-z0-9_-]*?(?:api[_-]?key|token|secret|password|passwd|connection[_-]?string))\b.{0,24}?[:=]\s*['\"]([^'\"]+)['\"]"
+    r"(?i)(?:['\"]?(?:[a-z0-9_-]*?(?:api[_-]?key|token|secret|password|passwd|connection[_-]?string))['\"]?)\s*[:=]\s*['\"]([^'\"]+)['\"]"
 )
 PRINT_CALL_RE = re.compile(r"\bprint\s*\(")
 OVERSIZED_MODULE_LINE_LIMIT = 2000

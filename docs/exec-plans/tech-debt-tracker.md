@@ -5,9 +5,19 @@ Updated by doc-gardening agent and human developers.
 Last updated: 2026-04-30
 
 Canonical consolidated register for active debt:
+
 - `docs/exec-plans/tech-debt-ai-first.md`
 
 This tracker remains valid for legacy TD-* entries and scan history.
+
+## Consolidation Source Ledger
+
+| Source | State | Snapshot | Sync Basis | Coverage | Notes |
+|---|---|---|---|---|---|
+| TODO_GUI.md | retired | 2026-05-01 | retired | Program E | Legacy GUI backlog retired into roadmap and exec-plan tracking. |
+| TODO_REFACTOR.md | active | 2026-05-01 | sha1:bffab875c14b | Program T | Canonical source still present; keep ledger in sync until retired. |
+| TODO_SATTLINT.md | retired | 2026-05-01 | retired | Program C | Legacy SattLint backlog retired into roadmap and exec-plan tracking. |
+| TODO_TOOLS.md | active | 2026-05-01 | sha1:e5234961f941 | Program D | Canonical source still present; keep ledger in sync until retired. |
 
 ## Program T: Technical Debt Items
 
@@ -21,7 +31,7 @@ This tracker remains valid for legacy TD-* entries and scan history.
 | TD-004 | Tests | Coverage threshold now 86% enforced | Medium | Completed 2026-04-30: ratcheted to 86% |
 | TD-005 | Config | No validation that `analyzed_programs_and_libraries` paths exist | Low | Add startup validation |
 | TD-006 | DevTools | Pipeline outputs not yet consumed by doc-gardening agent | Low | Wire artifacts → quality-score.md |
-| TD-007 | Parse/Validate | validation.py functions return bool instead of parsing to typed objects | Medium | Refactor _is_valid_* to return parsed types |
+| TD-007 | Parse/Validate | validation.py functions return bool instead of parsing to typed objects | Medium | Refactor *is_valid** to return parsed types |
 | TD-008 | Types | Semantic type names needed for discoverability (VariableId, ProjectPath) | Low | Add semantic type aliases |
 
 ### T-001 Analyzer Remediation Instructions
@@ -181,7 +191,7 @@ This tracker remains valid for legacy TD-* entries and scan history.
 
 | Order | Component | File | Description |
 |-------|-----------|------|-------------|
-| 1 | Function signature update | `src/sattlint/validation.py` | Change _is_valid_* functions to return Option[TypedObject] |
+| 1 | Function signature update | `src/sattlint/validation.py` | Change *is_valid** functions to return Option[TypedObject] |
 | 2 | Caller updates | `src/sattlint/validation.py` | Update all callers to handle new return types |
 | 3 | Type safety improvement | `src/sattlint/validation.py` | Leverage returned types in downstream logic |
 
@@ -360,6 +370,7 @@ This tracker remains valid for legacy TD-* entries and scan history.
 **Output:** Modular transformer structure with same functionality
 
 **Validation:**
+
 - `sattlint syntax-check tests/fixtures/corpus/valid/VariableModifiers.s`
 - `pytest --no-cov tests/test_transformer.py tests/test_parser_core.py -x -q --tb=short`
 

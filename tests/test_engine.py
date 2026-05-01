@@ -958,7 +958,7 @@ def test_dump_dependency_graph_writes_all_available_sections(
             library_dependencies={"rootlib": {"deplib"}},
             missing=["Missing code file for 'OtherLib' (draft)"],
             warnings=["Root: version compatibility warning"],
-            ignored_vendor=["VendorLib (vendor: c:/vendor/VendorLib.s)"],
+            ignored_vendor=["VendorLib (vendor: vendor/VendorLib.s)"],
         ),
     )
 
@@ -977,7 +977,7 @@ def test_dump_dependency_graph_writes_all_available_sections(
     assert "rootlib -> deplib" in text
     assert "Missing code file for 'OtherLib' (draft)" in text
     assert "Root: version compatibility warning" in text
-    assert "VendorLib (vendor: c:/vendor/VendorLib.s)" in text
+    assert "VendorLib (vendor: vendor/VendorLib.s)" in text
     assert "saved to:" in output
 
 

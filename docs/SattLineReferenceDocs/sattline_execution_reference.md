@@ -3,7 +3,9 @@
 ## Scan Groups
 
 ### Concept
+
 Programs execute in scan groups — periodic execution cycles:
+
 - Variables sorted by dependency
 - Equations executed once per scan
 - Sequences evaluated once per scan
@@ -18,6 +20,7 @@ Programs execute in scan groups — periodic execution cycles:
 | Manual | Triggered | Diagnostics, special |
 
 ### Scan Group Assignment
+
 - Modules assigned to scan groups
 - Variables inherit from containing module
 - Can be changed dynamically
@@ -28,23 +31,27 @@ Programs execute in scan groups — periodic execution cycles:
 ## Execution Parameters
 
 ### Cycle Time
+
 - Determines scan frequency
 - Affects controller performance
 - Trade-off: speed vs. CPU load
 
 ### Priority
+
 - Within same cycle time
 - Higher priority = earlier execution
 - Range: 0-255
 - Default: 128
 
 ### Phase
+
 - For precise timing
 - 0-99% of cycle time
 - Delays execution start
 - Used for load distribution
 
 ### Non-Cyclic Execution
+
 - Execute on event
 - Manual trigger
 - Time-based trigger
@@ -55,11 +62,13 @@ Programs execute in scan groups — periodic execution cycles:
 ## Scan Group Control
 
 ### ScanGroupControl Module
+
 - Enable/disable scan groups
 - Monitor execution
 - Control membership
 
 **Parameters:**
+
 ```
 ScanGroup: Integer  -- Target scan group
 Enable: Boolean     -- Enable/disable
@@ -67,11 +76,13 @@ Member: Boolean     -- Module membership
 ```
 
 ### ScanGroupExtension Module
+
 - Extended control options
 - Operator interface
 - Status monitoring
 
 **Parameters:**
+
 ```
 CycleTime: Duration    -- Current cycle time
 MaxCycleTime: Duration -- Maximum observed
@@ -79,6 +90,7 @@ ExecuteCount: Integer  -- Number of executions
 ```
 
 ### Synchronized Scan Groups
+
 - Multiple scan groups synchronized
 - Same cycle start
 - Used for coordinated control
@@ -89,6 +101,7 @@ ExecuteCount: Integer  -- Number of executions
 ## Execution Order
 
 ### Sorting
+
 - Variables sorted by dependencies
 - Equations execute after inputs ready
 - Ensures consistent values
@@ -97,11 +110,13 @@ ExecuteCount: Integer  -- Number of executions
 ### Program Loops
 
 **Detection:**
+
 - Cross-block loops detected
 - Within-block loops not detected
 - Loops cause warnings
 
 **Indirect Dependencies:**
+
 ```
 // Detected as loop
 A = B + 1;
@@ -109,6 +124,7 @@ B = A * 2;  // Indirect: B depends on A
 ```
 
 **Direct Dependencies:**
+
 ```
 // May not be detected
 A = B + 1;
@@ -117,6 +133,7 @@ C = A;  // Hidden loop via C
 ```
 
 **Handling Loops:**
+
 - Execution continues with warning
 - Values may oscillate
 - Review and redesign
@@ -127,24 +144,28 @@ C = A;  // Hidden loop via C
 ## Program States
 
 ### Edit Mode
+
 - Development and testing
 - Full editing capabilities
 - Simulation available
 - No real I/O
 
 ### Simulate Mode
+
 - Test with real program
 - Simulated I/O
 - Time can be compressed
 - Debugging tools active
 
 ### Operate Mode
+
 - Production operation
 - Real I/O active
 - Operator interaction enabled
 - Debugging limited
 
 ### Run Mode
+
 - Standalone execution
 - No operator interface
 - Headless operation
@@ -155,23 +176,27 @@ C = A;  // Hidden loop via C
 ## Run Analysis
 
 ### Program Version
+
 - Version tracking
 - Incremental numbers
 - Timestamp
 - Owner information
 
 ### Common Program Version
+
 - Shared library versions
 - Consistency check
 - All systems must match
 
 ### Compilation
+
 - Syntax checking
 - Sorting equations
 - Generating code
 - Download to controller
 
 ### Version Inconsistencies
+
 - Detected at startup
 - Options: ignore, warn, stop
 - Force recompile
@@ -182,18 +207,21 @@ C = A;  // Hidden loop via C
 ## Performance Monitoring
 
 ### Execution Load
+
 - CPU utilization
 - Scan time compliance
 - Execution count
 - Performance metrics
 
 ### SystemExecutionInfo Module
+
 - Real-time statistics
 - Load monitoring
 - Performance trends
 - Diagnostic information
 
 ### SystemExecutionLog Module
+
 - Historical data
 - Event logging
 - Audit trail
@@ -204,24 +232,28 @@ C = A;  // Hidden loop via C
 ## Source Code Distribution
 
 ### Program Unit Owner
+
 - Single owner per unit
 - Edit rights
 - Version control
 - Change tracking
 
 ### Reserve/Release
+
 - Check-out for editing
 - Prevents conflicts
 - Locks unit
 - Reserved indicator
 
 ### Save Official Version
+
 - Committed version
 - Backup created
 - Version incremented
 - Change documented
 
 ### Installation
+
 - Download to controller
 - Compile and link
 - Verify checksum
@@ -232,18 +264,21 @@ C = A;  // Hidden loop via C
 ## Distributed Execution
 
 ### Variable Distribution
+
 - Export from source system
 - Import to destination
 - MMS communication
 - Automatic synchronization
 
 ### System Identity
+
 - Unique system identifier
 - Network address
 - System type (WS/CS)
 - Routing information
 
 ### Configuration
+
 - Distribution setup
 - Communication paths
 - Scan group mapping
@@ -254,12 +289,14 @@ C = A;  // Hidden loop via C
 ## Best Practices
 
 ### Scan Group Selection
+
 - Fast for critical loops
 - Normal for standard control
 - Slow for monitoring
 - Match process dynamics
 
 ### Cycle Time Guidelines
+
 | Process Type | Typical Cycle |
 |--------------|---------------|
 | Flow control | 100-500 ms |
@@ -269,6 +306,7 @@ C = A;  // Hidden loop via C
 | Batch phases | 100-500 ms |
 
 ### Priority Guidelines
+
 - Critical safety: 0-50
 - Fast control: 51-100
 - Standard control: 101-150
@@ -276,18 +314,21 @@ C = A;  // Hidden loop via C
 - Background: 201-255
 
 ### Avoiding Loops
+
 - Design feedforward carefully
 - Check indirect dependencies
 - Use state variables sparingly
 - Document intended loops
 
 ### Performance Optimization
+
 - Minimize cross-system variables
 - Group related logic
 - Avoid unnecessary sorting
 - Use appropriate data types
 
 ### Testing
+
 - Test in simulate mode first
 - Verify scan times
 - Check for loops
@@ -298,31 +339,37 @@ C = A;  // Hidden loop via C
 ## Troubleshooting
 
 ### Slow Scan Times
+
 **Causes:**
+
 - Too much logic
 - Heavy calculations
 - Slow I/O
 - Network delays
 
 **Solutions:**
+
 - Move to faster scan group
 - Optimize equations
 - Distribute load
 - Reduce communication
 
 ### Cycle Time Violations
+
 - Increase cycle time
 - Split into multiple scans
 - Reduce priority
 - Optimize code
 
 ### Inconsistent Values
+
 - Check scan group assignment
 - Verify sorting order
 - Look for loops
 - Check state variables
 
 ### Distributed Execution Issues
+
 - Verify system identities
 - Check network connectivity
 - Validate distribution config

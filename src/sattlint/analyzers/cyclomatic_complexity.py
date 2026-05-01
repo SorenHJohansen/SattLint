@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-# ruff: noqa: E501
 from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,

@@ -1,7 +1,5 @@
 """Configuration management for SattLint."""
 
-# ruff: noqa: E501
-
 from __future__ import annotations
 
 import os

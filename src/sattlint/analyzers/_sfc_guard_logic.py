@@ -1,7 +1,5 @@
 """SFC guard normalization and transition logic analysis."""
 
-# ruff: noqa: E501
-
 from __future__ import annotations
 
 from collections.abc import Sequence as SequenceABC

@@ -10,12 +10,14 @@ and opens fix-up pull requests."
 
 # ruff: noqa: RUF001
 
+import argparse
 import hashlib
 import re
 import shutil
 
 # Internal doc-gardener intentionally invokes trusted git and gh CLIs.
 import subprocess  # nosec B404
+import sys
 from collections import Counter
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, timedelta
@@ -676,8 +678,24 @@ Automated PR from doc-gardening scan.
         return False
 
 
-def main() -> None:
-    """Run doc-gardening scan and update tracking files."""
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run doc-gardening checks and optional tracking updates.")
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="Report findings and fail on them without updating tracking files or opening a PR.",
+    )
+    parser.add_argument(
+        "--open-fixup-pr",
+        action="store_true",
+        help="Attempt to open a fix-up PR when findings exist.",
+    )
+    return parser.parse_args(list(argv) if argv is not None else [])
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run doc-gardening scan and return a process exit code."""
+    args = _parse_args(argv)
     result = run_scan()
     findings = [DocFinding(**f) for f in result["findings"]]
 
@@ -690,16 +708,21 @@ def main() -> None:
         for f in findings:
             print(f"  [{f.severity}] {f.file}:{f.line} - {f.message}")
 
-    update_quality_score(findings)
-    update_tech_debt_scan_log(findings)
-    print("\nTracking files updated.")
+    if args.check_only:
+        print("\nCheck-only mode: tracking files not updated.")
+    else:
+        update_quality_score(findings)
+        update_tech_debt_scan_log(findings)
+        print("\nTracking files updated.")
 
-    # Open fix-up PR if there are findings
     if findings:
-        print("\nAttempting to open fix-up PR...")
-        open_fixup_pr(findings)
-        raise SystemExit(1)
+        if args.open_fixup_pr and not args.check_only:
+            print("\nAttempting to open fix-up PR...")
+            open_fixup_pr(findings)
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main(sys.argv[1:]))
