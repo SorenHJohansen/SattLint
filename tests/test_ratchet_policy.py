@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 
@@ -17,6 +18,64 @@ def _load_ratchet_policy_module():
 
 
 ratchet_policy = _load_ratchet_policy_module()
+
+
+def _coverage_ratchet_payload(
+    total_line_rate: str,
+    *,
+    min_line_rate_basis_points: int | None = None,
+) -> str:
+    total_basis_points = int((Decimal(total_line_rate) * Decimal("10000")).quantize(Decimal("1")))
+    effective_floor = (
+        max(total_basis_points - ratchet_policy.COVERAGE_FLOOR_BUFFER_BASIS_POINTS, 0)
+        if min_line_rate_basis_points is None
+        else min_line_rate_basis_points
+    )
+    return f"""
+{{
+    "kind": "sattlint.coverage_ratchet",
+    "schema_version": 1,
+    "metrics": {{
+        "min_line_rate_basis_points": {effective_floor},
+        "min_changed_line_rate_basis_points": 10000,
+        "min_touched_file_line_rate_basis_points": 9000
+    }},
+    "summary": {{
+        "total_line_rate": {total_line_rate}
+    }},
+    "source": "coverage.xml"
+}}
+""".strip()
+
+
+def _pyproject_with_typing_ratchet(
+    cov_fail_under: str,
+    *,
+    strict_paths: tuple[str, ...] = ("src/sattlint/core/document.py",),
+    debt_allowlist: tuple[str, ...] = ("src/sattlint/core/semantic.py",),
+    strict_roots: tuple[str, ...] | None = None,
+) -> str:
+    effective_roots = strict_roots or (*strict_paths, *debt_allowlist)
+    strict_lines = "\n".join(f'    "{path}",' for path in strict_paths)
+    root_lines = "\n".join(f'    "{path}",' for path in effective_roots)
+    debt_lines = "\n".join(f'    "{path}",' for path in debt_allowlist)
+    return f"""
+[tool.pytest.ini_options]
+addopts = ["--cov-fail-under={cov_fail_under}"]
+
+[tool.pyright]
+strict = [
+{strict_lines}
+]
+
+[tool.sattlint.typing_ratchet]
+strict_roots = [
+{root_lines}
+]
+debt_allowlist = [
+{debt_lines}
+]
+""".strip()
 
 
 def test_evaluate_policy_change_allows_non_protected_edits():
@@ -91,10 +150,10 @@ def test_evaluate_policy_change_requires_explicit_approval_record():
     errors = ratchet_policy.evaluate_policy_change(
         changed_files=(ratchet_policy.COVERAGE_RATCHET_PATH,),
         current_text_by_path={
-            ratchet_policy.COVERAGE_RATCHET_PATH: '{"metrics": {"min_line_rate_basis_points": 8827}}',
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.8927"),
         },
         base_text_by_path={
-            ratchet_policy.COVERAGE_RATCHET_PATH: '{"metrics": {"min_line_rate_basis_points": 8826}}',
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.8826"),
         },
     )
 
@@ -107,42 +166,56 @@ def test_evaluate_policy_change_rejects_looser_coverage_ratchet_even_with_approv
     errors = ratchet_policy.evaluate_policy_change(
         changed_files=(ratchet_policy.COVERAGE_RATCHET_PATH, approval_path),
         current_text_by_path={
-            ratchet_policy.COVERAGE_RATCHET_PATH: '{"metrics": {"min_line_rate_basis_points": 8700}}',
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.8826", min_line_rate_basis_points=8700),
             approval_path: "Approved-by: Human Reviewer\nReason: Tried to lower the gate\n",
         },
         base_text_by_path={
-            ratchet_policy.COVERAGE_RATCHET_PATH: '{"metrics": {"min_line_rate_basis_points": 8826}}',
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.8826"),
             approval_path: None,
         },
     )
 
-    assert any("Coverage ratchet loosened" in error for error in errors)
+    assert any("Coverage ratchet floor must equal" in error for error in errors)
 
 
 def test_evaluate_policy_change_rejects_looser_pytest_floor_even_with_approval():
     approval_path = ".github/approvals/ratchet-rebaseline-2026-05-01.md"
-    base_pyproject = """
-[tool.pytest.ini_options]
-addopts = ["--cov-fail-under=88.26"]
-""".strip()
-    head_pyproject = """
-[tool.pytest.ini_options]
-addopts = ["--cov-fail-under=87.50"]
-""".strip()
+    base_pyproject = _pyproject_with_typing_ratchet("87.26")
+    head_pyproject = _pyproject_with_typing_ratchet("87.00")
 
     errors = ratchet_policy.evaluate_policy_change(
         changed_files=(ratchet_policy.PYPROJECT_PATH, approval_path),
         current_text_by_path={
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.8826"),
             ratchet_policy.PYPROJECT_PATH: head_pyproject,
             approval_path: "Approved-by: Human Reviewer\nReason: lowering floor\n",
         },
         base_text_by_path={
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.8826"),
             ratchet_policy.PYPROJECT_PATH: base_pyproject,
             approval_path: None,
         },
     )
 
-    assert any("Pytest coverage floor loosened" in error for error in errors)
+    assert any("Pytest coverage floor must equal" in error for error in errors)
+
+
+def test_evaluate_policy_change_rejects_lowered_coverage_baseline_even_with_approval():
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-01.md"
+
+    errors = ratchet_policy.evaluate_policy_change(
+        changed_files=(ratchet_policy.COVERAGE_RATCHET_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.8800"),
+            approval_path: "Approved-by: Human Reviewer\nReason: tried to lower the baseline\n",
+        },
+        base_text_by_path={
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.8826"),
+            approval_path: None,
+        },
+    )
+
+    assert any("Coverage baseline decreased" in error for error in errors)
 
 
 def test_evaluate_policy_change_rejects_looser_structural_metric_even_with_approval():
@@ -387,11 +460,11 @@ def test_evaluate_policy_change_rejects_invalid_approval_record():
     errors = ratchet_policy.evaluate_policy_change(
         changed_files=(ratchet_policy.COVERAGE_RATCHET_PATH, approval_path),
         current_text_by_path={
-            ratchet_policy.COVERAGE_RATCHET_PATH: '{"metrics": {"min_line_rate_basis_points": 8827}}',
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.8927"),
             approval_path: "Approved-by: Human Reviewer\n",
         },
         base_text_by_path={
-            ratchet_policy.COVERAGE_RATCHET_PATH: '{"metrics": {"min_line_rate_basis_points": 8826}}',
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.8826"),
             approval_path: None,
         },
     )
@@ -401,30 +474,113 @@ def test_evaluate_policy_change_rejects_invalid_approval_record():
 
 def test_evaluate_policy_change_accepts_stricter_change_with_valid_approval():
     approval_path = ".github/approvals/ratchet-rebaseline-2026-05-01.md"
-    base_pyproject = """
-[tool.pytest.ini_options]
-addopts = ["--cov-fail-under=88.26"]
-""".strip()
-    head_pyproject = """
-[tool.pytest.ini_options]
-addopts = ["--cov-fail-under=88.50"]
-""".strip()
+    base_pyproject = _pyproject_with_typing_ratchet("87.26")
+    head_pyproject = _pyproject_with_typing_ratchet("89.50")
 
     errors = ratchet_policy.evaluate_policy_change(
         changed_files=(ratchet_policy.COVERAGE_RATCHET_PATH, ratchet_policy.PYPROJECT_PATH, approval_path),
         current_text_by_path={
-            ratchet_policy.COVERAGE_RATCHET_PATH: '{"metrics": {"min_line_rate_basis_points": 8850}}',
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.9050"),
             ratchet_policy.PYPROJECT_PATH: head_pyproject,
             approval_path: "Approved-by: Human Reviewer\nReason: raised the floor after real fixes\n",
         },
         base_text_by_path={
-            ratchet_policy.COVERAGE_RATCHET_PATH: '{"metrics": {"min_line_rate_basis_points": 8826}}',
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.8826"),
             ratchet_policy.PYPROJECT_PATH: base_pyproject,
             approval_path: None,
         },
     )
 
     assert errors == []
+
+
+def test_evaluate_policy_change_allows_initial_typing_ratchet_adoption_with_approval():
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-01.md"
+    base_pyproject = """
+[tool.pytest.ini_options]
+addopts = ["--cov-fail-under=87.26"]
+""".strip()
+    head_pyproject = _pyproject_with_typing_ratchet("87.26")
+
+    errors = ratchet_policy.evaluate_policy_change(
+        changed_files=(ratchet_policy.PYPROJECT_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.8826"),
+            ratchet_policy.PYPROJECT_PATH: head_pyproject,
+            approval_path: "Approved-by: Human Reviewer\nReason: seed explicit typing debt while ratcheting strict coverage\n",
+        },
+        base_text_by_path={
+            ratchet_policy.COVERAGE_RATCHET_PATH: _coverage_ratchet_payload("0.8826"),
+            ratchet_policy.PYPROJECT_PATH: base_pyproject,
+            approval_path: None,
+        },
+    )
+
+    assert errors == []
+
+
+def test_evaluate_policy_change_rejects_typing_debt_growth_even_with_approval():
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-01.md"
+    base_pyproject = _pyproject_with_typing_ratchet("87.26")
+    head_pyproject = _pyproject_with_typing_ratchet(
+        "87.26",
+        debt_allowlist=("src/sattlint/core/semantic.py", "src/sattlint/core/ast_tools.py"),
+    )
+
+    errors = ratchet_policy.evaluate_policy_change(
+        changed_files=(ratchet_policy.PYPROJECT_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.PYPROJECT_PATH: head_pyproject,
+            approval_path: "Approved-by: Human Reviewer\nReason: attempted typing exception growth\n",
+        },
+        base_text_by_path={
+            ratchet_policy.PYPROJECT_PATH: base_pyproject,
+            approval_path: None,
+        },
+    )
+
+    assert any("Typing debt allowlist grew" in error for error in errors)
+
+
+def test_evaluate_policy_change_rejects_pyright_strict_shrink_even_with_approval():
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-01.md"
+    base_pyproject = _pyproject_with_typing_ratchet(
+        "87.26",
+        strict_paths=("src/sattlint/core/document.py", "src/sattlint/core/diagnostics.py"),
+    )
+    head_pyproject = _pyproject_with_typing_ratchet("87.26")
+
+    errors = ratchet_policy.evaluate_policy_change(
+        changed_files=(ratchet_policy.PYPROJECT_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.PYPROJECT_PATH: head_pyproject,
+            approval_path: "Approved-by: Human Reviewer\nReason: attempted strict-list shrink\n",
+        },
+        base_text_by_path={
+            ratchet_policy.PYPROJECT_PATH: base_pyproject,
+            approval_path: None,
+        },
+    )
+
+    assert any("Pyright strict coverage removed" in error for error in errors)
+
+
+def test_typing_ratchet_state_errors_reject_new_scoped_file_in_debt_allowlist(tmp_path):
+    scoped_file = tmp_path / "src" / "sattlint" / "core" / "new_module.py"
+    scoped_file.parent.mkdir(parents=True)
+    scoped_file.write_text("value = 1\n", encoding="utf-8")
+
+    errors = ratchet_policy._typing_ratchet_state_errors(
+        repo_root=tmp_path,
+        added_files=("src/sattlint/core/new_module.py",),
+        state=ratchet_policy.TypingRatchetState(
+            strict_paths=(),
+            strict_roots=("src/sattlint/core",),
+            debt_allowlist=("src/sattlint/core/new_module.py",),
+        ),
+    )
+
+    assert any("Typing debt allowlist grew with a new scoped file" in error for error in errors)
 
 
 def test_detect_change_context_prefers_base_ref_when_present(monkeypatch):
@@ -461,4 +617,59 @@ def test_detect_change_context_prefers_base_ref_when_present(monkeypatch):
     assert calls == [
         ("diff", "--name-only", "--diff-filter=ACMR", "origin/main...HEAD"),
         ("diff", "--name-status", "--diff-filter=A", "origin/main...HEAD"),
+    ]
+
+
+def test_detect_change_context_prefers_worktree_when_unstaged_changes_exist(monkeypatch):
+    calls: list[tuple[str, ...]] = []
+
+    def fake_git(_repo_root, *args):
+        calls.append(args)
+        if args == ("diff", "--cached", "--name-only", "--diff-filter=ACMR"):
+
+            class DiffResult:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return DiffResult()
+        if args == ("diff", "--cached", "--name-status", "--diff-filter=A"):
+
+            class AddedResult:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return AddedResult()
+        if args == ("diff", "--name-only", "--diff-filter=ACMR", "HEAD"):
+
+            class WorktreeResult:
+                returncode = 0
+                stdout = "pyproject.toml\n"
+                stderr = ""
+
+            return WorktreeResult()
+        if args == ("diff", "--name-status", "--diff-filter=A", "HEAD"):
+
+            class WorktreeAddedResult:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return WorktreeAddedResult()
+        raise AssertionError(f"Unexpected git args: {args}")
+
+    monkeypatch.setattr(ratchet_policy, "_git", fake_git)
+
+    context = ratchet_policy._detect_change_context(Path("."), {})
+
+    assert context.changed_files == ("pyproject.toml",)
+    assert context.added_files == ()
+    assert context.base_ref == "HEAD"
+    assert context.source == "worktree"
+    assert calls == [
+        ("diff", "--cached", "--name-only", "--diff-filter=ACMR"),
+        ("diff", "--cached", "--name-status", "--diff-filter=A"),
+        ("diff", "--name-only", "--diff-filter=ACMR", "HEAD"),
+        ("diff", "--name-status", "--diff-filter=A", "HEAD"),
     ]

@@ -309,6 +309,158 @@ def _owner_test_targets_for_checks(recommended_checks: Iterable[dict[str, Any]])
     return targets
 
 
+def _changed_source_python_files(changed_files: Iterable[str]) -> list[str]:
+    return [path_text for path_text in _focused_python_files(changed_files) if path_text.startswith("src/")]
+
+
+def _mutation_guidance(changed_files: Iterable[str]) -> dict[str, Any]:
+    normalized_changed_files = normalize_changed_files(changed_files)
+    matched_surfaces: list[str] = []
+    suggested_commands: list[str] = []
+    rules = (
+        (
+            "parser",
+            ("src/sattline_parser/", "tests/test_parser", "src/sattlint/grammar/"),
+            '& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_parser_core.py tests/test_parser_validation.py -x -q --tb=short',
+        ),
+        (
+            "validation",
+            ("src/sattlint/validation.py", "src/sattlint/_validation", "tests/test_parser_validation.py"),
+            '& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_parser_validation.py -x -q --tb=short',
+        ),
+        (
+            "routing",
+            (
+                "src/sattlint/devtools/pipeline.py",
+                "src/sattlint/devtools/pipeline_checks.py",
+                "src/sattlint/devtools/repo_audit.py",
+                "src/sattlint/devtools/repo_audit_cli.py",
+                "src/sattlint/devtools/repo_audit_entrypoints.py",
+                "src/sattlint/devtools/ai_work_map.py",
+                "tests/test_recommendation_routing.py",
+            ),
+            '& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_pipeline_run.py tests/test_repo_audit.py tests/test_recommendation_routing.py -x -q --tb=short',
+        ),
+    )
+    for surface_name, prefixes, command in rules:
+        if not any(path_text.startswith(prefix) for prefix in prefixes for path_text in normalized_changed_files):
+            continue
+        matched_surfaces.append(surface_name)
+        if command not in suggested_commands:
+            suggested_commands.append(command)
+
+    if not matched_surfaces:
+        return {
+            "status": "not-applicable",
+            "critical_surfaces": [],
+            "suggested_commands": [],
+            "suggestion": None,
+        }
+    return {
+        "status": "advisory",
+        "critical_surfaces": matched_surfaces,
+        "suggested_commands": suggested_commands,
+        "suggestion": (
+            "Prefer mutation-style or property-style assertions for parser, validation, and routing seams before "
+            "treating the repo-wide coverage percentage as sufficient proof."
+        ),
+    }
+
+
+def build_change_proof_requirements(
+    *,
+    changed_files: Iterable[str],
+    recommended_checks: Iterable[dict[str, Any]],
+) -> dict[str, Any]:
+    normalized_changed_files = normalize_changed_files(changed_files)
+    owner_test_targets = _owner_test_targets_for_checks(recommended_checks)
+    touched_python_files = _focused_python_files(normalized_changed_files)
+    touched_source_files = _changed_source_python_files(normalized_changed_files)
+    focused_behavior_required = bool(touched_python_files)
+    focused_behavior_status = "satisfied" if (not focused_behavior_required or owner_test_targets) else "missing"
+    return {
+        "focused_behavior_test": {
+            "required": focused_behavior_required,
+            "status": focused_behavior_status,
+            "owner_test_targets": owner_test_targets,
+            "reason": (
+                "Code changes require at least one focused owner pytest target."
+                if focused_behavior_required
+                else "No changed Python files require a focused owner pytest target."
+            ),
+        },
+        "coverage": {
+            "required": bool(touched_source_files),
+            "preferred_mode": "changed-lines" if touched_source_files else None,
+            "fallback_mode": "touched-files" if touched_source_files else None,
+            "touched_source_files": touched_source_files,
+            "reason": (
+                "Touched source files should be proven by focused changed-line coverage when executable diff lines "
+                "exist, or touched-file coverage otherwise."
+                if touched_source_files
+                else "No changed source files require focused coverage proof."
+            ),
+        },
+        "mutation_guidance": _mutation_guidance(normalized_changed_files),
+    }
+
+
+def _build_owner_pytest_step(
+    *,
+    changed_files: Iterable[str],
+    recommended_checks: Iterable[dict[str, Any]],
+    python_command: list[str],
+    coverage_output_path: Path,
+) -> dict[str, Any] | None:
+    owner_test_targets = _owner_test_targets_for_checks(recommended_checks)
+    if not owner_test_targets:
+        return None
+    touched_source_files = _changed_source_python_files(changed_files)
+    if touched_source_files:
+        pytest_argv = [*python_command, "-m", "pytest", *owner_test_targets, "-x", "-q", "--tb=short"]
+        pytest_argv.extend(f"--cov={path_text}" for path_text in touched_source_files)
+        pytest_argv.extend(
+            [
+                "--cov-report=term-missing",
+                f"--cov-report=xml:{coverage_output_path.resolve()}",
+                "--cov-fail-under=0",
+            ]
+        )
+        return {
+            "id": "owner-pytest-coverage",
+            "label": "Run owner pytest targets with focused coverage for touched source files",
+            "command": _shell_command(pytest_argv),
+            "argv": pytest_argv,
+            "coverage_output_path": str(coverage_output_path.resolve()),
+        }
+    pytest_argv = [*python_command, "-m", "pytest", "--no-cov", *owner_test_targets, "-x", "-q", "--tb=short"]
+    return {
+        "id": "owner-pytest",
+        "label": "Run owner pytest targets for the recommended checks",
+        "command": _shell_command(pytest_argv),
+        "argv": pytest_argv,
+    }
+
+
+def evaluate_change_scoped_coverage_proof(
+    *,
+    repo_root: Path,
+    coverage_output_path: Path,
+    changed_files: Iterable[str],
+) -> dict[str, Any]:
+    report = build_coverage_summary_report(
+        repo_root,
+        coverage_path=coverage_output_path,
+        changed_files=changed_files,
+    )
+    change_scoped = dict(report["change_scoped"])
+    change_scoped["coverage_path"] = (
+        sanitize_path_for_report(coverage_output_path.resolve(), repo_root=repo_root)
+        or coverage_output_path.resolve().as_posix()
+    )
+    return change_scoped
+
+
 def _build_finish_gate_commands(
     *,
     profile: str,
@@ -321,6 +473,7 @@ def _build_finish_gate_commands(
 ) -> list[dict[str, Any]]:
     normalized_changed_files = normalize_changed_files(changed_files)
     commands: list[dict[str, Any]] = []
+    coverage_output_path = output_dir / "coverage_proof.xml"
     recommended_slice_command = [
         "sattlint-analysis-pipeline",
         "--profile",
@@ -358,17 +511,14 @@ def _build_finish_gate_commands(
                 "argv": pyright_argv,
             }
         )
-    owner_test_targets = _owner_test_targets_for_checks(recommended_checks)
-    if owner_test_targets:
-        pytest_argv = [*python_command, "-m", "pytest", "--no-cov", *owner_test_targets, "-x", "-q", "--tb=short"]
-        commands.append(
-            {
-                "id": "owner-pytest",
-                "label": "Run owner pytest targets for the recommended checks",
-                "command": _shell_command(pytest_argv),
-                "argv": pytest_argv,
-            }
-        )
+    owner_pytest_step = _build_owner_pytest_step(
+        changed_files=normalized_changed_files,
+        recommended_checks=recommended_checks,
+        python_command=python_command,
+        coverage_output_path=coverage_output_path,
+    )
+    if owner_pytest_step is not None:
+        commands.append(owner_pytest_step)
     return commands
 
 
@@ -507,6 +657,10 @@ def build_pipeline_check_recommendations(
         "suggested_finish_gate_commands": [entry["command"] for entry in suggested_finish_gate_commands],
         "recommended_checks": recommended_checks,
         "skipped_checks": skipped_checks,
+        "proof_requirements": build_change_proof_requirements(
+            changed_files=resolved_changed_files,
+            recommended_checks=recommended_checks,
+        ),
         "why_this_gate": _build_recommendation_why_this_gate(
             changed_files=resolved_changed_files,
             recommended_checks=recommended_checks,
@@ -536,6 +690,10 @@ def run_recommended_pipeline_finish_gate(
         output_dir=output_dir,
         changed_files=changed_files,
     )
+    proof_requirements = recommendation.get("proof_requirements") or build_change_proof_requirements(
+        changed_files=recommendation.get("changed_files", []),
+        recommended_checks=recommendation.get("recommended_checks", []),
+    )
     summary = _run_pipeline(
         output_dir,
         trace_target=trace_target,
@@ -563,6 +721,11 @@ def run_recommended_pipeline_finish_gate(
     )[1:]
     step_reports: list[dict[str, Any]] = []
     finish_gate_status = "pass"
+    coverage_proof: dict[str, Any] = {
+        "status": "not-required",
+        "mode": "skipped",
+        "coverage_path": None,
+    }
     for step in finish_gate_steps:
         result = _run_command(step["id"], step["argv"])
         step_status = "pass" if result.exit_code == 0 else "fail"
@@ -578,6 +741,36 @@ def run_recommended_pipeline_finish_gate(
                 "status": step_status,
             }
         )
+    if proof_requirements["focused_behavior_test"]["status"] == "missing":
+        finish_gate_status = "fail"
+        step_reports.append(
+            {
+                "id": "focused-behavior-test",
+                "label": "Require focused owner pytest for changed code",
+                "command": "",
+                "exit_code": None,
+                "duration_seconds": 0.0,
+                "status": "fail",
+                "detail": proof_requirements["focused_behavior_test"]["reason"],
+            }
+        )
+    coverage_step = next((step for step in finish_gate_steps if step["id"] == "owner-pytest-coverage"), None)
+    if coverage_step is not None:
+        coverage_proof = evaluate_change_scoped_coverage_proof(
+            repo_root=REPO_ROOT,
+            coverage_output_path=Path(coverage_step["coverage_output_path"]),
+            changed_files=recommendation["changed_files"],
+        )
+        if coverage_proof["status"] == "fail":
+            finish_gate_status = "fail"
+    elif proof_requirements["coverage"]["required"]:
+        coverage_proof = {
+            "status": "fail",
+            "mode": "skipped",
+            "coverage_path": None,
+            "reason": "Focused coverage proof is required for changed source files but no owner pytest coverage step was available.",
+        }
+        finish_gate_status = "fail"
     finish_gate_report = {
         "kind": "sattlint.pipeline.finish_gate",
         "schema_version": 1,
@@ -585,6 +778,8 @@ def run_recommended_pipeline_finish_gate(
         "commands": step_reports,
         "changed_files": recommendation["changed_files"],
         "owner_test_targets": _owner_test_targets_for_checks(recommendation["recommended_checks"]),
+        "proof_requirements": proof_requirements,
+        "coverage_proof": coverage_proof,
     }
     write_json_artifact(output_dir / "finish_gate.json", finish_gate_report)
     return {

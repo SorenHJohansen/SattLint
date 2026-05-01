@@ -11,33 +11,27 @@ Use this agent for explicit repo-wide verify, commit-ready, push-ready, merge-re
 
 - DO NOT claim success unless all verification steps exit with code 0.
 - DO NOT fix behavior-changing or risky edits automatically — ask the user first.
-- DO NOT skip re-running full verification after any fix batch.
+- DO NOT skip re-running the full verification gate after any fix batch.
 - DO NOT use the VS Code test runner; use repo-venv pytest commands directly.
 
 ## Verification Gate
 
-Run these two steps in order. Both must pass.
+Run this local pre-push gate. It must pass.
 
-**Step 1 — pre-commit (lint, format, type-check, file hygiene):**
+**Step 1 — local pre-push gate:**
 ```
-& ".venv/Scripts/pre-commit.exe" run --all-files
+& ".venv/Scripts/python.exe" -m pre_commit run --all-files
 ```
-Covers: `ruff` lint+fix, `ruff-format`, `pyright`, trailing-whitespace, end-of-file-fixer, YAML/TOML check, large-file check.
-
-**Step 2 — tests:**
-```
-& ".venv/Scripts/python.exe" -m pytest
-```
+Covers: `ruff` lint+fix, `ruff-format`, `pyright`, `pytest-quality`, `ratchet-policy`, trailing-whitespace, end-of-file-fixer, YAML/TOML check, and large-file check.
 
 ## Approach
 
-1. Run Step 1 (pre-commit). Capture exit code and output.
-2. Run Step 2 (pytest). Capture exit code and output.
-3. If either is non-zero, categorize each failure:
+1. Run the local pre-push gate. Capture exit code and output.
+2. If it is non-zero, categorize each failure:
    - **Safe auto-fix**: formatting, trailing whitespace, import sort, trivial ruff lint — fix automatically.
-   - **Risky/behavior-changing**: logic, validation semantics, test assertions, grammar rules, pyright errors — ask before touching.
-4. After each fix batch, rerun both steps from the start.
-5. Repeat until both exit cleanly or all remaining failures require manual action.
+   - **Risky/behavior-changing**: logic, validation semantics, test assertions, grammar rules, pyright errors, ratchet-policy failures — ask before touching.
+3. After each fix batch, rerun the same gate from the start.
+4. Repeat until it exits cleanly or all remaining failures require manual action.
 
 ## Additional Validation Commands (use as needed)
 

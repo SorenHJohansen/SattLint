@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from sattlint.devtools import repo_audit, repo_audit_entrypoints
+from sattlint.devtools import ai_work_map, repo_audit, repo_audit_entrypoints
 
 
 def test_repo_audit_entrypoint_helper_normalizers_and_reason_selection():
@@ -89,8 +89,10 @@ def test_repo_audit_entrypoint_builds_finish_gate_commands_and_gate_reason(tmp_p
         "recommended-finish-gate",
         "ruff-touched-python",
         "pyright-touched-python",
-        "owner-pytest",
+        "ratchet-policy",
+        "owner-pytest-coverage",
     ]
+    assert commands[3]["command"] == "python scripts/check_ratchet_policy.py"
     assert why_this_gate["matched_routes"] == [
         {
             "check_id": "cli",
@@ -102,6 +104,58 @@ def test_repo_audit_entrypoint_builds_finish_gate_commands_and_gate_reason(tmp_p
         }
     ]
     assert why_this_gate["skipped_checks"] == [{"id": "bandit", "reason": "No changed-file route matched this check."}]
+
+
+def test_build_selected_finish_gate_plan_uses_selected_surface_commands(monkeypatch, tmp_path):
+    fake_repo_audit = SimpleNamespace(PIPELINE_OUTPUT_DIRNAME="pipeline", REPO_ROOT=tmp_path)
+    planning_context = {
+        "finish_gate_template": {
+            "description": "shared pipeline gate",
+            "includes": ["recommended pipeline slice", "owner pytest targets"],
+        },
+        "owner_test_targets": ["tests/test_pipeline.py"],
+    }
+    recommendation = {
+        "recommended_check_ids": ["ruff"],
+        "suggested_finish_gate_commands": ["sattlint-repo-audit --run-recommended-finish-gate"],
+    }
+
+    monkeypatch.setattr(repo_audit_entrypoints, "_repo_audit_module", lambda: fake_repo_audit)
+    monkeypatch.setattr(
+        repo_audit_entrypoints.pipeline_module,
+        "build_pipeline_check_recommendations",
+        lambda **kwargs: {
+            "recommended_check_ids": ["ruff", "pyright"],
+            "suggested_finish_gate_commands": [
+                "sattlint-analysis-pipeline --run-recommended-finish-gate",
+                "ruff check src/module.py",
+            ],
+        },
+    )
+
+    plan = repo_audit_entrypoints._build_selected_finish_gate_plan(
+        profile="full",
+        output_dir=tmp_path,
+        fail_on="high",
+        selected_surface="pipeline",
+        changed_files=["src/module.py"],
+        planning_context=planning_context,
+        recommendation=recommendation,
+    )
+
+    assert plan == {
+        "selected_surface": "pipeline",
+        "output_dir": "pipeline",
+        "command": "sattlint-analysis-pipeline --run-recommended-finish-gate",
+        "commands": [
+            "sattlint-analysis-pipeline --run-recommended-finish-gate",
+            "ruff check src/module.py",
+        ],
+        "description": "shared pipeline gate",
+        "includes": ["recommended pipeline slice", "owner pytest targets"],
+        "owner_test_targets": ["tests/test_pipeline.py"],
+        "recommended_check_ids": ["ruff", "pyright"],
+    }
 
 
 def test_ai_feedback_and_severity_helpers_cover_failure_reporting():
@@ -213,6 +267,15 @@ def test_run_verify_recommendations_check_converts_catalog_issues_to_findings(mo
     )
     monkeypatch.setattr(repo_audit_entrypoints, "build_repo_audit_check_catalog", lambda **kwargs: {"checks": []})
     monkeypatch.setattr(repo_audit_entrypoints, "verify_check_catalog", lambda catalog, repo_root: next(reports))
+    work_map_path = tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
+    session_map_path = work_map_path.with_name("ai-session-context-map.json")
+    work_map_path.parent.mkdir(parents=True, exist_ok=True)
+    work_map_path.write_text('{"kind": "work"}\n', encoding="utf-8")
+    session_map_path.write_text('{"kind": "session"}\n', encoding="utf-8")
+    monkeypatch.setattr(ai_work_map, "DEFAULT_OUTPUT_PATH", work_map_path)
+    monkeypatch.setattr(ai_work_map, "DEFAULT_SESSION_CONTEXT_OUTPUT_PATH", session_map_path)
+    monkeypatch.setattr(ai_work_map, "render_ai_work_map", lambda: '{"kind": "work"}\n')
+    monkeypatch.setattr(ai_work_map, "render_session_context_map", lambda: '{"kind": "session"}\n')
 
     findings = repo_audit_entrypoints._run_verify_recommendations_check(None)
 
@@ -222,6 +285,41 @@ def test_run_verify_recommendations_check_converts_catalog_issues_to_findings(mo
     ]
     assert findings[0].severity == "high"
     assert findings[1].detail == '{"check_id": "cli", "issue_id": "dead-path-globs", "message": "Dead path globs."}'
+
+
+def test_run_verify_recommendations_check_flags_generated_artifact_drift(monkeypatch, tmp_path):
+    fake_repo_audit = SimpleNamespace(
+        DEFAULT_OUTPUT_DIR=tmp_path / "audit",
+        PIPELINE_OUTPUT_DIRNAME="pipeline",
+        REPO_ROOT=tmp_path,
+        Finding=lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+    work_map_path = tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
+    session_map_path = work_map_path.with_name("ai-session-context-map.json")
+    work_map_path.parent.mkdir(parents=True, exist_ok=True)
+    work_map_path.write_text('{"kind": "stale-work"}\n', encoding="utf-8")
+    session_map_path.write_text('{"kind": "stale-session"}\n', encoding="utf-8")
+
+    monkeypatch.setattr(repo_audit_entrypoints, "_repo_audit_module", lambda: fake_repo_audit)
+    monkeypatch.setattr(
+        repo_audit_entrypoints.pipeline_module, "build_pipeline_check_catalog", lambda **kwargs: {"checks": []}
+    )
+    monkeypatch.setattr(repo_audit_entrypoints, "build_repo_audit_check_catalog", lambda **kwargs: {"checks": []})
+    monkeypatch.setattr(repo_audit_entrypoints, "verify_check_catalog", lambda catalog, repo_root: {"issues": []})
+    monkeypatch.setattr(ai_work_map, "DEFAULT_OUTPUT_PATH", work_map_path)
+    monkeypatch.setattr(ai_work_map, "DEFAULT_SESSION_CONTEXT_OUTPUT_PATH", session_map_path)
+    monkeypatch.setattr(ai_work_map, "render_ai_work_map", lambda: '{"kind": "fresh-work"}\n')
+    monkeypatch.setattr(ai_work_map, "render_session_context_map", lambda: '{"kind": "fresh-session"}\n')
+
+    findings = repo_audit_entrypoints._run_verify_recommendations_check(None)
+
+    assert [finding.id for finding in findings] == [
+        "recommendation-generated-artifact-drift-ai-work-map",
+        "recommendation-generated-artifact-drift-ai-session-context-map",
+    ]
+    assert all(finding.severity == "high" for finding in findings)
+    assert findings[0].path == ".github/skills/validation-routing/references/ai-work-map.json"
+    assert "python -m sattlint.devtools.ai_work_map --write" in findings[0].detail
 
 
 def test_run_recommended_repo_audit_finish_gate_writes_failed_step_report(monkeypatch, tmp_path):
@@ -243,6 +341,7 @@ def test_run_recommended_repo_audit_finish_gate_writes_failed_step_report(monkey
             SimpleNamespace(exit_code=0, duration_seconds=0.1),
             SimpleNamespace(exit_code=1, duration_seconds=0.2),
             SimpleNamespace(exit_code=0, duration_seconds=0.3),
+            SimpleNamespace(exit_code=0, duration_seconds=0.4),
         ]
     )
 
@@ -287,7 +386,8 @@ def test_run_recommended_repo_audit_finish_gate_writes_failed_step_report(monkey
     assert [entry["id"] for entry in finish_gate["commands"]] == [
         "ruff-touched-python",
         "pyright-touched-python",
-        "owner-pytest",
+        "ratchet-policy",
+        "owner-pytest-coverage",
     ]
     assert finish_gate["commands"][1]["status"] == "fail"
     assert finish_gate["commands"][1]["exit_code"] == 1

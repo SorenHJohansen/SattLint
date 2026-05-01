@@ -121,7 +121,7 @@ Used by the VS Code extension (`vscode/sattline-vscode/`) to provide:
 
 ### sattlint-repo-audit
 
-Repository audit and quality checks. Primary entry point for continuous integration and pre-commit verification.
+Repository audit and quality checks. Primary entry point for CI and audit workflows. Local pre-push gate is `python -m pre_commit run --all-files`.
 
 ```bash
 # Quick audit (fast iteration during development)
@@ -147,7 +147,7 @@ sattlint-repo-audit --profile full --run-recommended-finish-gate --changed-file 
 sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit
 sattlint-repo-audit --profile full --check-my-changes --changed-file src/sattlint/devtools/repo_audit.py --output-dir artifacts/audit
 
-# Print only the planning context for the current or explicit change set
+# Print the authoritative planning report for the current or explicit change set
 sattlint-repo-audit --profile full --planning-context --changed-file src/sattlint/app.py --output-dir artifacts/audit
 
 # Run one repo-audit-specific full check without the shared pipeline
@@ -164,6 +164,14 @@ sattlint-repo-audit --profile quick --fail-on medium --output-dir artifacts/audi
 sattlint-repo-audit --profile full --fail-on high --output-dir artifacts/audit
 ```
 
+Local pre-push gate:
+
+```bash
+python -m pre_commit run --all-files
+```
+
+That hook set already runs the repo-wide `pytest-quality` and `ratchet-policy` checks locally.
+
 Output:
 
 - `artifacts/audit/status.json`  -  Compact machine-readable summary (start here)
@@ -177,10 +185,11 @@ Requirement:
 - Shared pipeline checks are exposed through the same catalog but run via `sattlint-analysis-pipeline --check ...` commands.
 - `--recommend-checks` prints machine-readable routing metadata for the current git diff unless `--changed-file` is repeated explicitly.
 - `--run-recommended-slice` reuses that routing and runs only the recommended shared-pipeline and repo-audit checks.
-- `--run-recommended-finish-gate` runs the recommended slice plus touched-file Ruff, touched-file Pyright, and owner pytest targets.
-- `--check-my-changes` auto-selects the shared pipeline finish gate when no repo-audit-specific checks are needed, otherwise it runs the combined repo-audit finish gate and writes `check_my_changes.json`.
-- `--planning-context` prints only the `planning_context` block for the changed files, including owning agent, matched instruction files, and nearest owner suites.
-- `--check verify-recommendations --skip-pipeline` fails when catalog metadata is missing, dead, or obviously overbroad.
+- `--run-recommended-finish-gate` runs the recommended slice plus touched-file Ruff, touched-file Pyright, and focused owner pytest targets. When touched `src/**/*.py` files exist, the owner pytest step also emits focused coverage output and the finish gate evaluates changed-line coverage first, then touched-file coverage when no executable changed lines exist.
+- `--planning-context` is the default machine entrypoint for agents. It returns changed files, owning surface, required instruction files, first focused validation, finish-gate plan, blocking invariants, and proof requirements in one response.
+- `--check-my-changes` reuses the same routing, auto-selects the shared pipeline finish gate when no repo-audit-specific checks are needed, otherwise runs the combined repo-audit finish gate, writes `check_my_changes.json`, and records the same focused coverage-proof obligations used by `--planning-context`.
+- Planning and finish-gate reports now carry `proof_requirements` so agents can see whether a focused behavior test is required, whether changed-line or touched-file coverage proof applies, and whether parser, validation, or routing changes deserve mutation or property-style follow-up.
+- `--check verify-recommendations --skip-pipeline` fails when catalog metadata is missing, dead, obviously overbroad, or when the checked-in generated AI routing maps drift from the live build.
 
 ---
 

@@ -8,11 +8,12 @@
 
 **Communication:** Terse. Drop articles/filler. Pattern: `[thing] [action] [reason]. [next step].`
 **Boundaries:** Code/commits/PRs written normal. No terse mode for security warnings or irreversible actions.
+**Machine entrypoint:** `sattlint-repo-audit --profile full --planning-context --output-dir artifacts/audit`. Use it for changed files, owning surface, instruction files, first focused validation, finish-gate plan, and blocking invariants in one response. Use `--check-my-changes` to execute the selected finish gate.
 
 **Key Docs:**
 
-- `docs/context-loading-order.md` - Load context in priority order, stop when sufficient.
-- `docs/lessons-learned/known-failure-patterns.md` - Past root causes, anti-patterns, migration lessons.
+- `docs/context-loading-order.md` - Human context loading order. Machine routing starts from `--planning-context`.
+- `docs/lessons-learned/known-failure-patterns.md` - Past root causes, anti-patterns, migration lessons. Consult selectively when task matches a recorded failure smell.
 - `docs/design-docs/core-beliefs.md` - Golden principles, agent legibility rules.
 - `.github/instructions/*.md` - Subsystem-scoped instructions.
 
@@ -34,6 +35,7 @@ See `.github/instructions/sattline-invariants.instructions.md` for `src/**` and 
 
 - **Communication style:** Terse. Drop articles/filler. Fragments OK. Technical terms exact.
 - Inspect repo structure, current code, tests before changes. Reuse existing patterns.
+- For chat or artifact reviews, start from the controlling artifact seam; for Copilot chat history use `GitHub.copilot-chat/transcripts/*.jsonl`, not `debug-logs/main.jsonl`.
 - Validation: `sattlint syntax-check` (parser), targeted `pytest` (Python/CLI), pipeline/audit (devtools).
 - No VS Code test runner; use repo venv directly.
 - Match first validation to surface changed. Start narrow, then widen.
@@ -44,8 +46,10 @@ See `.github/instructions/sattline-invariants.instructions.md` for `src/**` and 
 
 - Root cause before remedy: analyze bug class, prefer shared fix over local patch.
 - Prefer incremental, reviewable changes over large rewrites. Propose plan before broad changes.
-- When adding AI customizations, optimize for lower context waste.
+- When adding AI customizations or reviewing many similar artifacts, optimize for lower context waste: pick one direct seam, aggregate once, and switch after one dead end instead of widening searches.
+- Use `known-failure-patterns.md` selectively: consult when task matches a known bug class, after one dead-end route, or after repeated validation failure.
 - AI must fix code or tests before any ratchet rebaseline. Do not loosen structural budgets, lower coverage ratchets, or lower `--cov-fail-under` as a substitute for a real fix. Only change those surfaces after explicit user approval.
+- No low-signal outputs: do not emit empty assistant messages or final answers that only dump file paths.
 - When an ExecPlan checklist is fully complete, move it from `docs/exec-plans/active/` to `docs/exec-plans/completed/` in the same change and update affected indexes or trackers.
 
 ## Change Boundaries
@@ -67,14 +71,15 @@ See `.github/instructions/sattline-invariants.instructions.md` for `src/**` and 
 - Before finishing a code or config task, run an efficient finish gate sized to touched surface.
 - Minimum finish gate for Python edits: one focused executable behavior check, `ruff check` clean on touched Python files, and `pyright` clean on touched Python files.
 - Widen only when touched surface is shared infra, devtools, or cross-subsystem code; prefer owner-suite or quick-audit validation over full repo gates.
-- Use full `Repo Verify` gate only when user asks for repo-wide verification or when task is commit, push, merge, or pre-release readiness.
+- Use full `Repo Verify` gate only when user asks for repo-wide verification or when task is commit, push, merge, or pre-release readiness. Local pre-push gate is `python -m pre_commit run --all-files`, not `sattlint-repo-audit --profile full`.
 - Do not report task complete or checks green when touched-file Ruff or Pyright errors remain, or when focused executable validation for changed behavior was skipped.
 
 ## Repo-Audit And Public-Readiness
 
 See `.github/instructions/repo-audit.instructions.md` (auto-loaded for `src/sattlint/devtools/**` edits).
 
-- Canonical command: `sattlint-repo-audit --profile full --output-dir artifacts/audit`.
+- Local pre-push gate: `python -m pre_commit run --all-files`. It already covers the repo-wide `pytest-quality` and `ratchet-policy` hooks locally.
+- Canonical audit command: `sattlint-repo-audit --profile full --output-dir artifacts/audit`.
 - For fast iteration, prefer `--profile quick`. Open `artifacts/audit/status.json` first.
 
 ## Reporting Expectations

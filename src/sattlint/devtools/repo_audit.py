@@ -12,9 +12,10 @@ import tempfile
 import time
 import tomllib
 from collections.abc import Iterable, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from defusedxml import ElementTree  # type: ignore[import-untyped]
 
@@ -22,7 +23,9 @@ from sattlint import app as app_module
 from sattlint import config as config_module
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
 from sattlint.devtools import ai_gc as _ai_gc_module
+from sattlint.devtools import ai_work_map as _ai_work_map_module
 from sattlint.devtools import coverage_reports as _coverage_reports_module
+from sattlint.devtools import doc_gardener as _doc_gardener_module
 from sattlint.devtools import pipeline as pipeline_module
 from sattlint.devtools import repo_audit_entrypoints as _repo_audit_entrypoints
 from sattlint.devtools import structural_reports as structural_reports_module
@@ -182,6 +185,11 @@ STRUCTURAL_DEBT_FINDING_IDS = {
     "structural-function-budget",
     "structural-class-budget",
 }
+HARNESS_FRESHNESS_DOC_SCANNERS = (
+    "scan_agents_md",
+    "scan_dead_links",
+    "scan_stale_docs",
+)
 IGNORED_NORMALIZED_PIPELINE_FINDINGS = {
     ("bandit-b101", "src/sattlint/devtools/parser_properties.py"),
     ("bandit-b110", "src/sattlint/devtools/doc_gardener.py"),
@@ -195,6 +203,33 @@ IGNORED_NORMALIZED_PIPELINE_FINDINGS = {
     ("bandit-b603", "src/sattlint/devtools/review_tool.py"),
     ("bandit-b607", "src/sattlint/devtools/doc_gardener.py"),
     ("bandit-b607", "src/sattlint/devtools/pipeline.py"),
+}
+LOCAL_CI_PARITY_LINE_FINDING_IDS = {
+    "hardcoded-windows-path",
+    "hardcoded-unix-path",
+    "local-endpoint",
+}
+LOCAL_DEPENDENCY_MARKERS = (
+    ".venv/",
+    ".tox/",
+    ".nox/",
+    "site-packages",
+    "__pypackages__/",
+)
+PATH_INJECTION_CALL_PATHS = {
+    ("site", "addsitedir"),
+    ("sys", "path", "append"),
+    ("sys", "path", "extend"),
+    ("sys", "path", "insert"),
+}
+HOST_SIGNAL_ATTR_PATHS = {
+    ("os", "name"),
+    ("sys", "platform"),
+}
+HOST_SIGNAL_CALL_PATHS = {
+    ("platform", "machine"),
+    ("platform", "platform"),
+    ("platform", "system"),
 }
 
 
@@ -263,6 +298,7 @@ class RepoAuditScanContext:
     scripts: frozenset[str]
     subcommands: frozenset[str]
     documented_commands: tuple[DocumentedCommand, ...]
+    line_findings: tuple[Finding, ...] | None = None
 
 
 def _leading_string_args(args: Sequence[ast.expr]) -> tuple[str, ...]:
@@ -275,6 +311,18 @@ def _leading_string_args(args: Sequence[ast.expr]) -> tuple[str, ...]:
             continue
         parts.append(value)
     return tuple(parts)
+
+
+def _attribute_path(node: ast.AST) -> tuple[str, ...] | None:
+    parts: list[str] = []
+    current = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name):
+        return None
+    parts.append(current.id)
+    return tuple(reversed(parts))
 
 
 def _repo_relative_path_from_expr(node: ast.AST) -> tuple[str, ...] | None:
@@ -315,6 +363,42 @@ def _is_ignored_repo_path_reference(candidate: str, tracked_paths: tuple[str, ..
     if normalized.startswith(".coverage"):
         return True
     return normalized.startswith(IGNORED_REPO_PATH_REFERENCE_PREFIXES)
+
+
+def _source_segment_summary(text: str, node: ast.AST, *, max_length: int = 160) -> str | None:
+    segment = ast.get_source_segment(text, node)
+    if not segment:
+        return None
+    normalized = " ".join(segment.split())
+    if len(normalized) <= max_length:
+        return normalized
+    return normalized[: max_length - 3] + "..."
+
+
+def _contains_host_signal(node: ast.AST) -> bool:
+    for child in ast.walk(node):
+        if isinstance(child, ast.Attribute) and _attribute_path(child) in HOST_SIGNAL_ATTR_PATHS:
+            return True
+        if isinstance(child, ast.Call) and _attribute_path(child.func) in HOST_SIGNAL_CALL_PATHS:
+            return True
+    return False
+
+
+def _is_pythonpath_target(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Subscript):
+        return False
+    if _attribute_path(node.value) != ("os", "environ"):
+        return False
+    slice_node = node.slice
+    return isinstance(slice_node, ast.Constant) and slice_node.value == "PYTHONPATH"
+
+
+def _find_marker_in_segment(segment: str) -> str | None:
+    normalized = segment.replace("\\", "/").casefold()
+    for marker in LOCAL_DEPENDENCY_MARKERS:
+        if marker in normalized:
+            return marker
+    return None
 
 
 def _find_ignored_repo_path_references(
@@ -361,13 +445,113 @@ def _find_ignored_repo_path_references(
                         category="public-readiness",
                         severity=_severity_for_path(rel_path, "high"),
                         confidence="high",
-                        message="Tracked Python file references a repo-local path that is ignored by git.",
+                        message="Tracked Python file depends on a repo-local path that is ignored by git.",
                         path=rel_path,
                         line=line_number,
                         detail=f"Matched ignored path {candidate}",
                         suggestion="Use a tracked fixture, explicit config input, or an allowlisted generated-output seam instead.",
                     )
                 )
+    return findings
+
+
+def _find_hidden_local_dependency_findings(
+    context: PythonSourceScanContext,
+    *,
+    root: Path = REPO_ROOT,
+) -> list[Finding]:
+    findings: list[Finding] = []
+    seen: set[tuple[str, int, str]] = set()
+    for path, tree in context.asts.items():
+        rel_path = _relative_path(path, root)
+        if rel_path in SKIP_SELF_SCAN_PATHS:
+            continue
+        text = context.texts.get(path, "")
+        for node in ast.walk(tree):
+            marker: str | None = None
+            if (
+                (isinstance(node, ast.Call) and _attribute_path(node.func) in PATH_INJECTION_CALL_PATHS)
+                or (isinstance(node, ast.Assign) and any(_is_pythonpath_target(target) for target in node.targets))
+                or (isinstance(node, ast.AugAssign) and _is_pythonpath_target(node.target))
+            ):
+                marker = _find_marker_in_segment(ast.get_source_segment(text, node) or "")
+            if marker is None:
+                continue
+            line_number = getattr(node, "lineno", None)
+            if line_number is None:
+                continue
+            key = (rel_path, line_number, marker)
+            if key in seen:
+                continue
+            seen.add(key)
+            findings.append(
+                Finding(
+                    id="hidden-local-dependency-root",
+                    category="portability",
+                    severity=_severity_for_path(rel_path, "high"),
+                    confidence="high",
+                    message="Python path setup relies on a local environment directory that CI will not have.",
+                    path=rel_path,
+                    line=line_number,
+                    detail=f"Matched local dependency marker {marker}",
+                    suggestion="Declare the dependency in pyproject or use tracked in-repo fixtures instead of injecting local environment paths.",
+                )
+            )
+    return findings
+
+
+def _find_host_specific_test_assumptions(
+    context: PythonSourceScanContext,
+    *,
+    root: Path = REPO_ROOT,
+) -> list[Finding]:
+    findings: list[Finding] = []
+    seen: set[tuple[str, int]] = set()
+    for path, tree in context.asts.items():
+        rel_path = _relative_path(path, root)
+        if rel_path in SKIP_SELF_SCAN_PATHS:
+            continue
+        text = context.texts.get(path, "")
+        for node in ast.walk(tree):
+            signal_node: ast.AST | None = None
+            if isinstance(node, ast.Call) and _attribute_path(node.func) == ("pytest", "mark", "skipif") and node.args:
+                if _contains_host_signal(node.args[0]):
+                    signal_node = node
+            elif isinstance(node, (ast.If, ast.IfExp, ast.Assert)) and _contains_host_signal(node.test):
+                signal_node = node.test
+            if signal_node is None:
+                continue
+            line_number = getattr(node, "lineno", None)
+            if line_number is None:
+                continue
+            key = (rel_path, line_number)
+            if key in seen:
+                continue
+            seen.add(key)
+            findings.append(
+                Finding(
+                    id="host-specific-test-assumption",
+                    category="portability",
+                    severity="medium",
+                    confidence="high",
+                    message="Test behavior depends on the local host OS or platform.",
+                    path=rel_path,
+                    line=line_number,
+                    detail=_source_segment_summary(text, node),
+                    suggestion="Prefer host-agnostic assertions, or isolate platform-specific behavior behind an explicit portability seam.",
+                )
+            )
+    return findings
+
+
+def _run_local_ci_parity_check(context: RepoAuditScanContext) -> list[Finding]:
+    findings = [
+        finding for finding in _shared_text_line_findings(context) if finding.id in LOCAL_CI_PARITY_LINE_FINDING_IDS
+    ]
+    findings.extend(_find_hidden_local_dependency_findings(context.source_context, root=context.root))
+    findings.extend(_find_hidden_local_dependency_findings(context.test_context, root=context.root))
+    findings.extend(_find_hidden_local_dependency_findings(context.scripts_context, root=context.root))
+    findings.extend(_find_host_specific_test_assumptions(context.test_context, root=context.root))
     return findings
 
 
@@ -2078,15 +2262,31 @@ def _build_repo_audit_scan_context(
     )
 
 
-def _run_text_scan_check(context: RepoAuditScanContext) -> list[Finding]:
+def _shared_text_line_findings(context: RepoAuditScanContext) -> tuple[Finding, ...]:
+    if context.line_findings is not None:
+        return context.line_findings
+
     findings: list[Finding] = []
+    suspicious_identifiers = set(context.suspicious_identifiers)
     for path, text in _iter_repo_text_entries(
         context.root,
         include_generated=context.include_generated,
         tracked_only=context.tracked_only,
     ):
-        findings.extend(_line_findings(path, text, set(context.suspicious_identifiers), root=context.root))
-    return findings
+        findings.extend(_line_findings(path, text, suspicious_identifiers, root=context.root))
+    return tuple(findings)
+
+
+def _with_shared_text_line_findings(context: RepoAuditScanContext) -> RepoAuditScanContext:
+    if context.line_findings is not None:
+        return context
+    return replace(context, line_findings=_shared_text_line_findings(context))
+
+
+def _run_text_scan_check(context: RepoAuditScanContext) -> list[Finding]:
+    return [
+        finding for finding in _shared_text_line_findings(context) if finding.id not in LOCAL_CI_PARITY_LINE_FINDING_IDS
+    ]
 
 
 def _run_documented_commands_check(context: RepoAuditScanContext) -> list[Finding]:
@@ -2161,6 +2361,71 @@ def _run_ignored_repo_paths_check(context: RepoAuditScanContext) -> list[Finding
 
 def _run_coverage_check(context: RepoAuditScanContext) -> list[Finding]:
     return _parse_coverage_findings(context.root, tracked_paths=context.tracked_paths)
+
+
+def _patch_doc_gardener_paths(root: Path):
+    return patch.multiple(
+        _doc_gardener_module,
+        REPO_ROOT=root,
+        DOCS_DIR=root / "docs",
+        AGENTS_MD=root / "AGENTS.md",
+        QUALITY_SCORE=root / "docs" / "quality-score.md",
+        TECH_DEBT=root / "docs" / "exec-plans" / "tech-debt-tracker.md",
+        CURRENT_WORK=root / ".github" / "coordination" / "current-work.md",
+        CURRENT_WORK_TEMPLATE=root / ".github" / "coordination" / "current-work.template.md",
+        AI_FIRST_PLAN=root / "docs" / "exec-plans" / "active" / "ai-first-repo-hardening.md",
+        AI_FIRST_DEBT=root / "docs" / "exec-plans" / "tech-debt-tracker.md",
+    )
+
+
+def _doc_gardener_finding_to_repo_audit(finding: Any) -> Finding:
+    return Finding(
+        id=f"harness-{str(finding.category).replace('_', '-')}",
+        category="harness-freshness",
+        severity=str(finding.severity).casefold(),
+        confidence="high",
+        message=str(finding.message),
+        path=str(finding.file) or None,
+        line=None if int(getattr(finding, "line", 0)) <= 0 else int(finding.line),
+        source="harness-freshness",
+    )
+
+
+def _ai_harness_issue_to_finding(issue: dict[str, Any]) -> Finding:
+    issue_id = str(issue.get("issue_id", "ai-harness-issue")).strip() or "ai-harness-issue"
+    return Finding(
+        id=f"harness-{issue_id}",
+        category="harness-freshness",
+        severity=str(issue.get("severity", "high")).casefold(),
+        confidence="high",
+        message=str(issue.get("message", "AI harness freshness issue.")),
+        path=str(issue.get("path", "")).strip() or None,
+        detail=json.dumps(issue, sort_keys=True),
+        source="harness-freshness",
+    )
+
+
+def _run_harness_freshness_check(context: RepoAuditScanContext) -> list[Finding]:
+    findings = [
+        _ai_harness_issue_to_finding(issue)
+        for issue in _ai_work_map_module.verify_ai_harness_freshness(
+            repo_root=context.root,
+            output_path=context.root / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json",
+            session_output_path=context.root
+            / ".github"
+            / "skills"
+            / "validation-routing"
+            / "references"
+            / "ai-session-context-map.json",
+        )["issues"]
+    ]
+    with _patch_doc_gardener_paths(context.root):
+        for scanner_name in HARNESS_FRESHNESS_DOC_SCANNERS:
+            findings.extend(
+                _doc_gardener_finding_to_repo_audit(finding)
+                for finding in getattr(_doc_gardener_module, scanner_name)()
+            )
+    return findings
 
 
 def _run_public_readiness_check(context: RepoAuditScanContext) -> list[Finding]:

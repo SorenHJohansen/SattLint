@@ -9,6 +9,26 @@ from typing import Any
 FINDING_SCHEMA_KIND = "sattlint.findings"
 FINDING_SCHEMA_VERSION = 1
 
+_COMMAND_PREFIXES = (
+    "python ",
+    "pyright ",
+    "ruff ",
+    "sattlint ",
+    "sattlint-repo-audit ",
+)
+_OWNER_SURFACE_BY_ANALYZER = {
+    "architecture": "architecture",
+    "bandit": "security",
+    "mypy": "python-types",
+    "pyright": "python-types",
+    "pytest": "python-tests",
+    "repo-audit": "repo-audit",
+    "ruff": "python-style",
+    "sattline-semantics": "semantic",
+    "syntax-check": "syntax-check",
+    "vulture": "dead-code",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class FindingLocation:
@@ -54,11 +74,20 @@ class FindingRecord:
     fingerprint: str | None = None
     detail: str | None = None
     suggestion: str | None = None
+    owner_surface: str | None = None
+    minimal_reproducer: str | None = None
+    suggested_next_command: str | None = None
     data: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.fingerprint is None:
             object.__setattr__(self, "fingerprint", self._default_fingerprint())
+        if self.owner_surface is None:
+            object.__setattr__(self, "owner_surface", self._default_owner_surface())
+        if self.minimal_reproducer is None:
+            object.__setattr__(self, "minimal_reproducer", self._default_minimal_reproducer())
+        if self.suggested_next_command is None:
+            object.__setattr__(self, "suggested_next_command", self._default_suggested_next_command())
 
     def _default_fingerprint(self) -> str:
         parts = [
@@ -69,6 +98,72 @@ class FindingRecord:
             self.message,
         ]
         return "|".join(parts)
+
+    def _default_owner_surface(self) -> str | None:
+        explicit = _coerce_str(self.data.get("owner_surface"))
+        if explicit:
+            return explicit
+        analyzer = (self.analyzer or "").casefold()
+        mapped_surface = _OWNER_SURFACE_BY_ANALYZER.get(analyzer)
+        if mapped_surface:
+            if analyzer == "repo-audit" and self.source and self.source != "custom":
+                return self.source
+            return mapped_surface
+        source = (self.source or "").casefold()
+        mapped_surface = _OWNER_SURFACE_BY_ANALYZER.get(source)
+        if mapped_surface:
+            return mapped_surface
+        category = _coerce_str(self.category)
+        if category and category != "unknown":
+            return category
+        return None
+
+    def _default_minimal_reproducer(self) -> str | None:
+        explicit = _coerce_str(self.data.get("minimal_reproducer"))
+        if explicit:
+            return explicit
+        analyzer = (self.analyzer or "").casefold()
+        source = (self.source or "").casefold()
+        tool = analyzer or source
+        path = self.location.path
+        nodeid = _coerce_str(self.data.get("nodeid"))
+        if tool == "ruff":
+            return f"ruff check {path}" if path else "ruff check src tests"
+        if tool in {"mypy", "pyright"}:
+            return f"{tool} {path}" if path else f"{tool} src tests"
+        if tool == "pytest":
+            if nodeid:
+                return f"python -m pytest {nodeid} -x -q --tb=short"
+            if path:
+                return f"python -m pytest {path} -x -q --tb=short"
+            return "python -m pytest -x -q --tb=short"
+        if tool == "syntax-check":
+            return f"sattlint syntax-check {path}" if path else None
+        if tool == "repo-audit":
+            if self.source and self.source not in {"", "custom", "pipeline"}:
+                return (
+                    "sattlint-repo-audit --profile full --check "
+                    f"{self.source} --skip-pipeline --output-dir artifacts/audit"
+                )
+            return "sattlint-repo-audit --profile full --output-dir artifacts/audit"
+        return None
+
+    def _default_suggested_next_command(self) -> str | None:
+        explicit = _coerce_str(self.data.get("suggested_next_command"))
+        if explicit:
+            return explicit
+        suggestion = _coerce_str(self.suggestion)
+        if suggestion and suggestion.lstrip().startswith(_COMMAND_PREFIXES):
+            return suggestion.strip()
+        return self.minimal_reproducer
+
+    @property
+    def file(self) -> str | None:
+        return self.location.path
+
+    @property
+    def line(self) -> int | None:
+        return self.location.line
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -81,10 +176,15 @@ class FindingRecord:
             "source": self.source,
             "analyzer": self.analyzer,
             "artifact": self.artifact,
+            "file": self.location.path,
+            "line": self.location.line,
             "location": self.location.to_dict(),
             "fingerprint": self.fingerprint,
             "detail": self.detail,
             "suggestion": self.suggestion,
+            "owner_surface": self.owner_surface,
+            "minimal_reproducer": self.minimal_reproducer,
+            "suggested_next_command": self.suggested_next_command,
             "data": self.data,
         }
 
@@ -107,6 +207,9 @@ class FindingRecord:
             fingerprint=_coerce_str(payload.get("fingerprint")),
             detail=_coerce_str(payload.get("detail")),
             suggestion=_coerce_str(payload.get("suggestion")),
+            owner_surface=_coerce_str(payload.get("owner_surface")),
+            minimal_reproducer=_coerce_str(payload.get("minimal_reproducer")),
+            suggested_next_command=_coerce_str(payload.get("suggested_next_command")),
             data=dict(payload.get("data") or {}),
         )
 
@@ -135,6 +238,9 @@ class FindingRecord:
             location=location,
             detail=_coerce_str(payload.get("detail")),
             suggestion=_coerce_str(payload.get("suggestion")),
+            owner_surface=_coerce_str(payload.get("owner_surface")),
+            minimal_reproducer=_coerce_str(payload.get("minimal_reproducer")),
+            suggested_next_command=_coerce_str(payload.get("suggested_next_command")),
             data=dict(payload.get("data") or {}),
         )
 

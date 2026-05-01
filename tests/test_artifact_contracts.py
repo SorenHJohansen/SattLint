@@ -44,7 +44,18 @@ def _build_sample_findings_payload(repo_root: Path) -> dict[str, object]:
                 "errorCode": "assignment",
             }
         ],
-        pytest_report={"summary": {"tests": 2, "failures": 1, "errors": 0, "skipped": 0}},
+        pytest_report={
+            "summary": {"tests": 2, "failures": 1, "errors": 0, "skipped": 0},
+            "testcases": [
+                {
+                    "classname": "tests.test_sample",
+                    "name": "test_failure",
+                    "outcome": "failed",
+                    "detail": "tests/test_sample.py:23: AssertionError",
+                    "nodeid": "tests/test_sample.py::test_failure",
+                }
+            ],
+        },
         vulture_findings=[
             {
                 "file": str(repo_root / "src" / "dead.py"),

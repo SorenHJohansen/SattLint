@@ -489,7 +489,86 @@ def test_build_pipeline_check_recommendations_routes_changed_files_to_matching_c
     assert "trace" not in recommended_ids
     assert recommendations["suggested_check_commands"]
     assert recommendations["suggested_finish_gate_commands"]
+    assert recommendations["proof_requirements"]["focused_behavior_test"]["required"] is True
+    assert recommendations["proof_requirements"]["focused_behavior_test"]["status"] == "satisfied"
+    assert recommendations["proof_requirements"]["coverage"]["required"] is True
+    assert recommendations["proof_requirements"]["coverage"]["touched_source_files"] == [
+        "src/sattlint/devtools/repo_audit.py"
+    ]
+    assert "routing" in recommendations["proof_requirements"]["mutation_guidance"]["critical_surfaces"]
     assert recommendations["why_this_gate"]["matched_routes"]
+
+
+def test_run_recommended_pipeline_finish_gate_records_change_scoped_coverage(monkeypatch, tmp_path):
+    recommendation = {
+        "changed_files": ["src/sattlint/devtools/repo_audit.py"],
+        "recommended_check_ids": ["ruff", "pyright", "pytest"],
+        "recommended_checks": [{"owner_test_targets": ["tests/test_pipeline_run.py"]}],
+        "proof_requirements": {
+            "focused_behavior_test": {
+                "required": True,
+                "status": "satisfied",
+                "owner_test_targets": ["tests/test_pipeline_run.py"],
+                "reason": "Code changes require at least one focused owner pytest target.",
+            },
+            "coverage": {
+                "required": True,
+                "preferred_mode": "changed-lines",
+                "fallback_mode": "touched-files",
+                "touched_source_files": ["src/sattlint/devtools/repo_audit.py"],
+                "reason": "Touched source files should be proven by focused coverage.",
+            },
+            "mutation_guidance": {
+                "status": "advisory",
+                "critical_surfaces": ["routing"],
+                "suggested_commands": [],
+                "suggestion": "Prefer mutation-style or property-style assertions.",
+            },
+        },
+    }
+    monkeypatch.setattr(pipeline, "build_pipeline_check_recommendations", lambda **_kwargs: recommendation)
+    monkeypatch.setattr(
+        pipeline,
+        "_run_pipeline",
+        lambda *_args, **_kwargs: {"status": {"overall_status": "pass"}},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_run_command",
+        lambda name, command, cwd=pipeline.REPO_ROOT: pipeline.CommandResult(
+            name=name,
+            command=command,
+            exit_code=0,
+            duration_seconds=0.0,
+            stdout="",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "evaluate_change_scoped_coverage_proof",
+        lambda **_kwargs: {"status": "pass", "mode": "changed-lines", "coverage_path": "coverage_proof.xml"},
+    )
+
+    result = pipeline.run_recommended_pipeline_finish_gate(
+        tmp_path,
+        trace_target=None,
+        profile="full",
+        include_vulture=False,
+        include_bandit=False,
+        baseline_findings=None,
+        corpus_manifest_dir=None,
+        changed_files=["src/sattlint/devtools/repo_audit.py"],
+        slow_phase_threshold_ms=25.0,
+        phase_budget_ms=50.0,
+        total_budget_ms=250.0,
+        fail_on_drift=False,
+        fail_on_budget=False,
+    )
+
+    assert result["finish_gate"]["status"] == "pass"
+    assert result["finish_gate"]["coverage_proof"]["mode"] == "changed-lines"
+    assert any(command["id"] == "owner-pytest-coverage" for command in result["finish_gate"]["commands"])
 
 
 def test_main_recommend_checks_prints_json(tmp_path, capsys):

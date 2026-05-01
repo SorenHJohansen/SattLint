@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from sattlint.devtools import pipeline
-from sattlint.devtools.pipeline_checks import normalize_changed_files, path_matches_globs
+from sattlint.devtools.pipeline_checks import collect_repo_file_inventory, normalize_changed_files, path_matches_globs
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 VALIDATION_MAP_PATH = REPO_ROOT / ".github" / "skills" / "validation-routing" / "references" / "validation-map.md"
@@ -81,6 +81,7 @@ AGENT_ROUTING_RULES: tuple[dict[str, Any], ...] = (
             "architecture",
             "coverage",
             "feature-wiring",
+            "harness",
             "logging",
             "path-safety",
             "public-readiness",
@@ -106,6 +107,93 @@ AGENT_ROUTING_RULES: tuple[dict[str, Any], ...] = (
             "docs/exec-plans/**",
             ".github/skills/**",
             ".github/instructions/**",
+        ),
+    },
+)
+DEFAULT_AGENT_ENTRYPOINT = {
+    "id": "planning-context",
+    "command": "sattlint-repo-audit --profile full --planning-context --output-dir artifacts/audit",
+    "companion_command": "sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit",
+    "description": (
+        "Default machine entrypoint for agents. Returns changed files, owning surface, instruction files, "
+        "first focused validation, finish-gate plan, and blocking invariants in one response."
+    ),
+}
+FINISH_GATE_TEMPLATES: tuple[dict[str, Any], ...] = (
+    {
+        "selected_surface": "pipeline",
+        "command": "sattlint-analysis-pipeline --profile full --run-recommended-finish-gate --output-dir artifacts/audit/pipeline",
+        "description": "Shared-pipeline finish gate for changes that do not need repo-audit-specific checks.",
+        "includes": (
+            "recommended pipeline slice",
+            "touched-file Ruff",
+            "touched-file Pyright",
+            "owner pytest targets",
+        ),
+    },
+    {
+        "selected_surface": "repo-audit",
+        "command": "sattlint-repo-audit --profile full --run-recommended-finish-gate --output-dir artifacts/audit",
+        "description": "Combined repo-audit finish gate for changes that require repo-audit-specific checks.",
+        "includes": (
+            "recommended repo-audit slice",
+            "touched-file Ruff",
+            "touched-file Pyright",
+            "owner pytest targets",
+        ),
+    },
+)
+BLOCKING_INVARIANT_RULES: tuple[dict[str, Any], ...] = (
+    {
+        "id": "focused-validation-first",
+        "summary": "Run the first focused executable validation immediately after the first substantive edit.",
+        "details": "Do not widen scope before that check when a narrow executable validation exists.",
+        "selected_surfaces": ("session-start", "pipeline", "repo-audit"),
+        "path_globs": (),
+    },
+    {
+        "id": "repo-venv-validation",
+        "summary": "Use repo venv commands, not the VS Code test runner, for first validation.",
+        "details": "Targeted pytest or repo-local tool commands are the expected first validation path in this repo.",
+        "selected_surfaces": ("session-start", "pipeline", "repo-audit"),
+        "path_globs": (),
+    },
+    {
+        "id": "python-finish-gate-clean",
+        "summary": "Do not finish Python edits with touched-file Ruff or Pyright errors.",
+        "details": "Python finish gates require focused behavior validation plus touched-file Ruff and Pyright checks.",
+        "selected_surfaces": ("session-start", "pipeline", "repo-audit"),
+        "path_globs": ("src/**/*.py", "tests/**/*.py", "scripts/**/*.py"),
+    },
+    {
+        "id": "shared-infra-widen-after-focused-check",
+        "summary": "Shared infra and devtools changes widen only after the focused check passes.",
+        "details": "Use owner-suite validation or quick repo audit after the narrow check for shared infra or cross-subsystem wiring.",
+        "selected_surfaces": ("pipeline", "repo-audit"),
+        "path_globs": (
+            "src/sattlint/devtools/**",
+            ".github/hooks/**",
+            ".github/instructions/**",
+            ".github/skills/**",
+        ),
+    },
+    {
+        "id": "cli-menu-tests-stay-in-sync",
+        "summary": "If CLI menu layout or numbering changes, update tests/test_app.py in the same change.",
+        "details": "CLI menu invariants require the interactive app tests to move with the menu surface.",
+        "selected_surfaces": ("session-start", "pipeline", "repo-audit"),
+        "path_globs": ("src/sattlint/app.py",),
+    },
+    {
+        "id": "restart-lsp-after-editor-surface-edits",
+        "summary": "Restart the language server after semantic core, LSP, editor_api, or VS Code client edits.",
+        "details": "Run sattlineLsp.restartServer after changes under the editor or workspace loading surfaces.",
+        "selected_surfaces": ("session-start", "pipeline", "repo-audit"),
+        "path_globs": (
+            "src/sattlint/core/**",
+            "src/sattlint_lsp/**",
+            "src/sattlint/editor_api.py",
+            "vscode/sattline-vscode/**",
         ),
     },
 )
@@ -296,6 +384,192 @@ def _collect_agent_metadata(agents_dir: Path) -> list[dict[str, Any]]:
     return metadata
 
 
+def _render_json(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def _matched_repo_files(repo_files: list[str], glob_pattern: str) -> list[str]:
+    return [path_text for path_text in repo_files if path_matches_globs(path_text, (glob_pattern,))]
+
+
+def verify_ai_harness_freshness(
+    work_map: dict[str, Any] | None = None,
+    session_context_map: dict[str, Any] | None = None,
+    *,
+    repo_root: Path = REPO_ROOT,
+    output_path: Path = DEFAULT_OUTPUT_PATH,
+    session_output_path: Path = DEFAULT_SESSION_CONTEXT_OUTPUT_PATH,
+) -> dict[str, Any]:
+    resolved_work_map = build_ai_work_map() if work_map is None else work_map
+    resolved_session_context_map = (
+        build_session_context_map(resolved_work_map) if session_context_map is None else session_context_map
+    )
+    repo_files = collect_repo_file_inventory(repo_root)
+    issues: list[dict[str, Any]] = []
+
+    expected_work_map = _render_json(resolved_work_map)
+    if not output_path.exists():
+        issues.append(
+            {
+                "issue_id": "missing-generated-ai-work-map",
+                "severity": "high",
+                "message": "Checked-in ai-work-map.json is missing.",
+                "path": output_path.relative_to(repo_root).as_posix(),
+            }
+        )
+    elif output_path.read_text(encoding="utf-8") != expected_work_map:
+        issues.append(
+            {
+                "issue_id": "generated-ai-work-map-drift",
+                "severity": "high",
+                "message": "Checked-in ai-work-map.json does not match the generated routing map.",
+                "path": output_path.relative_to(repo_root).as_posix(),
+            }
+        )
+
+    expected_session_context_map = _render_json(resolved_session_context_map)
+    if not session_output_path.exists():
+        issues.append(
+            {
+                "issue_id": "missing-generated-ai-session-context-map",
+                "severity": "high",
+                "message": "Checked-in ai-session-context-map.json is missing.",
+                "path": session_output_path.relative_to(repo_root).as_posix(),
+            }
+        )
+    elif session_output_path.read_text(encoding="utf-8") != expected_session_context_map:
+        issues.append(
+            {
+                "issue_id": "generated-ai-session-context-map-drift",
+                "severity": "high",
+                "message": "Checked-in ai-session-context-map.json does not match the generated session routing map.",
+                "path": session_output_path.relative_to(repo_root).as_posix(),
+            }
+        )
+
+    instructions = [entry for entry in resolved_work_map.get("instructions", []) if isinstance(entry, dict)]
+    for entry in instructions:
+        file_path = str(entry.get("file_path", "")).strip()
+        apply_to = [str(pattern).strip() for pattern in entry.get("apply_to", []) if str(pattern).strip()]
+        if not apply_to:
+            issues.append(
+                {
+                    "issue_id": "orphaned-instruction",
+                    "severity": "high",
+                    "message": "Instruction metadata is missing applyTo globs, so it cannot be auto-selected.",
+                    "path": file_path,
+                }
+            )
+            continue
+        for pattern in apply_to:
+            if "\\" in pattern:
+                issues.append(
+                    {
+                        "issue_id": "backslash-instruction-applyto-glob",
+                        "severity": "medium",
+                        "message": "Instruction applyTo globs must use '/' separators.",
+                        "path": file_path,
+                        "pattern": pattern,
+                    }
+                )
+                continue
+            if _matched_repo_files(repo_files, pattern):
+                continue
+            issues.append(
+                {
+                    "issue_id": "stale-instruction-applyto-glob",
+                    "severity": "medium",
+                    "message": "Instruction applyTo glob does not match any tracked repo files.",
+                    "path": file_path,
+                    "pattern": pattern,
+                }
+            )
+
+    agents = {
+        str(entry.get("name", "")).strip(): entry
+        for entry in resolved_work_map.get("agents", [])
+        if isinstance(entry, dict) and str(entry.get("name", "")).strip()
+    }
+    routed_agents: set[str] = set()
+    for rule in resolved_work_map.get("agent_routing", []):
+        if not isinstance(rule, dict):
+            continue
+        agent_name = str(rule.get("agent_name", "")).strip()
+        if not agent_name:
+            continue
+        if agent_name not in agents:
+            issues.append(
+                {
+                    "issue_id": "dangling-agent-routing",
+                    "severity": "high",
+                    "message": "Agent routing rule references an agent file that does not exist.",
+                    "path": "src/sattlint/devtools/ai_work_map.py",
+                    "agent_name": agent_name,
+                }
+            )
+            continue
+        routed_agents.add(agent_name)
+        path_globs = [str(pattern).strip() for pattern in rule.get("path_globs", []) if str(pattern).strip()]
+        if not path_globs:
+            issues.append(
+                {
+                    "issue_id": "orphaned-agent-routing",
+                    "severity": "high",
+                    "message": "Agent routing rule is missing path globs.",
+                    "path": "src/sattlint/devtools/ai_work_map.py",
+                    "agent_name": agent_name,
+                }
+            )
+            continue
+        for pattern in path_globs:
+            if "\\" in pattern:
+                issues.append(
+                    {
+                        "issue_id": "backslash-agent-routing-glob",
+                        "severity": "medium",
+                        "message": "Agent routing globs must use '/' separators.",
+                        "path": "src/sattlint/devtools/ai_work_map.py",
+                        "agent_name": agent_name,
+                        "pattern": pattern,
+                    }
+                )
+                continue
+            if _matched_repo_files(repo_files, pattern):
+                continue
+            issues.append(
+                {
+                    "issue_id": "stale-agent-routing-glob",
+                    "severity": "medium",
+                    "message": "Agent routing glob does not match any tracked repo files.",
+                    "path": "src/sattlint/devtools/ai_work_map.py",
+                    "agent_name": agent_name,
+                    "pattern": pattern,
+                }
+            )
+
+    for agent_name, entry in agents.items():
+        if agent_name in routed_agents or not bool(entry.get("user_invocable", False)):
+            continue
+        issues.append(
+            {
+                "issue_id": "orphaned-agent",
+                "severity": "high",
+                "message": "User-invocable agent has no routing rule and cannot be recommended automatically.",
+                "path": str(entry.get("file_path", "")).strip(),
+                "agent_name": agent_name,
+            }
+        )
+
+    return {
+        "kind": "sattlint.ai_harness_freshness",
+        "schema_version": 1,
+        "generated_by": "sattlint.devtools.ai_work_map",
+        "status": "pass" if not issues else "fail",
+        "issue_count": len(issues),
+        "issues": issues,
+    }
+
+
 def _simplify_check_catalog(catalog: dict[str, Any], *, source: str | None = None) -> list[dict[str, Any]]:
     simplified: list[dict[str, Any]] = []
     for entry in catalog["checks"]:
@@ -332,6 +606,7 @@ def build_ai_work_map() -> dict[str, Any]:
         "kind": "sattlint.ai_work_map",
         "schema_version": 1,
         "generated_by": "sattlint.devtools.ai_work_map",
+        "default_entrypoint": dict(DEFAULT_AGENT_ENTRYPOINT),
         "generated_from": {
             "validation_map": VALIDATION_MAP_PATH.relative_to(REPO_ROOT).as_posix(),
             "active_exec_plans": f"{ACTIVE_EXEC_PLANS_DIR.relative_to(REPO_ROOT).as_posix()}/*.md",
@@ -341,6 +616,8 @@ def build_ai_work_map() -> dict[str, Any]:
             ),
         },
         "validation_routes": _parse_validation_routes(VALIDATION_MAP_PATH),
+        "finish_gate_templates": [dict(template) for template in FINISH_GATE_TEMPLATES],
+        "blocking_invariant_rules": [dict(rule) for rule in BLOCKING_INVARIANT_RULES],
         "instructions": _collect_instruction_metadata(INSTRUCTIONS_DIR),
         "agents": _collect_agent_metadata(AGENTS_DIR),
         "agent_routing": list(AGENT_ROUTING_RULES),
@@ -359,6 +636,9 @@ def build_session_context_map(work_map: dict[str, Any] | None = None) -> dict[st
         "generated_from": {
             "work_map": DEFAULT_OUTPUT_PATH.relative_to(REPO_ROOT).as_posix(),
         },
+        "default_entrypoint": dict(resolved_work_map.get("default_entrypoint", {})),
+        "finish_gate_templates": list(resolved_work_map.get("finish_gate_templates", [])),
+        "blocking_invariant_rules": list(resolved_work_map.get("blocking_invariant_rules", [])),
         "instructions": list(resolved_work_map.get("instructions", [])),
         "agents": list(resolved_work_map.get("agents", [])),
         "agent_routing": list(resolved_work_map.get("agent_routing", [])),
@@ -478,6 +758,46 @@ def _match_agents(
     return ranked[:3]
 
 
+def _select_finish_gate_template(work_map: dict[str, Any], selected_surface: str) -> dict[str, Any] | None:
+    for entry in work_map.get("finish_gate_templates", []):
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("selected_surface", "")).strip() != selected_surface:
+            continue
+        return {
+            "selected_surface": selected_surface,
+            "command": str(entry.get("command", "")),
+            "description": str(entry.get("description", "")),
+            "includes": [str(item) for item in entry.get("includes", []) if str(item).strip()],
+        }
+    return None
+
+
+def _match_blocking_invariants(
+    work_map: dict[str, Any], changed_files: list[str], selected_surface: str
+) -> list[dict[str, Any]]:
+    matched: list[dict[str, Any]] = []
+    for entry in work_map.get("blocking_invariant_rules", []):
+        if not isinstance(entry, dict):
+            continue
+        selected_surfaces = {str(item).strip() for item in entry.get("selected_surfaces", []) if str(item).strip()}
+        if selected_surfaces and selected_surface not in selected_surfaces:
+            continue
+        path_globs = [str(pattern) for pattern in entry.get("path_globs", []) if str(pattern).strip()]
+        matched_files = [path_text for path_text in changed_files if path_matches_globs(path_text, path_globs)]
+        if path_globs and not matched_files:
+            continue
+        matched.append(
+            {
+                "id": str(entry.get("id", "unknown")),
+                "summary": str(entry.get("summary", "")),
+                "details": str(entry.get("details", "")),
+                "matched_files": matched_files,
+            }
+        )
+    return matched
+
+
 def build_planning_context(
     *,
     changed_files: list[str] | None,
@@ -509,22 +829,30 @@ def build_planning_context(
             command_text = str(command).strip()
             if command_text and command_text not in first_validation_commands:
                 first_validation_commands.append(command_text)
+    finish_gate_template = _select_finish_gate_template(resolved_work_map, selected_surface)
+    blocking_invariants = _match_blocking_invariants(resolved_work_map, normalized_changed_files, selected_surface)
 
     return {
+        "default_entrypoint": dict(resolved_work_map.get("default_entrypoint", {})),
         "primary_agent": None if not owning_agents else owning_agents[0]["name"],
         "owning_agents": owning_agents,
+        "owner_surfaces": owner_surfaces,
+        "recommended_check_ids": resolved_check_ids,
+        "owner_test_targets": owner_test_targets,
         "instruction_files": instruction_files,
         "nearest_owner_suites": nearest_owner_suites,
         "first_validation_commands": first_validation_commands,
+        "finish_gate_template": finish_gate_template,
+        "blocking_invariants": blocking_invariants,
     }
 
 
 def render_ai_work_map() -> str:
-    return json.dumps(build_ai_work_map(), indent=2, sort_keys=True) + "\n"
+    return _render_json(build_ai_work_map())
 
 
 def render_session_context_map() -> str:
-    return json.dumps(build_session_context_map(), indent=2, sort_keys=True) + "\n"
+    return _render_json(build_session_context_map())
 
 
 def write_ai_work_map(output_path: Path = DEFAULT_OUTPUT_PATH) -> Path:

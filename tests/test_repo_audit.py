@@ -2,9 +2,11 @@ import json
 import os
 import subprocess
 import time
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import call, patch
 
 import pytest
@@ -219,6 +221,19 @@ def test_line_findings_flag_secret_assignment_suffix_names(tmp_path):
     findings = repo_audit._line_findings(sample, text, set(), root=tmp_path)
 
     assert any(finding.id == "secret-assignment" for finding in findings)
+
+
+def test_run_text_scan_check_skips_local_ci_parity_findings(tmp_path):
+    readme = tmp_path / "README.md"
+    readme.write_text("Contact person@example.com at C:/Users/SQHJ/Workspace\n", encoding="utf-8")
+
+    context = repo_audit._build_repo_audit_scan_context(tmp_path, suspicious_identifiers=["SQHJ"])
+
+    findings = repo_audit._run_text_scan_check(context)
+
+    assert any(finding.id == "email-address" for finding in findings)
+    assert any(finding.id == "suspicious-identifier" for finding in findings)
+    assert not any(finding.id == "hardcoded-windows-path" for finding in findings)
 
 
 def test_repo_audit_read_text_rejects_binary_and_falls_back_to_cp1252(tmp_path):
@@ -505,6 +520,59 @@ def test_find_ignored_repo_path_references_skips_tracked_fixture_and_allowlisted
     )
 
     assert findings == []
+
+
+def test_find_hidden_local_dependency_findings_flags_site_packages_path_injection(tmp_path):
+    sample = tmp_path / "tests" / "test_sample.py"
+    sample.parent.mkdir(parents=True)
+    sample.write_text(
+        'import sys\n\ndef test_bootstrap():\n    sys.path.insert(0, ".venv/Lib/site-packages")\n',
+        encoding="utf-8",
+    )
+
+    context = repo_audit._build_python_source_scan_context(
+        tmp_path / "tests",
+        root=tmp_path,
+        tracked_paths=("tests/test_sample.py",),
+    )
+
+    findings = repo_audit._find_hidden_local_dependency_findings(context, root=tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0].id == "hidden-local-dependency-root"
+    assert findings[0].path == "tests/test_sample.py"
+    assert findings[0].line == 4
+    assert findings[0].detail == "Matched local dependency marker .venv/"
+
+
+def test_find_host_specific_test_assumptions_flags_skipif_and_os_branch(tmp_path):
+    sample = tmp_path / "tests" / "test_sample.py"
+    sample.parent.mkdir(parents=True)
+    sample.write_text(
+        "import os\nimport pytest\n\n"
+        '@pytest.mark.skipif(os.name != "nt", reason="Windows-specific")\n'
+        "def test_windows_only():\n    assert True\n\n"
+        "def test_branching_expectation():\n"
+        '    separator = "\\\\" if os.name == "nt" else "/"\n'
+        '    assert separator in {"/", "\\\\"}\n',
+        encoding="utf-8",
+    )
+
+    context = repo_audit._build_python_source_scan_context(
+        tmp_path / "tests",
+        root=tmp_path,
+        tracked_paths=("tests/test_sample.py",),
+    )
+
+    findings = repo_audit._find_host_specific_test_assumptions(context, root=tmp_path)
+
+    assert [finding.id for finding in findings] == [
+        "host-specific-test-assumption",
+        "host-specific-test-assumption",
+    ]
+    assert [finding.line for finding in findings] == [4, 9]
+    assert "skipif" in (findings[0].detail or "")
+    assert 'os.name == "nt"' in (findings[1].detail or "")
 
 
 def test_parse_coverage_findings_ignores_untracked_coverage_xml(tmp_path):
@@ -876,6 +944,7 @@ def test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_sour
         patch.object(repo_audit, "_find_cli_findings", return_value=[]),
         patch.object(repo_audit, "_find_logging_findings", return_value=[logging_finding]) as logging_findings,
         patch.object(repo_audit, "_find_ignored_repo_path_references", return_value=[]) as ignored_path_refs,
+        patch.object(repo_audit, "_run_harness_freshness_check", return_value=[]),
         patch.object(repo_audit, "_parse_coverage_findings", return_value=[docs_finding]) as coverage_findings,
         patch.object(
             repo_audit, "_find_public_readiness_findings", return_value=[readiness_finding]
@@ -1266,6 +1335,47 @@ def test_doc_gardener_run_scan_aggregates_findings(monkeypatch):
     assert result["by_category"]["missing"] == 1
     assert result["by_category"]["dead_link"] == 1
     assert len(result["findings"]) == 2
+
+
+def test_run_harness_freshness_check_translates_ai_and_doc_findings(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        repo_audit._ai_work_map_module,
+        "verify_ai_harness_freshness",
+        lambda **kwargs: {
+            "issues": [
+                {
+                    "issue_id": "generated-ai-work-map-drift",
+                    "severity": "high",
+                    "message": "ai map drift",
+                    "path": ".github/skills/validation-routing/references/ai-work-map.json",
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(repo_audit, "_patch_doc_gardener_paths", lambda root: nullcontext())
+    monkeypatch.setattr(
+        repo_audit._doc_gardener_module,
+        "scan_agents_md",
+        lambda: [doc_gardener.DocFinding("AGENTS.md", 101, "High", "too_long", "AGENTS too long")],
+    )
+    monkeypatch.setattr(
+        repo_audit._doc_gardener_module,
+        "scan_dead_links",
+        lambda: [doc_gardener.DocFinding("docs/index.md", 4, "Medium", "dead_link", "Broken link")],
+    )
+    monkeypatch.setattr(repo_audit._doc_gardener_module, "scan_stale_docs", lambda: [])
+
+    findings = repo_audit._run_harness_freshness_check(cast(Any, SimpleNamespace(root=tmp_path)))
+
+    assert {(finding.id, finding.path) for finding in findings} == {
+        (
+            "harness-generated-ai-work-map-drift",
+            ".github/skills/validation-routing/references/ai-work-map.json",
+        ),
+        ("harness-too-long", "AGENTS.md"),
+        ("harness-dead-link", "docs/index.md"),
+    }
+    assert {finding.category for finding in findings} == {"harness-freshness"}
 
 
 def test_doc_gardener_updates_quality_score_and_scan_log(tmp_path):
@@ -1923,7 +2033,7 @@ def test_build_repo_audit_check_catalog_lists_pipeline_and_custom_checks(tmp_pat
 
     assert catalog["kind"] == "sattlint.repo_audit.check_catalog"
     check_ids = {entry["id"] for entry in catalog["checks"]}
-    assert {"ruff", "ai-gc", "public-readiness", "cli-consistency"} <= check_ids
+    assert {"ruff", "ai-gc", "harness-freshness", "public-readiness", "cli-consistency", "local-ci-parity"} <= check_ids
     public_readiness_entry = next(entry for entry in catalog["checks"] if entry["id"] == "public-readiness")
     assert public_readiness_entry["source"] == "repo-audit"
     assert "--check public-readiness" in public_readiness_entry["command"]
@@ -1932,6 +2042,14 @@ def test_build_repo_audit_check_catalog_lists_pipeline_and_custom_checks(tmp_pat
     ai_gc_entry = next(entry for entry in catalog["checks"] if entry["id"] == "ai-gc")
     assert "ai_gc" in ai_gc_entry["artifact_ids"]
     assert ai_gc_entry["owner_surface"] == "ai-hygiene"
+
+    harness_entry = next(entry for entry in catalog["checks"] if entry["id"] == "harness-freshness")
+    assert "--check harness-freshness" in harness_entry["command"]
+    assert harness_entry["owner_surface"] == "harness-freshness"
+
+    local_ci_entry = next(entry for entry in catalog["checks"] if entry["id"] == "local-ci-parity")
+    assert "--check local-ci-parity" in local_ci_entry["command"]
+    assert local_ci_entry["owner_surface"] == "local-ci-parity"
 
 
 def test_build_repo_audit_check_recommendations_combines_pipeline_and_repo_audit_routes(tmp_path):
@@ -1948,7 +2066,20 @@ def test_build_repo_audit_check_recommendations_combines_pipeline_and_repo_audit
     assert "cli-consistency" in recommendations["recommended_repo_audit_check_ids"]
     assert recommendations["suggested_check_commands"]
     assert recommendations["suggested_finish_gate_commands"]
+    assert recommendations["proof_requirements"]["focused_behavior_test"]["required"] is False
+    assert recommendations["proof_requirements"]["coverage"]["required"] is False
     assert recommendations["why_this_gate"]["matched_routes"]
+
+
+def test_build_repo_audit_check_recommendations_routes_harness_freshness(tmp_path):
+    recommendations = repo_audit.build_repo_audit_check_recommendations(
+        profile="full",
+        output_dir=tmp_path,
+        fail_on="high",
+        changed_files=["AGENTS.md"],
+    )
+
+    assert "harness-freshness" in recommendations["recommended_repo_audit_check_ids"]
 
 
 def test_main_list_checks_prints_catalog(tmp_path, capsys):
@@ -1985,8 +2116,16 @@ def test_main_planning_context_prints_machine_readable_report(monkeypatch, tmp_p
     report = {
         "kind": "sattlint.planning_context",
         "schema_version": 1,
+        "changed_files": ["src/sattlint/app.py"],
+        "owning_surface": "repo-audit",
         "selected_surface": "repo-audit",
-        "planning_context": {"primary_agent": "CLI App Menu", "instruction_files": [], "nearest_owner_suites": []},
+        "planning_context": {
+            "primary_agent": "CLI App Menu",
+            "instruction_files": [],
+            "nearest_owner_suites": [],
+            "blocking_invariants": [],
+        },
+        "finish_gate": {"command": "sattlint-repo-audit --run-recommended-finish-gate"},
     }
 
     with patch.object(
@@ -2007,7 +2146,9 @@ def test_main_planning_context_prints_machine_readable_report(monkeypatch, tmp_p
     payload = json.loads(capsys.readouterr().out)
 
     assert exit_code == 0
-    assert payload["primary_agent"] == "CLI App Menu"
+    assert payload["kind"] == "sattlint.planning_context"
+    assert payload["planning_context"]["primary_agent"] == "CLI App Menu"
+    assert payload["finish_gate"]["command"] == "sattlint-repo-audit --run-recommended-finish-gate"
     assert build_planning_report.call_args.kwargs["changed_files"] == ["src/sattlint/app.py"]
 
 
@@ -2295,14 +2436,170 @@ def test_run_check_my_changes_includes_planning_context(monkeypatch, tmp_path):
         )
 
     assert report["planning_context"]["primary_agent"] == "CLI App Menu"
+    assert report["planning_context"]["owner_surfaces"] == ["cli"]
+    assert report["planning_context"]["owner_test_targets"] == ["tests/test_repo_audit.py"]
     assert any(item["name"] == "CLI App Instructions" for item in report["planning_context"]["instruction_files"])
     assert any("tests/test_app.py" in suite["tests"] for suite in report["planning_context"]["nearest_owner_suites"])
     assert report["planning_context"]["first_validation_commands"]
+    assert report["planning_context"]["finish_gate"]["selected_surface"] == "repo-audit"
+    assert any(item["id"] == "focused-validation-first" for item in report["planning_context"]["blocking_invariants"])
+    assert report["proof_requirements"]["focused_behavior_test"]["required"] is True
     assert report["ai_feedback"]["primary_agent"] == "CLI App Menu"
     assert (
         report["ai_feedback"]["first_validation_commands"]
         == report["planning_context"]["first_validation_commands"][:3]
     )
+
+
+def test_run_recommended_repo_audit_finish_gate_fails_when_change_scoped_coverage_fails(monkeypatch, tmp_path):
+    recommendation = {
+        "changed_files": ["src/sattlint/devtools/repo_audit.py"],
+        "recommended_checks": [{"owner_test_targets": ["tests/test_repo_audit.py"]}],
+        "proof_requirements": {
+            "focused_behavior_test": {
+                "required": True,
+                "status": "satisfied",
+                "owner_test_targets": ["tests/test_repo_audit.py"],
+                "reason": "Code changes require at least one focused owner pytest target.",
+            },
+            "coverage": {
+                "required": True,
+                "preferred_mode": "changed-lines",
+                "fallback_mode": "touched-files",
+                "touched_source_files": ["src/sattlint/devtools/repo_audit.py"],
+                "reason": "Touched source files should be proven by focused coverage.",
+            },
+            "mutation_guidance": {
+                "status": "advisory",
+                "critical_surfaces": ["routing"],
+                "suggested_commands": [],
+                "suggestion": "Prefer mutation-style or property-style assertions.",
+            },
+        },
+    }
+
+    monkeypatch.setattr(
+        repo_audit._repo_audit_entrypoints, "build_repo_audit_check_recommendations", lambda **_kwargs: recommendation
+    )
+    monkeypatch.setattr(
+        repo_audit._repo_audit_entrypoints,
+        "run_recommended_repo_audit_slice",
+        lambda *_args, **_kwargs: {"overall_status": "pass"},
+    )
+    monkeypatch.setattr(
+        repo_audit.pipeline_module,
+        "_run_command",
+        lambda name, command, cwd=repo_audit.pipeline_module.REPO_ROOT: repo_audit.pipeline_module.CommandResult(
+            name=name,
+            command=command,
+            exit_code=0,
+            duration_seconds=0.0,
+            stdout="",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        repo_audit.pipeline_module,
+        "evaluate_change_scoped_coverage_proof",
+        lambda **_kwargs: {"status": "fail", "mode": "changed-lines", "coverage_path": "coverage_proof.xml"},
+    )
+
+    result = repo_audit.run_recommended_repo_audit_finish_gate(
+        tmp_path,
+        profile="full",
+        fail_on="high",
+        include_generated=False,
+        suspicious_identifiers=[],
+        skip_vulture=False,
+        skip_bandit=False,
+        changed_files=["src/sattlint/devtools/repo_audit.py"],
+    )
+
+    assert result["overall_status"] == "fail"
+    assert result["finish_gate"]["status"] == "fail"
+    assert result["finish_gate"]["coverage_proof"]["mode"] == "changed-lines"
+
+
+def test_run_recommended_repo_audit_finish_gate_runs_ratchet_policy(monkeypatch, tmp_path):
+    recommendation = {
+        "changed_files": ["src/sattlint/app.py"],
+        "recommended_checks": [{"owner_test_targets": ["tests/test_app.py"]}],
+        "proof_requirements": {
+            "focused_behavior_test": {
+                "required": True,
+                "status": "satisfied",
+                "owner_test_targets": ["tests/test_app.py"],
+                "reason": "Code changes require at least one focused owner pytest target.",
+            },
+            "coverage": {
+                "required": True,
+                "preferred_mode": "changed-lines",
+                "fallback_mode": "touched-files",
+                "touched_source_files": ["src/sattlint/app.py"],
+                "reason": "Touched source files should be proven by focused coverage.",
+            },
+            "mutation_guidance": {
+                "status": "advisory",
+                "critical_surfaces": [],
+                "suggested_commands": [],
+                "suggestion": "",
+            },
+        },
+    }
+    executed_steps: list[tuple[str, list[str]]] = []
+
+    monkeypatch.setattr(
+        repo_audit._repo_audit_entrypoints, "build_repo_audit_check_recommendations", lambda **_kwargs: recommendation
+    )
+    monkeypatch.setattr(
+        repo_audit._repo_audit_entrypoints,
+        "run_recommended_repo_audit_slice",
+        lambda *_args, **_kwargs: {"overall_status": "pass"},
+    )
+
+    def _record_step(name, command, cwd=repo_audit.pipeline_module.REPO_ROOT):
+        executed_steps.append((name, list(command)))
+        return repo_audit.pipeline_module.CommandResult(
+            name=name,
+            command=command,
+            exit_code=0,
+            duration_seconds=0.0,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(repo_audit.pipeline_module, "_run_command", _record_step)
+    monkeypatch.setattr(
+        repo_audit.pipeline_module,
+        "evaluate_change_scoped_coverage_proof",
+        lambda **_kwargs: {"status": "pass", "mode": "changed-lines", "coverage_path": "coverage_proof.xml"},
+    )
+
+    result = repo_audit.run_recommended_repo_audit_finish_gate(
+        tmp_path,
+        profile="full",
+        fail_on="high",
+        include_generated=False,
+        suspicious_identifiers=[],
+        skip_vulture=False,
+        skip_bandit=False,
+        changed_files=["src/sattlint/app.py"],
+    )
+
+    assert [step[0] for step in executed_steps] == [
+        "ruff-touched-python",
+        "pyright-touched-python",
+        "ratchet-policy",
+        "owner-pytest-coverage",
+    ]
+    assert executed_steps[2][1][1:] == ["scripts/check_ratchet_policy.py"]
+    assert [step["id"] for step in result["finish_gate"]["commands"]] == [
+        "ruff-touched-python",
+        "pyright-touched-python",
+        "ratchet-policy",
+        "owner-pytest-coverage",
+    ]
+    assert result["finish_gate"]["status"] == "pass"
 
 
 def test_run_check_my_changes_ai_feedback_prefers_failed_finish_gate_step(monkeypatch, tmp_path):

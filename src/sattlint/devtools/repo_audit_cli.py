@@ -95,7 +95,7 @@ def _build_cli_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--planning-context",
         action="store_true",
-        help="Print only the machine-readable planning_context block for the current or explicit changed files and exit.",
+        help="Print the full machine-readable planning report for the current or explicit changed files and exit.",
     )
     parser.add_argument(
         "--apply-ai-gc",
@@ -257,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
             fail_on=fail_on,
             changed_files=args.changed_file,
         )
-        print(json.dumps(report["planning_context"], indent=2))
+        print(json.dumps(report, indent=2))
         return 0
     if args.check_my_changes:
         report = repo_audit.run_check_my_changes(

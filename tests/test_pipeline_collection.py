@@ -754,7 +754,18 @@ def test_build_pipeline_finding_collection_normalizes_tool_payloads(tmp_path):
                 "errorCode": "assignment",
             }
         ],
-        pytest_report={"summary": {"tests": 2, "failures": 1, "errors": 0, "skipped": 0}},
+        pytest_report={
+            "summary": {"tests": 2, "failures": 1, "errors": 0, "skipped": 0},
+            "testcases": [
+                {
+                    "classname": "tests.test_sample",
+                    "name": "test_failure",
+                    "outcome": "failed",
+                    "detail": "tests/test_sample.py:23: AssertionError",
+                    "nodeid": "tests/test_sample.py::test_failure",
+                }
+            ],
+        },
         vulture_findings=[
             {
                 "file": str(tmp_path / "src" / "dead.py"),
@@ -798,8 +809,22 @@ def test_build_pipeline_finding_collection_normalizes_tool_payloads(tmp_path):
         ),
     )
     assert any(item["rule_id"] == "ruff.f401" and item["location"]["line"] == 4 for item in payload["findings"])
-    assert any(item["rule_id"] == "pyright.assignment" and item["severity"] == "high" for item in payload["findings"])
-    assert any(item["rule_id"] == "pytest.failures" for item in payload["findings"])
+    assert any(
+        item["rule_id"] == "pyright.assignment"
+        and item["severity"] == "high"
+        and item["location"]["line"] == 9
+        and item["owner_surface"] == "python-types"
+        for item in payload["findings"]
+    )
+    assert any(
+        item["rule_id"] == "pytest.failures"
+        and item["file"] == "tests/test_sample.py"
+        and item["line"] == 23
+        and item["owner_surface"] == "python-tests"
+        and item["minimal_reproducer"] == "python -m pytest tests/test_sample.py::test_failure -x -q --tb=short"
+        and item["suggested_next_command"] == "python -m pytest tests/test_sample.py::test_failure -x -q --tb=short"
+        for item in payload["findings"]
+    )
     assert any(item["rule_id"] == "vulture.dead-code" and item["confidence"] == "high" for item in payload["findings"])
     assert any(item["rule_id"] == "bandit.b101" and item["category"] == "security" for item in payload["findings"])
     assert any(
@@ -1639,8 +1664,13 @@ def test_build_coverage_summary_report_skipped_when_no_xml(tmp_path):
     assert result["skipped"] is True
     assert result["skip_reason"] == "coverage.xml not found"
     assert result["modules"] == []
+    assert result["change_scoped"]["status"] == "skipped"
     assert result["ratchet"]["status"] == "skipped"
-    assert result["ratchet"]["setpoint_metrics"] == {"min_line_rate_basis_points": 10000}
+    assert result["ratchet"]["setpoint_metrics"] == {
+        "min_line_rate_basis_points": 10000,
+        "min_changed_line_rate_basis_points": 10000,
+        "min_touched_file_line_rate_basis_points": 9000,
+    }
 
 
 def test_build_coverage_summary_report_flags_high_severity(tmp_path):
@@ -1686,7 +1716,12 @@ def test_build_coverage_summary_report_normalizes_src_paths_and_tracks_totals(tm
     assert result["summary"]["total_line_rate"] == 0.88
     assert result["summary"]["total_lines_missing"] == 12
     assert result["ratchet"]["status"] == "pass"
-    assert result["ratchet"]["setpoint_metrics"] == {"min_line_rate_basis_points": 10000}
+    assert result["change_scoped"]["status"] == "skipped"
+    assert result["ratchet"]["setpoint_metrics"] == {
+        "min_line_rate_basis_points": 10000,
+        "min_changed_line_rate_basis_points": 10000,
+        "min_touched_file_line_rate_basis_points": 9000,
+    }
     assert result["ratchet"]["current_metrics"]["line_rate_basis_points"] == 8800
 
 
@@ -1717,6 +1752,92 @@ def test_build_coverage_summary_report_flags_ratchet_regression(tmp_path):
         {"metric": "line_rate_basis_points", "expected_min": 9000, "actual": 8800}
     ]
     assert any(f.get("id") == "coverage-ratchet-regression" for f in result["findings"])
+
+
+def test_build_coverage_summary_report_prefers_changed_line_proof(tmp_path):
+    from sattlint.devtools.coverage_reports import build_coverage_summary_report
+
+    (tmp_path / "artifacts" / "analysis").mkdir(parents=True)
+    (tmp_path / "artifacts" / "analysis" / "coverage_ratchet.json").write_text(
+        (
+            '{"kind": "sattlint.coverage_ratchet", "schema_version": 1, "metrics": '
+            '{"min_line_rate_basis_points": 8700, "min_changed_line_rate_basis_points": 10000, '
+            '"min_touched_file_line_rate_basis_points": 9000}}'
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "coverage.xml").write_text(
+        """<?xml version="1.0" ?>
+<coverage lines-valid="10" lines-covered="9" line-rate="0.9">
+    <packages><package><classes>
+        <class filename="src/sattlint/good_module.py" line-rate="0.9" lines-valid="10" lines-covered="9">
+            <lines>
+                <line number="10" hits="1"/>
+                <line number="11" hits="1"/>
+                <line number="12" hits="0"/>
+            </lines>
+        </class>
+    </classes></package></packages>
+</coverage>""",
+        encoding="utf-8",
+    )
+
+    result = build_coverage_summary_report(
+        tmp_path,
+        changed_files=["src/sattlint/good_module.py"],
+        changed_line_map={"src/sattlint/good_module.py": [10, 11]},
+    )
+
+    assert result["change_scoped"]["status"] == "pass"
+    assert result["change_scoped"]["mode"] == "changed-lines"
+    assert result["change_scoped"]["summary"]["changed_line_count"] == 2
+    assert result["change_scoped"]["summary"]["changed_lines_covered"] == 2
+    assert result["change_scoped"]["summary"]["changed_line_rate"] == 1.0
+    assert result["change_scoped"]["ratchet"]["metric"] == "changed_line_rate_basis_points"
+    assert result["change_scoped"]["ratchet"]["actual"] == 10000
+
+
+def test_build_coverage_summary_report_falls_back_to_touched_file_proof(tmp_path):
+    from sattlint.devtools.coverage_reports import build_coverage_summary_report
+
+    (tmp_path / "artifacts" / "analysis").mkdir(parents=True)
+    (tmp_path / "artifacts" / "analysis" / "coverage_ratchet.json").write_text(
+        (
+            '{"kind": "sattlint.coverage_ratchet", "schema_version": 1, "metrics": '
+            '{"min_line_rate_basis_points": 8700, "min_changed_line_rate_basis_points": 10000, '
+            '"min_touched_file_line_rate_basis_points": 9000}}'
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "coverage.xml").write_text(
+        """<?xml version="1.0" ?>
+<coverage lines-valid="20" lines-covered="17" line-rate="0.85">
+    <packages><package><classes>
+        <class filename="src/sattlint/good_module.py" line-rate="0.85" lines-valid="20" lines-covered="17">
+            <lines>
+                <line number="30" hits="0"/>
+            </lines>
+        </class>
+    </classes></package></packages>
+</coverage>""",
+        encoding="utf-8",
+    )
+
+    result = build_coverage_summary_report(
+        tmp_path,
+        changed_files=["src/sattlint/good_module.py"],
+        changed_line_map={"src/sattlint/good_module.py": [99]},
+    )
+
+    assert result["change_scoped"]["status"] == "fail"
+    assert result["change_scoped"]["mode"] == "touched-files"
+    assert result["change_scoped"]["summary"]["changed_line_count"] == 0
+    assert result["change_scoped"]["summary"]["touched_line_rate"] == 0.85
+    assert result["change_scoped"]["ratchet"]["metric"] == "touched_file_line_rate_basis_points"
+    assert result["change_scoped"]["ratchet"]["regressions"] == [
+        {"metric": "touched_file_line_rate_basis_points", "expected_min": 9000, "actual": 8500}
+    ]
+    assert any(f.get("id") == "change-scoped-coverage-ratchet-regression" for f in result["findings"])
 
 
 # --- resolution/paths.py: CanonicalPath.join() no-arg, ModuleSegment.display() branches ---
@@ -1845,7 +1966,7 @@ def test_finding_record_default_fingerprint_is_set():
 
 
 def test_finding_record_to_dict_round_trip_via_from_dict():
-    from sattlint.contracts.findings import FindingRecord
+    from sattlint.contracts.findings import FindingLocation, FindingRecord
 
     original = FindingRecord(
         id="r2",
@@ -1855,6 +1976,8 @@ def test_finding_record_to_dict_round_trip_via_from_dict():
         confidence="medium",
         message="Scope issue",
         source="test",
+        analyzer="repo-audit",
+        location=FindingLocation(path="src/example.py", line=12),
         detail="some detail",
         suggestion="fix it",
     )
@@ -1863,6 +1986,47 @@ def test_finding_record_to_dict_round_trip_via_from_dict():
     assert restored.rule_id == "scope.leak"
     assert restored.detail == "some detail"
     assert restored.suggestion == "fix it"
+    assert restored.file == "src/example.py"
+    assert restored.line == 12
+    assert restored.owner_surface == "test"
+    assert (
+        restored.minimal_reproducer
+        == "sattlint-repo-audit --profile full --check test --skip-pipeline --output-dir artifacts/audit"
+    )
+    assert restored.suggested_next_command == restored.minimal_reproducer
+
+
+def test_finding_record_derives_tool_specific_failure_fields():
+    from sattlint.contracts.findings import FindingLocation, FindingRecord
+
+    ruff_finding = FindingRecord(
+        id="ruff-f401",
+        rule_id="ruff.f401",
+        category="style",
+        severity="high",
+        confidence="high",
+        message="Imported but unused",
+        source="ruff",
+        location=FindingLocation(path="src/sample.py", line=4),
+    )
+    syntax_finding = FindingRecord(
+        id="syntax.parse",
+        rule_id="syntax.parse",
+        category="syntax",
+        severity="high",
+        confidence="high",
+        message="Parse failed",
+        source="corpus-runner",
+        analyzer="syntax-check",
+        location=FindingLocation(path="Broken.s", line=1),
+    )
+
+    assert ruff_finding.owner_surface == "python-style"
+    assert ruff_finding.minimal_reproducer == "ruff check src/sample.py"
+    assert ruff_finding.suggested_next_command == "ruff check src/sample.py"
+    assert syntax_finding.owner_surface == "syntax-check"
+    assert syntax_finding.minimal_reproducer == "sattlint syntax-check Broken.s"
+    assert syntax_finding.suggested_next_command == "sattlint syntax-check Broken.s"
 
 
 def test_finding_record_from_mapping_with_explicit_source():

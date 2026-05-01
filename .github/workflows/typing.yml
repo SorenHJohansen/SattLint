@@ -68,7 +68,7 @@ jobs:
       - name: Run pytest with coverage
         run: python -m pytest -q --tb=short
 
-      - name: Enforce new-file ratchet targets
+      - name: Enforce ratchet policy
         run: python scripts/check_ratchet_policy.py
 
   pip-audit:
@@ -115,5 +115,5 @@ jobs:
         if: ${{ github.event_name == 'pull_request' }}
         run: git fetch --no-tags --depth=1 origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
 
-      - name: Enforce ratchet policy
+      - name: Enforce ratchet backslide policy
         run: python scripts/check_ratchet_policy.py
