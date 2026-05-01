@@ -1942,9 +1942,6 @@ ENDDEF (*BasePicture*);
 
 
 def test_load_source_text_preserves_state_markers_in_compressed_libraries():
-    if not _repo_path("Libs").exists():
-        pytest.skip("Compressed library files not available")
-
     cases = [
         ("SupportLib.x", "GetRemoteFile", "ExecuteLocal"),
         ("NSupportLib.x", "zRestoreStringList", "ExecuteState"),
@@ -1952,6 +1949,11 @@ def test_load_source_text_preserves_state_markers_in_compressed_libraries():
         ("MmsVarLib.x", "MMSWriteVar", "Rdy"),
         ("ReportLib.x", "ReportGeneralTable", "Ready"),
     ]
+    missing_files = [
+        file_name for file_name, _, _ in cases if not _repo_path("Libs", "HA", "ABBLib", file_name).exists()
+    ]
+    if missing_files:
+        pytest.skip(f"Compressed library files not available: {', '.join(missing_files)}")
 
     for file_name, moduletype_name, variable_name in cases:
         source_path = _repo_path("Libs", "HA", "ABBLib", file_name)
@@ -1982,8 +1984,12 @@ def test_load_source_text_preserves_state_markers_in_compressed_libraries():
 
 
 def test_load_source_text_preserves_duration_value_in_compressed_libraries():
-    if not _repo_path("Libs").exists():
-        pytest.skip("Compressed library files not available")
+    required_files = ["JournalLib.x", "EventLib.x"]
+    missing_files = [
+        file_name for file_name in required_files if not _repo_path("Libs", "HA", "ABBLib", file_name).exists()
+    ]
+    if missing_files:
+        pytest.skip(f"Compressed library files not available: {', '.join(missing_files)}")
 
     journal_path = _repo_path("Libs", "HA", "ABBLib", "JournalLib.x")
     journal_src = _load_source_text(journal_path)
@@ -2029,10 +2035,7 @@ def test_load_source_text_preserves_duration_value_in_compressed_libraries():
 
 
 def test_validate_single_file_syntax_accepts_reported_compressed_library_files():
-    if not _repo_path("Libs").exists():
-        pytest.skip("Compressed library files not available")
-
-    for file_name in [
+    file_names = [
         "SupportLib.x",
         "NSupportLib.x",
         "JournalLib.x",
@@ -2040,7 +2043,14 @@ def test_validate_single_file_syntax_accepts_reported_compressed_library_files()
         "MmsVarLib.x",
         "ReportLib.x",
         "SLIoUnitLib.x",
-    ]:
+    ]
+    missing_files = [
+        file_name for file_name in file_names if not _repo_path("Libs", "HA", "ABBLib", file_name).exists()
+    ]
+    if missing_files:
+        pytest.skip(f"Compressed library files not available: {', '.join(missing_files)}")
+
+    for file_name in file_names:
         result = validate_single_file_syntax(_repo_path("Libs", "HA", "ABBLib", file_name))
         assert result.ok is True, f"{file_name}: {result.stage} {result.message}"
 
