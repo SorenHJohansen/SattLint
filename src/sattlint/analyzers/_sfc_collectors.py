@@ -1,7 +1,5 @@
 """SFC variable-access and step-contract collector classes."""
 
-# ruff: noqa: E501
-
 from __future__ import annotations
 
 from collections.abc import Sequence as SequenceABC

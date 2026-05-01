@@ -1,7 +1,5 @@
 """Expression semantics validation and builtin call type checking for SattLine."""
 
-# ruff: noqa: E501
-
 from __future__ import annotations
 
 from lark import Tree

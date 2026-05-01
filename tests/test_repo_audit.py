@@ -1183,14 +1183,75 @@ def test_doc_gardener_main_updates_logs_without_exit_when_clean(monkeypatch, cap
     monkeypatch.setattr(doc_gardener, "update_tech_debt_scan_log", lambda findings: None)
     monkeypatch.setattr(doc_gardener, "open_fixup_pr", lambda findings: pytest.fail("PR should not open when clean"))
 
-    doc_gardener.main()
+    assert doc_gardener.main() == 0
 
     out = capsys.readouterr().out
     assert "Doc-gardening scan complete: 0 findings" in out
     assert "Tracking files updated." in out
 
 
-def test_doc_gardener_main_opens_pr_and_exits_when_findings_exist(monkeypatch, capsys):
+def test_doc_gardener_main_reports_findings_without_opening_pr_by_default(monkeypatch, capsys):
+    finding = doc_gardener.DocFinding("docs/index.md", 2, "Medium", "dead_link", "Broken link")
+    monkeypatch.setattr(
+        doc_gardener,
+        "run_scan",
+        lambda: {
+            "total_findings": 1,
+            "by_severity": {severity: (1 if severity == "Medium" else 0) for severity in doc_gardener.SEVERITY_ORDER},
+            "by_category": {
+                category: (1 if category == "dead_link" else 0) for category in doc_gardener.CATEGORY_ORDER
+            },
+            "findings": [finding._asdict()],
+        },
+    )
+    monkeypatch.setattr(doc_gardener, "update_quality_score", lambda findings: None)
+    monkeypatch.setattr(doc_gardener, "update_tech_debt_scan_log", lambda findings: None)
+    monkeypatch.setattr(doc_gardener, "open_fixup_pr", lambda findings: pytest.fail("PR should be opt-in"))
+
+    assert doc_gardener.main() == 1
+
+    out = capsys.readouterr().out
+    assert "[Medium] docs/index.md:2 - Broken link" in out
+    assert "Tracking files updated." in out
+    assert "Attempting to open fix-up PR..." not in out
+
+
+def test_doc_gardener_main_check_only_does_not_update_logs_or_open_pr(monkeypatch, capsys):
+    finding = doc_gardener.DocFinding("docs/index.md", 2, "Medium", "dead_link", "Broken link")
+    monkeypatch.setattr(
+        doc_gardener,
+        "run_scan",
+        lambda: {
+            "total_findings": 1,
+            "by_severity": {severity: (1 if severity == "Medium" else 0) for severity in doc_gardener.SEVERITY_ORDER},
+            "by_category": {
+                category: (1 if category == "dead_link" else 0) for category in doc_gardener.CATEGORY_ORDER
+            },
+            "findings": [finding._asdict()],
+        },
+    )
+    monkeypatch.setattr(
+        doc_gardener,
+        "update_quality_score",
+        lambda findings: pytest.fail("check-only mode should not update quality score"),
+    )
+    monkeypatch.setattr(
+        doc_gardener,
+        "update_tech_debt_scan_log",
+        lambda findings: pytest.fail("check-only mode should not update scan log"),
+    )
+    monkeypatch.setattr(
+        doc_gardener, "open_fixup_pr", lambda findings: pytest.fail("check-only mode should not open PR")
+    )
+
+    assert doc_gardener.main(["--check-only"]) == 1
+
+    out = capsys.readouterr().out
+    assert "Check-only mode: tracking files not updated." in out
+    assert "Attempting to open fix-up PR..." not in out
+
+
+def test_doc_gardener_main_opens_pr_when_requested(monkeypatch, capsys):
     finding = doc_gardener.DocFinding("docs/index.md", 2, "Medium", "dead_link", "Broken link")
     monkeypatch.setattr(
         doc_gardener,
@@ -1209,11 +1270,9 @@ def test_doc_gardener_main_opens_pr_and_exits_when_findings_exist(monkeypatch, c
     opened: list[tuple[doc_gardener.DocFinding, ...]] = []
     monkeypatch.setattr(doc_gardener, "open_fixup_pr", lambda findings: opened.append(tuple(findings)) or True)
 
-    with pytest.raises(SystemExit, match="1"):
-        doc_gardener.main()
+    assert doc_gardener.main(["--open-fixup-pr"]) == 1
 
     out = capsys.readouterr().out
-    assert "[Medium] docs/index.md:2 - Broken link" in out
     assert "Attempting to open fix-up PR..." in out
     assert opened == [(finding,)]
 
@@ -1308,11 +1367,8 @@ def test_doc_gardener_main_exits_nonzero_when_findings_exist():
         patch.object(doc_gardener, "update_quality_score"),
         patch.object(doc_gardener, "update_tech_debt_scan_log"),
         patch.object(doc_gardener, "open_fixup_pr", return_value=False),
-        pytest.raises(SystemExit) as exc,
     ):
-        doc_gardener.main()
-
-    assert exc.value.code == 1
+        assert doc_gardener.main() == 1
 
 
 def test_print_cli_summary_includes_findings_schema(capsys):

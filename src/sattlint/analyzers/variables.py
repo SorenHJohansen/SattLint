@@ -1,7 +1,5 @@
 """Variable usage analysis and reporting utilities."""
 
-# ruff: noqa: E501
-
 from __future__ import annotations
 
 import difflib

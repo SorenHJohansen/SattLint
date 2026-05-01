@@ -144,6 +144,7 @@ New analysis passes that do not yet exist in the engine.
 **Output:** Timing and determinism issues
 
 **Reuses:**
+
 - `analyzers/dataflow.py` - expression evaluation
 
 **Validation:** `pytest tests/test_timing_determinism.py`
@@ -567,6 +568,7 @@ New analysis passes that do not yet exist in the engine.
 **Output:** Inferred ranges and states
 
 **Reuses:**
+
 - `analyzers/dataflow.py` - expression evaluation
 
 **Validation:** `pytest tests/test_inference.py`
@@ -603,6 +605,7 @@ New analysis passes that do not yet exist in the engine.
 **Output:** Data dependency findings with potential issues
 
 **Reuses:**
+
 - `analyzers/dataflow.py` - expression evaluation
 - `core/semantic.py:load_workspace_snapshot()` - workspace loading
 
@@ -640,6 +643,7 @@ New analysis passes that do not yet exist in the engine.
 **Output:** Resource usage findings with leak/usage issues
 
 **Reuses:**
+
 - `analyzers/dataflow.py` - expression evaluation
 - `analyzers/scan_loop_resource_usage.py` - existing resource usage analysis
 
@@ -944,6 +948,7 @@ New tooling, testing infrastructure, and pipeline features that do not yet exist
 | 8 | Tests | `tests/test_sfc_simulation.py` | Unit + integration |
 
 **Input:**
+
 ```json
 {
   "source": "Filename:BasePicture.Instance.Path",
@@ -966,7 +971,8 @@ New tooling, testing infrastructure, and pipeline features that do not yet exist
 | 5 | `execute_actions` | Execute actions |
 | 6 | `solve_equations` | Evaluate equations |
 | 7 | `commit_outputs` | Commit values |
-```
+
+```text
 
 **CLI Options:**
 
@@ -1000,6 +1006,7 @@ New tooling, testing infrastructure, and pipeline features that do not yet exist
 **Cycle Detection:** Track `state_hash = hash(values + active_steps)`. Hash repeat = cycle.
 
 **Reuses:**
+
 - `core/semantic.py:load_workspace_snapshot()` - workspace loading
 - `analyzers/dataflow.py:_evaluate_expression()` - expression evaluation
 - `analyzers/dataflow.py:_evaluate_condition()` - transition evaluation
@@ -1038,6 +1045,7 @@ New tooling, testing infrastructure, and pipeline features that do not yet exist
 **Output:** Performance profiling report with bottlenecks
 
 **Reuses:**
+
 - `core/semantic.py:load_workspace_snapshot()` - workspace loading
 - `engine.py:parse_source_file()` - parsing
 
@@ -1074,6 +1082,7 @@ New tooling, testing infrastructure, and pipeline features that do not yet exist
 **Output:** Refactored code + safety report
 
 **Reuses:**
+
 - `core/semantic.py:load_workspace_snapshot()` - workspace loading
 - `analyzers/dataflow.py` - expression evaluation
 - `resolution/common.py` - reference resolution
@@ -1112,6 +1121,7 @@ New tooling, testing infrastructure, and pipeline features that do not yet exist
 **Output:** Impact analysis report with risk assessment
 
 **Reuses:**
+
 - `core/semantic.py:load_workspace_snapshot()` - workspace loading
 - `analyzers/dataflow.py` - expression evaluation
 - `resolution/common.py` - reference resolution
@@ -1149,6 +1159,7 @@ New tooling, testing infrastructure, and pipeline features that do not yet exist
 **Output:** Code metrics dashboard with quality assessments
 
 **Reuses:**
+
 - `core/semantic.py:load_workspace_snapshot()` - workspace loading
 - `analyzers/cyclomatic_complexity.py` - complexity analysis
 - `analyzers/modules.py` - module analysis
@@ -1421,6 +1432,7 @@ Use this template when adding new features.
 **Output:** Output format/description
 
 **Reuses:**
+
 - Existing component (path)
 
 **Validation:** Command to validate

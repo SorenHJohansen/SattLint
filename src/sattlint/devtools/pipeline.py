@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib.metadata as metadata
 import json
 import os
@@ -568,10 +569,8 @@ def _run_pytest_stage(
     junit_path = output_dir / "pytest.junit.xml"
     coverage_data_path = output_dir / ".coverage.pytest"
     progress.start_stage("pytest")
-    try:
+    with contextlib.suppress(FileNotFoundError):
         coverage_data_path.unlink()
-    except FileNotFoundError:
-        pass
 
     previous_coverage_file = os.environ.get("COVERAGE_FILE")
     os.environ["COVERAGE_FILE"] = str(coverage_data_path)

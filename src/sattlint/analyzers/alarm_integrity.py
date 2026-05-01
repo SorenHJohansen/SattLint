@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-# ruff: noqa: E501
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any

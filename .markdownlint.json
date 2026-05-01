@@ -11,6 +11,7 @@
   "strong-style": {
     "style": "asterisk"
   },
+  "table-column-style": false,
   "line-length": {
     "line_length": 2000,
     "code_blocks": false,
