@@ -401,8 +401,9 @@ def test_root_only_loader_records_validation_warning_before_failure(monkeypatch,
     monkeypatch.setattr(
         engine,
         "validate_transformed_basepicture",
-        lambda _bp, warning_sink, **_kwargs: warning_sink("warning-a")
-        or (_ for _ in ()).throw(engine.StructuralValidationError("bad root")),
+        lambda _bp, warning_sink, **_kwargs: (
+            warning_sink("warning-a") or (_ for _ in ()).throw(engine.StructuralValidationError("bad root"))
+        ),
     )
 
     graph = loader.resolve("Root")
@@ -1372,10 +1373,10 @@ def test_loader_parse_and_cache_helpers_delegate_and_reuse_cached_ast(
     monkeypatch.setattr(
         engine,
         "parser_core_parse_source_file",
-        lambda code_path, *, parser, transformer, debug: seen.update(
-            {"code_path": code_path, "parser": parser, "transformer": transformer, "debug": debug}
-        )
-        or basepicture,
+        lambda code_path, *, parser, transformer, debug: (
+            seen.update({"code_path": code_path, "parser": parser, "transformer": transformer, "debug": debug})
+            or basepicture
+        ),
     )
 
     parsed = loader._parse_one(tmp_path / "Program.s")

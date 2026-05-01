@@ -332,7 +332,7 @@ def test_config_frame_reload_apply_workspace_paths_and_save_without_tk_widgets(m
         config_path="config.toml",
         graphics_rules_path=Path("graphics-rules.toml"),
         load_config=lambda: loaded_cfg,
-        save_config=lambda cfg: (saved.append(cfg) or SimpleNamespace(ok=True, output="Saved config")),
+        save_config=lambda cfg: saved.append(cfg) or SimpleNamespace(ok=True, output="Saved config"),
         target_exists=lambda _target, _cfg: True,
     )
     frame = _make_config_frame_double(binding_obj=binding_obj)
@@ -1103,10 +1103,12 @@ def test_analyze_frame_reload_and_task_actions_without_tk_widgets(monkeypatch):
         ),
         ensure_ast_cache=lambda _cfg: binding.BindingResult(ok=True, output="cache ok"),
         run_variable_analysis=lambda _cfg: binding.BindingResult(ok=True, output="variables ok"),
-        run_checks=lambda _cfg, selected=None: selected_calls.append(selected)
-        or binding.BindingResult(ok=True, output="checks ok"),
-        run_bundle=lambda _cfg, selected=None: selected_calls.append(selected)
-        or binding.BindingResult(ok=True, output="bundle ok"),
+        run_checks=lambda _cfg, selected=None: (
+            selected_calls.append(selected) or binding.BindingResult(ok=True, output="checks ok")
+        ),
+        run_bundle=lambda _cfg, selected=None: (
+            selected_calls.append(selected) or binding.BindingResult(ok=True, output="bundle ok")
+        ),
     )
     frame = cast(Any, AnalyzeFrame.__new__(AnalyzeFrame))
     frame.binding = binding_obj
