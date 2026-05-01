@@ -1,8 +1,7 @@
-"""Repository audit runner for portability, security, wiring, and public-readiness checks."""
+"""Repository audit core checks for portability, security, wiring, and public-readiness."""
 
 from __future__ import annotations
 
-import argparse
 import ast
 import json
 import os
@@ -12,8 +11,7 @@ import subprocess  # nosec B404 - audit intentionally executes trusted local dev
 import tempfile
 import time
 import tomllib
-from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -23,17 +21,46 @@ from defusedxml import ElementTree  # type: ignore[import-untyped]
 from sattlint import app as app_module
 from sattlint import config as config_module
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
+from sattlint.devtools import ai_gc as _ai_gc_module
 from sattlint.devtools import coverage_reports as _coverage_reports_module
 from sattlint.devtools import pipeline as pipeline_module
+from sattlint.devtools import repo_audit_entrypoints as _repo_audit_entrypoints
 from sattlint.devtools import structural_reports as structural_reports_module
 from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS, artifact_reports_map
 from sattlint.devtools.pipeline_artifacts import write_json_artifact
 from sattlint.devtools.progress_reporting import ProgressReporter
+from sattlint.devtools.repo_audit_cli import main
 from sattlint.path_sanitizer import sanitize_path_for_report
+
+REPO_AUDIT_FINDING_CHECK_IDS = _repo_audit_entrypoints.REPO_AUDIT_FINDING_CHECK_IDS
+REPO_AUDIT_INDIVIDUAL_CHECK_IDS = _repo_audit_entrypoints.REPO_AUDIT_INDIVIDUAL_CHECK_IDS
+REPO_AUDIT_SPECIAL_CHECK_IDS = _repo_audit_entrypoints.REPO_AUDIT_SPECIAL_CHECK_IDS
+_blocking_finding_count = _repo_audit_entrypoints._blocking_finding_count
+_category_counts = _repo_audit_entrypoints._category_counts
+_default_corpus_manifest_dir = _repo_audit_entrypoints._default_corpus_manifest_dir
+_max_severity = _repo_audit_entrypoints._max_severity
+_print_cli_summary = _repo_audit_entrypoints._print_cli_summary
+_repo_audit_finding_check_definitions = _repo_audit_entrypoints._repo_audit_finding_check_definitions
+_recommended_command = _repo_audit_entrypoints._recommended_command
+_run_repo_audit_cli_consistency_check = _repo_audit_entrypoints._run_repo_audit_cli_consistency_check
+_run_repo_audit_findings_checks = _repo_audit_entrypoints._run_repo_audit_findings_checks
+_severity_counts = _repo_audit_entrypoints._severity_counts
+_should_fail = _repo_audit_entrypoints._should_fail
+build_repo_audit_check_catalog = _repo_audit_entrypoints.build_repo_audit_check_catalog
+build_repo_audit_check_recommendations = _repo_audit_entrypoints.build_repo_audit_check_recommendations
+collect_custom_findings = _repo_audit_entrypoints.collect_custom_findings
+run_check_my_changes = _repo_audit_entrypoints.run_check_my_changes
+run_recommended_repo_audit_finish_gate = _repo_audit_entrypoints.run_recommended_repo_audit_finish_gate
+run_recommended_repo_audit_slice = _repo_audit_entrypoints.run_recommended_repo_audit_slice
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "audit"
 PIPELINE_OUTPUT_DIRNAME = "pipeline"
+AUDIT_RUN_HISTORY_FILENAME = "run_history.json"
+AUDIT_RUN_HISTORY_DIRNAME = "history"
+AUDIT_RUN_HISTORY_LIMIT = 10
+AUDIT_RUN_HISTORY_SCHEMA_KIND = "sattlint.audit_run_history"
+AUDIT_RUN_HISTORY_SCHEMA_VERSION = 1
 TEXT_SUFFIXES = {
     "",
     ".cfg",
@@ -67,9 +94,30 @@ SKIP_CONTENT_SCAN_PREFIXES = (
 GENERATED_PATH_PREFIXES = (
     "artifacts/",
     "build/",
+    "dist/",
     "coverage.xml",
     "htmlcov/",
 )
+IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PREFIXES = ("src/sattlint/devtools/",)
+IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PATHS = {
+    "tests/test_artifact_contracts.py",
+    "tests/test_devtools_review_observability.py",
+    "tests/test_pipeline_collection.py",
+    "tests/test_pipeline_run.py",
+    "tests/test_repo_audit.py",
+    "tests/test_structural_reports.py",
+}
+IGNORED_REPO_PATH_REFERENCE_PREFIXES = (
+    "Libs/",
+    "artifacts/",
+    "build/",
+    "dist/",
+    "htmlcov/",
+)
+IGNORED_REPO_PATH_REFERENCE_EXACT = {
+    ".coverage",
+    "coverage.xml",
+}
 SKIP_SELF_SCAN_PATHS = {
     "AGENTS.md",
     "src/sattlint/devtools/repo_audit.py",
@@ -202,6 +250,127 @@ class PythonSourceScanContext:
     asts: dict[Path, ast.AST]
 
 
+@dataclass(frozen=True, slots=True)
+class RepoAuditScanContext:
+    root: Path
+    include_generated: bool
+    tracked_only: bool
+    tracked_paths: tuple[str, ...] | None
+    suspicious_identifiers: frozenset[str]
+    source_context: PythonSourceScanContext
+    test_context: PythonSourceScanContext
+    scripts_context: PythonSourceScanContext
+    scripts: frozenset[str]
+    subcommands: frozenset[str]
+    documented_commands: tuple[DocumentedCommand, ...]
+
+
+def _leading_string_args(args: Sequence[ast.expr]) -> tuple[str, ...]:
+    parts: list[str] = []
+    for arg in args:
+        if not isinstance(arg, ast.Constant) or not isinstance(arg.value, str):
+            break
+        value = arg.value.strip().replace("\\", "/").strip("/")
+        if not value:
+            continue
+        parts.append(value)
+    return tuple(parts)
+
+
+def _repo_relative_path_from_expr(node: ast.AST) -> tuple[str, ...] | None:
+    if isinstance(node, ast.Name) and node.id == "REPO_ROOT":
+        return ()
+    if isinstance(node, ast.Attribute) and node.attr == "REPO_ROOT":
+        return ()
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_repo_path":
+        parts = _leading_string_args(node.args)
+        return parts or None
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        left = _repo_relative_path_from_expr(node.left)
+        if left is None:
+            return None
+        if not isinstance(node.right, ast.Constant) or not isinstance(node.right.value, str):
+            return None
+        right = node.right.value.strip().replace("\\", "/").strip("/")
+        if not right:
+            return left
+        return (*left, right)
+    return None
+
+
+def _normalize_repo_relative_literal(value: str) -> str | None:
+    normalized = value.strip().replace("\\", "/")
+    if not normalized or "://" in normalized or normalized.startswith(("/", "../", "./", "<")):
+        return None
+    return normalized.rstrip("/")
+
+
+def _is_ignored_repo_path_reference(candidate: str, tracked_paths: tuple[str, ...] | None) -> bool:
+    normalized = candidate.rstrip("/")
+    prefix = f"{normalized}/"
+    if tracked_paths is not None and any(path == normalized or path.startswith(prefix) for path in tracked_paths):
+        return False
+    if normalized in IGNORED_REPO_PATH_REFERENCE_EXACT:
+        return True
+    if normalized.startswith(".coverage"):
+        return True
+    return normalized.startswith(IGNORED_REPO_PATH_REFERENCE_PREFIXES)
+
+
+def _find_ignored_repo_path_references(
+    context: PythonSourceScanContext,
+    *,
+    root: Path = REPO_ROOT,
+    tracked_paths: tuple[str, ...] | None = None,
+) -> list[Finding]:
+    findings: list[Finding] = []
+    seen: set[tuple[str, int, str]] = set()
+    for path, tree in context.asts.items():
+        rel_path = _relative_path(path, root)
+        if rel_path in SKIP_SELF_SCAN_PATHS:
+            continue
+        if rel_path in IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PATHS:
+            continue
+        if any(rel_path.startswith(prefix) for prefix in IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PREFIXES):
+            continue
+
+        for node in ast.walk(tree):
+            candidates: list[str] = []
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                normalized = _normalize_repo_relative_literal(node.value)
+                if normalized is not None:
+                    candidates.append(normalized)
+            else:
+                repo_relative = _repo_relative_path_from_expr(node)
+                if repo_relative:
+                    candidates.append("/".join(repo_relative))
+
+            for candidate in candidates:
+                if not _is_ignored_repo_path_reference(candidate, tracked_paths):
+                    continue
+                line_number = getattr(node, "lineno", None)
+                if line_number is None:
+                    continue
+                key = (rel_path, line_number, candidate)
+                if key in seen:
+                    continue
+                seen.add(key)
+                findings.append(
+                    Finding(
+                        id="gitignored-repo-path-reference",
+                        category="public-readiness",
+                        severity=_severity_for_path(rel_path, "high"),
+                        confidence="high",
+                        message="Tracked Python file references a repo-local path that is ignored by git.",
+                        path=rel_path,
+                        line=line_number,
+                        detail=f"Matched ignored path {candidate}",
+                        suggestion="Use a tracked fixture, explicit config input, or an allowlisted generated-output seam instead.",
+                    )
+                )
+    return findings
+
+
 def _relative_path(path: Path, root: Path = REPO_ROOT) -> str:
     try:
         return path.relative_to(root).as_posix()
@@ -270,6 +439,345 @@ def _mirror_latest_reports(source_dir: Path, latest_output_dir: Path | None) -> 
             continue
         target_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, target_path)
+
+
+def _sanitize_report_path(path: Path) -> str:
+    return sanitize_path_for_report(path.resolve(), repo_root=REPO_ROOT) or path.resolve().as_posix()
+
+
+def _load_audit_run_history(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(_read_text(path))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    runs = payload.get("runs")
+    if not isinstance(runs, list):
+        return []
+    return [entry for entry in runs if isinstance(entry, dict) and isinstance(entry.get("run_id"), str)]
+
+
+def _build_audit_run_id() -> str:
+    epoch_seconds = time.time()
+    millis = int((epoch_seconds % 1) * 1000)
+    return f"{time.strftime('%Y%m%dT%H%M%S', time.gmtime(epoch_seconds))}-{millis:03d}Z"
+
+
+def _collect_audit_git_state(root: Path = REPO_ROOT) -> dict[str, Any]:
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        return {"head": None, "dirty": None}
+
+    try:
+        head_completed = subprocess.run(  # nosec B603 - fixed git executable with controlled arguments
+            [git_executable, "rev-parse", "HEAD"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        dirty_completed = subprocess.run(  # nosec B603 - fixed git executable with controlled arguments
+            [git_executable, "status", "--porcelain"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return {"head": None, "dirty": None}
+
+    head = None
+    if head_completed.returncode == 0:
+        candidate = head_completed.stdout.strip()
+        head = candidate or None
+
+    dirty = None
+    if dirty_completed.returncode == 0:
+        dirty = bool(dirty_completed.stdout.strip())
+
+    return {"head": head, "dirty": dirty}
+
+
+def _copy_audit_snapshot(source_dir: Path, snapshot_dir: Path) -> None:
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    for source_path in source_dir.rglob("*"):
+        relative_path = source_path.relative_to(source_dir)
+        if relative_path.parts and relative_path.parts[0] == AUDIT_RUN_HISTORY_DIRNAME:
+            continue
+        if relative_path.name == AUDIT_RUN_HISTORY_FILENAME:
+            continue
+        target_path = snapshot_dir / relative_path
+        if source_path.is_dir():
+            target_path.mkdir(parents=True, exist_ok=True)
+            continue
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, target_path)
+
+
+def _history_stale_reasons(entry: dict[str, Any], *, latest: bool) -> list[str]:
+    reasons = [str(reason) for reason in entry.get("base_stale_reasons", []) if str(reason)]
+    if not latest and "superseded-by-newer-run" not in reasons:
+        reasons.append("superseded-by-newer-run")
+    return reasons
+
+
+def _failure_signature(entry: dict[str, Any]) -> str | None:
+    if entry.get("overall_status") == "pass":
+        return None
+    components: list[str] = [str(entry.get("report_kind", "audit"))]
+    selected_surface = entry.get("selected_surface")
+    if isinstance(selected_surface, str) and selected_surface:
+        components.append(selected_surface)
+    finish_gate_status = entry.get("finish_gate_status")
+    if isinstance(finish_gate_status, str) and finish_gate_status:
+        components.append(f"finish:{finish_gate_status}")
+    top_failure_ids = entry.get("top_failure_ids")
+    if isinstance(top_failure_ids, list) and top_failure_ids:
+        components.extend(str(item) for item in top_failure_ids[:5] if str(item))
+    else:
+        selected_checks = entry.get("selected_checks")
+        if isinstance(selected_checks, list) and selected_checks:
+            components.extend(str(item) for item in selected_checks[:5] if str(item))
+    if len(components) == 1:
+        return None
+    return "|".join(components)
+
+
+def _build_failure_patterns(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for entry in runs:
+        signature = _failure_signature(entry)
+        if signature is None:
+            continue
+        group = grouped.get(signature)
+        if group is None:
+            group = {
+                "signature": signature,
+                "occurrence_count": 0,
+                "latest_run_id": entry["run_id"],
+                "latest_captured_at": entry["captured_at"],
+                "report_kind": entry.get("report_kind"),
+                "selected_surface": entry.get("selected_surface"),
+                "finish_gate_status": entry.get("finish_gate_status"),
+                "top_failure_ids": list(entry.get("top_failure_ids", [])),
+                "top_failure_messages": list(entry.get("top_failure_messages", []))[:3],
+                "run_ids": [],
+            }
+            grouped[signature] = group
+        group["occurrence_count"] += 1
+        group["run_ids"].append(entry["run_id"])
+    return sorted(
+        grouped.values(),
+        key=lambda item: (-int(item["occurrence_count"]), str(item["latest_captured_at"])),
+    )
+
+
+def _build_audit_run_entry(
+    *,
+    run_id: str,
+    captured_at: str,
+    snapshot_dir: Path,
+    history_base: Path,
+    source_dir: Path,
+    report_kind: str,
+    primary_payload: dict[str, Any],
+    status_payload: dict[str, Any] | None,
+    summary_payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    git_state = _collect_audit_git_state()
+    top_findings: list[dict[str, Any]] = []
+    if isinstance(status_payload, dict) and isinstance(status_payload.get("top_findings"), list):
+        top_findings = list(status_payload["top_findings"])
+    if not top_findings and isinstance(primary_payload.get("top_findings"), list):
+        top_findings = list(primary_payload["top_findings"])
+
+    selected_checks: list[str] = []
+    if isinstance(summary_payload, dict) and isinstance(summary_payload.get("selected_checks"), list):
+        selected_checks = [str(item) for item in summary_payload["selected_checks"] if str(item)]
+    elif isinstance(primary_payload.get("selected_checks"), list):
+        selected_checks = [str(item) for item in primary_payload["selected_checks"] if str(item)]
+    elif isinstance(primary_payload.get("recommendation"), dict):
+        recommended = primary_payload["recommendation"].get("recommended_check_ids")
+        if isinstance(recommended, list):
+            selected_checks = [str(item) for item in recommended if str(item)]
+
+    changed_files: list[str] = []
+    if isinstance(primary_payload.get("changed_files"), list):
+        changed_files = [str(item) for item in primary_payload["changed_files"] if str(item)]
+
+    base_stale_reasons: list[str] = []
+    if git_state["dirty"] is True:
+        base_stale_reasons.append("workspace-dirty-at-run-time")
+    if git_state["head"] is None:
+        base_stale_reasons.append("git-head-unavailable")
+
+    profile = None
+    if isinstance(primary_payload.get("profile"), str):
+        profile = primary_payload["profile"]
+    elif isinstance(status_payload, dict) and isinstance(status_payload.get("profile"), str):
+        profile = status_payload["profile"]
+    elif isinstance(summary_payload, dict) and isinstance(summary_payload.get("profile"), str):
+        profile = summary_payload["profile"]
+
+    fail_on = None
+    if isinstance(primary_payload.get("fail_on"), str):
+        fail_on = primary_payload["fail_on"]
+    elif isinstance(status_payload, dict) and isinstance(status_payload.get("fail_on"), str):
+        fail_on = status_payload["fail_on"]
+
+    overall_status = None
+    if isinstance(primary_payload.get("overall_status"), str):
+        overall_status = primary_payload["overall_status"]
+    elif isinstance(status_payload, dict) and isinstance(status_payload.get("overall_status"), str):
+        overall_status = status_payload["overall_status"]
+
+    canonical_command = None
+    if isinstance(primary_payload.get("selected_command"), str):
+        canonical_command = primary_payload["selected_command"]
+    elif isinstance(summary_payload, dict) and isinstance(summary_payload.get("canonical_command"), str):
+        canonical_command = summary_payload["canonical_command"]
+    elif isinstance(status_payload, dict) and isinstance(status_payload.get("canonical_command"), str):
+        canonical_command = status_payload["canonical_command"]
+
+    return {
+        "run_id": run_id,
+        "captured_at": captured_at,
+        "report_kind": report_kind,
+        "profile": profile,
+        "fail_on": fail_on,
+        "overall_status": overall_status,
+        "finish_gate_status": primary_payload.get("finish_gate_status")
+        if isinstance(primary_payload.get("finish_gate_status"), str)
+        else None,
+        "canonical_command": canonical_command,
+        "selected_surface": primary_payload.get("selected_surface")
+        if isinstance(primary_payload.get("selected_surface"), str)
+        else None,
+        "selected_checks": selected_checks,
+        "changed_files": changed_files,
+        "finding_count": (
+            status_payload.get("finding_count")
+            if isinstance(status_payload, dict) and isinstance(status_payload.get("finding_count"), int)
+            else summary_payload.get("finding_count")
+            if isinstance(summary_payload, dict) and isinstance(summary_payload.get("finding_count"), int)
+            else None
+        ),
+        "blocking_finding_count": (
+            status_payload.get("blocking_finding_count")
+            if isinstance(status_payload, dict) and isinstance(status_payload.get("blocking_finding_count"), int)
+            else None
+        ),
+        "max_severity": (
+            status_payload.get("max_severity")
+            if isinstance(status_payload, dict) and isinstance(status_payload.get("max_severity"), str)
+            else summary_payload.get("max_severity")
+            if isinstance(summary_payload, dict) and isinstance(summary_payload.get("max_severity"), str)
+            else None
+        ),
+        "top_failure_ids": [
+            str(item.get("id")) for item in top_findings if isinstance(item, dict) and isinstance(item.get("id"), str)
+        ][:5],
+        "top_failure_messages": [
+            str(item.get("message"))
+            for item in top_findings
+            if isinstance(item, dict) and isinstance(item.get("message"), str)
+        ][:5],
+        "reports": dict(primary_payload.get("reports", {})) if isinstance(primary_payload.get("reports"), dict) else {},
+        "output_dir": _sanitize_report_path(source_dir),
+        "history_base": _sanitize_report_path(history_base),
+        "history_path": _sanitize_report_path(snapshot_dir),
+        "snapshot_dir_name": snapshot_dir.name,
+        "git_head": git_state["head"],
+        "git_dirty": git_state["dirty"],
+        "base_stale_reasons": base_stale_reasons,
+    }
+
+
+def _write_audit_run_history(
+    source_dir: Path,
+    *,
+    latest_output_dir: Path | None,
+    report_kind: str,
+    primary_payload: dict[str, Any],
+    status_payload: dict[str, Any] | None = None,
+    summary_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    history_base = source_dir.resolve() if latest_output_dir is None else latest_output_dir.resolve()
+    history_base.mkdir(parents=True, exist_ok=True)
+    history_dir = history_base / AUDIT_RUN_HISTORY_DIRNAME
+    history_dir.mkdir(parents=True, exist_ok=True)
+
+    run_id = _build_audit_run_id()
+    snapshot_dir = history_dir / run_id
+    _copy_audit_snapshot(source_dir, snapshot_dir)
+
+    history_index_path = history_base / AUDIT_RUN_HISTORY_FILENAME
+    existing_runs = _load_audit_run_history(history_index_path)
+    captured_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    current_entry = _build_audit_run_entry(
+        run_id=run_id,
+        captured_at=captured_at,
+        snapshot_dir=snapshot_dir,
+        history_base=history_base,
+        source_dir=source_dir,
+        report_kind=report_kind,
+        primary_payload=primary_payload,
+        status_payload=status_payload,
+        summary_payload=summary_payload,
+    )
+
+    runs = [current_entry, *existing_runs]
+    removed_runs = runs[AUDIT_RUN_HISTORY_LIMIT:]
+    runs = runs[:AUDIT_RUN_HISTORY_LIMIT]
+
+    for removed_entry in removed_runs:
+        snapshot_dir_name = removed_entry.get("snapshot_dir_name")
+        if isinstance(snapshot_dir_name, str) and snapshot_dir_name:
+            snapshot_path = history_dir / snapshot_dir_name
+        else:
+            history_path_text = removed_entry.get("history_path")
+            if not isinstance(history_path_text, str) or not history_path_text:
+                continue
+            snapshot_path = Path(history_path_text)
+            if not snapshot_path.is_absolute():
+                snapshot_path = REPO_ROOT / snapshot_path
+        if snapshot_path.exists():
+            shutil.rmtree(snapshot_path, ignore_errors=True)
+
+    for index, entry in enumerate(runs):
+        latest = index == 0
+        stale_reasons = _history_stale_reasons(entry, latest=latest)
+        entry["latest"] = latest
+        entry["likely_stale"] = bool(stale_reasons)
+        entry["likely_stale_reasons"] = stale_reasons
+        entry.pop("base_stale_reasons", None)
+
+    payload = {
+        "kind": AUDIT_RUN_HISTORY_SCHEMA_KIND,
+        "schema_version": AUDIT_RUN_HISTORY_SCHEMA_VERSION,
+        "generated_at": captured_at,
+        "latest_output_dir": _sanitize_report_path(history_base),
+        "latest_run_id": runs[0]["run_id"],
+        "retained_run_limit": AUDIT_RUN_HISTORY_LIMIT,
+        "run_count": len(runs),
+        "reuse_guidance": {
+            "prefer_latest_run_id": runs[0]["run_id"],
+            "safe_to_reuse_when": [
+                "the entry is latest",
+                "likely_stale is false",
+                "git_head still matches the current workspace HEAD",
+                "the command and changed_files still match the question being answered",
+            ],
+        },
+        "failure_patterns": _build_failure_patterns(runs),
+        "runs": runs,
+    }
+    write_json_artifact(history_base / AUDIT_RUN_HISTORY_FILENAME, payload)
+    write_json_artifact(source_dir / AUDIT_RUN_HISTORY_FILENAME, payload)
+    return payload
 
 
 def _read_text(path: Path) -> str:
@@ -916,8 +1424,167 @@ def build_coverage_summary_report(root: Path) -> dict[str, Any]:
     return _coverage_reports_module.build_coverage_summary_report(root)
 
 
+def build_ai_gc_report(
+    root: Path = REPO_ROOT,
+    *,
+    tracked_paths: Iterable[str] | None = None,
+    stale_after_days: int = _ai_gc_module.DEFAULT_STALE_AFTER_DAYS,
+    max_ledger_lines: int = _ai_gc_module.DEFAULT_MAX_LEDGER_LINES,
+    now_ts: float | None = None,
+    apply: bool = False,
+) -> dict[str, Any]:
+    return _ai_gc_module.build_ai_gc_report(
+        root,
+        tracked_paths=tracked_paths,
+        stale_after_days=stale_after_days,
+        max_ledger_lines=max_ledger_lines,
+        now_ts=now_ts,
+        apply=apply,
+    )
+
+
+def apply_ai_gc(
+    root: Path = REPO_ROOT,
+    *,
+    output_dir: Path | None = None,
+    tracked_paths: Iterable[str] | None = None,
+    stale_after_days: int = _ai_gc_module.DEFAULT_STALE_AFTER_DAYS,
+    max_ledger_lines: int = _ai_gc_module.DEFAULT_MAX_LEDGER_LINES,
+    now_ts: float | None = None,
+) -> dict[str, Any]:
+    report = build_ai_gc_report(
+        root,
+        tracked_paths=tracked_paths,
+        stale_after_days=stale_after_days,
+        max_ledger_lines=max_ledger_lines,
+        now_ts=now_ts,
+        apply=True,
+    )
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        write_json_artifact(output_dir / _ai_gc_module.AI_GC_REPORT_FILENAME, report)
+    return report
+
+
+def _ai_gc_report_findings(report: dict[str, Any]) -> list[Finding]:
+    findings: list[Finding] = []
+    for candidate in report.get("candidates", []):
+        if candidate.get("applied"):
+            continue
+        candidate_id = str(candidate.get("candidate_id") or "ai-gc")
+        path = candidate.get("path")
+        age_days = candidate.get("age_days")
+        severity = (
+            "medium"
+            if candidate_id == "stale-generated-output-manifest" or (isinstance(age_days, int) and age_days >= 30)
+            else "low"
+        )
+        if candidate_id == "oversized-ai-ledger":
+            message = "Local AI coordination ledger can be compacted."
+            detail = f"line_count={candidate.get('line_count')} removable_done_blocks={candidate.get('removable_done_blocks')}"
+        elif candidate_id == "stale-generated-output-manifest":
+            message = "Generated output drifted from its source-digest manifest."
+            detail = str(candidate.get("reason") or "")
+        else:
+            message = "Stale AI-generated artifact can be collected."
+            detail = (
+                f"age_days={age_days} size_bytes={candidate.get('size_bytes', 0)}"
+                if age_days is not None
+                else str(candidate.get("reason") or "")
+            )
+        findings.append(
+            Finding(
+                id=candidate_id,
+                category="maintenance",
+                severity=severity,
+                confidence="high",
+                message=message,
+                path=path,
+                detail=detail,
+                suggestion="Run sattlint-repo-audit --apply-ai-gc to delete safe stale artifacts and compact the local ledger.",
+                source="ai-gc",
+            )
+        )
+    return findings
+
+
+def _is_active_output_ai_gc_path(path: str | None, *, output_dir_path: str | None) -> bool:
+    if not path or not output_dir_path:
+        return False
+    return path.rstrip("/") == output_dir_path.rstrip("/")
+
+
+def _filter_ai_gc_report_for_output_dir(report: dict[str, Any], *, output_dir_path: str | None) -> dict[str, Any]:
+    candidates = report.get("candidates")
+    if not isinstance(candidates, list):
+        return report
+    filtered_candidates = [
+        candidate
+        for candidate in candidates
+        if not (
+            isinstance(candidate, dict)
+            and str(candidate.get("candidate_id") or "") == "stale-generated-output-manifest"
+            and _is_active_output_ai_gc_path(candidate.get("path"), output_dir_path=output_dir_path)
+        )
+    ]
+    if len(filtered_candidates) == len(candidates):
+        return report
+    filtered_report = dict(report)
+    filtered_report["candidates"] = filtered_candidates
+    filtered_summary = dict(report.get("summary", {}))
+    filtered_summary["candidate_count"] = len(filtered_candidates)
+    filtered_summary["artifact_candidate_count"] = sum(
+        1
+        for candidate in filtered_candidates
+        if candidate.get("candidate_id") in {"stale-ai-artifact", "stale-generated-output-manifest"}
+    )
+    filtered_summary["manifest_drift_candidate_count"] = sum(
+        1 for candidate in filtered_candidates if candidate.get("candidate_id") == "stale-generated-output-manifest"
+    )
+    filtered_summary["ledger_candidate_count"] = sum(
+        1 for candidate in filtered_candidates if candidate.get("candidate_id") == "oversized-ai-ledger"
+    )
+    filtered_report["summary"] = filtered_summary
+    failures = filtered_report.get("failures")
+    filtered_report["status"] = (
+        "fail"
+        if isinstance(failures, list) and failures
+        else "needs-attention"
+        if filtered_candidates and filtered_report.get("mode") != "apply"
+        else "pass"
+    )
+    return filtered_report
+
+
+def _filter_ai_gc_findings_for_output_dir(findings: list[Finding], *, output_dir_path: str | None) -> list[Finding]:
+    return [
+        finding
+        for finding in findings
+        if not (
+            finding.source == "ai-gc"
+            and finding.id == "stale-generated-output-manifest"
+            and _is_active_output_ai_gc_path(finding.path, output_dir_path=output_dir_path)
+        )
+    ]
+
+
 CLI_CONSISTENCY_SCHEMA_KIND = "sattlint.cli_consistency"
 CLI_CONSISTENCY_SCHEMA_VERSION = 1
+CLI_CONSISTENCY_DOC_PATHS = (
+    "README.md",
+    "CONTRIBUTING.md",
+    "docs/references/cli-commands.md",
+    "docs/references/ai-agent-reference.md",
+)
+
+
+def _cli_consistency_doc_paths(root: Path) -> list[Path]:
+    doc_paths: list[Path] = []
+    for rel_path in CLI_CONSISTENCY_DOC_PATHS:
+        path = root / rel_path
+        if path.exists():
+            doc_paths.append(path)
+    return doc_paths
 
 
 def build_cli_consistency_report(*, root: Path = REPO_ROOT) -> dict[str, Any]:
@@ -930,9 +1597,7 @@ def build_cli_consistency_report(*, root: Path = REPO_ROOT) -> dict[str, Any]:
     references.
     """
     scripts, subcommands = _collect_cli_metadata()
-    doc_paths: list[Path] = []
-    for pattern in ("*.md", "docs/**/*.md"):
-        doc_paths.extend(root.glob(pattern))
+    doc_paths = _cli_consistency_doc_paths(root)
     documented_commands = _extract_documented_commands(doc_paths, root=root)
 
     # Build gap lists
@@ -969,6 +1634,7 @@ def build_cli_consistency_report(*, root: Path = REPO_ROOT) -> dict[str, Any]:
     return {
         "kind": CLI_CONSISTENCY_SCHEMA_KIND,
         "schema_version": CLI_CONSISTENCY_SCHEMA_VERSION,
+        "generated_by": "sattlint.devtools.repo_audit",
         "declared": {
             "scripts": sorted(scripts),
             "subcommands": sorted(subcommands),
@@ -1368,126 +2034,137 @@ def _find_structural_report_findings(root: Path = REPO_ROOT) -> list[Finding]:
     return structural_findings
 
 
-def collect_custom_findings(
+def _build_repo_audit_scan_context(
     root: Path = REPO_ROOT,
     *,
     include_generated: bool = False,
     tracked_only: bool = False,
     suspicious_identifiers: Iterable[str] = (),
-) -> list[Finding]:
-    findings: list[Finding] = []
-    suspicious_set = {identifier.strip() for identifier in suspicious_identifiers if identifier.strip()}
+) -> RepoAuditScanContext:
+    suspicious_set = frozenset(identifier.strip() for identifier in suspicious_identifiers if identifier.strip())
     tracked_paths = _list_tracked_repo_paths(root) if tracked_only else None
     docs_to_scan = [root / "README.md", root / "CONTRIBUTING.md", root / "vscode" / "sattline-vscode" / "README.md"]
-    for path, text in _iter_repo_text_entries(
-        root,
-        include_generated=include_generated,
-        tracked_only=tracked_only,
-    ):
-        findings.extend(_line_findings(path, text, suspicious_set, root=root))
-
     source_context = _build_python_source_scan_context(
         root / "src",
         root=root,
         tracked_paths=tracked_paths,
     )
-
-    scripts, subcommands = _collect_cli_metadata()
-    documented_commands = _extract_documented_commands(
-        (path for path in docs_to_scan if path.exists()),
+    test_context = _build_python_source_scan_context(
+        root / "tests",
         root=root,
+        tracked_paths=tracked_paths,
     )
-    findings.extend(_find_documentation_command_gaps(documented_commands, scripts, subcommands))
+    scripts_context = _build_python_source_scan_context(
+        root / "scripts",
+        root=root,
+        tracked_paths=tracked_paths,
+    )
+    scripts, subcommands = _collect_cli_metadata()
+    documented_commands = tuple(
+        _extract_documented_commands((path for path in docs_to_scan if path.exists()), root=root)
+    )
+    return RepoAuditScanContext(
+        root=root,
+        include_generated=include_generated,
+        tracked_only=tracked_only,
+        tracked_paths=tracked_paths,
+        suspicious_identifiers=suspicious_set,
+        source_context=source_context,
+        test_context=test_context,
+        scripts_context=scripts_context,
+        scripts=frozenset(scripts),
+        subcommands=frozenset(subcommands),
+        documented_commands=documented_commands,
+    )
+
+
+def _run_text_scan_check(context: RepoAuditScanContext) -> list[Finding]:
+    findings: list[Finding] = []
+    for path, text in _iter_repo_text_entries(
+        context.root,
+        include_generated=context.include_generated,
+        tracked_only=context.tracked_only,
+    ):
+        findings.extend(_line_findings(path, text, set(context.suspicious_identifiers), root=context.root))
+    return findings
+
+
+def _run_documented_commands_check(context: RepoAuditScanContext) -> list[Finding]:
+    return _find_documentation_command_gaps(context.documented_commands, set(context.scripts), set(context.subcommands))
+
+
+def _run_unused_config_keys_check(context: RepoAuditScanContext) -> list[Finding]:
+    return _find_unused_config_keys(
+        context.root / "src" / "sattlint",
+        config_module.DEFAULT_CONFIG.keys(),
+        content_by_file={
+            path: text
+            for path, text in context.source_context.texts.items()
+            if path.is_relative_to(context.root / "src" / "sattlint") and path.name != "repo_audit.py"
+        },
+    )
+
+
+def _run_architecture_check(context: RepoAuditScanContext) -> list[Finding]:
+    return _find_architecture_findings(
+        context.root / "src",
+        content_by_file=context.source_context.texts,
+        ast_by_file=context.source_context.asts,
+    )
+
+
+def _run_structural_report_check(context: RepoAuditScanContext) -> list[Finding]:
+    return _find_structural_report_findings(context.root)
+
+
+def _run_cli_check(_context: RepoAuditScanContext) -> list[Finding]:
+    return _find_cli_findings()
+
+
+def _run_logging_check(context: RepoAuditScanContext) -> list[Finding]:
+    return _find_logging_findings(context.root / "src", content_by_file=context.source_context.texts)
+
+
+def _run_ai_gc_check(context: RepoAuditScanContext) -> list[Finding]:
+    report = build_ai_gc_report(
+        context.root,
+        tracked_paths=context.tracked_paths,
+    )
+    return _ai_gc_report_findings(report)
+
+
+def _run_ignored_repo_paths_check(context: RepoAuditScanContext) -> list[Finding]:
+    findings: list[Finding] = []
     findings.extend(
-        _find_unused_config_keys(
-            root / "src" / "sattlint",
-            config_module.DEFAULT_CONFIG.keys(),
-            content_by_file={
-                path: text
-                for path, text in source_context.texts.items()
-                if path.is_relative_to(root / "src" / "sattlint") and path.name != "repo_audit.py"
-            },
+        _find_ignored_repo_path_references(
+            context.source_context,
+            root=context.root,
+            tracked_paths=context.tracked_paths,
         )
     )
     findings.extend(
-        _find_architecture_findings(
-            root / "src",
-            content_by_file=source_context.texts,
-            ast_by_file=source_context.asts,
+        _find_ignored_repo_path_references(
+            context.test_context,
+            root=context.root,
+            tracked_paths=context.tracked_paths,
         )
     )
-    findings.extend(_find_structural_report_findings(root))
-    findings.extend(_find_cli_findings())
-    findings.extend(_find_logging_findings(root / "src", content_by_file=source_context.texts))
-    findings.extend(_parse_coverage_findings(root, tracked_paths=tracked_paths))
-    findings.extend(_find_public_readiness_findings(root, tracked_paths=tracked_paths))
-    return _dedupe_findings(findings)
-
-
-def _severity_counts(findings: Iterable[Finding]) -> dict[str, int]:
-    counts = Counter(finding.severity for finding in findings)
-    return {severity: counts.get(severity, 0) for severity in ("critical", "high", "medium", "low")}
-
-
-def _category_counts(findings: Iterable[Finding]) -> dict[str, int]:
-    counts = Counter(finding.category for finding in findings)
-    return dict(sorted(counts.items()))
-
-
-def _max_severity(findings: Iterable[Finding]) -> str | None:
-    max_finding = max(findings, key=lambda item: SEVERITY_RANK[item.severity], default=None)
-    return None if max_finding is None else max_finding.severity
-
-
-def _should_fail(findings: Iterable[Finding], threshold: str) -> bool:
-    minimum_rank = SEVERITY_RANK[threshold]
-    return any(SEVERITY_RANK[finding.severity] >= minimum_rank for finding in findings)
-
-
-def _blocking_finding_count(findings: Iterable[Finding], threshold: str) -> int:
-    minimum_rank = SEVERITY_RANK[threshold]
-    return sum(1 for finding in findings if SEVERITY_RANK[finding.severity] >= minimum_rank)
-
-
-def _recommended_command(*, output_dir: str, profile: str, fail_on: str, leaks_only: bool) -> str:
-    parts = ["sattlint-repo-audit"]
-    if leaks_only:
-        parts.append("--leaks-only")
-    else:
-        parts.extend(["--profile", profile])
-    parts.extend(["--fail-on", fail_on, "--output-dir", output_dir])
-    return " ".join(parts)
-
-
-def _print_cli_summary(status_report: dict[str, Any]) -> None:
-    print(f"Audit profile: {status_report['profile']}")
-    print(f"Overall status: {status_report['overall_status']}")
-    findings_schema = status_report.get("findings_schema")
-    if findings_schema:
-        print(
-            f"Findings schema: {findings_schema.get('kind', 'unknown')} v{findings_schema.get('schema_version', '?')}"
+    findings.extend(
+        _find_ignored_repo_path_references(
+            context.scripts_context,
+            root=context.root,
+            tracked_paths=context.tracked_paths,
         )
-    print(
-        "Findings: "
-        f"{status_report['finding_count']} total, "
-        f"{status_report['blocking_finding_count']} blocking at fail-on {status_report['fail_on']}"
     )
-    print(f"Status report: {status_report['status_report']}")
-    print(f"Summary report: {status_report['summary_report']}")
-    latest_status_report = status_report.get("latest_status_report")
-    latest_summary_report = status_report.get("latest_summary_report")
-    if latest_status_report and latest_summary_report:
-        print(f"Latest status report: {latest_status_report}")
-        print(f"Latest summary report: {latest_summary_report}")
+    return findings
 
 
-def _default_corpus_manifest_dir() -> Path | None:
-    manifest_dir = pipeline_module.DEFAULT_CORPUS_MANIFEST_DIR.resolve()
-    if not manifest_dir.exists():
-        return None
-    if not any(manifest_dir.rglob("*.json")):
-        return None
-    return manifest_dir
+def _run_coverage_check(context: RepoAuditScanContext) -> list[Finding]:
+    return _parse_coverage_findings(context.root, tracked_paths=context.tracked_paths)
+
+
+def _run_public_readiness_check(context: RepoAuditScanContext) -> list[Finding]:
+    return _find_public_readiness_findings(context.root, tracked_paths=context.tracked_paths)
 
 
 def audit_repository(
@@ -1504,6 +2181,7 @@ def audit_repository(
     latest_output_dir: Path | None = None,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    ai_gc_report: dict[str, Any] | None = None
     pipeline_summary: dict[str, Any] | None = None
     pipeline_findings: list[Finding] = []
     audit_profile = "leaks" if leaks_only else profile
@@ -1563,6 +2241,12 @@ def audit_repository(
         tracked_only=True,
         suspicious_identifiers=suspicious_identifiers,
     )
+    custom_findings = _filter_ai_gc_findings_for_output_dir(custom_findings, output_dir_path=sanitized_output_dir)
+    if not leaks_only:
+        ai_gc_report = _filter_ai_gc_report_for_output_dir(
+            build_ai_gc_report(REPO_ROOT),
+            output_dir_path=sanitized_output_dir,
+        )
     progress.complete_stage("custom_scan", detail=f"{len(custom_findings)} custom findings")
     progress.start_stage("merge_findings")
     findings = _dedupe_findings([*pipeline_findings, *custom_findings])
@@ -1573,9 +2257,11 @@ def audit_repository(
         key=lambda item: (-SEVERITY_RANK[item.severity], item.category, item.path or "", item.line or 0, item.id),
     )
     blocking_count = _blocking_finding_count(findings, fail_on)
-    enabled_audit_artifact_ids = {"progress", "status", "summary", "findings", "summary_markdown"}
+    enabled_audit_artifact_ids = {"progress", "status", "summary", "findings", "summary_markdown", "run_history"}
     if audit_profile == "full":
         enabled_audit_artifact_ids.add("cli_consistency")
+    if ai_gc_report is not None:
+        enabled_audit_artifact_ids.add("ai_gc")
     reports = artifact_reports_map(
         AUDIT_ARTIFACTS,
         profile=audit_profile,
@@ -1587,6 +2273,7 @@ def audit_repository(
     finding_collection = FindingCollection(tuple(finding.to_record() for finding in findings))
     overall_status_value = "fail" if blocking_count else "pass"
     summary = {
+        "generated_by": "sattlint.devtools.repo_audit",
         "output_dir": sanitized_output_dir,
         "profile": audit_profile,
         "entry_report": "status.json",
@@ -1609,6 +2296,7 @@ def audit_repository(
     }
     status_report = {
         "kind": "sattlint.repo_audit.status",
+        "generated_by": "sattlint.devtools.repo_audit",
         "profile": audit_profile,
         "fail_on": fail_on,
         "overall_status": overall_status_value,
@@ -1646,97 +2334,24 @@ def audit_repository(
     write_json_artifact(output_dir / "status.json", status_report)
     write_json_artifact(output_dir / "summary.json", summary)
     write_json_artifact(output_dir / "findings.json", finding_collection.to_dict())
+    if ai_gc_report is not None:
+        write_json_artifact(output_dir / _ai_gc_module.AI_GC_REPORT_FILENAME, ai_gc_report)
     _write_markdown(output_dir / "summary.md", findings, summary)
     if audit_profile == "full":
         cli_consistency_report = build_cli_consistency_report(root=REPO_ROOT)
         write_json_artifact(output_dir / "cli_consistency.json", cli_consistency_report)
+    _write_audit_run_history(
+        output_dir,
+        latest_output_dir=latest_output_dir,
+        report_kind="repo_audit",
+        primary_payload=summary,
+        status_payload=status_report,
+        summary_payload=summary,
+    )
     _mirror_latest_reports(output_dir, latest_output_dir)
     progress.complete_stage("write_reports")
     progress.finalize(overall_status=overall_status_value)
     return summary
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Run repository audit checks for portability, security, wiring, architecture, and public-readiness."
-    )
-    parser.add_argument(
-        "--output-dir",
-        default=str(DEFAULT_OUTPUT_DIR),
-        help="Directory where audit reports will be written",
-    )
-    parser.add_argument(
-        "--profile",
-        choices=AUDIT_PROFILE_CHOICES,
-        default="full",
-        help="Run the fast quick profile or the complete full profile",
-    )
-    parser.add_argument(
-        "--fail-on",
-        choices=("critical", "high", "medium", "low"),
-        default=None,
-        help="Exit non-zero when findings at or above this severity exist",
-    )
-    parser.add_argument(
-        "--leaks-only",
-        action="store_true",
-        help="Only report repository leak findings such as hardcoded paths, identifiers, emails, and tracked generated artifacts",
-    )
-    parser.add_argument(
-        "--suspicious-identifier",
-        action="append",
-        default=[],
-        help="Additional username, hostname, or developer-specific token to flag",
-    )
-    parser.add_argument(
-        "--include-generated",
-        action="store_true",
-        help="Include generated artifacts such as artifacts/analysis in custom scans",
-    )
-    parser.add_argument(
-        "--skip-pipeline", action="store_true", help="Skip the existing lint/type/test/security pipeline"
-    )
-    parser.add_argument("--skip-vulture", action="store_true", help="Skip Vulture inside the shared pipeline")
-    parser.add_argument("--skip-bandit", action="store_true", help="Skip Bandit inside the shared pipeline")
-    args = parser.parse_args(argv)
-
-    suspicious_identifiers = list(args.suspicious_identifier)
-    fail_on = args.fail_on or ("medium" if args.leaks_only else "high")
-    summary = audit_repository(
-        Path(args.output_dir).resolve(),
-        profile=args.profile,
-        fail_on=fail_on,
-        include_generated=args.include_generated,
-        leaks_only=args.leaks_only,
-        suspicious_identifiers=suspicious_identifiers,
-        skip_pipeline=args.skip_pipeline,
-        skip_vulture=args.skip_vulture,
-        skip_bandit=args.skip_bandit,
-        latest_output_dir=DEFAULT_OUTPUT_DIR.resolve(),
-    )
-    _print_cli_summary(
-        {
-            "profile": summary["profile"],
-            "overall_status": "fail"
-            if _should_fail((Finding(**finding) for finding in summary["findings"]), fail_on)
-            else "pass",
-            "findings_schema": summary.get("findings_schema"),
-            "finding_count": summary["finding_count"],
-            "blocking_finding_count": _blocking_finding_count(
-                (Finding(**finding) for finding in summary["findings"]), fail_on
-            ),
-            "fail_on": fail_on,
-            "status_report": f"{summary['output_dir']}/status.json",
-            "summary_report": f"{summary['output_dir']}/summary.json",
-            "latest_status_report": None
-            if Path(args.output_dir).resolve() == DEFAULT_OUTPUT_DIR.resolve()
-            else f"{(sanitize_path_for_report(DEFAULT_OUTPUT_DIR.resolve(), repo_root=REPO_ROOT) or DEFAULT_OUTPUT_DIR.resolve().as_posix())}/status.json",
-            "latest_summary_report": None
-            if Path(args.output_dir).resolve() == DEFAULT_OUTPUT_DIR.resolve()
-            else f"{(sanitize_path_for_report(DEFAULT_OUTPUT_DIR.resolve(), repo_root=REPO_ROOT) or DEFAULT_OUTPUT_DIR.resolve().as_posix())}/summary.json",
-        }
-    )
-    return 1 if _should_fail((Finding(**finding) for finding in summary["findings"]), fail_on) else 0
 
 
 if __name__ == "__main__":

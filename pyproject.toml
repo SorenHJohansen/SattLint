@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Static analysis, validation, documentation, and LSP tooling for SattLine projects"
 readme = "README.md"
 license = "MIT"
-authors = [{ name = "Søren H. Johansen" }]
+authors = [{ name = "S\u00f8ren H. Johansen" }]
 requires-python = ">=3.13"
 keywords = ["sattline", "static-analysis", "lsp", "documentation", "plc"]
 classifiers = [
@@ -79,7 +79,7 @@ addopts = [
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
-    "--cov-fail-under=86",
+    "--cov-fail-under=88.26",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
@@ -89,6 +89,9 @@ markers = [
     "analyzer: marks tests related to analyzer functionality",
 ]
 
+[tool.coverage.report]
+precision = 2
+
 [project.scripts]
 sattlint = "sattlint.app:cli"
 sattlint-gui = "sattlint_gui.main:gui"
@@ -96,6 +99,7 @@ sattlint-lsp = "sattlint_lsp.server:cli"
 sattlint-analysis-pipeline = "sattlint.devtools.pipeline:main"
 sattlint-corpus-runner = "sattlint.devtools.corpus:main"
 sattlint-repo-audit = "sattlint.devtools.repo_audit:main"
+sattlint-structural-ratchet = "sattlint.devtools.structural_reports:main"
 sattlint-doc-gardener = "sattlint.devtools.doc_gardener:main"
 sattlint-layer-lint = "sattlint.devtools.layer_linter:main"
 sattlint-review = "sattlint.devtools.review_tool:main"

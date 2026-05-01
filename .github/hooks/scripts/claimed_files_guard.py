@@ -14,8 +14,7 @@ EDIT_TOOL_NAMES = {
     "vscode_renamesymbol",
     "mcp_pylance_mcp_s_pylanceinvokerefactoring",
 }
-ACTIVE_SECTION = "## Active Workstreams"
-RECENT_SECTION = "## Recent Handoffs"
+MAX_LEDGER_LINES = 500
 WORKSTREAM_RE = re.compile(r"^### Workstream\s+(?P<id>.+?)\s*$")
 FIELD_RE = re.compile(r"^-\s+(?P<field>[A-Za-z][A-Za-z\-/ ]+):\s*(?P<value>.*)$")
 PATCH_PATH_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (?P<path>.+?)(?: -> .+)?$", re.MULTILINE)
@@ -25,6 +24,7 @@ SKIP_RELATIVE_PATHS = {
 }
 ESCALATE_TO_ASK = {"ready-for-merge"}
 ESCALATE_TO_DENY = {"blocked"}
+LEDGER_TEMPLATE_NAME = "current-work.template.md"
 
 
 def _load_payload() -> dict:
@@ -102,43 +102,106 @@ def _split_claims(raw_claims: str) -> list[str]:
     return [part.strip() for part in raw_claims.split(",") if part.strip()]
 
 
-def _load_active_claims(ledger_path: Path, cwd: Path) -> list[dict[str, object]]:
-    if not ledger_path.exists():
-        return []
+def _ledger_template_path(ledger_path: Path) -> Path:
+    return ledger_path.with_name(LEDGER_TEMPLATE_NAME)
 
-    text = ledger_path.read_text(encoding="utf-8")
-    if ACTIVE_SECTION not in text:
-        return []
 
-    active_text = text.split(ACTIVE_SECTION, 1)[1]
-    if RECENT_SECTION in active_text:
-        active_text = active_text.split(RECENT_SECTION, 1)[0]
+def _ensure_local_ledger(ledger_path: Path) -> Path:
+    if ledger_path.exists():
+        return ledger_path
+    template_path = _ledger_template_path(ledger_path)
+    if not template_path.exists():
+        return ledger_path
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(template_path.read_text(encoding="utf-8"), encoding="utf-8")
+    return ledger_path
 
-    claims: list[dict[str, object]] = []
-    current: dict[str, object] | None = None
-    for raw_line in active_text.splitlines():
+
+def _split_workstream_blocks(text: str) -> tuple[list[str], list[list[str]]]:
+    prefix: list[str] = []
+    blocks: list[list[str]] = []
+    current_block: list[str] | None = None
+
+    for raw_line in text.splitlines(keepends=True):
         line = raw_line.rstrip()
-        workstream_match = WORKSTREAM_RE.match(line)
-        if workstream_match:
-            if current is not None:
-                claims.append(current)
-            current = {
-                "id": workstream_match.group("id").strip(),
-            }
+        if WORKSTREAM_RE.match(line):
+            if current_block is not None:
+                blocks.append(current_block)
+            current_block = [raw_line]
             continue
-        if current is None:
+        if current_block is None:
+            prefix.append(raw_line)
             continue
-        field_match = FIELD_RE.match(line)
-        if not field_match:
+        current_block.append(raw_line)
+
+    if current_block is not None:
+        blocks.append(current_block)
+    return prefix, blocks
+
+
+def _parse_workstream_block(block_lines: list[str]) -> dict[str, str]:
+    heading = block_lines[0].rstrip()
+    workstream_match = WORKSTREAM_RE.match(heading)
+    if workstream_match is None:
+        return {}
+
+    entry = {"id": workstream_match.group("id").strip()}
+    for raw_line in block_lines[1:]:
+        field_match = FIELD_RE.match(raw_line.lstrip().rstrip())
+        if field_match is None:
             continue
         field = field_match.group("field").strip().casefold()
         value = field_match.group("value").strip()
-        current[field] = value
-    if current is not None:
-        claims.append(current)
+        entry[field] = value
+    return entry
+
+
+def _cleanup_ledger_if_needed(ledger_path: Path) -> None:
+    ledger_path = _ensure_local_ledger(ledger_path)
+    if not ledger_path.exists():
+        return
+
+    text = ledger_path.read_text(encoding="utf-8")
+    prefix, blocks = _split_workstream_blocks(text)
+    if not blocks:
+        return
+
+    current_line_count = len(prefix) + sum(len(block) for block in blocks)
+    if current_line_count <= MAX_LEDGER_LINES:
+        return
+
+    remaining_blocks = list(blocks)
+    for index in range(len(remaining_blocks) - 1, -1, -1):
+        parsed = _parse_workstream_block(remaining_blocks[index])
+        if parsed.get("status", "active").strip().casefold() != "done":
+            continue
+        del remaining_blocks[index]
+        current_line_count = len(prefix) + sum(len(block) for block in remaining_blocks)
+        if current_line_count <= MAX_LEDGER_LINES:
+            break
+
+    if remaining_blocks == blocks:
+        return
+
+    updated_text = "".join(prefix + [line for block in remaining_blocks for line in block]).rstrip() + "\n"
+    if updated_text != text:
+        ledger_path.write_text(updated_text, encoding="utf-8")
+
+
+def _load_active_claims(ledger_path: Path, cwd: Path) -> list[dict[str, object]]:
+    ledger_path = _ensure_local_ledger(ledger_path)
+    if not ledger_path.exists():
+        return []
+
+    _cleanup_ledger_if_needed(ledger_path)
+    text = ledger_path.read_text(encoding="utf-8")
+    _, blocks = _split_workstream_blocks(text)
+    claims = [_parse_workstream_block(block) for block in blocks]
 
     normalized_claims: list[dict[str, object]] = []
     for claim in claims:
+        if not claim:
+            continue
         status = str(claim.get("status", "active")).strip().casefold()
         if status == "done":
             continue

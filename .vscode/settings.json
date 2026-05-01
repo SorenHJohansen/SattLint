@@ -52,4 +52,5 @@
     "window.autoDetectColorScheme": false,
     "workbench.preferredDarkColorTheme": "Dark+",
     "workbench.colorTheme": "GitHub Dark",
+    "terminal.integrated.enablePersistentSessions": false,
 }

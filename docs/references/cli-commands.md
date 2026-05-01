@@ -130,6 +130,35 @@ sattlint-repo-audit --profile quick --output-dir artifacts/audit
 # Full audit (comprehensive lint, type, test, security, dead-code, and repo checks)
 sattlint-repo-audit --profile full --output-dir artifacts/audit
 
+# List every individually runnable full-audit check and its exact command
+sattlint-repo-audit --profile full --list-checks
+
+# Recommend the narrowest repo-audit slice for the current git diff or explicit changed files
+sattlint-repo-audit --profile full --recommend-checks
+sattlint-repo-audit --profile full --recommend-checks --changed-file docs/references/cli-commands.md
+
+# Run the recommended combined slice in one command
+sattlint-repo-audit --profile full --run-recommended-slice --changed-file docs/references/cli-commands.md --output-dir artifacts/audit
+
+# Run the recommended finish gate in one command
+sattlint-repo-audit --profile full --run-recommended-finish-gate --changed-file docs/references/cli-commands.md --output-dir artifacts/audit
+
+# Let the tool choose the right finish gate for the current change set and print one JSON result
+sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit
+sattlint-repo-audit --profile full --check-my-changes --changed-file src/sattlint/devtools/repo_audit.py --output-dir artifacts/audit
+
+# Print only the planning context for the current or explicit change set
+sattlint-repo-audit --profile full --planning-context --changed-file src/sattlint/app.py --output-dir artifacts/audit
+
+# Run one repo-audit-specific full check without the shared pipeline
+sattlint-repo-audit --profile full --check public-readiness --skip-pipeline --output-dir artifacts/audit
+
+# Verify recommendation metadata drift directly
+sattlint-repo-audit --profile full --check verify-recommendations --skip-pipeline --output-dir artifacts/audit
+
+# Run the full CLI consistency report by itself
+sattlint-repo-audit --profile full --check cli-consistency --skip-pipeline --output-dir artifacts/audit
+
 # Fail if findings exceed threshold
 sattlint-repo-audit --profile quick --fail-on medium --output-dir artifacts/audit
 sattlint-repo-audit --profile full --fail-on high --output-dir artifacts/audit
@@ -141,6 +170,42 @@ Output:
 - `artifacts/audit/summary.json`  -  Detailed findings by category
 - `artifacts/audit/findings.json`  -  Complete finding records with line/column info
 - `artifacts/audit/pipeline/`  -  Component-level check outputs (linting, typing, tests, etc.)
+
+Requirement:
+
+- Every full-profile repo-audit check must be individually runnable and listed by `sattlint-repo-audit --profile full --list-checks`.
+- Shared pipeline checks are exposed through the same catalog but run via `sattlint-analysis-pipeline --check ...` commands.
+- `--recommend-checks` prints machine-readable routing metadata for the current git diff unless `--changed-file` is repeated explicitly.
+- `--run-recommended-slice` reuses that routing and runs only the recommended shared-pipeline and repo-audit checks.
+- `--run-recommended-finish-gate` runs the recommended slice plus touched-file Ruff, touched-file Pyright, and owner pytest targets.
+- `--check-my-changes` auto-selects the shared pipeline finish gate when no repo-audit-specific checks are needed, otherwise it runs the combined repo-audit finish gate and writes `check_my_changes.json`.
+- `--planning-context` prints only the `planning_context` block for the changed files, including owning agent, matched instruction files, and nearest owner suites.
+- `--check verify-recommendations --skip-pipeline` fails when catalog metadata is missing, dead, or obviously overbroad.
+
+---
+
+### sattlint-structural-ratchet
+
+Run only the structural budget ratchet check without the rest of the repository audit pipeline.
+
+```bash
+# Fast structural-ratchet check against the checked-in baseline
+sattlint-structural-ratchet
+
+# Machine-readable status for scripting
+sattlint-structural-ratchet --json
+```
+
+Used to:
+
+- Verify whether structural budget regressions exist before running the full repo audit
+- Inspect the checked-in ratchet status and regressions quickly during local edits
+- Override the repo root or ratchet file when debugging with `--repo-root` or `--ratchet-path`
+
+Exit code:
+
+- `0` when the ratchet passes
+- `1` when the ratchet is missing, invalid, or regressed
 
 ---
 
@@ -185,6 +250,23 @@ Internal analysis pipeline for generating structured audit artifacts.
 
 ```bash
 sattlint-analysis-pipeline
+
+# List the individually runnable pipeline checks for the chosen profile
+sattlint-analysis-pipeline --profile full --list-checks
+
+# Recommend the narrowest pipeline slice for the current git diff or explicit changed files
+sattlint-analysis-pipeline --profile full --recommend-checks
+sattlint-analysis-pipeline --profile full --recommend-checks --changed-file src/sattlint/devtools/repo_audit.py
+
+# Run the recommended pipeline slice in one command
+sattlint-analysis-pipeline --profile full --run-recommended-slice --changed-file src/sattlint/devtools/repo_audit.py --output-dir artifacts/audit/pipeline
+
+# Run the recommended pipeline finish gate in one command
+sattlint-analysis-pipeline --profile full --run-recommended-finish-gate --changed-file src/sattlint/devtools/repo_audit.py --output-dir artifacts/audit/pipeline
+
+# Run one full-profile pipeline check in isolation
+sattlint-analysis-pipeline --profile full --check ruff --output-dir artifacts/audit/pipeline
+sattlint-analysis-pipeline --profile full --check structural-reports --output-dir artifacts/audit/pipeline
 ```
 
 Orchestrates:
@@ -196,6 +278,8 @@ Orchestrates:
 - Security and dependency audits
 
 Output feeds into `sattlint-repo-audit` and CI checks.
+
+For AI-assisted review of a narrow change set, prefer `--recommend-checks` first and `--run-recommended-finish-gate` when you want one executable finish gate. Full pipeline runs now also emit `recommendation_drift.json` when changed files are known, so CI can catch non-passing checks that were omitted from the recommended slice.
 
 ---
 

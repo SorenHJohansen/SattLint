@@ -28,8 +28,10 @@ from sattlint.devtools.artifact_registry import ArtifactDefinition
 from sattlint.devtools.baselines import build_analysis_diff_report
 from sattlint.devtools.finding_exports import build_pipeline_finding_collection
 from sattlint.devtools.pipeline_artifacts import (
+    SOURCE_DIGEST_MANIFEST_KIND,
     PipelineArtifactContext,
     PipelineArtifactProducer,
+    artifact_source_manifest_path,
     validate_pipeline_artifact_producers,
     write_json_artifact,
     write_pipeline_artifacts,
@@ -1012,6 +1014,34 @@ def test_write_json_artifact_retries_permission_error(tmp_path, monkeypatch):
     assert json.loads(target.read_text(encoding="utf-8")) == {"kind": "status"}
 
 
+def test_write_json_artifact_writes_source_digest_manifest(tmp_path):
+    target = tmp_path / "status.json"
+    source_file = tmp_path / "source.py"
+    source_file.write_text("print('fresh')\n", encoding="utf-8")
+
+    write_json_artifact(
+        target,
+        {
+            "kind": "status",
+            "schema_version": 1,
+            "generated_by": "sattlint.devtools.pipeline_artifacts",
+        },
+        repo_root=tmp_path,
+        source_paths=(source_file,),
+    )
+
+    manifest = json.loads(artifact_source_manifest_path(target).read_text(encoding="utf-8"))
+
+    assert manifest["kind"] == SOURCE_DIGEST_MANIFEST_KIND
+    assert manifest["artifact_file"] == "status.json"
+    assert manifest["generated_by"] == "sattlint.devtools.pipeline_artifacts"
+    assert manifest["source_count"] == 2
+    assert {entry["path"] for entry in manifest["sources"]} == {
+        "source.py",
+        "src/sattlint/devtools/pipeline_artifacts.py",
+    }
+
+
 def test_write_pipeline_artifacts_requires_producer_for_enabled_artifact(tmp_path):
     context = PipelineArtifactContext(payloads={})
 
@@ -1609,6 +1639,8 @@ def test_build_coverage_summary_report_skipped_when_no_xml(tmp_path):
     assert result["skipped"] is True
     assert result["skip_reason"] == "coverage.xml not found"
     assert result["modules"] == []
+    assert result["ratchet"]["status"] == "skipped"
+    assert result["ratchet"]["setpoint_metrics"] == {"min_line_rate_basis_points": 10000}
 
 
 def test_build_coverage_summary_report_flags_high_severity(tmp_path):
@@ -1626,6 +1658,65 @@ def test_build_coverage_summary_report_flags_high_severity(tmp_path):
     result = build_coverage_summary_report(tmp_path)
     findings = result["findings"]
     assert any(f["severity"] == "high" for f in findings)
+
+
+def test_build_coverage_summary_report_normalizes_src_paths_and_tracks_totals(tmp_path):
+    from sattlint.devtools.coverage_reports import build_coverage_summary_report
+
+    (tmp_path / "artifacts" / "analysis").mkdir(parents=True)
+    (tmp_path / "artifacts" / "analysis" / "coverage_ratchet.json").write_text(
+        '{"kind": "sattlint.coverage_ratchet", "schema_version": 1, "metrics": {"min_line_rate_basis_points": 8700}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "coverage.xml").write_text(
+        """<?xml version="1.0" ?>
+<coverage lines-valid="100" lines-covered="88" line-rate="0.88">
+    <packages><package><classes>
+        <class filename="sattlint/bad_module.py" line-rate="0.88" lines-valid="100" lines-covered="88">
+            <lines/>
+        </class>
+    </classes></package></packages>
+</coverage>""",
+        encoding="utf-8",
+    )
+
+    result = build_coverage_summary_report(tmp_path)
+
+    assert result["modules"][0]["path"] == "src/sattlint/bad_module.py"
+    assert result["summary"]["total_line_rate"] == 0.88
+    assert result["summary"]["total_lines_missing"] == 12
+    assert result["ratchet"]["status"] == "pass"
+    assert result["ratchet"]["setpoint_metrics"] == {"min_line_rate_basis_points": 10000}
+    assert result["ratchet"]["current_metrics"]["line_rate_basis_points"] == 8800
+
+
+def test_build_coverage_summary_report_flags_ratchet_regression(tmp_path):
+    from sattlint.devtools.coverage_reports import build_coverage_summary_report
+
+    (tmp_path / "artifacts" / "analysis").mkdir(parents=True)
+    (tmp_path / "artifacts" / "analysis" / "coverage_ratchet.json").write_text(
+        '{"kind": "sattlint.coverage_ratchet", "schema_version": 1, "metrics": {"min_line_rate_basis_points": 9000}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "coverage.xml").write_text(
+        """<?xml version="1.0" ?>
+<coverage lines-valid="100" lines-covered="88" line-rate="0.88">
+    <packages><package><classes>
+        <class filename="sattlint/good_module.py" line-rate="0.88" lines-valid="100" lines-covered="88">
+            <lines/>
+        </class>
+    </classes></package></packages>
+</coverage>""",
+        encoding="utf-8",
+    )
+
+    result = build_coverage_summary_report(tmp_path)
+
+    assert result["ratchet"]["status"] == "fail"
+    assert result["ratchet"]["regressions"] == [
+        {"metric": "line_rate_basis_points", "expected_min": 9000, "actual": 8800}
+    ]
+    assert any(f.get("id") == "coverage-ratchet-regression" for f in result["findings"])
 
 
 # --- resolution/paths.py: CanonicalPath.join() no-arg, ModuleSegment.display() branches ---

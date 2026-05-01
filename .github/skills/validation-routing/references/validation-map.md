@@ -19,6 +19,12 @@ Canonical first-check command source for SattLint customization surfaces. Use fi
   or focused pytest such as `tests/test_repo_audit.py` or `tests/test_pipeline.py` when that is narrower.
 - Python behavior with a nearby focused test:
   `& ".venv/Scripts/python.exe" -m pytest <test_file> -x -q --tb=short`
+- Finish gate for touched Python files:
+  `& ".venv/Scripts/ruff.exe" check <touched_python_files>`
+  then
+  `& ".venv/Scripts/pyright.exe" <touched_python_files>`
+- Shared infra, repo-audit, hooks, or cross-subsystem Python wiring after focused checks:
+  owner-suite validation or `& ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit`
 - Final repo gate:
   `& ".venv/Scripts/pre-commit.exe" run --all-files`
   then

@@ -1,5 +1,7 @@
 import json
 from types import SimpleNamespace
+from typing import Any
+from unittest.mock import patch
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -89,6 +91,7 @@ def test_run_pipeline_serializes_structural_graph_reports(monkeypatch, tmp_path)
     assert (tmp_path / "call_graph.json").exists()
     assert (tmp_path / "graphics_layout.json").exists()
     assert (tmp_path / "impact_analysis.json").exists()
+    assert (tmp_path / "recommendation_drift.json").exists()
     assert summary["profile"] == "full"
     assert summary["entry_report"] == "status.json"
     assert summary["reports"]["findings"] == "findings.json"
@@ -97,13 +100,14 @@ def test_run_pipeline_serializes_structural_graph_reports(monkeypatch, tmp_path)
     assert summary["reports"]["call_graph"] == "call_graph.json"
     assert summary["reports"]["graphics_layout"] == "graphics_layout.json"
     assert summary["reports"]["impact_analysis"] == "impact_analysis.json"
+    assert summary["reports"]["recommendation_drift"] == "recommendation_drift.json"
     assert_findings_schema(summary)
     assert_findings_collection(findings_report, finding_count=0, rule_ids=())
     assert_artifact_registry_report(
         artifact_registry,
         generated_by="sattlint.devtools.pipeline",
         profile="full",
-        enabled_artifact_ids=("findings", "artifact_registry", "dependency_graph"),
+        enabled_artifact_ids=("findings", "artifact_registry", "dependency_graph", "recommendation_drift"),
         disabled_artifact_ids=("trace",),
     )
     assert status_report["overall_status"] == "pass"
@@ -455,6 +459,205 @@ def test_run_pipeline_quick_profile_skips_optional_reports(monkeypatch, tmp_path
     assert status_report["tool_statuses"]["vulture"]["status"] == "skipped"
     assert status_report["tool_statuses"]["bandit"]["status"] == "skipped"
     assert status_report["tool_statuses"]["rule_metadata"]["status"] == "skipped"
+
+
+def test_build_pipeline_check_catalog_lists_full_checks_and_commands(tmp_path):
+    catalog = pipeline.build_pipeline_check_catalog(profile="full", output_dir=tmp_path)
+
+    assert catalog["kind"] == "sattlint.pipeline.check_catalog"
+    assert catalog["profile"] == "full"
+    check_ids = {entry["id"] for entry in catalog["checks"]}
+    assert {"ruff", "pyright", "pytest", "vulture", "bandit", "structural-reports", "trace", "corpus"} <= check_ids
+    ruff_entry = next(entry for entry in catalog["checks"] if entry["id"] == "ruff")
+    assert "--check ruff" in ruff_entry["command"]
+    assert ruff_entry["owner_surface"] == "python-style"
+    assert "src/**/*.py" in ruff_entry["path_globs"]
+
+
+def test_build_pipeline_check_recommendations_routes_changed_files_to_matching_checks(tmp_path):
+    recommendations = pipeline.build_pipeline_check_recommendations(
+        profile="full",
+        output_dir=tmp_path,
+        changed_files=["src/sattlint/devtools/repo_audit.py"],
+    )
+
+    recommended_ids = set(recommendations["recommended_check_ids"])
+
+    assert recommendations["kind"] == "sattlint.pipeline.check_recommendations"
+    assert recommendations["fallback_required"] is False
+    assert {"ruff", "pyright", "pytest", "vulture", "bandit"} <= recommended_ids
+    assert "trace" not in recommended_ids
+    assert recommendations["suggested_check_commands"]
+    assert recommendations["suggested_finish_gate_commands"]
+    assert recommendations["why_this_gate"]["matched_routes"]
+
+
+def test_main_recommend_checks_prints_json(tmp_path, capsys):
+    exit_code = pipeline.main(
+        [
+            "--profile",
+            "full",
+            "--output-dir",
+            str(tmp_path),
+            "--recommend-checks",
+            "--changed-file",
+            "src/sattlint/devtools/repo_audit.py",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["kind"] == "sattlint.pipeline.check_recommendations"
+    assert "ruff" in payload["recommended_check_ids"]
+
+
+def test_run_pipeline_selected_check_runs_only_requested_tool(monkeypatch, tmp_path):
+    commands: list[str] = []
+
+    monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
+
+    def fake_run_command(name, command, cwd=pipeline.REPO_ROOT):
+        commands.append(name)
+        return pipeline.CommandResult(
+            name=name,
+            command=command,
+            exit_code=0,
+            duration_seconds=0.0,
+            stdout="[]",
+            stderr="",
+        )
+
+    monkeypatch.setattr(pipeline, "_run_command", fake_run_command)
+
+    summary = pipeline._run_pipeline(
+        tmp_path,
+        trace_target=None,
+        profile="full",
+        include_vulture=True,
+        include_bandit=True,
+        selected_checks=["ruff"],
+    )
+
+    status_report = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    artifact_registry = json.loads((tmp_path / "artifact_registry.json").read_text(encoding="utf-8"))
+
+    assert commands == ["ruff"]
+    assert summary["selected_checks"] == ["ruff"]
+    assert status_report["selected_checks"] == ["ruff"]
+    assert status_report["tool_statuses"]["ruff"]["status"] == "pass"
+    assert status_report["tool_statuses"]["pyright"]["status"] == "skipped"
+    assert status_report["tool_statuses"]["pytest"]["status"] == "skipped"
+    assert status_report["tool_statuses"]["vulture"]["status"] == "skipped"
+    assert status_report["tool_statuses"]["bandit"]["status"] == "skipped"
+    assert {artifact["artifact_id"] for artifact in artifact_registry["artifacts"] if artifact["enabled"]} >= {
+        "progress",
+        "status",
+        "summary",
+        "findings",
+        "artifact_registry",
+        "ruff",
+    }
+    assert not any(
+        artifact["artifact_id"] == "recommendation_drift" and artifact["enabled"]
+        for artifact in artifact_registry["artifacts"]
+    )
+    assert not any(
+        artifact["artifact_id"] == "pyright" and artifact["enabled"] for artifact in artifact_registry["artifacts"]
+    )
+
+
+def test_main_list_checks_prints_catalog(monkeypatch, tmp_path, capsys):
+    output_dir = tmp_path / "pipeline-output"
+
+    exit_code = pipeline.main(["--profile", "full", "--output-dir", str(output_dir), "--list-checks"])
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["kind"] == "sattlint.pipeline.check_catalog"
+    assert payload["profile"] == "full"
+    assert any(entry["id"] == "structural-reports" for entry in payload["checks"])
+
+
+def test_main_run_recommended_slice_uses_recommended_check_ids(monkeypatch, tmp_path):
+    observed: dict[str, Any] = {}
+
+    def fake_run_pipeline(output_dir, **kwargs):
+        observed["selected_checks"] = kwargs["selected_checks"]
+        return {
+            "profile": "full",
+            "output_dir": f"<external>/{tmp_path.name}",
+            "status": {"overall_status": "pass", "tool_statuses": {}},
+            "reports": {},
+            "counts": {
+                "baseline_new_findings": 0,
+                "baseline_resolved_findings": 0,
+                "baseline_changed_findings": 0,
+                "baseline_unchanged_findings": 0,
+            },
+            "findings_schema": {"kind": "sattlint.findings", "schema_version": 1},
+        }
+
+    monkeypatch.setattr(pipeline, "_run_pipeline", fake_run_pipeline)
+    monkeypatch.setattr(pipeline, "_print_cli_summary", lambda *_args, **_kwargs: None)
+
+    exit_code = pipeline.main(
+        [
+            "--profile",
+            "full",
+            "--output-dir",
+            str(tmp_path),
+            "--run-recommended-slice",
+            "--changed-file",
+            "tests/test_repo_audit.py",
+        ]
+    )
+
+    assert exit_code == 0
+    assert observed["selected_checks"]
+
+
+def test_main_run_recommended_finish_gate_uses_finish_gate_runner(monkeypatch, tmp_path):
+    summary = {
+        "profile": "full",
+        "output_dir": f"<external>/{tmp_path.name}",
+        "status": {"overall_status": "pass", "tool_statuses": {}},
+        "reports": {},
+        "counts": {
+            "baseline_new_findings": 0,
+            "baseline_resolved_findings": 0,
+            "baseline_changed_findings": 0,
+            "baseline_unchanged_findings": 0,
+        },
+        "findings_schema": {"kind": "sattlint.findings", "schema_version": 1},
+    }
+
+    with (
+        patch.object(
+            pipeline,
+            "run_recommended_pipeline_finish_gate",
+            return_value={"pipeline_summary": summary, "overall_status": "pass"},
+        ) as run_finish_gate,
+        patch.object(pipeline, "_print_cli_summary") as print_cli_summary,
+    ):
+        exit_code = pipeline.main(
+            [
+                "--profile",
+                "full",
+                "--output-dir",
+                str(tmp_path),
+                "--run-recommended-finish-gate",
+                "--changed-file",
+                "src/sattlint/devtools/repo_audit.py",
+            ]
+        )
+
+    assert exit_code == 0
+    assert run_finish_gate.call_args.kwargs["changed_files"] == ["src/sattlint/devtools/repo_audit.py"]
+    printed = print_cli_summary.call_args.args[0]
+    assert printed["overall_status"] == "pass"
 
 
 def test_run_pytest_stage_uses_isolated_coverage_file_and_restores_environment(monkeypatch, tmp_path):

@@ -1,0 +1,509 @@
+{
+  "agent_routing": [
+    {
+      "agent_name": "CLI App Menu",
+      "owner_surface_keywords": [
+        "cli",
+        "console",
+        "config"
+      ],
+      "path_globs": [
+        "src/sattlint/app.py",
+        "src/sattlint/config.py",
+        "src/sattlint/cli/**",
+        "tests/test_cli.py",
+        "tests/test_app*.py"
+      ],
+      "selected_surfaces": [
+        "repo-audit",
+        "pipeline"
+      ]
+    },
+    {
+      "agent_name": "Documentation Generation",
+      "owner_surface_keywords": [
+        "docgen",
+        "classification",
+        "docs"
+      ],
+      "path_globs": [
+        "src/sattlint/docgenerator/**",
+        "tests/test_docgen.py",
+        "tests/test_gui.py"
+      ],
+      "selected_surfaces": [
+        "repo-audit",
+        "pipeline"
+      ]
+    },
+    {
+      "agent_name": "Parser Analysis",
+      "owner_surface_keywords": [
+        "parser",
+        "trace",
+        "corpus",
+        "strict"
+      ],
+      "path_globs": [
+        "src/sattline_parser/**",
+        "src/sattlint/validation.py",
+        "tests/test_parser*.py",
+        "tests/fixtures/sample_sattline_files/**"
+      ],
+      "selected_surfaces": [
+        "pipeline"
+      ]
+    },
+    {
+      "agent_name": "Workspace LSP",
+      "owner_surface_keywords": [
+        "workspace",
+        "semantic",
+        "lsp"
+      ],
+      "path_globs": [
+        "src/sattlint/core/**",
+        "src/sattlint_lsp/**",
+        "vscode/sattline-vscode/**",
+        "tests/test_editor_api.py",
+        "tests/test_lsp*.py"
+      ],
+      "selected_surfaces": [
+        "pipeline"
+      ]
+    },
+    {
+      "agent_name": "Repo Audit",
+      "owner_surface_keywords": [
+        "architecture",
+        "coverage",
+        "feature-wiring",
+        "logging",
+        "path-safety",
+        "public-readiness",
+        "recommendations",
+        "structural",
+        "text-scan"
+      ],
+      "path_globs": [
+        "src/sattlint/devtools/**",
+        "tests/test_repo_audit.py",
+        "tests/test_pipeline*.py",
+        "tests/test_artifact_contracts.py",
+        "docs/references/cli-commands.md",
+        "docs/references/ai-agent-reference.md"
+      ],
+      "selected_surfaces": [
+        "repo-audit",
+        "pipeline"
+      ]
+    },
+    {
+      "agent_name": "SattLint Orchestrator",
+      "owner_surface_keywords": [
+        "recommendations",
+        "structural",
+        "python-tests",
+        "python-style"
+      ],
+      "path_globs": [
+        ".github/coordination/current-work.md",
+        "docs/exec-plans/**",
+        ".github/skills/**",
+        ".github/instructions/**"
+      ],
+      "selected_surfaces": [
+        "repo-audit",
+        "pipeline"
+      ]
+    }
+  ],
+  "agents": [
+    {
+      "description": "Use when: changing sattlint CLI commands, argparse routing, interactive app menus, config flows, tools menu behavior, or console UX in src/sattlint/app.py",
+      "file_path": ".github/agents/cli-app-menu.agent.md",
+      "name": "CLI App Menu",
+      "user_invocable": true
+    },
+    {
+      "description": "Use when: changing DOCX generation, documentation classification, FS grouping, unit-scope selection, docgen CLI workflow, or GUI documentation generation in SattLint",
+      "file_path": ".github/agents/documentation-generation.agent.md",
+      "name": "Documentation Generation",
+      "user_invocable": true
+    },
+    {
+      "description": "Use when: changing SattLine grammar, parser, transformer, AST, strict validation, analyzers, syntax-check behavior, or semantic rules in SattLint",
+      "file_path": ".github/agents/parser-analysis.agent.md",
+      "name": "Parser Analysis",
+      "user_invocable": true
+    },
+    {
+      "description": "Use when: changing repo audit checks, pipeline artifacts, public-readiness scans, portability checks, secrets and PII scanning, or devtools audit commands in SattLint",
+      "file_path": ".github/agents/repo-audit.agent.md",
+      "name": "Repo Audit",
+      "user_invocable": true
+    },
+    {
+      "description": "Use when: running precommit checks, audit checks, verifying the repo is clean, checking before committing, running verify script, repo verification, pre-push checks, lint and test gate",
+      "file_path": ".github/agents/repo-verify.agent.md",
+      "name": "Repo Verify",
+      "user_invocable": false
+    },
+    {
+      "description": "Use when: splitting work across multiple chats or agents, parallelizing repo tasks, coordinating file ownership, planning handoffs, or orchestrating parser, LSP, and verification work in SattLint",
+      "file_path": ".github/agents/sattlint-orchestrator.agent.md",
+      "name": "SattLint Orchestrator",
+      "user_invocable": false
+    },
+    {
+      "description": "Use when: changing workspace loading, editor_api, semantic core, language server, dependency resolution, dirty-buffer parsing, or VS Code client behavior in SattLint",
+      "file_path": ".github/agents/workspace-lsp.agent.md",
+      "name": "Workspace LSP",
+      "user_invocable": true
+    }
+  ],
+  "generated_by": "sattlint.devtools.ai_work_map",
+  "generated_from": {
+    "work_map": ".github/skills/validation-routing/references/ai-work-map.json"
+  },
+  "instructions": [
+    {
+      "apply_to": [
+        "AGENTS.md",
+        ".github/agents/**",
+        ".github/prompts/**",
+        ".github/skills/**",
+        ".github/hooks/**"
+      ],
+      "description": "Use when changing AGENTS, custom agents, prompts, skills, hooks, or other repo AI customizations in SattLint. Covers discoverability, context efficiency, and hook safety rules.",
+      "file_path": ".github/instructions/agent-customizations.instructions.md",
+      "name": "Agent Customization Instructions"
+    },
+    {
+      "apply_to": [
+        "src/sattlint/app.py",
+        "src/sattlint/config.py",
+        "tests/test_cli.py",
+        "tests/test_app*.py"
+      ],
+      "description": "Use when changing sattlint CLI routing, argparse surfaces, interactive app menus, config flows, or console UX in SattLint. Covers menu and command invariants plus test routing.",
+      "file_path": ".github/instructions/cli-app.instructions.md",
+      "name": "CLI App Instructions"
+    },
+    {
+      "apply_to": [
+        "src/sattlint/docgenerator/**",
+        "tests/test_docgen.py",
+        "tests/test_gui.py"
+      ],
+      "description": "Use when changing DOCX generation, documentation classification, FS grouping, unit scope selection, or GUI documentation workflows in SattLint. Covers docgen-specific boundaries and tests.",
+      "file_path": ".github/instructions/docgen.instructions.md",
+      "name": "Documentation Generation Instructions"
+    },
+    {
+      "apply_to": [
+        "src/sattline_parser/**",
+        "src/sattlint/grammar/**",
+        "src/sattlint/models/ast_model.py",
+        "src/sattlint/transformer/**",
+        "tests/test_parser*.py",
+        "tests/fixtures/corpus/**"
+      ],
+      "description": "Use when changing parser-core, strict validation, grammar, AST, transformer, parser fixtures, or parser tests in SattLint. Covers parser invariants and first validation routing.",
+      "file_path": ".github/instructions/parser-analysis.instructions.md",
+      "name": "Parser Analysis Instructions"
+    },
+    {
+      "apply_to": [
+        "tests/test_*.py",
+        "tests/helpers/**"
+      ],
+      "description": "Use when changing Python tests in SattLint. Covers focused pytest routing, fixture reuse, and stable assertion patterns for repo-venv workflows.",
+      "file_path": ".github/instructions/python-tests.instructions.md",
+      "name": "Python Test Instructions"
+    },
+    {
+      "apply_to": [
+        "src/sattlint/devtools/**",
+        "tests/test_repo_audit.py",
+        "tests/test_pipeline.py",
+        "tests/test_artifact_contracts.py",
+        "TODO_TOOLS.md"
+      ],
+      "description": "Use when changing repo audit checks, pipeline artifacts, public-readiness scans, portability checks, or devtools JSON outputs in SattLint. Covers preferred seams and focused validation.",
+      "file_path": ".github/instructions/repo-audit.instructions.md",
+      "name": "Repo Audit Instructions"
+    },
+    {
+      "apply_to": [
+        "src/**",
+        "tests/**"
+      ],
+      "description": "Use when changing src/ or tests/ in SattLint. Critical SattLine language invariants, validation rules, variable-analysis gotchas, CLI testing rules, and workspace/LSP boundaries that must not be broken.",
+      "file_path": ".github/instructions/sattline-invariants.instructions.md",
+      "name": "SattLine Invariants"
+    },
+    {
+      "apply_to": [
+        "tests/fixtures/**",
+        "tests/test_corpus.py",
+        "tests/test_phase0_guardrails.py"
+      ],
+      "description": "Use when changing SattLint test fixtures, corpus manifests, sample SattLine files, or golden analysis artifacts. Covers fixture shape, corpus layout, and minimal SattLine validity rules.",
+      "file_path": ".github/instructions/test-fixtures.instructions.md",
+      "name": "Test Fixture Instructions"
+    },
+    {
+      "apply_to": [
+        "src/sattlint_lsp/**",
+        "src/sattlint/core/**",
+        "src/sattlint/editor_api.py",
+        "vscode/sattline-vscode/**",
+        "tests/test_lsp*.py"
+      ],
+      "description": "Use when changing workspace loading, semantic core, editor facade, dirty-buffer parsing, LSP diagnostics, or VS Code client behavior in SattLint. Covers workspace-specific invariants and restart rules.",
+      "file_path": ".github/instructions/workspace-lsp.instructions.md",
+      "name": "Workspace LSP Instructions"
+    }
+  ],
+  "kind": "sattlint.ai_session_context_map",
+  "owner_suite_plans": [
+    {
+      "first_validation_commands": [
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_app.py tests/test_app_analysis.py tests/test_app_menus.py tests/test_cli.py -x -q --tb=short",
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_repo_audit.py -x -q --tb=short",
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_engine.py -x -q --tb=short",
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_pipeline.py tests/test_pipeline_collection.py tests/test_pipeline_run.py tests/test_pipeline_phase2.py tests/test_artifact_contracts.py tests/test_structural_reports.py -x -q --tb=short"
+      ],
+      "owner_heading": "Primary owner suites for this plan:",
+      "plan_path": "docs/exec-plans/active/14-coverage-phase-2-app-devtools-core.md",
+      "suites": [
+        {
+          "target_summary": "`src/sattlint/app.py`, `src/sattlint/app_analysis.py`, `src/sattlint/app_base.py`, `src/sattlint/app_graphics.py`, `src/sattlint/app_menus.py`, `src/sattlint/app_support.py`, `src/sattlint/config.py`, `src/sattlint/console.py`, `src/sattlint/cache.py`, `src/sattlint/cli/entry.py`",
+          "targets": [
+            "src/sattlint/app.py",
+            "src/sattlint/app_analysis.py",
+            "src/sattlint/app_base.py",
+            "src/sattlint/app_graphics.py",
+            "src/sattlint/app_menus.py",
+            "src/sattlint/app_support.py",
+            "src/sattlint/config.py",
+            "src/sattlint/console.py",
+            "src/sattlint/cache.py",
+            "src/sattlint/cli/entry.py"
+          ],
+          "tests": [
+            "tests/test_app.py",
+            "tests/test_app_analysis.py",
+            "tests/test_app_menus.py",
+            "tests/test_cli.py"
+          ]
+        },
+        {
+          "target_summary": "`src/sattlint/devtools/repo_audit.py`, `src/sattlint/devtools/doc_gardener.py`",
+          "targets": [
+            "src/sattlint/devtools/repo_audit.py",
+            "src/sattlint/devtools/doc_gardener.py"
+          ],
+          "tests": [
+            "tests/test_repo_audit.py"
+          ]
+        },
+        {
+          "target_summary": "`src/sattlint/engine.py`",
+          "targets": [
+            "src/sattlint/engine.py"
+          ],
+          "tests": [
+            "tests/test_engine.py"
+          ]
+        },
+        {
+          "target_summary": "`src/sattlint/devtools/pipeline.py`, `src/sattlint/devtools/structural_reports.py`, `src/sattlint/devtools/pipeline_artifacts.py`, adjacent pipeline contract surfaces",
+          "targets": [
+            "src/sattlint/devtools/pipeline.py",
+            "src/sattlint/devtools/structural_reports.py",
+            "src/sattlint/devtools/pipeline_artifacts.py"
+          ],
+          "tests": [
+            "tests/test_pipeline.py",
+            "tests/test_pipeline_collection.py",
+            "tests/test_pipeline_run.py",
+            "tests/test_pipeline_phase2.py",
+            "tests/test_artifact_contracts.py",
+            "tests/test_structural_reports.py"
+          ]
+        }
+      ]
+    },
+    {
+      "first_validation_commands": [
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_dataflow.py tests/test_analyzers_variables.py -x -q --tb=short",
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py -x -q --tb=short",
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_editor_api.py -x -q --tb=short",
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_moduletype_resolution_scoped.py tests/test_canonical_resolution.py -x -q --tb=short"
+      ],
+      "owner_heading": "Primary owner suites for this plan:",
+      "plan_path": "docs/exec-plans/active/15-coverage-phase-2-analyzers-semantic-lsp.md",
+      "suites": [
+        {
+          "target_summary": "`src/sattlint/analyzers/dataflow.py`, `src/sattlint/analyzers/variables.py`, adjacent analyzer helper seams",
+          "targets": [
+            "src/sattlint/analyzers/dataflow.py",
+            "src/sattlint/analyzers/variables.py"
+          ],
+          "tests": [
+            "tests/test_dataflow.py",
+            "tests/test_analyzers_variables.py"
+          ]
+        },
+        {
+          "target_summary": "`src/sattlint/analyzers/modules.py`, `src/sattlint/analyzers/reset_contamination.py`, `src/sattlint/analyzers/mms.py`, `src/sattlint/analyzers/variable_usage_reporting.py`, additional analyzer report/helper paths",
+          "targets": [
+            "src/sattlint/analyzers/modules.py",
+            "src/sattlint/analyzers/reset_contamination.py",
+            "src/sattlint/analyzers/mms.py",
+            "src/sattlint/analyzers/variable_usage_reporting.py"
+          ],
+          "tests": [
+            "tests/test_analyzers_suites.py",
+            "tests/test_analyzers_state.py"
+          ]
+        },
+        {
+          "target_summary": "`src/sattlint/core/semantic.py`",
+          "targets": [
+            "src/sattlint/core/semantic.py"
+          ],
+          "tests": [
+            "tests/test_editor_api.py"
+          ]
+        },
+        {
+          "target_summary": "`src/sattlint_lsp/_server_helpers.py`, `src/sattlint_lsp/_server_document.py`, `src/sattlint_lsp/server.py`, `src/sattlint_lsp/workspace_store.py`, `src/sattlint/resolution/common.py`, `src/sattlint_lsp/local_parser.py`",
+          "targets": [
+            "src/sattlint_lsp/_server_helpers.py",
+            "src/sattlint_lsp/_server_document.py",
+            "src/sattlint_lsp/server.py",
+            "src/sattlint_lsp/workspace_store.py",
+            "src/sattlint/resolution/common.py",
+            "src/sattlint_lsp/local_parser.py"
+          ],
+          "tests": [
+            "tests/test_lsp_document.py",
+            "tests/test_lsp_diagnostics.py",
+            "tests/test_moduletype_resolution_scoped.py",
+            "tests/test_canonical_resolution.py"
+          ]
+        }
+      ]
+    },
+    {
+      "first_validation_commands": [
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_docgen.py -x -q --tb=short",
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_parser_core.py tests/test_parser_validation.py tests/test_parser.py -x -q --tb=short",
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_graphics_validation.py -x -q --tb=short",
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_gui.py tests/test_icf_validation.py tests/test_mms_report.py tests/test_analyzers_state.py -x -q --tb=short"
+      ],
+      "owner_heading": "Primary owner suites for this plan:",
+      "plan_path": "docs/exec-plans/active/16-coverage-phase-2-parser-gui-reporting.md",
+      "suites": [
+        {
+          "target_summary": "remaining parser API, AST, transformer, formatter, fuzz, and corpus seams",
+          "targets": [],
+          "tests": [
+            "tests/test_parser_core.py",
+            "tests/test_parser_validation.py",
+            "tests/test_parser.py"
+          ]
+        },
+        {
+          "target_summary": "`src/sattlint/docgenerator/docgen.py`, `src/sattlint/docgenerator/classification.py`",
+          "targets": [
+            "src/sattlint/docgenerator/docgen.py",
+            "src/sattlint/docgenerator/classification.py"
+          ],
+          "tests": [
+            "tests/test_docgen.py"
+          ]
+        },
+        {
+          "target_summary": "`src/sattlint/reporting/variables_report.py`, `src/sattlint/reporting/icf_report.py`, `src/sattlint/reporting/mms_report.py`",
+          "targets": [
+            "src/sattlint/reporting/variables_report.py",
+            "src/sattlint/reporting/icf_report.py",
+            "src/sattlint/reporting/mms_report.py"
+          ],
+          "tests": [
+            "tests/test_analyzers_state.py",
+            "tests/test_icf_validation.py",
+            "tests/test_mms_report.py"
+          ]
+        },
+        {
+          "target_summary": "`src/sattlint/graphics_rules.py`, `src/sattlint/graphics_validation.py`",
+          "targets": [
+            "src/sattlint/graphics_rules.py",
+            "src/sattlint/graphics_validation.py"
+          ],
+          "tests": [
+            "tests/test_graphics_validation.py"
+          ]
+        },
+        {
+          "target_summary": "remaining `src/sattlint_gui/**` headless-safe surfaces",
+          "targets": [
+            "src/sattlint_gui/**"
+          ],
+          "tests": [
+            "tests/test_gui.py"
+          ]
+        }
+      ]
+    },
+    {
+      "first_validation_commands": [
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_corpus.py tests/test_artifact_contracts.py tests/test_pipeline.py tests/test_pipeline_collection.py tests/test_pipeline_run.py tests/test_pipeline_phase2.py tests/test_structural_reports.py -x -q --tb=short",
+        "& \".venv/Scripts/python.exe\" -m pytest --no-cov <new dedicated orphan suite> -x -q --tb=short"
+      ],
+      "owner_heading": "Existing owner suites that this plan may reuse instead of creating new suites when the fit is real:",
+      "plan_path": "docs/exec-plans/active/17-coverage-phase-2-orphans-and-final-gate.md",
+      "suites": [
+        {
+          "target_summary": "`src/sattlint/devtools/corpus.py`",
+          "targets": [
+            "src/sattlint/devtools/corpus.py"
+          ],
+          "tests": [
+            "tests/test_corpus.py",
+            "tests/test_artifact_contracts.py"
+          ]
+        },
+        {
+          "target_summary": "`src/sattlint/devtools/structural_reports.py`, adjacent pipeline surfaces",
+          "targets": [
+            "src/sattlint/devtools/structural_reports.py"
+          ],
+          "tests": [
+            "tests/test_pipeline.py",
+            "tests/test_pipeline_collection.py",
+            "tests/test_pipeline_run.py",
+            "tests/test_pipeline_phase2.py",
+            "tests/test_structural_reports.py"
+          ]
+        },
+        {
+          "target_summary": "parser, validation, graphics, and docgen long-tail residuals",
+          "targets": [],
+          "tests": [
+            "tests/test_parser_core.py",
+            "tests/test_parser_validation.py",
+            "tests/test_graphics_validation.py",
+            "tests/test_docgen.py"
+          ]
+        }
+      ]
+    }
+  ],
+  "schema_version": 1
+}

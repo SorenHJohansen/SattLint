@@ -4,7 +4,7 @@ This ExecPlan is the active orchestrator for the last push to full coverage. The
 
 ## Purpose / Big Picture
 
-The first coverage-lane generation is finished. Lane A, lane B, and lane C all closed their planned owner work and are now archive material, and the latest clean shared checkpoint has moved the repository to about `87%` coverage. This file now coordinates the final-phase split that is explicitly designed to eliminate the remaining `3505` uncovered lines and reach a clean repository-default `pytest -q` run at `100.00%` coverage.
+The first coverage-lane generation is finished. Lane A, lane B, and lane C all closed their planned owner work and are now archive material, and the checked-in coverage artifacts now place the repository at `88.26%` coverage. This file now coordinates the final-phase split that is explicitly designed to eliminate the remaining `3212` uncovered lines and reach a clean repository-default `pytest -q` run at `100.00%` coverage.
 
 ## Progress
 
@@ -14,6 +14,7 @@ The first coverage-lane generation is finished. Lane A, lane B, and lane C all c
 - [x] (2026-04-30) Retire the stale lane-A/B/C active split and replace it with final-phase plans keyed to the remaining coverage clusters.
 - [x] (2026-04-30) Refresh the shared checkpoint again after ExecPlan 16 closeout from a clean `.coverage` state and confirm the new residual ordering at `1272 passed, 1 warning`.
 - [x] (2026-04-30) Reopen the ExecPlan 16 docgen seam, drive `classification.py` and `docgen.py` to `100%` through `tests/test_docgen.py`, and refresh the shared checkpoint again at `1342 passed, 1 warning`.
+- [x] (2026-05-01) Add a checked-in coverage ratchet in `artifacts/analysis/coverage_ratchet.json` and align the repository-default pytest floor to the current `88.26%` baseline.
 - [ ] Drain the final-phase app/devtools/core cluster.
 - [ ] Drain the final-phase analyzers/semantic/LSP cluster.
 - [ ] Drain the final-phase parser/GUI/reporting/docgen cluster.
@@ -24,8 +25,9 @@ The first coverage-lane generation is finished. Lane A, lane B, and lane C all c
 
 ## Current Baseline
 
-- Full suite state: `Remove-Item -Force .coverage* -ErrorAction SilentlyContinue ; & ".venv/Scripts/python.exe" -m pytest -q --cov-fail-under=0` is clean at `1342 passed, 1 warning`.
-- Coverage baseline: `coverage.xml` now reports `87.1%` line coverage with `3505` uncovered lines.
+- Last clean shared checkpoint: `Remove-Item -Force .coverage* -ErrorAction SilentlyContinue ; & ".venv/Scripts/python.exe" -m pytest -q --cov-fail-under=0` is clean at `1342 passed, 1 warning`.
+- Coverage baseline: `coverage.xml` now reports `88.26%` line coverage with `3212` uncovered lines.
+- Ratchet baseline: repository-default `pytest -q` now enforces `--cov-fail-under=88.26`, and `artifacts/analysis/coverage_ratchet.json` mirrors that floor for machine-readable pipeline consumption.
 - Dominant remaining file misses: `reset_contamination.py` (`241`), `modules.py` (`200`), `engine.py` (`138`), `repo_audit.py` (`134`), `variables.py` (`117`), `app_graphics.py` (`111`), `dataflow.py` (`106`), `mms.py` (`102`), `doc_gardener.py` (`99`), `pipeline.py` (`95`), `core/semantic.py` (`87`), `_variables_effect_flow.py` (`85`), `config.py` (`79`), `_server_document.py` (`76`), and `_server_helpers.py` (`58`).
 - Final-phase planning buckets from the clean checkpoint table:
   - App/devtools/core cluster: about `1061` misses.
@@ -65,7 +67,7 @@ The first coverage-lane generation is finished. Lane A, lane B, and lane C all c
 1. Claim exact files in `.github/coordination/current-work.md` before touching code. Keep claims narrow and update them before widening scope.
 2. Stay inside the nearest existing owner suite first. Only add a dedicated suite when a quick search confirms there is no stable owner.
 3. The first post-edit validation remains slice-local and uses `--no-cov` unless the slice itself exists only to refresh shared coverage.
-4. Shared checkpoints with `--cov-fail-under=0` happen only after a child plan closes a meaningful bucket or the orchestrator needs a refreshed miss list.
+4. Shared checkpoints use repository-default `pytest -q` once a child plan closes a meaningful bucket or the orchestrator needs a refreshed miss list. Drop to `--cov-fail-under=0` only when coverage artifact generation itself is the thing being debugged.
 5. If a slice touches `src/sattlint_lsp/`, `src/sattlint/core/`, `src/sattlint/editor_api.py`, or `vscode/`, restart the LSP after validation per repo rules.
 6. If a slice discovers a real product defect while adding tests, fix the product behavior in the same slice rather than encoding the bug in tests.
 7. The orphan plan is the only place where new dedicated suites should be added for zero-owner modules after owner search is documented.
@@ -92,7 +94,7 @@ Coverage triage support:
 
 Shared checkpoint:
 
-    & ".venv/Scripts/python.exe" -m pytest -q --cov-fail-under=0
+  & ".venv/Scripts/python.exe" -m pytest -q
 
 Final acceptance:
 

@@ -1,13 +1,16 @@
 import json
+import os
 import subprocess
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 
 from sattlint.devtools import doc_gardener, repo_audit
+from sattlint.devtools.pipeline_artifacts import artifact_source_manifest_path, write_json_artifact
 
 from .helpers.artifact_assertions import assert_findings_collection, assert_findings_schema
 
@@ -21,6 +24,7 @@ def _patch_doc_gardener_paths(repo_root: Path):
         QUALITY_SCORE=repo_root / "docs" / "quality-score.md",
         TECH_DEBT=repo_root / "docs" / "exec-plans" / "tech-debt-tracker.md",
         CURRENT_WORK=repo_root / ".github" / "coordination" / "current-work.md",
+        CURRENT_WORK_TEMPLATE=repo_root / ".github" / "coordination" / "current-work.template.md",
         AI_FIRST_PLAN=repo_root / "docs" / "exec-plans" / "active" / "ai-first-repo-hardening.md",
         AI_FIRST_DEBT=repo_root / "docs" / "exec-plans" / "tech-debt-tracker.md",
     )
@@ -356,7 +360,7 @@ def test_parse_coverage_findings_handles_missing_file_and_parse_error(tmp_path):
 
 def test_load_pyproject_accepts_cp1252_toml(tmp_path):
     pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_bytes('[project]\nname = "demo"\nauthors = [{ name = "Søren" }]\n'.encode("cp1252"))
+    pyproject.write_bytes('[project]\nname = "demo"\nauthors = [{ name = "S\u00f8ren" }]\n'.encode("cp1252"))
 
     payload = repo_audit._load_pyproject(tmp_path)
 
@@ -437,6 +441,70 @@ def test_build_python_source_scan_context_skips_missing_tracked_files(tmp_path):
     )
 
     assert {path.relative_to(tmp_path).as_posix() for path in context.texts} == {"src/tracked.py"}
+
+
+def test_find_ignored_repo_path_references_flags_repo_local_gitignored_library_dependency(tmp_path):
+    sample = tmp_path / "tests" / "test_sample.py"
+    sample.parent.mkdir(parents=True)
+    sample.write_text(
+        'def test_library_fixture():\n    return _repo_path("Libs", "HA", "ABBLib", "SupportLib.x")\n',
+        encoding="utf-8",
+    )
+
+    context = repo_audit._build_python_source_scan_context(
+        tmp_path / "tests",
+        root=tmp_path,
+        tracked_paths=("tests/test_sample.py",),
+    )
+
+    findings = repo_audit._find_ignored_repo_path_references(
+        context,
+        root=tmp_path,
+        tracked_paths=("tests/test_sample.py",),
+    )
+
+    assert len(findings) == 1
+    assert findings[0].id == "gitignored-repo-path-reference"
+    assert findings[0].path == "tests/test_sample.py"
+    assert findings[0].line == 2
+    assert findings[0].detail == "Matched ignored path Libs/HA/ABBLib/SupportLib.x"
+
+
+def test_find_ignored_repo_path_references_skips_tracked_fixture_and_allowlisted_generated_output_tests(tmp_path):
+    tracked_fixture = tmp_path / "tests" / "fixtures" / "sample_sattline_files" / "official_library_files" / "Demo.x"
+    tracked_fixture.parent.mkdir(parents=True, exist_ok=True)
+    tracked_fixture.write_text("fixture\n", encoding="utf-8")
+    sample = tmp_path / "tests" / "test_sample.py"
+    sample.write_text(
+        "def test_library_fixture():\n"
+        '    return _repo_path("tests", "fixtures", "sample_sattline_files", "official_library_files", "Demo.x")\n',
+        encoding="utf-8",
+    )
+    allowlisted = tmp_path / "tests" / "test_pipeline_run.py"
+    allowlisted.write_text(
+        'def test_generated_output_contract():\n    return "artifacts/analysis"\n',
+        encoding="utf-8",
+    )
+
+    tracked_paths = (
+        "tests/test_sample.py",
+        "tests/test_pipeline_run.py",
+        "tests/fixtures/sample_sattline_files/official_library_files/Demo.x",
+    )
+
+    context = repo_audit._build_python_source_scan_context(
+        tmp_path / "tests",
+        root=tmp_path,
+        tracked_paths=tracked_paths,
+    )
+
+    findings = repo_audit._find_ignored_repo_path_references(
+        context,
+        root=tmp_path,
+        tracked_paths=tracked_paths,
+    )
+
+    assert findings == []
 
 
 def test_parse_coverage_findings_ignores_untracked_coverage_xml(tmp_path):
@@ -733,6 +801,8 @@ def test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_sour
         },
         asts={},
     )
+    empty_test_context = repo_audit.PythonSourceScanContext(source_root=tmp_path / "tests", texts={}, asts={})
+    empty_scripts_context = repo_audit.PythonSourceScanContext(source_root=tmp_path / "scripts", texts={}, asts={})
     text_finding = repo_audit.Finding(
         "hardcoded-windows-path",
         "portability",
@@ -788,7 +858,11 @@ def test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_sour
         ) as tracked,
         patch.object(repo_audit, "_iter_repo_text_entries", return_value=[(readme, "repo docs\n")]) as iter_entries,
         patch.object(repo_audit, "_line_findings", return_value=[text_finding]) as line_findings,
-        patch.object(repo_audit, "_build_python_source_scan_context", return_value=source_context) as build_context,
+        patch.object(
+            repo_audit,
+            "_build_python_source_scan_context",
+            side_effect=[source_context, empty_test_context, empty_scripts_context],
+        ) as build_context,
         patch.object(repo_audit, "_collect_cli_metadata", return_value=({"sattlint-repo-audit"}, {"syntax-check"})),
         patch.object(
             repo_audit,
@@ -801,6 +875,7 @@ def test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_sour
         patch.object(repo_audit, "_find_structural_report_findings", return_value=[structural_finding]),
         patch.object(repo_audit, "_find_cli_findings", return_value=[]),
         patch.object(repo_audit, "_find_logging_findings", return_value=[logging_finding]) as logging_findings,
+        patch.object(repo_audit, "_find_ignored_repo_path_references", return_value=[]) as ignored_path_refs,
         patch.object(repo_audit, "_parse_coverage_findings", return_value=[docs_finding]) as coverage_findings,
         patch.object(
             repo_audit, "_find_public_readiness_findings", return_value=[readiness_finding]
@@ -816,11 +891,23 @@ def test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_sour
     tracked.assert_called_once_with(tmp_path)
     iter_entries.assert_called_once_with(tmp_path, include_generated=True, tracked_only=True)
     line_findings.assert_called_once_with(readme, "repo docs\n", {"SQHJ"}, root=tmp_path)
-    build_context.assert_called_once_with(
-        tmp_path / "src",
-        root=tmp_path,
-        tracked_paths=("README.md", "src/sattlint/alpha.py"),
-    )
+    assert build_context.call_args_list == [
+        call(
+            tmp_path / "src",
+            root=tmp_path,
+            tracked_paths=("README.md", "src/sattlint/alpha.py"),
+        ),
+        call(
+            tmp_path / "tests",
+            root=tmp_path,
+            tracked_paths=("README.md", "src/sattlint/alpha.py"),
+        ),
+        call(
+            tmp_path / "scripts",
+            root=tmp_path,
+            tracked_paths=("README.md", "src/sattlint/alpha.py"),
+        ),
+    ]
     extracted_paths = list(extract_commands.call_args.args[0])
     assert extracted_paths == [readme, vscode_readme]
     assert unused_keys.call_args.args[0] == tmp_path / "src" / "sattlint"
@@ -828,6 +915,7 @@ def test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_sour
         tmp_path / "src" / "sattlint" / "alpha.py": "ALPHA = 1\n",
     }
     logging_findings.assert_called_once_with(tmp_path / "src", content_by_file=source_context.texts)
+    assert ignored_path_refs.call_count == 3
     coverage_findings.assert_called_once_with(tmp_path, tracked_paths=("README.md", "src/sattlint/alpha.py"))
     readiness_findings.assert_called_once_with(tmp_path, tracked_paths=("README.md", "src/sattlint/alpha.py"))
     assert [finding.id for finding in findings] == [
@@ -1113,6 +1201,46 @@ def test_doc_gardener_scan_ai_first_status_drift_reports_mismatch(tmp_path):
     ]
 
 
+def test_doc_gardener_scan_ai_first_status_drift_falls_back_to_template_when_local_ledger_missing(tmp_path):
+    template = tmp_path / ".github" / "coordination" / "current-work.template.md"
+    template.parent.mkdir(parents=True)
+    template.write_text(
+        "\n".join(
+            [
+                "### Workstream W1-something",
+                "- Status: active",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    tech_debt = tmp_path / "docs" / "exec-plans" / "tech-debt-tracker.md"
+    tech_debt.parent.mkdir(parents=True)
+    tech_debt.write_text(
+        "\n".join(
+            [
+                "## Program B: Refactor And Architecture Debt",
+                "| Debt ID | Status |",
+                "| --- | --- |",
+                "| W1 | Done |",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with _patch_doc_gardener_paths(tmp_path):
+        findings = doc_gardener.scan_ai_first_status_drift()
+
+    assert findings == [
+        doc_gardener.DocFinding(
+            "docs/exec-plans/tech-debt-tracker.md",
+            4,
+            "Medium",
+            "stale_status",
+            "W1 status is 'Done' but current-work tracks 'In progress'.",
+        )
+    ]
+
+
 def test_doc_gardener_run_scan_aggregates_findings(monkeypatch):
     monkeypatch.setattr(
         doc_gardener,
@@ -1357,7 +1485,7 @@ def test_doc_gardener_main_exits_nonzero_when_findings_exist():
                 "line": 1,
                 "severity": "Medium",
                 "category": "encoding",
-                "message": "Possible mojibake tokens in markdown content: —",
+                "message": "Possible mojibake tokens in markdown content: �",
             }
         ],
     }
@@ -1453,6 +1581,7 @@ def test_audit_repository_mirrors_latest_reports_to_stable_directory(tmp_path):
     latest_status = json.loads((latest_dir / "status.json").read_text(encoding="utf-8"))
     latest_summary = json.loads((latest_dir / "summary.json").read_text(encoding="utf-8"))
     mirrored_findings = json.loads((latest_dir / "findings.json").read_text(encoding="utf-8"))
+    run_history = json.loads((latest_dir / "run_history.json").read_text(encoding="utf-8"))
 
     assert stale_file.exists() is True
     assert latest_status["latest_status_report"].endswith("/audit/status.json")
@@ -1460,6 +1589,61 @@ def test_audit_repository_mirrors_latest_reports_to_stable_directory(tmp_path):
     assert latest_summary["finding_count"] == 1
     assert_findings_collection(mirrored_findings, finding_count=1)
     assert mirrored_findings["findings"][0]["id"] == "oversized-module"
+    assert run_history["kind"] == "sattlint.audit_run_history"
+    assert run_history["run_count"] == 1
+    assert run_history["latest_run_id"] == run_history["runs"][0]["run_id"]
+    assert run_history["runs"][0]["latest"] is True
+    assert run_history["runs"][0]["report_kind"] == "repo_audit"
+    snapshot_dir = latest_dir / "history" / run_history["runs"][0]["snapshot_dir_name"]
+    assert snapshot_dir.exists()
+
+
+def test_audit_repository_run_history_keeps_last_ten_runs_and_marks_older_entries_stale(tmp_path):
+    latest_dir = tmp_path / "artifacts" / "audit"
+    finding = repo_audit.Finding(
+        "oversized-module",
+        "architecture",
+        "high",
+        "high",
+        "Large module with high maintenance cost.",
+        path="src/big.py",
+    )
+    pipeline_summary = {
+        "profile": "quick",
+        "output_dir": "<external>/audit/pipeline",
+        "status": {"overall_status": "pass", "tool_statuses": {}},
+    }
+
+    with (
+        patch.object(repo_audit, "collect_custom_findings", return_value=[finding]),
+        patch.object(repo_audit, "_find_pipeline_findings", return_value=[]),
+        patch.object(repo_audit.pipeline_module, "_run_pipeline", return_value=pipeline_summary),
+        patch.object(repo_audit, "_collect_audit_git_state", return_value={"head": "abc123", "dirty": False}),
+    ):
+        for index in range(11):
+            repo_audit.audit_repository(
+                tmp_path / "runs" / f"audit-{index:03d}",
+                profile="quick",
+                fail_on="high",
+                include_generated=False,
+                leaks_only=False,
+                suspicious_identifiers=["SQHJ"],
+                skip_pipeline=False,
+                skip_vulture=False,
+                skip_bandit=False,
+                latest_output_dir=latest_dir,
+            )
+
+    run_history = json.loads((latest_dir / "run_history.json").read_text(encoding="utf-8"))
+
+    assert run_history["run_count"] == 10
+    assert len(run_history["runs"]) == 10
+    assert run_history["runs"][0]["latest"] is True
+    assert run_history["runs"][0]["likely_stale"] is False
+    assert all(entry["likely_stale"] is True for entry in run_history["runs"][1:])
+    assert all("superseded-by-newer-run" in entry["likely_stale_reasons"] for entry in run_history["runs"][1:])
+    assert len(list((latest_dir / "history").iterdir())) == 10
+    assert run_history["failure_patterns"][0]["occurrence_count"] == 10
 
 
 def test_audit_repository_skips_pipeline_and_writes_full_cli_consistency_report(tmp_path):
@@ -1598,6 +1782,620 @@ def test_main_reports_latest_links_for_non_default_output_dir(tmp_path):
     printed_summary = print_cli_summary.call_args.args[0]
     assert printed_summary["latest_status_report"].endswith("/status.json")
     assert printed_summary["latest_summary_report"].endswith("/summary.json")
+
+
+def test_collect_custom_findings_selected_checks_only_run_requested_runner(monkeypatch):
+    calls: list[str] = []
+
+    monkeypatch.setattr(repo_audit, "_build_repo_audit_scan_context", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        repo_audit,
+        "_repo_audit_finding_check_definitions",
+        lambda: (
+            {"id": "text-scan", "runner": lambda context: calls.append("text-scan") or []},
+            {"id": "public-readiness", "runner": lambda context: calls.append("public-readiness") or []},
+        ),
+    )
+
+    findings = repo_audit.collect_custom_findings(selected_checks=["public-readiness"])
+
+    assert findings == []
+    assert calls == ["public-readiness"]
+
+
+def test_build_ai_gc_report_flags_stale_untracked_allowlisted_artifact(tmp_path):
+    artifact_dir = tmp_path / "artifacts" / "audit-review-old"
+    artifact_dir.mkdir(parents=True)
+    report_path = artifact_dir / "status.json"
+    report_path.write_text("{}\n", encoding="utf-8")
+
+    now_ts = time.time()
+    stale_ts = now_ts - (20 * 24 * 60 * 60)
+    os.utime(artifact_dir, (stale_ts, stale_ts))
+    os.utime(report_path, (stale_ts, stale_ts))
+
+    report = repo_audit.build_ai_gc_report(
+        tmp_path,
+        tracked_paths=(),
+        now_ts=now_ts,
+        stale_after_days=14,
+    )
+
+    assert report["status"] == "needs-attention"
+    assert report["summary"]["candidate_count"] == 1
+    candidate = report["candidates"][0]
+    assert candidate["candidate_id"] == "stale-ai-artifact"
+    assert candidate["path"] == "artifacts/audit-review-old"
+    assert candidate["action"] == "delete"
+
+
+def test_build_ai_gc_report_flags_manifest_drift_before_age_cutoff(tmp_path):
+    artifact_dir = tmp_path / "artifacts" / "audit-review-fresh"
+    artifact_dir.mkdir(parents=True)
+    report_path = artifact_dir / "status.json"
+    source_path = tmp_path / "src" / "generator.py"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text("value = 1\n", encoding="utf-8")
+
+    write_json_artifact(
+        report_path,
+        {
+            "kind": "sattlint.repo_audit.status",
+            "schema_version": 1,
+            "generated_by": "sattlint.devtools.repo_audit",
+        },
+        repo_root=tmp_path,
+        source_paths=(source_path,),
+    )
+    source_path.write_text("value = 2\n", encoding="utf-8")
+
+    report = repo_audit.build_ai_gc_report(
+        tmp_path,
+        tracked_paths=(),
+        stale_after_days=14,
+    )
+
+    assert report["generated_by"] == "sattlint.devtools.ai_gc"
+    assert report["summary"]["manifest_drift_candidate_count"] == 1
+    candidate = report["candidates"][0]
+    assert candidate["candidate_id"] == "stale-generated-output-manifest"
+    assert candidate["path"] == "artifacts/audit-review-fresh"
+    assert candidate["drifted_sources"] == ["src/generator.py"]
+
+
+def test_collect_custom_findings_ai_gc_surfaces_stale_artifacts(tmp_path):
+    artifact_dir = tmp_path / "artifacts" / "audit-review-old"
+    artifact_dir.mkdir(parents=True)
+    report_path = artifact_dir / "status.json"
+    report_path.write_text("{}\n", encoding="utf-8")
+
+    stale_ts = time.time() - (20 * 24 * 60 * 60)
+    os.utime(artifact_dir, (stale_ts, stale_ts))
+    os.utime(report_path, (stale_ts, stale_ts))
+
+    findings = repo_audit.collect_custom_findings(
+        tmp_path,
+        tracked_only=True,
+        selected_checks=["ai-gc"],
+    )
+
+    assert [finding.id for finding in findings] == ["stale-ai-artifact"]
+    assert findings[0].path == "artifacts/audit-review-old"
+
+
+def test_apply_ai_gc_deletes_stale_artifacts_and_writes_report(tmp_path):
+    artifact_dir = tmp_path / "artifacts" / "audit-review-old"
+    artifact_dir.mkdir(parents=True)
+    report_path = artifact_dir / "status.json"
+    source_path = tmp_path / "src" / "generator.py"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text("value = 1\n", encoding="utf-8")
+    write_json_artifact(
+        report_path,
+        {
+            "kind": "sattlint.repo_audit.status",
+            "schema_version": 1,
+            "generated_by": "sattlint.devtools.repo_audit",
+        },
+        repo_root=tmp_path,
+        source_paths=(source_path,),
+    )
+    output_dir = tmp_path / "out"
+
+    source_path.write_text("value = 2\n", encoding="utf-8")
+    manifest_path = artifact_source_manifest_path(report_path)
+
+    report = repo_audit.apply_ai_gc(
+        tmp_path,
+        output_dir=output_dir,
+        tracked_paths=(),
+    )
+
+    assert report["status"] == "pass"
+    assert report["summary"]["applied_count"] == 1
+    assert not artifact_dir.exists()
+    assert not manifest_path.exists()
+    assert (output_dir / "ai_gc.json").exists()
+
+
+def test_build_repo_audit_check_catalog_lists_pipeline_and_custom_checks(tmp_path):
+    catalog = repo_audit.build_repo_audit_check_catalog(profile="full", output_dir=tmp_path, fail_on="high")
+
+    assert catalog["kind"] == "sattlint.repo_audit.check_catalog"
+    check_ids = {entry["id"] for entry in catalog["checks"]}
+    assert {"ruff", "ai-gc", "public-readiness", "cli-consistency"} <= check_ids
+    public_readiness_entry = next(entry for entry in catalog["checks"] if entry["id"] == "public-readiness")
+    assert public_readiness_entry["source"] == "repo-audit"
+    assert "--check public-readiness" in public_readiness_entry["command"]
+    assert public_readiness_entry["owner_surface"] == "public-readiness"
+
+    ai_gc_entry = next(entry for entry in catalog["checks"] if entry["id"] == "ai-gc")
+    assert "ai_gc" in ai_gc_entry["artifact_ids"]
+    assert ai_gc_entry["owner_surface"] == "ai-hygiene"
+
+
+def test_build_repo_audit_check_recommendations_combines_pipeline_and_repo_audit_routes(tmp_path):
+    recommendations = repo_audit.build_repo_audit_check_recommendations(
+        profile="full",
+        output_dir=tmp_path,
+        fail_on="high",
+        changed_files=["docs/references/cli-commands.md"],
+    )
+
+    assert recommendations["kind"] == "sattlint.repo_audit.check_recommendations"
+    assert recommendations["fallback_required"] is False
+    assert "documented-commands" in recommendations["recommended_repo_audit_check_ids"]
+    assert "cli-consistency" in recommendations["recommended_repo_audit_check_ids"]
+    assert recommendations["suggested_check_commands"]
+    assert recommendations["suggested_finish_gate_commands"]
+    assert recommendations["why_this_gate"]["matched_routes"]
+
+
+def test_main_list_checks_prints_catalog(tmp_path, capsys):
+    exit_code = repo_audit.main(["--profile", "full", "--output-dir", str(tmp_path), "--list-checks"])
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["kind"] == "sattlint.repo_audit.check_catalog"
+    assert any(entry["id"] == "cli-consistency" for entry in payload["checks"])
+
+
+def test_main_recommend_checks_prints_catalog(tmp_path, capsys):
+    exit_code = repo_audit.main(
+        [
+            "--profile",
+            "full",
+            "--output-dir",
+            str(tmp_path),
+            "--recommend-checks",
+            "--changed-file",
+            "docs/references/cli-commands.md",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["kind"] == "sattlint.repo_audit.check_recommendations"
+    assert "documented-commands" in payload["recommended_repo_audit_check_ids"]
+
+
+def test_main_planning_context_prints_machine_readable_report(monkeypatch, tmp_path, capsys):
+    report = {
+        "kind": "sattlint.planning_context",
+        "schema_version": 1,
+        "selected_surface": "repo-audit",
+        "planning_context": {"primary_agent": "CLI App Menu", "instruction_files": [], "nearest_owner_suites": []},
+    }
+
+    with patch.object(
+        repo_audit._repo_audit_entrypoints,
+        "build_check_my_changes_planning_report",
+        return_value=report,
+    ) as build_planning_report:
+        exit_code = repo_audit.main(
+            [
+                "--planning-context",
+                "--output-dir",
+                str(tmp_path),
+                "--changed-file",
+                "src/sattlint/app.py",
+            ]
+        )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["primary_agent"] == "CLI App Menu"
+    assert build_planning_report.call_args.kwargs["changed_files"] == ["src/sattlint/app.py"]
+
+
+def test_main_check_routes_finding_checks(monkeypatch, tmp_path):
+    summary = {
+        "profile": "full",
+        "output_dir": f"<external>/{tmp_path.name}",
+        "finding_count": 0,
+        "findings_schema": {"kind": "sattlint.findings", "schema_version": 1},
+        "findings": [],
+    }
+
+    with (
+        patch.object(repo_audit, "_run_repo_audit_findings_checks", return_value=summary) as run_checks,
+        patch.object(repo_audit, "_print_cli_summary") as print_cli_summary,
+    ):
+        exit_code = repo_audit.main(["--check", "public-readiness", "--output-dir", str(tmp_path), "--skip-pipeline"])
+
+    assert exit_code == 0
+    assert run_checks.call_args.kwargs["check_ids"] == ("public-readiness",)
+    printed = print_cli_summary.call_args.args[0]
+    assert printed["overall_status"] == "pass"
+
+
+def test_main_check_cli_consistency_exits_nonzero_and_writes_report(monkeypatch, tmp_path):
+    cli_report = {
+        "kind": "sattlint.cli_consistency",
+        "schema_version": 1,
+        "declared": {"scripts": ["sattlint"], "subcommands": ["syntax-check"]},
+        "gaps": {
+            "undeclared_subcommands": [{"subcommand": "ghost", "path": "README.md", "line": 1}],
+            "undeclared_scripts": [],
+            "undocumented_subcommands": [],
+            "undocumented_scripts": [],
+        },
+        "summary": {
+            "undeclared_subcommand_count": 1,
+            "undeclared_script_count": 0,
+            "undocumented_subcommand_count": 0,
+            "undocumented_script_count": 0,
+            "gap_count": 1,
+        },
+        "status": "fail",
+    }
+
+    with (
+        patch.object(repo_audit, "build_cli_consistency_report", return_value=cli_report),
+        patch.object(repo_audit, "_print_cli_summary"),
+    ):
+        exit_code = repo_audit.main(["--check", "cli-consistency", "--output-dir", str(tmp_path), "--skip-pipeline"])
+
+    status_report = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    findings_report = json.loads((tmp_path / "findings.json").read_text(encoding="utf-8"))
+
+    assert exit_code == 1
+    assert (tmp_path / "cli_consistency.json").exists()
+    assert status_report["overall_status"] == "fail"
+    assert status_report["selected_checks"] == ["cli-consistency"]
+    assert findings_report["finding_count"] == 1
+
+
+def test_main_run_recommended_slice_uses_combined_recommendation(monkeypatch, tmp_path):
+    summary = {
+        "profile": "full",
+        "output_dir": f"<external>/{tmp_path.name}",
+        "finding_count": 0,
+        "findings_schema": {"kind": "sattlint.findings", "schema_version": 1},
+        "findings": [],
+        "cli_consistency_status": None,
+    }
+
+    with (
+        patch.object(repo_audit, "run_recommended_repo_audit_slice", return_value=summary) as run_slice,
+        patch.object(repo_audit, "_print_cli_summary") as print_cli_summary,
+    ):
+        exit_code = repo_audit.main(
+            [
+                "--profile",
+                "full",
+                "--output-dir",
+                str(tmp_path),
+                "--run-recommended-slice",
+                "--changed-file",
+                "docs/references/cli-commands.md",
+            ]
+        )
+
+    assert exit_code == 0
+    assert run_slice.call_args.kwargs["changed_files"] == ["docs/references/cli-commands.md"]
+    printed = print_cli_summary.call_args.args[0]
+    assert printed["overall_status"] == "pass"
+
+
+def test_main_run_recommended_finish_gate_uses_combined_recommendation(monkeypatch, tmp_path):
+    summary = {
+        "profile": "full",
+        "output_dir": f"<external>/{tmp_path.name}",
+        "finding_count": 0,
+        "findings_schema": {"kind": "sattlint.findings", "schema_version": 1},
+        "findings": [],
+        "cli_consistency_status": None,
+        "finish_gate": {"status": "pass"},
+    }
+
+    with (
+        patch.object(repo_audit, "run_recommended_repo_audit_finish_gate", return_value=summary) as run_finish_gate,
+        patch.object(repo_audit, "_print_cli_summary") as print_cli_summary,
+    ):
+        exit_code = repo_audit.main(
+            [
+                "--profile",
+                "full",
+                "--output-dir",
+                str(tmp_path),
+                "--run-recommended-finish-gate",
+                "--changed-file",
+                "docs/references/cli-commands.md",
+            ]
+        )
+
+    assert exit_code == 0
+    assert run_finish_gate.call_args.kwargs["changed_files"] == ["docs/references/cli-commands.md"]
+    printed = print_cli_summary.call_args.args[0]
+    assert printed["overall_status"] == "pass"
+
+
+def test_run_check_my_changes_uses_pipeline_finish_gate_when_no_repo_checks_are_recommended(monkeypatch, tmp_path):
+    recommendation = {
+        "changed_files": ["src/sattlint/devtools/pipeline.py"],
+        "fallback_required": False,
+        "fallback_reason": None,
+        "recommended_check_ids": ["ruff", "pyright", "pytest"],
+        "recommended_pipeline_check_ids": ["ruff", "pyright", "pytest"],
+        "recommended_repo_audit_check_ids": [],
+    }
+
+    with (
+        patch.object(
+            repo_audit._repo_audit_entrypoints, "build_repo_audit_check_recommendations", return_value=recommendation
+        ),
+        patch.object(
+            repo_audit.pipeline_module,
+            "run_recommended_pipeline_finish_gate",
+            return_value={
+                "overall_status": "pass",
+                "finish_gate": {"status": "pass"},
+                "pipeline_summary": {},
+            },
+        ) as run_pipeline_finish_gate,
+        patch.object(repo_audit, "run_recommended_repo_audit_finish_gate") as run_repo_finish_gate,
+    ):
+        report = repo_audit.run_check_my_changes(
+            tmp_path,
+            profile="full",
+            fail_on="high",
+            include_generated=False,
+            suspicious_identifiers=[],
+            skip_vulture=False,
+            skip_bandit=False,
+            changed_files=["src/sattlint/devtools/pipeline.py"],
+        )
+
+    assert report["selected_surface"] == "pipeline"
+    assert report["overall_status"] == "pass"
+    assert "sattlint-analysis-pipeline" in report["selected_command"]
+    assert report["reports"]["finish_gate"].endswith("/pipeline/finish_gate.json")
+    assert report["reports"]["ai_feedback"].endswith("/ai_feedback.json")
+    assert (tmp_path / "check_my_changes.json").exists()
+    assert (tmp_path / "ai_feedback.json").exists()
+    assert run_pipeline_finish_gate.called
+    assert not run_repo_finish_gate.called
+
+
+def test_run_check_my_changes_uses_repo_audit_finish_gate_when_repo_checks_are_recommended(monkeypatch, tmp_path):
+    recommendation = {
+        "changed_files": ["docs/references/cli-commands.md"],
+        "fallback_required": False,
+        "fallback_reason": None,
+        "recommended_check_ids": ["documented-commands", "cli-consistency"],
+        "recommended_pipeline_check_ids": [],
+        "recommended_repo_audit_check_ids": ["documented-commands", "cli-consistency"],
+    }
+
+    with (
+        patch.object(
+            repo_audit._repo_audit_entrypoints, "build_repo_audit_check_recommendations", return_value=recommendation
+        ),
+        patch.object(
+            repo_audit._repo_audit_entrypoints,
+            "run_recommended_repo_audit_finish_gate",
+            return_value={"overall_status": "pass", "finish_gate": {"status": "pass"}},
+        ) as run_repo_finish_gate,
+        patch.object(repo_audit.pipeline_module, "run_recommended_pipeline_finish_gate") as run_pipeline_finish_gate,
+    ):
+        report = repo_audit.run_check_my_changes(
+            tmp_path,
+            profile="full",
+            fail_on="high",
+            include_generated=False,
+            suspicious_identifiers=[],
+            skip_vulture=False,
+            skip_bandit=False,
+            changed_files=["docs/references/cli-commands.md"],
+        )
+
+    assert report["selected_surface"] == "repo-audit"
+    assert report["overall_status"] == "pass"
+    assert "sattlint-repo-audit" in report["selected_command"]
+    assert report["reports"]["finish_gate"].endswith("/finish_gate.json")
+    assert report["reports"]["ai_feedback"].endswith("/ai_feedback.json")
+    assert run_repo_finish_gate.called
+    assert not run_pipeline_finish_gate.called
+
+
+def test_run_check_my_changes_writes_run_history(monkeypatch, tmp_path):
+    recommendation = {
+        "changed_files": ["docs/references/cli-commands.md"],
+        "fallback_required": False,
+        "fallback_reason": None,
+        "recommended_check_ids": ["documented-commands", "cli-consistency"],
+        "recommended_pipeline_check_ids": [],
+        "recommended_repo_audit_check_ids": ["documented-commands", "cli-consistency"],
+    }
+
+    with (
+        patch.object(
+            repo_audit._repo_audit_entrypoints, "build_repo_audit_check_recommendations", return_value=recommendation
+        ),
+        patch.object(
+            repo_audit._repo_audit_entrypoints,
+            "run_recommended_repo_audit_finish_gate",
+            return_value={"overall_status": "pass", "finish_gate": {"status": "pass"}},
+        ),
+        patch.object(repo_audit.pipeline_module, "run_recommended_pipeline_finish_gate"),
+    ):
+        repo_audit.run_check_my_changes(
+            tmp_path,
+            profile="full",
+            fail_on="high",
+            include_generated=False,
+            suspicious_identifiers=[],
+            skip_vulture=False,
+            skip_bandit=False,
+            changed_files=["docs/references/cli-commands.md"],
+        )
+
+    run_history = json.loads((tmp_path / "run_history.json").read_text(encoding="utf-8"))
+
+    assert run_history["run_count"] == 1
+    assert run_history["runs"][0]["report_kind"] == "check_my_changes"
+    assert run_history["runs"][0]["selected_surface"] == "repo-audit"
+    assert run_history["runs"][0]["changed_files"] == ["docs/references/cli-commands.md"]
+
+
+def test_run_check_my_changes_includes_planning_context(monkeypatch, tmp_path):
+    recommendation = {
+        "changed_files": ["src/sattlint/app.py"],
+        "fallback_required": False,
+        "fallback_reason": None,
+        "recommended_check_ids": ["cli"],
+        "recommended_pipeline_check_ids": [],
+        "recommended_repo_audit_check_ids": ["cli"],
+    }
+
+    with (
+        patch.object(
+            repo_audit._repo_audit_entrypoints, "build_repo_audit_check_recommendations", return_value=recommendation
+        ),
+        patch.object(
+            repo_audit._repo_audit_entrypoints,
+            "run_recommended_repo_audit_finish_gate",
+            return_value={"overall_status": "pass", "finish_gate": {"status": "pass"}},
+        ),
+        patch.object(repo_audit.pipeline_module, "run_recommended_pipeline_finish_gate"),
+    ):
+        report = repo_audit.run_check_my_changes(
+            tmp_path,
+            profile="full",
+            fail_on="high",
+            include_generated=False,
+            suspicious_identifiers=[],
+            skip_vulture=False,
+            skip_bandit=False,
+            changed_files=["src/sattlint/app.py"],
+        )
+
+    assert report["planning_context"]["primary_agent"] == "CLI App Menu"
+    assert any(item["name"] == "CLI App Instructions" for item in report["planning_context"]["instruction_files"])
+    assert any("tests/test_app.py" in suite["tests"] for suite in report["planning_context"]["nearest_owner_suites"])
+    assert report["planning_context"]["first_validation_commands"]
+    assert report["ai_feedback"]["primary_agent"] == "CLI App Menu"
+    assert (
+        report["ai_feedback"]["first_validation_commands"]
+        == report["planning_context"]["first_validation_commands"][:3]
+    )
+
+
+def test_run_check_my_changes_ai_feedback_prefers_failed_finish_gate_step(monkeypatch, tmp_path):
+    recommendation = {
+        "changed_files": ["src/sattlint/app.py"],
+        "fallback_required": False,
+        "fallback_reason": None,
+        "recommended_check_ids": ["cli"],
+        "recommended_pipeline_check_ids": [],
+        "recommended_repo_audit_check_ids": ["cli"],
+    }
+
+    with (
+        patch.object(
+            repo_audit._repo_audit_entrypoints, "build_repo_audit_check_recommendations", return_value=recommendation
+        ),
+        patch.object(
+            repo_audit._repo_audit_entrypoints,
+            "run_recommended_repo_audit_finish_gate",
+            return_value={
+                "overall_status": "fail",
+                "finish_gate": {
+                    "status": "fail",
+                    "commands": [
+                        {
+                            "id": "ruff",
+                            "label": "Ruff on touched files",
+                            "command": "ruff check src/sattlint/app.py",
+                            "exit_code": 1,
+                            "status": "fail",
+                        }
+                    ],
+                },
+            },
+        ),
+        patch.object(repo_audit.pipeline_module, "run_recommended_pipeline_finish_gate"),
+    ):
+        report = repo_audit.run_check_my_changes(
+            tmp_path,
+            profile="full",
+            fail_on="high",
+            include_generated=False,
+            suspicious_identifiers=[],
+            skip_vulture=False,
+            skip_bandit=False,
+            changed_files=["src/sattlint/app.py"],
+        )
+
+    feedback_payload = json.loads((tmp_path / "ai_feedback.json").read_text(encoding="utf-8"))
+
+    assert report["ai_feedback"]["first_failed_step"]["id"] == "ruff"
+    assert feedback_payload["first_failed_step"]["command"] == "ruff check src/sattlint/app.py"
+    assert feedback_payload["suggested_next_command"] == "ruff check src/sattlint/app.py"
+
+
+def test_main_check_my_changes_prints_machine_readable_report(monkeypatch, tmp_path, capsys):
+    report = {
+        "kind": "sattlint.check_my_changes",
+        "schema_version": 1,
+        "selected_surface": "pipeline",
+        "overall_status": "pass",
+    }
+
+    with patch.object(repo_audit, "run_check_my_changes", return_value=report) as run_check_my_changes:
+        exit_code = repo_audit.main(["--check-my-changes", "--output-dir", str(tmp_path)])
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["kind"] == "sattlint.check_my_changes"
+    assert payload["selected_surface"] == "pipeline"
+    assert run_check_my_changes.call_args.args[0] == tmp_path
+
+
+def test_main_apply_ai_gc_calls_apply_helper(monkeypatch, tmp_path, capsys):
+    report = {
+        "kind": "sattlint.ai_gc",
+        "schema_version": 1,
+        "status": "pass",
+        "summary": {"candidate_count": 1, "applied_count": 1, "failure_count": 0},
+        "candidates": [],
+        "applied_actions": [{"path": "artifacts/audit-review-old", "action": "delete"}],
+        "failures": [],
+    }
+
+    with patch.object(repo_audit, "apply_ai_gc", return_value=report) as apply_ai_gc:
+        exit_code = repo_audit.main(["--apply-ai-gc", "--output-dir", str(tmp_path)])
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["kind"] == "sattlint.ai_gc"
+    assert apply_ai_gc.call_args.kwargs["output_dir"] == tmp_path
 
 
 # --- ID 19: Coverage summary report tests ---
@@ -1754,6 +2552,65 @@ def test_build_cli_consistency_report_pass_when_all_documented_subcommands_are_d
 
     assert report["gaps"]["undeclared_subcommands"] == []
     assert report["summary"]["undeclared_subcommand_count"] == 0
+
+
+def test_build_cli_consistency_report_ignores_exec_plan_markdown_noise(tmp_path, monkeypatch):
+    cli_docs = tmp_path / "docs" / "references"
+    cli_docs.mkdir(parents=True)
+    (cli_docs / "cli-commands.md").write_text("Run `sattlint syntax-check` to validate syntax.\n", encoding="utf-8")
+
+    exec_plan = tmp_path / "docs" / "exec-plans" / "active"
+    exec_plan.mkdir(parents=True)
+    (exec_plan / "plan.md").write_text(
+        "Do not suppress the `sattlint-syntax-check` hook.\n"
+        '    rg -n "sattlint|sattlint-repo-audit|sattlint-corpus-runner|sattlint-lsp" README.md docs\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        repo_audit,
+        "_collect_cli_metadata",
+        lambda: ({"sattlint", "sattlint-repo-audit"}, {"syntax-check"}),
+    )
+
+    report = repo_audit.build_cli_consistency_report(root=tmp_path)
+
+    assert report["status"] == "pass"
+    assert report["gaps"]["undeclared_scripts"] == []
+    assert report["gaps"]["undeclared_subcommands"] == []
+
+
+def test_cli_consistency_findings_preserve_report_script_and_path_fields():
+    report = {
+        "gaps": {
+            "undeclared_subcommands": [
+                {
+                    "subcommand": "ghost-command",
+                    "referenced_in": "docs/references/cli-commands.md",
+                    "line": 12,
+                }
+            ],
+            "undeclared_scripts": [
+                {
+                    "script": "sattlint-ghost",
+                    "referenced_in": "docs/references/cli-commands.md",
+                    "line": 24,
+                }
+            ],
+        }
+    }
+
+    findings = repo_audit._repo_audit_entrypoints._cli_consistency_findings(report)
+
+    assert [finding.id for finding in findings] == [
+        "cli-consistency-undeclared-subcommand",
+        "cli-consistency-undeclared-script",
+    ]
+    assert findings[0].path == "docs/references/cli-commands.md"
+    assert findings[0].line == 12
+    assert findings[1].path == "docs/references/cli-commands.md"
+    assert findings[1].line == 24
+    assert findings[1].message == "Documented CLI script 'sattlint-ghost' is not declared."
 
 
 def test_doc_gardener_relative_path_returns_repo_relative():

@@ -45,6 +45,7 @@ See `.github/instructions/sattline-invariants.instructions.md` for `src/**` and 
 - Root cause before remedy: analyze bug class, prefer shared fix over local patch.
 - Prefer incremental, reviewable changes over large rewrites. Propose plan before broad changes.
 - When adding AI customizations, optimize for lower context waste.
+- AI must fix code or tests before any ratchet rebaseline. Do not loosen structural budgets, lower coverage ratchets, or lower `--cov-fail-under` as a substitute for a real fix. Only change those surfaces after explicit user approval.
 - When an ExecPlan checklist is fully complete, move it from `docs/exec-plans/active/` to `docs/exec-plans/completed/` in the same change and update affected indexes or trackers.
 
 ## Change Boundaries
@@ -63,6 +64,11 @@ See `.github/instructions/sattline-invariants.instructions.md` for `src/**` and 
 - `sattlint syntax-check` is strict. No new silent fallback behavior.
 - Workspace/LSP may degrade only in established ways (unavailable deps, dirty buffers).
 - Preserve distinction between single-file strict validation and dependency-aware workspace loading.
+- Before finishing a code or config task, run an efficient finish gate sized to touched surface.
+- Minimum finish gate for Python edits: one focused executable behavior check, `ruff check` clean on touched Python files, and `pyright` clean on touched Python files.
+- Widen only when touched surface is shared infra, devtools, or cross-subsystem code; prefer owner-suite or quick-audit validation over full repo gates.
+- Use full `Repo Verify` gate only when user asks for repo-wide verification or when task is commit, push, merge, or pre-release readiness.
+- Do not report task complete or checks green when touched-file Ruff or Pyright errors remain, or when focused executable validation for changed behavior was skipped.
 
 ## Repo-Audit And Public-Readiness
 
@@ -81,8 +87,9 @@ See `.github/instructions/repo-audit.instructions.md` (auto-loaded for `src/satt
 ## Definition Of Done
 
 - Tests added/updated. Validation commands run. Docs updated on material change.
+- Finish gate passed for touched surface: focused behavior check plus touched-file lint and type checks when applicable.
 - LSP restarted if `src/sattlint_lsp/`, `src/sattlint/core/`, `editor_api.py`, or `vscode/` touched.
 
 ## Last Updated
 
-2026-04-28
+2026-05-01

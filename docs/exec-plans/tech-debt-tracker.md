@@ -15,9 +15,9 @@ This tracker remains valid for legacy TD-* entries and scan history.
 | Source | State | Snapshot | Sync Basis | Coverage | Notes |
 |---|---|---|---|---|---|
 | TODO_GUI.md | retired | 2026-05-01 | retired | Program E | Legacy GUI backlog retired into roadmap and exec-plan tracking. |
-| TODO_REFACTOR.md | active | 2026-05-01 | sha1:bffab875c14b | Program T | Canonical source still present; keep ledger in sync until retired. |
+| TODO_REFACTOR.md | retired | 2026-05-01 | retired | Program T | Legacy refactor backlog retired into the consolidated tech-debt tracker and exec-plan tracking. |
 | TODO_SATTLINT.md | retired | 2026-05-01 | retired | Program C | Legacy SattLint backlog retired into roadmap and exec-plan tracking. |
-| TODO_TOOLS.md | active | 2026-05-01 | sha1:e5234961f941 | Program D | Canonical source still present; keep ledger in sync until retired. |
+| TODO_TOOLS.md | retired | 2026-05-01 | retired | Program D | Legacy tools backlog retired into the consolidated tech-debt tracker and exec-plan tracking. |
 
 ## Program T: Technical Debt Items
 
@@ -28,7 +28,7 @@ This tracker remains valid for legacy TD-* entries and scan history.
 | TD-001 | Analyzers | Remediation instructions not yet embedded in error messages | Medium | In progress: added to Issue, VariableIssue, shadowing analyzer |
 | TD-002 | Docs | `docs/` not fully restructured per harness-engineering layout | Medium | Completed 2026-04-28 |
 | TD-003 | LSP | No hot-reload when `WORKFLOW.md`-equivalent changes | Low | Add watch + restart mechanism |
-| TD-004 | Tests | Coverage threshold now 86% enforced | Medium | Completed 2026-04-30: ratcheted to 86% |
+| TD-004 | Tests | Coverage threshold now 88.26% enforced and mirrored in the coverage ratchet | Medium | Completed 2026-05-01: ratcheted to 88.26% |
 | TD-005 | Config | No validation that `analyzed_programs_and_libraries` paths exist | Low | Add startup validation |
 | TD-006 | DevTools | Pipeline outputs not yet consumed by doc-gardening agent | Low | Wire artifacts → quality-score.md |
 | TD-007 | Parse/Validate | validation.py functions return bool instead of parsing to typed objects | Medium | Refactor *is_valid** to return parsed types |
@@ -860,6 +860,7 @@ This tracker remains valid for legacy TD-* entries and scan history.
 
 | Date | Findings | Action Taken |
 |------|-----------|--------------|
+| 2026-05-01 | 0 findings | Doc-gardening scan |
 | 2026-04-30 | 15 items | Manual tech debt review and update to exec-plan template |
 | 2026-04-29 | 1 findings | Doc-gardening scan |
 | 2026-04-29 | 1 findings | Doc-gardening scan |

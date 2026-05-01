@@ -28,6 +28,21 @@ from sattline_parser.models.ast_model import (
 class _SFCMixin:
     """Mixin providing SFC (sequence function chart) transformation methods."""
 
+    def entercode(self, items) -> dict[str, list[Any]]:
+        """Grammar entercode -> normalized enter block payload."""
+        statements = [item for item in items if not isinstance(item, Token)]
+        return {"enter": statements}
+
+    def activecode(self, items) -> dict[str, list[Any]]:
+        """Grammar activecode -> normalized active block payload."""
+        statements = [item for item in items if not isinstance(item, Token)]
+        return {"active": statements}
+
+    def exitcode(self, items) -> dict[str, list[Any]]:
+        """Grammar exitcode -> normalized exit block payload."""
+        statements = [item for item in items if not isinstance(item, Token)]
+        return {"exit": statements}
+
     def code_blocks(self, items) -> SFCCodeBlocks:
         """Grammar code_blocks -> SFCCodeBlocks with enter/active/exit blocks."""
         blocks: dict[str, list[Any]] = {"enter": [], "active": [], "exit": []}

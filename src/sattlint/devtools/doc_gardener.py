@@ -31,6 +31,7 @@ AGENTS_MD = REPO_ROOT / "AGENTS.md"
 QUALITY_SCORE = DOCS_DIR / "quality-score.md"
 TECH_DEBT = DOCS_DIR / "exec-plans" / "tech-debt-tracker.md"
 CURRENT_WORK = REPO_ROOT / ".github" / "coordination" / "current-work.md"
+CURRENT_WORK_TEMPLATE = REPO_ROOT / ".github" / "coordination" / "current-work.template.md"
 AI_FIRST_PLAN = DOCS_DIR / "exec-plans" / "completed" / "ai-first-repo-hardening.md"
 AI_FIRST_DEBT = TECH_DEBT
 MAX_AGENTS_LINES = 100
@@ -199,6 +200,14 @@ def _parse_current_work_statuses(text: str) -> dict[str, str]:
         current_workstream_id = None
 
     return statuses
+
+
+def _read_current_work_text() -> str:
+    if CURRENT_WORK.exists():
+        return _read_text(CURRENT_WORK)
+    if CURRENT_WORK_TEMPLATE.exists():
+        return _read_text(CURRENT_WORK_TEMPLATE)
+    return ""
 
 
 def _source_sync_digest(path: Path) -> str:
@@ -429,10 +438,13 @@ def scan_ai_first_source_drift() -> Sequence[DocFinding]:
 def scan_ai_first_status_drift() -> Sequence[DocFinding]:
     """Compare refactor-lane statuses in the canonical tech debt tracker against current-work."""
     findings = []
-    if not AI_FIRST_DEBT.exists() or not CURRENT_WORK.exists():
+    if not AI_FIRST_DEBT.exists():
         return findings
 
-    current_statuses = _parse_current_work_statuses(_read_text(CURRENT_WORK))
+    current_work_text = _read_current_work_text()
+    if not current_work_text:
+        return findings
+    current_statuses = _parse_current_work_statuses(current_work_text)
     debt_rows = _parse_markdown_table(
         _read_text(AI_FIRST_DEBT).splitlines(),
         "## Program B: Refactor And Architecture Debt",

@@ -16,7 +16,7 @@ import subprocess  # nosec B404
 import sys
 import time
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -41,6 +41,17 @@ from sattlint.devtools.pipeline_artifacts import (
     PipelineArtifactContext,
     write_json_artifact,
     write_pipeline_artifacts,
+)
+from sattlint.devtools.pipeline_checks import (
+    PIPELINE_CHECK_IDS,
+    PIPELINE_RECOMMENDATION_FALLBACK_GLOBS,
+    matching_changed_files,
+    normalize_changed_files,
+    normalize_selected_checks,
+    skipped_stage_report,
+)
+from sattlint.devtools.pipeline_checks import (
+    build_pipeline_check_catalog as _build_pipeline_check_catalog,
 )
 from sattlint.devtools.progress_reporting import ProgressReporter
 from sattlint.devtools.semantic_reports import build_rule_metrics_report, build_sattline_semantic_report
@@ -248,6 +259,342 @@ def _profile_settings(profile: str) -> dict[str, Any]:
             "pytest_addopts_override": None,
         }
     raise ValueError(f"Unsupported pipeline profile: {profile}")
+
+
+def build_pipeline_check_catalog(
+    *,
+    profile: str = DEFAULT_PIPELINE_PROFILE,
+    output_dir: Path | None = None,
+) -> dict[str, Any]:
+    return _build_pipeline_check_catalog(
+        profile=profile,
+        output_dir=output_dir or DEFAULT_OUTPUT_DIR,
+        repo_root=REPO_ROOT,
+        validate_profile=_profile_settings,
+    )
+
+
+def _shell_command(command: list[str]) -> str:
+    return subprocess.list2cmdline(command)
+
+
+def _changed_file_flag_args(changed_files: Iterable[str]) -> list[str]:
+    args: list[str] = []
+    for path_text in normalize_changed_files(changed_files):
+        args.extend(["--changed-file", path_text])
+    return args
+
+
+def _focused_python_files(changed_files: Iterable[str]) -> list[str]:
+    focused_files: list[str] = []
+    for path_text in normalize_changed_files(changed_files):
+        if not path_text.endswith(".py"):
+            continue
+        if not path_text.startswith(("src/", "tests/", "scripts/")):
+            continue
+        if path_text in focused_files:
+            continue
+        focused_files.append(path_text)
+    return focused_files
+
+
+def _owner_test_targets_for_checks(recommended_checks: Iterable[dict[str, Any]]) -> list[str]:
+    targets: list[str] = []
+    for entry in recommended_checks:
+        for target in entry.get("owner_test_targets", []):
+            target_text = str(target).strip()
+            if not target_text or target_text in targets:
+                continue
+            targets.append(target_text)
+    return targets
+
+
+def _build_finish_gate_commands(
+    *,
+    profile: str,
+    output_dir: Path,
+    changed_files: Iterable[str],
+    recommended_checks: Iterable[dict[str, Any]],
+    ruff_command: list[str],
+    pyright_command: list[str],
+    python_command: list[str],
+) -> list[dict[str, Any]]:
+    normalized_changed_files = normalize_changed_files(changed_files)
+    commands: list[dict[str, Any]] = []
+    recommended_slice_command = [
+        "sattlint-analysis-pipeline",
+        "--profile",
+        profile,
+        "--run-recommended-slice",
+        *_changed_file_flag_args(normalized_changed_files),
+        "--output-dir",
+        (sanitize_path_for_report(output_dir.resolve(), repo_root=REPO_ROOT) or output_dir.resolve().as_posix()),
+    ]
+    commands.append(
+        {
+            "id": "recommended-slice",
+            "label": "Run the recommended pipeline slice",
+            "command": _shell_command(recommended_slice_command),
+            "argv": recommended_slice_command,
+        }
+    )
+    touched_python_files = _focused_python_files(normalized_changed_files)
+    if touched_python_files:
+        ruff_argv = [*ruff_command, "check", *touched_python_files]
+        pyright_argv = [*pyright_command, *touched_python_files]
+        commands.append(
+            {
+                "id": "ruff-touched-python",
+                "label": "Run Ruff on touched Python files",
+                "command": _shell_command(ruff_argv),
+                "argv": ruff_argv,
+            }
+        )
+        commands.append(
+            {
+                "id": "pyright-touched-python",
+                "label": "Run Pyright on touched Python files",
+                "command": _shell_command(pyright_argv),
+                "argv": pyright_argv,
+            }
+        )
+    owner_test_targets = _owner_test_targets_for_checks(recommended_checks)
+    if owner_test_targets:
+        pytest_argv = [*python_command, "-m", "pytest", "--no-cov", *owner_test_targets, "-x", "-q", "--tb=short"]
+        commands.append(
+            {
+                "id": "owner-pytest",
+                "label": "Run owner pytest targets for the recommended checks",
+                "command": _shell_command(pytest_argv),
+                "argv": pytest_argv,
+            }
+        )
+    return commands
+
+
+def _build_recommendation_why_this_gate(
+    *,
+    changed_files: Iterable[str],
+    recommended_checks: Iterable[dict[str, Any]],
+    skipped_checks: Iterable[dict[str, Any]],
+) -> dict[str, Any]:
+    normalized_changed_files = normalize_changed_files(changed_files)
+    matched_routes: list[dict[str, Any]] = []
+    for entry in recommended_checks:
+        matched_files = matching_changed_files(normalized_changed_files, entry["path_globs"])
+        matched_routes.append(
+            {
+                "check_id": entry["id"],
+                "owner_surface": entry["owner_surface"],
+                "matched_files": matched_files,
+                "path_globs": entry["path_globs"],
+                "reason": entry["reason"],
+            }
+        )
+    return {
+        "changed_files": normalized_changed_files,
+        "matched_routes": matched_routes,
+        "skipped_checks": list(skipped_checks),
+    }
+
+
+def _build_recommendation_drift_report(
+    *,
+    profile: str,
+    changed_files: Iterable[str],
+    recommended_check_ids: Iterable[str],
+    tool_statuses: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    recommended_ids = list(dict.fromkeys(recommended_check_ids))
+    observed_nonpassing_check_ids = [
+        check_id
+        for check_id in PIPELINE_CHECK_IDS
+        if tool_statuses.get(check_id, {}).get("status") in {"fail", "pass_with_notes"}
+    ]
+    omitted_nonpassing_check_ids = [
+        check_id for check_id in observed_nonpassing_check_ids if check_id not in recommended_ids
+    ]
+    return {
+        "kind": "sattlint.pipeline.recommendation_drift",
+        "schema_version": 1,
+        "profile": profile,
+        "changed_files": normalize_changed_files(changed_files),
+        "recommended_check_ids": recommended_ids,
+        "observed_nonpassing_check_ids": observed_nonpassing_check_ids,
+        "omitted_nonpassing_check_ids": omitted_nonpassing_check_ids,
+        "status": "drift" if omitted_nonpassing_check_ids else "consistent",
+    }
+
+
+def build_pipeline_check_recommendations(
+    *,
+    profile: str = DEFAULT_PIPELINE_PROFILE,
+    output_dir: Path | None = None,
+    changed_files: Iterable[str] | None = None,
+) -> dict[str, Any]:
+    resolved_output_dir = (output_dir or DEFAULT_OUTPUT_DIR).resolve()
+    resolved_changed_files = normalize_changed_files(
+        _detect_changed_files(repo_root=REPO_ROOT) if changed_files is None else changed_files
+    )
+    catalog = build_pipeline_check_catalog(
+        profile=profile,
+        output_dir=resolved_output_dir,
+    )
+    fallback_required = False
+    fallback_reason: str | None = None
+    recommendation_reasons: dict[str, str] = {}
+
+    if not resolved_changed_files:
+        fallback_required = True
+        fallback_reason = (
+            "No changed files were provided or detected, so the full supported pipeline slice is recommended."
+        )
+    elif matching_changed_files(resolved_changed_files, PIPELINE_RECOMMENDATION_FALLBACK_GLOBS):
+        fallback_required = True
+        fallback_reason = (
+            "Changed files touch the pipeline control surface, so the full supported pipeline slice is recommended."
+        )
+
+    if fallback_required and fallback_reason is not None:
+        for entry in catalog["checks"]:
+            recommendation_reasons[entry["id"]] = fallback_reason
+    else:
+        for entry in catalog["checks"]:
+            matched_files = matching_changed_files(resolved_changed_files, entry["path_globs"])
+            if not matched_files:
+                continue
+            recommendation_reasons[entry["id"]] = f"Matched {matched_files[0]} against the {entry['id']} routing globs."
+        if not recommendation_reasons:
+            fallback_required = True
+            fallback_reason = "No pipeline routing globs matched the changed files, so the full supported pipeline slice is recommended."
+            for entry in catalog["checks"]:
+                recommendation_reasons[entry["id"]] = fallback_reason
+
+    recommended_checks: list[dict[str, Any]] = []
+    skipped_checks: list[dict[str, Any]] = []
+    for entry in catalog["checks"]:
+        reason = recommendation_reasons.get(entry["id"])
+        if reason is None:
+            skipped_checks.append(
+                {
+                    "id": entry["id"],
+                    "label": entry["label"],
+                    "reason": "No changed-file route matched this check.",
+                }
+            )
+            continue
+        recommended_checks.append({**entry, "reason": reason})
+
+    suggested_finish_gate_commands = _build_finish_gate_commands(
+        profile=profile,
+        output_dir=resolved_output_dir,
+        changed_files=resolved_changed_files,
+        recommended_checks=recommended_checks,
+        ruff_command=["ruff"],
+        pyright_command=["pyright"],
+        python_command=["python"],
+    )
+
+    return {
+        "kind": "sattlint.pipeline.check_recommendations",
+        "schema_version": 1,
+        "profile": profile,
+        "changed_files": resolved_changed_files,
+        "fallback_required": fallback_required,
+        "fallback_reason": fallback_reason,
+        "recommended_check_ids": [entry["id"] for entry in recommended_checks],
+        "suggested_check_commands": [entry["command"] for entry in recommended_checks],
+        "suggested_finish_gate_commands": [entry["command"] for entry in suggested_finish_gate_commands],
+        "recommended_checks": recommended_checks,
+        "skipped_checks": skipped_checks,
+        "why_this_gate": _build_recommendation_why_this_gate(
+            changed_files=resolved_changed_files,
+            recommended_checks=recommended_checks,
+            skipped_checks=skipped_checks,
+        ),
+    }
+
+
+def run_recommended_pipeline_finish_gate(
+    output_dir: Path,
+    *,
+    trace_target: Path | None,
+    profile: str,
+    include_vulture: bool | None,
+    include_bandit: bool | None,
+    baseline_findings: Path | None,
+    corpus_manifest_dir: Path | None,
+    changed_files: Iterable[str] | None,
+    slow_phase_threshold_ms: float,
+    phase_budget_ms: float,
+    total_budget_ms: float,
+    fail_on_drift: bool,
+    fail_on_budget: bool,
+) -> dict[str, Any]:
+    recommendation = build_pipeline_check_recommendations(
+        profile=profile,
+        output_dir=output_dir,
+        changed_files=changed_files,
+    )
+    summary = _run_pipeline(
+        output_dir,
+        trace_target=trace_target,
+        profile=profile,
+        include_vulture=include_vulture,
+        include_bandit=include_bandit,
+        baseline_findings=baseline_findings,
+        corpus_manifest_dir=corpus_manifest_dir,
+        changed_files=normalize_changed_files(changed_files),
+        slow_phase_threshold_ms=slow_phase_threshold_ms,
+        phase_budget_ms=phase_budget_ms,
+        total_budget_ms=total_budget_ms,
+        fail_on_drift=fail_on_drift,
+        fail_on_budget=fail_on_budget,
+        selected_checks=recommendation["recommended_check_ids"],
+    )
+    finish_gate_steps = _build_finish_gate_commands(
+        profile=profile,
+        output_dir=output_dir,
+        changed_files=recommendation["changed_files"],
+        recommended_checks=recommendation["recommended_checks"],
+        ruff_command=[_resolve_venv_tool("ruff") or "ruff"],
+        pyright_command=[_resolve_venv_tool("pyright") or "pyright"],
+        python_command=[_resolve_python_executable()],
+    )[1:]
+    step_reports: list[dict[str, Any]] = []
+    finish_gate_status = "pass"
+    for step in finish_gate_steps:
+        result = _run_command(step["id"], step["argv"])
+        step_status = "pass" if result.exit_code == 0 else "fail"
+        if step_status == "fail":
+            finish_gate_status = "fail"
+        step_reports.append(
+            {
+                "id": step["id"],
+                "label": step["label"],
+                "command": step["command"],
+                "exit_code": result.exit_code,
+                "duration_seconds": result.duration_seconds,
+                "status": step_status,
+            }
+        )
+    finish_gate_report = {
+        "kind": "sattlint.pipeline.finish_gate",
+        "schema_version": 1,
+        "status": finish_gate_status,
+        "commands": step_reports,
+        "changed_files": recommendation["changed_files"],
+        "owner_test_targets": _owner_test_targets_for_checks(recommendation["recommended_checks"]),
+    }
+    write_json_artifact(output_dir / "finish_gate.json", finish_gate_report)
+    return {
+        "recommendation": recommendation,
+        "pipeline_summary": summary,
+        "finish_gate": finish_gate_report,
+        "overall_status": "fail"
+        if summary["status"]["overall_status"] == "fail" or finish_gate_status == "fail"
+        else "pass",
+    }
 
 
 def _build_pytest_command(python_cmd: list[str], junit_path: Path, *, profile: str) -> list[str]:
@@ -614,6 +961,7 @@ def _prepare_pipeline_run(
     baseline_findings: Path | None,
     corpus_manifest_dir: Path | None,
     changed_files: list[str] | None,
+    selected_checks: Iterable[str] | None,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     if baseline_findings is not None and not baseline_findings.exists():
@@ -621,18 +969,27 @@ def _prepare_pipeline_run(
 
     python_cmd = [_resolve_python_executable()]
     settings = _profile_settings(profile)
-    run_vulture = settings["include_vulture"] if include_vulture is None else include_vulture
-    run_bandit = settings["include_bandit"] if include_bandit is None else include_bandit
-    run_structural_reports = settings["include_structural_reports"]
-    run_trace = settings["include_trace"] and trace_target is not None and trace_target.exists()
+    normalized_selected_checks = normalize_selected_checks(profile, selected_checks, validate_profile=_profile_settings)
+
+    def wants(check_id: str) -> bool:
+        return normalized_selected_checks is None or check_id in normalized_selected_checks
+
+    run_vulture = wants("vulture") and (settings["include_vulture"] if include_vulture is None else include_vulture)
+    run_bandit = wants("bandit") and (settings["include_bandit"] if include_bandit is None else include_bandit)
+    run_structural_reports = wants("structural-reports") and settings["include_structural_reports"]
+    run_trace = wants("trace") and settings["include_trace"] and trace_target is not None and trace_target.exists()
     resolved_corpus_manifest_dir = corpus_manifest_dir.resolve() if corpus_manifest_dir is not None else None
-    run_corpus = bool(resolved_corpus_manifest_dir and resolved_corpus_manifest_dir.exists())
+    run_corpus = wants("corpus") and bool(resolved_corpus_manifest_dir and resolved_corpus_manifest_dir.exists())
     run_coverage_summary = run_structural_reports and (REPO_ROOT / "coverage.xml").exists()
     resolved_changed_files = (
         list(changed_files) if changed_files is not None else _detect_changed_files(repo_root=REPO_ROOT)
     )
     sanitized_output_dir = sanitize_path_for_report(output_dir, repo_root=REPO_ROOT) or output_dir.as_posix()
     canonical_command = f"sattlint-analysis-pipeline --profile {profile} --output-dir {sanitized_output_dir}"
+    if normalized_selected_checks is not None:
+        canonical_command = f"{canonical_command} " + " ".join(
+            f"--check {check_id}" for check_id in normalized_selected_checks
+        )
     progress = ProgressReporter(
         kind="sattlint.pipeline.progress",
         title="Pipeline",
@@ -660,11 +1017,15 @@ def _prepare_pipeline_run(
         "summary",
         "findings",
         "artifact_registry",
-        "environment",
-        "ruff",
-        "pyright",
-        "pytest",
     }
+    if profile == "full" and normalized_selected_checks is None:
+        enabled_artifacts.add("recommendation_drift")
+    if wants("ruff"):
+        enabled_artifacts.add("ruff")
+    if wants("pyright"):
+        enabled_artifacts.add("pyright")
+    if wants("pytest"):
+        enabled_artifacts.add("pytest")
     if baseline_findings is not None:
         enabled_artifacts.add("analysis_diff")
     if run_corpus:
@@ -701,6 +1062,7 @@ def _prepare_pipeline_run(
 
     return {
         "artifact_registry_report": artifact_registry_report,
+        "changed_files": normalize_changed_files(resolved_changed_files),
         "enabled_artifacts": enabled_artifacts,
         "output_dir": output_dir,
         "profile": profile,
@@ -715,6 +1077,7 @@ def _prepare_pipeline_run(
         "run_trace": run_trace,
         "run_vulture": run_vulture,
         "sanitized_output_dir": sanitized_output_dir,
+        "selected_checks": normalized_selected_checks,
     }
 
 
@@ -979,49 +1342,85 @@ def _build_derived_reports(
 def _build_static_tool_statuses(stage_reports: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {
         "ruff": _make_tool_status(
-            status="fail" if stage_reports["ruff_report"]["exit_code"] != 0 else "pass",
-            report="ruff.json",
-            raw_exit_code=stage_reports["ruff_report"]["exit_code"],
-            normalized_exit_code=stage_reports["ruff_report"]["exit_code"],
+            status=(
+                "skipped"
+                if stage_reports["ruff_report"].get("skipped")
+                else "fail"
+                if stage_reports["ruff_report"]["exit_code"] != 0
+                else "pass"
+            ),
+            report=None if stage_reports["ruff_report"].get("skipped") else "ruff.json",
+            raw_exit_code=None
+            if stage_reports["ruff_report"].get("skipped")
+            else stage_reports["ruff_report"]["exit_code"],
+            normalized_exit_code=(
+                None if stage_reports["ruff_report"].get("skipped") else stage_reports["ruff_report"]["exit_code"]
+            ),
             finding_count=stage_reports["ruff_report"].get("finding_count", 0),
-            detail=f"{stage_reports['ruff_report'].get('finding_count', 0)} findings",
+            detail=(
+                stage_reports["ruff_report"].get("detail", "skipped by check selection")
+                if stage_reports["ruff_report"].get("skipped")
+                else f"{stage_reports['ruff_report'].get('finding_count', 0)} findings"
+            ),
         ),
         "pyright": _make_tool_status(
             status=(
-                "fail"
+                "skipped"
+                if stage_reports["pyright_report"].get("skipped")
+                else "fail"
                 if stage_reports["pyright_report"].get("error_count", 0) > 0
                 else "pass_with_warnings"
                 if stage_reports["pyright_report"].get("warning_count", 0) > 0
                 else "pass"
             ),
-            report="pyright.json",
-            raw_exit_code=stage_reports["pyright_report"]["exit_code"],
-            normalized_exit_code=stage_reports["pyright_report"]["effective_exit_code"],
+            report=None if stage_reports["pyright_report"].get("skipped") else "pyright.json",
+            raw_exit_code=(
+                None if stage_reports["pyright_report"].get("skipped") else stage_reports["pyright_report"]["exit_code"]
+            ),
+            normalized_exit_code=(
+                None
+                if stage_reports["pyright_report"].get("skipped")
+                else stage_reports["pyright_report"]["effective_exit_code"]
+            ),
             finding_count=stage_reports["pyright_report"].get("error_count", 0),
             note_count=stage_reports["pyright_report"].get("warning_count", 0),
             detail=(
-                f"{stage_reports['pyright_report'].get('error_count', 0)} errors, "
-                f"{stage_reports['pyright_report'].get('warning_count', 0)} warnings"
+                stage_reports["pyright_report"].get("detail", "skipped by check selection")
+                if stage_reports["pyright_report"].get("skipped")
+                else (
+                    f"{stage_reports['pyright_report'].get('error_count', 0)} errors, "
+                    f"{stage_reports['pyright_report'].get('warning_count', 0)} warnings"
+                )
             ),
         ),
         "pytest": _make_tool_status(
             status=(
-                "fail"
+                "skipped"
+                if stage_reports["pytest_report"].get("skipped")
+                else "fail"
                 if stage_reports["pytest_report"]["summary"]["failures"]
                 or stage_reports["pytest_report"]["summary"]["errors"]
                 else "pass"
             ),
-            report="pytest.json",
-            raw_exit_code=stage_reports["pytest_report"]["exit_code"],
-            normalized_exit_code=stage_reports["pytest_report"]["exit_code"],
+            report=None if stage_reports["pytest_report"].get("skipped") else "pytest.json",
+            raw_exit_code=(
+                None if stage_reports["pytest_report"].get("skipped") else stage_reports["pytest_report"]["exit_code"]
+            ),
+            normalized_exit_code=(
+                None if stage_reports["pytest_report"].get("skipped") else stage_reports["pytest_report"]["exit_code"]
+            ),
             finding_count=(
                 stage_reports["pytest_report"]["summary"]["failures"]
                 + stage_reports["pytest_report"]["summary"]["errors"]
             ),
             detail=(
-                f"{stage_reports['pytest_report']['summary']['tests']} tests, "
-                f"{stage_reports['pytest_report']['summary']['failures']} failures, "
-                f"{stage_reports['pytest_report']['summary']['errors']} errors"
+                stage_reports["pytest_report"].get("detail", "skipped by check selection")
+                if stage_reports["pytest_report"].get("skipped")
+                else (
+                    f"{stage_reports['pytest_report']['summary']['tests']} tests, "
+                    f"{stage_reports['pytest_report']['summary']['failures']} failures, "
+                    f"{stage_reports['pytest_report']['summary']['errors']} errors"
+                )
             ),
         ),
         "vulture": _make_tool_status(
@@ -1243,9 +1642,15 @@ def _build_pipeline_tool_exit_codes(
     fail_on_budget: bool,
 ) -> dict[str, int | None]:
     return {
-        "ruff": stage_reports["ruff_report"]["exit_code"],
-        "pyright": stage_reports["pyright_report"]["effective_exit_code"],
-        "pytest": stage_reports["pytest_report"]["exit_code"],
+        "ruff": None if stage_reports["ruff_report"].get("skipped") else stage_reports["ruff_report"]["exit_code"],
+        "pyright": (
+            None
+            if stage_reports["pyright_report"].get("skipped")
+            else stage_reports["pyright_report"]["effective_exit_code"]
+        ),
+        "pytest": None
+        if stage_reports["pytest_report"].get("skipped")
+        else stage_reports["pytest_report"]["exit_code"],
         "vulture": stage_reports["vulture_report"].get("exit_code"),
         "bandit": stage_reports["bandit_report"].get("exit_code"),
         "corpus": (
@@ -1292,6 +1697,9 @@ def _build_pipeline_counts(
     incremental_analysis_report = derived_reports["incremental_analysis_report"]
     profiling_summary_report = derived_reports["profiling_summary_report"]
     performance_budget_report = derived_reports["performance_budget_report"]
+    pytest_summary = stage_reports["pytest_report"].get(
+        "summary", {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+    )
     return {
         "baseline_new_findings": 0
         if derived_reports["analysis_diff_report"] is None
@@ -1330,8 +1738,8 @@ def _build_pipeline_counts(
         "ruff_findings": stage_reports["ruff_report"].get("finding_count", 0),
         "pyright_errors": stage_reports["pyright_report"].get("error_count", 0),
         "pyright_warnings": stage_reports["pyright_report"].get("warning_count", 0),
-        "pytest_failures": stage_reports["pytest_report"]["summary"]["failures"],
-        "pytest_errors": stage_reports["pytest_report"]["summary"]["errors"],
+        "pytest_failures": pytest_summary["failures"],
+        "pytest_errors": pytest_summary["errors"],
         "vulture_findings": stage_reports["vulture_report"].get("finding_count", 0),
         "bandit_findings": len(stage_reports["bandit_report"].get("findings", [])),
         "architecture_findings": len(optional_reports["architecture_report"]["findings"]),
@@ -1458,15 +1866,38 @@ def _finalize_pipeline_outputs(
         findings_schema=derived_reports["findings_schema"],
         counts=_build_pipeline_counts(stage_reports, optional_reports, derived_reports, context),
     )
+    recommendation_drift: dict[str, Any] | None = None
+    if context["selected_checks"] is None:
+        recommendation_drift = _build_recommendation_drift_report(
+            profile=context["profile"],
+            changed_files=context["changed_files"],
+            recommended_check_ids=build_pipeline_check_recommendations(
+                profile=context["profile"],
+                output_dir=context["output_dir"],
+                changed_files=context["changed_files"],
+            )["recommended_check_ids"],
+            tool_statuses=tool_statuses,
+        )
+        summary["recommendation_drift"] = recommendation_drift
+        status_report["recommendation_drift"] = {
+            "status": recommendation_drift["status"],
+            "omitted_nonpassing_check_ids": recommendation_drift["omitted_nonpassing_check_ids"],
+        }
+    if context["selected_checks"] is not None:
+        selected_checks = list(context["selected_checks"])
+        status_report["selected_checks"] = selected_checks
+        summary["selected_checks"] = selected_checks
 
     artifact_context = PipelineArtifactContext(
         payloads={
             "progress": context["progress"].to_dict(),
             "artifact_registry": context["artifact_registry_report"],
-            "environment": stage_reports["environment_report"],
-            "ruff": stage_reports["ruff_report"],
-            "pyright": stage_reports["pyright_report"],
-            "pytest": stage_reports["pytest_report"],
+            "environment": stage_reports["environment_report"]
+            if "environment" in context["enabled_artifacts"]
+            else None,
+            "ruff": stage_reports["ruff_report"] if "ruff" in context["enabled_artifacts"] else None,
+            "pyright": stage_reports["pyright_report"] if "pyright" in context["enabled_artifacts"] else None,
+            "pytest": stage_reports["pytest_report"] if "pytest" in context["enabled_artifacts"] else None,
             "vulture": None if stage_reports["vulture_report"].get("skipped") else stage_reports["vulture_report"],
             "bandit": None if stage_reports["bandit_report"].get("skipped") else stage_reports["bandit_report"],
             "architecture": None
@@ -1491,6 +1922,7 @@ def _finalize_pipeline_outputs(
             "incremental_analysis": derived_reports["incremental_analysis_report"],
             "findings": derived_reports["finding_collection"].to_dict(),
             "analysis_diff": derived_reports["analysis_diff_report"],
+            "recommendation_drift": recommendation_drift,
             "corpus_results": optional_reports["corpus_results_report"],
             "coverage_summary": derived_reports["coverage_summary_report"],
             "sattline_semantic": derived_reports["sattline_semantic_report"],
@@ -1530,6 +1962,7 @@ def _run_pipeline(
     total_budget_ms: float = 250.0,
     fail_on_drift: bool = False,
     fail_on_budget: bool = False,
+    selected_checks: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     context = _prepare_pipeline_run(
         output_dir,
@@ -1540,27 +1973,59 @@ def _run_pipeline(
         baseline_findings=baseline_findings,
         corpus_manifest_dir=corpus_manifest_dir,
         changed_files=changed_files,
+        selected_checks=selected_checks,
     )
     progress = context["progress"]
-    environment_report = _run_environment_stage(progress)
-    ruff_report, ruff_findings = _run_ruff_stage(progress, python_cmd=context["python_cmd"])
-    pyright_report, pyright_findings = _run_pyright_stage(progress, python_cmd=context["python_cmd"])
-    pytest_report = _run_pytest_stage(
-        progress,
-        output_dir=context["output_dir"],
-        python_cmd=context["python_cmd"],
-        profile=context["profile"],
-    )
-    vulture_report, _vulture_findings = _run_vulture_stage(
-        progress,
-        python_cmd=context["python_cmd"],
-        run_vulture=context["run_vulture"],
-    )
-    bandit_report = _run_bandit_stage(
-        progress,
-        python_cmd=context["python_cmd"],
-        run_bandit=context["run_bandit"],
-    )
+    selected_checks = context.get("selected_checks")
+    selected_check_set = None if selected_checks is None else set(selected_checks)
+
+    def wants(check_id: str) -> bool:
+        return selected_check_set is None or check_id in selected_check_set
+
+    environment_report = skipped_stage_report("environment")
+    if wants("ruff") or wants("pyright") or wants("pytest"):
+        environment_report = _run_environment_stage(progress)
+
+    if wants("ruff"):
+        ruff_report, ruff_findings = _run_ruff_stage(progress, python_cmd=context["python_cmd"])
+    else:
+        ruff_report, ruff_findings = skipped_stage_report("ruff"), []
+
+    if wants("pyright"):
+        pyright_report, pyright_findings = _run_pyright_stage(progress, python_cmd=context["python_cmd"])
+    else:
+        pyright_report, pyright_findings = skipped_stage_report("pyright"), []
+
+    if wants("pytest"):
+        pytest_report = _run_pytest_stage(
+            progress,
+            output_dir=context["output_dir"],
+            python_cmd=context["python_cmd"],
+            profile=context["profile"],
+        )
+    else:
+        pytest_report = skipped_stage_report("pytest")
+
+    if wants("vulture"):
+        vulture_report, _vulture_findings = _run_vulture_stage(
+            progress,
+            python_cmd=context["python_cmd"],
+            run_vulture=context["run_vulture"],
+        )
+    else:
+        vulture_report, _vulture_findings = (
+            {"tool": "vulture", "skipped": True, "detail": "skipped by check selection"},
+            [],
+        )
+
+    if wants("bandit"):
+        bandit_report = _run_bandit_stage(
+            progress,
+            python_cmd=context["python_cmd"],
+            run_bandit=context["run_bandit"],
+        )
+    else:
+        bandit_report = {"tool": "bandit", "skipped": True, "detail": "skipped by check selection"}
     stage_reports = {
         "bandit_report": bandit_report,
         "environment_report": environment_report,
@@ -1648,6 +2113,33 @@ def main(argv: list[str] | None = None) -> int:
         default=250.0,
         help="Total trace duration budget used by performance_budget.json.",
     )
+    parser.add_argument(
+        "--check",
+        action="append",
+        choices=PIPELINE_CHECK_IDS,
+        default=None,
+        help="Run only the named pipeline check. Repeatable.",
+    )
+    parser.add_argument(
+        "--list-checks",
+        action="store_true",
+        help="Print the individually runnable pipeline checks for the selected profile as JSON and exit.",
+    )
+    parser.add_argument(
+        "--recommend-checks",
+        action="store_true",
+        help="Print machine-readable recommended pipeline checks for the changed files and exit.",
+    )
+    parser.add_argument(
+        "--run-recommended-slice",
+        action="store_true",
+        help="Run the recommended pipeline checks for the changed files instead of the full selected profile.",
+    )
+    parser.add_argument(
+        "--run-recommended-finish-gate",
+        action="store_true",
+        help="Run the recommended pipeline slice plus focused touched-file Ruff, Pyright, and owner pytest commands.",
+    )
     parser.add_argument("--skip-vulture", action="store_true", help="Skip the Vulture dead-code scan")
     parser.add_argument("--skip-bandit", action="store_true", help="Skip the Bandit security scan")
     parser.add_argument(
@@ -1669,10 +2161,88 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.check and (args.recommend_checks or args.run_recommended_slice or args.run_recommended_finish_gate):
+        parser.error("--check cannot be combined with recommendation modes.")
+
+    if args.list_checks:
+        print(
+            json.dumps(
+                build_pipeline_check_catalog(
+                    profile=args.profile,
+                    output_dir=Path(args.output_dir).resolve(),
+                ),
+                indent=2,
+            )
+        )
+        return 0
+    if args.recommend_checks:
+        print(
+            json.dumps(
+                build_pipeline_check_recommendations(
+                    profile=args.profile,
+                    output_dir=Path(args.output_dir).resolve(),
+                    changed_files=args.changed_file,
+                ),
+                indent=2,
+            )
+        )
+        return 0
+    if args.run_recommended_finish_gate:
+        finish_gate = run_recommended_pipeline_finish_gate(
+            Path(args.output_dir).resolve(),
+            trace_target=Path(args.trace_target).resolve() if args.trace_target else None,
+            profile=args.profile,
+            include_vulture=False if args.skip_vulture else None,
+            include_bandit=False if args.skip_bandit else None,
+            baseline_findings=Path(args.baseline_findings).resolve() if args.baseline_findings else None,
+            corpus_manifest_dir=Path(args.corpus_manifest_dir).resolve() if args.corpus_manifest_dir else None,
+            changed_files=args.changed_file,
+            slow_phase_threshold_ms=args.slow_phase_threshold_ms,
+            phase_budget_ms=args.phase_budget_ms,
+            total_budget_ms=args.total_budget_ms,
+            fail_on_drift=args.fail_on_drift,
+            fail_on_budget=args.fail_on_budget,
+        )
+        summary = finish_gate["pipeline_summary"]
+        _print_cli_summary(
+            {
+                "profile": summary["profile"],
+                "overall_status": finish_gate["overall_status"],
+                "tool_statuses": summary["status"]["tool_statuses"],
+                "findings_schema": summary.get("findings_schema"),
+                "status_report": f"{summary['output_dir']}/status.json",
+                "summary_report": f"{summary['output_dir']}/summary.json",
+                "corpus_results_report": (
+                    None
+                    if summary["reports"].get("corpus_results") is None
+                    else f"{summary['output_dir']}/corpus_results.json"
+                ),
+                "analysis_diff_report": (
+                    None
+                    if summary["reports"].get("analysis_diff") is None
+                    else f"{summary['output_dir']}/analysis_diff.json"
+                ),
+                "analysis_diff_summary": {
+                    "new_count": summary["counts"]["baseline_new_findings"],
+                    "resolved_count": summary["counts"]["baseline_resolved_findings"],
+                    "changed_count": summary["counts"]["baseline_changed_findings"],
+                    "unchanged_count": summary["counts"]["baseline_unchanged_findings"],
+                },
+            }
+        )
+        return 1 if finish_gate["overall_status"] == "fail" else 0
+
     trace_target = Path(args.trace_target).resolve() if args.trace_target else None
     baseline_findings = Path(args.baseline_findings).resolve() if args.baseline_findings else None
     corpus_manifest_dir = Path(args.corpus_manifest_dir).resolve() if args.corpus_manifest_dir else None
     save_baseline = Path(args.save_baseline).resolve() if args.save_baseline else None
+    selected_checks = args.check
+    if args.run_recommended_slice:
+        selected_checks = build_pipeline_check_recommendations(
+            profile=args.profile,
+            output_dir=Path(args.output_dir).resolve(),
+            changed_files=args.changed_file,
+        )["recommended_check_ids"]
     summary = _run_pipeline(
         Path(args.output_dir).resolve(),
         trace_target=trace_target,
@@ -1687,6 +2257,7 @@ def main(argv: list[str] | None = None) -> int:
         total_budget_ms=args.total_budget_ms,
         fail_on_drift=args.fail_on_drift,
         fail_on_budget=args.fail_on_budget,
+        selected_checks=selected_checks,
     )
     if save_baseline is not None:
         findings_src = Path(args.output_dir).resolve() / "findings.json"

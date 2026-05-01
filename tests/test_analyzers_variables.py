@@ -1,7 +1,5 @@
 """Tests for variable-quality analyzers: MMS, loop output, parameter drift, cyclomatic complexity, scan-loop resource, min/max, contract mismatch, magic numbers, shadowing, variables analysis, and datatype duplication."""
 
-# ruff: noqa: E501
-
 import logging
 from pathlib import Path
 
