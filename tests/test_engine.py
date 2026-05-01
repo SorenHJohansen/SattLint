@@ -1,7 +1,5 @@
 """Engine tests for parser setup and project loading."""
 
-# ruff: noqa: E501
-
 import logging
 from pathlib import Path
 from types import SimpleNamespace

@@ -54,8 +54,9 @@ def _iter_step_phase_statements(
 
 
 class _SfcAccessCollector(VariablesAnalyzer):
-    def __init__(self, base_picture: BasePicture, debug: bool = False):
-        super().__init__(base_picture, debug=debug, fail_loudly=False)
+    def __init__(self, base_picture: BasePicture, debug: bool = False, **kwargs: Any):
+        kwargs.setdefault("fail_loudly", False)
+        super().__init__(base_picture, debug=debug, **kwargs)
         self.parallel_writes: dict[ParallelKey, dict[int, set[CanonicalPath]]] = {}
         self.parallel_meta: dict[ParallelKey, _ParallelMeta] = {}
         self._parallel_counter = 0
@@ -280,12 +281,10 @@ class _SfcAccessCollector(VariablesAnalyzer):
 
 class _SfcStepContractCollector(VariablesAnalyzer):
     def __init__(
-        self,
-        base_picture: BasePicture,
-        step_contracts: dict[str, StepContract],
-        debug: bool = False,
+        self, base_picture: BasePicture, step_contracts: dict[str, StepContract], debug: bool = False, **kwargs: Any
     ):
-        super().__init__(base_picture, debug=debug, fail_loudly=False)
+        kwargs.setdefault("fail_loudly", False)
+        super().__init__(base_picture, debug=debug, **kwargs)
         self._step_contracts = step_contracts
         self.contract_issues: list[Issue] = []
         self._captured_reads: set[CanonicalPath] | None = None

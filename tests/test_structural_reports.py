@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -58,6 +59,11 @@ def test_collect_structural_budget_report_detects_budget_offenders(tmp_path):
     report = structural_reports.collect_structural_budget_report(tmp_path)
 
     assert report["thresholds"] == structural_reports.STRUCTURAL_BUDGET_THRESHOLDS
+    assert report["setpoints"] == structural_reports.STRUCTURAL_BUDGET_SETPOINTS
+    assert report["summary"]["source_file_max_lines"] == len(oversized_source.splitlines())
+    assert report["summary"]["test_file_max_lines"] == len(oversized_test.splitlines())
+    assert report["metrics"]["source_file_max_lines"] == len(oversized_source.splitlines())
+    assert report["metrics"]["test_file_max_lines"] == len(oversized_test.splitlines())
     assert report["source_files_over_budget"] == [
         {
             "path": "src/pkg/oversized_module.py",
@@ -191,6 +197,7 @@ def test_collect_structural_budget_report_flags_facade_private_entrypoints_and_r
     ]
     assert report["metrics"]["facade_private_entrypoint_count"] == 1
     assert report["ratchet"]["status"] == "fail"
+    assert report["ratchet"]["setpoint_metrics"] == structural_reports.STRUCTURAL_BUDGET_SETPOINTS
     assert report["ratchet"]["regressions"] == [
         {
             "metric": "facade_private_entrypoint_count",
@@ -198,6 +205,20 @@ def test_collect_structural_budget_report_flags_facade_private_entrypoints_and_r
             "actual": 1,
         }
     ]
+
+
+def test_collect_structural_budget_report_tracks_actual_max_lines_even_when_under_threshold(tmp_path):
+    _write(tmp_path / "src" / "pkg" / "small.py", "def helper():\n    return 1\n")
+    _write(tmp_path / "tests" / "test_small.py", "def test_helper():\n    assert True\n")
+
+    report = structural_reports.collect_structural_budget_report(tmp_path)
+
+    assert report["source_files_over_budget"] == []
+    assert report["test_files_over_budget"] == []
+    assert report["summary"]["source_file_max_lines"] == 2
+    assert report["summary"]["test_file_max_lines"] == 2
+    assert report["metrics"]["source_file_max_lines"] == 2
+    assert report["metrics"]["test_file_max_lines"] == 2
 
 
 def test_load_structural_budget_ratchet_returns_invalid_on_bad_json(tmp_path):
@@ -226,6 +247,99 @@ def test_load_structural_budget_ratchet_returns_invalid_on_non_int_metrics(tmp_p
     assert "ratchet metrics" in result["error"]
 
 
+def test_load_structural_budget_ratchet_requires_exception_reason(tmp_path):
+    ratchet = tmp_path / "ratchet.json"
+    ratchet.write_text(
+        json.dumps(
+            {
+                "kind": "k",
+                "schema_version": 2,
+                "metrics": {},
+                "file_line_exceptions": {
+                    "src/pkg/legacy.py": {"max_lines": 520, "reason": ""},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = structural_reports._load_structural_budget_ratchet(tmp_path, ratchet_path=ratchet)
+
+    assert result["status"] == "invalid"
+    assert "file_line_exceptions['src/pkg/legacy.py'].reason" in result["error"]
+
+
+def test_collect_structural_budget_report_allows_documented_file_line_exception(tmp_path):
+    legacy_source = "\n".join(f"value_{index} = {index}" for index in range(520))
+    _write(tmp_path / "src" / "pkg" / "legacy.py", legacy_source)
+    _write(
+        tmp_path / "artifacts" / "analysis" / "structural_budget_ratchet.json",
+        json.dumps(
+            {
+                "kind": "sattlint.structural_budget_ratchet",
+                "schema_version": 2,
+                "metrics": {},
+                "file_line_exceptions": {
+                    "src/pkg/legacy.py": {
+                        "max_lines": 520,
+                        "reason": "Legacy owner module remains centralized pending extraction.",
+                    }
+                },
+            },
+            indent=2,
+        ),
+    )
+
+    report = structural_reports.collect_structural_budget_report(tmp_path)
+
+    assert report["source_files_over_budget"] == []
+    assert report["ratchet"]["status"] == "pass"
+    assert report["line_limit_exceptions"] == [
+        {
+            "path": "src/pkg/legacy.py",
+            "line_count": 520,
+            "max_lines": 520,
+            "reason": "Legacy owner module remains centralized pending extraction.",
+            "status": "pass",
+        }
+    ]
+
+
+def test_collect_structural_budget_report_flags_file_line_exception_regression(tmp_path):
+    legacy_source = "\n".join(f"value_{index} = {index}" for index in range(521))
+    _write(tmp_path / "src" / "pkg" / "legacy.py", legacy_source)
+    _write(
+        tmp_path / "artifacts" / "analysis" / "structural_budget_ratchet.json",
+        json.dumps(
+            {
+                "kind": "sattlint.structural_budget_ratchet",
+                "schema_version": 2,
+                "metrics": {},
+                "file_line_exceptions": {
+                    "src/pkg/legacy.py": {
+                        "max_lines": 520,
+                        "reason": "Legacy owner module remains centralized pending extraction.",
+                    }
+                },
+            },
+            indent=2,
+        ),
+    )
+
+    report = structural_reports.collect_structural_budget_report(tmp_path)
+
+    assert report["source_files_over_budget"] == [{"path": "src/pkg/legacy.py", "line_count": 521}]
+    assert report["ratchet"]["status"] == "fail"
+    assert report["ratchet"]["regressions"] == [
+        {
+            "path": "src/pkg/legacy.py",
+            "expected_max": 520,
+            "actual": 521,
+            "reason": "Legacy owner module remains centralized pending extraction.",
+        }
+    ]
+
+
 def test_collect_structural_budget_report_records_scan_failure_for_syntax_error(tmp_path):
     broken = tmp_path / "src" / "pkg" / "broken_syntax.py"
     broken.parent.mkdir(parents=True, exist_ok=True)
@@ -238,6 +352,19 @@ def test_collect_structural_budget_report_records_scan_failure_for_syntax_error(
     assert failures[0]["error_type"] == "SyntaxError"
 
 
+def test_collect_structural_budget_report_counts_non_utf8_files_in_line_budget(tmp_path):
+    broken = tmp_path / "tests" / "test_non_utf8.py"
+    broken.parent.mkdir(parents=True, exist_ok=True)
+    broken.write_bytes((b"value = 1\n" * 520) + b"\xf8\n")
+
+    report = structural_reports.collect_structural_budget_report(tmp_path)
+
+    assert report["test_files_over_budget"] == [{"path": "tests/test_non_utf8.py", "line_count": 521}]
+    failures = [f for f in report["scan_failures"] if f.get("path") == "tests/test_non_utf8.py"]
+    assert len(failures) == 1
+    assert failures[0]["error_type"] == "UnicodeDecodeError"
+
+
 def test_collect_facade_private_entrypoints_detects_importfrom_direct_private_call():
     import ast as _ast
 
@@ -247,6 +374,95 @@ def test_collect_facade_private_entrypoints_detects_importfrom_direct_private_ca
     violations = structural_reports._collect_facade_private_entrypoints(tree, relative_path="src/sattlint/app.py")
 
     assert any(v["target"].endswith("_helper_func") for v in violations)
+
+
+def test_structural_ratchet_main_reports_pass(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(
+        structural_reports,
+        "collect_structural_budget_report",
+        lambda *_args, **_kwargs: {
+            "ratchet": {
+                "status": "pass",
+                "path": "artifacts/analysis/structural_budget_ratchet.json",
+                "expected_metrics": {"function_over_budget_count": 18},
+                "current_metrics": {"function_over_budget_count": 18},
+                "regressions": [],
+            }
+        },
+    )
+
+    exit_code = structural_reports.main(["--repo-root", str(tmp_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Structural ratchet: pass" in captured.out
+    assert "Regressions: []" in captured.out
+
+
+def test_structural_ratchet_main_reports_json_failures(monkeypatch, capsys, tmp_path):
+    expected = {
+        "status": "fail",
+        "path": "ratchet.json",
+        "expected_metrics": {"function_over_budget_count": 12},
+        "current_metrics": {"function_over_budget_count": 18},
+        "regressions": [
+            {
+                "metric": "function_over_budget_count",
+                "expected_max": 12,
+                "actual": 18,
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        structural_reports,
+        "collect_structural_budget_report",
+        lambda *_args, **_kwargs: {"ratchet": expected},
+    )
+
+    exit_code = structural_reports.main(
+        ["--repo-root", str(tmp_path), "--ratchet-path", str(tmp_path / "ratchet.json"), "--json"]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert json.loads(captured.out) == expected
+
+
+def test_structural_ratchet_main_uses_sys_argv_when_called_without_explicit_args(monkeypatch, capsys, tmp_path):
+    expected = {
+        "status": "fail",
+        "path": "ratchet.json",
+        "expected_metrics": {},
+        "current_metrics": {},
+        "regressions": [
+            {
+                "metric": "test_file_over_budget_count",
+                "expected_max": 10,
+                "actual": 17,
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        structural_reports,
+        "collect_structural_budget_report",
+        lambda *_args, **_kwargs: {"ratchet": expected},
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "sattlint-structural-ratchet",
+            "--repo-root",
+            str(tmp_path),
+            "--json",
+        ],
+    )
+
+    exit_code = structural_reports.main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert json.loads(captured.out) == expected
 
 
 def test_collect_architecture_report_flags_missing_acceptance_tests(monkeypatch):

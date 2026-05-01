@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import argparse
 import ast
 import json
+import sys
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
+from itertools import chain
 from pathlib import Path
 from typing import Any, cast
 
@@ -28,6 +31,12 @@ from sattlint.analyzers.registry import (
 )
 from sattlint.app import VARIABLE_ANALYSES
 from sattlint.core.semantic import discover_workspace_sources, load_workspace_snapshot
+from sattlint.devtools._structural_budget_inventory import (
+    iter_structural_markdown_files,
+    iter_structural_python_files,
+    read_structural_text,
+    summarize_structural_budget_metrics,
+)
 from sattlint.path_sanitizer import sanitize_path_for_report
 from sattlint.reporting.variables_report import IssueKind, VariablesReport
 from sattlint.resolution.common import resolve_moduletype_def_strict
@@ -76,12 +85,18 @@ _GRAPHICS_LAYOUT_COMPARISON_FIELDS = (
 )
 
 STRUCTURAL_BUDGET_THRESHOLDS = {
-    "source_file_max_lines": 650,
-    "test_file_max_lines": 1200,
+    "source_file_max_lines": 500,
+    "test_file_max_lines": 500,
+    "markdown_file_max_lines": 500,
     "function_max_lines": 150,
     "class_method_max_count": 40,
     "duplicate_private_name_min_files": 4,
     "duplicate_private_name_min_length": 5,
+}
+STRUCTURAL_BUDGET_SETPOINTS = {
+    "source_file_max_lines": 500,
+    "test_file_max_lines": 500,
+    "markdown_file_max_lines": 500,
 }
 STRUCTURAL_BUDGET_RATCHET_PATH = Path("artifacts") / "analysis" / "structural_budget_ratchet.json"
 FACADE_PRIVATE_BOUNDARY_FILES = frozenset(
@@ -91,15 +106,6 @@ FACADE_PRIVATE_BOUNDARY_FILES = frozenset(
         "src/sattlint/editor_api.py",
     }
 )
-
-
-def _iter_structural_python_files(repo_root: Path) -> Iterator[tuple[str, Path]]:
-    for path in sorted((repo_root / "src").rglob("*.py")):
-        if path.is_file():
-            yield "src", path
-    for path in sorted((repo_root / "tests").rglob("test_*.py")):
-        if path.is_file():
-            yield "tests", path
 
 
 def _collect_facade_private_entrypoints(tree: ast.AST, *, relative_path: str) -> list[dict[str, Any]]:
@@ -150,23 +156,32 @@ def _collect_facade_private_entrypoints(tree: ast.AST, *, relative_path: str) ->
     return sorted(violations, key=lambda item: (item["path"], item["line"], item["target"]))
 
 
-def _summarize_structural_budget_metrics(report: dict[str, Any]) -> dict[str, int]:
-    return {
-        "source_file_over_budget_count": len(report["source_files_over_budget"]),
-        "source_file_max_lines": max((item["line_count"] for item in report["source_files_over_budget"]), default=0),
-        "test_file_over_budget_count": len(report["test_files_over_budget"]),
-        "test_file_max_lines": max((item["line_count"] for item in report["test_files_over_budget"]), default=0),
-        "function_over_budget_count": len(report["functions_over_budget"]),
-        "function_max_lines": max((item["line_span"] for item in report["functions_over_budget"]), default=0),
-        "class_over_budget_count": len(report["classes_over_budget"]),
-        "class_max_methods": max((item["method_count"] for item in report["classes_over_budget"]), default=0),
-        "repeated_private_name_count": len(report["repeated_private_names"]),
-        "repeated_private_name_max_files": max(
-            (item["file_count"] for item in report["repeated_private_names"]),
-            default=0,
-        ),
-        "facade_private_entrypoint_count": len(report["facade_private_entrypoints"]),
-    }
+def _normalize_file_line_exceptions(raw: Any, *, label: str) -> dict[str, dict[str, Any]]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"{label} file_line_exceptions must be a JSON object keyed by repo-relative path.")
+
+    normalized: dict[str, dict[str, Any]] = {}
+    for raw_path, payload in raw.items():
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise ValueError(f"{label} file_line_exceptions keys must be non-empty strings.")
+        if not isinstance(payload, dict):
+            raise ValueError(f"{label} file_line_exceptions[{raw_path!r}] must be a JSON object.")
+
+        max_lines = payload.get("max_lines")
+        reason = payload.get("reason")
+        if not isinstance(max_lines, int) or max_lines <= 0:
+            raise ValueError(f"{label} file_line_exceptions[{raw_path!r}].max_lines must be a positive integer.")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(f"{label} file_line_exceptions[{raw_path!r}].reason must be a non-empty string.")
+
+        normalized[raw_path.replace("\\", "/").strip("/")] = {
+            "max_lines": int(max_lines),
+            "reason": reason.strip(),
+        }
+
+    return dict(sorted(normalized.items()))
 
 
 def _load_structural_budget_ratchet(
@@ -177,7 +192,7 @@ def _load_structural_budget_ratchet(
     resolved_path = ratchet_path or (repo_root / STRUCTURAL_BUDGET_RATCHET_PATH)
     sanitized_path = sanitize_path_for_report(resolved_path, repo_root=repo_root) or resolved_path.as_posix()
     if not resolved_path.exists():
-        return {"status": "missing", "path": sanitized_path, "metrics": {}}
+        return {"status": "missing", "path": sanitized_path, "metrics": {}, "file_line_exceptions": {}}
 
     try:
         payload = json.loads(resolved_path.read_text(encoding="utf-8"))
@@ -186,6 +201,7 @@ def _load_structural_budget_ratchet(
             "status": "invalid",
             "path": sanitized_path,
             "metrics": {},
+            "file_line_exceptions": {},
             "error": str(exc),
             "error_type": type(exc).__name__,
         }
@@ -196,8 +212,23 @@ def _load_structural_budget_ratchet(
             "status": "invalid",
             "path": sanitized_path,
             "metrics": {},
+            "file_line_exceptions": {},
             "error": "ratchet metrics must be a JSON object with integer values",
             "error_type": "ValueError",
+        }
+
+    try:
+        file_line_exceptions = _normalize_file_line_exceptions(
+            payload.get("file_line_exceptions"), label=sanitized_path
+        )
+    except ValueError as exc:
+        return {
+            "status": "invalid",
+            "path": sanitized_path,
+            "metrics": {},
+            "file_line_exceptions": {},
+            "error": str(exc),
+            "error_type": type(exc).__name__,
         }
 
     return {
@@ -206,12 +237,14 @@ def _load_structural_budget_ratchet(
         "kind": payload.get("kind"),
         "schema_version": payload.get("schema_version"),
         "metrics": {key: int(value) for key, value in metrics.items()},
+        "file_line_exceptions": file_line_exceptions,
     }
 
 
 def _evaluate_structural_budget_ratchet(
     current_metrics: dict[str, int],
     ratchet_state: dict[str, Any],
+    current_file_line_counts: dict[str, int],
 ) -> dict[str, Any]:
     status = ratchet_state["status"]
     if status != "loaded":
@@ -219,6 +252,7 @@ def _evaluate_structural_budget_ratchet(
             "status": status,
             "path": ratchet_state["path"],
             "expected_metrics": ratchet_state.get("metrics", {}),
+            "expected_file_line_exceptions": ratchet_state.get("file_line_exceptions", {}),
             "current_metrics": current_metrics,
             "regressions": [],
             "error": ratchet_state.get("error"),
@@ -234,10 +268,22 @@ def _evaluate_structural_budget_ratchet(
         for metric, expected_value in sorted(ratchet_state["metrics"].items())
         if current_metrics.get(metric, 0) > expected_value
     ]
+    regressions.extend(
+        {
+            "path": path,
+            "expected_max": entry["max_lines"],
+            "actual": current_file_line_counts[path],
+            "reason": entry["reason"],
+        }
+        for path, entry in sorted(ratchet_state["file_line_exceptions"].items())
+        if path in current_file_line_counts and current_file_line_counts[path] > entry["max_lines"]
+    )
     return {
         "status": "fail" if regressions else "pass",
         "path": ratchet_state["path"],
         "expected_metrics": ratchet_state["metrics"],
+        "expected_file_line_exceptions": ratchet_state["file_line_exceptions"],
+        "setpoint_metrics": dict(STRUCTURAL_BUDGET_SETPOINTS),
         "current_metrics": current_metrics,
         "regressions": regressions,
     }
@@ -263,6 +309,17 @@ def _append_structural_budget_findings(findings: list[dict[str, Any]], structura
                 "message": "Some test modules exceed the structural line budget and should be split by owning surface.",
                 "count": len(structural_budgets["test_files_over_budget"]),
                 "over_budget_files": structural_budgets["test_files_over_budget"][:10],
+            }
+        )
+
+    if structural_budgets.get("markdown_files_over_budget"):
+        findings.append(
+            {
+                "id": "structural-markdown-file-budget",
+                "severity": "medium",
+                "message": "Some tracked Markdown files exceed the structural line budget and should be split or reorganized.",
+                "count": len(structural_budgets["markdown_files_over_budget"]),
+                "over_budget_files": structural_budgets["markdown_files_over_budget"][:10],
             }
         )
 
@@ -330,38 +387,61 @@ def collect_structural_budget_report(
 ) -> dict[str, Any]:
     source_file_max_lines = STRUCTURAL_BUDGET_THRESHOLDS["source_file_max_lines"]
     test_file_max_lines = STRUCTURAL_BUDGET_THRESHOLDS["test_file_max_lines"]
+    markdown_file_max_lines = STRUCTURAL_BUDGET_THRESHOLDS["markdown_file_max_lines"]
     function_max_lines = STRUCTURAL_BUDGET_THRESHOLDS["function_max_lines"]
     class_method_max_count = STRUCTURAL_BUDGET_THRESHOLDS["class_method_max_count"]
     duplicate_private_name_min_files = STRUCTURAL_BUDGET_THRESHOLDS["duplicate_private_name_min_files"]
     duplicate_private_name_min_length = STRUCTURAL_BUDGET_THRESHOLDS["duplicate_private_name_min_length"]
+    ratchet_state = _load_structural_budget_ratchet(repo_root, ratchet_path=ratchet_path)
+    file_line_exceptions = ratchet_state.get("file_line_exceptions", {})
 
     source_files_over_budget: list[dict[str, Any]] = []
     test_files_over_budget: list[dict[str, Any]] = []
+    markdown_files_over_budget: list[dict[str, Any]] = []
     functions_over_budget: list[dict[str, Any]] = []
     classes_over_budget: list[dict[str, Any]] = []
     private_name_occurrences: dict[str, set[str]] = defaultdict(set)
     facade_private_entrypoints: list[dict[str, Any]] = []
     scan_failures: list[dict[str, Any]] = []
+    source_file_line_counts: list[int] = []
+    test_file_line_counts: list[int] = []
+    markdown_file_line_counts: list[int] = []
+    current_file_line_counts: dict[str, int] = {}
 
-    for scope, path in _iter_structural_python_files(repo_root):
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError as exc:
-            scan_failures.append(
-                {
-                    "path": sanitize_path_for_report(path, repo_root=repo_root) or path.as_posix(),
-                    "error": str(exc),
-                    "error_type": type(exc).__name__,
-                }
-            )
+    for scope, path in chain(iter_structural_python_files(repo_root), iter_structural_markdown_files(repo_root)):
+        relative_path = sanitize_path_for_report(path, repo_root=repo_root) or path.as_posix()
+        text, line_count, scan_failure = read_structural_text(path)
+        if scan_failure is not None:
+            scan_failures.append({"path": relative_path, **scan_failure})
+        if line_count is None:
             continue
 
-        relative_path = sanitize_path_for_report(path, repo_root=repo_root) or path.as_posix()
-        line_count = len(text.splitlines())
-        if scope == "src" and line_count > source_file_max_lines and not relative_path.endswith("_builtins.py"):
+        current_file_line_counts[relative_path] = line_count
+        if scope == "src":
+            source_file_line_counts.append(line_count)
+        if scope == "tests":
+            test_file_line_counts.append(line_count)
+        if scope == "markdown":
+            markdown_file_line_counts.append(line_count)
+        line_limit_exception = file_line_exceptions.get(relative_path)
+        effective_max_lines = (
+            line_limit_exception["max_lines"]
+            if line_limit_exception is not None
+            else (
+                source_file_max_lines
+                if scope == "src"
+                else (test_file_max_lines if scope == "tests" else markdown_file_max_lines)
+            )
+        )
+        if scope == "src" and line_count > effective_max_lines:
             source_files_over_budget.append({"path": relative_path, "line_count": line_count})
-        if scope == "tests" and line_count > test_file_max_lines:
+        if scope == "tests" and line_count > effective_max_lines:
             test_files_over_budget.append({"path": relative_path, "line_count": line_count})
+        if scope == "markdown" and line_count > effective_max_lines:
+            markdown_files_over_budget.append({"path": relative_path, "line_count": line_count})
+
+        if text is None or scope == "markdown":
+            continue
 
         try:
             tree = ast.parse(text, filename=relative_path)
@@ -434,10 +514,28 @@ def collect_structural_budget_report(
 
     report = {
         "thresholds": dict(STRUCTURAL_BUDGET_THRESHOLDS),
+        "setpoints": dict(STRUCTURAL_BUDGET_SETPOINTS),
+        "line_limit_exceptions": [
+            {
+                "path": path,
+                "line_count": current_file_line_counts.get(path),
+                "max_lines": entry["max_lines"],
+                "reason": entry["reason"],
+                "status": (
+                    "missing"
+                    if path not in current_file_line_counts
+                    else ("fail" if current_file_line_counts[path] > entry["max_lines"] else "pass")
+                ),
+            }
+            for path, entry in sorted(file_line_exceptions.items())
+        ],
         "source_files_over_budget": sorted(
             source_files_over_budget, key=lambda item: (-item["line_count"], item["path"])
         ),
         "test_files_over_budget": sorted(test_files_over_budget, key=lambda item: (-item["line_count"], item["path"])),
+        "markdown_files_over_budget": sorted(
+            markdown_files_over_budget, key=lambda item: (-item["line_count"], item["path"])
+        ),
         "functions_over_budget": sorted(
             functions_over_budget,
             key=lambda item: (-item["line_span"], item["path"], item["qualname"]),
@@ -449,11 +547,15 @@ def collect_structural_budget_report(
         "repeated_private_names": repeated_private_names,
         "facade_private_entrypoints": facade_private_entrypoints,
         "scan_failures": scan_failures,
+        "summary": {
+            "source_file_max_lines": max(source_file_line_counts, default=0),
+            "test_file_max_lines": max(test_file_line_counts, default=0),
+            "markdown_file_max_lines": max(markdown_file_line_counts, default=0),
+        },
     }
-    current_metrics = _summarize_structural_budget_metrics(report)
-    ratchet_state = _load_structural_budget_ratchet(repo_root, ratchet_path=ratchet_path)
+    current_metrics = summarize_structural_budget_metrics(report)
     report["metrics"] = current_metrics
-    report["ratchet"] = _evaluate_structural_budget_ratchet(current_metrics, ratchet_state)
+    report["ratchet"] = _evaluate_structural_budget_ratchet(current_metrics, ratchet_state, current_file_line_counts)
     return report
 
 
@@ -1613,6 +1715,58 @@ def _collect_reverse_impact(
     return impact
 
 
+def _parse_ratchet_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Check the structural budget ratchet against the current repository metrics."
+    )
+    parser.add_argument(
+        "--repo-root",
+        default=str(REPO_ROOT),
+        help="Repository root to scan for structural budget metrics",
+    )
+    parser.add_argument(
+        "--ratchet-path",
+        default=None,
+        help="Optional override path for the structural budget ratchet JSON file",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the ratchet status payload as JSON instead of the human-readable summary",
+    )
+    return parser.parse_args(list(argv) if argv is not None else sys.argv[1:])
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parse_ratchet_args(argv)
+    repo_root = Path(args.repo_root).resolve()
+    ratchet_path = None if args.ratchet_path is None else Path(args.ratchet_path).resolve()
+
+    report = collect_structural_budget_report(repo_root, ratchet_path=ratchet_path)
+    ratchet = report["ratchet"]
+
+    if args.json:
+        print(json.dumps(ratchet, indent=2))
+    else:
+        print(f"Structural ratchet: {ratchet['status']}")
+        print(f"Ratchet file: {ratchet['path']}")
+        regressions = ratchet.get("regressions", [])
+        if regressions:
+            print("Regressions:")
+            for regression in regressions:
+                if "metric" in regression:
+                    print(f"  - {regression['metric']}: {regression['actual']} > {regression['expected_max']}")
+                else:
+                    print(
+                        f"  - {regression['path']}: {regression['actual']} > {regression['expected_max']}"
+                        f" ({regression['reason']})"
+                    )
+        else:
+            print("Regressions: []")
+
+    return 0 if ratchet["status"] == "pass" else 1
+
+
 __all__ = [
     "StructuralReportsBundle",
     "WorkspaceGraphInputs",
@@ -1625,4 +1779,9 @@ __all__ = [
     "collect_phase2_rule_metadata_gate",
     "collect_structural_reports",
     "collect_workspace_graph_inputs",
+    "main",
 ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

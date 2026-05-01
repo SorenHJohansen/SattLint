@@ -21,6 +21,17 @@ This file supplements `AGENTS.md` with deeper background, examples, and file ref
 - `src/sattlint/devtools/pipeline.py` runs the repo-local lint, type, test, dead-code, security, and architecture checks into JSON artifacts.
 - `sattlint-repo-audit --profile full --output-dir artifacts/audit` is the canonical repository audit command.
 - Read `artifacts/audit/status.json` first for the compact status summary, then inspect `artifacts/audit/summary.json` and `artifacts/audit/pipeline/status.json` as needed.
+- For narrow audit validation, prefer `sattlint-repo-audit --profile full --recommend-checks` or `sattlint-repo-audit --profile full --run-recommended-slice`.
+- Prefer `sattlint-repo-audit --profile full --run-recommended-finish-gate` when you want one command that both runs the recommended audit slice and performs the focused Ruff, Pyright, and owner-pytest finish gate.
+- Prefer `sattlint-repo-audit --profile full --check-my-changes` when you want one machine-readable command that auto-selects the right finish gate for the current change set.
+- Prefer `sattlint-repo-audit --profile full --planning-context` when you only need owning agent, instruction-file, and owner-suite routing for an explicit changed-file set.
+- Pass repeated `--changed-file <repo/path>` flags when the relevant edit set differs from current git status.
+- Shared pipeline checks from the combined audit catalog still run through `sattlint-analysis-pipeline --check <id>`, while repo-audit-specific checks run through `sattlint-repo-audit --check <id> --skip-pipeline`.
+- Use `sattlint-analysis-pipeline --profile full --recommend-checks` or `--run-recommended-slice` when only the shared pipeline surface is needed.
+- Use `sattlint-repo-audit --profile full --check verify-recommendations --skip-pipeline` to enforce that recommendation metadata stays complete and that catalog globs still map to real repo files.
+- Full pipeline runs now record `recommendation_drift.json` when changed files are known; this flags non-passing checks that were omitted by the current recommendation rules.
+- `--check-my-changes` writes `check_my_changes.json` and reports whether it selected the shared pipeline finish gate or the combined repo-audit finish gate.
+- The machine-readable AI work map lives at `.github/skills/validation-routing/references/ai-work-map.json`; regenerate it with `python -m sattlint.devtools.ai_work_map --write` when routing docs or active owner plans change.
 - `src/sattlint/tracing.py` traces parser-to-analyzer execution for a concrete SattLine file.
 
 ---

@@ -19,6 +19,8 @@ jobs:
           - windows-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -41,6 +43,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -64,6 +68,9 @@ jobs:
       - name: Run pytest with coverage
         run: python -m pytest -q --tb=short
 
+      - name: Enforce new-file ratchet targets
+        run: python scripts/check_ratchet_policy.py
+
   pip-audit:
     name: Pip Audit
     runs-on: ubuntu-latest
@@ -86,3 +93,27 @@ jobs:
 
       - name: Audit dependencies
         run: pip-audit --skip-editable
+
+  ratchet_policy:
+    name: Ratchet Policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install ratchet policy dependency
+        run: python -m pip install defusedxml
+
+      - name: Fetch pull request base ref
+        if: ${{ github.event_name == 'pull_request' }}
+        run: git fetch --no-tags --depth=1 origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+
+      - name: Enforce ratchet policy
+        run: python scripts/check_ratchet_policy.py

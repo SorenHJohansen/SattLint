@@ -1,7 +1,5 @@
 """Tests for validate_single_file_syntax, validate_transformed_basepicture, workspace-mode rules, compressed library sources, and builtin type checks."""
 
-# ruff: noqa: E501
-
 from pathlib import Path
 from typing import Any, cast
 
@@ -46,6 +44,10 @@ def _parse_to_basepicture(text: str):
 
 def _repo_path(*parts: str) -> Path:
     return Path(__file__).resolve().parents[1].joinpath(*parts)
+
+
+def _official_library_fixture_path(*parts: str) -> Path:
+    return _repo_path("tests", "fixtures", "sample_sattline_files", "official_library_files", *parts)
 
 
 def _var_ref(name: object, *, state: str | None = None) -> dict[str, object]:
@@ -1943,20 +1945,15 @@ ENDDEF (*BasePicture*);
 
 def test_load_source_text_preserves_state_markers_in_compressed_libraries():
     cases = [
-        ("SupportLib.x", "GetRemoteFile", "ExecuteLocal"),
-        ("NSupportLib.x", "zRestoreStringList", "ExecuteState"),
-        ("EventLib.x", "EventLogger2", "CurrentEventFinished"),
-        ("MmsVarLib.x", "MMSWriteVar", "Rdy"),
-        ("ReportLib.x", "ReportGeneralTable", "Ready"),
+        ("StateMarkersLib.x", "GetRemoteFile", "ExecuteLocal"),
+        ("StateMarkersLib.x", "zRestoreStringList", "ExecuteState"),
+        ("StateMarkersLib.x", "EventLogger2", "CurrentEventFinished"),
+        ("StateMarkersLib.x", "MMSWriteVar", "Rdy"),
+        ("StateMarkersLib.x", "ReportGeneralTable", "Ready"),
     ]
-    missing_files = [
-        file_name for file_name, _, _ in cases if not _repo_path("Libs", "HA", "ABBLib", file_name).exists()
-    ]
-    if missing_files:
-        pytest.skip(f"Compressed library files not available: {', '.join(missing_files)}")
 
     for file_name, moduletype_name, variable_name in cases:
-        source_path = _repo_path("Libs", "HA", "ABBLib", file_name)
+        source_path = _official_library_fixture_path(file_name)
         src = _load_source_text(source_path)
         basepicture = parser_core_parse_source_text(src)
         moduletype = next(
@@ -1984,14 +1981,7 @@ def test_load_source_text_preserves_state_markers_in_compressed_libraries():
 
 
 def test_load_source_text_preserves_duration_value_in_compressed_libraries():
-    required_files = ["JournalLib.x", "EventLib.x"]
-    missing_files = [
-        file_name for file_name in required_files if not _repo_path("Libs", "HA", "ABBLib", file_name).exists()
-    ]
-    if missing_files:
-        pytest.skip(f"Compressed library files not available: {', '.join(missing_files)}")
-
-    journal_path = _repo_path("Libs", "HA", "ABBLib", "JournalLib.x")
+    journal_path = _official_library_fixture_path("DurationTypesLib.x")
     journal_src = _load_source_text(journal_path)
     assert 'Duration_Value "1h"' in journal_src
     assert 'Time_Value "1984-01-01-00:00:00.000"' in journal_src
@@ -2029,29 +2019,18 @@ def test_load_source_text_preserves_duration_value_in_compressed_libraries():
     assert isinstance(start_time.init_value, dict)
     assert start_time.init_value.get("Time_Value") == "1984-01-01-00:00:00.000"
 
-    event_path = _repo_path("Libs", "HA", "ABBLib", "EventLib.x")
-    event_src = _load_source_text(event_path)
-    assert 'Duration_Value "590ms"' in event_src
+    assert 'Duration_Value "590ms"' in journal_src
 
 
 def test_validate_single_file_syntax_accepts_reported_compressed_library_files():
     file_names = [
-        "SupportLib.x",
-        "NSupportLib.x",
-        "JournalLib.x",
-        "EventLib.x",
-        "MmsVarLib.x",
-        "ReportLib.x",
-        "SLIoUnitLib.x",
+        "StateMarkersLib.x",
+        "DurationTypesLib.x",
+        "SLIoUnitFixture.x",
     ]
-    missing_files = [
-        file_name for file_name in file_names if not _repo_path("Libs", "HA", "ABBLib", file_name).exists()
-    ]
-    if missing_files:
-        pytest.skip(f"Compressed library files not available: {', '.join(missing_files)}")
 
     for file_name in file_names:
-        result = validate_single_file_syntax(_repo_path("Libs", "HA", "ABBLib", file_name))
+        result = validate_single_file_syntax(_official_library_fixture_path(file_name))
         assert result.ok is True, f"{file_name}: {result.stage} {result.message}"
 
 

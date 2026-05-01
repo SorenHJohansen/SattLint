@@ -48,6 +48,8 @@ src/config.toml
 # IDE / Editor state (DO NOT COMMIT)
 .benchmarks/
 .opencode/
+.github/coordination/current-work.md
+.github/coordination/current_work_summary.json
 
 # Local settings
 local_settings.py

@@ -1,0 +1,320 @@
+"""Focused CLI command delegation tests for the app module."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any, cast
+
+from sattline_parser.models.ast_model import BasePicture
+from sattlint import app
+from sattlint.models.project_graph import ProjectGraph
+
+
+def test_run_validate_config_command_delegates_to_cli_owner(monkeypatch):
+    seen: dict[str, object] = {}
+
+    def fake_run_validate_config_command(
+        cfg: dict,
+        *,
+        config_path: Path,
+        default_used: bool,
+        self_check_fn,
+        exit_success: int,
+        exit_usage_error: int,
+    ) -> int:
+        seen["cfg"] = cfg
+        seen["config_path"] = config_path
+        seen["default_used"] = default_used
+        seen["self_check_fn"] = self_check_fn
+        seen["exit_success"] = exit_success
+        seen["exit_usage_error"] = exit_usage_error
+        return 77
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "run_validate_config_command",
+        fake_run_validate_config_command,
+    )
+
+    cfg = {"debug": False}
+    result = app.run_validate_config_command(cfg, config_path=Path("custom.toml"), default_used=True)
+
+    assert result == 77
+    assert seen["cfg"] is cfg
+    assert seen["config_path"] == Path("custom.toml")
+    assert seen["default_used"] is True
+    assert seen["self_check_fn"] is app.self_check
+    assert seen["exit_success"] == app.EXIT_SUCCESS
+    assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
+
+
+def test_run_analyze_command_delegates_to_cli_owner(monkeypatch):
+    seen: dict[str, object] = {}
+
+    def fake_run_analyze_command(
+        cfg: dict,
+        *,
+        selected_keys: list[str] | None,
+        use_cache: bool,
+        run_checks_fn,
+        exit_success: int,
+    ) -> int:
+        seen["cfg"] = cfg
+        seen["selected_keys"] = selected_keys
+        seen["use_cache"] = use_cache
+        seen["run_checks_fn"] = run_checks_fn
+        seen["exit_success"] = exit_success
+        return 78
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "run_analyze_command",
+        fake_run_analyze_command,
+    )
+
+    cfg = {"debug": False}
+    result = app.run_analyze_command(cfg, selected_keys=["variables"], use_cache=False)
+
+    assert result == 78
+    assert seen["cfg"] is cfg
+    assert seen["selected_keys"] == ["variables"]
+    assert seen["use_cache"] is False
+    assert callable(seen["run_checks_fn"])
+    assert seen["exit_success"] == app.EXIT_SUCCESS
+
+
+def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
+    seen: dict[str, object] = {}
+
+    def fake_run_docgen_command(
+        cfg: dict,
+        *,
+        use_cache: bool,
+        output_dir: str | None,
+        output_path: str | None,
+        iter_loaded_projects_fn,
+        documentation_unit_selection_fn,
+        exit_success: int,
+        exit_usage_error: int,
+    ) -> int:
+        seen["cfg"] = cfg
+        seen["use_cache"] = use_cache
+        seen["output_dir"] = output_dir
+        seen["output_path"] = output_path
+        seen["iter_loaded_projects_fn"] = iter_loaded_projects_fn
+        seen["documentation_unit_selection_fn"] = documentation_unit_selection_fn
+        seen["exit_success"] = exit_success
+        seen["exit_usage_error"] = exit_usage_error
+        return 79
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "run_docgen_command",
+        fake_run_docgen_command,
+    )
+
+    cfg = {"debug": False}
+    result = app.run_docgen_command(
+        cfg,
+        use_cache=False,
+        output_dir="docs-out",
+        output_path=None,
+    )
+
+    assert result == 79
+    assert seen["cfg"] is cfg
+    assert seen["use_cache"] is False
+    assert seen["output_dir"] == "docs-out"
+    assert seen["output_path"] is None
+    assert callable(seen["iter_loaded_projects_fn"])
+    assert seen["documentation_unit_selection_fn"] is app._get_documentation_unit_selection
+    assert seen["exit_success"] == app.EXIT_SUCCESS
+    assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
+
+
+def test_cli_owner_run_docgen_command_rejects_empty_project_set(capsys):
+    cfg = {"documentation": {}}
+    empty_projects: tuple[tuple[str, BasePicture, ProjectGraph], ...] = ()
+
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(empty_projects)
+
+    exit_code = cast(Any, app.app_cli_commands_module.run_docgen_command)(
+        cfg,
+        use_cache=True,
+        output_dir=None,
+        output_path=None,
+        iter_loaded_projects_fn=iter_projects,
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert "No analyzed targets configured" in out
+
+
+def test_cli_owner_run_validate_config_command_warns_on_default_config(capsys):
+    exit_code = app.app_cli_commands_module.run_validate_config_command(
+        {"debug": False},
+        config_path=Path("default.toml"),
+        default_used=True,
+        self_check_fn=lambda _cfg: False,
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert "Warning: default config loaded from default.toml" in out
+
+
+def test_cli_owner_run_analyze_command_delegates_and_returns_success():
+    seen: dict[str, object] = {}
+
+    exit_code = app.app_cli_commands_module.run_analyze_command(
+        {"debug": False},
+        selected_keys=["variables"],
+        use_cache=False,
+        run_checks_fn=lambda cfg, selected_keys, use_cache: seen.update(
+            {"cfg": cfg, "selected_keys": selected_keys, "use_cache": use_cache}
+        ),
+        exit_success=app.EXIT_SUCCESS,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    assert seen["selected_keys"] == ["variables"]
+    assert seen["use_cache"] is False
+
+
+def test_cli_owner_run_docgen_command_rejects_output_path_for_multiple_targets(capsys):
+    cfg = {"documentation": {}}
+    target_a_bp: BasePicture = cast(Any, object())
+    target_a_graph = ProjectGraph()
+    target_b_bp: BasePicture = cast(Any, object())
+    target_b_graph = ProjectGraph()
+    projects: list[tuple[str, BasePicture, ProjectGraph]] = [
+        ("TargetA", target_a_bp, target_a_graph),
+        ("TargetB", target_b_bp, target_b_graph),
+    ]
+
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(projects)
+
+    exit_code = cast(Any, app.app_cli_commands_module.run_docgen_command)(
+        cfg,
+        use_cache=True,
+        output_dir=None,
+        output_path="single.docx",
+        iter_loaded_projects_fn=cast(Any, iter_projects),
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert "output_path requires exactly one configured target" in out
+
+
+def test_cli_owner_run_docgen_command_uses_explicit_output_path(monkeypatch):
+    generated: list[str] = []
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "generate_docx",
+        lambda _bp, out_name, documentation_config, unavailable_libraries: generated.append(out_name),
+    )
+
+    cfg = {"documentation": {"classifications": {}}}
+    target_bp: BasePicture = cast(Any, object())
+    target_graph = ProjectGraph()
+    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
+
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(projects)
+
+    exit_code = app.app_cli_commands_module.run_docgen_command(
+        cfg,
+        use_cache=True,
+        output_dir=None,
+        output_path="custom.docx",
+        iter_loaded_projects_fn=cast(Any, iter_projects),
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    assert generated == ["custom.docx"]
+
+
+def test_cli_owner_run_docgen_command_writes_output_dir_file(tmp_path, monkeypatch):
+    generated: list[tuple[str, set[str]]] = []
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "generate_docx",
+        lambda _bp, out_name, documentation_config, unavailable_libraries: generated.append(
+            (out_name, set(unavailable_libraries))
+        ),
+    )
+
+    cfg = {"documentation": {"classifications": {}}}
+    output_dir = tmp_path / "docs"
+    target_bp: BasePicture = cast(Any, object())
+    target_graph = ProjectGraph()
+    target_graph.unavailable_libraries = {"ControlLib"}
+    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
+
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(projects)
+
+    exit_code = app.app_cli_commands_module.run_docgen_command(
+        cfg,
+        use_cache=True,
+        output_dir=str(output_dir),
+        output_path=None,
+        iter_loaded_projects_fn=cast(Any, iter_projects),
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    assert output_dir.exists()
+    assert generated == [(str(output_dir / "TargetA_FS.docx"), {"ControlLib"})]
+
+
+def test_cli_owner_run_docgen_command_uses_default_filename(monkeypatch):
+    generated: list[str] = []
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "generate_docx",
+        lambda _bp, out_name, documentation_config, unavailable_libraries: generated.append(out_name),
+    )
+
+    cfg = {"documentation": {"classifications": {}}}
+    target_bp: BasePicture = cast(Any, object())
+    target_graph = ProjectGraph()
+    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
+
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(projects)
+
+    exit_code = app.app_cli_commands_module.run_docgen_command(
+        cfg,
+        use_cache=True,
+        output_dir=None,
+        output_path=None,
+        iter_loaded_projects_fn=cast(Any, iter_projects),
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    assert generated == ["TargetA_FS.docx"]

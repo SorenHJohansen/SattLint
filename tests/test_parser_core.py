@@ -526,6 +526,82 @@ def test_sfc_mixin_builds_modulecode_sequences_and_equations():
     assert modulecode.equations == [equation, nested_equation]
 
 
+def test_sfc_mixin_normalizes_enter_active_exit_code_blocks():
+    mixin = _SFCHarness()
+
+    enter = mixin.entercode([Token("ENTERCODE", "ENTERCODE"), Tree(parser_const.KEY_STATEMENT, ["enter_stmt"])])
+    active = mixin.activecode([Token("ACTIVECODE", "ACTIVECODE"), Tree(parser_const.KEY_STATEMENT, ["active_stmt"])])
+    exit_ = mixin.exitcode([Token("EXITCODE", "EXITCODE"), Tree(parser_const.KEY_STATEMENT, ["exit_stmt"])])
+
+    code_blocks = mixin.code_blocks([enter, active, exit_])
+
+    assert enter == {"enter": [Tree(parser_const.KEY_STATEMENT, ["enter_stmt"])]}
+    assert active == {"active": [Tree(parser_const.KEY_STATEMENT, ["active_stmt"])]}
+    assert exit_ == {"exit": [Tree(parser_const.KEY_STATEMENT, ["exit_stmt"])]}
+    assert code_blocks == SFCCodeBlocks(
+        enter=[Tree(parser_const.KEY_STATEMENT, ["enter_stmt"])],
+        active=[Tree(parser_const.KEY_STATEMENT, ["active_stmt"])],
+        exit=[Tree(parser_const.KEY_STATEMENT, ["exit_stmt"])],
+    )
+
+
+def test_parse_source_text_preserves_sfc_step_code_blocks():
+    bp = _parse_to_basepicture(
+        '"SyntaxVersion"\n'
+        '"OriginalFileDate"\n'
+        '"ProgramDate"\n'
+        "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1\n"
+        "LOCALVARIABLES\n"
+        "   Flag: boolean := False;\n"
+        "   Counter: integer := 0;\n"
+        "ModuleDef\n"
+        "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "ModuleCode\n"
+        "SEQUENCE Main (SeqControl) COORD 0.0, 0.0 OBJSIZE 1.0, 1.0\n"
+        "   SEQINITSTEP Init\n"
+        "   SEQTRANSITION Tr1 WAIT_FOR True\n"
+        "   SEQSTEP Run\n"
+        "      ENTERCODE\n"
+        "         Flag = True;\n"
+        "      ACTIVECODE\n"
+        "         Counter = 1;\n"
+        "      EXITCODE\n"
+        "         Counter = 0;\n"
+        "   SEQTRANSITION Done WAIT_FOR False\n"
+        "ENDSEQUENCE\n"
+        "ENDDEF (*BasePicture*);\n"
+    )
+
+    sequence = bp.modulecode.sequences[0]
+    run_step = next(node for node in sequence.code if isinstance(node, SFCStep) and node.name == "Run")
+
+    assert len(run_step.code.enter) == 1
+    assert len(run_step.code.active) == 1
+    assert len(run_step.code.exit) == 1
+    enter_stmt = run_step.code.enter[0]
+    active_stmt = run_step.code.active[0]
+    exit_stmt = run_step.code.exit[0]
+
+    assert isinstance(enter_stmt, Tree)
+    assert isinstance(active_stmt, Tree)
+    assert isinstance(exit_stmt, Tree)
+    assert enter_stmt.data == parser_const.KEY_STATEMENT
+    assert active_stmt.data == parser_const.KEY_STATEMENT
+    assert exit_stmt.data == parser_const.KEY_STATEMENT
+    enter_assignment = cast(tuple[str, dict[str, Any], Any], enter_stmt.children[0])
+    active_assignment = cast(tuple[str, dict[str, Any], Any], active_stmt.children[0])
+    exit_assignment = cast(tuple[str, dict[str, Any], Any], exit_stmt.children[0])
+    assert enter_stmt.children == [
+        (parser_const.KEY_ASSIGN, {"var_name": "Flag", "state": None, "span": enter_assignment[1]["span"]}, True)
+    ]
+    assert active_assignment[0] == parser_const.KEY_ASSIGN
+    assert active_assignment[1]["var_name"] == "Counter"
+    assert active_assignment[2] == 1
+    assert exit_assignment[0] == parser_const.KEY_ASSIGN
+    assert exit_assignment[1]["var_name"] == "Counter"
+    assert exit_assignment[2] == 0
+
+
 def test_sfc_mixin_rejects_malformed_shapes_and_missing_required_fields():
     mixin = _SFCHarness()
 
