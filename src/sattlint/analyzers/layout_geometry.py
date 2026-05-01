@@ -174,8 +174,6 @@ def _scan_container(
             _append_overlap_issues(issues, path, object_rects)
 
     for child in submodules or []:
-        if isinstance(child, ModuleTypeInstance):
-            continue
         _scan_container(
             issues,
             [*path, child.header.name],
