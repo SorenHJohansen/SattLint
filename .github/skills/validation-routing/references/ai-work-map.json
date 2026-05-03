@@ -139,6 +139,12 @@
       "user_invocable": true
     },
     {
+      "description": "Use when: scoping a broad request, choosing the owning SattLint surface, planning file claims and handoffs, or deciding whether work should stay in one slice or split across multiple specialist agents",
+      "file_path": ".github/agents/planner.agent.md",
+      "name": "Planner",
+      "user_invocable": false
+    },
+    {
       "description": "Use when: changing repo audit checks, pipeline artifacts, public-readiness scans, portability checks, secrets and PII scanning, or devtools audit commands in SattLint",
       "file_path": ".github/agents/repo-audit.agent.md",
       "name": "Repo Audit",
@@ -151,9 +157,21 @@
       "user_invocable": false
     },
     {
+      "description": "Use when: reviewing an executor or test handoff, checking architectural compliance, confirming finish-gate evidence, or deciding whether a SattLint slice is ready for merge",
+      "file_path": ".github/agents/reviewer.agent.md",
+      "name": "Reviewer Agent",
+      "user_invocable": false
+    },
+    {
       "description": "Use when: splitting work across multiple chats or agents, parallelizing repo tasks, coordinating file ownership, planning handoffs, or orchestrating parser, LSP, and verification work in SattLint",
       "file_path": ".github/agents/sattlint-orchestrator.agent.md",
       "name": "SattLint Orchestrator",
+      "user_invocable": false
+    },
+    {
+      "description": "Use when: validating an executor slice from a handoff, adding focused regression or edge-case tests, rerunning owner-suite proof, or updating handoff validation state in SattLint",
+      "file_path": ".github/agents/test.agent.md",
+      "name": "Test Agent",
       "user_invocable": false
     },
     {
@@ -1136,13 +1154,20 @@
     },
     {
       "commands": [
-        "& \".venv/Scripts/python.exe\" -m pre_commit run --all-files",
+        "& \".venv/Scripts/python.exe\" -m pre_commit run --all-files"
+      ],
+      "notes": [],
+      "surface": "Fast local hygiene gate"
+    },
+    {
+      "commands": [
+        "& \".venv/Scripts/sattlint-repo-audit.exe\" --profile full --check-my-changes --output-dir artifacts/audit",
         "Repo Verify"
       ],
       "notes": [
-        "Full gate procedure and reporting live in ."
+        "- Full gate procedure and reporting live in ."
       ],
-      "surface": "Final repo gate"
+      "surface": "Local pre-push gate"
     }
   ]
 }

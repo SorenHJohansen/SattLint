@@ -19,7 +19,9 @@ This file supplements `AGENTS.md` with deeper background, examples, and file ref
 - `src/sattlint_lsp/` contains the external language-server layer.
 - `vscode/sattline-vscode/` contains the no-build VS Code client.
 - `src/sattlint/devtools/pipeline.py` runs the repo-local lint, type, test, dead-code, security, and architecture checks into JSON artifacts.
-- `python -m pre_commit run --all-files` is the local pre-push gate. It already runs the repo-wide `pytest-quality` and `ratchet-policy` hooks locally.
+- `python scripts/run_ai_edit_gate.py` is the first post-edit command for touched Python or AI-control files. It auto-fixes Python files with Ruff and reruns context health when the AI-control plane changed.
+- `python -m pre_commit run --all-files` is the fast local hygiene gate.
+- `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` is the local pre-push gate.
 - `sattlint-repo-audit --profile full --output-dir artifacts/audit` is the canonical repository audit command for CI and audit workflows.
 - Read `artifacts/audit/status.json` first for the compact status summary, then inspect `artifacts/audit/summary.json` and `artifacts/audit/pipeline/status.json` as needed.
 - For narrow audit validation, prefer `sattlint-repo-audit --profile full --recommend-checks` or `sattlint-repo-audit --profile full --run-recommended-slice`.
@@ -34,6 +36,22 @@ This file supplements `AGENTS.md` with deeper background, examples, and file ref
 - `--planning-context` and `--check-my-changes` share the same routing seam. `--planning-context` plans; `--check-my-changes` executes the selected finish gate and writes `check_my_changes.json`. Both now expose whether a focused behavior test is required, whether changed-line or touched-file coverage proof applies, and whether parser, validation, or routing changes should prefer mutation or property-style follow-up.
 - The machine-readable AI work map lives at `.github/skills/validation-routing/references/ai-work-map.json`; regenerate it with `python -m sattlint.devtools.ai_work_map --write` when routing inputs change. `verify-recommendations` now fails when the checked-in AI maps drift from the live build.
 - `src/sattlint/tracing.py` traces parser-to-analyzer execution for a concrete SattLine file.
+
+## AI Role Set
+
+- `Planner` is the thin planning alias over `SattLint Orchestrator`. Use it to scope broad requests, choose the owning surface, and prepare claims or handoffs before implementation starts.
+- Executor work stays surface-owned. Use `CLI App Menu`, `Documentation Generation`, `Parser Analysis`, `Repo Audit`, or `Workspace LSP` instead of a generic executor.
+- `Test Agent` consumes executor handoffs, adds focused regression coverage, reruns owner proof, and updates validation state.
+- `Reviewer Agent` reads the diff plus handoff, checks architecture and risk, and reports findings or approval status.
+- `Repo Verify` runs repo-wide hygiene and pre-push gates after slice-level work. It is not the slice-level test role.
+
+## Debt ID Workflow
+
+- Use the `debt-id-routing` skill when the user starts from one item in `docs/exec-plans/tech-debt-tracker.md` instead of a file, test, or failing command.
+- `Plan Debt Slice` is the user-facing wrapper around `Planner` for debt ID to slice selection.
+- `Implement Debt Slice` is the user-facing wrapper around `SattLint Orchestrator`; it should keep one slice when one owner surface is enough and route to the nearest specialist executor when ownership is clear.
+- `Validate Slice` and `Review Slice` are the user-facing wrappers around `Test Agent` and `Reviewer Agent` for the same slice once task or handoff artifacts exist.
+- Debt IDs stay scoped to one slice unless mixed owner surfaces or a listed blocker force a planner decision first.
 
 ---
 

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SattLint AI Handoff",
+  "type": "object",
+  "required": [
+    "task_id",
+    "stage",
+    "branch",
+    "commit",
+    "files_changed",
+    "summary",
+    "known_risks",
+    "required_tests",
+    "validation_status"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "executor",
+        "test",
+        "review"
+      ]
+    },
+    "branch": {
+      "type": "string",
+      "minLength": 3
+    },
+    "commit": {
+      "type": "string",
+      "minLength": 7
+    },
+    "files_changed": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 10
+    },
+    "known_risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "required_tests": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "validation_status": {
+      "type": "object",
+      "required": [
+        "state",
+        "commands"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "failed",
+            "passed"
+          ]
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "reviewer_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "validated",
+        "ready-for-merge",
+        "merged",
+        "rejected"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

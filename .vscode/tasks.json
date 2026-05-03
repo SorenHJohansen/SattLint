@@ -1,0 +1,130 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AI: Planning Context",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "-m",
+        "sattlint.devtools.repo_audit",
+        "--profile",
+        "full",
+        "--planning-context",
+        "--output-dir",
+        "artifacts/audit"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "AI: Bootstrap Slice",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/bootstrap_ai_slice.py"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "AI: Edit Autofix",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/run_ai_edit_gate.py"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "AI: Context Health Check",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/context_health.py",
+        "--check"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Quality: Fast Pre-commit Gate",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "-m",
+        "pre_commit",
+        "run",
+        "--all-files"
+      ],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Quality: Pre-push Gate",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "-m",
+        "sattlint.devtools.repo_audit",
+        "--profile",
+        "full",
+        "--check-my-changes",
+        "--output-dir",
+        "artifacts/audit"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Audit: Quick Repo Audit",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "-m",
+        "sattlint.devtools.repo_audit",
+        "--profile",
+        "quick",
+        "--output-dir",
+        "artifacts/audit"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Metrics: Repo Health Snapshot",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/repo_health.py",
+        "--audit-dir",
+        "artifacts/audit",
+        "--json-output",
+        "artifacts/generated/repo-health.json",
+        "--markdown-output",
+        "docs/generated/repo-health.md"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

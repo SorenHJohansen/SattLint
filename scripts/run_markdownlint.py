@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+OPTIONS_WITH_VALUE = {"--config", "--configPointer"}
 
 
 def _windows_path_to_wsl(path: Path) -> str:
@@ -27,8 +28,46 @@ def _resolve_command(tool_args: list[str]) -> tuple[list[str], Path | None]:
     return [], None
 
 
+def _has_explicit_targets(tool_args: list[str]) -> bool:
+    skip_next = False
+    for arg in tool_args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in OPTIONS_WITH_VALUE:
+            skip_next = True
+            continue
+        if arg.startswith("--"):
+            continue
+        return True
+    return False
+
+
+def _build_tool_args(tool_args: list[str]) -> list[str]:
+    if "--no-globs" in tool_args or not _has_explicit_targets(tool_args):
+        return tool_args
+
+    built_args: list[str] = []
+    index = 0
+    while index < len(tool_args):
+        arg = tool_args[index]
+        if arg in OPTIONS_WITH_VALUE:
+            built_args.extend(tool_args[index : index + 2])
+            index += 2
+            continue
+        if arg.startswith("--"):
+            built_args.append(arg)
+            index += 1
+            continue
+        built_args.append("--no-globs")
+        built_args.extend(tool_args[index:])
+        return built_args
+
+    return built_args
+
+
 def main(argv: list[str] | None = None) -> int:
-    tool_args = argv if argv is not None else sys.argv[1:]
+    tool_args = _build_tool_args(argv if argv is not None else sys.argv[1:])
     command, cwd = _resolve_command(tool_args)
     if not command:
         return 2

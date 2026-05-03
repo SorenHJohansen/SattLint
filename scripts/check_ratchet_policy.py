@@ -233,6 +233,13 @@ def _path_is_within_roots(rel_path: str, roots: Sequence[str]) -> bool:
     return any(rel_path == root or rel_path.startswith(f"{root}/") for root in roots)
 
 
+def _typing_scope_expansion_roots(
+    base_roots: Sequence[str],
+    head_roots: Sequence[str],
+) -> tuple[str, ...]:
+    return tuple(rel_root for rel_root in head_roots if not _path_is_within_roots(rel_root, base_roots))
+
+
 def _typing_scope_python_files(repo_root: Path, roots: Sequence[str]) -> tuple[str, ...]:
     files: list[str] = []
     for root_text in roots:
@@ -252,6 +259,8 @@ def _typing_ratchet_state_errors(
     *,
     repo_root: Path,
     added_files: Sequence[str],
+    changed_files: Sequence[str] = (),
+    base_state: TypingRatchetState | None = None,
     state: TypingRatchetState,
 ) -> list[str]:
     errors: list[str] = []
@@ -288,6 +297,7 @@ def _typing_ratchet_state_errors(
         for rel_path in added_files
         if rel_path.endswith(".py") and _path_is_within_roots(rel_path, state.strict_roots)
     )
+    added_scope_file_set = set(added_scope_files)
     for rel_path in added_scope_files:
         if rel_path in debt_allowlist:
             errors.append(
@@ -296,6 +306,26 @@ def _typing_ratchet_state_errors(
             )
         elif rel_path not in strict_paths:
             errors.append(f"New file under the typing strict scope is not covered by tool.pyright.strict: {rel_path}.")
+
+    touched_scope_debt = sorted(
+        rel_path
+        for rel_path in changed_files
+        if rel_path.endswith(".py")
+        and rel_path not in added_scope_file_set
+        and rel_path in debt_allowlist
+        and _path_is_within_roots(rel_path, state.strict_roots)
+    )
+    for rel_path in touched_scope_debt:
+        if (
+            base_state is not None
+            and rel_path in base_state.debt_allowlist
+            and _typing_scope_expansion_roots(base_state.strict_roots, state.strict_roots)
+        ):
+            continue
+        errors.append(
+            "Touched file under the typing strict scope remains in typing debt allowlist: "
+            f"{rel_path}. Touched files under the strict scope must move to tool.pyright.strict."
+        )
 
     return errors
 
@@ -314,8 +344,11 @@ def _typing_ratchet_backslide_errors(
     head_strict = set(head_state.strict_paths)
     base_debt = set(base_state.debt_allowlist)
     head_debt = set(head_state.debt_allowlist)
+    expanded_roots = _typing_scope_expansion_roots(base_state.strict_roots, head_state.strict_roots)
 
-    for rel_root in sorted(base_roots - head_roots):
+    for rel_root in sorted(
+        rel_root for rel_root in base_roots - head_roots if not _path_is_within_roots(rel_root, head_state.strict_roots)
+    ):
         errors.append(f"Typing strict scope shrank: removed strict root {rel_root}.")
 
     for rel_path in sorted(base_strict - head_strict):
@@ -327,6 +360,10 @@ def _typing_ratchet_backslide_errors(
             errors.append(f"Pyright strict coverage removed: {rel_path}. Fix types first; do not rebaseline.")
 
     for rel_path in sorted(head_debt - base_debt):
+        if _path_is_within_roots(rel_path, expanded_roots) and not _path_is_within_roots(
+            rel_path, base_state.strict_roots
+        ):
+            continue
         errors.append(f"Typing debt allowlist grew: {rel_path}. Fix types first; do not add new exceptions.")
 
     return errors
@@ -664,8 +701,20 @@ def run_policy_check(repo_root: Path = REPO_ROOT, env: Mapping[str, str] | None 
     current_typing_state = _typing_ratchet_state(pyproject_text, PYPROJECT_PATH)
     if current_typing_state is None:
         raise ValueError(f"{PYPROJECT_PATH} is missing typing ratchet configuration.")
+    base_pyproject_text = None
+    if context.base_ref is not None:
+        base_pyproject_text = _load_base_texts(repo_root, context.base_ref, (PYPROJECT_PATH,)).get(PYPROJECT_PATH)
+    base_typing_state = (
+        _typing_ratchet_state(base_pyproject_text, PYPROJECT_PATH, allow_missing=True) if base_pyproject_text else None
+    )
     errors.extend(
-        _typing_ratchet_state_errors(repo_root=repo_root, added_files=context.added_files, state=current_typing_state)
+        _typing_ratchet_state_errors(
+            repo_root=repo_root,
+            added_files=context.added_files,
+            changed_files=context.changed_files,
+            base_state=base_typing_state,
+            state=current_typing_state,
+        )
     )
 
     if not relevant_paths:

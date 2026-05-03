@@ -25,6 +25,8 @@ Canonical first-check command source for SattLint customization surfaces. Use fi
   `& ".venv/Scripts/pyright.exe" <touched_python_files>`
 - Shared infra, repo-audit, hooks, or cross-subsystem Python wiring after focused checks:
   owner-suite validation or `& ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit`
-- Final repo gate:
+- Fast local hygiene gate:
   `& ".venv/Scripts/python.exe" -m pre_commit run --all-files`
-  Full gate procedure and reporting live in `Repo Verify`.
+- Local pre-push gate:
+  `& ".venv/Scripts/sattlint-repo-audit.exe" --profile full --check-my-changes --output-dir artifacts/audit`
+- Full gate procedure and reporting live in `Repo Verify`.
