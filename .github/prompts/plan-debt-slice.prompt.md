@@ -1,0 +1,15 @@
+---
+description: "Plan a scoped SattLint work slice from one tech debt ID in the tracker"
+name: "Plan Debt Slice"
+argument-hint: "Tech debt ID like T-009"
+agent: "Planner"
+---
+Plan one SattLint work slice from the requested tech debt item.
+
+Requirements:
+- Use the `debt-id-routing` skill first against `docs/exec-plans/tech-debt-tracker.md`.
+- Read `.github/coordination/current-work.md` before proposing claims.
+- Keep one slice when possible; split only when the debt item spans incompatible owner surfaces or an explicit blocker requires a precursor slice.
+- Use `.ai/tasks/task-contract.example.json` and `.ai/handoffs/handoff.example.json` as the artifact shape references when suggesting task and handoff paths.
+- Use `sattlint-repo-audit --profile full --planning-context --changed-file <path> --output-dir artifacts/audit` once candidate controlling files are known if routing still needs confirmation.
+- Return the debt summary, likely owner surface, suggested specialist agent, exact file claims, first validation, finish gate, blockers, suggested task path, and suggested handoff path.

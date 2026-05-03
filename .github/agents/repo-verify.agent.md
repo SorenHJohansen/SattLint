@@ -16,22 +16,29 @@ Use this agent for explicit repo-wide verify, commit-ready, push-ready, merge-re
 
 ## Verification Gate
 
-Run this local pre-push gate. It must pass.
+Run both local verification gates. They must pass.
 
-**Step 1 — local pre-push gate:**
+**Step 1 — fast local hygiene gate:**
 ```
 & ".venv/Scripts/python.exe" -m pre_commit run --all-files
 ```
-Covers: `ruff` lint+fix, `ruff-format`, `pyright`, `pytest-quality`, `ratchet-policy`, trailing-whitespace, end-of-file-fixer, YAML/TOML check, and large-file check.
+
+**Step 2 — local pre-push gate:**
+```
+& ".venv/Scripts/sattlint-repo-audit.exe" --profile full --check-my-changes --output-dir artifacts/audit
+```
+Covers: Step 1 handles fast Ruff, formatting, changed Markdown lint, staged SattLine syntax-check, trailing-whitespace, end-of-file-fixer, YAML/TOML check, large-file checks, and targeted context-health. Step 2 handles focused owner tests, touched-file Ruff and Pyright, ratchet policy, and the recommended repo-audit slice for the current change set.
 
 ## Approach
 
-1. Run the local pre-push gate. Capture exit code and output.
+1. Run the fast local hygiene gate. Capture exit code and output.
 2. If it is non-zero, categorize each failure:
    - **Safe auto-fix**: formatting, trailing whitespace, import sort, trivial ruff lint — fix automatically.
    - **Risky/behavior-changing**: logic, validation semantics, test assertions, grammar rules, pyright errors, ratchet-policy failures — ask before touching.
-3. After each fix batch, rerun the same gate from the start.
-4. Repeat until it exits cleanly or all remaining failures require manual action.
+3. After the fast gate passes, run the local pre-push gate.
+4. If it is non-zero, categorize each failure using the same safe-vs-risky split.
+5. After each fix batch, rerun the fast gate and then the local pre-push gate from the start.
+6. Repeat until both gates exit cleanly or all remaining failures require manual action.
 
 ## Additional Validation Commands (use as needed)
 

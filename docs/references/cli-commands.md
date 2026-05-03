@@ -121,7 +121,7 @@ Used by the VS Code extension (`vscode/sattline-vscode/`) to provide:
 
 ### sattlint-repo-audit
 
-Repository audit and quality checks. Primary entry point for CI and audit workflows. Local pre-push gate is `python -m pre_commit run --all-files`.
+Repository audit and quality checks. Primary entry point for CI and audit workflows. Local pre-push gate is `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit`.
 
 ```bash
 # Quick audit (fast iteration during development)
@@ -164,13 +164,28 @@ sattlint-repo-audit --profile quick --fail-on medium --output-dir artifacts/audi
 sattlint-repo-audit --profile full --fail-on high --output-dir artifacts/audit
 ```
 
-Local pre-push gate:
+AI edit autofix:
+
+```bash
+python scripts/run_ai_edit_gate.py
+python scripts/run_ai_edit_gate.py scripts/context_health.py tests/test_ai_edit_gate.py
+```
+
+Fast local pre-commit gate:
 
 ```bash
 python -m pre_commit run --all-files
 ```
 
-That hook set already runs the repo-wide `pytest-quality` and `ratchet-policy` checks locally.
+That hook set is now intentionally fast and file-scoped. It auto-fixes Python formatting with Ruff, lints changed Markdown files, checks staged SattLine files, and reruns context health only when the AI-control plane is touched.
+
+Local pre-push gate:
+
+```bash
+sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit
+```
+
+Use the pre-push gate for the heavier proof burden: focused owner tests, touched-file Ruff and Pyright, ratchet policy, and the recommended repo-audit slice for the current change set.
 
 Output:
 

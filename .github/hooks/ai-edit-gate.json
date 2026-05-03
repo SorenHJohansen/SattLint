@@ -1,0 +1,15 @@
+{
+    "hooks": {
+        "PostToolUse": [
+            {
+                "type": "command",
+                "command": "python .github/hooks/scripts/ai_edit_gate_post_tool.py",
+                "windows": ".venv\\Scripts\\python.exe .github\\hooks\\scripts\\ai_edit_gate_post_tool.py",
+                "linux": ".venv/bin/python .github/hooks/scripts/ai_edit_gate_post_tool.py",
+                "osx": ".venv/bin/python .github/hooks/scripts/ai_edit_gate_post_tool.py",
+                "cwd": ".",
+                "timeout": 30
+            }
+        ]
+    }
+}

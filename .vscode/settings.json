@@ -43,12 +43,17 @@
         "windows1252"
     ],
     "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll.ruff": "always",
+        "source.organizeImports.ruff": "always"
+    },
     "[python]": {
         "editor.defaultFormatter": "charliermarsh.ruff"
     },
     "[markdown]": {
         "editor.defaultFormatter": "vscode.markdown-language-features"
     },
+    "contextOptimizer.autoLoadedLineThreshold": 80,
     "window.autoDetectColorScheme": false,
     "workbench.preferredDarkColorTheme": "Dark+",
     "workbench.colorTheme": "GitHub Dark",

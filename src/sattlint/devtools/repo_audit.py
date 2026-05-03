@@ -103,11 +103,19 @@ GENERATED_PATH_PREFIXES = (
 )
 IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PREFIXES = ("src/sattlint/devtools/",)
 IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PATHS = {
+    "scripts/check_ratchet_policy.py",
+    "scripts/repo_health.py",
     "tests/test_artifact_contracts.py",
     "tests/test_devtools_review_observability.py",
     "tests/test_pipeline_collection.py",
     "tests/test_pipeline_run.py",
+    "tests/test_context_health.py",
     "tests/test_repo_audit.py",
+    "tests/test_repo_audit_entrypoints_helpers.py",
+    "tests/test_run_markdownlint.py",
+    "tests/test_ratchet_policy.py",
+    "tests/test_repo_health.py",
+    "tests/test_recommendation_routing.py",
     "tests/test_structural_reports.py",
 }
 IGNORED_REPO_PATH_REFERENCE_PREFIXES = (
@@ -698,7 +706,10 @@ def _copy_audit_snapshot(source_dir: Path, snapshot_dir: Path) -> None:
             target_path.mkdir(parents=True, exist_ok=True)
             continue
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_path, target_path)
+        try:
+            shutil.copy2(source_path, target_path)
+        except FileNotFoundError:
+            continue
 
 
 def _history_stale_reasons(entry: dict[str, Any], *, latest: bool) -> list[str]:

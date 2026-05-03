@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: "17 2 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  full-trust:
+    if: ${{ github.event_name != 'schedule' }}
+    name: Full Trust Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev,lsp]"
+
+      - name: Check context health
+        run: python scripts/context_health.py --check --json-output artifacts/health/context-health.json --markdown-output docs/generated/context-health.md
+
+      - name: Run fast pre-commit gate
+        run: python -m pre_commit run --all-files
+
+      - name: Run doc gardener
+        run: python -m sattlint.devtools.doc_gardener --check-only
+
+      - name: Run changed-slice finish gate
+        if: ${{ github.event_name == 'pull_request' }}
+        run: python -m sattlint.devtools.repo_audit --profile full --check-my-changes --output-dir artifacts/audit-ci
+
+      - name: Run full repo audit
+        if: ${{ github.event_name != 'pull_request' }}
+        run: python -m sattlint.devtools.repo_audit --profile full --output-dir artifacts/audit-ci --fail-on high
+
+      - name: Build repo health dashboard
+        run: python scripts/repo_health.py --check --audit-dir artifacts/audit-ci --json-output artifacts/health/repo-health.json --markdown-output docs/generated/repo-health.md
+
+      - name: Upload CI health artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          if-no-files-found: ignore
+          name: ci-health-${{ github.run_id }}
+          path: |
+            artifacts/health/
+            artifacts/audit-ci/
+            docs/generated/context-health.md
+            docs/generated/repo-health.md
+
+  nightly-health:
+    if: ${{ github.event_name == 'schedule' }}
+    name: Nightly Health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[dev,lsp]"
+
+      - name: Check context health
+        run: python scripts/context_health.py --check --json-output artifacts/health/context-health-nightly.json --markdown-output artifacts/health/context-health-nightly.md
+
+      - name: Run doc gardener
+        run: python -m sattlint.devtools.doc_gardener --check-only
+
+      - name: Run nightly repo audit
+        run: python -m sattlint.devtools.repo_audit --profile full --output-dir artifacts/audit-nightly --fail-on high
+
+      - name: Build nightly repo health snapshot
+        run: python scripts/repo_health.py --check --audit-dir artifacts/audit-nightly --json-output artifacts/health/repo-health-nightly.json --markdown-output artifacts/health/repo-health-nightly.md --history-output artifacts/health/history/repo-health-nightly.json
+
+      - name: Upload nightly health artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          if-no-files-found: ignore
+          name: nightly-health-${{ github.run_id }}
+          path: |
+            artifacts/health/
+            artifacts/audit-nightly/

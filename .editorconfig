@@ -14,5 +14,9 @@ indent_size = 4
 indent_style = space
 indent_size = 2
 
+[*.{json,jsonc}]
+indent_style = space
+indent_size = 2
+
 [*.md]
 trim_trailing_whitespace = false

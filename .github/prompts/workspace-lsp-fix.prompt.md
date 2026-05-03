@@ -7,7 +7,7 @@ agent: "Workspace LSP"
 Investigate and fix the requested workspace, semantic-core, or LSP issue in SattLint.
 
 Requirements:
-- Read `.github/coordination/current-work.md` before first edit and claim touched files when useful.
+- Read `.github/coordination/current-work.md` before first edit and claim exact touched files before the first edit.
 - Start from the nearest controlling workspace-store, editor facade, dirty-buffer, or diagnostic path.
 - Preserve the distinction between strict single-file validation and dependency-aware workspace analysis.
 - Choose the first focused validation route from [validation map](../skills/validation-routing/references/validation-map.md), then restart with `sattlineLsp.restartServer` if the touched surface requires it.

@@ -12,8 +12,28 @@ For AI contributors and multi-agent work, start here:
 
 - `AGENTS.md`
 - `docs/context-loading-order.md`
+- `docs/repo-map.md`
+- `docs/architecture.md`
+- `docs/quality-gates.md`
+- `docs/ai-workflows.md`
 - `docs/exec-plans/completed/ai-first-repo-hardening.md`
 - `docs/exec-plans/tech-debt-tracker.md`
+
+---
+
+## AI-First Quick Start
+
+For repository operations, use these in order:
+
+- `python scripts/run_ai_edit_gate.py`
+- `python -m pre_commit run --all-files`
+- `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit`
+- `python scripts/repo_health.py --check --audit-dir artifacts/audit`
+
+`python scripts/run_ai_edit_gate.py` auto-fixes touched Python files with Ruff and runs `context_health.py --check` when the touched files are part of the AI-control plane.
+
+In VS Code, the workspace also recommends `wanderleyferreiradealbuquerque.context-optimizer`.
+Use `@context-optimizer /audit` before expanding AI control files such as `AGENTS.md` or scoped instruction sets.
 
 ---
 
@@ -128,6 +148,8 @@ sattlint --quiet repo-audit --profile quick
 ```
 
 For the full command surface and script entry points, see `docs/references/cli-commands.md`.
+
+For repository dashboards and AI workflow contracts, see `docs/quality-gates.md`, `docs/ai-workflows.md`, `.ai/tasks/task-contract.schema.json`, and `.ai/handoffs/handoff.schema.json`.
 
 ---
 

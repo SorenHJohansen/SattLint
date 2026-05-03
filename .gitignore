@@ -40,6 +40,9 @@ artifacts/
 *.xlsx
 *.txt
 
+# Local library trees (DO NOT COMMIT)
+Libs/
+
 # Local dev config (DO NOT COMMIT)
 config.toml
 mise.toml

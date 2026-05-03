@@ -205,6 +205,31 @@ def test_iter_repo_text_files_skips_virtualenv_variants(tmp_path):
     assert venv_file.as_posix() not in files
 
 
+def test_copy_audit_snapshot_skips_files_removed_during_copy(tmp_path, monkeypatch):
+    source_dir = tmp_path / "source"
+    snapshot_dir = tmp_path / "snapshot"
+    missing_file = source_dir / "status.json"
+    kept_file = source_dir / "summary.json"
+    source_dir.mkdir(parents=True)
+    missing_file.write_text("status", encoding="utf-8")
+    kept_file.write_text("summary", encoding="utf-8")
+
+    original_copy2 = repo_audit.shutil.copy2
+
+    def fake_copy2(source: Path, target: Path):
+        if source == missing_file:
+            missing_file.unlink()
+            raise FileNotFoundError(source)
+        return original_copy2(source, target)
+
+    monkeypatch.setattr(repo_audit.shutil, "copy2", fake_copy2)
+
+    repo_audit._copy_audit_snapshot(source_dir, snapshot_dir)
+
+    assert not (snapshot_dir / "status.json").exists()
+    assert (snapshot_dir / "summary.json").read_text(encoding="utf-8") == "summary"
+
+
 def test_line_findings_ignore_grammar_token_constants(tmp_path):
     sample = tmp_path / "constants.py"
     text = 'TOKEN_NEW = "NEW"\nTOKEN_OLD = "OLD"\nTOKEN_VARNAME = "VARNAME"\n'
@@ -517,6 +542,88 @@ def test_find_ignored_repo_path_references_skips_tracked_fixture_and_allowlisted
         context,
         root=tmp_path,
         tracked_paths=tracked_paths,
+    )
+
+    assert findings == []
+
+
+def test_find_ignored_repo_path_references_skips_allowlisted_policy_and_helper_files(tmp_path):
+    scripts_dir = tmp_path / "scripts"
+    tests_dir = tmp_path / "tests"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    tests_dir.mkdir(parents=True, exist_ok=True)
+
+    (scripts_dir / "check_ratchet_policy.py").write_text(
+        'STRUCTURAL = "artifacts/analysis/structural_budget_ratchet.json"\n'
+        'COVERAGE = "artifacts/analysis/coverage_ratchet.json"\n'
+        'XML = "coverage.xml"\n',
+        encoding="utf-8",
+    )
+    (scripts_dir / "repo_health.py").write_text(
+        'DEFAULT_AUDIT_DIR = REPO_ROOT / "artifacts" / "audit"\n'
+        'DEFAULT_COVERAGE_RATCHET = REPO_ROOT / "artifacts" / "analysis" / "coverage_ratchet.json"\n'
+        'DEFAULT_STRUCTURAL_RATCHET = REPO_ROOT / "artifacts" / "analysis" / "structural_budget_ratchet.json"\n',
+        encoding="utf-8",
+    )
+    (tests_dir / "test_ratchet_policy.py").write_text(
+        'def test_coverage_fixture_name():\n    return "coverage.xml"\n',
+        encoding="utf-8",
+    )
+    (tests_dir / "test_context_health.py").write_text(
+        'def test_context_health_uses_audit_artifacts():\n    return "artifacts/analysis/coverage_ratchet.json"\n',
+        encoding="utf-8",
+    )
+    (tests_dir / "test_recommendation_routing.py").write_text(
+        "def test_structural_report_route_case():\n"
+        '    return "artifacts/analysis/structural_budget_ratchet.json", "coverage.xml"\n',
+        encoding="utf-8",
+    )
+    (tests_dir / "test_repo_health.py").write_text(
+        'def test_repo_health_defaults():\n    return "artifacts/audit", "artifacts/analysis/coverage_ratchet.json"\n',
+        encoding="utf-8",
+    )
+    (tests_dir / "test_run_markdownlint.py").write_text(
+        'def test_markdownlint_wrapper_fixture_name():\n    return "coverage.xml"\n',
+        encoding="utf-8",
+    )
+    (tests_dir / "test_repo_audit_entrypoints_helpers.py").write_text(
+        'def test_finish_gate_report_paths():\n    return "artifacts/audit", "artifacts/audit/finish_gate.json"\n',
+        encoding="utf-8",
+    )
+
+    tracked_paths = (
+        "scripts/check_ratchet_policy.py",
+        "scripts/repo_health.py",
+        "tests/test_context_health.py",
+        "tests/test_ratchet_policy.py",
+        "tests/test_repo_health.py",
+        "tests/test_recommendation_routing.py",
+        "tests/test_repo_audit_entrypoints_helpers.py",
+        "tests/test_run_markdownlint.py",
+    )
+
+    script_context = repo_audit._build_python_source_scan_context(
+        scripts_dir,
+        root=tmp_path,
+        tracked_paths=tracked_paths,
+    )
+    test_context = repo_audit._build_python_source_scan_context(
+        tests_dir,
+        root=tmp_path,
+        tracked_paths=tracked_paths,
+    )
+
+    findings = repo_audit._find_ignored_repo_path_references(
+        script_context,
+        root=tmp_path,
+        tracked_paths=tracked_paths,
+    )
+    findings.extend(
+        repo_audit._find_ignored_repo_path_references(
+            test_context,
+            root=tmp_path,
+            tracked_paths=tracked_paths,
+        )
     )
 
     assert findings == []
