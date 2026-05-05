@@ -162,6 +162,10 @@ def _summary_findings(summary: dict[str, Any]):
     return (repo_audit.Finding(**finding) for finding in summary["findings"])
 
 
+def _terminal_findings(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    return list(summary.get("findings", []))
+
+
 def _selected_check_exit_code(summary: dict[str, Any], fail_on: str) -> tuple[int, dict[str, Any]]:
     repo_audit = _repo_audit_module()
     selected_findings = _summary_findings(summary)
@@ -177,6 +181,7 @@ def _selected_check_exit_code(summary: dict[str, Any], fail_on: str) -> tuple[in
         "overall_status": selected_status,
         "findings_schema": summary.get("findings_schema"),
         "finding_count": summary["finding_count"],
+        "findings": _terminal_findings(summary),
         "blocking_finding_count": repo_audit._blocking_finding_count(_summary_findings(summary), fail_on),
         "fail_on": fail_on,
         "status_report": f"{summary['output_dir']}/status.json",
@@ -329,6 +334,7 @@ def main(argv: list[str] | None = None) -> int:
             "overall_status": "fail" if repo_audit._should_fail(_summary_findings(summary), fail_on) else "pass",
             "findings_schema": summary.get("findings_schema"),
             "finding_count": summary["finding_count"],
+            "findings": _terminal_findings(summary),
             "blocking_finding_count": repo_audit._blocking_finding_count(_summary_findings(summary), fail_on),
             "fail_on": fail_on,
             "status_report": f"{summary['output_dir']}/status.json",

@@ -8,6 +8,19 @@ repos:
 
   - repo: local
     hooks:
+      - id: ai-routing-artifacts
+        name: AI routing artifacts (auto-regenerate)
+        language: system
+        entry: python scripts/run_repo_python.py
+        args: [-m, sattlint.devtools.ai_work_map, --write]
+        files: ^(src/sattlint/devtools/(ai_work_map|pipeline_checks|repo_audit_entrypoints)\.py|\.github/agents/.*\.agent\.md|\.github/instructions/.*\.md|\.github/skills/validation-routing/references/validation-map\.md|docs/exec-plans/active/.*\.md)$
+        pass_filenames: false
+      - id: actionlint
+        name: actionlint (GitHub workflows)
+        language: system
+        entry: python scripts/run_actionlint.py
+        files: ^\.github/workflows/.*\.(yml|yaml)$
+        pass_filenames: true
       - id: markdownlint-cli2
         name: markdownlint-cli2 (changed Markdown files)
         language: system

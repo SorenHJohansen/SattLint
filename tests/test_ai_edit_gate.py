@@ -95,6 +95,30 @@ def test_main_runs_context_health_for_touched_ai_control_file(monkeypatch, tmp_p
     assert commands == [["python", "scripts/context_health.py", "--check"]]
 
 
+def test_main_syncs_exec_plans_for_touched_active_exec_plan(monkeypatch, tmp_path):
+    plan_file = tmp_path / "docs" / "exec-plans" / "active" / "done.md"
+    plan_file.parent.mkdir(parents=True, exist_ok=True)
+    plan_file.write_text("# Done\n", encoding="utf-8")
+    ratchet_path = _write_ratchet(tmp_path)
+
+    monkeypatch.setattr(ai_edit_gate, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(ai_edit_gate, "RATCHET_PATH", ratchet_path)
+    monkeypatch.setattr(ai_edit_gate, "_resolve_python", lambda _repo_root: Path("python"))
+
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str], cwd: Path, check: bool, **kwargs: Any):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(ai_edit_gate.subprocess, "run", fake_run)
+
+    exit_code = ai_edit_gate.main(["docs/exec-plans/active/done.md"])
+
+    assert exit_code == 0
+    assert commands == [["python", "-m", "sattlint.devtools.ai_work_map", "--write"]]
+
+
 def test_main_uses_git_diff_when_no_explicit_paths(monkeypatch, tmp_path):
     python_file = tmp_path / "src" / "demo.py"
     python_file.parent.mkdir(parents=True, exist_ok=True)

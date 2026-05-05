@@ -7,7 +7,7 @@ from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleHeader,
 )
-from sattlint.devtools import corpus, pipeline
+from sattlint.devtools import corpus, mutation_engine, pipeline
 from sattlint.devtools.artifact_registry import ArtifactDefinition
 from sattlint.devtools.pipeline_artifacts import (
     PipelineArtifactContext,
@@ -305,6 +305,72 @@ def test_run_pipeline_writes_analysis_diff_when_baseline_is_supplied(monkeypatch
         artifact_registry,
         profile="quick",
         enabled_artifact_ids=("analysis_diff",),
+    )
+
+
+def test_run_pipeline_writes_mutation_and_differential_artifacts_when_requested(monkeypatch, tmp_path):
+    baseline_findings_path = tmp_path / "baseline-findings.json"
+    baseline_findings_path.write_text(
+        json.dumps(
+            {
+                "kind": "sattlint.findings",
+                "schema_version": 1,
+                "finding_count": 0,
+                "findings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    mutation_target = tmp_path / "MutationTarget.s"
+    mutation_target.write_text("TRUE\n", encoding="utf-8")
+
+    _patch_skipped_coverage_summary(monkeypatch)
+    monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
+    monkeypatch.setattr(pipeline, "_run_command", _patched_run_command)
+    monkeypatch.setattr(pipeline, "_parse_json_lines", lambda raw_output: [])
+    monkeypatch.setattr(
+        pipeline,
+        "_parse_pytest_junit",
+        lambda xml_path: {"summary": {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}, "testcases": []},
+    )
+    monkeypatch.setattr(
+        pipeline, "_collect_structural_report_bundle", lambda progress_callback=None: _minimal_structural_bundle()
+    )
+    monkeypatch.setattr(
+        mutation_engine,
+        "run_mutation_analysis",
+        lambda source_file, finding_collection: mutation_engine.MutationResults(
+            [mutation_engine.MutationRecord("bool-flip", source_file.as_posix(), "TRUE", "FALSE", False)]
+        ),
+    )
+
+    summary = pipeline._run_pipeline(
+        tmp_path,
+        trace_target=None,
+        profile="full",
+        include_vulture=False,
+        include_bandit=False,
+        baseline_findings=baseline_findings_path,
+        run_mutation_analysis=True,
+        mutation_target=mutation_target,
+    )
+
+    mutation_results = json.loads((tmp_path / "mutation_results.json").read_text(encoding="utf-8"))
+    differential_report = json.loads((tmp_path / "differential.json").read_text(encoding="utf-8"))
+    artifact_registry = json.loads((tmp_path / "artifact_registry.json").read_text(encoding="utf-8"))
+
+    assert summary["reports"]["mutation_results"] == "mutation_results.json"
+    assert summary["reports"]["differential"] == "differential.json"
+    assert mutation_results["kind"] == "sattlint.mutation_results"
+    assert mutation_results["summary"] == {"total_mutations": 1, "killed": 0, "alive": 1}
+    assert differential_report["kind"] == "sattlint.differential"
+    assert differential_report["summary"]["baseline"] == "<external>/baseline-findings.json"
+    assert differential_report["summary"]["current"] == "findings.json"
+    assert_artifact_registry_report(
+        artifact_registry,
+        profile="full",
+        enabled_artifact_ids=("analysis_diff", "mutation_results", "differential"),
     )
 
 

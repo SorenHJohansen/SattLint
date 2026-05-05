@@ -2,11 +2,13 @@ import json
 
 from sattlint.devtools import ai_work_map
 from sattlint.devtools.ai_work_map import (
+    DEFAULT_CHECK_CATALOG_OUTPUT_PATH,
     DEFAULT_OUTPUT_PATH,
     DEFAULT_SESSION_CONTEXT_OUTPUT_PATH,
     build_ai_work_map,
     build_planning_context,
     build_session_context_map,
+    render_ai_check_catalog,
     render_ai_work_map,
     render_session_context_map,
     verify_ai_harness_freshness,
@@ -29,20 +31,14 @@ def test_build_ai_work_map_contains_validation_routes_and_catalogs():
     assert any(check["id"] == "ruff" for check in manifest["pipeline_checks"])
     assert any(check["id"] == "documented-commands" for check in manifest["repo_audit_checks"])
     assert any(check["id"] == "harness-freshness" for check in manifest["repo_audit_checks"])
+    assert any(check["ai_summary"] for check in manifest["pipeline_checks"])
+    assert any(check["ai_instruction_files"] for check in manifest["repo_audit_checks"])
 
 
 def test_build_ai_work_map_collects_owner_suite_plans():
     manifest = build_ai_work_map()
-    plan = next(
-        entry
-        for entry in manifest["owner_suite_plans"]
-        if entry["plan_path"].endswith("14-coverage-phase-2-app-devtools-core.md")
-    )
 
-    assert any("tests/test_repo_audit.py" in suite["tests"] for suite in plan["suites"])
-    assert any(
-        command.endswith("tests/test_repo_audit.py -x -q --tb=short") for command in plan["first_validation_commands"]
-    )
+    assert manifest["owner_suite_plans"] == []
 
 
 def test_build_session_context_map_keeps_only_session_start_routing_fields():
@@ -71,6 +67,13 @@ def test_checked_in_ai_session_context_map_matches_live_build():
     assert actual == expected
 
 
+def test_checked_in_ai_check_catalog_matches_live_build():
+    expected = render_ai_check_catalog()
+    actual = DEFAULT_CHECK_CATALOG_OUTPUT_PATH.read_text(encoding="utf-8")
+
+    assert actual == expected
+
+
 def test_build_planning_context_returns_agent_instruction_and_owner_suite_matches():
     planning = build_planning_context(
         changed_files=["src/sattlint/app.py"],
@@ -81,10 +84,13 @@ def test_build_planning_context_returns_agent_instruction_and_owner_suite_matche
 
     assert planning["primary_agent"] == "CLI App Menu"
     assert planning["owner_surfaces"] == ["cli"]
+    assert planning["relevant_checks"][0]["id"] == "cli"
+    assert planning["relevant_checks"][0]["ai_instruction_files"] == [".github/instructions/cli-app.instructions.md"]
     assert planning["owner_test_targets"] == ["tests/test_repo_audit.py"]
     assert any(item["name"] == "CLI App Instructions" for item in planning["instruction_files"])
-    assert any("tests/test_app.py" in suite["tests"] for suite in planning["nearest_owner_suites"])
-    assert any("tests/test_app.py" in command for command in planning["first_validation_commands"])
+    assert any("recommended-check:cli" in item["selection_reasons"] for item in planning["instruction_files"])
+    assert planning["nearest_owner_suites"] == []
+    assert planning["first_validation_commands"] == []
     assert planning["finish_gate_template"]["selected_surface"] == "repo-audit"
     assert any(rule["id"] == "focused-validation-first" for rule in planning["blocking_invariants"])
     assert any(rule["id"] == "cli-menu-tests-stay-in-sync" for rule in planning["blocking_invariants"])
@@ -99,8 +105,8 @@ def test_build_planning_context_session_map_supports_session_start_without_full_
     )
 
     assert planning["primary_agent"] == "CLI App Menu"
-    assert any("tests/test_app.py" in suite["tests"] for suite in planning["nearest_owner_suites"])
-    assert planning["first_validation_commands"]
+    assert planning["nearest_owner_suites"] == []
+    assert planning["first_validation_commands"] == []
     assert planning["finish_gate_template"] is None
     assert any(rule["id"] == "focused-validation-first" for rule in planning["blocking_invariants"])
 
@@ -209,6 +215,84 @@ def test_parse_plan_helpers_extract_routes_owner_suites_and_first_validations(tm
     ]
 
 
+def test_parse_progress_checkbox_states_stops_after_progress_section(tmp_path):
+    plan = tmp_path / "plan.md"
+    plan.write_text(
+        "\n".join(
+            [
+                "# Example Plan",
+                "",
+                "## Progress",
+                "",
+                "- [x] first done step",
+                "- [ ] remaining step",
+                "",
+                "## Surprises & Discoveries",
+                "",
+                "- [ ] not a progress checkbox",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert ai_work_map._parse_progress_checkbox_states(plan) == [True, False]
+    assert ai_work_map._is_completed_exec_plan(plan) is False
+
+
+def test_archive_completed_exec_plans_moves_only_fully_checked_plans(tmp_path):
+    repo_root = tmp_path
+    active_dir = tmp_path / "docs" / "exec-plans" / "active"
+    completed_dir = tmp_path / "docs" / "exec-plans" / "completed"
+    active_dir.mkdir(parents=True)
+
+    completed_plan = active_dir / "done.md"
+    completed_plan.write_text(
+        "\n".join(
+            [
+                "# Done",
+                "",
+                "## Progress",
+                "",
+                "- [x] step one",
+                "- [x] step two",
+                "",
+                "## Outcomes & Retrospective",
+                "",
+                "See docs/exec-plans/active/done.md for the original path.",
+                "",
+                "Closed.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    note_file = repo_root / "notes.md"
+    note_file.write_text("Reference: docs/exec-plans/active/done.md\n", encoding="utf-8")
+    active_plan = active_dir / "active.md"
+    active_plan.write_text(
+        "\n".join(
+            [
+                "# Active",
+                "",
+                "## Progress",
+                "",
+                "- [x] first step",
+                "- [ ] remaining step",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    archived = ai_work_map.archive_completed_exec_plans(active_dir=active_dir, completed_dir=completed_dir)
+
+    assert archived == [{"from": "docs/exec-plans/active/done.md", "to": "docs/exec-plans/completed/done.md"}]
+    assert not completed_plan.exists()
+    moved_plan = completed_dir / "done.md"
+    assert moved_plan.exists()
+    assert "docs/exec-plans/completed/done.md" in moved_plan.read_text(encoding="utf-8")
+    assert note_file.read_text(encoding="utf-8") == "Reference: docs/exec-plans/completed/done.md\n"
+    assert active_plan.exists()
+
+
 def test_load_and_write_work_maps_cover_fallback_and_persistence(tmp_path, monkeypatch):
     work_path = tmp_path / "work.json"
     session_path = tmp_path / "session.json"
@@ -238,9 +322,22 @@ def test_load_and_write_work_maps_cover_fallback_and_persistence(tmp_path, monke
 def test_main_write_check_and_stdout_modes(tmp_path, monkeypatch, capsys):
     output_path = tmp_path / "ai-work-map.json"
     session_output_path = tmp_path / "ai-session-context-map.json"
+    reference_output_path = tmp_path / "ai-check-catalog.md"
+    archived_state = {"archived": False, "calls": 0}
 
-    monkeypatch.setattr(ai_work_map, "render_ai_work_map", lambda: '{"kind": "work"}\n')
+    def fake_archive_completed_exec_plans():
+        archived_state["archived"] = True
+        archived_state["calls"] += 1
+        return []
+
+    monkeypatch.setattr(ai_work_map, "archive_completed_exec_plans", fake_archive_completed_exec_plans)
+    monkeypatch.setattr(
+        ai_work_map,
+        "render_ai_work_map",
+        lambda: json.dumps({"kind": "work", "archived": archived_state["archived"]}) + "\n",
+    )
     monkeypatch.setattr(ai_work_map, "render_session_context_map", lambda: '{"kind": "session"}\n')
+    monkeypatch.setattr(ai_work_map, "render_ai_check_catalog", lambda: "# Reference\n")
 
     assert (
         ai_work_map.main(
@@ -250,28 +347,72 @@ def test_main_write_check_and_stdout_modes(tmp_path, monkeypatch, capsys):
                 str(output_path),
                 "--session-output",
                 str(session_output_path),
+                "--reference-output",
+                str(reference_output_path),
             ]
         )
         == 0
     )
-    assert json.loads(output_path.read_text(encoding="utf-8")) == {"kind": "work"}
+    assert json.loads(output_path.read_text(encoding="utf-8")) == {"kind": "work", "archived": True}
     assert json.loads(session_output_path.read_text(encoding="utf-8")) == {"kind": "session"}
+    assert reference_output_path.read_text(encoding="utf-8") == "# Reference\n"
+    assert output_path.read_bytes() == b'{"kind": "work", "archived": true}\n'
+    assert session_output_path.read_bytes() == b'{"kind": "session"}\n'
+    assert reference_output_path.read_bytes() == b"# Reference\n"
+    assert archived_state["archived"] is True
+    assert archived_state["calls"] == 1
+
     assert (
-        ai_work_map.main(["--check", "--output", str(output_path), "--session-output", str(session_output_path)]) == 0
+        ai_work_map.main(
+            [
+                "--check",
+                "--output",
+                str(output_path),
+                "--session-output",
+                str(session_output_path),
+                "--reference-output",
+                str(reference_output_path),
+            ]
+        )
+        == 0
     )
+    assert archived_state["calls"] == 1
 
     output_path.write_text('{"kind": "stale"}\n', encoding="utf-8")
 
     assert (
-        ai_work_map.main(["--check", "--output", str(output_path), "--session-output", str(session_output_path)]) == 1
+        ai_work_map.main(
+            [
+                "--check",
+                "--output",
+                str(output_path),
+                "--session-output",
+                str(session_output_path),
+                "--reference-output",
+                str(reference_output_path),
+            ]
+        )
+        == 1
     )
 
     capsys.readouterr()
 
     assert (
-        ai_work_map.main(["--stdout", "--output", str(output_path), "--session-output", str(session_output_path)]) == 0
+        ai_work_map.main(
+            [
+                "--stdout",
+                "--output",
+                str(output_path),
+                "--session-output",
+                str(session_output_path),
+                "--reference-output",
+                str(reference_output_path),
+            ]
+        )
+        == 0
     )
-    assert json.loads(capsys.readouterr().out) == {"kind": "work"}
+    assert json.loads(capsys.readouterr().out) == {"kind": "work", "archived": True}
+    assert archived_state["calls"] == 1
 
 
 def test_verify_ai_harness_freshness_reports_generated_map_and_metadata_drift(tmp_path):
@@ -281,10 +422,15 @@ def test_verify_ai_harness_freshness_reports_generated_map_and_metadata_drift(tm
     session_output_path = (
         tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-session-context-map.json"
     )
+    check_catalog_output_path = (
+        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-check-catalog.md"
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     session_output_path.parent.mkdir(parents=True, exist_ok=True)
+    check_catalog_output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text('{"kind": "stale"}\n', encoding="utf-8")
     session_output_path.write_text('{"kind": "stale-session"}\n', encoding="utf-8")
+    check_catalog_output_path.write_text("stale\n", encoding="utf-8")
 
     work_map = {
         "instructions": [
@@ -330,6 +476,22 @@ def test_verify_ai_harness_freshness_reports_generated_map_and_metadata_drift(tm
                 "selected_surfaces": ["repo-audit"],
             },
         ],
+        "pipeline_checks": [
+            {
+                "id": "ruff",
+                "source": "pipeline",
+                "ai_summary": "",
+                "ai_instruction_files": [],
+            }
+        ],
+        "repo_audit_checks": [
+            {
+                "id": "cli",
+                "source": "repo-audit",
+                "ai_summary": "cli summary",
+                "ai_instruction_files": [".github/instructions/missing.instructions.md"],
+            }
+        ],
     }
     session_context_map = {"kind": "session-map", "instructions": [], "agents": []}
 
@@ -339,29 +501,43 @@ def test_verify_ai_harness_freshness_reports_generated_map_and_metadata_drift(tm
         repo_root=tmp_path,
         output_path=output_path,
         session_output_path=session_output_path,
+        check_catalog_output_path=check_catalog_output_path,
     )
 
     assert report["status"] == "fail"
     assert {issue["issue_id"] for issue in report["issues"]} == {
         "generated-ai-work-map-drift",
         "generated-ai-session-context-map-drift",
+        "generated-ai-check-catalog-drift",
         "stale-instruction-applyto-glob",
         "orphaned-instruction",
         "stale-agent-routing-glob",
         "dangling-agent-routing",
         "orphaned-agent",
+        "undocumented-check",
+        "unmapped-check",
+        "dangling-check-instruction",
     }
 
 
 def test_verify_ai_harness_freshness_passes_for_live_metadata(tmp_path):
     (tmp_path / "src" / "sattlint").mkdir(parents=True)
     (tmp_path / "src" / "sattlint" / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    instruction_path = tmp_path / ".github" / "instructions" / "cli-app.instructions.md"
+    instruction_path.parent.mkdir(parents=True, exist_ok=True)
+    instruction_path.write_text(
+        '---\nname: "CLI App Instructions"\napplyTo: ["src/sattlint/app.py"]\n---\n', encoding="utf-8"
+    )
     output_path = tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
     session_output_path = (
         tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-session-context-map.json"
     )
+    check_catalog_output_path = (
+        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-check-catalog.md"
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     session_output_path.parent.mkdir(parents=True, exist_ok=True)
+    check_catalog_output_path.parent.mkdir(parents=True, exist_ok=True)
 
     work_map = {
         "instructions": [
@@ -386,10 +562,25 @@ def test_verify_ai_harness_freshness_passes_for_live_metadata(tmp_path):
                 "selected_surfaces": ["repo-audit"],
             }
         ],
+        "pipeline_checks": [],
+        "repo_audit_checks": [
+            {
+                "id": "cli",
+                "source": "repo-audit",
+                "label": "CLI",
+                "owner_surface": "cli",
+                "estimated_cost": "low",
+                "owner_test_targets": ["tests/test_repo_audit.py"],
+                "ai_summary": "cli summary",
+                "ai_instruction_files": [".github/instructions/cli-app.instructions.md"],
+                "command": "repo-audit --check cli",
+            }
+        ],
     }
     session_context_map = {"kind": "session-map", "instructions": [], "agents": []}
     output_path.write_text(json.dumps(work_map, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     session_output_path.write_text(json.dumps(session_context_map, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    check_catalog_output_path.write_text(render_ai_check_catalog(work_map), encoding="utf-8")
 
     report = verify_ai_harness_freshness(
         work_map=work_map,
@@ -397,6 +588,7 @@ def test_verify_ai_harness_freshness_passes_for_live_metadata(tmp_path):
         repo_root=tmp_path,
         output_path=output_path,
         session_output_path=session_output_path,
+        check_catalog_output_path=check_catalog_output_path,
     )
 
     assert report["status"] == "pass"
@@ -430,6 +622,8 @@ def test_build_planning_context_ignores_invalid_entries_and_matches_owner_surfac
                 "id": "cli",
                 "owner_surface": "cli",
                 "owner_test_targets": ["tests/test_app.py"],
+                "ai_summary": "cli summary",
+                "ai_instruction_files": [".github/instructions/cli-app.instructions.md"],
             }
         ],
         "instructions": [
@@ -461,7 +655,7 @@ def test_build_planning_context_ignores_invalid_entries_and_matches_owner_surfac
         "owner_suite_plans": [
             "ignore-me",
             {
-                "plan_path": "docs/exec-plans/active/14-coverage-phase-2-app-devtools-core.md",
+                "plan_path": "docs/exec-plans/completed/14-coverage-phase-2-app-devtools-core.md",
                 "suites": [
                     {
                         "tests": ["tests/test_app.py"],
@@ -483,12 +677,22 @@ def test_build_planning_context_ignores_invalid_entries_and_matches_owner_surfac
 
     assert planning["primary_agent"] == "CLI App Menu"
     assert planning["default_entrypoint"] == {"id": "planning-context"}
+    assert planning["relevant_checks"] == [
+        {
+            "id": "cli",
+            "owner_surface": "cli",
+            "owner_test_targets": ["tests/test_app.py"],
+            "ai_summary": "cli summary",
+            "ai_instruction_files": [".github/instructions/cli-app.instructions.md"],
+        }
+    ]
     assert planning["instruction_files"] == [
         {
             "name": "CLI App Instructions",
             "file_path": ".github/instructions/cli-app.instructions.md",
             "description": "cli",
             "matched_files": ["src/sattlint/app.py"],
+            "selection_reasons": ["changed-files", "recommended-check:cli"],
         }
     ]
     assert planning["owner_surfaces"] == ["cli"]

@@ -112,7 +112,9 @@
             "category": "dead-code",
             "confidence": "high",
             "data": {
-                "confidence_percent": 95
+                "confidence_percent": 95,
+                "dead_code_kind": "function",
+                "symbol": "helper"
             },
             "detail": null,
             "fingerprint": "vulture.dead-code|src/dead.py|7||unused function 'helper'",
@@ -130,7 +132,7 @@
             "minimal_reproducer": null,
             "owner_surface": "dead-code",
             "rule_id": "vulture.dead-code",
-            "severity": "medium",
+            "severity": "high",
             "source": "vulture",
             "suggested_next_command": null,
             "suggestion": null

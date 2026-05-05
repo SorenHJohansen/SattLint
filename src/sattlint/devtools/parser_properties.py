@@ -6,43 +6,85 @@ import random
 from collections.abc import Callable, Iterable
 from typing import Any
 
+from lark.exceptions import UnexpectedInput
+
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 
 
+def _header_lines(program_name: str) -> str:
+    return (
+        '"Syntax version 2.23, date: 2026-05-04-12:00:00.000 N"\n'
+        '"Original file date: ---"\n'
+        f'"Program date: 2026-05-04-12:00:00.000, name: {program_name}"\n'
+    )
+
+
 def generate_simple_program() -> str:
-    """Generate a minimal valid SattLine program."""
+    """Generate a minimal valid strict-mode SattLine program."""
     names = ["ProgramA", "TestProg", "MainProg"]
     variables = ["x", "y", "temp", "flag"]
-    values = ["1", "0", "TRUE", "FALSE", "3.14"]
+    initial_values = ["0", "1", "3"]
+    increments = ["1", "2", "3"]
 
     # Property helper uses non-cryptographic sampling.
     name = random.choice(names)  # nosec B311
     var = random.choice(variables)  # nosec B311
-    val = random.choice(values)  # nosec B311
+    initial_value = random.choice(initial_values)  # nosec B311
+    increment = random.choice(increments)  # nosec B311
 
-    return f"""
-PROGRAM {name}
-    VAR
-        {var} : INT;
-    END_VAR
-    {var} := {val};
-END_PROGRAM
-"""
+    return (
+        f"{_header_lines(name)}\n"
+        "BasePicture Invocation\n"
+        "   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0\n"
+        "    ) : MODULEDEFINITION DateCode_ 1\n\n"
+        "LOCALVARIABLES\n"
+        f"   {var}: integer := {initial_value};\n\n"
+        "ModuleDef\n"
+        "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "ModuleCode\n"
+        "   EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :\n"
+        f"      {var} = {var} + {increment};\n\n"
+        "ENDDEF (*BasePicture*);\n"
+    )
 
 
 def generate_simple_module() -> str:
-    """Generate a minimal valid SattLine module."""
+    """Generate a minimal valid SattLine file with one moduletype and one submodule."""
     names = ["ModuleA", "ChildMod", "Worker"]
     # Property helper uses non-cryptographic sampling.
     var = random.choice(["a", "b", "cnt"])  # nosec B311
+    initial_value = random.choice(["0", "1", "3"])  # nosec B311
+    module_name = random.choice(names)  # nosec B311
+    moduletype_name = f"{module_name}Type"
 
-    return f"""
-MODULE {names[0]}
-    VAR
-        {var} : INT;
-    END_VAR
-END_MODULE
-"""
+    return (
+        f"{_header_lines(module_name)}\n"
+        "BasePicture Invocation\n"
+        "   ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0\n"
+        "    ) : MODULEDEFINITION DateCode_ 1\n\n"
+        "TYPEDEFINITIONS\n"
+        f"   {moduletype_name} = MODULEDEFINITION DateCode_ 1\n"
+        "   MODULEPARAMETERS\n"
+        f"      {var}: integer ;\n"
+        "   LOCALVARIABLES\n"
+        "      Result: integer := 0;\n\n"
+        "   ModuleDef\n"
+        "   ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "   ModuleCode\n"
+        "   EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :\n"
+        f"      Result = {var} + 1;\n\n"
+        f"   ENDDEF (*{moduletype_name}*);\n\n"
+        "LOCALVARIABLES\n"
+        f"   {var}: integer := {initial_value};\n\n"
+        "SUBMODULES\n"
+        f"   {module_name} Invocation\n"
+        "      ( 0.1 , 0.1 , 0.0 , 0.8 , 0.8\n"
+        f"       ) : {moduletype_name} (\n"
+        f"      {var} => {var});\n\n"
+        "ModuleDef\n"
+        "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n\n"
+        "ENDDEF (*BasePicture*);\n"
+    )
 
 
 def assert_parser_deterministic(source: str) -> None:
@@ -61,7 +103,7 @@ def assert_valid_program_has_no_crash(source: str) -> bool:
     try:
         parser_core_parse_source_text(source)
         return True
-    except (SyntaxError, ValueError, AttributeError):
+    except (UnexpectedInput, SyntaxError, ValueError, AttributeError):
         return False
 
 

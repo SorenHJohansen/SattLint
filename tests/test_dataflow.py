@@ -463,6 +463,13 @@ def test_dataflow_analyzer_is_enabled_by_default():
     assert specs["dataflow"].enabled is True
 
 
+def test_state_inference_analyzer_is_registered():
+    specs = {spec.key: spec for spec in get_default_analyzers()}
+
+    assert "state_inference" in specs
+    assert specs["state_inference"].enabled is True
+
+
 def test_root_typedefs_from_same_origin_are_analyzed():
     typedef = ModuleTypeDef(
         name="WorkerType",

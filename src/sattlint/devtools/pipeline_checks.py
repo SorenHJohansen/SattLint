@@ -9,6 +9,14 @@ from typing import Any
 
 from sattlint.path_sanitizer import sanitize_path_for_report
 
+
+def _ai_metadata(summary: str, *instruction_files: str) -> dict[str, Any]:
+    return {
+        "ai_summary": summary,
+        "ai_instruction_files": instruction_files,
+    }
+
+
 PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
     {
         "id": "ruff",
@@ -19,6 +27,10 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "estimated_cost": "low",
         "path_globs": ("src/**/*.py", "tests/**/*.py", "scripts/**/*.py", "pyproject.toml"),
         "owner_test_targets": ("tests/test_pipeline_run.py",),
+        **_ai_metadata(
+            "Use after touched Python edits for fast style, import-order, and lint hygiene proof.",
+            ".github/instructions/sattline-invariants.instructions.md",
+        ),
     },
     {
         "id": "pyright",
@@ -29,6 +41,10 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "estimated_cost": "low",
         "path_globs": ("src/**/*.py", "tests/**/*.py", "scripts/**/*.py", "pyrightconfig.json", "pyproject.toml"),
         "owner_test_targets": ("tests/test_pipeline_run.py",),
+        **_ai_metadata(
+            "Use when touched Python files need static type proof before widening to broader finish gates.",
+            ".github/instructions/sattline-invariants.instructions.md",
+        ),
     },
     {
         "id": "pytest",
@@ -39,6 +55,11 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "estimated_cost": "medium",
         "path_globs": ("src/**/*.py", "tests/**/*.py", "pyproject.toml"),
         "owner_test_targets": ("tests/test_pipeline.py", "tests/test_pipeline_run.py"),
+        **_ai_metadata(
+            "Use targeted owner pytest first for behavior proof on Python changes.",
+            ".github/instructions/sattline-invariants.instructions.md",
+            ".github/instructions/python-tests.instructions.md",
+        ),
     },
     {
         "id": "vulture",
@@ -49,6 +70,10 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "estimated_cost": "medium",
         "path_globs": ("src/**/*.py", "tests/**/*.py", "scripts/**/*.py", "pyproject.toml"),
         "owner_test_targets": ("tests/test_pipeline_run.py",),
+        **_ai_metadata(
+            "Use when dead-code proof is relevant for Python infra or audit-facing changes.",
+            ".github/instructions/repo-audit.instructions.md",
+        ),
     },
     {
         "id": "bandit",
@@ -59,6 +84,10 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "estimated_cost": "medium",
         "path_globs": ("src/**/*.py", "tests/**/*.py", "scripts/**/*.py", "pyproject.toml"),
         "owner_test_targets": ("tests/test_pipeline_run.py",),
+        **_ai_metadata(
+            "Use when security-sensitive Python edits need static security scan proof.",
+            ".github/instructions/repo-audit.instructions.md",
+        ),
     },
     {
         "id": "structural-reports",
@@ -79,6 +108,10 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "estimated_cost": "high",
         "path_globs": ("src/**/*.py", "tests/**/*.py", "pyproject.toml"),
         "owner_test_targets": ("tests/test_pipeline.py", "tests/test_pipeline_run.py"),
+        **_ai_metadata(
+            "Use when architecture, dependency, or structural-budget artifacts need regeneration.",
+            ".github/instructions/repo-audit.instructions.md",
+        ),
     },
     {
         "id": "trace",
@@ -95,6 +128,11 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
             "tests/fixtures/sample_sattline_files/**",
         ),
         "owner_test_targets": ("tests/test_pipeline.py",),
+        **_ai_metadata(
+            "Use when parser, analyzer, or workspace-loading edits need trace or profiling artifacts.",
+            ".github/instructions/parser-analysis.instructions.md",
+            ".github/instructions/workspace-lsp.instructions.md",
+        ),
     },
     {
         "id": "corpus",
@@ -110,6 +148,11 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
             "tests/test_corpus.py",
         ),
         "owner_test_targets": ("tests/test_corpus.py",),
+        **_ai_metadata(
+            "Use when parser or analyzer changes need corpus-level regression proof.",
+            ".github/instructions/parser-analysis.instructions.md",
+            ".github/instructions/test-fixtures.instructions.md",
+        ),
     },
 )
 PIPELINE_CHECK_IDS = tuple(str(definition["id"]) for definition in PIPELINE_CHECK_DEFINITIONS)
@@ -262,6 +305,52 @@ def verify_check_catalog(catalog: dict[str, Any], *, repo_root: Path) -> dict[st
                 }
             )
 
+        ai_summary = str(entry.get("ai_summary", "")).strip()
+        if not ai_summary:
+            issues.append(
+                {
+                    "check_id": check_id,
+                    "issue_id": "missing-ai-summary",
+                    "message": "Recommendation entry is missing ai_summary metadata.",
+                }
+            )
+
+        ai_instruction_files = tuple(
+            str(value).strip() for value in entry.get("ai_instruction_files", []) if str(value).strip()
+        )
+        if not ai_instruction_files:
+            issues.append(
+                {
+                    "check_id": check_id,
+                    "issue_id": "missing-ai-instruction-files",
+                    "message": "Recommendation entry is missing ai_instruction_files metadata.",
+                }
+            )
+            continue
+
+        if any("\\" in path_text for path_text in ai_instruction_files):
+            issues.append(
+                {
+                    "check_id": check_id,
+                    "issue_id": "backslash-ai-instruction-file",
+                    "message": "AI instruction file paths must use '/' separators.",
+                    "ai_instruction_files": list(ai_instruction_files),
+                }
+            )
+
+        missing_instruction_files = [
+            path_text for path_text in ai_instruction_files if not (repo_root / path_text).exists()
+        ]
+        if missing_instruction_files:
+            issues.append(
+                {
+                    "check_id": check_id,
+                    "issue_id": "missing-ai-instruction-targets",
+                    "message": "Recommendation entry references instruction files that do not exist.",
+                    "missing_instruction_files": missing_instruction_files,
+                }
+            )
+
     return {
         "kind": "sattlint.recommendation_catalog_verification",
         "schema_version": 1,
@@ -331,6 +420,8 @@ def build_pipeline_check_catalog(
                 "estimated_cost": definition["estimated_cost"],
                 "path_globs": list(definition["path_globs"]),
                 "owner_test_targets": list(definition["owner_test_targets"]),
+                "ai_summary": definition["ai_summary"],
+                "ai_instruction_files": list(definition["ai_instruction_files"]),
                 "command": (
                     f"sattlint-analysis-pipeline --profile {profile} --check {definition['id']} "
                     f"--output-dir {sanitized_output_dir}"

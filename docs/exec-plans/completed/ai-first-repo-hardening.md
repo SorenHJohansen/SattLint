@@ -25,7 +25,7 @@ Observable outcome:
 ## Surprises & Discoveries
 
 - Observation: TODO backlog is comprehensive but fragmented by theme, which creates cross-file duplication and status drift risk.
-  Evidence: Active workstream status differed between TODO_REFACTOR.md and .github/coordination/current-work.md for several lanes.
+  Evidence: Active workstream status differed between TODO_REFACTOR.md and the coordination state for several lanes.
 
 - Observation: The consolidation work had already advanced past the original plan assumptions: the legacy TODO files were removed in the active worktree before enforcement landed.
   Evidence: The current branch staged deletions for TODO_GUI.md, TODO_REFACTOR.md, TODO_SATTLINT.md, and TODO_TOOLS.md before this execution slice began.
@@ -146,7 +146,7 @@ This plan is documentation and devtools enforcement, and it remains idempotent.
 
 - Re-running consolidation updates should preserve stable IDs in the debt register.
 - If a retired TODO file is restored for editing, update the source ledger state and sync basis in the same change.
-- If a bad merge occurs, recover by reconciling the source ledger, current-work statuses, and canonical debt rows together.
+- If a bad merge occurs, recover by reconciling the source ledger, shared lock-state statuses, and canonical debt rows together.
 - Moving this file between active and completed is safe as long as the repo references and doc-gardener required path are updated in the same change.
 
 ## Artifacts and Notes
@@ -154,7 +154,7 @@ This plan is documentation and devtools enforcement, and it remains idempotent.
 Key input artifacts:
 
 - docs/exec-plans/tech-debt-tracker.md source ledger
-- .github/coordination/current-work.md
+- shared active-claim lock state
 - src/sattlint/devtools/doc_gardener.py
 
 Supporting governance docs reviewed:

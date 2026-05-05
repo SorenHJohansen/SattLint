@@ -17,10 +17,19 @@ Each role works from a scoped contract and hands off through machine-readable ar
 Preferred flow for parallel work:
 
 1. Use `Planner` or `SattLint Orchestrator` to choose the owning surface, claims, and first validation command.
-2. `git worktree add ../SattLint-ai-<id> -b ai/task-<id> main`
-3. Implement the executor slice and emit `.ai/tasks/<id>.json`.
-4. Handoff with `.ai/handoffs/<id>.json`.
-5. Create the test or review worktree from the handoff branch when isolation is needed.
+2. Bootstrap the executor slice with `python scripts/bootstrap_ai_slice.py --task-id <id> --stage executor --file <path> --validation "<command>"`.
+3. Implement the executor slice and emit `.ai/tasks/<id>.json` plus `.ai/handoffs/<id>.json`.
+4. Bootstrap the review or test lane from the executor handoff when isolation is needed.
+5. Use `--from-handoff .ai/handoffs/<id>.json` or `--from-branch ai/task-<id>` so review and test lanes start from executor output instead of `main`.
+
+Bootstrap defaults are stage-aware:
+
+- executor: branch `ai/task-<id>`, worktree `../SattLint-ai-<id>`
+- review: branch `review/task-<id>`, worktree `../SattLint-review-<id>`
+- test: branch `test/task-<id>`, worktree `../SattLint-test-<id>`
+
+The canonical active-claim lock lives in the repository `git-common-dir` at `.git/sattlint-ai-coordination/current_work_lock.json`.
+Each worktree keeps a local session summary JSON; the deprecated markdown coordination ledger should not be recreated.
 
 ## Agent Set
 
@@ -34,14 +43,14 @@ Preferred flow for parallel work:
 
 ### Planner
 
-- Reads `.github/coordination/current-work.md` first.
+- Reads the shared `.git/sattlint-ai-coordination/current_work_lock.json` first.
 - Chooses the owning surface, file claims, and first validation command.
 - Keeps work in one scoped slice when possible.
 - Escalates to `SattLint Orchestrator` only for parallel lanes or shared-file coordination.
 
 ### Executor
 
-- Claims files in `.github/coordination/current-work.md`.
+- Claims files through the shared `.git/sattlint-ai-coordination/current_work_lock.json`.
 - Works from one task contract in `.ai/tasks/`.
 - Runs focused validation immediately after the first substantive edit.
 - Emits a handoff with changed files, known risks, and required tests.

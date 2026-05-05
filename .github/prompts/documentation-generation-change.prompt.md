@@ -4,10 +4,14 @@ name: "Documentation Generation Change"
 argument-hint: "Describe documentation-generation change to make"
 agent: "Documentation Generation"
 ---
+
+# Documentation Generation Change
+
 Investigate and implement the requested documentation-generation change in SattLint.
 
-Requirements:
-- Read `.github/coordination/current-work.md` before first edit and claim exact touched files before the first edit.
+## Requirements
+
+- Read `.git/sattlint-ai-coordination/current_work_lock.json` before first edit and claim exact touched files before the first edit.
 - Anchor on `src/sattlint/docgenerator/` or the nearest app or GUI docgen entry point instead of broad repo exploration.
 - Preserve existing classification and scope boundaries unless the request explicitly changes them.
 - Choose the first focused validation route from [validation map](../skills/validation-routing/references/validation-map.md) and matching docgen instructions.

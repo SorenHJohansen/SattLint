@@ -1,6 +1,6 @@
 ---
 name: concurrent-work
-description: 'Coordinate parallel SattLint work across multiple chats or agents. Use for claiming files, writing handoff notes, tracking validations, and avoiding edit collisions in `.github/coordination/current-work.md`.'
+description: 'Coordinate parallel SattLint work across multiple chats or agents. Use for claiming files, writing handoff notes, tracking validations, and avoiding edit collisions in the shared `.git/sattlint-ai-coordination/current_work_lock.json` lock state.'
 argument-hint: 'Task, owner, and files to claim'
 ---
 
@@ -10,13 +10,13 @@ Use this skill when several chats or agents are active in SattLint at same time.
 
 ## Goals
 
-- Keep one shared ledger of active work.
+- Keep one shared lock state of active work.
 - Avoid two workstreams editing same file by accident.
 - Make handoffs and validation status visible before merge or review.
 
 ## Procedure
 
-1. Read `.github/coordination/current-work.md` before first edit.
+1. Read `.git/sattlint-ai-coordination/current_work_lock.json` before first edit.
 2. Add or update one row for current workstream using [workstream template](./assets/workstream-template.md).
 3. Claim exact files or directories before editing.
 4. Record one first validation command that fits touched surface.
@@ -35,7 +35,7 @@ Use this skill when several chats or agents are active in SattLint at same time.
 - Active claims trigger a hook warning before edit tools run.
 - `ready-for-merge` claims escalate to confirmation.
 - `blocked` claims deny edit-tool execution until the ledger changes.
-- Edits to `.github/coordination/current-work.md` stay allowed so claims can be updated.
+- Edits to the shared `.git/sattlint-ai-coordination/current_work_lock.json` lock state stay allowed so claims can be updated.
 
 ## Suggested Status Values
 

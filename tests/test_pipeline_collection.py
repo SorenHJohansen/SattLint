@@ -84,7 +84,9 @@ def test_collect_architecture_report_includes_shadowing_cli_filter():
     assert report["actual_cli_analyzers"] == sorted(get_actual_cli_analyzer_keys())
     assert report["declared_lsp_analyzers"] == list(get_declared_lsp_analyzer_keys())
     assert report["actual_lsp_analyzers"] == list(get_actual_lsp_analyzer_keys())
-    assert report["declared_cli_analyzers"] == report["actual_cli_analyzers"]
+    assert report["declared_cli_analyzers"] != report["actual_cli_analyzers"]
+    assert "state_inference" in report["declared_cli_analyzers"]
+    assert "state_inference" not in report["actual_cli_analyzers"]
     assert report["declared_lsp_analyzers"] == report["actual_lsp_analyzers"]
     assert report["analyzers_missing_exposure"] == []
     assert report["analyzers_missing_acceptance_tests"] == []
@@ -106,7 +108,7 @@ def test_collect_architecture_report_includes_shadowing_cli_filter():
     assert phase2_gate["status"] == "pass"
     assert phase2_gate["blocking_finding_ids"] == []
     assert phase2_gate["advisory_finding_ids"] == []
-    assert "cli-analyzer-metadata-drift" not in finding_ids
+    assert "cli-analyzer-metadata-drift" in finding_ids
     assert "lsp-analyzer-metadata-drift" not in finding_ids
     assert phase2_gate["advisory_rule_ids"] == []
     assert "analyzer-exposure-gap" not in finding_ids
@@ -825,7 +827,18 @@ def test_build_pipeline_finding_collection_normalizes_tool_payloads(tmp_path):
         and item["suggested_next_command"] == "python -m pytest tests/test_sample.py::test_failure -x -q --tb=short"
         for item in payload["findings"]
     )
-    assert any(item["rule_id"] == "vulture.dead-code" and item["confidence"] == "high" for item in payload["findings"])
+    assert any(
+        item["rule_id"] == "vulture.dead-code"
+        and item["confidence"] == "high"
+        and item["severity"] == "high"
+        and item["data"]
+        == {
+            "confidence_percent": 95,
+            "dead_code_kind": "function",
+            "symbol": "helper",
+        }
+        for item in payload["findings"]
+    )
     assert any(item["rule_id"] == "bandit.b101" and item["category"] == "security" for item in payload["findings"])
     assert any(
         item["rule_id"] == "analyzer-exposure-gap" and item["category"] == "architecture"

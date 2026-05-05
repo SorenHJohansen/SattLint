@@ -11,11 +11,14 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_PATH = REPO_ROOT / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
+
+from sattlint.devtools import coordination_lock_state  # noqa: E402
+
 TASK_TEMPLATE_PATH = REPO_ROOT / ".ai" / "tasks" / "task-contract.example.json"
 HANDOFF_TEMPLATE_PATH = REPO_ROOT / ".ai" / "handoffs" / "handoff.example.json"
-LEDGER_PATH = REPO_ROOT / ".github" / "coordination" / "current-work.md"
-LEDGER_TEMPLATE_PATH = REPO_ROOT / ".github" / "coordination" / "current-work.template.md"
-WORKSTREAM_RE = re.compile(r"^### Workstream\s+(?P<id>.+?)\s*$")
 TASK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 VALID_STAGE_VALUES = {"executor", "test", "review"}
 VALID_LEDGER_STATUSES = {"planned", "active", "blocked", "ready-for-merge", "done"}
@@ -41,6 +44,7 @@ class BootstrapConfig:
     branch: str
     worktree: str
     base_branch: str
+    source_ref: str
     stage: str
     ledger_status: str
     notes: str
@@ -65,10 +69,7 @@ def _run_git(repo_root: Path, args: Sequence[str]) -> subprocess.CompletedProces
 
 
 def _normalize_rel_path(raw_path: str) -> str:
-    normalized = raw_path.strip().replace("\\", "/")
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-    return normalized.rstrip("/")
+    return coordination_lock_state.normalize_relative_path(raw_path)
 
 
 def _humanize_task_id(task_id: str) -> str:
@@ -76,8 +77,8 @@ def _humanize_task_id(task_id: str) -> str:
     return " ".join(parts) or task_id
 
 
-def _split_csv(raw_value: str) -> tuple[str, ...]:
-    return tuple(item for item in (_normalize_rel_path(part) for part in raw_value.split(",")) if item)
+def _split_csv(raw_value: str, *, repo_root: Path) -> tuple[str, ...]:
+    return tuple(coordination_lock_state.unique_claim_paths(raw_value.split(","), repo_root=repo_root))
 
 
 def _prompt_value(
@@ -118,23 +119,58 @@ def _normalize_ledger_status(status: str) -> str:
     return normalized
 
 
-def _unique_paths(values: Sequence[str]) -> tuple[str, ...]:
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for raw_value in values:
-        value = _normalize_rel_path(raw_value)
-        if not value or value in seen:
-            continue
-        seen.add(value)
-        normalized.append(value)
-    return tuple(normalized)
+def _default_branch(stage: str, task_id: str) -> str:
+    if stage == "review":
+        return f"review/task-{task_id}"
+    if stage == "test":
+        return f"test/task-{task_id}"
+    return f"ai/task-{task_id}"
+
+
+def _default_worktree(stage: str, task_id: str) -> str:
+    if stage == "review":
+        return f"../SattLint-review-{task_id}"
+    if stage == "test":
+        return f"../SattLint-test-{task_id}"
+    return f"../SattLint-ai-{task_id}"
+
+
+def _source_ref_from_handoff(repo_root: Path, raw_path: str) -> str:
+    handoff_path = _resolve_repo_path(repo_root, raw_path)
+    payload = _load_json_object(handoff_path)
+    commit = str(payload.get("commit") or "").strip()
+    if commit and commit != "pending":
+        return commit
+    branch = str(payload.get("branch") or "").strip()
+    if branch:
+        return branch
+    raise BootstrapError(
+        f"Handoff {coordination_lock_state.display_path(handoff_path, repo_root)} must contain a branch or commit."
+    )
+
+
+def _resolve_source_ref(args: argparse.Namespace, *, repo_root: Path, stage: str, task_id: str) -> str:
+    from_branch = str(args.from_branch or "").strip()
+    from_handoff = str(args.from_handoff or "").strip()
+    if from_branch and from_handoff:
+        raise BootstrapError("Use only one of --from-branch or --from-handoff.")
+    if from_branch:
+        return from_branch
+    if from_handoff:
+        return _source_ref_from_handoff(repo_root, from_handoff)
+    if stage in {"review", "test"}:
+        return f"ai/task-{task_id}"
+    return args.base_branch.strip()
+
+
+def _unique_paths(values: Sequence[str], *, repo_root: Path | None = None) -> tuple[str, ...]:
+    return tuple(coordination_lock_state.unique_claim_paths(list(values), repo_root=repo_root))
 
 
 def _ensure_templates_exist(repo_root: Path) -> None:
     required = [
         repo_root / ".ai" / "tasks" / "task-contract.example.json",
         repo_root / ".ai" / "handoffs" / "handoff.example.json",
-        repo_root / ".github" / "coordination" / "current-work.template.md",
     ]
     missing = [path for path in required if not path.exists()]
     if missing:
@@ -156,9 +192,12 @@ def _collect_config(args: argparse.Namespace, input_func: InputFunc = input) -> 
         "Summary",
         default=f"Scoped slice for {default_title.lower()}.",
     )
-    files = _unique_paths(args.file)
+    files = _unique_paths(args.file, repo_root=repo_root)
     if not files:
-        files = _split_csv(_prompt_value(input_func, "Claimed files (comma-separated relative paths)"))
+        files = _split_csv(
+            _prompt_value(input_func, "Claimed files (comma-separated relative paths)"),
+            repo_root=repo_root,
+        )
     if not files:
         raise BootstrapError("At least one claimed file is required.")
 
@@ -174,8 +213,9 @@ def _collect_config(args: argparse.Namespace, input_func: InputFunc = input) -> 
 
     stage = _normalize_stage(args.stage)
     ledger_status = _normalize_ledger_status(args.ledger_status)
-    branch = args.branch or f"ai/task-{task_id}"
-    worktree = args.worktree or f"../SattLint-ai-{task_id}"
+    branch = args.branch or _default_branch(stage, task_id)
+    worktree = args.worktree or _default_worktree(stage, task_id)
+    source_ref = _resolve_source_ref(args, repo_root=repo_root, stage=stage, task_id=task_id)
     notes = args.notes or (
         "Bootstrapped from planning output. Replace stub placeholders before implementation or handoff."
     )
@@ -193,6 +233,7 @@ def _collect_config(args: argparse.Namespace, input_func: InputFunc = input) -> 
         branch=branch.strip(),
         worktree=worktree.strip(),
         base_branch=args.base_branch.strip(),
+        source_ref=source_ref,
         stage=stage,
         ledger_status=ledger_status,
         notes=notes.strip(),
@@ -274,7 +315,7 @@ def _ensure_worktree(config: BootstrapConfig, git_runner: GitRunner) -> Path:
     if branch_check.returncode == 0:
         add_args: tuple[str, ...] = ("worktree", "add", worktree_path.as_posix(), config.branch)
     else:
-        add_args = ("worktree", "add", worktree_path.as_posix(), "-b", config.branch, config.base_branch)
+        add_args = ("worktree", "add", worktree_path.as_posix(), "-b", config.branch, config.source_ref)
 
     added = git_runner(config.repo_root, add_args)
     if added.returncode != 0:
@@ -350,79 +391,24 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def _ensure_ledger(repo_root: Path) -> Path:
-    ledger_path = repo_root / ".github" / "coordination" / "current-work.md"
-    if ledger_path.exists():
-        return ledger_path
-    template_path = repo_root / ".github" / "coordination" / "current-work.template.md"
-    if not template_path.exists():
-        raise BootstrapError("Missing .github/coordination/current-work.template.md.")
-    ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    ledger_path.write_text(template_path.read_text(encoding="utf-8"), encoding="utf-8")
-    return ledger_path
-
-
-def _split_workstream_blocks(text: str) -> tuple[list[str], list[list[str]]]:
-    prefix: list[str] = []
-    blocks: list[list[str]] = []
-    current: list[str] | None = None
-    for raw_line in text.splitlines(keepends=True):
-        if WORKSTREAM_RE.match(raw_line.rstrip()):
-            if current is not None:
-                blocks.append(current)
-            current = [raw_line]
-            continue
-        if current is None:
-            prefix.append(raw_line)
-            continue
-        current.append(raw_line)
-    if current is not None:
-        blocks.append(current)
-    return prefix, blocks
-
-
-def _render_workstream_block(config: BootstrapConfig) -> list[str]:
-    claims = [*config.files, config.task_contract_path, config.handoff_path]
-    rendered_claims = ", ".join(f"`{claim}`" for claim in _unique_paths(claims))
-    lines = [
-        f"### Workstream {config.task_id}\n",
-        "\n",
-        f"- Owner: {config.owner}\n",
-        f"- Goal: {config.summary}\n",
-        f"- Claims: {rendered_claims}\n",
-        f"- First validation: {config.validation[0]}\n",
-        f"- Status: {config.ledger_status}\n",
-        f"- Notes: {config.notes}\n",
-        "\n",
-    ]
-    return lines
-
-
 def _upsert_ledger_entry(config: BootstrapConfig) -> Path:
-    ledger_path = _ensure_ledger(config.repo_root)
-    text = ledger_path.read_text(encoding="utf-8")
-    prefix, blocks = _split_workstream_blocks(text)
-    rendered = _render_workstream_block(config)
-    updated_blocks: list[list[str]] = []
-    replaced = False
-    for block in blocks:
-        heading = block[0].rstrip()
-        match = WORKSTREAM_RE.match(heading)
-        if match is not None and match.group("id").strip() == config.task_id:
-            updated_blocks.append(rendered)
-            replaced = True
-            continue
-        updated_blocks.append(block)
-    if not replaced:
-        updated_blocks.insert(0, rendered)
-    updated_text = "".join(prefix + [line for block in updated_blocks for line in block]).rstrip() + "\n"
-    ledger_path.write_text(updated_text, encoding="utf-8")
-    return ledger_path
+    coordination_lock_state.upsert_workstream(
+        config.repo_root,
+        workstream_id=config.task_id,
+        owner=config.owner,
+        status=config.ledger_status,
+        claimed_paths=_unique_paths(
+            (*config.files, config.task_contract_path, config.handoff_path),
+            repo_root=config.repo_root,
+        ),
+        first_validation=config.validation[0],
+    )
+    return coordination_lock_state.lock_state_path(config.repo_root)
 
 
 def bootstrap_slice(config: BootstrapConfig, git_runner: GitRunner = _run_git) -> dict[str, str]:
     worktree_path = _ensure_worktree(config, git_runner)
-    commit = _git_head_commit(config.repo_root, git_runner)
+    commit = _git_head_commit(worktree_path, git_runner)
 
     task_contract_path = _resolve_repo_path(config.repo_root, config.task_contract_path)
     existing_task = _load_json_object(task_contract_path) if task_contract_path.exists() else None
@@ -438,7 +424,7 @@ def bootstrap_slice(config: BootstrapConfig, git_runner: GitRunner = _run_git) -
         "worktree": worktree_path.as_posix(),
         "task_contract": _relative_path(task_contract_path, config.repo_root),
         "handoff": _relative_path(handoff_path, config.repo_root),
-        "ledger": _relative_path(ledger_path, config.repo_root),
+        "lock_state": coordination_lock_state.display_path(ledger_path, config.repo_root),
     }
 
 
@@ -454,6 +440,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--branch")
     parser.add_argument("--worktree")
     parser.add_argument("--base-branch", default="main")
+    parser.add_argument(
+        "--from-branch", help="Create the stage branch from an existing branch instead of --base-branch."
+    )
+    parser.add_argument(
+        "--from-handoff", help="Create the stage branch from the branch or commit recorded in a handoff JSON file."
+    )
     parser.add_argument("--stage", default="executor")
     parser.add_argument("--ledger-status", default="planned")
     parser.add_argument("--notes")
@@ -476,7 +468,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Worktree: {result['worktree']}")
     print(f"Task contract: {result['task_contract']}")
     print(f"Handoff: {result['handoff']}")
-    print(f"Ledger: {result['ledger']}")
+    print(f"Lock state: {result['lock_state']}")
     return 0
 
 

@@ -78,6 +78,7 @@ class DataflowAnalyzer:
         self.bp = base_picture
         self._unavailable_libraries = unavailable_libraries or set()
         self._issues: list[Issue] = []
+        self._final_root_state: StateMap = {}
         self._site_stack: list[str] = []
         self._active_typedefs: set[str] = set()
         self._reported_read_before_write: set[tuple[tuple[str, ...], str, str]] = set()
@@ -89,6 +90,40 @@ class DataflowAnalyzer:
     @property
     def issues(self) -> list[Issue]:
         return self._issues
+
+    def _build_state_inference_summary(self) -> dict[str, Any]:
+        boolean_states: list[dict[str, Any]] = []
+        numeric_ranges: list[dict[str, Any]] = []
+        string_states: list[dict[str, Any]] = []
+
+        current_scalars = {
+            key: value
+            for key, value in self._final_root_state.items()
+            if not self._is_pending_state_key(key)
+            and key[: len(_OLD_PREFIX)] != _OLD_PREFIX
+            and _is_scalar_value(value)
+        }
+        for key, value in sorted(current_scalars.items()):
+            path = ".".join(key)
+            if isinstance(value, bool):
+                boolean_states.append({"symbol": path, "value": value})
+            elif isinstance(value, int | float) and not isinstance(value, bool):
+                numeric_ranges.append({"symbol": path, "minimum": value, "maximum": value})
+            elif isinstance(value, str):
+                string_states.append({"symbol": path, "value": value})
+
+        return {
+            "kind": "sattlint.state_inference_summary",
+            "schema_version": 1,
+            "summary": {
+                "boolean_state_count": len(boolean_states),
+                "numeric_range_count": len(numeric_ranges),
+                "string_state_count": len(string_states),
+            },
+            "boolean_states": boolean_states,
+            "numeric_ranges": numeric_ranges,
+            "string_states": string_states,
+        }
 
     def _build_scope_context(
         self,
@@ -119,9 +154,8 @@ class DataflowAnalyzer:
             parent_context=None,
         )
         root_state = self._seed_state({}, root_path, root_variables)
-
-        self._walk_module_code(self.bp.modulecode, root_context, root_path, root_state)
-        self._walk_modules(self.bp.submodules or [], root_context, root_path, root_state)
+        root_state = self._walk_module_code(self.bp.modulecode, root_context, root_path, root_state)
+        self._final_root_state = self._walk_modules(self.bp.submodules or [], root_context, root_path, root_state)
 
     def _iter_root_typedefs(self) -> list[ModuleTypeDef]:
         return [
@@ -638,20 +672,22 @@ class DataflowAnalyzer:
         context: ScopeContext,
         module_path: list[str],
         state: StateMap,
+        *,
+        issue_prefix: str = "dataflow",
     ) -> bool | None:
         self._report_expression_temporal_hazards(condition, context, module_path, state)
         result = self._evaluate_condition(condition, context, module_path, state)
         condition_text = self._expr_text(condition)
         if result is True:
             self._add_issue(
-                kind="dataflow.condition_always_true",
+                kind=f"{issue_prefix}.condition_always_true",
                 message=f"Condition {condition_text!r} is always true at this point.",
                 module_path=module_path,
                 data={"condition": condition_text, "site": self._site_str()},
             )
         elif result is False:
             self._add_issue(
-                kind="dataflow.condition_always_false",
+                kind=f"{issue_prefix}.condition_always_false",
                 message=f"Condition {condition_text!r} is always false at this point.",
                 module_path=module_path,
                 data={"condition": condition_text, "site": self._site_str()},
@@ -1675,3 +1711,62 @@ def analyze_dataflow(
         unavailable_libraries=unavailable_libraries,
     )
     return SimpleReport(name=base_picture.header.name, issues=analyzer.run())
+
+
+def collect_state_inference(
+    base_picture: BasePicture,
+    *,
+    unavailable_libraries: set[str] | None = None,
+) -> tuple[list[Issue], dict[str, Any]]:
+    analyzer = DataflowAnalyzer(
+        base_picture,
+        unavailable_libraries=unavailable_libraries,
+    )
+    analyzer.run()
+
+    inference_issues: list[Issue] = []
+    for issue in analyzer.issues:
+        if issue.kind == "dataflow.condition_always_true":
+            inference_issues.append(
+                Issue(
+                    kind="state_inference.condition_always_true",
+                    message=issue.message,
+                    module_path=issue.module_path,
+                    data=issue.data,
+                    rule_id=issue.rule_id,
+                    severity=issue.severity,
+                    confidence=issue.confidence,
+                    explanation=issue.explanation,
+                    suggestion=issue.suggestion,
+                )
+            )
+        elif issue.kind == "dataflow.condition_always_false":
+            inference_issues.append(
+                Issue(
+                    kind="state_inference.condition_always_false",
+                    message=issue.message,
+                    module_path=issue.module_path,
+                    data=issue.data,
+                    rule_id=issue.rule_id,
+                    severity=issue.severity,
+                    confidence=issue.confidence,
+                    explanation=issue.explanation,
+                    suggestion=issue.suggestion,
+                )
+            )
+        elif issue.kind == "dataflow.unreachable_branch":
+            inference_issues.append(
+                Issue(
+                    kind="state_inference.unreachable_branch",
+                    message=issue.message,
+                    module_path=issue.module_path,
+                    data=issue.data,
+                    rule_id=issue.rule_id,
+                    severity=issue.severity,
+                    confidence=issue.confidence,
+                    explanation=issue.explanation,
+                    suggestion=issue.suggestion,
+                )
+            )
+
+    return inference_issues, analyzer._build_state_inference_summary()

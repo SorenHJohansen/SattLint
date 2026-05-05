@@ -11,7 +11,7 @@ from unittest.mock import call, patch
 
 import pytest
 
-from sattlint.devtools import doc_gardener, repo_audit
+from sattlint.devtools import doc_gardener, repo_audit, repo_audit_entrypoints
 from sattlint.devtools.pipeline_artifacts import artifact_source_manifest_path, write_json_artifact
 
 from .helpers.artifact_assertions import assert_findings_collection, assert_findings_schema
@@ -25,7 +25,7 @@ def _patch_doc_gardener_paths(repo_root: Path):
         AGENTS_MD=repo_root / "AGENTS.md",
         QUALITY_SCORE=repo_root / "docs" / "quality-score.md",
         TECH_DEBT=repo_root / "docs" / "exec-plans" / "tech-debt-tracker.md",
-        CURRENT_WORK=repo_root / ".github" / "coordination" / "current-work.md",
+        CURRENT_WORK=repo_root / ".github" / "coordination" / "current_work_lock.json",
         CURRENT_WORK_TEMPLATE=repo_root / ".github" / "coordination" / "current-work.template.md",
         AI_FIRST_PLAN=repo_root / "docs" / "exec-plans" / "active" / "ai-first-repo-hardening.md",
         AI_FIRST_DEBT=repo_root / "docs" / "exec-plans" / "tech-debt-tracker.md",
@@ -719,6 +719,34 @@ def test_find_public_readiness_findings_ignores_untracked_workflow(tmp_path):
     assert any(finding.id == "missing-ci-workflow" for finding in findings)
 
 
+def test_find_public_readiness_findings_flags_unexpected_tracked_root_entries(tmp_path):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "demo"\nversion = "0.1.0"\n[project.urls]\nRepository = "https://example.invalid/demo"\n',
+        encoding="utf-8",
+    )
+
+    findings = repo_audit._find_public_readiness_findings(
+        tmp_path,
+        tracked_paths=(
+            "README.md",
+            "LICENSE",
+            "CONTRIBUTING.md",
+            ".gitignore",
+            "pyproject.toml",
+            ".github/workflows/ci.yml",
+            "scripts/run_markdownlint.py",
+            "_coverage_check.py",
+            "_fix_cli.py",
+        ),
+    )
+
+    root_hygiene_finding = next(finding for finding in findings if finding.id == "unexpected-tracked-root-entry")
+    assert root_hygiene_finding.category == "public-readiness"
+    assert root_hygiene_finding.severity == "medium"
+    assert root_hygiene_finding.detail == "_coverage_check.py, _fix_cli.py"
+
+
 def test_audit_repository_leaks_only_filters_findings_and_skips_pipeline(tmp_path):
     leak_finding = repo_audit.Finding(
         "hardcoded-windows-path",
@@ -1052,6 +1080,7 @@ def test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_sour
         patch.object(repo_audit, "_find_logging_findings", return_value=[logging_finding]) as logging_findings,
         patch.object(repo_audit, "_find_ignored_repo_path_references", return_value=[]) as ignored_path_refs,
         patch.object(repo_audit, "_run_harness_freshness_check", return_value=[]),
+        patch.object(repo_audit_entrypoints, "_run_verify_recommendations_check", return_value=[]),
         patch.object(repo_audit, "_parse_coverage_findings", return_value=[docs_finding]) as coverage_findings,
         patch.object(
             repo_audit, "_find_public_readiness_findings", return_value=[readiness_finding]
@@ -1281,6 +1310,50 @@ def test_doc_gardener_scan_dead_links_and_structure_findings(tmp_path):
     assert any(finding.message == "Missing file: docs/design-docs/core-beliefs.md" for finding in structure_findings)
 
 
+def test_doc_gardener_scan_completed_exec_plans_still_active(tmp_path):
+    active_dir = tmp_path / "docs" / "exec-plans" / "active"
+    active_dir.mkdir(parents=True)
+    (active_dir / "done.md").write_text(
+        "\n".join(
+            [
+                "# Done",
+                "",
+                "## Progress",
+                "",
+                "- [x] one",
+                "- [x] two",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (active_dir / "active.md").write_text(
+        "\n".join(
+            [
+                "# Active",
+                "",
+                "## Progress",
+                "",
+                "- [x] one",
+                "- [ ] two",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with _patch_doc_gardener_paths(tmp_path):
+        findings = doc_gardener.scan_completed_exec_plans_still_active()
+
+    assert findings == [
+        doc_gardener.DocFinding(
+            "docs/exec-plans/active/done.md",
+            1,
+            "High",
+            "stale",
+            "ExecPlan Progress is fully complete but the file still lives under docs/exec-plans/active/. Move it to docs/exec-plans/completed/.",
+        )
+    ]
+
+
 def test_doc_gardener_scan_ai_first_source_drift_reports_missing_ledger_section(tmp_path):
     tech_debt = tmp_path / "docs" / "exec-plans" / "tech-debt-tracker.md"
     tech_debt.parent.mkdir(parents=True)
@@ -1334,18 +1407,33 @@ def test_doc_gardener_scan_ai_first_source_drift_reports_row_and_digest_issues(t
 
 
 def test_doc_gardener_scan_ai_first_status_drift_reports_mismatch(tmp_path):
-    current_work = tmp_path / ".github" / "coordination" / "current-work.md"
-    current_work.parent.mkdir(parents=True)
-    current_work.write_text(
-        "\n".join(
-            [
-                "### Workstream W1-something",
-                "- Status: active",
-                "",
-                "### Workstream W2",
-                "- Status: blocked",
-            ]
-        ),
+    coordination_dir = tmp_path / ".github" / "coordination"
+    coordination_dir.mkdir(parents=True)
+    (coordination_dir / "current_work_lock.json").write_text(
+        json.dumps(
+            {
+                "workstreams": [
+                    {
+                        "workstream_id": "W1-something",
+                        "owner": "Copilot",
+                        "status": "active",
+                        "claimed_paths": ["src/demo.py"],
+                        "updated_at": "2026-05-04T00:00:00Z",
+                        "first_validation": "pytest tests/test_repo_audit.py -x -q --tb=short",
+                    },
+                    {
+                        "workstream_id": "W2",
+                        "owner": "Copilot",
+                        "status": "blocked",
+                        "claimed_paths": ["src/other.py"],
+                        "updated_at": "2026-05-04T00:00:00Z",
+                        "first_validation": "pytest tests/test_repo_audit.py -x -q --tb=short",
+                    },
+                ]
+            },
+            indent=2,
+        )
+        + "\n",
         encoding="utf-8",
     )
     tech_debt = tmp_path / "docs" / "exec-plans" / "tech-debt-tracker.md"
@@ -1372,7 +1460,7 @@ def test_doc_gardener_scan_ai_first_status_drift_reports_mismatch(tmp_path):
             4,
             "Medium",
             "stale_status",
-            "W1 status is 'Done' but current-work tracks 'In progress'.",
+            "W1 status is 'Done' but the active coordination lock state tracks 'In progress'.",
         )
     ]
 
@@ -1385,6 +1473,7 @@ def test_doc_gardener_scan_ai_first_status_drift_falls_back_to_template_when_loc
             [
                 "### Workstream W1-something",
                 "- Status: active",
+                "- Claims: `src/demo.py`",
             ]
         ),
         encoding="utf-8",
@@ -1406,15 +1495,7 @@ def test_doc_gardener_scan_ai_first_status_drift_falls_back_to_template_when_loc
     with _patch_doc_gardener_paths(tmp_path):
         findings = doc_gardener.scan_ai_first_status_drift()
 
-    assert findings == [
-        doc_gardener.DocFinding(
-            "docs/exec-plans/tech-debt-tracker.md",
-            4,
-            "Medium",
-            "stale_status",
-            "W1 status is 'Done' but current-work tracks 'In progress'.",
-        )
-    ]
+    assert findings == []
 
 
 def test_doc_gardener_run_scan_aggregates_findings(monkeypatch):
@@ -1432,6 +1513,7 @@ def test_doc_gardener_run_scan_aggregates_findings(monkeypatch):
     monkeypatch.setattr(doc_gardener, "scan_markdown_encoding_artifacts", lambda: [])
     monkeypatch.setattr(doc_gardener, "scan_ai_first_source_drift", lambda: [])
     monkeypatch.setattr(doc_gardener, "scan_ai_first_status_drift", lambda: [])
+    monkeypatch.setattr(doc_gardener, "scan_completed_exec_plans_still_active", lambda: [])
     monkeypatch.setattr(doc_gardener, "scan_stale_docs", lambda: [])
 
     result = doc_gardener.run_scan()
@@ -1470,6 +1552,19 @@ def test_run_harness_freshness_check_translates_ai_and_doc_findings(monkeypatch,
         "scan_dead_links",
         lambda: [doc_gardener.DocFinding("docs/index.md", 4, "Medium", "dead_link", "Broken link")],
     )
+    monkeypatch.setattr(
+        repo_audit._doc_gardener_module,
+        "scan_completed_exec_plans_still_active",
+        lambda: [
+            doc_gardener.DocFinding(
+                "docs/exec-plans/active/done.md",
+                1,
+                "High",
+                "stale",
+                "completed plan still active",
+            )
+        ],
+    )
     monkeypatch.setattr(repo_audit._doc_gardener_module, "scan_stale_docs", lambda: [])
 
     findings = repo_audit._run_harness_freshness_check(cast(Any, SimpleNamespace(root=tmp_path)))
@@ -1481,6 +1576,7 @@ def test_run_harness_freshness_check_translates_ai_and_doc_findings(monkeypatch,
         ),
         ("harness-too-long", "AGENTS.md"),
         ("harness-dead-link", "docs/index.md"),
+        ("harness-stale", "docs/exec-plans/active/done.md"),
     }
     assert {finding.category for finding in findings} == {"harness-freshness"}
 
@@ -1661,16 +1757,25 @@ def test_doc_gardener_flags_refactor_status_mismatch(tmp_path):
 """.strip(),
         encoding="utf-8",
     )
-    current_work = tmp_path / ".github" / "coordination" / "current-work.md"
-    current_work.parent.mkdir(parents=True)
-    current_work.write_text(
-        """
-## Active Workstreams
-
-### Workstream w6-parser-transformer-split-068
-
-- Status: active
-""".strip(),
+    coordination_dir = tmp_path / ".github" / "coordination"
+    coordination_dir.mkdir(parents=True)
+    (coordination_dir / "current_work_lock.json").write_text(
+        json.dumps(
+            {
+                "workstreams": [
+                    {
+                        "workstream_id": "w6-parser-transformer-split-068",
+                        "owner": "Copilot",
+                        "status": "active",
+                        "claimed_paths": ["src/sattlint/core/parser.py"],
+                        "updated_at": "2026-05-04T00:00:00Z",
+                        "first_validation": "pytest tests/test_repo_audit.py -x -q --tb=short",
+                    }
+                ]
+            },
+            indent=2,
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -1963,6 +2068,7 @@ def test_main_defaults_fail_on_medium_for_leaks_only():
     assert audit_repository.call_args.kwargs["leaks_only"] is True
     assert audit_repository.call_args.kwargs["latest_output_dir"] == repo_audit.DEFAULT_OUTPUT_DIR.resolve()
     printed_summary = print_cli_summary.call_args.args[0]
+    assert printed_summary["findings"] == summary["findings"]
     assert printed_summary["latest_status_report"] is None
     assert printed_summary["latest_summary_report"] is None
 
@@ -2149,10 +2255,15 @@ def test_build_repo_audit_check_catalog_lists_pipeline_and_custom_checks(tmp_pat
     ai_gc_entry = next(entry for entry in catalog["checks"] if entry["id"] == "ai-gc")
     assert "ai_gc" in ai_gc_entry["artifact_ids"]
     assert ai_gc_entry["owner_surface"] == "ai-hygiene"
+    assert ai_gc_entry["ai_instruction_files"] == [
+        ".github/instructions/agent-customizations.instructions.md",
+        ".github/instructions/repo-audit.instructions.md",
+    ]
 
     harness_entry = next(entry for entry in catalog["checks"] if entry["id"] == "harness-freshness")
     assert "--check harness-freshness" in harness_entry["command"]
     assert harness_entry["owner_surface"] == "harness-freshness"
+    assert harness_entry["ai_summary"]
 
     local_ci_entry = next(entry for entry in catalog["checks"] if entry["id"] == "local-ci-parity")
     assert "--check local-ci-parity" in local_ci_entry["command"]
@@ -2263,9 +2374,23 @@ def test_main_check_routes_finding_checks(monkeypatch, tmp_path):
     summary = {
         "profile": "full",
         "output_dir": f"<external>/{tmp_path.name}",
-        "finding_count": 0,
+        "finding_count": 1,
         "findings_schema": {"kind": "sattlint.findings", "schema_version": 1},
-        "findings": [],
+        "findings": [
+            {
+                "id": "public-readiness-example",
+                "category": "public-readiness",
+                "severity": "medium",
+                "confidence": "high",
+                "message": "Example terminal-visible finding.",
+                "path": "README.md",
+                "line": 12,
+                "detail": "This should be printed to the terminal summary.",
+                "suggestion": "Fix the example issue.",
+                "source": "custom",
+                "history_cleanup_recommended": False,
+            }
+        ],
     }
 
     with (
@@ -2278,6 +2403,7 @@ def test_main_check_routes_finding_checks(monkeypatch, tmp_path):
     assert run_checks.call_args.kwargs["check_ids"] == ("public-readiness",)
     printed = print_cli_summary.call_args.args[0]
     assert printed["overall_status"] == "pass"
+    assert printed["findings"] == summary["findings"]
 
 
 def test_main_check_cli_consistency_exits_nonzero_and_writes_report(monkeypatch, tmp_path):
@@ -2546,8 +2672,8 @@ def test_run_check_my_changes_includes_planning_context(monkeypatch, tmp_path):
     assert report["planning_context"]["owner_surfaces"] == ["cli"]
     assert report["planning_context"]["owner_test_targets"] == ["tests/test_repo_audit.py"]
     assert any(item["name"] == "CLI App Instructions" for item in report["planning_context"]["instruction_files"])
-    assert any("tests/test_app.py" in suite["tests"] for suite in report["planning_context"]["nearest_owner_suites"])
-    assert report["planning_context"]["first_validation_commands"]
+    assert report["planning_context"]["nearest_owner_suites"] == []
+    assert report["planning_context"]["first_validation_commands"] == []
     assert report["planning_context"]["finish_gate"]["selected_surface"] == "repo-audit"
     assert any(item["id"] == "focused-validation-first" for item in report["planning_context"]["blocking_invariants"])
     assert report["proof_requirements"]["focused_behavior_test"]["required"] is True
@@ -3112,16 +3238,38 @@ def test_doc_gardener_parse_markdown_table_stops_at_next_section():
     assert result[0][1]["Name"] == "Item1"
 
 
-def test_doc_gardener_parse_current_work_statuses_extracts_status_from_workstream():
-    text = """
-### Workstream W1-something
-- Status: active
+def test_doc_gardener_load_active_workstream_statuses_extracts_status_from_lock_state(tmp_path):
+    coordination_dir = tmp_path / ".github" / "coordination"
+    coordination_dir.mkdir(parents=True)
+    (coordination_dir / "current_work_lock.json").write_text(
+        json.dumps(
+            {
+                "workstreams": [
+                    {
+                        "workstream_id": "W1-something",
+                        "owner": "Copilot",
+                        "status": "active",
+                        "claimed_paths": ["src/demo.py"],
+                        "updated_at": "2026-05-04T00:00:00Z",
+                        "first_validation": "pytest tests/test_repo_audit.py -x -q --tb=short",
+                    },
+                    {
+                        "workstream_id": "W2",
+                        "owner": "Copilot",
+                        "status": "blocked",
+                        "claimed_paths": ["src/other.py"],
+                        "updated_at": "2026-05-04T00:00:00Z",
+                        "first_validation": "pytest tests/test_repo_audit.py -x -q --tb=short",
+                    },
+                ]
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
-### Workstream W2
-- Status: blocked
-"""
-
-    result = doc_gardener._parse_current_work_statuses(text)
+    result = doc_gardener._load_active_workstream_statuses(tmp_path)
 
     assert result.get("W1") == "In progress"
     assert result.get("W2") == "Blocked"

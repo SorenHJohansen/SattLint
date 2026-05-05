@@ -90,13 +90,13 @@ def test_format_context_uses_compact_summary_language_and_first_validation():
     assert "current-work.md" not in context
     assert "first-validation=pytest tests/test_app.py -x -q --tb=short" in context
     assert "Use the compact session summary first." in context
+    assert "JSON lock state" in context
 
 
 def test_write_summary_records_first_validation_commands(tmp_path):
     session_context = _load_session_context_module()
-    ledger_path = tmp_path / ".github" / "coordination" / "current-work.md"
-    ledger_path.parent.mkdir(parents=True)
-    ledger_path.write_text("", encoding="utf-8")
+    coordination_dir = tmp_path / ".github" / "coordination"
+    coordination_dir.mkdir(parents=True)
     planning = {
         "changed_files": ["src/sattlint/app.py"],
         "selected_surface": "session-start",
@@ -107,7 +107,7 @@ def test_write_summary_records_first_validation_commands(tmp_path):
     }
 
     session_context._write_summary(
-        ledger_path,
+        tmp_path,
         {"paths": [], "keywords": set(), "text": ""},
         [],
         0,
@@ -115,7 +115,7 @@ def test_write_summary_records_first_validation_commands(tmp_path):
         planning,
     )
 
-    summary_path = ledger_path.with_name("current_work_summary.json")
+    summary_path = coordination_dir / "current_work_summary.json"
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
 
     assert payload["planning"]["first_validation_commands"] == ["pytest tests/test_app.py -x -q --tb=short"]

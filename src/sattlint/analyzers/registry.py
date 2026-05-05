@@ -17,6 +17,7 @@ from sattlint.analyzers.parameter_drift import analyze_parameter_drift
 from sattlint.analyzers.safety_paths import analyze_safety_paths
 from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage
 from sattlint.analyzers.spec_compliance import analyze_spec_compliance
+from sattlint.analyzers.state_inference import analyze_state_inference
 from sattlint.analyzers.taint_paths import analyze_taint_paths
 
 from .comment_code import analyze_comment_code
@@ -422,6 +423,19 @@ def _base_delivery_metadata_by_analyzer() -> dict[str, AnalyzerDeliveryMetadata]
             min_fixture_set=shared_fixtures,
             exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY,),
         ),
+        "state_inference": AnalyzerDeliveryMetadata(
+            scope="workspace",
+            implementation_bucket="shared-semantic-core",
+            cli_exposed=True,
+            acceptance_tests=(
+                "tests/test_state_inference.py",
+                "tests/test_dataflow.py",
+                "tests/test_cli.py",
+            ),
+            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY, "dataflow"),
+            min_fixture_set=shared_fixtures,
+            exposed_via=("cli",),
+        ),
     }
 
 
@@ -684,6 +698,12 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
             unavailable_libraries=context.unavailable_libraries,
         )
 
+    def _run_state_inference(context: AnalysisContext):
+        return analyze_state_inference(
+            context.base_picture,
+            unavailable_libraries=context.unavailable_libraries,
+        )
+
     def _run_comment_code(context: AnalysisContext):
         return analyze_comment_code(context)
 
@@ -818,6 +838,13 @@ def get_default_analyzers() -> list[AnalyzerSpec]:
             name="Lightweight dataflow",
             description="Constant-condition and unreachable-path detection across branches",
             run=_run_dataflow,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="state_inference",
+            name="State inference",
+            description="Infer stable boolean and numeric state and report contradictory control flow",
+            run=_run_state_inference,
             enabled=True,
         ),
     ]

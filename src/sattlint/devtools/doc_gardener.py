@@ -8,8 +8,6 @@ stale or obsolete documentation that does not reflect the real code behavior
 and opens fix-up pull requests."
 """
 
-# ruff: noqa: RUF001
-
 import argparse
 import hashlib
 import re
@@ -24,13 +22,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from sattlint.devtools import coordination_lock_state
+
 # Constants
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DOCS_DIR = REPO_ROOT / "docs"
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
 QUALITY_SCORE = DOCS_DIR / "quality-score.md"
 TECH_DEBT = DOCS_DIR / "exec-plans" / "tech-debt-tracker.md"
-CURRENT_WORK = REPO_ROOT / ".github" / "coordination" / "current-work.md"
+CURRENT_WORK = REPO_ROOT / ".github" / "coordination" / coordination_lock_state.LOCK_STATE_FILE_NAME
 CURRENT_WORK_TEMPLATE = REPO_ROOT / ".github" / "coordination" / "current-work.template.md"
 AI_FIRST_PLAN = DOCS_DIR / "exec-plans" / "completed" / "ai-first-repo-hardening.md"
 AI_FIRST_DEBT = TECH_DEBT
@@ -43,13 +43,13 @@ AI_FIRST_SOURCE_FILES = (
 )
 MARKDOWN_SUFFIXES = {".md", ".txt"}
 MOJIBAKE_TOKENS = (
-    "â†’",
-    "â€”",
-    "â€“",
-    "â€˜",
+    "?",
+    "\ufffd",
+    "\u00e2\u20ac\u201c",
+    "\u00e2\u20ac\u201d",
     "\u00e2\u20ac\u2122",
-    "â€œ",
-    "â€�",
+    "\u00e2\u20ac\u0153",
+    "\u00e2\u20ac\u009d",
     "\u00c2 ",
 )
 SEVERITY_ORDER = ("Critical", "High", "Medium", "Low")
@@ -186,28 +186,16 @@ def _normalize_status(status: str) -> str:
     return mapping.get(normalized, status.strip())
 
 
-def _parse_current_work_statuses(text: str) -> dict[str, str]:
+def _load_active_workstream_statuses(repo_root: Path = REPO_ROOT) -> dict[str, str]:
     statuses: dict[str, str] = {}
-    current_workstream_id: str | None = None
 
-    for line in text.splitlines():
-        if line.startswith("### Workstream "):
-            current_workstream_id = _normalize_workstream_id(line.removeprefix("### Workstream ").strip())
+    for entry in coordination_lock_state.load_lock_state(repo_root):
+        current_workstream_id = _normalize_workstream_id(entry["workstream_id"])
+        if current_workstream_id is None:
             continue
-        if current_workstream_id is None or not line.startswith("- Status:"):
-            continue
-        statuses[current_workstream_id] = _normalize_status(line.partition(":")[2].strip())
-        current_workstream_id = None
+        statuses[current_workstream_id] = _normalize_status(entry["status"])
 
     return statuses
-
-
-def _read_current_work_text() -> str:
-    if CURRENT_WORK.exists():
-        return _read_text(CURRENT_WORK)
-    if CURRENT_WORK_TEMPLATE.exists():
-        return _read_text(CURRENT_WORK_TEMPLATE)
-    return ""
 
 
 def _source_sync_digest(path: Path) -> str:
@@ -436,15 +424,14 @@ def scan_ai_first_source_drift() -> Sequence[DocFinding]:
 
 
 def scan_ai_first_status_drift() -> Sequence[DocFinding]:
-    """Compare refactor-lane statuses in the canonical tech debt tracker against current-work."""
+    """Compare refactor-lane statuses in the canonical tech debt tracker against active workstreams."""
     findings = []
     if not AI_FIRST_DEBT.exists():
         return findings
 
-    current_work_text = _read_current_work_text()
-    if not current_work_text:
+    current_statuses = _load_active_workstream_statuses(REPO_ROOT)
+    if not current_statuses:
         return findings
-    current_statuses = _parse_current_work_statuses(current_work_text)
     debt_rows = _parse_markdown_table(
         _read_text(AI_FIRST_DEBT).splitlines(),
         "## Program B: Refactor And Architecture Debt",
@@ -467,7 +454,32 @@ def scan_ai_first_status_drift() -> Sequence[DocFinding]:
                 line_no,
                 "Medium",
                 "stale_status",
-                f"{debt_id} status is '{row.get('Status', '')}' but current-work tracks '{current_status}'.",
+                f"{debt_id} status is '{row.get('Status', '')}' but the active coordination lock state tracks '{current_status}'.",
+            )
+        )
+
+    return findings
+
+
+def scan_completed_exec_plans_still_active() -> Sequence[DocFinding]:
+    """Flag exec plans whose Progress section is complete but that still live in active/."""
+    from sattlint.devtools import ai_work_map as _ai_work_map_module
+
+    findings = []
+    active_exec_plans_dir = DOCS_DIR / "exec-plans" / "active"
+    if not active_exec_plans_dir.exists():
+        return findings
+
+    for plan_path in sorted(active_exec_plans_dir.glob("*.md")):
+        if not _ai_work_map_module._is_completed_exec_plan(plan_path):
+            continue
+        findings.append(
+            DocFinding(
+                _relative_path(plan_path),
+                1,
+                "High",
+                "stale",
+                "ExecPlan Progress is fully complete but the file still lives under docs/exec-plans/active/. Move it to docs/exec-plans/completed/.",
             )
         )
 
@@ -557,6 +569,7 @@ def run_scan() -> dict[str, Any]:
     findings.extend(scan_markdown_encoding_artifacts())
     findings.extend(scan_ai_first_source_drift())
     findings.extend(scan_ai_first_status_drift())
+    findings.extend(scan_completed_exec_plans_still_active())
     findings.extend(scan_stale_docs())
 
     severity_counts = Counter(finding.severity for finding in findings)

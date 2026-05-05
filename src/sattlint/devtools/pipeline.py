@@ -36,6 +36,7 @@ from sattlint.devtools.derived_reports import (
     build_performance_budget_report,
     build_profiling_summary_report,
 )
+from sattlint.devtools.differential import build_differential_report
 from sattlint.devtools.finding_exports import build_pipeline_finding_collection
 from sattlint.devtools.pipeline_artifacts import (
     PipelineArtifactContext,
@@ -1150,6 +1151,7 @@ def _prepare_pipeline_run(
     output_dir: Path,
     *,
     trace_target: Path | None,
+    mutation_target: Path | None,
     profile: str,
     include_vulture: bool | None,
     include_bandit: bool | None,
@@ -1157,6 +1159,7 @@ def _prepare_pipeline_run(
     corpus_manifest_dir: Path | None,
     changed_files: list[str] | None,
     selected_checks: Iterable[str] | None,
+    run_mutation_analysis: bool,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     if baseline_findings is not None and not baseline_findings.exists():
@@ -1173,6 +1176,10 @@ def _prepare_pipeline_run(
     run_bandit = wants("bandit") and (settings["include_bandit"] if include_bandit is None else include_bandit)
     run_structural_reports = wants("structural-reports") and settings["include_structural_reports"]
     run_trace = wants("trace") and settings["include_trace"] and trace_target is not None and trace_target.exists()
+    resolved_mutation_target = mutation_target.resolve() if mutation_target is not None else trace_target
+    run_mutation = bool(
+        run_mutation_analysis and resolved_mutation_target is not None and resolved_mutation_target.exists()
+    )
     resolved_corpus_manifest_dir = corpus_manifest_dir.resolve() if corpus_manifest_dir is not None else None
     run_corpus = wants("corpus") and bool(resolved_corpus_manifest_dir and resolved_corpus_manifest_dir.exists())
     run_coverage_summary = run_structural_reports and (REPO_ROOT / "coverage.xml").exists()
@@ -1223,6 +1230,8 @@ def _prepare_pipeline_run(
         enabled_artifacts.add("pytest")
     if baseline_findings is not None:
         enabled_artifacts.add("analysis_diff")
+        if profile == "full":
+            enabled_artifacts.add("differential")
     if run_corpus:
         enabled_artifacts.add("corpus_results")
     if run_vulture:
@@ -1244,6 +1253,8 @@ def _prepare_pipeline_run(
         )
     if run_trace:
         enabled_artifacts.update({"trace", "profiling_summary", "performance_budget"})
+    if run_mutation:
+        enabled_artifacts.add("mutation_results")
     enabled_artifacts.add("incremental_analysis")
     if run_coverage_summary:
         enabled_artifacts.add("coverage_summary")
@@ -1265,9 +1276,11 @@ def _prepare_pipeline_run(
         "python_cmd": python_cmd,
         "resolved_changed_files": resolved_changed_files,
         "resolved_corpus_manifest_dir": resolved_corpus_manifest_dir,
+        "mutation_target": resolved_mutation_target,
         "run_bandit": run_bandit,
         "run_corpus": run_corpus,
         "run_coverage_summary": run_coverage_summary,
+        "run_mutation_analysis": run_mutation,
         "run_structural_reports": run_structural_reports,
         "run_trace": run_trace,
         "run_vulture": run_vulture,
@@ -1498,15 +1511,25 @@ def _build_derived_reports(
         )
 
     analysis_diff_report: dict[str, Any] | None = None
+    differential_report: dict[str, Any] | None = None
     if baseline_findings is not None:
+        baseline_collection = load_finding_collection(baseline_findings)
         analysis_diff_report = build_analysis_diff_report(
-            baseline=load_finding_collection(baseline_findings),
+            baseline=baseline_collection,
             current=finding_collection,
             baseline_label=(
                 sanitize_path_for_report(baseline_findings, repo_root=REPO_ROOT) or baseline_findings.as_posix()
             ),
             current_label="findings.json",
         )
+        differential_report = build_differential_report(
+            baseline_collection,
+            finding_collection,
+            baseline_label=(
+                sanitize_path_for_report(baseline_findings, repo_root=REPO_ROOT) or baseline_findings.as_posix()
+            ),
+            current_label="findings.json",
+        ).to_dict()
 
     mutation_results: dict[str, Any] | None = None
     if context.get("run_mutation_analysis") and finding_collection is not None:
@@ -1522,6 +1545,7 @@ def _build_derived_reports(
     return {
         "analysis_diff_report": analysis_diff_report,
         "coverage_summary_report": coverage_summary_report,
+        "differential_report": differential_report,
         "finding_collection": finding_collection,
         "findings_schema": finding_collection.schema_metadata,
         "incremental_analysis_report": incremental_analysis_report,
@@ -2124,6 +2148,8 @@ def _finalize_pipeline_outputs(
             "rule_metrics": derived_reports["rule_metrics_report"],
             "profiling_summary": derived_reports["profiling_summary_report"],
             "performance_budget": derived_reports["performance_budget_report"],
+            "mutation_results": derived_reports["mutation_results"],
+            "differential": derived_reports["differential_report"],
             "status": status_report,
             "summary": summary,
         }
@@ -2146,6 +2172,7 @@ def _run_pipeline(
     output_dir: Path,
     *,
     trace_target: Path | None,
+    mutation_target: Path | None = None,
     profile: str = DEFAULT_PIPELINE_PROFILE,
     include_vulture: bool | None = None,
     include_bandit: bool | None = None,
@@ -2158,10 +2185,12 @@ def _run_pipeline(
     fail_on_drift: bool = False,
     fail_on_budget: bool = False,
     selected_checks: Iterable[str] | None = None,
+    run_mutation_analysis: bool = False,
 ) -> dict[str, Any]:
     context = _prepare_pipeline_run(
         output_dir,
         trace_target=trace_target,
+        mutation_target=mutation_target,
         profile=profile,
         include_vulture=include_vulture,
         include_bandit=include_bandit,
@@ -2169,6 +2198,7 @@ def _run_pipeline(
         corpus_manifest_dir=corpus_manifest_dir,
         changed_files=changed_files,
         selected_checks=selected_checks,
+        run_mutation_analysis=run_mutation_analysis,
     )
     progress = context["progress"]
     selected_checks = context.get("selected_checks")
@@ -2273,6 +2303,16 @@ def main(argv: list[str] | None = None) -> int:
         "--trace-target",
         default=str(DEFAULT_TRACE_TARGET) if DEFAULT_TRACE_TARGET.exists() else "",
         help="Optional SattLine source fixture to trace into trace.json",
+    )
+    parser.add_argument(
+        "--mutation-target",
+        default="",
+        help="Optional SattLine source fixture to mutate into mutation_results.json",
+    )
+    parser.add_argument(
+        "--run-mutation-analysis",
+        action="store_true",
+        help="Emit mutation_results.json for the selected mutation target or trace target.",
     )
     parser.add_argument(
         "--baseline-findings",
@@ -2428,6 +2468,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if finish_gate["overall_status"] == "fail" else 0
 
     trace_target = Path(args.trace_target).resolve() if args.trace_target else None
+    mutation_target = Path(args.mutation_target).resolve() if args.mutation_target else None
     baseline_findings = Path(args.baseline_findings).resolve() if args.baseline_findings else None
     corpus_manifest_dir = Path(args.corpus_manifest_dir).resolve() if args.corpus_manifest_dir else None
     save_baseline = Path(args.save_baseline).resolve() if args.save_baseline else None
@@ -2441,6 +2482,7 @@ def main(argv: list[str] | None = None) -> int:
     summary = _run_pipeline(
         Path(args.output_dir).resolve(),
         trace_target=trace_target,
+        mutation_target=mutation_target,
         profile=args.profile,
         include_vulture=False if args.skip_vulture else None,
         include_bandit=False if args.skip_bandit else None,
@@ -2453,6 +2495,7 @@ def main(argv: list[str] | None = None) -> int:
         fail_on_drift=args.fail_on_drift,
         fail_on_budget=args.fail_on_budget,
         selected_checks=selected_checks,
+        run_mutation_analysis=(args.run_mutation_analysis or bool(args.mutation_target)),
     )
     if save_baseline is not None:
         findings_src = Path(args.output_dir).resolve() / "findings.json"

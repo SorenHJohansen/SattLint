@@ -7,12 +7,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict
 
-WORKSTREAM_RE = re.compile(r"^### Workstream\s+(?P<id>.+?)\s*$")
-FIELD_RE = re.compile(r"^-\s+(?P<field>[A-Za-z][A-Za-z\-/ ]+):\s*(?P<value>.*)$")
-BACKTICK_ITEM_RE = re.compile(r"`([^`]+)`")
+REPO_ROOT = Path(__file__).resolve().parents[3]
+SRC_PATH = REPO_ROOT / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
+
+from sattlint.devtools import coordination_lock_state  # noqa: E402
+
 TOKEN_RE = re.compile(r"[a-z0-9_./-]{3,}")
-LEDGER_TEMPLATE_NAME = "current-work.template.md"
-SUMMARY_FILE_NAME = "current_work_summary.json"
+SUMMARY_FILE_NAME = coordination_lock_state.SUMMARY_FILE_NAME
 PATH_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".toml", ".txt"}
 PATH_KEYS = {"path", "filepath", "file", "currentfile", "activefile", "editorfile", "selectionpath"}
 TEXT_KEYS = {"prompt", "message", "query", "task", "goal", "title", "description"}
@@ -34,9 +37,9 @@ class ClaimInfo(TypedDict):
 class WorkstreamEntry(TypedDict):
     id: str
     owner: str
-    goal: str
-    claims: str
     status: str
+    claims: str
+    first_validation: str
     notes: str
     index: int
     claim_paths: list[ClaimInfo]
@@ -71,89 +74,19 @@ def _load_payload() -> dict:
     return json.loads(raw)
 
 
-def _ensure_local_ledger(ledger_path: Path) -> Path:
-    if ledger_path.exists():
-        return ledger_path
-    template_path = ledger_path.with_name(LEDGER_TEMPLATE_NAME)
-    if not template_path.exists():
-        return ledger_path
-    ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    ledger_path.write_text(template_path.read_text(encoding="utf-8"), encoding="utf-8")
-    return ledger_path
-
-
-def _normalize_relative(raw_path: str) -> str:
-    cleaned = raw_path.strip().strip("`'\"")
-    cleaned = cleaned.replace("\\", "/")
-    while cleaned.startswith("./"):
-        cleaned = cleaned[2:]
-    return cleaned.rstrip("/")
-
-
-def _resolve_workspace_path(raw_path: str, cwd: Path) -> Path:
-    path = Path(_normalize_relative(raw_path))
-    if not path.is_absolute():
-        path = cwd / path
-    return path.resolve()
-
-
-def _split_claims(raw_claims: str) -> list[str]:
-    backtick_items = BACKTICK_ITEM_RE.findall(raw_claims)
-    if backtick_items:
-        return backtick_items
-    return [part.strip() for part in raw_claims.split(",") if part.strip()]
-
-
-def _load_active_workstreams(ledger_path: Path, cwd: Path) -> list[WorkstreamEntry]:
-    ledger_path = _ensure_local_ledger(ledger_path)
-    if not ledger_path.exists():
-        return []
-
-    text = ledger_path.read_text(encoding="utf-8")
-
-    entries: list[dict[str, str]] = []
-    current: dict[str, str] | None = None
-    for raw_line in text.splitlines():
-        line = raw_line.rstrip()
-        workstream_match = WORKSTREAM_RE.match(line)
-        if workstream_match:
-            if current is not None:
-                entries.append(current)
-            current = {"id": workstream_match.group("id").strip()}
-            continue
-        if current is None:
-            continue
-        field_match = FIELD_RE.match(line.lstrip())
-        if not field_match:
-            continue
-        field = field_match.group("field").strip().casefold()
-        value = field_match.group("value").strip()
-        current[field] = value
-    if current is not None:
-        entries.append(current)
-
+def _load_active_workstreams(repo_root: Path, cwd: Path) -> list[WorkstreamEntry]:
+    entries = coordination_lock_state.load_lock_state(repo_root)
     normalized: list[WorkstreamEntry] = []
     for index, entry in enumerate(entries):
-        status = entry.get("status", "active").strip().casefold()
-        if status == "done":
-            continue
-        raw_claims = entry.get("claims", "")
-        claim_paths: list[ClaimInfo] = []
-        for item in _split_claims(raw_claims):
-            normalized_relative = _normalize_relative(item)
-            if not normalized_relative:
-                continue
-            resolved = _resolve_workspace_path(normalized_relative, cwd)
-            is_directory = item.rstrip().endswith(("/", "\\")) or resolved.is_dir()
-            claim_paths.append({"raw": normalized_relative, "path": resolved, "is_directory": is_directory})
+        claim_paths = coordination_lock_state.resolve_claim_patterns(entry["claimed_paths"], cwd)
         normalized.append(
             {
-                "id": entry.get("id", "unknown"),
-                "owner": entry.get("owner", "unknown"),
-                "goal": entry.get("goal", "no goal"),
-                "claims": raw_claims,
-                "status": status,
-                "notes": entry.get("notes", ""),
+                "id": entry["workstream_id"],
+                "owner": entry["owner"],
+                "status": entry["status"],
+                "claims": ", ".join(entry["claimed_paths"]),
+                "first_validation": entry["first_validation"],
+                "notes": "",
                 "index": index,
                 "claim_paths": claim_paths,
             }
@@ -166,11 +99,11 @@ def _collect_payload_signals(payload: object, cwd: Path) -> PayloadSignals:
     text_fragments: list[str] = []
 
     def add_path(raw_path: str) -> None:
-        normalized = _normalize_relative(raw_path)
+        normalized = coordination_lock_state.normalize_relative_path(raw_path)
         if not normalized:
             return
         try:
-            resolved = _resolve_workspace_path(normalized, cwd)
+            resolved = coordination_lock_state.resolve_workspace_path(normalized, cwd)
         except Exception:
             return
         path_signals[resolved.as_posix().casefold()] = resolved
@@ -200,7 +133,7 @@ def _collect_payload_signals(payload: object, cwd: Path) -> PayloadSignals:
             return
         if lowered_key in TEXT_KEYS:
             return
-        candidate = _normalize_relative(stripped)
+        candidate = coordination_lock_state.normalize_relative_path(stripped)
         if "/" in candidate or "\\" in stripped or Path(candidate).suffix.casefold() in PATH_SUFFIXES:
             add_path(candidate)
 
@@ -244,7 +177,14 @@ def _score_workstream(entry: WorkstreamEntry, signals: PayloadSignals) -> Ranked
                 score += 50
                 matched_claims.append(claim_raw)
 
-    for field_value in (entry["id"], entry["goal"], entry["notes"], entry["claims"]):
+    for field_value in (
+        entry["id"],
+        entry["owner"],
+        entry.get("first_validation", ""),
+        entry.get("goal", ""),
+        entry.get("notes", ""),
+        entry["claims"],
+    ):
         field_value = field_value.casefold()
         local_matches = sorted(token for token in signal_keywords if token in field_value)
         if not local_matches:
@@ -268,8 +208,8 @@ def _rank_workstreams(entries: list[WorkstreamEntry], signals: PayloadSignals) -
     return ranked
 
 
-def _summary_path(ledger_path: Path) -> Path:
-    return ledger_path.with_name(SUMMARY_FILE_NAME)
+def _summary_path(repo_root: Path) -> Path:
+    return coordination_lock_state.summary_path(repo_root)
 
 
 def _signal_changed_files(signals: PayloadSignals, cwd: Path) -> list[str]:
@@ -326,18 +266,18 @@ def _build_planning_context_payload(signals: PayloadSignals, cwd: Path) -> Plann
 
 
 def _write_summary(
-    ledger_path: Path,
+    repo_root: Path,
     signals: PayloadSignals,
     ranked: list[RankedWorkstream],
     active_count: int,
     cwd: Path,
     planning: PlanningContextPayload | None,
 ) -> None:
-    summary_path = _summary_path(ledger_path)
+    summary_path = _summary_path(repo_root)
     top_items = ranked[:3]
     payload = {
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-        "source": ".github/coordination/current-work.md",
+        "source": f".github/coordination/{coordination_lock_state.LOCK_STATE_FILE_NAME}",
         "active_workstream_count": active_count,
         "signal_paths": [
             path.relative_to(cwd).as_posix() for path in signals["paths"] if path != cwd and path.is_relative_to(cwd)
@@ -349,7 +289,7 @@ def _write_summary(
                 "id": item["entry"]["id"],
                 "owner": item["entry"]["owner"],
                 "status": item["entry"]["status"],
-                "goal": item["entry"]["goal"],
+                "first_validation": item["entry"]["first_validation"],
                 "matched_claims": item["matched_claims"][:3],
                 "matched_keywords": item["matched_keywords"][:4],
                 "score": item["score"],
@@ -375,7 +315,10 @@ def _format_context(ranked: list[RankedWorkstream], planning: PlanningContextPay
             if item["matched_keywords"]:
                 reason_parts.append(f"keywords={','.join(item['matched_keywords'][:2])}")
             reason = f" | match={' ; '.join(reason_parts)}" if reason_parts else ""
-            parts.append(f"{entry['id']}: {entry['goal']} | owner={entry['owner']} | status={entry['status']}{reason}")
+            validation = entry.get("first_validation") or "n/a"
+            parts.append(
+                f"{entry['id']}: owner={entry['owner']} | status={entry['status']} | validation={validation}{reason}"
+            )
         joined = "; ".join(parts)
         segments.append(f"Relevant SattLint workstreams: {joined}.")
     if planning is not None:
@@ -392,7 +335,7 @@ def _format_context(ranked: list[RankedWorkstream], planning: PlanningContextPay
             planning_bits.append(f"first-validation={planning['first_validation_commands'][0]}")
         if planning_bits:
             segments.append(f"Planning context: {' | '.join(planning_bits)}.")
-    segments.append("Use the compact session summary first. Check the ledger before editing claimed files.")
+    segments.append("Use the compact session summary first. Check the JSON lock state before editing claimed files.")
     return " ".join(segments)
 
 
@@ -402,12 +345,11 @@ def main() -> int:
         if payload.get("hookEventName") != "SessionStart":
             return 0
         cwd = Path(payload.get("cwd") or ".").resolve()
-        ledger_path = cwd / ".github" / "coordination" / "current-work.md"
-        entries = _load_active_workstreams(ledger_path, cwd)
+        entries = _load_active_workstreams(cwd, cwd)
         signals = _collect_payload_signals(payload, cwd)
         ranked = _rank_workstreams(entries, signals)
         planning = _build_planning_context_payload(signals, cwd)
-        _write_summary(ledger_path, signals, ranked, len(entries), cwd, planning)
+        _write_summary(cwd, signals, ranked, len(entries), cwd, planning)
         context = _format_context(ranked, planning)
         if not context:
             return 0

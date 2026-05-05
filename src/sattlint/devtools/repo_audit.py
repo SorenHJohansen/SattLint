@@ -101,6 +101,35 @@ GENERATED_PATH_PREFIXES = (
     "coverage.xml",
     "htmlcov/",
 )
+TOP_LEVEL_TRACKED_ENTRY_ALLOWLIST = frozenset(
+    {
+        ".ai",
+        ".editorconfig",
+        ".gitattributes",
+        ".github",
+        ".gitignore",
+        ".markdownlint-cli2.jsonc",
+        ".markdownlint.json",
+        ".markdownlintignore",
+        ".pre-commit-config.yaml",
+        ".vscode",
+        "AGENTS.md",
+        "ARCHITECTURE.md",
+        "CHANGELOG.md",
+        "CONTRIBUTING.md",
+        "LICENSE",
+        "README.md",
+        "SECURITY.md",
+        "custom.toml",
+        "docs",
+        "metrics",
+        "pyproject.toml",
+        "scripts",
+        "src",
+        "tests",
+        "vscode",
+    }
+)
 IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PREFIXES = ("src/sattlint/devtools/",)
 IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PATHS = {
     "scripts/check_ratchet_policy.py",
@@ -196,6 +225,7 @@ STRUCTURAL_DEBT_FINDING_IDS = {
 HARNESS_FRESHNESS_DOC_SCANNERS = (
     "scan_agents_md",
     "scan_dead_links",
+    "scan_completed_exec_plans_still_active",
     "scan_stale_docs",
 )
 IGNORED_NORMALIZED_PIPELINE_FINDINGS = {
@@ -1624,7 +1654,6 @@ def build_ai_gc_report(
     *,
     tracked_paths: Iterable[str] | None = None,
     stale_after_days: int = _ai_gc_module.DEFAULT_STALE_AFTER_DAYS,
-    max_ledger_lines: int = _ai_gc_module.DEFAULT_MAX_LEDGER_LINES,
     now_ts: float | None = None,
     apply: bool = False,
 ) -> dict[str, Any]:
@@ -1632,7 +1661,6 @@ def build_ai_gc_report(
         root,
         tracked_paths=tracked_paths,
         stale_after_days=stale_after_days,
-        max_ledger_lines=max_ledger_lines,
         now_ts=now_ts,
         apply=apply,
     )
@@ -1644,14 +1672,12 @@ def apply_ai_gc(
     output_dir: Path | None = None,
     tracked_paths: Iterable[str] | None = None,
     stale_after_days: int = _ai_gc_module.DEFAULT_STALE_AFTER_DAYS,
-    max_ledger_lines: int = _ai_gc_module.DEFAULT_MAX_LEDGER_LINES,
     now_ts: float | None = None,
 ) -> dict[str, Any]:
     report = build_ai_gc_report(
         root,
         tracked_paths=tracked_paths,
         stale_after_days=stale_after_days,
-        max_ledger_lines=max_ledger_lines,
         now_ts=now_ts,
         apply=True,
     )
@@ -1674,10 +1700,7 @@ def _ai_gc_report_findings(report: dict[str, Any]) -> list[Finding]:
             if candidate_id == "stale-generated-output-manifest" or (isinstance(age_days, int) and age_days >= 30)
             else "low"
         )
-        if candidate_id == "oversized-ai-ledger":
-            message = "Local AI coordination ledger can be compacted."
-            detail = f"line_count={candidate.get('line_count')} removable_done_blocks={candidate.get('removable_done_blocks')}"
-        elif candidate_id == "stale-generated-output-manifest":
+        if candidate_id == "stale-generated-output-manifest":
             message = "Generated output drifted from its source-digest manifest."
             detail = str(candidate.get("reason") or "")
         else:
@@ -1696,7 +1719,7 @@ def _ai_gc_report_findings(report: dict[str, Any]) -> list[Finding]:
                 message=message,
                 path=path,
                 detail=detail,
-                suggestion="Run sattlint-repo-audit --apply-ai-gc to delete safe stale artifacts and compact the local ledger.",
+                suggestion="Run sattlint-repo-audit --apply-ai-gc to delete safe stale artifacts.",
                 source="ai-gc",
             )
         )
@@ -1735,9 +1758,6 @@ def _filter_ai_gc_report_for_output_dir(report: dict[str, Any], *, output_dir_pa
     )
     filtered_summary["manifest_drift_candidate_count"] = sum(
         1 for candidate in filtered_candidates if candidate.get("candidate_id") == "stale-generated-output-manifest"
-    )
-    filtered_summary["ledger_candidate_count"] = sum(
-        1 for candidate in filtered_candidates if candidate.get("candidate_id") == "oversized-ai-ledger"
     )
     filtered_report["summary"] = filtered_summary
     failures = filtered_report.get("failures")
@@ -2054,6 +2074,29 @@ def _find_public_readiness_findings(
                     history_cleanup_recommended=True,
                 )
             )
+
+    tracked_top_level_entries = sorted(
+        {
+            rel_path.split("/", 1)[0]
+            for rel_path in (tracked_paths if tracked_paths is not None else (_list_tracked_repo_paths(root) or ()))
+            if rel_path
+        }
+    )
+    unexpected_root_entries = [
+        entry for entry in tracked_top_level_entries if entry not in TOP_LEVEL_TRACKED_ENTRY_ALLOWLIST
+    ]
+    if unexpected_root_entries:
+        findings.append(
+            Finding(
+                id="unexpected-tracked-root-entry",
+                category="public-readiness",
+                severity="medium",
+                confidence="high",
+                message="Repository root contains tracked helper or scratch entries outside the approved top-level layout.",
+                detail=", ".join(unexpected_root_entries[:5]) + (" ..." if len(unexpected_root_entries) > 5 else ""),
+                suggestion="Move reusable tooling under scripts/ or another owner directory, and delete one-off scratch files from the repo root.",
+            )
+        )
     return findings
 
 
@@ -2382,7 +2425,7 @@ def _patch_doc_gardener_paths(root: Path):
         AGENTS_MD=root / "AGENTS.md",
         QUALITY_SCORE=root / "docs" / "quality-score.md",
         TECH_DEBT=root / "docs" / "exec-plans" / "tech-debt-tracker.md",
-        CURRENT_WORK=root / ".github" / "coordination" / "current-work.md",
+        CURRENT_WORK=root / ".github" / "coordination" / "current_work_lock.json",
         CURRENT_WORK_TEMPLATE=root / ".github" / "coordination" / "current-work.template.md",
         AI_FIRST_PLAN=root / "docs" / "exec-plans" / "active" / "ai-first-repo-hardening.md",
         AI_FIRST_DEBT=root / "docs" / "exec-plans" / "tech-debt-tracker.md",

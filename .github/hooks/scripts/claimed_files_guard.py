@@ -5,6 +5,13 @@ import re
 import sys
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+SRC_PATH = REPO_ROOT / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
+
+from sattlint.devtools import coordination_lock_state  # noqa: E402
+
 EDIT_TOOL_NAMES = {
     "apply_patch",
     "create_file",
@@ -14,17 +21,13 @@ EDIT_TOOL_NAMES = {
     "vscode_renamesymbol",
     "mcp_pylance_mcp_s_pylanceinvokerefactoring",
 }
-MAX_LEDGER_LINES = 500
-WORKSTREAM_RE = re.compile(r"^### Workstream\s+(?P<id>.+?)\s*$")
-FIELD_RE = re.compile(r"^-\s+(?P<field>[A-Za-z][A-Za-z\-/ ]+):\s*(?P<value>.*)$")
 PATCH_PATH_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (?P<path>.+?)(?: -> .+)?$", re.MULTILINE)
-BACKTICK_ITEM_RE = re.compile(r"`([^`]+)`")
 SKIP_RELATIVE_PATHS = {
     ".github/coordination/current-work.md",
+    f".github/coordination/{coordination_lock_state.LOCK_STATE_FILE_NAME}",
 }
 ESCALATE_TO_ASK = {"ready-for-merge"}
 ESCALATE_TO_DENY = {"blocked"}
-LEDGER_TEMPLATE_NAME = "current-work.template.md"
 
 
 def _load_payload() -> dict:
@@ -39,18 +42,11 @@ def _normalize_tool_name(tool_name: str) -> str:
 
 
 def _normalize_relative(raw_path: str) -> str:
-    cleaned = raw_path.strip().strip("`'")
-    cleaned = cleaned.replace("\\", "/")
-    while cleaned.startswith("./"):
-        cleaned = cleaned[2:]
-    return cleaned.rstrip("/")
+    return coordination_lock_state.normalize_relative_path(raw_path)
 
 
 def _resolve_workspace_path(raw_path: str, cwd: Path) -> Path:
-    path = Path(_normalize_relative(raw_path))
-    if not path.is_absolute():
-        path = cwd / path
-    return path.resolve()
+    return coordination_lock_state.resolve_workspace_path(raw_path, cwd)
 
 
 def _extract_patch_paths(patch_text: str) -> list[str]:
@@ -95,140 +91,18 @@ def _extract_tool_paths(tool_name: str, tool_input: object, cwd: Path) -> list[P
     return list(seen.values())
 
 
-def _split_claims(raw_claims: str) -> list[str]:
-    backtick_items = BACKTICK_ITEM_RE.findall(raw_claims)
-    if backtick_items:
-        return backtick_items
-    return [part.strip() for part in raw_claims.split(",") if part.strip()]
-
-
-def _ledger_template_path(ledger_path: Path) -> Path:
-    return ledger_path.with_name(LEDGER_TEMPLATE_NAME)
-
-
-def _ensure_local_ledger(ledger_path: Path) -> Path:
-    if ledger_path.exists():
-        return ledger_path
-    template_path = _ledger_template_path(ledger_path)
-    if not template_path.exists():
-        return ledger_path
-    ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    ledger_path.write_text(template_path.read_text(encoding="utf-8"), encoding="utf-8")
-    return ledger_path
-
-
-def _split_workstream_blocks(text: str) -> tuple[list[str], list[list[str]]]:
-    prefix: list[str] = []
-    blocks: list[list[str]] = []
-    current_block: list[str] | None = None
-
-    for raw_line in text.splitlines(keepends=True):
-        line = raw_line.rstrip()
-        if WORKSTREAM_RE.match(line):
-            if current_block is not None:
-                blocks.append(current_block)
-            current_block = [raw_line]
-            continue
-        if current_block is None:
-            prefix.append(raw_line)
-            continue
-        current_block.append(raw_line)
-
-    if current_block is not None:
-        blocks.append(current_block)
-    return prefix, blocks
-
-
-def _parse_workstream_block(block_lines: list[str]) -> dict[str, str]:
-    heading = block_lines[0].rstrip()
-    workstream_match = WORKSTREAM_RE.match(heading)
-    if workstream_match is None:
-        return {}
-
-    entry = {"id": workstream_match.group("id").strip()}
-    for raw_line in block_lines[1:]:
-        field_match = FIELD_RE.match(raw_line.lstrip().rstrip())
-        if field_match is None:
-            continue
-        field = field_match.group("field").strip().casefold()
-        value = field_match.group("value").strip()
-        entry[field] = value
-    return entry
-
-
-def _cleanup_ledger_if_needed(ledger_path: Path) -> None:
-    ledger_path = _ensure_local_ledger(ledger_path)
-    if not ledger_path.exists():
-        return
-
-    text = ledger_path.read_text(encoding="utf-8")
-    prefix, blocks = _split_workstream_blocks(text)
-    if not blocks:
-        return
-
-    current_line_count = len(prefix) + sum(len(block) for block in blocks)
-    if current_line_count <= MAX_LEDGER_LINES:
-        return
-
-    remaining_blocks = list(blocks)
-    for index in range(len(remaining_blocks) - 1, -1, -1):
-        parsed = _parse_workstream_block(remaining_blocks[index])
-        if parsed.get("status", "active").strip().casefold() != "done":
-            continue
-        del remaining_blocks[index]
-        current_line_count = len(prefix) + sum(len(block) for block in remaining_blocks)
-        if current_line_count <= MAX_LEDGER_LINES:
-            break
-
-    if remaining_blocks == blocks:
-        return
-
-    updated_text = "".join(prefix + [line for block in remaining_blocks for line in block]).rstrip() + "\n"
-    if updated_text != text:
-        ledger_path.write_text(updated_text, encoding="utf-8")
-
-
-def _load_active_claims(ledger_path: Path, cwd: Path) -> list[dict[str, object]]:
-    ledger_path = _ensure_local_ledger(ledger_path)
-    if not ledger_path.exists():
-        return []
-
-    _cleanup_ledger_if_needed(ledger_path)
-    text = ledger_path.read_text(encoding="utf-8")
-    _, blocks = _split_workstream_blocks(text)
-    claims = [_parse_workstream_block(block) for block in blocks]
-
+def _load_active_claims(repo_root: Path, cwd: Path) -> list[dict[str, object]]:
+    entries = coordination_lock_state.load_lock_state(repo_root)
     normalized_claims: list[dict[str, object]] = []
-    for claim in claims:
-        if not claim:
-            continue
-        status = str(claim.get("status", "active")).strip().casefold()
-        if status == "done":
-            continue
-        raw_claim_text = str(claim.get("claims", "")).strip()
-        if not raw_claim_text:
-            continue
-        claim_patterns = []
-        for item in _split_claims(raw_claim_text):
-            normalized_relative = _normalize_relative(item)
-            if not normalized_relative:
-                continue
-            absolute_path = _resolve_workspace_path(normalized_relative, cwd)
-            is_directory = item.rstrip().endswith(("/", "\\")) or absolute_path.is_dir()
-            claim_patterns.append(
-                {
-                    "raw": normalized_relative,
-                    "path": absolute_path,
-                    "is_directory": is_directory,
-                }
-            )
+    for entry in entries:
+        claim_patterns = coordination_lock_state.resolve_claim_patterns(entry["claimed_paths"], cwd)
         if not claim_patterns:
             continue
         normalized_claims.append(
             {
-                "id": claim.get("id", "unknown"),
-                "owner": claim.get("owner", "unknown"),
-                "status": status,
+                "id": entry["workstream_id"],
+                "owner": entry["owner"],
+                "status": entry["status"],
                 "patterns": claim_patterns,
             }
         )
@@ -280,8 +154,8 @@ def _build_message(conflicts: list[dict[str, str]]) -> str:
         for item in conflicts
     )
     return (
-        "Claimed-file guard detected an overlap with `.github/coordination/current-work.md`. "
-        "Update the ledger or coordinate before proceeding. "
+        "Claimed-file guard detected an overlap with `.git/sattlint-ai-coordination/current_work_lock.json`. "
+        "Update the JSON lock state or coordinate before proceeding. "
         f"Conflicts: {details}"
     )
 
@@ -299,8 +173,7 @@ def main() -> int:
         if not targets:
             return 0
 
-        ledger_path = cwd / ".github" / "coordination" / "current-work.md"
-        claims = _load_active_claims(ledger_path, cwd)
+        claims = _load_active_claims(cwd, cwd)
         if not claims:
             return 0
 

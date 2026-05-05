@@ -194,7 +194,7 @@ DEFAULT_PIPELINE_ARTIFACT_PRODUCERS: tuple[PipelineArtifactProducer, ...] = (
     PipelineArtifactProducer("summary", payload_from_context("summary")),
     PipelineArtifactProducer("accuracy_metrics", _build_none_payload),
     PipelineArtifactProducer("ai_templates", _build_none_payload),
-    PipelineArtifactProducer("differential", _build_none_payload),
+    PipelineArtifactProducer("differential", payload_from_context("differential")),
     PipelineArtifactProducer("production_summary", _build_none_payload),
     PipelineArtifactProducer("symbolic_summary", _build_none_payload),
 )

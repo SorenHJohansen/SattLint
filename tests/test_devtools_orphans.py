@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -80,6 +81,26 @@ def test_accuracy_metrics_load_and_build_summary(tmp_path: Path) -> None:
     }
     assert payload["by_rule"]["rule.medium"]["false_positive"] == 1
     assert payload["annotations"][0]["annotated_by"] == "qa"
+
+
+def test_accuracy_metrics_write_report(tmp_path: Path) -> None:
+    findings = FindingCollection((_finding("rule.medium", fingerprint="fp-medium"),))
+
+    output_path = accuracy_metrics.write_accuracy_metrics(
+        tmp_path,
+        accuracy_metrics.build_accuracy_metrics(findings, []),
+    )
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert output_path.name == accuracy_metrics.ACCURACY_METRICS_FILENAME
+    assert payload["kind"] == accuracy_metrics.ACCURACY_SCHEMA_KIND
+    assert payload["summary"] == {
+        "total_annotations": 1,
+        "correct": 1,
+        "false_positives": 0,
+        "missed_issues": 0,
+        "precision": 1.0,
+    }
 
 
 def test_ai_templates_builds_summary_from_catalog_and_findings(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -231,10 +252,10 @@ def test_parser_property_helpers_cover_generation_iteration_and_failure_collecti
 ) -> None:
     monkeypatch.setattr(parser_properties.random, "choice", lambda items: items[-1])
 
-    assert "PROGRAM MainProg" in parser_properties.generate_simple_program()
-    assert "flag := 3.14;" in parser_properties.generate_simple_program()
-    assert "MODULE ModuleA" in parser_properties.generate_simple_module()
-    assert "cnt : INT;" in parser_properties.generate_simple_module()
+    assert 'name: MainProg"' in parser_properties.generate_simple_program()
+    assert "flag: integer := 3;" in parser_properties.generate_simple_program()
+    assert "WorkerType = MODULEDEFINITION" in parser_properties.generate_simple_module()
+    assert "cnt: integer := 3;" in parser_properties.generate_simple_module()
 
     parse_calls = iter(
         [

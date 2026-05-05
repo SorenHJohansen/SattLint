@@ -36,6 +36,22 @@ def test_build_tool_args_leaves_help_only_requests_unchanged():
     assert built_args == ["--help"]
 
 
+def test_resolve_command_prefers_installed_markdownlint_cli(monkeypatch):
+    def fake_which(command: str):
+        if command == "markdownlint-cli2":
+            return "/usr/bin/markdownlint-cli2"
+        if command == "npx":
+            return "/usr/bin/npx"
+        return None
+
+    monkeypatch.setattr(run_markdownlint.shutil, "which", fake_which)
+
+    command, cwd = run_markdownlint._resolve_command(["README.md"])
+
+    assert command == ["markdownlint-cli2", "README.md"]
+    assert cwd == run_markdownlint.REPO_ROOT
+
+
 def test_main_passes_no_globs_when_explicit_paths_are_supplied(monkeypatch, tmp_path):
     captured_tool_args: list[str] = []
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -76,6 +77,18 @@ debt_allowlist = [
 {debt_lines}
 ]
 """.strip()
+
+
+def _file_debt_ratchet_payload(files: dict[str, object] | None = None) -> str:
+    return json.dumps(
+        {
+            "kind": ratchet_policy.FILE_DEBT_RATCHET_SCHEMA_KIND,
+            "schema_version": ratchet_policy.FILE_DEBT_RATCHET_SCHEMA_VERSION,
+            "files": files or {},
+        },
+        indent=4,
+        sort_keys=True,
+    )
 
 
 def test_evaluate_policy_change_allows_non_protected_edits():
@@ -159,6 +172,336 @@ def test_evaluate_policy_change_requires_explicit_approval_record():
 
     assert len(errors) == 1
     assert "Ratchet edits require explicit approval" in errors[0]
+
+
+def test_evaluate_policy_change_requires_approval_for_file_debt_ratchet_edits():
+    errors = ratchet_policy.evaluate_policy_change(
+        changed_files=(ratchet_policy.FILE_DEBT_RATCHET_PATH,),
+        current_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: _file_debt_ratchet_payload(),
+            ratchet_policy.STRUCTURAL_RATCHET_PATH: '{"metrics": {"source_file_max_lines": 500}}',
+            ratchet_policy.PYPROJECT_PATH: _pyproject_with_typing_ratchet("87.26"),
+        },
+        base_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: _file_debt_ratchet_payload(),
+        },
+    )
+
+    assert len(errors) == 1
+    assert "Ratchet edits require explicit approval" in errors[0]
+
+
+def test_file_debt_ratchet_state_rejects_unknown_touch_rule():
+    payload = _file_debt_ratchet_payload(
+        {
+            "src/pkg/legacy.py": {
+                "structural": {
+                    "current_baseline": 520,
+                    "target": 500,
+                    "touch_rule": "grow_freely",
+                    "reason": "Invalid test payload.",
+                }
+            }
+        }
+    )
+
+    try:
+        ratchet_policy._file_debt_ratchet_state(payload, ratchet_policy.FILE_DEBT_RATCHET_PATH)
+    except ValueError as exc:
+        assert "touch_rule must be one of" in str(exc)
+    else:
+        raise AssertionError("Expected a ValueError for an invalid per-file debt touch_rule")
+
+
+def test_evaluate_policy_change_rejects_coverage_debt_entry_that_does_not_mirror_coverage_xml(tmp_path):
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-04.md"
+    (tmp_path / "coverage.xml").write_text(
+        """<?xml version=\"1.0\" ?>
+<coverage>
+    <packages><package><classes>
+        <class filename=\"src/pkg/legacy.py\" line-rate=\"0.90\" lines-valid=\"10\" lines-covered=\"9\">
+            <lines/>
+        </class>
+    </classes></package></packages>
+</coverage>""",
+        encoding="utf-8",
+    )
+    base_payload = _file_debt_ratchet_payload(
+        {
+            "src/pkg/legacy.py": {
+                "structural": {
+                    "current_baseline": 520,
+                    "target": 500,
+                    "touch_rule": "must_not_grow",
+                    "reason": "Legacy owner module remains centralized pending extraction.",
+                }
+            }
+        }
+    )
+    head_payload = _file_debt_ratchet_payload(
+        {
+            "src/pkg/legacy.py": {
+                "structural": {
+                    "current_baseline": 520,
+                    "target": 500,
+                    "touch_rule": "must_not_grow",
+                    "reason": "Legacy owner module remains centralized pending extraction.",
+                },
+                "coverage": {
+                    "current_baseline": 9100,
+                    "target": 9500,
+                    "touch_rule": "must_not_drop",
+                    "reason": "Touched source coverage debt must mirror coverage.xml and still reach full proof.",
+                },
+            },
+        }
+    )
+
+    errors = ratchet_policy.evaluate_policy_change(
+        repo_root=tmp_path,
+        changed_files=(ratchet_policy.FILE_DEBT_RATCHET_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: head_payload,
+            ratchet_policy.STRUCTURAL_RATCHET_PATH: '{"metrics": {"source_file_max_lines": 500}}',
+            ratchet_policy.PYPROJECT_PATH: _pyproject_with_typing_ratchet("87.26"),
+            approval_path: "Approved-by: Human Reviewer\nReason: attempted debt growth\n",
+        },
+        base_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: base_payload,
+            approval_path: None,
+        },
+    )
+
+    assert any("must match the current coverage.xml module rate" in error for error in errors)
+    assert any("must use must_reach_target_on_touch" in error for error in errors)
+    assert any("must be 10000" in error for error in errors)
+
+
+def test_evaluate_policy_change_allows_approved_migration_of_existing_coverage_debt(tmp_path):
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-04.md"
+    (tmp_path / "coverage.xml").write_text(
+        """<?xml version=\"1.0\" ?>
+<coverage>
+    <packages><package><classes>
+        <class filename=\"src/pkg/legacy.py\" line-rate=\"0.90\" lines-valid=\"10\" lines-covered=\"9\">
+            <lines/>
+        </class>
+    </classes></package></packages>
+</coverage>""",
+        encoding="utf-8",
+    )
+    head_payload = _file_debt_ratchet_payload(
+        {
+            "src/pkg/legacy.py": {
+                "coverage": {
+                    "current_baseline": 9000,
+                    "target": 10000,
+                    "touch_rule": "must_reach_target_on_touch",
+                    "reason": "Touched source coverage debt must reach full proof on the next edit.",
+                }
+            }
+        }
+    )
+
+    errors = ratchet_policy.evaluate_policy_change(
+        repo_root=tmp_path,
+        changed_files=(ratchet_policy.FILE_DEBT_RATCHET_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: head_payload,
+            ratchet_policy.STRUCTURAL_RATCHET_PATH: '{"metrics": {"source_file_max_lines": 500}}',
+            ratchet_policy.PYPROJECT_PATH: _pyproject_with_typing_ratchet("87.26"),
+            approval_path: "Approved-by: Human Reviewer\nReason: migrate first approved per-file coverage debt entry into the sparse ledger\n",
+        },
+        base_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: _file_debt_ratchet_payload(),
+            approval_path: None,
+        },
+    )
+
+    assert errors == []
+
+
+def test_evaluate_policy_change_allows_approved_migration_of_existing_structural_and_typing_debt():
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-04.md"
+    head_payload = _file_debt_ratchet_payload(
+        {
+            "docs/exec-plans/feature-roadmap.md": {
+                "structural": {
+                    "current_baseline": 1453,
+                    "target": 500,
+                    "touch_rule": "must_shrink",
+                    "reason": "Roadmap owner document remains centralized pending breakdown into smaller planning documents.",
+                }
+            },
+            "src/sattlint/app.py": {
+                "structural": {
+                    "current_baseline": 891,
+                    "target": 500,
+                    "touch_rule": "must_shrink",
+                    "reason": "Interactive app entry owner still centralizes CLI and menu routing.",
+                },
+                "typing": {
+                    "touch_rule": "must_exit_on_touch",
+                    "reason": "Touched app facade typing debt must leave the Pyright debt allowlist.",
+                },
+            },
+        }
+    )
+    structural_payload = """
+{
+    "metrics": {"source_file_max_lines": 2297, "markdown_file_max_lines": 1453},
+    "file_line_exceptions": {
+        "docs/exec-plans/feature-roadmap.md": {
+            "max_lines": 1453,
+            "reason": "Roadmap owner document remains centralized pending breakdown into smaller planning documents."
+        },
+        "src/sattlint/app.py": {
+            "max_lines": 891,
+            "reason": "Interactive app entry owner still centralizes CLI and menu routing."
+        }
+    }
+}
+""".strip()
+    pyproject_text = _pyproject_with_typing_ratchet(
+        "87.26",
+        strict_paths=("src/sattlint/core/document.py",),
+        debt_allowlist=("src/sattlint/app.py",),
+        strict_roots=("src/sattlint",),
+    )
+
+    errors = ratchet_policy.evaluate_policy_change(
+        changed_files=(ratchet_policy.FILE_DEBT_RATCHET_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: head_payload,
+            ratchet_policy.STRUCTURAL_RATCHET_PATH: structural_payload,
+            ratchet_policy.PYPROJECT_PATH: pyproject_text,
+            approval_path: "Approved-by: Human Reviewer\nReason: migrate first real structural and typing debt entries into the sparse ledger\n",
+        },
+        base_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: _file_debt_ratchet_payload(),
+            approval_path: None,
+        },
+    )
+
+    assert errors == []
+
+
+def test_evaluate_policy_change_rejects_new_structural_debt_entry_without_converging_touch_rule():
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-04.md"
+    head_payload = _file_debt_ratchet_payload(
+        {
+            "src/sattlint/app.py": {
+                "structural": {
+                    "current_baseline": 891,
+                    "target": 500,
+                    "touch_rule": "must_not_grow",
+                    "reason": "Interactive app entry owner still centralizes CLI and menu routing.",
+                }
+            }
+        }
+    )
+    structural_payload = """
+{
+    "metrics": {"source_file_max_lines": 2297, "markdown_file_max_lines": 1453},
+    "file_line_exceptions": {
+        "src/sattlint/app.py": {
+            "max_lines": 891,
+            "reason": "Interactive app entry owner still centralizes CLI and menu routing."
+        }
+    }
+}
+""".strip()
+
+    errors = ratchet_policy.evaluate_policy_change(
+        changed_files=(ratchet_policy.FILE_DEBT_RATCHET_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: head_payload,
+            ratchet_policy.STRUCTURAL_RATCHET_PATH: structural_payload,
+            ratchet_policy.PYPROJECT_PATH: _pyproject_with_typing_ratchet("87.26"),
+            approval_path: "Approved-by: Human Reviewer\nReason: attempted non-converging structural entry\n",
+        },
+        base_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: _file_debt_ratchet_payload(),
+            approval_path: None,
+        },
+    )
+
+    assert any("must use must_shrink or must_meet_target" in error for error in errors)
+
+
+def test_evaluate_policy_change_rejects_unmirrored_typing_debt_entry():
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-04.md"
+    head_payload = _file_debt_ratchet_payload(
+        {
+            "src/sattlint/app.py": {
+                "typing": {
+                    "touch_rule": "must_exit_on_touch",
+                    "reason": "Touched app facade typing debt must leave the Pyright debt allowlist.",
+                }
+            }
+        }
+    )
+
+    errors = ratchet_policy.evaluate_policy_change(
+        changed_files=(ratchet_policy.FILE_DEBT_RATCHET_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: head_payload,
+            ratchet_policy.STRUCTURAL_RATCHET_PATH: '{"metrics": {"source_file_max_lines": 500}}',
+            ratchet_policy.PYPROJECT_PATH: _pyproject_with_typing_ratchet("87.26", debt_allowlist=()),
+            approval_path: "Approved-by: Human Reviewer\nReason: attempted typing migration without mirrored debt\n",
+        },
+        base_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: _file_debt_ratchet_payload(),
+            approval_path: None,
+        },
+    )
+
+    assert any("must mirror tool.sattlint.typing_ratchet.debt_allowlist" in error for error in errors)
+
+
+def test_evaluate_policy_change_allows_structural_ledger_migration_while_removing_duplicate_exception():
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-04.md"
+    head_payload = _file_debt_ratchet_payload(
+        {
+            "src/sattlint/config.py": {
+                "structural": {
+                    "current_baseline": 565,
+                    "target": 500,
+                    "touch_rule": "must_shrink",
+                    "reason": "Config owner surface still centralizes validation, defaults, and persistence flows.",
+                }
+            }
+        }
+    )
+    base_structural_payload = """
+{
+    "metrics": {"source_file_max_lines": 2297},
+    "file_line_exceptions": {
+        "src/sattlint/config.py": {
+            "max_lines": 565,
+            "reason": "Config owner surface still centralizes validation, defaults, and persistence flows."
+        }
+    }
+}
+""".strip()
+    head_structural_payload = '{"metrics": {"source_file_max_lines": 2297}, "file_line_exceptions": {}}'
+
+    errors = ratchet_policy.evaluate_policy_change(
+        changed_files=(ratchet_policy.FILE_DEBT_RATCHET_PATH, ratchet_policy.STRUCTURAL_RATCHET_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: head_payload,
+            ratchet_policy.STRUCTURAL_RATCHET_PATH: head_structural_payload,
+            ratchet_policy.PYPROJECT_PATH: _pyproject_with_typing_ratchet("87.26"),
+            approval_path: "Approved-by: Human Reviewer\nReason: migrate structural debt into the sparse ledger and remove duplicate exception rows\n",
+        },
+        base_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: _file_debt_ratchet_payload(),
+            ratchet_policy.STRUCTURAL_RATCHET_PATH: base_structural_payload,
+            approval_path: None,
+        },
+    )
+
+    assert errors == []
 
 
 def test_evaluate_policy_change_rejects_looser_coverage_ratchet_even_with_approval():
@@ -733,6 +1076,209 @@ def test_run_policy_check_allows_preexisting_touched_debt_during_scope_expansion
     assert not any(
         "Touched file under the typing strict scope remains in typing debt allowlist" in error for error in errors
     )
+
+
+def test_run_policy_check_rejects_touched_file_in_per_file_typing_debt(monkeypatch, tmp_path):
+    scoped_file = tmp_path / "src" / "sattlint" / "app.py"
+    scoped_file.parent.mkdir(parents=True)
+    scoped_file.write_text("value = 1\n", encoding="utf-8")
+    (tmp_path / ratchet_policy.PYPROJECT_PATH).write_text(
+        _pyproject_with_typing_ratchet(
+            "87.26",
+            strict_paths=(),
+            debt_allowlist=("src/sattlint/app.py",),
+            strict_roots=("src/sattlint",),
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / ratchet_policy.FILE_DEBT_RATCHET_PATH).parent.mkdir(parents=True)
+    (tmp_path / ratchet_policy.FILE_DEBT_RATCHET_PATH).write_text(
+        _file_debt_ratchet_payload(
+            {
+                "src/sattlint/app.py": {
+                    "typing": {
+                        "touch_rule": "must_exit_on_touch",
+                        "reason": "Touched typing debt must leave the allowlist.",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        ratchet_policy,
+        "_detect_change_context",
+        lambda *_args, **_kwargs: ratchet_policy.ChangeContext(
+            changed_files=("src/sattlint/app.py",),
+            added_files=(),
+            base_ref=None,
+            source="worktree",
+        ),
+    )
+
+    errors = ratchet_policy.run_policy_check(tmp_path)
+
+    assert any("Touched file in per-file typing debt ratchet remains" in error for error in errors)
+
+
+def test_run_policy_check_rejects_touched_structural_debt_file_that_exceeds_target(monkeypatch, tmp_path):
+    target_file = tmp_path / "src" / "pkg" / "legacy.py"
+    target_file.parent.mkdir(parents=True)
+    target_file.write_text("\n".join(f"line_{index}" for index in range(6)), encoding="utf-8")
+    (tmp_path / ratchet_policy.PYPROJECT_PATH).write_text(
+        _pyproject_with_typing_ratchet(
+            "87.26",
+            strict_paths=("src/pkg/legacy.py",),
+            debt_allowlist=(),
+            strict_roots=("src/pkg",),
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / ratchet_policy.FILE_DEBT_RATCHET_PATH).parent.mkdir(parents=True)
+    (tmp_path / ratchet_policy.FILE_DEBT_RATCHET_PATH).write_text(
+        _file_debt_ratchet_payload(
+            {
+                "src/pkg/legacy.py": {
+                    "structural": {
+                        "current_baseline": 5,
+                        "target": 5,
+                        "touch_rule": "must_not_grow",
+                        "reason": "Legacy owner module must not grow while still oversized.",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        ratchet_policy,
+        "_detect_change_context",
+        lambda *_args, **_kwargs: ratchet_policy.ChangeContext(
+            changed_files=("src/pkg/legacy.py",),
+            added_files=(),
+            base_ref=None,
+            source="worktree",
+        ),
+    )
+    monkeypatch.setattr(
+        ratchet_policy,
+        "_load_base_texts",
+        lambda *_args, **_kwargs: {"src/pkg/legacy.py": "\n".join(f"line_{index}" for index in range(5))},
+    )
+
+    errors = ratchet_policy.run_policy_check(tmp_path)
+
+    assert any("Touched structural debt file must meet target" in error for error in errors)
+
+
+def test_run_policy_check_rejects_touched_structural_debt_file_that_does_not_shrink(monkeypatch, tmp_path):
+    target_file = tmp_path / "src" / "pkg" / "legacy.py"
+    target_file.parent.mkdir(parents=True)
+    target_file.write_text("\n".join(f"line_{index}" for index in range(6)), encoding="utf-8")
+    (tmp_path / ratchet_policy.PYPROJECT_PATH).write_text(
+        _pyproject_with_typing_ratchet(
+            "87.26",
+            strict_paths=("src/pkg/legacy.py",),
+            debt_allowlist=(),
+            strict_roots=("src/pkg",),
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / ratchet_policy.FILE_DEBT_RATCHET_PATH).parent.mkdir(parents=True)
+    (tmp_path / ratchet_policy.FILE_DEBT_RATCHET_PATH).write_text(
+        _file_debt_ratchet_payload(
+            {
+                "src/pkg/legacy.py": {
+                    "structural": {
+                        "current_baseline": 6,
+                        "target": 5,
+                        "touch_rule": "must_not_grow",
+                        "reason": "Legacy owner module must converge toward the target.",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        ratchet_policy,
+        "_detect_change_context",
+        lambda *_args, **_kwargs: ratchet_policy.ChangeContext(
+            changed_files=("src/pkg/legacy.py",),
+            added_files=(),
+            base_ref=None,
+            source="worktree",
+        ),
+    )
+    monkeypatch.setattr(
+        ratchet_policy,
+        "_load_base_texts",
+        lambda *_args, **_kwargs: {"src/pkg/legacy.py": "\n".join(f"line_{index}" for index in range(6))},
+    )
+
+    errors = ratchet_policy.run_policy_check(tmp_path)
+
+    assert any("Touched structural debt file did not shrink" in error for error in errors)
+
+
+def test_run_policy_check_rejects_touched_coverage_debt_file_below_target(monkeypatch, tmp_path):
+    target_file = tmp_path / "src" / "pkg" / "legacy.py"
+    target_file.parent.mkdir(parents=True)
+    target_file.write_text("value = 1\n", encoding="utf-8")
+    (tmp_path / "coverage.xml").write_text(
+        """<?xml version=\"1.0\" ?>
+<coverage>
+    <packages><package><classes>
+        <class filename=\"src/pkg/legacy.py\" line-rate=\"0.90\" lines-valid=\"10\" lines-covered=\"9\">
+            <lines/>
+        </class>
+    </classes></package></packages>
+</coverage>""",
+        encoding="utf-8",
+    )
+    (tmp_path / ratchet_policy.PYPROJECT_PATH).write_text(
+        _pyproject_with_typing_ratchet(
+            "87.26",
+            strict_paths=("src/pkg/legacy.py",),
+            debt_allowlist=(),
+            strict_roots=("src/pkg",),
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / ratchet_policy.FILE_DEBT_RATCHET_PATH).parent.mkdir(parents=True)
+    (tmp_path / ratchet_policy.FILE_DEBT_RATCHET_PATH).write_text(
+        _file_debt_ratchet_payload(
+            {
+                "src/pkg/legacy.py": {
+                    "coverage": {
+                        "current_baseline": 9000,
+                        "target": 9500,
+                        "touch_rule": "must_reach_target_on_touch",
+                        "reason": "Touched coverage debt must clear the recorded target.",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        ratchet_policy,
+        "_detect_change_context",
+        lambda *_args, **_kwargs: ratchet_policy.ChangeContext(
+            changed_files=("src/pkg/legacy.py",),
+            added_files=(),
+            base_ref=None,
+            source="worktree",
+        ),
+    )
+
+    errors = ratchet_policy.run_policy_check(tmp_path)
+
+    assert any("Touched coverage debt file must reach target" in error for error in errors)
 
 
 def test_detect_change_context_prefers_base_ref_when_present(monkeypatch):

@@ -46,6 +46,13 @@ REPO_AUDIT_RECOMMENDATION_FALLBACK_GLOBS = (
 AI_FEEDBACK_FILENAME = "ai_feedback.json"
 
 
+def _ai_metadata(summary: str, *instruction_files: str) -> dict[str, Any]:
+    return {
+        "ai_summary": summary,
+        "ai_instruction_files": instruction_files,
+    }
+
+
 def _repo_audit_module() -> Any:
     from sattlint.devtools import repo_audit as repo_audit_module
 
@@ -74,6 +81,10 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "pyproject.toml",
             ),
             "owner_test_targets": ("tests/test_repo_audit.py",),
+            **_ai_metadata(
+                "Use when documentation or Python sources may have leaked local paths, secrets, or unsafe text.",
+                ".github/instructions/repo-audit.instructions.md",
+            ),
         },
         {
             "id": "local-ci-parity",
@@ -94,6 +105,10 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "pyproject.toml",
             ),
             "owner_test_targets": ("tests/test_repo_audit.py",),
+            **_ai_metadata(
+                "Use when changes may rely on local-only paths, guards, or machine-specific assumptions.",
+                ".github/instructions/repo-audit.instructions.md",
+            ),
         },
         {
             "id": "documented-commands",
@@ -113,6 +128,11 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "src/sattlint/devtools/repo_audit_cli.py",
             ),
             "owner_test_targets": ("tests/test_repo_audit.py",),
+            **_ai_metadata(
+                "Use when CLI help, command docs, or agent reference commands must stay in sync with implementation.",
+                ".github/instructions/cli-app.instructions.md",
+                ".github/instructions/repo-audit.instructions.md",
+            ),
         },
         {
             "id": "unused-config-keys",
@@ -127,6 +147,10 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "src/sattlint/**/*.py",
             ),
             "owner_test_targets": ("tests/test_repo_audit.py",),
+            **_ai_metadata(
+                "Use when config declarations or config consumers change and unused keys may drift.",
+                ".github/instructions/cli-app.instructions.md",
+            ),
         },
         {
             "id": "architecture",
@@ -141,6 +165,10 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "pyproject.toml",
             ),
             "owner_test_targets": ("tests/test_repo_audit.py",),
+            **_ai_metadata(
+                "Use when Python architecture, import layering, or module-size constraints may shift.",
+                ".github/instructions/repo-audit.instructions.md",
+            ),
         },
         {
             "id": "structural-report",
@@ -155,6 +183,10 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "artifacts/analysis/structural_budget_ratchet.json",
             ),
             "owner_test_targets": ("tests/test_repo_audit.py",),
+            **_ai_metadata(
+                "Use when structural budget artifacts or their translation into findings may change.",
+                ".github/instructions/repo-audit.instructions.md",
+            ),
         },
         {
             "id": "cli",
@@ -170,6 +202,10 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "src/sattlint/devtools/repo_audit_cli.py",
             ),
             "owner_test_targets": ("tests/test_repo_audit.py",),
+            **_ai_metadata(
+                "Use when CLI parser descriptions, subcommand help, or interactive command surfaces change.",
+                ".github/instructions/cli-app.instructions.md",
+            ),
         },
         {
             "id": "logging",
@@ -180,6 +216,10 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
             "estimated_cost": "low",
             "path_globs": ("src/**/*.py",),
             "owner_test_targets": ("tests/test_repo_audit.py",),
+            **_ai_metadata(
+                "Use when library code changes may introduce unexpected prints or weak failure-path diagnostics.",
+                ".github/instructions/repo-audit.instructions.md",
+            ),
         },
         {
             "id": "ai-gc",
@@ -199,6 +239,11 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "tests/test_repo_audit.py",
             ),
             "owner_test_targets": ("tests/test_repo_audit.py",),
+            **_ai_metadata(
+                "Use when AI-generated artifacts, coordination state, or related cleanup policy changes.",
+                ".github/instructions/agent-customizations.instructions.md",
+                ".github/instructions/repo-audit.instructions.md",
+            ),
         },
         {
             "id": "ignored-repo-paths",
@@ -213,6 +258,10 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "scripts/**/*.py",
             ),
             "owner_test_targets": ("tests/test_repo_audit.py",),
+            **_ai_metadata(
+                "Use when repo-local ignored paths or hidden dependency roots may leak into tracked code.",
+                ".github/instructions/repo-audit.instructions.md",
+            ),
         },
         {
             "id": "harness-freshness",
@@ -237,6 +286,11 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "tests/test_repo_audit.py",
             ),
             "owner_test_targets": ("tests/test_ai_work_map.py", "tests/test_repo_audit.py"),
+            **_ai_metadata(
+                "Use when AI instructions, agents, generated routing maps, or other AI-control surfaces change.",
+                ".github/instructions/agent-customizations.instructions.md",
+                ".github/instructions/repo-audit.instructions.md",
+            ),
         },
         {
             "id": "coverage",
@@ -251,6 +305,10 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "pyproject.toml",
             ),
             "owner_test_targets": ("tests/test_repo_audit.py",),
+            **_ai_metadata(
+                "Use when coverage artifacts or audit-facing coverage recommendations may change.",
+                ".github/instructions/repo-audit.instructions.md",
+            ),
         },
         {
             "id": "public-readiness",
@@ -269,6 +327,10 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "pyproject.toml",
             ),
             "owner_test_targets": ("tests/test_repo_audit.py",),
+            **_ai_metadata(
+                "Use when top-level repo hygiene, public metadata, or publish-facing docs may drift.",
+                ".github/instructions/repo-audit.instructions.md",
+            ),
         },
         {
             "id": "verify-recommendations",
@@ -293,6 +355,11 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
                 "tests/test_pipeline_run.py",
                 "tests/test_repo_audit.py",
                 "tests/test_recommendation_routing.py",
+            ),
+            **_ai_metadata(
+                "Use when routing catalogs, recommendation metadata, or generated AI registry outputs change.",
+                ".github/instructions/agent-customizations.instructions.md",
+                ".github/instructions/repo-audit.instructions.md",
             ),
         },
     )
@@ -335,6 +402,11 @@ def _run_verify_recommendations_check(_context: Any) -> list[Any]:
             ai_work_map_module.DEFAULT_SESSION_CONTEXT_OUTPUT_PATH,
             ai_work_map_module.render_session_context_map(),
             "ai-session-context-map",
+        ),
+        (
+            ai_work_map_module.DEFAULT_CHECK_CATALOG_OUTPUT_PATH,
+            ai_work_map_module.render_ai_check_catalog(),
+            "ai-check-catalog",
         ),
     )
     regenerate_command = "python -m sattlint.devtools.ai_work_map --write"
@@ -594,6 +666,8 @@ def build_repo_audit_check_catalog(
                 "estimated_cost": entry["estimated_cost"],
                 "path_globs": entry["path_globs"],
                 "owner_test_targets": entry["owner_test_targets"],
+                "ai_summary": entry["ai_summary"],
+                "ai_instruction_files": entry["ai_instruction_files"],
                 "command": entry["command"],
             }
         )
@@ -619,6 +693,8 @@ def build_repo_audit_check_catalog(
                 "estimated_cost": definition["estimated_cost"],
                 "path_globs": list(definition["path_globs"]),
                 "owner_test_targets": list(definition["owner_test_targets"]),
+                "ai_summary": definition["ai_summary"],
+                "ai_instruction_files": list(definition["ai_instruction_files"]),
                 "command": (
                     f"sattlint-repo-audit --profile {profile} --check {definition['id']} --skip-pipeline "
                     f"--fail-on {fail_on} --output-dir {sanitized_output_dir}"
@@ -654,6 +730,11 @@ def build_repo_audit_check_catalog(
                     "src/sattlint/devtools/repo_audit_cli.py",
                 ],
                 "owner_test_targets": ["tests/test_repo_audit.py"],
+                "ai_summary": "Use when CLI consistency reporting or command-reference alignment changes.",
+                "ai_instruction_files": [
+                    ".github/instructions/cli-app.instructions.md",
+                    ".github/instructions/repo-audit.instructions.md",
+                ],
                 "command": (
                     f"sattlint-repo-audit --profile full --check cli-consistency --skip-pipeline "
                     f"--fail-on {fail_on} --output-dir {sanitized_output_dir}"
@@ -1781,6 +1862,32 @@ def _recommended_command(*, output_dir: str, profile: str, fail_on: str, leaks_o
     return " ".join(parts)
 
 
+def _format_terminal_finding_path(path: str | None, line: int | None) -> str:
+    if path is None:
+        return ""
+    if line is None:
+        return f" [{path}]"
+    return f" [{path}:{line}]"
+
+
+def _print_terminal_findings(findings: Iterable[dict[str, Any]]) -> None:
+    finding_list = list(findings)
+    if not finding_list:
+        return
+    print("Detailed findings:")
+    for finding in finding_list:
+        path_suffix = _format_terminal_finding_path(finding.get("path"), finding.get("line"))
+        print(
+            f"- {finding['severity'].upper()} {finding['category']} {finding['id']}{path_suffix}: {finding['message']}"
+        )
+        detail = finding.get("detail")
+        if detail:
+            print(f"  detail: {detail}")
+        suggestion = finding.get("suggestion")
+        if suggestion:
+            print(f"  suggestion: {suggestion}")
+
+
 def _print_cli_summary(status_report: dict[str, Any]) -> None:
     print(f"Audit profile: {status_report['profile']}")
     print(f"Overall status: {status_report['overall_status']}")
@@ -1801,6 +1908,7 @@ def _print_cli_summary(status_report: dict[str, Any]) -> None:
     if latest_status_report and latest_summary_report:
         print(f"Latest status report: {latest_status_report}")
         print(f"Latest summary report: {latest_summary_report}")
+    _print_terminal_findings(status_report.get("findings", ()))
 
 
 def _default_corpus_manifest_dir() -> Path | None:

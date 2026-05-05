@@ -17,8 +17,9 @@ from defusedxml import ElementTree  # type: ignore[import-untyped]
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STRUCTURAL_RATCHET_PATH = "artifacts/analysis/structural_budget_ratchet.json"
 COVERAGE_RATCHET_PATH = "artifacts/analysis/coverage_ratchet.json"
+FILE_DEBT_RATCHET_PATH = "artifacts/analysis/file_debt_ratchet.json"
 PYPROJECT_PATH = "pyproject.toml"
-PROTECTED_PATHS = frozenset({STRUCTURAL_RATCHET_PATH, COVERAGE_RATCHET_PATH, PYPROJECT_PATH})
+PROTECTED_PATHS = frozenset({STRUCTURAL_RATCHET_PATH, COVERAGE_RATCHET_PATH, FILE_DEBT_RATCHET_PATH, PYPROJECT_PATH})
 APPROVAL_RECORD_PREFIX = ".github/approvals/ratchet-rebaseline"
 APPROVAL_RECORD_HINT = ".github/approvals/ratchet-rebaseline-<date>.md"
 APPROVAL_BY_RE = re.compile(r"^Approved-by:\s+.+$", re.MULTILINE)
@@ -27,6 +28,19 @@ NEW_PYTHON_FILE_LINE_LIMIT = 500
 NEW_MARKDOWN_FILE_LINE_LIMIT = 500
 NEW_SOURCE_FILE_COVERAGE_BASIS_POINTS = 10000
 COVERAGE_FLOOR_BUFFER_BASIS_POINTS = 100
+FILE_DEBT_RATCHET_SCHEMA_KIND = "sattlint.file_debt_ratchet"
+FILE_DEBT_RATCHET_SCHEMA_VERSION = 1
+FILE_DEBT_ALLOWED_PREFIXES = ("src/", "tests/", "docs/", "scripts/")
+FILE_DEBT_TOUCH_RULES = {
+    "coverage": frozenset({"must_not_drop", "must_reach_target_on_touch"}),
+    "structural": frozenset({"must_meet_target", "must_not_grow", "must_shrink"}),
+    "typing": frozenset({"must_exit_on_touch"}),
+}
+FILE_DEBT_TOUCH_RULE_RANKS = {
+    "coverage": {"must_reach_target_on_touch": 0, "must_not_drop": 1},
+    "structural": {"must_meet_target": 0, "must_shrink": 1, "must_not_grow": 2},
+    "typing": {"must_exit_on_touch": 0},
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -410,6 +424,241 @@ def _structural_file_line_exception_mapping(payload: dict[str, Any], label: str)
     return dict(sorted(normalized.items()))
 
 
+def _file_debt_touch_rule(dimension: str, value: Any, *, label: str) -> str:
+    if not isinstance(value, str) or value not in FILE_DEBT_TOUCH_RULES[dimension]:
+        allowed = ", ".join(sorted(FILE_DEBT_TOUCH_RULES[dimension]))
+        raise ValueError(f"{label} touch_rule must be one of: {allowed}.")
+    return value
+
+
+def _effective_structural_touch_rule(entry: Mapping[str, Any], *, baseline_lines: int) -> str:
+    target = int(entry["target"])
+    touch_rule = str(entry["touch_rule"])
+    if baseline_lines <= target:
+        return "must_meet_target"
+    if touch_rule == "must_not_grow":
+        return "must_shrink"
+    return touch_rule
+
+
+def _normalized_file_debt_dimension(
+    raw: Any,
+    *,
+    dimension: str,
+    label: str,
+) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ValueError(f"{label} must be a JSON object.")
+
+    reason = raw.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError(f"{label}.reason must be a non-empty string.")
+
+    allow_rebaseline = raw.get("allow_rebaseline", False)
+    if not isinstance(allow_rebaseline, bool):
+        raise ValueError(f"{label}.allow_rebaseline must be a boolean.")
+
+    normalized: dict[str, Any] = {
+        "allow_rebaseline": allow_rebaseline,
+        "reason": reason.strip(),
+        "touch_rule": _file_debt_touch_rule(dimension, raw.get("touch_rule"), label=label),
+    }
+
+    if dimension == "typing":
+        unexpected = sorted(set(raw) - {"allow_rebaseline", "reason", "touch_rule"})
+        if unexpected:
+            raise ValueError(f"{label} contains unsupported keys: {', '.join(unexpected)}.")
+        return normalized
+
+    current_baseline = raw.get("current_baseline")
+    target = raw.get("target")
+    if not isinstance(current_baseline, int) or current_baseline < 0:
+        raise ValueError(f"{label}.current_baseline must be a non-negative integer.")
+    if not isinstance(target, int) or target < 0:
+        raise ValueError(f"{label}.target must be a non-negative integer.")
+
+    if dimension == "structural" and target > current_baseline:
+        raise ValueError(f"{label}.target must be less than or equal to current_baseline for structural debt.")
+    if dimension == "coverage" and target < current_baseline:
+        raise ValueError(f"{label}.target must be greater than or equal to current_baseline for coverage debt.")
+
+    unexpected = sorted(set(raw) - {"allow_rebaseline", "current_baseline", "reason", "target", "touch_rule"})
+    if unexpected:
+        raise ValueError(f"{label} contains unsupported keys: {', '.join(unexpected)}.")
+
+    normalized["current_baseline"] = current_baseline
+    normalized["target"] = target
+    return normalized
+
+
+def _file_debt_ratchet_state(text: str, label: str) -> dict[str, dict[str, dict[str, Any]]]:
+    payload = _parse_json_payload(text, label)
+    if payload.get("kind") != FILE_DEBT_RATCHET_SCHEMA_KIND:
+        raise ValueError(f"{label} kind must be {FILE_DEBT_RATCHET_SCHEMA_KIND!r}.")
+    if payload.get("schema_version") != FILE_DEBT_RATCHET_SCHEMA_VERSION:
+        raise ValueError(f"{label} schema_version must be {FILE_DEBT_RATCHET_SCHEMA_VERSION}.")
+
+    raw_files = payload.get("files")
+    if not isinstance(raw_files, dict):
+        raise ValueError(f"{label}.files must be a JSON object keyed by repo-relative path.")
+
+    normalized: dict[str, dict[str, dict[str, Any]]] = {}
+    for raw_path, raw_dimensions in raw_files.items():
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise ValueError(f"{label}.files keys must be non-empty strings.")
+        if not isinstance(raw_dimensions, dict) or not raw_dimensions:
+            raise ValueError(f"{label}.files[{raw_path!r}] must be a non-empty JSON object.")
+
+        rel_path = _normalize_rel_path(raw_path)
+        if not any(rel_path.startswith(prefix) for prefix in FILE_DEBT_ALLOWED_PREFIXES):
+            raise ValueError(
+                f"{label}.files[{raw_path!r}] must stay within tracked debt surfaces: {', '.join(FILE_DEBT_ALLOWED_PREFIXES)}."
+            )
+        if rel_path in normalized:
+            raise ValueError(f"{label}.files contains duplicate path {rel_path!r}.")
+
+        normalized_dimensions: dict[str, dict[str, Any]] = {}
+        for dimension, dimension_payload in sorted(raw_dimensions.items()):
+            if dimension not in FILE_DEBT_TOUCH_RULES:
+                allowed_dimensions = ", ".join(sorted(FILE_DEBT_TOUCH_RULES))
+                raise ValueError(
+                    f"{label}.files[{raw_path!r}] dimension {dimension!r} is unsupported. "
+                    f"Allowed dimensions: {allowed_dimensions}."
+                )
+            normalized_dimensions[dimension] = _normalized_file_debt_dimension(
+                dimension_payload,
+                dimension=dimension,
+                label=f"{label}.files[{raw_path!r}].{dimension}",
+            )
+
+        normalized[rel_path] = normalized_dimensions
+
+    return dict(sorted(normalized.items()))
+
+
+def _file_debt_ratchet_backslide_errors(
+    base_state: dict[str, dict[str, dict[str, Any]]],
+    head_state: dict[str, dict[str, dict[str, Any]]],
+) -> list[str]:
+    errors: list[str] = []
+
+    for rel_path, base_dimensions in sorted(base_state.items()):
+        head_dimensions = head_state.get(rel_path)
+        if head_dimensions is None:
+            continue
+
+        for dimension, base_entry in sorted(base_dimensions.items()):
+            head_entry = head_dimensions.get(dimension)
+            if head_entry is None:
+                continue
+
+            if head_entry["allow_rebaseline"] and not base_entry["allow_rebaseline"]:
+                errors.append(
+                    f"Per-file debt ratchet loosened {dimension} rebaseline policy for {rel_path}. "
+                    "Keep allow_rebaseline false in normal work."
+                )
+
+            base_rank = FILE_DEBT_TOUCH_RULE_RANKS[dimension][base_entry["touch_rule"]]
+            head_rank = FILE_DEBT_TOUCH_RULE_RANKS[dimension][head_entry["touch_rule"]]
+            if head_rank > base_rank:
+                errors.append(
+                    f"Per-file debt ratchet weakened {dimension} touch rule for {rel_path}: "
+                    f"{base_entry['touch_rule']} -> {head_entry['touch_rule']}."
+                )
+
+            if dimension == "structural":
+                if head_entry["current_baseline"] > base_entry["current_baseline"]:
+                    errors.append(
+                        f"Per-file structural debt baseline grew for {rel_path}: "
+                        f"{base_entry['current_baseline']} -> {head_entry['current_baseline']}."
+                    )
+                if head_entry["target"] > base_entry["target"]:
+                    errors.append(
+                        f"Per-file structural debt target loosened for {rel_path}: "
+                        f"{base_entry['target']} -> {head_entry['target']}."
+                    )
+            elif dimension == "coverage":
+                if head_entry["current_baseline"] < base_entry["current_baseline"]:
+                    errors.append(
+                        f"Per-file coverage debt baseline decreased for {rel_path}: "
+                        f"{base_entry['current_baseline']} -> {head_entry['current_baseline']}."
+                    )
+                if head_entry["target"] < base_entry["target"]:
+                    errors.append(
+                        f"Per-file coverage debt target decreased for {rel_path}: "
+                        f"{base_entry['target']} -> {head_entry['target']}."
+                    )
+
+    return errors
+
+
+def _file_debt_ratchet_addition_errors(
+    base_state: dict[str, dict[str, dict[str, Any]]],
+    head_state: dict[str, dict[str, dict[str, Any]]],
+    *,
+    structural_exceptions: dict[str, dict[str, Any]],
+    base_structural_exceptions: dict[str, dict[str, Any]],
+    typing_debt_allowlist: Sequence[str],
+    coverage_by_path: Mapping[str, int],
+) -> list[str]:
+    errors: list[str] = []
+    typing_debt_paths = set(typing_debt_allowlist)
+
+    for rel_path, head_dimensions in sorted(head_state.items()):
+        base_dimensions = base_state.get(rel_path, {})
+        for dimension, head_entry in sorted(head_dimensions.items()):
+            if dimension in base_dimensions:
+                continue
+
+            if dimension == "structural":
+                structural_exception = structural_exceptions.get(rel_path) or base_structural_exceptions.get(rel_path)
+                if structural_exception is None:
+                    errors.append(
+                        f"Per-file structural debt entry for {rel_path} must mirror an existing structural file-line exception."
+                    )
+                    continue
+                if head_entry["current_baseline"] != structural_exception["max_lines"]:
+                    errors.append(
+                        f"Per-file structural debt baseline for {rel_path} must match the checked-in structural exception: "
+                        f"expected {structural_exception['max_lines']}, found {head_entry['current_baseline']}."
+                    )
+                if (
+                    head_entry["current_baseline"] > head_entry["target"]
+                    and head_entry["touch_rule"] == "must_not_grow"
+                ):
+                    errors.append(
+                        f"Per-file structural debt entry for {rel_path} must use must_shrink or must_meet_target "
+                        "to preserve inevitable convergence toward the target."
+                    )
+            elif dimension == "typing":
+                if rel_path not in typing_debt_paths:
+                    errors.append(
+                        f"Per-file typing debt entry for {rel_path} must mirror tool.sattlint.typing_ratchet.debt_allowlist."
+                    )
+            elif dimension == "coverage":
+                baseline_basis_points = coverage_by_path.get(rel_path)
+                if baseline_basis_points is None:
+                    errors.append(
+                        f"Per-file coverage debt entry for {rel_path} must mirror an existing coverage.xml module entry."
+                    )
+                    continue
+                if head_entry["current_baseline"] != baseline_basis_points:
+                    errors.append(
+                        f"Per-file coverage debt baseline for {rel_path} must match the current coverage.xml module rate: "
+                        f"expected {baseline_basis_points}, found {head_entry['current_baseline']}."
+                    )
+                if head_entry["touch_rule"] != "must_reach_target_on_touch":
+                    errors.append(
+                        f"Per-file coverage debt entry for {rel_path} must use must_reach_target_on_touch in normal work."
+                    )
+                if head_entry["target"] != NEW_SOURCE_FILE_COVERAGE_BASIS_POINTS:
+                    errors.append(
+                        f"Per-file coverage debt target for {rel_path} must be {NEW_SOURCE_FILE_COVERAGE_BASIS_POINTS}."
+                    )
+
+    return errors
+
+
 def _coverage_basis_points(payload: dict[str, Any], label: str) -> int:
     metrics = _metric_mapping(payload, label)
     value = metrics.get("min_line_rate_basis_points")
@@ -480,6 +729,95 @@ def _normalize_coverage_filename(filename: str) -> str:
     if normalized.startswith("/") or (len(normalized) > 1 and normalized[1] == ":"):
         return normalized
     return f"src/{normalized}"
+
+
+def _coverage_basis_points_by_path(repo_root: Path) -> dict[str, int]:
+    coverage_path = repo_root / "coverage.xml"
+    if not coverage_path.exists():
+        return {}
+
+    root_xml = ElementTree.fromstring(coverage_path.read_text(encoding="utf-8"))
+    coverage_by_path: dict[str, int] = {}
+    for class_node in root_xml.findall(".//class"):
+        normalized_path = _normalize_coverage_filename(class_node.attrib.get("filename", ""))
+        if not normalized_path.startswith("src/"):
+            continue
+        line_rate = float(class_node.attrib.get("line-rate", "0") or 0)
+        coverage_by_path[normalized_path] = round(line_rate * 10000)
+    return coverage_by_path
+
+
+def _line_count(text: str) -> int:
+    return len(text.splitlines())
+
+
+def _file_debt_runtime_errors(
+    *,
+    repo_root: Path,
+    context: ChangeContext,
+    file_debt_state: dict[str, dict[str, dict[str, Any]]],
+    typing_state: TypingRatchetState,
+) -> list[str]:
+    touched_paths = tuple(path for path in context.changed_files if path in file_debt_state)
+    if not touched_paths:
+        return []
+
+    errors: list[str] = []
+    debt_allowlist = set(typing_state.debt_allowlist)
+    current_text_by_path = _load_current_texts(repo_root, touched_paths)
+    base_text_by_path = _load_base_texts(repo_root, context.base_ref, touched_paths)
+    needs_coverage = any("coverage" in file_debt_state[path] for path in touched_paths)
+    coverage_by_path = _coverage_basis_points_by_path(repo_root) if needs_coverage else {}
+
+    for rel_path in touched_paths:
+        dimensions = file_debt_state[rel_path]
+        typing_entry = dimensions.get("typing")
+        if typing_entry is not None and rel_path in debt_allowlist:
+            errors.append(
+                "Touched file in per-file typing debt ratchet remains in tool.sattlint.typing_ratchet.debt_allowlist: "
+                f"{rel_path}. Touched typing-debt files must exit the allowlist."
+            )
+
+        structural_entry = dimensions.get("structural")
+        current_text = current_text_by_path.get(rel_path)
+        if structural_entry is not None and current_text is not None:
+            current_lines = _line_count(current_text)
+            base_text = base_text_by_path.get(rel_path)
+            baseline_lines = _line_count(base_text) if base_text is not None else structural_entry["current_baseline"]
+            touch_rule = _effective_structural_touch_rule(structural_entry, baseline_lines=baseline_lines)
+            if touch_rule == "must_shrink" and current_lines >= baseline_lines:
+                errors.append(
+                    f"Touched structural debt file did not shrink: {rel_path} remains {current_lines} lines "
+                    f"against baseline {baseline_lines}."
+                )
+            elif touch_rule == "must_meet_target" and current_lines > structural_entry["target"]:
+                errors.append(
+                    f"Touched structural debt file must meet target: {rel_path} is {current_lines} lines "
+                    f"but target is {structural_entry['target']}."
+                )
+
+        coverage_entry = dimensions.get("coverage")
+        if coverage_entry is not None:
+            basis_points = coverage_by_path.get(rel_path)
+            if basis_points is None:
+                errors.append(
+                    f"Touched coverage debt file is missing from coverage.xml: {rel_path}. "
+                    "Generate coverage before changing per-file coverage debt."
+                )
+                continue
+            touch_rule = coverage_entry["touch_rule"]
+            if touch_rule == "must_not_drop" and basis_points < coverage_entry["current_baseline"]:
+                errors.append(
+                    f"Touched coverage debt file regressed: {rel_path} {coverage_entry['current_baseline'] / 100:.2f}% -> "
+                    f"{basis_points / 100:.2f}%."
+                )
+            elif touch_rule == "must_reach_target_on_touch" and basis_points < coverage_entry["target"]:
+                errors.append(
+                    f"Touched coverage debt file must reach target: {rel_path} is {basis_points / 100:.2f}% "
+                    f"but target is {coverage_entry['target'] / 100:.2f}%."
+                )
+
+    return errors
 
 
 def _new_python_file_paths(added_files: Sequence[str]) -> tuple[str, ...]:
@@ -663,9 +1001,11 @@ def evaluate_policy_change(
             head_state = _typing_ratchet_state(head_text, PYPROJECT_PATH)
             if head_state is None:
                 raise ValueError(f"{PYPROJECT_PATH} is missing typing ratchet configuration.")
-            base_state = _typing_ratchet_state(base_text, PYPROJECT_PATH, allow_missing=True) if base_text else None
+            base_typing_state = (
+                _typing_ratchet_state(base_text, PYPROJECT_PATH, allow_missing=True) if base_text else None
+            )
             errors.extend(_typing_ratchet_state_errors(repo_root=repo_root, added_files=(), state=head_state))
-            errors.extend(_typing_ratchet_backslide_errors(base_state, head_state))
+            errors.extend(_typing_ratchet_backslide_errors(base_typing_state, head_state))
 
     if COVERAGE_RATCHET_PATH in protected and PYPROJECT_PATH not in protected:
         coverage_text = current_text_by_path.get(COVERAGE_RATCHET_PATH)
@@ -682,6 +1022,49 @@ def evaluate_policy_change(
                     f"expected --cov-fail-under={expected_floor:.2f}, found {pyproject_floor}."
                 )
 
+    if FILE_DEBT_RATCHET_PATH in protected:
+        base_text = base_text_by_path.get(FILE_DEBT_RATCHET_PATH)
+        head_text = current_text_by_path.get(FILE_DEBT_RATCHET_PATH)
+        if head_text is not None:
+            head_state = _file_debt_ratchet_state(head_text, FILE_DEBT_RATCHET_PATH)
+            structural_text = current_text_by_path.get(STRUCTURAL_RATCHET_PATH)
+            if structural_text is None:
+                raise ValueError(f"{STRUCTURAL_RATCHET_PATH} is missing.")
+            pyproject_text = current_text_by_path.get(PYPROJECT_PATH)
+            if pyproject_text is None:
+                raise ValueError(f"{PYPROJECT_PATH} is missing.")
+
+            structural_payload = _parse_json_payload(structural_text, STRUCTURAL_RATCHET_PATH)
+            structural_exceptions = _structural_file_line_exception_mapping(structural_payload, STRUCTURAL_RATCHET_PATH)
+            base_structural_exceptions: dict[str, dict[str, Any]] = {}
+            base_structural_text = base_text_by_path.get(STRUCTURAL_RATCHET_PATH)
+            if base_structural_text is not None:
+                base_structural_payload = _parse_json_payload(base_structural_text, STRUCTURAL_RATCHET_PATH)
+                base_structural_exceptions = _structural_file_line_exception_mapping(
+                    base_structural_payload,
+                    STRUCTURAL_RATCHET_PATH,
+                )
+            typing_state = _typing_ratchet_state(pyproject_text, PYPROJECT_PATH)
+            if typing_state is None:
+                raise ValueError(f"{PYPROJECT_PATH} is missing typing ratchet configuration.")
+            coverage_by_path = _coverage_basis_points_by_path(repo_root)
+
+            base_file_debt_state: dict[str, dict[str, dict[str, Any]]] = {}
+            if base_text is not None:
+                base_file_debt_state = _file_debt_ratchet_state(base_text, FILE_DEBT_RATCHET_PATH)
+
+            errors.extend(
+                _file_debt_ratchet_addition_errors(
+                    base_file_debt_state,
+                    head_state,
+                    structural_exceptions=structural_exceptions,
+                    base_structural_exceptions=base_structural_exceptions,
+                    typing_debt_allowlist=typing_state.debt_allowlist,
+                    coverage_by_path=coverage_by_path,
+                )
+            )
+            errors.extend(_file_debt_ratchet_backslide_errors(base_file_debt_state, head_state))
+
     return errors
 
 
@@ -693,7 +1076,11 @@ def run_policy_check(repo_root: Path = REPO_ROOT, env: Mapping[str, str] | None 
     relevant_paths = tuple(
         path for path in context.changed_files if path in PROTECTED_PATHS or _is_approval_record_path(path)
     )
-    current_paths = tuple(dict.fromkeys((*relevant_paths, PYPROJECT_PATH, COVERAGE_RATCHET_PATH)))
+    current_paths = tuple(
+        dict.fromkeys(
+            (*relevant_paths, PYPROJECT_PATH, COVERAGE_RATCHET_PATH, FILE_DEBT_RATCHET_PATH, STRUCTURAL_RATCHET_PATH)
+        )
+    )
     current_text_by_path = _load_current_texts(repo_root, current_paths)
     pyproject_text = current_text_by_path.get(PYPROJECT_PATH)
     if pyproject_text is None:
@@ -701,6 +1088,10 @@ def run_policy_check(repo_root: Path = REPO_ROOT, env: Mapping[str, str] | None 
     current_typing_state = _typing_ratchet_state(pyproject_text, PYPROJECT_PATH)
     if current_typing_state is None:
         raise ValueError(f"{PYPROJECT_PATH} is missing typing ratchet configuration.")
+    file_debt_text = current_text_by_path.get(FILE_DEBT_RATCHET_PATH)
+    current_file_debt_state = (
+        _file_debt_ratchet_state(file_debt_text, FILE_DEBT_RATCHET_PATH) if file_debt_text is not None else {}
+    )
     base_pyproject_text = None
     if context.base_ref is not None:
         base_pyproject_text = _load_base_texts(repo_root, context.base_ref, (PYPROJECT_PATH,)).get(PYPROJECT_PATH)
@@ -714,6 +1105,14 @@ def run_policy_check(repo_root: Path = REPO_ROOT, env: Mapping[str, str] | None 
             changed_files=context.changed_files,
             base_state=base_typing_state,
             state=current_typing_state,
+        )
+    )
+    errors.extend(
+        _file_debt_runtime_errors(
+            repo_root=repo_root,
+            context=context,
+            file_debt_state=current_file_debt_state,
+            typing_state=current_typing_state,
         )
     )
 
