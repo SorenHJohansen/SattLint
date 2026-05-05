@@ -192,6 +192,8 @@ def test_verify_check_catalog_reports_metadata_issues(tmp_path):
         "overbroad-path-globs",
         "missing-owner-tests",
         "missing-owner-test-targets",
+        "missing-ai-summary",
+        "missing-ai-instruction-files",
     } <= issue_ids
 
 

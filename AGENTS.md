@@ -7,6 +7,7 @@
 ## Quick Reference
 
 **Purpose:** SattLint is a parser, analyzer, documentation, LSP, and repo-audit toolchain for SattLine.
+**Audience:** AI-only repository. Design solutions, workflows, and supporting docs for agent execution rather than human-first operation.
 **Communication:** Terse. Pattern: `[thing] [action] [reason]. [next step].`
 **Machine entrypoint:** `sattlint-repo-audit --profile full --planning-context --output-dir artifacts/audit`.
 **Health checks:** `python scripts/context_health.py --check`; `python scripts/repo_health.py --check --audit-dir artifacts/audit`.
@@ -27,19 +28,7 @@
 
 ## Repo Map
 
-| Path | Purpose |
-| --- | --- |
-| `src/sattline_parser/` | Parser core: grammar, transformer, AST models |
-| `src/sattlint/` | CLI, analyzers, reporting, config, doc generation |
-| `src/sattlint/core/` | Shared semantic and document helpers |
-| `src/sattlint/devtools/` | Repo audit, pipeline, ratchets, health reporting |
-| `src/sattlint_lsp/` | Language server and workspace loading |
-| `vscode/sattline-vscode/` | No-build VS Code client |
-| `tests/` | Owner suites and regression coverage |
-| `.github/` | CI, instructions, prompts, agents, coordination |
-| `.ai/` | Task contracts and handoffs |
-| `metrics/` | Ratchets and curated health history |
-| `artifacts/` | Machine-readable audit outputs |
+See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface map.
 
 ## Critical Invariants (Auto-Loaded)
 
@@ -47,7 +36,8 @@
 - Start from the owning file or symbol. Run focused validation before widening.
 - `sattlint syntax-check` stays strict. No silent fallback behavior.
 - Use repo venv commands, not the VS Code test runner, for executable proof.
-- Claim shared files in `.github/coordination/current-work.md` before editing.
+- Bootstrap new slices with `python scripts/bootstrap_ai_slice.py ...` instead of hand-editing coordination state.
+- Treat the shared active-claim lock as `.git/sattlint-ai-coordination/current_work_lock.json`; the deprecated markdown coordination ledger should not be used.
 - One task contract and one handoff per scoped slice when work moves between executor, test, and reviewer.
 - Use `@context-optimizer /audit` before growing AI control files.
 - Keep AGENTS small, scoped instructions rich, and handoffs machine-readable.
@@ -59,7 +49,7 @@
 - Safe edit flow: route -> small edit -> focused check -> finish gate -> handoff.
 - Preferred task size: one owner surface, one behavior goal, one clear validation command.
 - Executor -> Test -> Reviewer uses `.ai/tasks/*.json` and `.ai/handoffs/*.json`.
-- Worktree default: `git worktree add ../SattLint-ai-<id> -b ai/task-<id> main`.
+- Worktree default: `python scripts/bootstrap_ai_slice.py --task-id <id> --stage executor --file <path> --validation "<command>"`.
 - Testing expectation: bug fix or feature change moves with focused tests in same change.
 - Finish gate: focused proof plus touched-file Ruff and Pyright; widen to `--check-my-changes` for shared infra.
 - CI expectation: `ci.yml` is integrated full-trust and nightly health; `lint.yml`, `typing.yml`, and `repo-audit.yml` remain owner workflows.
@@ -83,4 +73,4 @@
 
 ## Last Updated
 
-2026-05-03
+2026-05-04

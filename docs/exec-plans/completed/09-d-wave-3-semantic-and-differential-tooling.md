@@ -1,5 +1,7 @@
 # D-Wave-3: Semantic And Differential Tooling
 
+This ExecPlan is archived as historical context. Remaining Program D closeout work now lives in `docs/exec-plans/completed/11-program-d-missing-work-closeout.md`.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 ## Purpose / Big Picture
@@ -11,11 +13,12 @@ Observable outcome: maintainers can run deterministic mutation and differential 
 ## Progress
 
 - [x] (2026-04-29) Create this active D-Wave-3 plan with scoped milestones and validation routing.
-- [ ] Milestone A complete: D-020 mutation engine foundation and deterministic fixture outputs.
-- [ ] Milestone B complete: D-024 dead code detection improvements with focused regression tests.
-- [ ] Milestone C complete: D-034 differential analysis workflow and stable artifact comparison output.
-- [ ] Wave-close validation complete and D-Wave-3 item statuses updated in `docs/exec-plans/feature-roadmap.md`.
-- [ ] Move this file to `docs/exec-plans/completed/` once all checklist items are complete.
+- [x] (2026-05-04) Milestone A complete: D-020 mutation engine foundation and deterministic fixture outputs.
+- [x] (2026-05-04) Milestone B complete: D-024 dead code detection improvements with focused regression tests.
+- [x] (2026-05-04) Milestone C complete: D-034 differential analysis workflow and stable artifact comparison output.
+- [x] (2026-05-04) D-Wave-3 item statuses updated in `docs/exec-plans/feature-roadmap.md` for D-020, D-024, and D-034.
+- [x] Wave-close validation complete.
+- [x] Move this file to `docs/exec-plans/completed/` once all checklist items are complete.
 
 ## Surprises & Discoveries
 
@@ -35,7 +38,15 @@ Observable outcome: maintainers can run deterministic mutation and differential 
 
 ## Outcomes & Retrospective
 
-Planning baseline complete. Execution outcomes and measured drift-quality improvements will be appended after milestone completion.
+- Outcome: The pipeline now emits deterministic `mutation_results.json` and `differential.json` artifacts through the existing registry-backed output seam instead of leaving those D-Wave-3 surfaces partially wired.
+  Evidence: `src/sattlint/devtools/pipeline.py` now threads mutation controls through `_prepare_pipeline_run()` and `_run_pipeline()`, and `src/sattlint/devtools/pipeline_artifacts.py` now publishes the `differential` payload instead of a no-op artifact.
+- Outcome: normalized Vulture dead-code findings now carry confidence-derived severity plus structured dead-code metadata for clearer triage quality.
+  Evidence: `src/sattlint/devtools/finding_exports.py` now derives severity from Vulture confidence and extracts `dead_code_kind` and `symbol` metadata from the raw message when available.
+- Validation: focused regression coverage passed with `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_pipeline_run.py -q`, `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_pipeline_collection.py -q`, and `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_devtools_orphans.py -q -k "mutation or differential"`.
+- Outcome: roadmap hygiene for completed D-Wave-3 items is now restored in `docs/exec-plans/feature-roadmap.md`.
+  Evidence: Program D now contains an explicit D-Wave-3 summary row plus `Done` entries for D-020, D-024, and D-034.
+- Closeout: wave-close validation is now complete after the shared Program D closeout fixes landed.
+  Evidence: `& ".venv/Scripts/python.exe" -m pytest -q` now passes at `1606 passed in 210.13s`, and `& ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit-review-quick` now reports `Overall status: pass` with `0 blocking at fail-on high`.
 
 ## Context and Orientation
 

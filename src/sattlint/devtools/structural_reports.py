@@ -99,6 +99,7 @@ STRUCTURAL_BUDGET_SETPOINTS = {
     "markdown_file_max_lines": 500,
 }
 STRUCTURAL_BUDGET_RATCHET_PATH = Path("artifacts") / "analysis" / "structural_budget_ratchet.json"
+FILE_DEBT_RATCHET_PATH = Path("artifacts") / "analysis" / "file_debt_ratchet.json"
 FACADE_PRIVATE_BOUNDARY_FILES = frozenset(
     {
         "src/sattlint/app.py",
@@ -230,6 +231,97 @@ def _load_structural_budget_ratchet(
             "error": str(exc),
             "error_type": type(exc).__name__,
         }
+
+    file_debt_path = repo_root / FILE_DEBT_RATCHET_PATH
+    if file_debt_path.exists():
+        try:
+            file_debt_payload = json.loads(file_debt_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            return {
+                "status": "invalid",
+                "path": sanitized_path,
+                "metrics": {},
+                "file_line_exceptions": {},
+                "error": f"{FILE_DEBT_RATCHET_PATH.as_posix()} could not be loaded: {exc}",
+                "error_type": type(exc).__name__,
+            }
+
+        files_payload = file_debt_payload.get("files")
+        if not isinstance(files_payload, dict):
+            return {
+                "status": "invalid",
+                "path": sanitized_path,
+                "metrics": {},
+                "file_line_exceptions": {},
+                "error": f"{FILE_DEBT_RATCHET_PATH.as_posix()} files must be a JSON object.",
+                "error_type": "ValueError",
+            }
+
+        for raw_path, dimension_payload in files_payload.items():
+            if not isinstance(raw_path, str) or not isinstance(dimension_payload, dict):
+                return {
+                    "status": "invalid",
+                    "path": sanitized_path,
+                    "metrics": {},
+                    "file_line_exceptions": {},
+                    "error": f"{FILE_DEBT_RATCHET_PATH.as_posix()} contains an invalid structural debt entry.",
+                    "error_type": "ValueError",
+                }
+
+            structural_payload = dimension_payload.get("structural")
+            if structural_payload is None:
+                continue
+            if not isinstance(structural_payload, dict):
+                return {
+                    "status": "invalid",
+                    "path": sanitized_path,
+                    "metrics": {},
+                    "file_line_exceptions": {},
+                    "error": f"{FILE_DEBT_RATCHET_PATH.as_posix()} structural debt for {raw_path!r} must be a JSON object.",
+                    "error_type": "ValueError",
+                }
+
+            max_lines = structural_payload.get("current_baseline")
+            reason = structural_payload.get("reason")
+            if not isinstance(max_lines, int) or max_lines <= 0:
+                return {
+                    "status": "invalid",
+                    "path": sanitized_path,
+                    "metrics": {},
+                    "file_line_exceptions": {},
+                    "error": (
+                        f"{FILE_DEBT_RATCHET_PATH.as_posix()} structural debt for {raw_path!r} must include "
+                        "a positive integer current_baseline."
+                    ),
+                    "error_type": "ValueError",
+                }
+            if not isinstance(reason, str) or not reason.strip():
+                return {
+                    "status": "invalid",
+                    "path": sanitized_path,
+                    "metrics": {},
+                    "file_line_exceptions": {},
+                    "error": (
+                        f"{FILE_DEBT_RATCHET_PATH.as_posix()} structural debt for {raw_path!r} must include a non-empty reason."
+                    ),
+                    "error_type": "ValueError",
+                }
+
+            normalized_path = raw_path.replace("\\", "/").strip("/")
+            existing = file_line_exceptions.get(normalized_path)
+            if existing is not None and existing != {"max_lines": max_lines, "reason": reason.strip()}:
+                return {
+                    "status": "invalid",
+                    "path": sanitized_path,
+                    "metrics": {},
+                    "file_line_exceptions": {},
+                    "error": (
+                        f"{FILE_DEBT_RATCHET_PATH.as_posix()} structural debt for {normalized_path!r} conflicts with "
+                        f"{STRUCTURAL_BUDGET_RATCHET_PATH.as_posix()} file_line_exceptions."
+                    ),
+                    "error_type": "ValueError",
+                }
+            file_line_exceptions[normalized_path] = {"max_lines": max_lines, "reason": reason.strip()}
 
     return {
         "status": "loaded",

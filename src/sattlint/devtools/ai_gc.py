@@ -18,13 +18,10 @@ AI_GC_REPORT_FILENAME = "ai_gc.json"
 AI_GC_SCHEMA_KIND = "sattlint.ai_gc"
 AI_GC_SCHEMA_VERSION = 1
 DEFAULT_STALE_AFTER_DAYS = 14
-DEFAULT_MAX_LEDGER_LINES = 500
 ALLOWLIST_ROOTS = (
     Path("artifacts"),
     Path("docs") / "generated",
 )
-LEDGER_PATH = Path(".github") / "coordination" / "current-work.md"
-WORKSTREAM_RE = "### Workstream "
 SOURCE_MANIFEST_SUFFIX = ".sources.json"
 
 
@@ -176,84 +173,11 @@ def _iter_allowlisted_candidates(root: Path, tracked_paths: tuple[str, ...]) -> 
     return candidates
 
 
-def _split_workstream_blocks(text: str) -> tuple[list[str], list[list[str]]]:
-    prefix: list[str] = []
-    blocks: list[list[str]] = []
-    current_block: list[str] | None = None
-
-    for raw_line in text.splitlines(keepends=True):
-        if raw_line.startswith(WORKSTREAM_RE):
-            if current_block is not None:
-                blocks.append(current_block)
-            current_block = [raw_line]
-            continue
-        if current_block is None:
-            prefix.append(raw_line)
-            continue
-        current_block.append(raw_line)
-
-    if current_block is not None:
-        blocks.append(current_block)
-    return prefix, blocks
-
-
-def _parse_block_status(block: list[str]) -> str:
-    for raw_line in block[1:]:
-        stripped = raw_line.strip()
-        if stripped.lower().startswith("- status:"):
-            return stripped.split(":", 1)[1].strip().casefold()
-    return "active"
-
-
-def _compact_ledger_text(text: str, *, max_lines: int) -> tuple[str, int]:
-    prefix, blocks = _split_workstream_blocks(text)
-    current_line_count = len(prefix) + sum(len(block) for block in blocks)
-    if current_line_count <= max_lines:
-        return text, 0
-
-    remaining_blocks = list(blocks)
-    removed_blocks = 0
-    for index in range(len(remaining_blocks) - 1, -1, -1):
-        if _parse_block_status(remaining_blocks[index]) != "done":
-            continue
-        del remaining_blocks[index]
-        removed_blocks += 1
-        current_line_count = len(prefix) + sum(len(block) for block in remaining_blocks)
-        if current_line_count <= max_lines:
-            break
-
-    if removed_blocks == 0:
-        return text, 0
-    compacted = "".join(prefix + [line for block in remaining_blocks for line in block]).rstrip() + "\n"
-    return compacted, removed_blocks
-
-
-def _ledger_candidate(root: Path, *, max_lines: int) -> dict[str, Any] | None:
-    ledger_path = root / LEDGER_PATH
-    if not ledger_path.exists():
-        return None
-    text = ledger_path.read_text(encoding="utf-8")
-    line_count = len(text.splitlines())
-    compacted_text, removable_blocks = _compact_ledger_text(text, max_lines=max_lines)
-    if line_count <= max_lines or removable_blocks == 0 or compacted_text == text:
-        return None
-    return {
-        "path_obj": ledger_path,
-        "path": LEDGER_PATH.as_posix(),
-        "kind": "ledger",
-        "action": "compact",
-        "safe_to_apply": True,
-        "line_count": line_count,
-        "removable_done_blocks": removable_blocks,
-    }
-
-
 def build_ai_gc_report(
     root: Path,
     *,
     tracked_paths: Iterable[str] | None = None,
     stale_after_days: int = DEFAULT_STALE_AFTER_DAYS,
-    max_ledger_lines: int = DEFAULT_MAX_LEDGER_LINES,
     now_ts: float | None = None,
     apply: bool = False,
 ) -> dict[str, Any]:
@@ -296,22 +220,6 @@ def build_ai_gc_report(
             }
         )
 
-    ledger_candidate = _ledger_candidate(resolved_root, max_lines=max_ledger_lines)
-    if ledger_candidate is not None:
-        candidates.append(
-            {
-                "candidate_id": "oversized-ai-ledger",
-                "path": ledger_candidate["path"],
-                "kind": ledger_candidate["kind"],
-                "action": ledger_candidate["action"],
-                "safe_to_apply": ledger_candidate["safe_to_apply"],
-                "line_count": ledger_candidate["line_count"],
-                "removable_done_blocks": ledger_candidate["removable_done_blocks"],
-                "reason": f"Local coordination ledger exceeds {max_ledger_lines} lines and can prune done workstreams.",
-                "applied": False,
-            }
-        )
-
     applied_actions: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
     if apply:
@@ -324,12 +232,6 @@ def build_ai_gc_report(
                     elif target_path.exists():
                         target_path.unlink()
                         artifact_source_manifest_path(target_path).unlink(missing_ok=True)
-                elif candidate["action"] == "compact":
-                    compacted_text = _compact_ledger_text(
-                        target_path.read_text(encoding="utf-8"),
-                        max_lines=max_ledger_lines,
-                    )[0]
-                    target_path.write_text(compacted_text, encoding="utf-8")
                 candidate["applied"] = True
                 applied_actions.append(
                     {
@@ -361,7 +263,6 @@ def build_ai_gc_report(
         "mode": "apply" if apply else "report",
         "root": sanitize_path_for_report(resolved_root, repo_root=resolved_root) or resolved_root.as_posix(),
         "stale_after_days": stale_after_days,
-        "max_ledger_lines": max_ledger_lines,
         "status": status,
         "summary": {
             "candidate_count": len(candidates),
@@ -372,9 +273,6 @@ def build_ai_gc_report(
             ),
             "manifest_drift_candidate_count": sum(
                 1 for candidate in candidates if candidate["candidate_id"] == "stale-generated-output-manifest"
-            ),
-            "ledger_candidate_count": sum(
-                1 for candidate in candidates if candidate["candidate_id"] == "oversized-ai-ledger"
             ),
             "applied_count": len(applied_actions),
             "failure_count": len(failures),
@@ -390,7 +288,6 @@ __all__ = [
     "AI_GC_REPORT_FILENAME",
     "AI_GC_SCHEMA_KIND",
     "AI_GC_SCHEMA_VERSION",
-    "DEFAULT_MAX_LEDGER_LINES",
     "DEFAULT_STALE_AFTER_DAYS",
     "build_ai_gc_report",
 ]

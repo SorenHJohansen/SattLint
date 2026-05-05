@@ -10,6 +10,7 @@ from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
 from sattlint.path_sanitizer import sanitize_path_for_report
 
 _PYTEST_TRACEBACK_LOCATION_RE = re.compile(r"(?P<path>(?:[A-Za-z]:)?[^:\n]+?\.(?:py|s|x|l|z)):(?P<line>\d+)")
+_VULTURE_MESSAGE_RE = re.compile(r"unused (?P<kind>[A-Za-z][A-Za-z _-]*?) ['\"](?P<symbol>[^'\"]+)['\"]")
 
 
 def _sanitize_path(value: Any, *, repo_root: Path) -> str | None:
@@ -37,6 +38,29 @@ def _vulture_confidence(confidence: Any) -> str:
     if numeric >= 80:
         return "medium"
     return "low"
+
+
+def _vulture_severity(confidence: Any) -> str:
+    normalized_confidence = _vulture_confidence(confidence)
+    if normalized_confidence == "high":
+        return "high"
+    if normalized_confidence == "medium":
+        return "medium"
+    return "low"
+
+
+def _vulture_metadata(message: Any, confidence: Any) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    confidence_percent = _int_or_none(confidence)
+    if confidence_percent is not None:
+        metadata["confidence_percent"] = confidence_percent
+
+    normalized_message = str(message or "").strip()
+    match = _VULTURE_MESSAGE_RE.search(normalized_message)
+    if match is not None:
+        metadata["dead_code_kind"] = match.group("kind").strip().replace(" ", "-").lower()
+        metadata["symbol"] = match.group("symbol")
+    return metadata
 
 
 def _normalized_severity(value: Any, *, default: str) -> str:
@@ -213,14 +237,15 @@ def _build_vulture_findings(
     records: list[FindingRecord] = []
     for entry in findings:
         path = _sanitize_path(entry.get("file"), repo_root=repo_root)
+        message = str(entry.get("message") or "Potential dead code found.")
         records.append(
             FindingRecord(
                 id="vulture-dead-code",
                 rule_id="vulture.dead-code",
                 category="dead-code",
-                severity="medium",
+                severity=_vulture_severity(entry.get("confidence")),
                 confidence=_vulture_confidence(entry.get("confidence")),
-                message=str(entry.get("message") or "Potential dead code found."),
+                message=message,
                 source="vulture",
                 analyzer="vulture",
                 artifact="findings",
@@ -229,9 +254,7 @@ def _build_vulture_findings(
                     line=entry.get("line"),
                 ),
                 owner_surface="dead-code",
-                data={
-                    "confidence_percent": entry.get("confidence"),
-                },
+                data=_vulture_metadata(message, entry.get("confidence")),
             )
         )
     return records

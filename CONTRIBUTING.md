@@ -176,7 +176,7 @@ Use `sattlint-repo-audit --profile full --check-my-changes --output-dir artifact
 
 Use one scoped task contract and one scoped handoff per work unit.
 
-1. Claim files in `.github/coordination/current-work.md`.
+1. Claim files in the shared `.git/sattlint-ai-coordination/current_work_lock.json` lock state.
 2. Start from `.ai/tasks/task-contract.example.json`, then create or update `.ai/tasks/<task-id>.json`.
 3. Work on `ai/task-<task-id>` or a dedicated worktree.
 4. Start from `.ai/handoffs/handoff.example.json`, then emit `.ai/handoffs/<task-id>.json` when the slice moves to test or review.

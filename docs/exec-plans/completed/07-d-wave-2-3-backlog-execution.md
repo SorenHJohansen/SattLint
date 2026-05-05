@@ -2,9 +2,9 @@
 
 This ExecPlan is superseded by split execution plans:
 
-- `docs/exec-plans/active/08-d-wave-2-test-and-quality-infrastructure.md`
-- `docs/exec-plans/active/09-d-wave-3-semantic-and-differential-tooling.md`
-- `docs/exec-plans/active/10-d-wave-backlog-advanced-analysis-gating.md`
+- `docs/exec-plans/completed/08-d-wave-2-test-and-quality-infrastructure.md`
+- `docs/exec-plans/completed/09-d-wave-3-semantic-and-differential-tooling.md`
+- `docs/exec-plans/completed/10-d-wave-backlog-advanced-analysis-gating.md`
 
 Do not execute milestones from this file. Keep it only as historical context from the initial combined planning pass.
 
@@ -15,19 +15,14 @@ This plan was replaced to provide one dedicated execution document per roadmap w
 ## Progress
 
 - [x] (2026-04-29) Create this active plan and map all D-Wave-2, D-Wave-3, and D-Wave-Backlog items into implementation milestones.
-- [ ] Execute D-Wave-2 Milestone A (D-016, D-017, D-018) with focused pytest coverage and quick audit checks.
-- [ ] Execute D-Wave-2 Milestone B (D-022, D-023, D-033) and validate finding-quality loop plus maintainability checks.
-- [ ] Execute D-Wave-2 Milestone C (D-026, D-030, D-036, D-037) and validate config guards, observability, docs examples, and AI templates.
-- [ ] Execute D-Wave-3 Milestone D (D-020 mutation engine foundation) with deterministic fixture-driven validation.
-- [ ] Execute D-Wave-3 Milestone E (D-024 dead code detection and D-034 differential analysis) and validate stable artifact diffs.
-- [ ] Run wave-close validation and update `docs/exec-plans/feature-roadmap.md` status fields for all completed D items.
-- [ ] Decide whether D-Wave-Backlog items (D-025, D-035) are promoted to active scope or remain deferred with explicit entry criteria.
-- [ ] Move this plan to `docs/exec-plans/completed/` once all non-deferred checklist items are complete.
+- [x] (2026-04-29) Split the combined scope into dedicated execution plans: `docs/exec-plans/completed/08-d-wave-2-test-and-quality-infrastructure.md`, `docs/exec-plans/completed/09-d-wave-3-semantic-and-differential-tooling.md`, and `docs/exec-plans/completed/10-d-wave-backlog-advanced-analysis-gating.md`.
+- [x] (2026-05-04) Confirm this combined plan is historical only and that active execution continues in the split wave plans rather than in this superseded document.
+- [x] (2026-05-04) Move this superseded planning pass to `docs/exec-plans/completed/` so `docs/exec-plans/active/` only lists live execution documents.
 
 ## Surprises & Discoveries
 
 - Observation: Program D already has D-Wave-1 in active execution, so this plan must avoid re-opening pre-commit scope.
-  Evidence: `docs/exec-plans/active/06-d-wave-1-pre-commit-hooks.md` already tracks D-032 implementation status.
+  Evidence: `docs/exec-plans/completed/06-d-wave-1-pre-commit-hooks.md` already tracks D-032 implementation status.
 - Observation: Program D spans multiple subsystems, so sequencing by test ownership and validation surface is lower-risk than sequencing by architecture layer.
   Evidence: existing instructions and active plans route work to focused commands (`pytest` owner modules and quick repo-audit profile) before broad runs.
 
@@ -43,6 +38,8 @@ This plan was replaced to provide one dedicated execution document per roadmap w
 ## Outcomes & Retrospective
 
 Initial planning outcome complete: Program D waves now have a concrete implementation sequence and validation routing.
+
+Supersession outcome complete: the live work stayed with the split D-Wave-2, D-Wave-3, and backlog-gating plans, so this combined precursor is now archive-only history rather than an active execution surface.
 
 Milestone outcomes will be recorded here as each milestone closes, including pass/fail evidence and any scope corrections.
 

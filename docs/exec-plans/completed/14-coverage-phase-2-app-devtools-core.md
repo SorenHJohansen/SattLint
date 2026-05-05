@@ -2,6 +2,8 @@
 
 This ExecPlan is a living document. Keep `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` current as work proceeds.
 
+Retired on 2026-05-04 at user request. This file is preserved as archive-only historical coverage context and no longer represents active work.
+
 ## Purpose / Big Picture
 
 Drain the remaining app, devtools, engine, pipeline, and shell-helper debt that still clusters into about `925` uncovered lines in this bucket after the latest clean shared checkpoint. This plan exists because the app/devtools/core residue is still one of the dominant clusters standing between the repository and `100%` coverage.
@@ -17,12 +19,8 @@ Drain the remaining app, devtools, engine, pipeline, and shell-helper debt that 
 - [x] (2026-04-30) Drain `config.py` validation/loading/target-existence and `self_check()` residue through `tests/test_app.py`; file misses fell from `79` to `29` in the latest trustworthy owner-local probe.
 - [x] (2026-04-30) Drain `pipeline.py` summary/invariant helpers through the pipeline owner suites; file misses fell from `95` to `91`.
 - [x] (2026-04-30) Further drain `engine.py` lookup/cache, merge, dump, and `_visit()` tail helpers through `tests/test_engine.py`; file misses fell from `138` to `57` in the latest trustworthy owner-local probe.
-- [ ] Drain `app_analysis.py`, `app.py`, `app_base.py`, `app_menus.py`, and `app_support.py` through the app owner suites.
-- [ ] Drain `app_graphics.py`, `config.py`, `console.py`, and `cache.py` through the nearest existing app, graphics, and config owners.
-- [ ] Drain `repo_audit.py` and `doc_gardener.py` through `tests/test_repo_audit.py`.
-- [ ] Drain `engine.py` through `tests/test_engine.py`.
-- [ ] Drain `pipeline.py` and adjacent pipeline artifact/report seams through the pipeline owner suites.
-- [ ] Run the plan-close owner validation set and return control to the orchestrator for another shared checkpoint.
+- [x] (2026-05-04) Retire the remaining app/devtools/core coverage sweep at user request.
+- [x] (2026-05-04) Archive this plan as historical coverage context instead of keeping the bucket active.
 
 ## Context and Orientation
 
@@ -118,12 +116,12 @@ Current phase-2 execution reduced this plan's biggest files without production c
 
 Most recent trustworthy follow-up checkpoint data, after clearing stale `COVERAGE_FILE`, keeps this plan active with no coverage-database warning but is blocked by unrelated parser-validation work outside this slice.
 
-The plan remains active because `repo_audit.py`, `app_graphics.py`, `doc_gardener.py`, `pipeline.py`, and the remaining app-shell helpers still dominate the app/devtools/core cluster, even though `engine.py` has now been pushed down to a shorter residual sweep.
+The plan was retired and archived on 2026-05-04 at user request. The remaining `repo_audit.py`, `app_graphics.py`, `doc_gardener.py`, `pipeline.py`, and app-shell misses stay here only as historical checkpoint context.
 
 ## Artifacts and Notes
 
 - Use the orchestrator for shared checkpoint timing and final acceptance.
-- Update `.github/coordination/current-work.md` before claiming new source or test files outside the owner set above.
+- Update the shared `.git/sattlint-ai-coordination/current_work_lock.json` lock state before claiming new source or test files outside the owner set above.
 
 ## Interfaces and Dependencies
 

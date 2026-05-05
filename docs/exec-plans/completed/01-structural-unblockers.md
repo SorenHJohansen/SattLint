@@ -15,7 +15,7 @@ This plan clears the highest-priority structural blockers in SattLint. When it i
 ## Surprises & Discoveries
 
 - Observation: W7 is already partially extracted but cannot validate until W6 restores the parser import surface.
-  Evidence: `.github/coordination/current-work.md` marks W7 blocked on the missing `v_args` import in the W6 slice.
+  Evidence: the coordination state for that slice marked W7 blocked on the missing `v_args` import in the W6 slice.
 
 ## Decision Log
 
@@ -32,7 +32,7 @@ Parser transformer stability was restored by repairing expression-node shape con
 ## Context and Orientation
 
 The controlling code lives in `src/sattline_parser/transformer/sl_transformer.py` for W6 and in `src/sattlint/analyzers/variables.py` plus `src/sattlint/analyzers/_variables_effect_flow.py` for W7.
-The owning focused tests are `tests/test_transformer.py`, `tests/test_parser_core.py`, and `tests/test_analyzers_variables.py`. Current lane status is recorded in `.github/coordination/current-work.md` and mirrored in `docs/exec-plans/tech-debt-tracker.md` under Program B.
+The owning focused tests are `tests/test_transformer.py`, `tests/test_parser_core.py`, and `tests/test_analyzers_variables.py`. Current lane status is recorded in the shared active-claim lock and mirrored in `docs/exec-plans/tech-debt-tracker.md` under Program B.
 
 ## Plan of Work
 
@@ -48,7 +48,7 @@ Run from repository root:
 
 ## Validation and Acceptance
 
-Acceptance means all three focused commands above pass, W6 and W7 can be marked done or in progress without a blocker note mismatch, and Program B in the tracker matches `.github/coordination/current-work.md`.
+Acceptance means all three focused commands above pass, W6 and W7 can be marked done or in progress without a blocker note mismatch, and Program B in the tracker matches the shared active-claim lock.
 
 ## Idempotence and Recovery
 

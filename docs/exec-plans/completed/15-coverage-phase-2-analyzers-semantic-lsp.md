@@ -2,6 +2,8 @@
 
 This ExecPlan is a living document. Keep `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` current as work proceeds.
 
+Retired on 2026-05-04 at user request. This file is preserved as archive-only historical coverage context and no longer represents active work.
+
 ## Purpose / Big Picture
 
 Drain the remaining analyzer-heavy, semantic, resolution, and LSP backlog that still accounts for about `1461` uncovered lines after the first-generation lane closed. This plan exists because the analyzer/semantic/LSP cluster is still the single largest remaining bucket in the campaign.
@@ -15,11 +17,8 @@ Drain the remaining analyzer-heavy, semantic, resolution, and LSP backlog that s
 - [x] (2026-04-30) Extend `tests/test_moduletype_resolution_scoped.py` for `resolution/common.py` helper branches; current artifacts now show `39` misses there.
 - [x] (2026-04-30) Extend `tests/test_analyzers_state.py` for `_variables_effect_flow.py` helper branches; current artifacts now show `85` misses there.
 - [x] (2026-04-30) Run the ExecPlan 15 owner-suite closeout set successfully (`271 passed`).
-- [ ] Drain remaining `modules.py`, `reset_contamination.py`, `mms.py`, `variables.py`, and `dataflow.py` debt through the analyzer owner suites.
-- [ ] Drain adjacent analyzer residue in `_variables_effect_flow.py`, `_sfc_collectors.py`, `_sfc_guard_logic.py`, `variable_traversal.py`, `alarm_integrity.py`, `naming.py`, `initial_values.py`, `sattline_semantics.py`, and `sfc.py` through the nearest analyzer owners.
-- [ ] Drain `core/semantic.py` through `tests/test_editor_api.py`.
-- [ ] Drain `_server_helpers.py`, `_server_document.py`, `workspace_store.py`, `server.py`, `local_parser.py`, and `resolution/common.py` through the LSP and resolution owners.
-- [ ] Run the plan-close validation set and return control to the orchestrator for another shared checkpoint.
+- [x] (2026-05-04) Retire the remaining analyzer, semantic, and LSP coverage sweep at user request.
+- [x] (2026-05-04) Archive this plan as historical coverage context instead of keeping the bucket active.
 
 ## Context and Orientation
 
@@ -114,10 +113,12 @@ Validation totals for this tranche:
 - ExecPlan 15 owner closeout set -> `271 passed`
 - clean shared artifact restore after clearing `.coverage*` -> `coverage.xml` at `87.1%` with `3505` uncovered lines; `_server_helpers.py` now sits at `58` misses in `htmlcov/status.json`
 
+The plan was retired and archived on 2026-05-04 at user request. The remaining analyzer, semantic, and LSP misses stay here only as historical checkpoint context rather than an active execution commitment.
+
 ## Artifacts and Notes
 
 - Use the orchestrator for shared checkpoint timing and final acceptance.
-- Record any required LSP restart in `.github/coordination/current-work.md` once `src/sattlint_lsp/` or `src/sattlint/core/` files are edited.
+- Record any required LSP restart in the shared `.git/sattlint-ai-coordination/current_work_lock.json` lock state once `src/sattlint_lsp/` or `src/sattlint/core/` files are edited.
 - This tranche changed tests only, so no LSP restart was required.
 - Use `htmlcov/status.json` file-level miss counts from the restored full-suite artifacts for local residual triage.
 

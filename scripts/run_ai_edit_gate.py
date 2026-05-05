@@ -125,6 +125,10 @@ def _should_run_context_health(rel_paths: Sequence[str]) -> bool:
     return False
 
 
+def _should_sync_exec_plans(rel_paths: Sequence[str]) -> bool:
+    return any(rel_path.replace("\\", "/").startswith("docs/exec-plans/active/") for rel_path in rel_paths)
+
+
 def _run_command(command: list[str], *, label: str) -> int:
     print(f"[ai-edit-gate] {label}", flush=True)
     completed = subprocess.run(command, cwd=REPO_ROOT, check=False)
@@ -135,9 +139,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     candidate_files = _collect_candidate_files(list(argv) if argv is not None else sys.argv[1:])
     python_files = _existing_python_files(candidate_files)
     run_context_health = _should_run_context_health(candidate_files)
+    run_exec_plan_sync = _should_sync_exec_plans(candidate_files)
     python_executable = _resolve_python(REPO_ROOT)
 
-    if not python_files and not run_context_health:
+    if not python_files and not run_context_health and not run_exec_plan_sync:
         print("[ai-edit-gate] no touched Python or AI-control files detected", flush=True)
         return 0
 
@@ -162,6 +167,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         format_exit_code = _run_command(ruff_format_command, label="ruff format on touched Python files")
         if format_exit_code != 0:
             return format_exit_code
+
+    if run_exec_plan_sync:
+        exec_plan_sync_command = [str(python_executable), "-m", "sattlint.devtools.ai_work_map", "--write"]
+        exec_plan_sync_exit_code = _run_command(
+            exec_plan_sync_command,
+            label="sync completed exec plans and AI routing artifacts",
+        )
+        if exec_plan_sync_exit_code != 0:
+            return exec_plan_sync_exit_code
 
     if run_context_health:
         context_health_command = [str(python_executable), "scripts/context_health.py", "--check"]

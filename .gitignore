@@ -52,6 +52,7 @@ src/config.toml
 .benchmarks/
 .opencode/
 .github/coordination/current-work.md
+.github/coordination/current_work_lock.json
 .github/coordination/current_work_summary.json
 
 # Local settings

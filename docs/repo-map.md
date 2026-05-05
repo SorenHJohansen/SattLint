@@ -35,7 +35,7 @@ Use it before widening into subsystem docs.
 - `docs/context-loading-order.md` defines context loading order.
 - `docs/quality-gates.md` defines stage-by-stage validation commands.
 - `docs/ai-workflows.md` defines executor, test, and reviewer handoffs.
-- `.github/coordination/current-work.md` is the active file-claim ledger.
+- `.git/sattlint-ai-coordination/current_work_lock.json` is the shared active-claim lock.
 - `.ai/tasks/task-contract.schema.json` defines machine-readable task contracts.
 - `.ai/handoffs/handoff.schema.json` defines executor to test to reviewer handoffs.
 

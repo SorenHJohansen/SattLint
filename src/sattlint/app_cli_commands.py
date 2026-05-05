@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,58 @@ def run_analyze_command(
     exit_success: int,
 ) -> int:
     run_checks_fn(cfg, selected_keys, use_cache)
+    return exit_success
+
+
+def run_simulate_command(
+    cfg: dict,
+    *,
+    target_path: str,
+    module_name: str,
+    mode: str,
+    max_scans: int,
+    output_format: str,
+    output_path: str | None,
+    use_cache: bool,
+    simulate_fn: Callable[..., Any],
+    exit_success: int,
+    exit_usage_error: int,
+) -> int:
+    try:
+        result = simulate_fn(
+            cfg,
+            target_path=target_path,
+            module_name=module_name,
+            mode=mode,
+            max_scans=max_scans,
+            use_cache=use_cache,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        emit_output(str(exc))
+        return exit_usage_error
+    except Exception as exc:
+        emit_output(f"Simulation failed: {exc}")
+        return exit_usage_error
+
+    if output_format == "json":
+        payload = json.dumps(result.to_dict(), indent=2)
+        if output_path:
+            destination = Path(output_path)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(payload + "\n", encoding="utf-8")
+            emit_output(f"Wrote {destination}")
+        else:
+            emit_output(payload)
+        return exit_success
+
+    summary = result.render_summary()
+    if output_path:
+        destination = Path(output_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(summary + "\n", encoding="utf-8")
+        emit_output(f"Wrote {destination}")
+    else:
+        emit_output(summary)
     return exit_success
 
 

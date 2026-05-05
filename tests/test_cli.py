@@ -19,6 +19,11 @@ def _run_base_cli(argv: list[str], **overrides) -> int:
         "apply_debug_fn": lambda _cfg: None,
         "run_validate_config_command_fn": lambda cfg, *, config_path, default_used: app_base.EXIT_SUCCESS,
         "run_analyze_command_fn": lambda cfg, *, selected_keys, use_cache: app_base.EXIT_SUCCESS,
+        "run_simulate_command_fn": (
+            lambda cfg, *, target_path, module_name, mode, max_scans, output_format, output_path, use_cache: (
+                app_base.EXIT_SUCCESS
+            )
+        ),
         "run_docgen_command_fn": lambda cfg, *, use_cache: app_base.EXIT_SUCCESS,
         "run_format_icf_command_fn": lambda cfg, *, check: app_base.EXIT_SUCCESS,
     }
@@ -33,7 +38,9 @@ def test_build_cli_parser_has_descriptions():
     action = next(action for action in parser._actions if getattr(action, "choices", None))
     choices = cast(dict[str, object], action.choices)
     syntax_parser = cast(object, choices["syntax-check"])
-    assert {"syntax-check", "analyze", "docgen", "validate-config", "format-icf", "repo-audit"} <= set(choices)
+    assert {"syntax-check", "analyze", "simulate", "docgen", "validate-config", "format-icf", "repo-audit"} <= set(
+        choices
+    )
     assert getattr(syntax_parser, "description", None)
 
 
@@ -143,6 +150,83 @@ def test_run_cli_analyze_passes_flags():
     assert seen["use_cache"] is False
 
 
+def test_run_cli_analyze_passes_opt_in_state_inference_key():
+    seen = {}
+
+    exit_code = cli_entry.run_cli(
+        ["analyze", "--check", "state_inference"],
+        config_path=app.CONFIG_PATH,
+        load_config_fn=lambda path: ({"debug": False}, False),
+        apply_debug_fn=lambda _cfg: None,
+        run_validate_config_command_fn=lambda cfg, *, config_path, default_used: app_base.EXIT_SUCCESS,
+        run_analyze_command_fn=lambda cfg, *, selected_keys, use_cache: (
+            seen.update({"cfg": cfg, "selected_keys": selected_keys, "use_cache": use_cache}) or app_base.EXIT_SUCCESS
+        ),
+        run_docgen_command_fn=lambda cfg, *, use_cache: app_base.EXIT_SUCCESS,
+        run_format_icf_command_fn=lambda cfg, *, check: app_base.EXIT_SUCCESS,
+    )
+
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert seen["selected_keys"] == ["state_inference"]
+    assert seen["use_cache"] is True
+
+
+def test_run_cli_simulate_passes_flags():
+    seen = {}
+
+    exit_code = _run_base_cli(
+        [
+            "--no-cache",
+            "simulate",
+            "tests/fixtures/sample_sattline_files/Program/Main.s",
+            "--module",
+            "Main",
+            "--mode",
+            "steady-state",
+            "--max-scans",
+            "25",
+            "--format",
+            "json",
+            "--output",
+            "artifacts/simulation.json",
+        ],
+        load_config_fn=lambda path: ({"debug": False}, False),
+        apply_debug_fn=lambda _cfg: None,
+        run_simulate_command_fn=lambda cfg,
+        *,
+        target_path,
+        module_name,
+        mode,
+        max_scans,
+        output_format,
+        output_path,
+        use_cache: (
+            seen.update(
+                {
+                    "cfg": cfg,
+                    "target_path": target_path,
+                    "module_name": module_name,
+                    "mode": mode,
+                    "max_scans": max_scans,
+                    "output_format": output_format,
+                    "output_path": output_path,
+                    "use_cache": use_cache,
+                }
+            )
+            or app_base.EXIT_SUCCESS
+        ),
+    )
+
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert seen["target_path"] == "tests/fixtures/sample_sattline_files/Program/Main.s"
+    assert seen["module_name"] == "Main"
+    assert seen["mode"] == "steady-state"
+    assert seen["max_scans"] == 25
+    assert seen["output_format"] == "json"
+    assert seen["output_path"] == "artifacts/simulation.json"
+    assert seen["use_cache"] is False
+
+
 def test_run_cli_format_icf_passes_check_flag():
     seen = {}
 
@@ -150,8 +234,9 @@ def test_run_cli_format_icf_passes_check_flag():
         ["format-icf", "--check"],
         load_config_fn=lambda path: ({"debug": False, "icf_dir": "icf"}, False),
         apply_debug_fn=lambda _cfg: None,
-        run_format_icf_command_fn=lambda cfg, *, check: seen.update({"cfg": cfg, "check": check})
-        or app_base.EXIT_SUCCESS,
+        run_format_icf_command_fn=lambda cfg, *, check: (
+            seen.update({"cfg": cfg, "check": check}) or app_base.EXIT_SUCCESS
+        ),
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
@@ -299,6 +384,32 @@ def test_cli_entry_docgen_requires_handler():
     with pytest.raises(RuntimeError, match="docgen handler is required"):
         cli_entry.run_cli(
             ["docgen"],
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: parser,
+            load_config_fn=lambda _path: ({"debug": False}, False),
+            apply_debug_fn=lambda _cfg: None,
+        )
+
+
+def test_cli_entry_simulate_requires_handler():
+    parser = _FakeParser(
+        args=SimpleNamespace(
+            command="simulate",
+            target_path="program.s",
+            module="Main",
+            mode="steady-state",
+            max_scans=25,
+            format="json",
+            output=None,
+            config=None,
+            no_cache=False,
+            quiet=False,
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="simulate handler is required"):
+        cli_entry.run_cli(
+            ["simulate", "program.s", "--module", "Main"],
             config_path=Path("config.toml"),
             build_cli_parser_fn=lambda: parser,
             load_config_fn=lambda _path: ({"debug": False}, False),

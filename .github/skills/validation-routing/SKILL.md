@@ -24,7 +24,7 @@ Use this skill when you need to decide which validation to run first after a Sat
 3. Run focused validation immediately after the first substantive edit.
 4. Before finishing, run the finish gate for the touched surface: focused behavior check, then touched-file lint and type checks when applicable.
 5. Run broader verification only after the focused check passes, when the touched surface is shared infra, or if the user explicitly asks.
-6. Record command and result in `.github/coordination/current-work.md` when parallel work is active.
+6. Record command and result in the shared `.git/sattlint-ai-coordination/current_work_lock.json` lock state when parallel work is active.
 
 ## Routing Map
 

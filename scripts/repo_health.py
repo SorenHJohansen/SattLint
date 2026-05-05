@@ -15,6 +15,8 @@ DEFAULT_AUDIT_DIR = REPO_ROOT / "artifacts" / "audit"
 DEFAULT_COVERAGE_RATCHET = REPO_ROOT / "artifacts" / "analysis" / "coverage_ratchet.json"
 DEFAULT_STRUCTURAL_RATCHET = REPO_ROOT / "artifacts" / "analysis" / "structural_budget_ratchet.json"
 DEFAULT_HISTORY_DIR = REPO_ROOT / "metrics" / "history"
+ROOT_JUNK_SUFFIXES = frozenset({".txt"})
+ROOT_JUNK_PREFIXES = (".tmp",)
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -46,6 +48,56 @@ def _tracked_files() -> list[str]:
     if completed.returncode != 0:
         return []
     return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+
+
+def _root_git_status_map() -> dict[str, str]:
+    completed = _git("status", "--porcelain", "--ignored", "--untracked-files=all", "--", ".")
+    if completed.returncode != 0:
+        return {}
+
+    statuses: dict[str, str] = {}
+    for line in completed.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        status = line[:2]
+        rel_path = line[3:].strip()
+        if not rel_path or "/" in rel_path or " -> " in rel_path:
+            continue
+        statuses[rel_path] = status
+    return statuses
+
+
+def _looks_like_root_junk(name: str) -> bool:
+    lowered = name.casefold()
+    return lowered.startswith(ROOT_JUNK_PREFIXES) or any(lowered.endswith(suffix) for suffix in ROOT_JUNK_SUFFIXES)
+
+
+def _root_junk_candidates() -> list[dict[str, str]]:
+    tracked = set(_tracked_files())
+    root_statuses = _root_git_status_map()
+    candidates: list[dict[str, str]] = []
+
+    for path in sorted(REPO_ROOT.iterdir(), key=lambda current: current.name.casefold()):
+        if not path.is_file():
+            continue
+
+        name = path.name
+        if name in tracked or not _looks_like_root_junk(name):
+            continue
+
+        git_status = root_statuses.get(name)
+        if root_statuses and git_status not in {"!!", "??"}:
+            continue
+
+        candidates.append(
+            {
+                "path": name,
+                "kind": "tmp" if name.casefold().startswith(ROOT_JUNK_PREFIXES) else "txt",
+                "git_state": "ignored" if git_status == "!!" else "untracked" if git_status == "??" else "present",
+            }
+        )
+
+    return candidates
 
 
 def _count_lines(path: Path) -> int:
@@ -218,12 +270,25 @@ def build_report(audit_dir: Path) -> dict[str, Any]:
     largest_files = _largest_files()
     slowest_tests = _slowest_tests(pytest_report)
     branch_health = _branch_health()
+    root_junk_candidates = _root_junk_candidates()
     handoffs = _handoff_metrics()
 
     audit_overall_status = str(audit_status.get("overall_status", "unknown"))
     context_status = str(context_report.get("status", "fail"))
     status = "pass" if audit_overall_status == "pass" and context_status == "pass" else "fail"
-    if status == "pass" and int(audit_status.get("finding_count", 0)) > 0:
+    warnings: list[dict[str, Any]] = []
+    if root_junk_candidates:
+        warnings.append(
+            {
+                "id": "ignored-root-junk",
+                "severity": "low",
+                "message": "Repo root contains ignored or untracked scratch files.",
+                "paths": [candidate["path"] for candidate in root_junk_candidates],
+                "candidates": root_junk_candidates,
+                "suggestion": "Delete the files or move durable outputs under artifacts/, dumps/, or a test fixture directory.",
+            }
+        )
+    if status == "pass" and (int(audit_status.get("finding_count", 0)) > 0 or warnings):
         status = "pass_with_findings"
 
     coverage_summary = coverage_ratchet.get("summary", {})
@@ -253,6 +318,7 @@ def build_report(audit_dir: Path) -> dict[str, Any]:
         "ai_task_throughput": int(handoffs.get("ai_task_throughput", 0)),
         "merge_success_rate": handoffs.get("merge_success_rate"),
         "dirty_files": branch_health.get("dirty_files"),
+        "root_junk_file_count": len(root_junk_candidates),
     }
 
     history = _history_snapshots()
@@ -278,6 +344,7 @@ def build_report(audit_dir: Path) -> dict[str, Any]:
         "branch_health": branch_health,
         "handoffs": handoffs,
         "trend_summary": trend_summary,
+        "warnings": warnings,
         "top_findings": audit_summary.get("findings", [])[:10],
         "largest_files": largest_files,
         "slowest_tests": slowest_tests,
@@ -312,6 +379,7 @@ def _render_markdown(report: dict[str, Any]) -> str:
             if metrics["merge_success_rate"] is not None
             else "- Merge success rate: n/a"
         ),
+        f"- Root junk files: {metrics['root_junk_file_count']}",
         "",
         "## Quality",
         "",
@@ -331,6 +399,13 @@ def _render_markdown(report: dict[str, Any]) -> str:
     lines.extend(["", "## Slowest Tests", ""])
     for item in report["slowest_tests"][:5]:
         lines.append(f"- {item['name']}: {item['time_seconds']:.3f}s ({item['outcome']})")
+    if report.get("warnings"):
+        lines.extend(["", "## Local Hygiene Warnings", ""])
+        for warning in report["warnings"]:
+            paths = ", ".join(str(path) for path in warning.get("paths", [])[:5])
+            if len(warning.get("paths", [])) > 5:
+                paths += ", ..."
+            lines.append(f"- {warning['message']} {paths}".rstrip())
     lines.extend(["", "## Trend Summary", ""])
     trend = report["trend_summary"]
     lines.append(f"- History snapshots: {trend['history_count']}")
@@ -380,10 +455,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         metrics = report["metrics"]
         print(f"Repository health: {report['status']}")
         print(f"Audit findings: {metrics['finding_count']}")
+        print(f"Root junk files: {metrics['root_junk_file_count']}")
         print(f"Coverage: {metrics['coverage_total_line_rate']:.2%}")
         print(f"Context: {metrics['auto_loaded_context_lines']}/{metrics['context_auto_loaded_budget']} lines")
         print(f"Largest file: {metrics['largest_file_path']} ({metrics['largest_file_lines']} lines)")
         print(f"AI throughput: {metrics['ai_task_throughput']}")
+        for warning in report.get("warnings", []):
+            paths = ", ".join(str(path) for path in warning.get("paths", [])[:5])
+            if len(warning.get("paths", [])) > 5:
+                paths += ", ..."
+            print(f"Warning: {warning['message']} {paths}".rstrip())
 
     return 1 if args.check and report["status"] == "fail" else 0
 

@@ -2,6 +2,8 @@
 
 This ExecPlan is a living document. Keep `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` current as work proceeds.
 
+Retired on 2026-05-04 at user request. This file is preserved as archive-only historical coverage context and no longer represents active work.
+
 ## Purpose / Big Picture
 
 Own the files that still block `100%` coverage but do not fit cleanly inside the existing owner-lane structures, then drive the final residual sweep and repository-default acceptance run. This plan exists so the campaign has an explicit owner for the zero-owner modules and the last-mile gate work.
@@ -12,9 +14,8 @@ Own the files that still block `100%` coverage but do not fit cleanly inside the
 - [x] (2026-04-30) Confirm the nearest owner for each orphan candidate and record when a dedicated suite is justified.
 - [x] (2026-04-30) Add dedicated suites for the true zero-owner modules: `accuracy_metrics.py`, `ai_templates.py`, `differential.py`, `mutation_engine.py`, `parser_properties.py`, `production_summary.py`, and `symbolic_lite.py`.
 - [x] (2026-05-01) Fold the checked-in `88.26%` coverage baseline into the campaign ratchet, and derive the repository-default `87.26%` effective floor from that baseline through `artifacts/analysis/coverage_ratchet.json` and the default pytest gate.
-- [ ] Drain the cross-cutting long-tail files that already have owners but no longer justify their own plan, including `validation.py`, `structural_reports.py`, `corpus.py`, and other sub-50 residuals.
-- [ ] Run shared checkpoints until no file still carries more than `20` misses.
-- [ ] Run repository-default `pytest -q` and do not close this plan until the report shows `100.00%` coverage.
+- [x] (2026-05-04) Stop the remaining long-tail and default-gate coverage push at user request.
+- [x] (2026-05-04) Archive this orphan and final-gate plan as historical coverage context instead of keeping a live path to `100.00%`.
 
 ## Context and Orientation
 
@@ -126,6 +127,8 @@ Plan created from the clean `82.35%` checkpoint.
 - Updated `tests/test_parser_validation.py` to pass `label_counts={}` and revalidated that owner suite: `90 passed`.
 - Follow-up shared checkpoint with `COVERAGE_FILE=.coverage.exec17-docgen-recheck-2` reached `1369 passed, 1 warning`; the suite is test-clean again.
 - The remaining checkpoint problem is operational rather than behavioral: `pytest-cov` still intermittently corrupts the fresh coverage SQLite database on this Windows machine, so the run completed without a trustworthy coverage table despite the clean test result.
+
+The plan was retired and archived on 2026-05-04 at user request. The remaining long-tail work and the repository-default coverage gate stay here only as historical checkpoint context rather than an active execution commitment.
 
 ## Artifacts and Notes
 

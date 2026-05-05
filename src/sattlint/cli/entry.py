@@ -51,6 +51,38 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help="Analysis check key to run (repeatable)",
     )
 
+    simulate_parser = subparsers.add_parser(
+        "simulate",
+        help="Run bounded SFC scan-cycle simulation",
+        description="Simulate one SFC-bearing target and report steady state, cycles, or scan-budget exhaustion.",
+    )
+    simulate_parser.add_argument("target_path", help="Path to the SattLine entry file to load")
+    simulate_parser.add_argument("--module", required=True, help="Module or instance path to simulate")
+    simulate_parser.add_argument(
+        "--mode",
+        default="steady-state",
+        choices=["steady-state"],
+        help="Simulation mode to run",
+    )
+    simulate_parser.add_argument(
+        "--max-scans",
+        type=int,
+        default=25,
+        dest="max_scans",
+        help="Maximum number of scans to execute before stopping",
+    )
+    simulate_parser.add_argument(
+        "--format",
+        default="text",
+        choices=["text", "json"],
+        help="Output format",
+    )
+    simulate_parser.add_argument(
+        "--output",
+        default=None,
+        help="Optional path to write the simulation output",
+    )
+
     subparsers.add_parser(
         "docgen",
         help="Generate DOCX documentation",
@@ -95,6 +127,7 @@ def run_cli(
     apply_debug_fn=None,
     run_validate_config_command_fn=None,
     run_analyze_command_fn=None,
+    run_simulate_command_fn=None,
     run_docgen_command_fn=None,
     run_format_icf_command_fn=None,
     exit_success: int = EXIT_SUCCESS,
@@ -135,7 +168,7 @@ def run_cli(
         print_output(f"sattlint: error: unrecognized arguments: {' '.join(leftover)}", file=sys.stderr)
         return exit_usage_error
 
-    if args.command in ("validate-config", "analyze", "docgen", "format-icf"):
+    if args.command in ("validate-config", "analyze", "simulate", "docgen", "format-icf"):
         try:
             if load_config_fn is None or apply_debug_fn is None:
                 raise RuntimeError("CLI config handlers are required for this command")
@@ -158,6 +191,23 @@ def run_cli(
                 raise RuntimeError("analyze handler is required")
             selected_keys = getattr(args, "checks", None) or None
             return run_analyze_command_fn(cfg, selected_keys=selected_keys, use_cache=use_cache) or exit_success
+
+        if args.command == "simulate":
+            if run_simulate_command_fn is None:
+                raise RuntimeError("simulate handler is required")
+            return (
+                run_simulate_command_fn(
+                    cfg,
+                    target_path=args.target_path,
+                    module_name=args.module,
+                    mode=args.mode,
+                    max_scans=args.max_scans,
+                    output_format=args.format,
+                    output_path=args.output,
+                    use_cache=use_cache,
+                )
+                or exit_success
+            )
 
         if args.command == "docgen":
             if run_docgen_command_fn is None:

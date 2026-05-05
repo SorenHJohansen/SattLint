@@ -2,6 +2,8 @@
 
 This ExecPlan is a living document. Keep `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` current as work proceeds.
 
+Retired on 2026-05-04 at user request. This file is preserved as archive-only historical coverage context and no longer represents active work.
+
 ## Purpose / Big Picture
 
 Drain the remaining parser transformer/API residue, reporting/docgen support debt, graphics-validation gaps, and headless GUI misses that still total about `422` uncovered lines after the latest clean shared checkpoint. The reopened `tests/test_docgen.py` seam has already taken `classification.py` and `docgen.py` to `100%`, so the remaining plan debt sits in parser, graphics, reporting, GUI, and adjacent docgen support files.
@@ -18,8 +20,8 @@ Drain the remaining parser transformer/API residue, reporting/docgen support deb
 - [x] (2026-04-30) Drain `graphics_rules.py` and `graphics_validation.py` through `tests/test_graphics_validation.py` and nearby parser or app owners.
 - [x] (2026-04-30) Drain the remaining headless GUI residue through `tests/test_gui.py`.
 - [x] (2026-04-30) Reopen `tests/test_gui.py` and move `window.py` to `100%` focused coverage.
-- [ ] Drain the remaining parser transformer, graphics, reporting, GUI, and docgen-support residue from the refreshed `422`-miss bucket.
-- [ ] Re-run the plan-close validation set once the remaining non-docgen files in this bucket are drained.
+- [x] (2026-05-04) Retire the remaining parser, GUI, reporting, and docgen-support coverage sweep at user request.
+- [x] (2026-05-04) Archive this plan as historical coverage context instead of keeping the bucket active.
 
 ## Context and Orientation
 
@@ -119,6 +121,8 @@ Validated outcomes:
 - Shared checkpoint refresh: `Remove-Item -Force .coverage* -ErrorAction SilentlyContinue ; & ".venv/Scripts/python.exe" -m pytest -q --cov-fail-under=0` -> `1342 passed, 1 warning`, `86%` total coverage, about `422` misses left in the broader plan-16 bucket
 
 `classification.py`, `docgen.py`, `sl_transformer.py`, `graphics_rules.py`, and `window.py` are now fully drained in focused owner slices, but ExecPlan 16 itself is not complete yet. The remaining work has moved into parser mixins, headless GUI frame and widget files, reporting support code, `graphics_validation.py`, and adjacent docgen support modules. A new shared checkpoint is still pending before the orchestrator baseline should be rewritten.
+
+The plan was retired and archived on 2026-05-04 at user request. The remaining parser, GUI, reporting, and docgen-support misses stay here only as historical checkpoint context rather than an active execution commitment.
 
 ## Artifacts and Notes
 

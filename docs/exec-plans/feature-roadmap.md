@@ -4,7 +4,7 @@ Planned new capabilities for SattLint. These are features that do not exist yet,
 
 For actual code quality and architecture debt, see `docs/exec-plans/tech-debt-tracker.md`.
 
-Last updated: 2026-04-30
+Last updated: 2026-05-04
 
 ## Quick Reference
 
@@ -24,6 +24,20 @@ Last updated: 2026-04-30
 - P1: high value, should be scheduled in the next planning cycle
 - P2: valuable but can wait for a later cycle or external demand
 
+## 2026-05-04 ExecPlan Picks
+
+The highest-impact features selected for executable planning on 2026-05-04 are:
+
+- `D-038` SFC Scan Cycle Simulation. High user-visible value because it adds a new way to exercise real SattLine behavior, and it reuses the existing SFC and dataflow semantics instead of inventing a parallel model.
+- `C-022` State Inference. High analyzer leverage because the repo already tracks state facts implicitly in `dataflow`, and promoting that reasoning to a named analyzer unlocks clearer findings and future semantic work.
+- `D-041` Impact Analysis Tool. High workflow value because the reverse-dependency collectors already exist in the pipeline, and a first-class wrapper turns them into an everyday developer tool.
+
+Active ExecPlans:
+
+- `docs/exec-plans/active/20-d-038-sfc-scan-cycle-simulation.md`
+- `docs/exec-plans/active/21-c-022-state-inference.md`
+- `docs/exec-plans/active/22-d-041-impact-analysis-tool.md`
+
 ---
 
 ## Program C: New Analyzer Capabilities
@@ -35,75 +49,9 @@ New analysis passes that do not yet exist in the engine.
 | Wave | Owner | Target Window | Items | Validation |
 | --- | --- | --- | --- | --- |
 | C-Wave-1 | Semantic core | 2026-Q3 | C-010, C-011, C-012, C-016, C-022 | `sattlint syntax-check` + `pytest tests/` |
-| C-Wave-2 | Analyzer roadmap | 2026-Q3 | C-003, C-013, C-014, C-015, C-017, C-018 | `sattlint syntax-check` + `pytest tests/` |
+| C-Wave-2 | Analyzer roadmap | 2026-Q3 | C-013, C-014, C-015, C-017, C-018 | `sattlint syntax-check` + `pytest tests/` |
 | C-Wave-3 | Semantic core | 2026-Q4 | C-021 | `pytest tests/` |
-| C-Wave-Backlog | Domain integration | Backlog | C-007, C-019, C-020 | Deferred |
-
----
-
-### C-003 Duplicate Logic Detection
-
-**Feature ID:** C-003
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** Analyzer roadmap
-
-**Target Window:** 2026-Q3
-
-**Wave:** C-Wave-2
-
-**Purpose:** Detect duplicate or near-duplicate logic across modules to reduce maintenance burden.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-| ------|----------|------|-------------|
-| 1 | Duplicate finder | `src/sattlint/analyzers/duplicate_logic.py` | Find duplicate equations/SFC |
-| 2 | Similarity scorer | `src/sattlint/analyzers/duplicate_logic.py` | Score similarity |
-| 3 | Reporter | `src/sattlint/analyzers/duplicate_logic.py` | Report findings |
-
-**Input:** BasePicture with modulecode
-
-**Output:** List of duplicate logic findings with locations and similarity scores
-
-**Validation:** `pytest tests/test_duplicate_logic.py`
-
----
-
-### C-007 Engineering Unit Consistency
-
-**Feature ID:** C-007
-
-**Status:** Open
-
-**Priority:** P2
-
-**Owner:** Analyzer roadmap
-
-**Target Window:** Backlog
-
-**Wave:** C-Wave-Backlog
-
-**Purpose:** Ensure engineering units (kg, C, %, etc.) are consistent and properly propagated.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-| ------|----------|------|-------------|
-| 1 | Unit extractor | `src/sattlint/analyzers/engineering_units.py` | Extract unit attributes |
-| 2 | Consistency checker | `src/sattlint/analyzers/engineering_units.py` | Check propagation |
-| 3 | Reporter | `src/sattlint/analyzers/engineering_units.py` | Report violations |
-
-**Input:** Variables with engineering_unit attributes
-
-**Output:** Consistency violations
-
-**Validation:** `pytest tests/test_engineering_units.py`
-
-**See also:** Deferred until S88 domain scope confirmed
+| C-Wave-Backlog | Domain integration | Backlog | C-019, C-020 | Deferred |
 
 ---
 
@@ -573,6 +521,8 @@ New analysis passes that do not yet exist in the engine.
 
 **Validation:** `pytest tests/test_inference.py`
 
+**See also:** `docs/exec-plans/active/21-c-022-state-inference.md`
+
 ---
 
 ### C-023 Data Flow Dependency Analysis
@@ -659,262 +609,72 @@ New tooling, testing infrastructure, and pipeline features that do not yet exist
 
 | Wave | Owner | Target Window | Items | Validation |
 | --- | --- | --- | --- | --- |
-| D-Wave-2 | Multiple | 2026-Q3 | D-016, D-017, D-018, D-022, D-023, D-026, D-036, D-038, D-039, D-040, D-041, D-042 | `pytest tests/` |
-| D-Wave-Backlog | Semantic tooling | Backlog | - | Deferred |
+| D-Wave-2 | Multiple | 2026-Q3 | D-038, D-039, D-040, D-041, D-042 | `pytest tests/` |
+| D-Wave-Backlog | Semantic tooling | Backlog | D-025, D-035 | Promotion gate |
 
 ---
 
-### D-016 Fault Injection Testing
+### D-025 Symbolic Execution Lite
 
-**Feature ID:** D-016
+**Feature ID:** D-025
 
-**Status:** Open
+**Status:** Deferred
 
 **Priority:** P1
 
-**Owner:** Test infrastructure
+**Owner:** Semantic tooling
 
-**Target Window:** 2026-Q3
+**Target Window:** Backlog
 
-**Wave:** D-Wave-2
+**Wave:** D-Wave-Backlog
 
-**Purpose:** Inject faults and test system robustness.
+**Purpose:** Provide bounded symbolic path exploration for contradiction, reachability, and conditional-safety findings without external solver dependencies.
 
 **Implementation Guide:**
 
 | Order | Component | File | Description |
 | ------|----------|------|-------------|
-| 1 | Fault injector | `src/sattlint/devtools/fault_injection.py` | Inject faults |
-| 2 | Test runner | `src/sattlint/devtools/fault_injection.py` | Run tests |
-| 3 | Reporter | `src/sattlint/devtools/fault_injection.py` | Report results |
+| 1 | Symbolic path explorer | `src/sattlint/analyzers/symbolic_lite.py` | Explore bounded boolean and constant-propagated paths |
+| 2 | Path budgets and reporting | `src/sattlint/analyzers/symbolic_lite.py` | Enforce deterministic caps and explain contradictory or unreachable paths |
+| 3 | Promotion-gate coverage | `tests/test_symbolic_lite.py`, `docs/exec-plans/completed/10-d-wave-backlog-advanced-analysis-gating.md` | Keep the backlog scope explicit until promotion is approved |
 
-**Input:** Test cases + fault specifications
+**Input:** Analyzer IR + bounded path budgets
 
-**Output:** Robustness test results
+**Output:** Deferred until D-Wave-2 and D-Wave-3 closeout plus explicit promotion approval
 
-**Validation:** `pytest tests/test_fault_injection.py`
+**Validation:** `See docs/exec-plans/completed/10-d-wave-backlog-advanced-analysis-gating.md`
 
 ---
 
-### D-017 Property-based Parser Testing
+### D-035 Production Code Analysis
 
-**Feature ID:** D-017
+**Feature ID:** D-035
 
-**Status:** Open
+**Status:** Deferred
 
 **Priority:** P1
 
-**Owner:** Parser tooling
+**Owner:** Semantic tooling
 
-**Target Window:** 2026-Q3
+**Target Window:** Backlog
 
-**Wave:** D-Wave-2
+**Wave:** D-Wave-Backlog
 
-**Purpose:** Use property-based testing for parser robustness.
+**Purpose:** Run advanced analysis on production-scale inputs only after symbolic-lite scope, runtime budgets, and triage expectations are stable.
 
 **Implementation Guide:**
 
 | Order | Component | File | Description |
 | ------|----------|------|-------------|
-| 1 | Property definitions | `src/sattlint/devtools/property_tests.py` | Define properties |
-| 2 | Generator | `src/sattlint/devtools/property_tests.py` | Generate test cases |
-| 3 | Runner | `src/sattlint/devtools/property_tests.py` | Run property tests |
+| 1 | Production corpus routing | `src/sattlint/devtools/production_summary.py` | Curate opt-in production input sets and summaries |
+| 2 | Opt-in analyzer execution | `src/sattlint/analyzers/symbolic_lite.py` | Reuse bounded symbolic-lite behavior on production targets |
+| 3 | Promotion-gate coverage | `tests/test_symbolic_lite.py`, `docs/exec-plans/completed/10-d-wave-backlog-advanced-analysis-gating.md` | Keep rollout blocked until budgets and triage plans are approved |
 
-**Input:** Grammar/properties
+**Input:** Opt-in production corpus + approved runtime budget
 
-**Output:** Property test results
+**Output:** Deferred until D-025 is stable and the backlog promotion gate is approved
 
-**Validation:** `pytest tests/test_property_based.py -v`
-
----
-
-### D-018 Fuzzing Targets
-
-**Feature ID:** D-018
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** Parser tooling
-
-**Target Window:** 2026-Q3
-
-**Wave:** D-Wave-2
-
-**Purpose:** Create fuzzing targets for parser and analyzers.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-| ------|----------|------|-------------|
-| 1 | Fuzzer | `src/sattlint/devtools/fuzzer.py` | Fuzz parser |
-| 2 | Corpus builder | `src/sattlint/devtools/fuzzer.py` | Build corpus |
-| 3 | Crash analyzer | `src/sattlint/devtools/fuzzer.py` | Analyze crashes |
-
-**Input:** Fuzzing targets
-
-**Output:** Crash reports
-
-**Validation:** Run fuzzer, verify no crashes
-
----
-
-### D-022 Finding Validation Feedback
-
-**Feature ID:** D-022
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** Pipeline + UX
-
-**Target Window:** 2026-Q3
-
-**Wave:** D-Wave-2
-
-**Purpose:** Create feedback loop for validating findings.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-| ------|----------|------|-------------|
-| 1 | Feedback collector | `src/sattlint/devtools/feedback.py` | Collect feedback |
-| 2 | Validator | `src/sattlint/devtools/feedback.py` | Validate findings |
-| 3 | Reporter | `src/sattlint/devtools/feedback.py` | Report accuracy |
-
-**Input:** Findings + user feedback
-
-**Output:** Validation metrics
-
-**Validation:** `pytest tests/test_feedback.py`
-
----
-
-### D-023 Core Invariant Checks
-
-**Feature ID:** D-023
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** Devtools
-
-**Target Window:** 2026-Q3
-
-**Wave:** D-Wave-2
-
-**Purpose:** Run core invariant checks during development.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-| ------|----------|------|-------------|
-| 1 | Invariant definitions | `src/sattlint/devtools/invariants.py` | Define invariants |
-| 2 | Checker | `src/sattlint/devtools/invariants.py` | Check invariants |
-| 3 | Reporter | `src/sattlint/devtools/invariants.py` | Report violations |
-
-**Input:** Codebase
-
-**Output:** Invariant violations
-
-**Validation:** `sattlint-repo-audit --profile quick`
-
----
-
-### D-026 Configuration Validation
-
-**Feature ID:** D-026
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** Config + CLI
-
-**Target Window:** 2026-Q3
-
-**Wave:** D-Wave-2
-
-**Purpose:** Validate configuration files against schemas.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-| ------|----------|------|-------------|
-| 1 | Schema validator | `src/sattlint/config_validation.py` | Validate configs |
-| 2 | Reporter | `src/sattlint/config_validation.py` | Report issues |
-
-**Input:** Configuration files
-
-**Output:** Validation errors
-
-**Validation:** `pytest tests/test_config_validation.py`
-
----
-
-### D-033 Test Quality Checks
-
-**Feature ID:** D-033
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** Devtools + QA
-
-**Target Window:** 2026-Q3
-
-**Wave:** D-Wave-2
-
-**Purpose:** Repository maintainability and test quality checks.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-| ------|----------|------|-------------|
-| 1 | Quality checks | `src/sattlint/devtools/test_quality.py` | Define checks |
-| 2 | Reporter | `src/sattlint/devtools/test_quality.py` | Report metrics |
-
-**Input:** Test files
-
-**Output:** Quality metrics
-
-**Validation:** Run quality checks, verify metrics
-
----
-
-### D-036 Analyzer Reference Examples
-
-**Feature ID:** D-036
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** Docs generation
-
-**Target Window:** 2026-Q3
-
-**Wave:** D-Wave-2
-
-**Purpose:** Generate analyzer reference documentation with examples.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-| ------|----------|------|-------------|
-| 1 | Doc generator | `src/sattlint/docgenerator/reference.py` | Generate docs |
-| 2 | Examples extractor | `src/sattlint/docgenerator/reference.py` | Extract examples |
-| 3 | Formatter | `src/sattlint/docgenerator/reference.py` | Format output |
-
-**Input:** Analyzer code
-
-**Output:** Reference documentation
-
-**Validation:** Check generated docs
+**Validation:** `See docs/exec-plans/completed/10-d-wave-backlog-advanced-analysis-gating.md`
 
 ---
 
@@ -1013,6 +773,8 @@ New tooling, testing infrastructure, and pipeline features that do not yet exist
 - `resolution/common.py:resolve_moduletype_def_strict()` - resolve instances
 
 **Validation:** `pytest tests/test_sfc_simulation.py`
+
+**See also:** `docs/exec-plans/active/20-d-038-sfc-scan-cycle-simulation.md`
 
 ---
 
@@ -1127,6 +889,8 @@ New tooling, testing infrastructure, and pipeline features that do not yet exist
 - `resolution/common.py` - reference resolution
 
 **Validation:** `pytest tests/test_impact_analysis.py`
+
+**See also:** `docs/exec-plans/active/22-d-041-impact-analysis-tool.md`
 
 ---
 

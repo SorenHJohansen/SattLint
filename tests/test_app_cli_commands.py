@@ -133,6 +133,68 @@ def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
     assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
 
 
+def test_run_simulate_command_delegates_to_cli_owner(monkeypatch):
+    seen: dict[str, object] = {}
+
+    def fake_run_simulate_command(
+        cfg: dict,
+        *,
+        target_path: str,
+        module_name: str,
+        mode: str,
+        max_scans: int,
+        output_format: str,
+        output_path: str | None,
+        use_cache: bool,
+        simulate_fn,
+        exit_success: int,
+        exit_usage_error: int,
+    ) -> int:
+        seen["cfg"] = cfg
+        seen["target_path"] = target_path
+        seen["module_name"] = module_name
+        seen["mode"] = mode
+        seen["max_scans"] = max_scans
+        seen["output_format"] = output_format
+        seen["output_path"] = output_path
+        seen["use_cache"] = use_cache
+        seen["simulate_fn"] = simulate_fn
+        seen["exit_success"] = exit_success
+        seen["exit_usage_error"] = exit_usage_error
+        return 80
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "run_simulate_command",
+        fake_run_simulate_command,
+    )
+
+    cfg = {"debug": False}
+    result = app.run_simulate_command(
+        cfg,
+        target_path="program.s",
+        module_name="Main",
+        mode="steady-state",
+        max_scans=25,
+        output_format="json",
+        output_path="artifacts/simulation.json",
+        use_cache=False,
+    )
+
+    assert result == 80
+    assert seen["cfg"] is cfg
+    assert seen["target_path"] == "program.s"
+    assert seen["module_name"] == "Main"
+    assert seen["mode"] == "steady-state"
+    assert seen["max_scans"] == 25
+    assert seen["output_format"] == "json"
+    assert seen["output_path"] == "artifacts/simulation.json"
+    assert seen["use_cache"] is False
+    assert callable(seen["simulate_fn"])
+    assert seen["exit_success"] == app.EXIT_SUCCESS
+    assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
+
+
 def test_cli_owner_run_docgen_command_rejects_empty_project_set(capsys):
     cfg = {"documentation": {}}
     empty_projects: tuple[tuple[str, BasePicture, ProjectGraph], ...] = ()
@@ -318,3 +380,64 @@ def test_cli_owner_run_docgen_command_uses_default_filename(monkeypatch):
 
     assert exit_code == app.EXIT_SUCCESS
     assert generated == ["TargetA_FS.docx"]
+
+
+def test_cli_owner_run_simulate_command_writes_json_output(tmp_path):
+    output_path = tmp_path / "simulation.json"
+
+    class _FakeResult:
+        def to_dict(self):
+            return {
+                "target": "Main",
+                "mode": "steady-state",
+                "steady_state_reached": True,
+                "cycle_detected": False,
+                "scan_budget_exhausted": False,
+                "outcome": "steady-state",
+                "total_scans": 2,
+                "cycle_start_scan": None,
+                "cycle_length": None,
+                "snapshots": [{"scan": 1, "active_steps": ["Init"], "state": {"Counter": 1}}],
+            }
+
+        def render_summary(self):
+            return "steady state reached after 2 scans"
+
+    exit_code = app.app_cli_commands_module.run_simulate_command(
+        {"debug": False},
+        target_path="program.s",
+        module_name="Main",
+        mode="steady-state",
+        max_scans=25,
+        output_format="json",
+        output_path=str(output_path),
+        use_cache=False,
+        simulate_fn=lambda cfg, **kwargs: _FakeResult(),
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    payload = output_path.read_text(encoding="utf-8")
+    assert '"target": "Main"' in payload
+    assert '"steady_state_reached": true' in payload
+
+
+def test_cli_owner_run_simulate_command_reports_usage_errors(capsys):
+    exit_code = app.app_cli_commands_module.run_simulate_command(
+        {"debug": False},
+        target_path="program.s",
+        module_name="Main",
+        mode="steady-state",
+        max_scans=0,
+        output_format="text",
+        output_path=None,
+        use_cache=False,
+        simulate_fn=lambda cfg, **kwargs: (_ for _ in ()).throw(ValueError("max_scans must be positive")),
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert "max_scans must be positive" in out

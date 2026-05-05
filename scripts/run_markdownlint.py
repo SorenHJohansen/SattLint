@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import shutil
 import subprocess
 import sys
@@ -17,14 +18,42 @@ def _windows_path_to_wsl(path: Path) -> str:
     return posix_path
 
 
+def _wsl_has_command(command_name: str) -> bool:
+    return (
+        subprocess.run(
+            [
+                "wsl",
+                "--cd",
+                _windows_path_to_wsl(REPO_ROOT),
+                "sh",
+                "-lc",
+                f"command -v {shlex.quote(command_name)} >/dev/null 2>&1",
+            ],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode
+        == 0
+    )
+
+
 def _resolve_command(tool_args: list[str]) -> tuple[list[str], Path | None]:
-    if sys.platform == "win32" and shutil.which("wsl"):
-        return ["wsl", "--cd", _windows_path_to_wsl(REPO_ROOT), "npx", "--yes", "markdownlint-cli2", *tool_args], None
+    if shutil.which("markdownlint-cli2"):
+        return ["markdownlint-cli2", *tool_args], REPO_ROOT
+
+    if sys.platform == "win32" and shutil.which("wsl") and _wsl_has_command("markdownlint-cli2"):
+        return ["wsl", "--cd", _windows_path_to_wsl(REPO_ROOT), "markdownlint-cli2", *tool_args], None
 
     if shutil.which("npx"):
         return ["npx", "--yes", "markdownlint-cli2", *tool_args], REPO_ROOT
 
-    print("markdownlint requires `npx`, or WSL with `npx` available.", file=sys.stderr)
+    if sys.platform == "win32" and shutil.which("wsl") and _wsl_has_command("npx"):
+        return ["wsl", "--cd", _windows_path_to_wsl(REPO_ROOT), "npx", "--yes", "markdownlint-cli2", *tool_args], None
+
+    print(
+        "markdownlint requires `markdownlint-cli2`, `npx`, or WSL with one of those commands available.",
+        file=sys.stderr,
+    )
     return [], None
 
 

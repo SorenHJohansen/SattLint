@@ -752,6 +752,43 @@ def test_run_checks_reports_no_matching_checks_and_pauses(monkeypatch):
     assert pauses == ["pause"]
 
 
+def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch):
+    lines: list[str] = []
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    report = SimpleNamespace(summary=lambda: "state inference summary")
+
+    app_analysis.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["state_inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
+                        SimpleNamespace(unavailable_libraries=set()),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state_inference",
+                name="State inference",
+                run=lambda _context: report,
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert any("State inference (state_inference)" in line for line in lines)
+    assert any("state inference summary" in line for line in lines)
+
+
 def test_run_icf_validation_covers_missing_dir_invalid_dir_and_empty_file_list(monkeypatch, tmp_path):
     lines: list[str] = []
     pauses: list[str] = []

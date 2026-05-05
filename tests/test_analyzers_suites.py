@@ -1766,6 +1766,12 @@ def test_taint_paths_analyzer_is_enabled_by_default():
     assert specs["taint-paths"].enabled is True
 
 
+def test_state_inference_analyzer_is_not_in_default_cli_subset():
+    from sattlint.analyzers.registry import get_actual_cli_analyzer_keys
+
+    assert "state_inference" not in get_actual_cli_analyzer_keys()
+
+
 def test_mms_tag_helpers_normalize_external_tags_and_family_keys():
     assert _normalize_external_tag("  Unit.Area.Tag42  ") == "unit.area.tag42"
     assert _normalize_external_tag("12345") is None

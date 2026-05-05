@@ -15,7 +15,7 @@ This plan finishes the user-visible output cleanup across the CLI, console, and 
 ## Surprises & Discoveries
 
 - Observation: W3 already moved important output paths to `console.print_output`, so the remaining work is concentrated in follow-on surfaces rather than the first app slice.
-  Evidence: `.github/coordination/current-work.md` records the first W3 slice as validated across `tests/test_app.py`, `tests/test_app_analysis.py`, `tests/test_app_menus.py`, and `tests/test_cli.py`.
+  Evidence: the shared active-claim lock recorded the first W3 slice as validated across `tests/test_app.py`, `tests/test_app_analysis.py`, `tests/test_app_menus.py`, and `tests/test_cli.py`.
 - Observation: The earlier parser-validation regression is no longer reproducible in the focused output-boundary test slice.
   Evidence: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py tests/test_app_analysis.py tests/test_app_menus.py tests/test_cli.py -x -q --tb=long` now passes (143 passed), and `test_syntax_check_command_ok` passes consistently in repeated runs.
 

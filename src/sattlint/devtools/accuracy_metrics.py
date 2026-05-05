@@ -13,6 +13,7 @@ from sattlint.contracts import FindingCollection
 ACCURACY_METRICS_FILENAME = "accuracy_metrics.json"
 ACCURACY_SCHEMA_KIND = "sattlint.accuracy_metrics"
 ACCURACY_SCHEMA_VERSION = 1
+VALIDATION_ANNOTATIONS_FILENAME = "finding_validation_annotations.json"
 
 
 @dataclass
@@ -105,10 +106,21 @@ def build_accuracy_metrics(
     return metrics
 
 
+def write_accuracy_metrics(output_dir: Path, metrics: AccuracyMetrics) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / ACCURACY_METRICS_FILENAME
+    output_path.write_text(json.dumps(metrics.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
+    return output_path
+
+
 __all__ = [
     "ACCURACY_METRICS_FILENAME",
+    "ACCURACY_SCHEMA_KIND",
+    "ACCURACY_SCHEMA_VERSION",
+    "VALIDATION_ANNOTATIONS_FILENAME",
     "AccuracyMetrics",
     "ValidationAnnotation",
     "build_accuracy_metrics",
     "load_annotations",
+    "write_accuracy_metrics",
 ]

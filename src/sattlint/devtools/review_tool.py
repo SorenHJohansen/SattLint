@@ -6,7 +6,7 @@ import shutil
 # Internal review tool invokes trusted local commands.
 import subprocess  # nosec B404
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -161,7 +161,7 @@ def run_full_review() -> dict[str, Any]:
     )
 
     report = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "overall_passed": overall_passed,
         "checks": {
             "architecture": arch_result,

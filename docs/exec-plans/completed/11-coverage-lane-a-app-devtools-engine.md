@@ -110,7 +110,7 @@ The lane is now handed back to the orchestrator for the next shared coverage che
 ## Artifacts and Notes
 
 - Use the orchestrator plan for shared checkpoints and final acceptance.
-- Record exact claim IDs in `.github/coordination/current-work.md` before editing code.
+- Record exact claim IDs in the shared `.git/sattlint-ai-coordination/current_work_lock.json` lock state before editing code.
 
 ## Interfaces and Dependencies
 

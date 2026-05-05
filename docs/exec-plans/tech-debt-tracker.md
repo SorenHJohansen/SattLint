@@ -26,11 +26,9 @@ This tracker remains valid for legacy TD-* entries and scan history.
 | ID | Area | Description | Severity | Planned Fix |
 |----|------|-------------|----------|-------------|
 | TD-001 | Analyzers | Remediation instructions not yet embedded in error messages | Medium | In progress: added to Issue, VariableIssue, shadowing analyzer |
-| TD-002 | Docs | `docs/` not fully restructured per harness-engineering layout | Medium | Completed 2026-04-28 |
 | TD-003 | LSP | No hot-reload when `WORKFLOW.md`-equivalent changes | Low | Add watch + restart mechanism |
-| TD-004 | Tests | Coverage baseline now 88.26%, with a buffered 87.26% enforced floor mirrored in the coverage ratchet | Medium | Completed 2026-05-01: baseline 88.26%, enforced floor 87.26% |
 | TD-005 | Config | No validation that `analyzed_programs_and_libraries` paths exist | Low | Add startup validation |
-| TD-006 | DevTools | Pipeline outputs not yet consumed by doc-gardening agent | Low | Wire artifacts → quality-score.md |
+| TD-006 | DevTools | Pipeline outputs not yet consumed by doc-gardening agent | Low | Wire artifacts ? quality-score.md |
 | TD-007 | Parse/Validate | validation.py functions return bool instead of parsing to typed objects | Medium | Refactor *is_valid** to return parsed types |
 | TD-008 | Types | Semantic type names needed for discoverability (VariableId, ProjectPath) | Low | Add semantic type aliases |
 
@@ -236,40 +234,6 @@ This tracker remains valid for legacy TD-* entries and scan history.
 **Validation:** Type checking passes with mypy; functionality unchanged
 
 **Reuses:** Existing type system
-
----
-
-### T-009 LSP Import and Typing Cleanup
-
-**Tech Debt ID:** T-009
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** LSP team
-
-**Target Window:** 2026-Q2
-
-**Wave:** T-Wave-2
-
-**Purpose:** Clear blocking LSP findings including dead imports, missing threading usage, and optional member access issues.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Import cleanup | `src/sattlint_lsp/server.py` | Remove dead imports |
-| 2 | Threading fix | `src/sattlint_lsp/_server_document.py` | Restore or replace missing threading usage |
-| 3 | Optional access guard | `src/sattlint_lsp/_server_document.py` | Guard the optional `.start` access that pyright flagged |
-
-**Input:** LSP source files
-
-**Output:** Clean LSP code with no blocking findings
-
-**Validation:** `pytest --no-cov tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py -x -q --tb=short`
-
-**Reuses:** Existing LSP infrastructure
 
 ---
 
@@ -479,41 +443,6 @@ This tracker remains valid for legacy TD-* entries and scan history.
 **Validation:** Markdown consistency review plus regeneration of artifacts/audit/cli_consistency.json
 
 **Reuses:** Existing documentation infrastructure
-
-### T-022 Failing Pytest Recovery
-
-**Tech Debt ID:** T-022
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** QA team
-
-**Target Window:** 2026-Q2
-
-**Wave:** T-Wave-5
-
-**Purpose:** Fix 22 failing tests to restore full test suite reliability.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Test analysis | `tests/` | Categorize 22 failures by root cause (pre-existing bugs, missing features, infrastructure) |
-| 2 | Fix tracker tests | `tests/test_analyzers_variables.py` | Fix layout_overlap_detects_overlapping_module_invocations |
-| 3 | Fix editor_api tests | `tests/test_editor_api.py` | Fix 8 workspace snapshot tests |
-| 4 | Fix LSP tests | `tests/test_lsp_diagnostics.py` | Fix 2 completion/semantic tests |
-| 5 | Fix parser tests | `tests/test_parser_core.py`, `tests/test_parser_validation.py` | Fix 7 parser validation tests |
-| 6 | Fix phase0 tests | `tests/test_phase0_guardrails.py` | Fix 2 parameter drift tests |
-
-**Input:** 22 failing tests from pytest run
-
-**Output:** Passing test suite
-
-**Validation:** `pytest --tb=short -q` shows 0 failures
-
-**Reuses:** Existing test infrastructure
 
 ---
 
@@ -860,6 +789,7 @@ This tracker remains valid for legacy TD-* entries and scan history.
 
 | Date | Findings | Action Taken |
 |------|-----------|--------------|
+| 2026-05-04 | 264 findings | Doc-gardening scan |
 | 2026-05-01 | 0 findings | Doc-gardening scan |
 | 2026-04-30 | 15 items | Manual tech debt review and update to exec-plan template |
 | 2026-04-29 | 1 findings | Doc-gardening scan |
@@ -867,7 +797,7 @@ This tracker remains valid for legacy TD-* entries and scan history.
 | 2026-04-28 | 0 findings | Doc-gardening scan |
 | 2026-04-28 | 1 findings | Doc-gardening scan |
 | 2026-04-28 | 0 findings | Doc-gardening scan |
-| 2026-04-28 | AGENTS.md 172→100 lines, docs/ restructuring | Initial restructure |
+| 2026-04-28 | AGENTS.md 172?100 lines, docs/ restructuring | Initial restructure |
 | (next scan due: weekly via CI) | | |
 
 ## Debt Categories

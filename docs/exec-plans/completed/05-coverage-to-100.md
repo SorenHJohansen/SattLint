@@ -2,6 +2,8 @@
 
 This ExecPlan is the active orchestrator for the last push to full coverage. The sections `Progress`, `Current Baseline`, `Decision Log`, and `Outcomes & Retrospective` must stay current as the remaining plans are worked.
 
+Retired on 2026-05-04 at user request. This file is preserved as archive-only historical coverage context and no longer represents active work.
+
 ## Purpose / Big Picture
 
 The first coverage-lane generation is finished. Lane A, lane B, and lane C all closed their planned owner work and are now archive material, and the checked-in coverage artifacts now place the repository at `88.26%` coverage. This file now coordinates the final-phase split that is explicitly designed to eliminate the remaining `3212` uncovered lines and reach a clean repository-default `pytest -q` run at `100.00%` coverage.
@@ -15,13 +17,8 @@ The first coverage-lane generation is finished. Lane A, lane B, and lane C all c
 - [x] (2026-04-30) Refresh the shared checkpoint again after ExecPlan 16 closeout from a clean `.coverage` state and confirm the new residual ordering at `1272 passed, 1 warning`.
 - [x] (2026-04-30) Reopen the ExecPlan 16 docgen seam, drive `classification.py` and `docgen.py` to `100%` through `tests/test_docgen.py`, and refresh the shared checkpoint again at `1342 passed, 1 warning`.
 - [x] (2026-05-01) Add a checked-in coverage ratchet in `artifacts/analysis/coverage_ratchet.json`, keep the recorded baseline at `88.26%`, and derive the repository-default pytest floor as `87.26%` (baseline minus `1.00` percentage point).
-- [ ] Drain the final-phase app/devtools/core cluster.
-- [ ] Drain the final-phase analyzers/semantic/LSP cluster.
-- [ ] Drain the final-phase parser/GUI/reporting/docgen cluster.
-- [ ] Drain the orphan zero-owner modules and remaining cross-cutting residuals.
-- [ ] Complete the shared residual sweep once no file still carries more than `20` misses.
-- [ ] Run repository-default `pytest -q` and hit `100.00%` coverage.
-- [ ] Move this orchestrator and the final-phase child plans to `docs/exec-plans/completed/` once the default gate passes.
+- [x] (2026-05-04) Retire the remaining final-phase coverage campaign instead of continuing the path to `100.00%` coverage.
+- [x] (2026-05-04) Archive this orchestrator and the four final-phase child plans at the user's request.
 
 ## Current Baseline
 
@@ -49,22 +46,22 @@ The first coverage-lane generation is finished. Lane A, lane B, and lane C all c
 - `docs/exec-plans/completed/13-coverage-lane-c-parser-reporting-gui.md`
   Status: completed.
   Scope: first-generation parser/reporting/GUI lane.
-- `docs/exec-plans/active/14-coverage-phase-2-app-devtools-core.md`
+- `docs/exec-plans/completed/14-coverage-phase-2-app-devtools-core.md`
   Status: active.
   Scope: remaining app, devtools, engine, pipeline, and shell-helper debt.
-- `docs/exec-plans/active/15-coverage-phase-2-analyzers-semantic-lsp.md`
+- `docs/exec-plans/completed/15-coverage-phase-2-analyzers-semantic-lsp.md`
   Status: active.
   Scope: remaining analyzer-heavy modules plus semantic core, LSP, and resolution debt.
-- `docs/exec-plans/active/16-coverage-phase-2-parser-gui-reporting.md`
+- `docs/exec-plans/completed/16-coverage-phase-2-parser-gui-reporting.md`
   Status: active.
   Scope: remaining parser transformer/API debt, reporting/docgen residue, graphics validation, and headless GUI gaps.
-- `docs/exec-plans/active/17-coverage-phase-2-orphans-and-final-gate.md`
+- `docs/exec-plans/completed/17-coverage-phase-2-orphans-and-final-gate.md`
   Status: active.
   Scope: orphan zero-owner modules, the final cross-suite residual sweep, and repository-default acceptance.
 
 ## Parallel Execution Rules
 
-1. Claim exact files in `.github/coordination/current-work.md` before touching code. Keep claims narrow and update them before widening scope.
+1. Claim exact files in the shared `.git/sattlint-ai-coordination/current_work_lock.json` lock state before touching code. Keep claims narrow and update them before widening scope.
 2. Stay inside the nearest existing owner suite first. Only add a dedicated suite when a quick search confirms there is no stable owner.
 3. The first post-edit validation remains slice-local and uses `--no-cov` unless the slice itself exists only to refresh shared coverage.
 4. Shared checkpoints use repository-default `pytest -q` once a child plan closes a meaningful bucket or the orchestrator needs a refreshed miss list. Drop to `--cov-fail-under=0` only when coverage artifact generation itself is the thing being debugged.
@@ -163,6 +160,8 @@ This orchestrator now routes the remaining work through the final-phase plans in
 The clean checkpoint confirms that the phase-2 parser/GUI/reporting/docgen bucket is no longer a controlling residual cluster. Under the current phase-2 mapping it remains the third-largest bucket at about `422` misses, behind analyzers/semantic/LSP and app/devtools/core but ahead of the orphan long tail.
 
 The reopened docgen seam is now exhausted locally: `src/sattlint/docgenerator/classification.py` and `src/sattlint/docgenerator/docgen.py` are both at `100%` in focused owner-slice coverage, so the remaining plan-16 work has moved back to parser, graphics, reporting, GUI, and adjacent docgen support files.
+
+The orchestrator was retired and archived on 2026-05-04 at user request before the repository reached `100.00%` coverage. It remains only as historical context for the earlier coverage-campaign split and checkpoints.
 
 ## Artifacts and Notes
 

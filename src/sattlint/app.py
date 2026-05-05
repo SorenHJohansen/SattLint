@@ -23,7 +23,7 @@ from . import app_support as app_support_module
 from . import config as _config_module
 from . import console as console_module
 from . import engine as engine_module  # noqa: F401
-from .analyzers.registry import get_default_cli_analyzers
+from .analyzers.registry import get_declared_cli_analyzer_keys, get_default_analyzers, get_default_cli_analyzers
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variables import (
     IssueKind,
@@ -31,6 +31,7 @@ from .analyzers.variables import (
     filter_variable_report,
 )
 from .cache import ASTCache, compute_cache_key, get_cache_dir
+from .core.semantic import load_workspace_snapshot
 from .models.project_graph import ProjectGraph
 
 VARIABLE_ANALYSES = app_analysis_module.VARIABLE_ANALYSES
@@ -156,6 +157,7 @@ def run_cli(argv: list[str]) -> int:
         apply_debug_fn=apply_debug,
         run_validate_config_command_fn=run_validate_config_command,
         run_analyze_command_fn=run_analyze_command,
+        run_simulate_command_fn=run_simulate_command,
         run_docgen_command_fn=run_docgen_command,
         run_format_icf_command_fn=run_format_icf_command,
         exit_success=EXIT_SUCCESS,
@@ -188,6 +190,56 @@ def run_analyze_command(cfg: dict, *, selected_keys: list[str] | None, use_cache
             pause_fn=None,
         ),
         exit_success=EXIT_SUCCESS,
+    )
+
+
+def _simulate_target(
+    cfg: dict,
+    *,
+    target_path: str,
+    module_name: str,
+    mode: str,
+    max_scans: int,
+    use_cache: bool,
+):
+    from .simulation import simulate_snapshot_target
+
+    del cfg, use_cache
+    snapshot = load_workspace_snapshot(
+        Path(target_path),
+        collect_variable_diagnostics=False,
+    )
+    return simulate_snapshot_target(
+        snapshot,
+        module_name=module_name,
+        mode=mode,
+        max_scans=max_scans,
+    )
+
+
+def run_simulate_command(
+    cfg: dict,
+    *,
+    target_path: str,
+    module_name: str,
+    mode: str,
+    max_scans: int,
+    output_format: str,
+    output_path: str | None,
+    use_cache: bool,
+) -> int:
+    return app_cli_commands_module.run_simulate_command(
+        cfg,
+        target_path=target_path,
+        module_name=module_name,
+        mode=mode,
+        max_scans=max_scans,
+        output_format=output_format,
+        output_path=output_path,
+        use_cache=use_cache,
+        simulate_fn=_simulate_target,
+        exit_success=EXIT_SUCCESS,
+        exit_usage_error=EXIT_USAGE_ERROR,
     )
 
 
@@ -727,12 +779,17 @@ def _get_enabled_analyzers():
     return get_default_cli_analyzers()
 
 
+def _get_selectable_analyzers():
+    declared = {key.casefold() for key in get_declared_cli_analyzer_keys()}
+    return [spec for spec in get_default_analyzers() if spec.key.casefold() in declared]
+
+
 def _run_checks(cfg: dict, selected_keys: list[str] | None) -> None:
     app_analysis_module.run_checks(
         cfg,
         selected_keys,
         iter_loaded_projects_fn=_iter_loaded_projects,
-        get_enabled_analyzers_fn=_get_enabled_analyzers,
+        get_enabled_analyzers_fn=_get_selectable_analyzers if selected_keys else _get_enabled_analyzers,
         target_is_library_fn=_target_is_library,
         pause_fn=pause,
     )

@@ -12,17 +12,26 @@ from sattlint.devtools.pipeline_checks import collect_repo_file_inventory, norma
 REPO_ROOT = Path(__file__).resolve().parents[3]
 VALIDATION_MAP_PATH = REPO_ROOT / ".github" / "skills" / "validation-routing" / "references" / "validation-map.md"
 ACTIVE_EXEC_PLANS_DIR = REPO_ROOT / "docs" / "exec-plans" / "active"
+COMPLETED_EXEC_PLANS_DIR = REPO_ROOT / "docs" / "exec-plans" / "completed"
 INSTRUCTIONS_DIR = REPO_ROOT / ".github" / "instructions"
 AGENTS_DIR = REPO_ROOT / ".github" / "agents"
 DEFAULT_OUTPUT_PATH = REPO_ROOT / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
 DEFAULT_SESSION_CONTEXT_OUTPUT_PATH = (
     REPO_ROOT / ".github" / "skills" / "validation-routing" / "references" / "ai-session-context-map.json"
 )
+DEFAULT_CHECK_CATALOG_OUTPUT_PATH = (
+    REPO_ROOT / ".github" / "skills" / "validation-routing" / "references" / "ai-check-catalog.md"
+)
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "generated" / "ai-work-map"
+REFERENCE_UPDATE_SUFFIXES = {".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
+REFERENCE_UPDATE_SKIP_ROOTS = {".git", ".venv", "artifacts", "htmlcov", "__pycache__"}
 
 BACKTICK_RE = re.compile(r"`([^`]+)`")
 VALIDATION_ROUTE_RE = re.compile(r"^- (?P<surface>.+):\s*$")
 QUOTED_ITEM_RE = re.compile(r'"([^"]+)"')
+SECTION_HEADING_RE = re.compile(r"^##\s+")
+PROGRESS_HEADING_RE = re.compile(r"^##\s+Progress\s*$", re.IGNORECASE)
+CHECKBOX_RE = re.compile(r"^\s*-\s+\[(?P<state>[ xX])\]\s+")
 OWNER_SUITE_HEADINGS = (
     "Primary owner suites for this plan:",
     "Existing owner suites that this plan may reuse instead of creating new suites when the fit is real:",
@@ -103,7 +112,7 @@ AGENT_ROUTING_RULES: tuple[dict[str, Any], ...] = (
         "selected_surfaces": ("repo-audit", "pipeline"),
         "owner_surface_keywords": ("recommendations", "structural", "python-tests", "python-style"),
         "path_globs": (
-            ".github/coordination/current-work.md",
+            ".git/sattlint-ai-coordination/current_work_lock.json",
             "docs/exec-plans/**",
             ".github/skills/**",
             ".github/instructions/**",
@@ -212,6 +221,89 @@ def _strip_quotes(value: str) -> str:
     if stripped.startswith(('"', "'")) and stripped.endswith(('"', "'")) and len(stripped) >= 2:
         return stripped[1:-1]
     return stripped
+
+
+def _parse_progress_checkbox_states(plan_path: Path) -> list[bool]:
+    lines = _read_lines(plan_path)
+    in_progress = False
+    states: list[bool] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not in_progress:
+            if PROGRESS_HEADING_RE.match(stripped):
+                in_progress = True
+            continue
+        if SECTION_HEADING_RE.match(stripped):
+            break
+        match = CHECKBOX_RE.match(line)
+        if match is None:
+            continue
+        states.append(match.group("state").casefold() == "x")
+
+    return states
+
+
+def _is_completed_exec_plan(plan_path: Path) -> bool:
+    states = _parse_progress_checkbox_states(plan_path)
+    return bool(states) and all(states)
+
+
+def _iter_reference_update_files(repo_root: Path) -> list[Path]:
+    files: list[Path] = []
+    for path in repo_root.rglob("*"):
+        if not path.is_file() or path.suffix.casefold() not in REFERENCE_UPDATE_SUFFIXES:
+            continue
+        try:
+            relative_path = path.relative_to(repo_root)
+        except ValueError:
+            continue
+        if any(part in REFERENCE_UPDATE_SKIP_ROOTS or part.startswith(".venv") for part in relative_path.parts):
+            continue
+        files.append(path)
+    return files
+
+
+def _rewrite_exec_plan_references(archived: list[dict[str, str]], *, repo_root: Path) -> None:
+    if not archived:
+        return
+    replacements = [(entry["from"], entry["to"]) for entry in archived]
+    for path in _iter_reference_update_files(repo_root):
+        try:
+            original = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        updated = original
+        for old_path, new_path in replacements:
+            updated = updated.replace(old_path, new_path)
+        if updated != original:
+            path.write_text(updated, encoding="utf-8")
+
+
+def archive_completed_exec_plans(
+    active_dir: Path = ACTIVE_EXEC_PLANS_DIR,
+    completed_dir: Path = COMPLETED_EXEC_PLANS_DIR,
+) -> list[dict[str, str]]:
+    archived: list[dict[str, str]] = []
+    repo_root = active_dir.parents[2]
+    completed_dir.mkdir(parents=True, exist_ok=True)
+
+    for plan_path in sorted(active_dir.glob("*.md")):
+        if not _is_completed_exec_plan(plan_path):
+            continue
+        destination = completed_dir / plan_path.name
+        if destination.exists():
+            raise FileExistsError(f"Completed exec plan already exists: {destination}")
+        plan_path.replace(destination)
+        archived.append(
+            {
+                "from": plan_path.relative_to(repo_root).as_posix(),
+                "to": destination.relative_to(repo_root).as_posix(),
+            }
+        )
+
+    _rewrite_exec_plan_references(archived, repo_root=repo_root)
+    return archived
 
 
 def _parse_frontmatter(path: Path) -> dict[str, Any]:
@@ -388,6 +480,24 @@ def _render_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
 
+def _instruction_lookup(work_map: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    lookup: dict[str, dict[str, Any]] = {}
+    for entry in work_map.get("instructions", []):
+        if not isinstance(entry, dict):
+            continue
+        file_path = str(entry.get("file_path", "")).strip()
+        if not file_path:
+            continue
+        lookup[file_path] = entry
+    return lookup
+
+
+def _catalog_registry_path(source: str) -> str:
+    if source == "pipeline":
+        return "src/sattlint/devtools/pipeline_checks.py"
+    return "src/sattlint/devtools/repo_audit_entrypoints.py"
+
+
 def _matched_repo_files(repo_files: list[str], glob_pattern: str) -> list[str]:
     return [path_text for path_text in repo_files if path_matches_globs(path_text, (glob_pattern,))]
 
@@ -399,6 +509,7 @@ def verify_ai_harness_freshness(
     repo_root: Path = REPO_ROOT,
     output_path: Path = DEFAULT_OUTPUT_PATH,
     session_output_path: Path = DEFAULT_SESSION_CONTEXT_OUTPUT_PATH,
+    check_catalog_output_path: Path = DEFAULT_CHECK_CATALOG_OUTPUT_PATH,
 ) -> dict[str, Any]:
     resolved_work_map = build_ai_work_map() if work_map is None else work_map
     resolved_session_context_map = (
@@ -444,6 +555,26 @@ def verify_ai_harness_freshness(
                 "severity": "high",
                 "message": "Checked-in ai-session-context-map.json does not match the generated session routing map.",
                 "path": session_output_path.relative_to(repo_root).as_posix(),
+            }
+        )
+
+    expected_check_catalog = render_ai_check_catalog(resolved_work_map)
+    if not check_catalog_output_path.exists():
+        issues.append(
+            {
+                "issue_id": "missing-generated-ai-check-catalog",
+                "severity": "high",
+                "message": "Checked-in ai-check-catalog.md is missing.",
+                "path": check_catalog_output_path.relative_to(repo_root).as_posix(),
+            }
+        )
+    elif check_catalog_output_path.read_text(encoding="utf-8") != expected_check_catalog:
+        issues.append(
+            {
+                "issue_id": "generated-ai-check-catalog-drift",
+                "severity": "high",
+                "message": "Checked-in ai-check-catalog.md does not match the generated AI check reference.",
+                "path": check_catalog_output_path.relative_to(repo_root).as_posix(),
             }
         )
 
@@ -560,6 +691,69 @@ def verify_ai_harness_freshness(
             }
         )
 
+    instruction_lookup = _instruction_lookup(resolved_work_map)
+    for collection_name in ("pipeline_checks", "repo_audit_checks"):
+        for entry in resolved_work_map.get(collection_name, []):
+            if not isinstance(entry, dict):
+                continue
+            check_id = str(entry.get("id", "")).strip()
+            if not check_id:
+                continue
+            source = str(entry.get("source", "pipeline" if collection_name == "pipeline_checks" else "repo-audit"))
+            registry_path = _catalog_registry_path(source)
+            ai_summary = str(entry.get("ai_summary", "")).strip()
+            if not ai_summary:
+                issues.append(
+                    {
+                        "issue_id": "undocumented-check",
+                        "severity": "high",
+                        "message": "Check metadata is missing ai_summary, so the AI reference layer cannot document it.",
+                        "path": registry_path,
+                        "check_id": check_id,
+                    }
+                )
+
+            ai_instruction_files = [
+                str(path_text).strip() for path_text in entry.get("ai_instruction_files", []) if str(path_text).strip()
+            ]
+            if not ai_instruction_files:
+                issues.append(
+                    {
+                        "issue_id": "unmapped-check",
+                        "severity": "high",
+                        "message": "Check metadata is missing ai_instruction_files, so planning-context cannot surface the right scoped instructions.",
+                        "path": registry_path,
+                        "check_id": check_id,
+                    }
+                )
+                continue
+
+            for instruction_path in ai_instruction_files:
+                if "\\" in instruction_path:
+                    issues.append(
+                        {
+                            "issue_id": "backslash-check-instruction-path",
+                            "severity": "medium",
+                            "message": "Check instruction paths must use '/' separators.",
+                            "path": registry_path,
+                            "check_id": check_id,
+                            "instruction_path": instruction_path,
+                        }
+                    )
+                    continue
+                if instruction_path in instruction_lookup:
+                    continue
+                issues.append(
+                    {
+                        "issue_id": "dangling-check-instruction",
+                        "severity": "high",
+                        "message": "Check metadata references an instruction file that is not present in the instruction registry.",
+                        "path": registry_path,
+                        "check_id": check_id,
+                        "instruction_path": instruction_path,
+                    }
+                )
+
     return {
         "kind": "sattlint.ai_harness_freshness",
         "schema_version": 1,
@@ -584,10 +778,81 @@ def _simplify_check_catalog(catalog: dict[str, Any], *, source: str | None = Non
                 "estimated_cost": entry["estimated_cost"],
                 "path_globs": list(entry["path_globs"]),
                 "owner_test_targets": list(entry["owner_test_targets"]),
+                "ai_summary": str(entry.get("ai_summary", "")),
+                "ai_instruction_files": [
+                    str(item) for item in entry.get("ai_instruction_files", []) if str(item).strip()
+                ],
                 "command": entry["command"],
             }
         )
     return simplified
+
+
+def _all_check_entries(work_map: dict[str, Any]) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    for collection_name in ("pipeline_checks", "repo_audit_checks"):
+        for entry in work_map.get(collection_name, []):
+            if isinstance(entry, dict):
+                checks.append(entry)
+    return checks
+
+
+def _render_check_section(title: str, checks: list[dict[str, Any]]) -> list[str]:
+    lines = [f"## {title}", ""]
+    if not checks:
+        lines.extend(["- none", ""])
+        return lines
+    for entry in checks:
+        check_id = str(entry.get("id", "unknown"))
+        lines.extend(
+            [
+                f"### `{check_id}`",
+                "",
+                f"- Label: {entry.get('label', '')!s}",
+                f"- Owner surface: {entry.get('owner_surface', '')!s}",
+                f"- Estimated cost: {entry.get('estimated_cost', '')!s}",
+                f"- AI summary: {entry.get('ai_summary', '')!s}",
+                "- AI instruction files:",
+            ]
+        )
+        instruction_files = [
+            str(path_text) for path_text in entry.get("ai_instruction_files", []) if str(path_text).strip()
+        ]
+        if not instruction_files:
+            lines.append("  - none")
+        else:
+            for path_text in instruction_files:
+                lines.append(f"  - `{path_text}`")
+        lines.append("- Owner tests:")
+        owner_tests = [str(path_text) for path_text in entry.get("owner_test_targets", []) if str(path_text).strip()]
+        if not owner_tests:
+            lines.append("  - none")
+        else:
+            for path_text in owner_tests:
+                lines.append(f"  - `{path_text}`")
+        lines.extend(
+            [
+                f"- Command: `{entry.get('command', '')!s}`",
+                "",
+            ]
+        )
+    return lines
+
+
+def render_ai_check_catalog(work_map: dict[str, Any] | None = None) -> str:
+    resolved_work_map = build_ai_work_map() if work_map is None else work_map
+    pipeline_checks = [entry for entry in resolved_work_map.get("pipeline_checks", []) if isinstance(entry, dict)]
+    repo_audit_checks = [entry for entry in resolved_work_map.get("repo_audit_checks", []) if isinstance(entry, dict)]
+    lines = [
+        "# AI Check Catalog",
+        "",
+        "Generated from the pipeline and repo-audit check registries.",
+        "Regenerate with `python -m sattlint.devtools.ai_work_map --write`.",
+        "",
+    ]
+    lines.extend(_render_check_section("Pipeline Checks", pipeline_checks))
+    lines.extend(_render_check_section("Repo Audit Checks", repo_audit_checks))
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def build_ai_work_map() -> dict[str, Any]:
@@ -662,6 +927,54 @@ def _collect_relevant_checks(work_map: dict[str, Any], recommended_check_ids: li
     checks = [*work_map.get("pipeline_checks", []), *work_map.get("repo_audit_checks", [])]
     check_lookup = {str(entry["id"]): entry for entry in checks if isinstance(entry, dict) and "id" in entry}
     return [check_lookup[check_id] for check_id in recommended_check_ids if check_id in check_lookup]
+
+
+def _merge_instruction_files_for_planning(
+    work_map: dict[str, Any],
+    changed_files: list[str],
+    relevant_checks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    instruction_lookup = _instruction_lookup(work_map)
+    merged: dict[str, dict[str, Any]] = {}
+    ordered_paths: list[str] = []
+
+    def ensure_entry(file_path: str) -> dict[str, Any]:
+        if file_path not in merged:
+            metadata = instruction_lookup.get(file_path, {})
+            merged[file_path] = {
+                "name": str(metadata.get("name", file_path)),
+                "file_path": file_path,
+                "description": str(metadata.get("description", "")),
+                "matched_files": [],
+                "selection_reasons": [],
+            }
+            ordered_paths.append(file_path)
+        return merged[file_path]
+
+    for entry in _match_instruction_files(work_map, changed_files):
+        file_path = str(entry.get("file_path", "")).strip()
+        if not file_path:
+            continue
+        resolved = ensure_entry(file_path)
+        for matched_file in entry.get("matched_files", []):
+            matched_text = str(matched_file).strip()
+            if matched_text and matched_text not in resolved["matched_files"]:
+                resolved["matched_files"].append(matched_text)
+        if "changed-files" not in resolved["selection_reasons"]:
+            resolved["selection_reasons"].append("changed-files")
+
+    for check in relevant_checks:
+        check_id = str(check.get("id", "")).strip()
+        reason = f"recommended-check:{check_id}" if check_id else "recommended-check"
+        for raw_path in check.get("ai_instruction_files", []):
+            file_path = str(raw_path).strip()
+            if not file_path:
+                continue
+            resolved = ensure_entry(file_path)
+            if reason not in resolved["selection_reasons"]:
+                resolved["selection_reasons"].append(reason)
+
+    return [merged[file_path] for file_path in ordered_paths]
 
 
 def _match_instruction_files(work_map: dict[str, Any], changed_files: list[str]) -> list[dict[str, Any]]:
@@ -822,7 +1135,11 @@ def build_planning_context(
 
     owning_agents = _match_agents(resolved_work_map, normalized_changed_files, owner_surfaces, selected_surface)
     nearest_owner_suites = _match_owner_suites(resolved_work_map, normalized_changed_files, owner_test_targets)
-    instruction_files = _match_instruction_files(resolved_work_map, normalized_changed_files)
+    instruction_files = _merge_instruction_files_for_planning(
+        resolved_work_map,
+        normalized_changed_files,
+        relevant_checks,
+    )
     first_validation_commands: list[str] = []
     for suite in nearest_owner_suites:
         for command in suite.get("first_validation_commands", []):
@@ -838,6 +1155,7 @@ def build_planning_context(
         "owning_agents": owning_agents,
         "owner_surfaces": owner_surfaces,
         "recommended_check_ids": resolved_check_ids,
+        "relevant_checks": relevant_checks,
         "owner_test_targets": owner_test_targets,
         "instruction_files": instruction_files,
         "nearest_owner_suites": nearest_owner_suites,
@@ -855,15 +1173,21 @@ def render_session_context_map() -> str:
     return _render_json(build_session_context_map())
 
 
+def write_ai_check_catalog(output_path: Path = DEFAULT_CHECK_CATALOG_OUTPUT_PATH) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(render_ai_check_catalog(), encoding="utf-8", newline="\n")
+    return output_path
+
+
 def write_ai_work_map(output_path: Path = DEFAULT_OUTPUT_PATH) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(render_ai_work_map(), encoding="utf-8")
+    output_path.write_text(render_ai_work_map(), encoding="utf-8", newline="\n")
     return output_path
 
 
 def write_session_context_map(output_path: Path = DEFAULT_SESSION_CONTEXT_OUTPUT_PATH) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(render_session_context_map(), encoding="utf-8")
+    output_path.write_text(render_session_context_map(), encoding="utf-8", newline="\n")
     return output_path
 
 
@@ -876,23 +1200,38 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_SESSION_CONTEXT_OUTPUT_PATH,
         help="Path for the compact session-start planning JSON file.",
     )
+    parser.add_argument(
+        "--reference-output",
+        type=Path,
+        default=DEFAULT_CHECK_CATALOG_OUTPUT_PATH,
+        help="Path for the generated AI check reference markdown file.",
+    )
     parser.add_argument("--write", action="store_true", help="Write the generated JSON to --output.")
     parser.add_argument("--check", action="store_true", help="Fail when --output does not match the generated JSON.")
     parser.add_argument("--stdout", action="store_true", help="Print the generated JSON to stdout.")
     args = parser.parse_args(argv)
 
+    if args.write:
+        archive_completed_exec_plans()
+
     rendered = render_ai_work_map()
     session_rendered = render_session_context_map()
+    reference_rendered = render_ai_check_catalog()
     if args.check:
         existing = args.output.read_text(encoding="utf-8") if args.output.exists() else None
         session_existing = args.session_output.read_text(encoding="utf-8") if args.session_output.exists() else None
-        if existing != rendered or session_existing != session_rendered:
+        reference_existing = (
+            args.reference_output.read_text(encoding="utf-8") if args.reference_output.exists() else None
+        )
+        if existing != rendered or session_existing != session_rendered or reference_existing != reference_rendered:
             return 1
     if args.write:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(rendered, encoding="utf-8")
+        args.output.write_text(rendered, encoding="utf-8", newline="\n")
         args.session_output.parent.mkdir(parents=True, exist_ok=True)
-        args.session_output.write_text(session_rendered, encoding="utf-8")
+        args.session_output.write_text(session_rendered, encoding="utf-8", newline="\n")
+        args.reference_output.parent.mkdir(parents=True, exist_ok=True)
+        args.reference_output.write_text(reference_rendered, encoding="utf-8", newline="\n")
     if args.stdout or (not args.write and not args.check):
         print(rendered, end="")
     return 0

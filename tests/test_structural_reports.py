@@ -340,6 +340,58 @@ def test_collect_structural_budget_report_flags_file_line_exception_regression(t
     ]
 
 
+def test_collect_structural_budget_report_reads_structural_exception_from_file_debt_ratchet(tmp_path):
+    legacy_source = "\n".join(f"value_{index} = {index}" for index in range(520))
+    _write(tmp_path / "src" / "pkg" / "legacy.py", legacy_source)
+    _write(
+        tmp_path / "artifacts" / "analysis" / "structural_budget_ratchet.json",
+        json.dumps(
+            {
+                "kind": "sattlint.structural_budget_ratchet",
+                "schema_version": 3,
+                "metrics": {},
+                "file_line_exceptions": {},
+            },
+            indent=2,
+        ),
+    )
+    _write(
+        tmp_path / "artifacts" / "analysis" / "file_debt_ratchet.json",
+        json.dumps(
+            {
+                "kind": "sattlint.file_debt_ratchet",
+                "schema_version": 1,
+                "files": {
+                    "src/pkg/legacy.py": {
+                        "structural": {
+                            "allow_rebaseline": False,
+                            "current_baseline": 520,
+                            "target": 500,
+                            "touch_rule": "must_not_grow",
+                            "reason": "Legacy owner module remains centralized pending extraction.",
+                        }
+                    }
+                },
+            },
+            indent=2,
+        ),
+    )
+
+    report = structural_reports.collect_structural_budget_report(tmp_path)
+
+    assert report["source_files_over_budget"] == []
+    assert report["ratchet"]["status"] == "pass"
+    assert report["line_limit_exceptions"] == [
+        {
+            "path": "src/pkg/legacy.py",
+            "line_count": 520,
+            "max_lines": 520,
+            "reason": "Legacy owner module remains centralized pending extraction.",
+            "status": "pass",
+        }
+    ]
+
+
 def test_collect_structural_budget_report_records_scan_failure_for_syntax_error(tmp_path):
     broken = tmp_path / "src" / "pkg" / "broken_syntax.py"
     broken.parent.mkdir(parents=True, exist_ok=True)
