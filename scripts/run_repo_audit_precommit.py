@@ -19,7 +19,7 @@ def _normalize_changed_files(argv: list[str], repo_root: Path) -> list[str]:
     changed_files: list[str] = []
     seen: set[str] = set()
     for raw_path in argv:
-        path_text = raw_path.strip()
+        path_text = raw_path.strip().replace("\\", "/")
         if not path_text:
             continue
         path = Path(path_text)
@@ -30,6 +30,7 @@ def _normalize_changed_files(argv: list[str], repo_root: Path) -> list[str]:
                 normalized = path.name
         else:
             normalized = path.as_posix()
+        normalized = normalized.replace("\\", "/")
         if normalized in seen:
             continue
         seen.add(normalized)
