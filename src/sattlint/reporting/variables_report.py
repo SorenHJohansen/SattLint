@@ -5,6 +5,16 @@ from enum import Enum
 
 from sattline_parser.models.ast_model import Simple_DataType, SourceSpan, Variable
 
+from ._variables_report_rendering import (
+    append_datatype_duplication,
+    append_magic_numbers,
+    append_min_max_mapping_mismatch,
+    append_string_mapping_mismatch,
+    append_unused_datatype_fields,
+    append_unused_variable_issue_list,
+    append_variable_issue_list,
+)
+
 
 def _format_report_header(report_type: str, target: str, status: str | None = None) -> list[str]:
     lines = [f"Report: {report_type}", f"Target: {target}"]
@@ -307,256 +317,75 @@ class VariablesReport:
             return self.implicit_latches
         return []
 
-    @staticmethod
-    def _section_header(title: str, count: int) -> str:
-        return f"  - {title} ({count}):"
-
-    @staticmethod
-    def _format_location(module_path: list[str]) -> str:
-        return ".".join(module_path) if module_path else "?"
-
-    @staticmethod
-    def _variable_datatype_text(variable: Variable) -> str:
-        if isinstance(variable.datatype, Simple_DataType):
-            return variable.datatype.value
-        return str(variable.datatype)
-
-    @classmethod
-    def _format_issue(cls, issue: VariableIssue) -> str:
-        location = cls._format_location(issue.module_path)
-
-        if issue.variable is None and issue.datatype_name is not None:
-            field_name = issue.field_path or "?"
-            return f"{location} :: {issue.datatype_name}.{field_name}"
-
-        if issue.variable is None and issue.literal_value is not None:
-            site = f" [{issue.site}]" if issue.site else ""
-            if issue.literal_span is not None:
-                span_text = f"line {issue.literal_span.line}, col {issue.literal_span.column}"
-            else:
-                span_text = "line ?, col ?"
-            return f"{location}{site} :: {issue.literal_value} ({span_text})"
-
-        if issue.variable is None:
-            return f"{location} :: {issue.role or 'issue'}"
-
-        variable_name = issue.variable.name
-        if issue.field_path:
-            variable_name = f"{variable_name}.{issue.field_path}"
-        variable_text = f"{variable_name} ({cls._variable_datatype_text(issue.variable)})"
-
-        if issue.role in {"localvariable", "moduleparameter"}:
-            detail = f"{issue.role} {variable_text}"
-        elif issue.role:
-            detail = f"{variable_text} | {issue.role}"
-        else:
-            detail = variable_text
-
-        extra_parts: list[str] = []
-        if issue.sequence_name:
-            extra_parts.append(f"sequence={issue.sequence_name}")
-        if issue.reset_variable:
-            extra_parts.append(f"reset={issue.reset_variable}")
-        if extra_parts:
-            detail = f"{detail} | {' | '.join(extra_parts)}"
-
-        return f"{location} :: {detail}"
-
     def _section_counts(self, summary_kinds: tuple[IssueKind, ...]) -> list[str]:
         return [f"  - {SECTION_TITLES[kind]}: {len(self._issues_for_kind(kind))}" for kind in summary_kinds]
 
-    @staticmethod
-    def _append_empty_section(lines: list[str], title: str) -> None:
-        lines.append(VariablesReport._section_header(title, 0))
-        lines.append("      none")
-
-    @classmethod
-    def _append_variable_issue_list(cls, lines: list[str], title: str, issues: list[VariableIssue]) -> None:
-        if not issues:
-            cls._append_empty_section(lines, title)
-            return
-
-        lines.append(cls._section_header(title, len(issues)))
-        for issue in issues:
-            lines.append(f"      * {cls._format_issue(issue)}")
-
-    def _append_unused_datatype_fields(self, lines: list[str]) -> None:
-        title = SECTION_TITLES[IssueKind.UNUSED_DATATYPE_FIELD]
-        if not self.unused_datatype_fields:
-            self._append_empty_section(lines, title)
-            return
-
-        lines.append(self._section_header(title, len(self.unused_datatype_fields)))
-        for issue in self.unused_datatype_fields:
-            location = self._format_location(issue.module_path)
-            datatype_name = issue.datatype_name or "?"
-            field_name = issue.field_path or "?"
-            lines.append(f"      * {location} :: {datatype_name}.{field_name}")
-
     def _append_unknown_parameter_targets(self, lines: list[str]) -> None:
-        self._append_variable_issue_list(
+        append_variable_issue_list(
             lines,
             SECTION_TITLES[IssueKind.UNKNOWN_PARAMETER_TARGET],
             self.unknown_parameter_targets,
         )
 
     def _append_required_parameter_connections(self, lines: list[str]) -> None:
-        self._append_variable_issue_list(
+        append_variable_issue_list(
             lines,
             SECTION_TITLES[IssueKind.REQUIRED_PARAMETER_CONNECTION],
             self.required_parameter_connections,
         )
 
     def _append_procedure_status(self, lines: list[str]) -> None:
-        self._append_variable_issue_list(
+        append_variable_issue_list(
             lines,
             SECTION_TITLES[IssueKind.PROCEDURE_STATUS],
             self.procedure_status,
         )
 
     def _append_contract_mismatches(self, lines: list[str]) -> None:
-        self._append_variable_issue_list(
+        append_variable_issue_list(
             lines,
             SECTION_TITLES[IssueKind.CONTRACT_MISMATCH],
             self.contract_mismatches,
         )
 
     def _append_high_fan_in_out(self, lines: list[str]) -> None:
-        self._append_variable_issue_list(
+        append_variable_issue_list(
             lines,
             SECTION_TITLES[IssueKind.HIGH_FAN_IN_OUT],
             self.high_fan_in_out,
         )
 
-    def _append_string_mapping_mismatch(self, lines: list[str]) -> None:
-        title = SECTION_TITLES[IssueKind.STRING_MAPPING_MISMATCH]
-        if not self.string_mapping_mismatch:
-            self._append_empty_section(lines, title)
-            return
-
-        lines.append(self._section_header(title, len(self.string_mapping_mismatch)))
-        location_w = max(len(".".join(issue.module_path)) for issue in self.string_mapping_mismatch)
-        src_name_w = max(
-            len(issue.source_variable.name) if issue.source_variable else 0 for issue in self.string_mapping_mismatch
-        )
-        src_type_w = max(
-            len(issue.source_variable.datatype_text) if issue.source_variable else 0
-            for issue in self.string_mapping_mismatch
-        )
-        tgt_name_w = max(len(issue.variable.name) if issue.variable else 0 for issue in self.string_mapping_mismatch)
-        tgt_type_w = max(
-            len(issue.variable.datatype_text) if issue.variable else 0 for issue in self.string_mapping_mismatch
-        )
-
-        header = (
-            f"      {'Location':<{location_w}}  "
-            f"{'Source Var':<{src_name_w}}  {'Type':<{src_type_w}}  =>  "
-            f"{'Target Var':<{tgt_name_w}}  {'Type':<{tgt_type_w}}"
-        )
-        lines.append(header)
-        lines.append("      " + "-" * len(header.strip()))
-
-        for issue in self.string_mapping_mismatch:
-            location = ".".join(issue.module_path)
-            src_name = issue.source_variable.name if issue.source_variable else "?"
-            src_type = issue.source_variable.datatype_text if issue.source_variable else "?"
-            tgt_name = issue.variable.name if issue.variable else "?"
-            tgt_type = issue.variable.datatype_text if issue.variable else "?"
-            lines.append(
-                f"      {location:<{location_w}}  "
-                f"{src_name:<{src_name_w}}  {src_type:<{src_type_w}}  =>  "
-                f"{tgt_name:<{tgt_name_w}}  {tgt_type:<{tgt_type_w}}"
-            )
-
-    def _append_datatype_duplication(self, lines: list[str]) -> None:
-        title = SECTION_TITLES[IssueKind.DATATYPE_DUPLICATION]
-        if not self.datatype_duplication:
-            self._append_empty_section(lines, title)
-            return
-
-        lines.append(self._section_header(title, len(self.datatype_duplication)))
-        for issue in sorted(
-            self.datatype_duplication,
-            key=lambda item: (
-                item.variable.datatype_text if item.variable else "?",
-                ".".join(item.module_path),
-                item.variable.name if item.variable else "?",
-            ),
-        ):
-            datatype_name = issue.variable.datatype_text if issue.variable else "?"
-            location = ".".join(issue.module_path)
-            count = issue.duplicate_count or 0
-            lines.append(f"      Datatype '{datatype_name}' declared {count} times in {location}:")
-            lines.append(f"        - {issue.variable.name if issue.variable else '?'} ({issue.role})")
-
-            if issue.duplicate_locations:
-                for dup_path, dup_role, dup_name in issue.duplicate_locations:
-                    dup_location = ".".join(dup_path)
-                    if dup_location == location:
-                        lines.append(f"          + {dup_name} ({dup_role})")
-                    else:
-                        lines.append(f"          + {dup_location}: {dup_name} ({dup_role})")
-
-    def _append_min_max_mapping_mismatch(self, lines: list[str]) -> None:
-        title = SECTION_TITLES[IssueKind.MIN_MAX_MAPPING_MISMATCH]
-        if not self.min_max_mapping_mismatch:
-            self._append_empty_section(lines, title)
-            return
-
-        lines.append(self._section_header(title, len(self.min_max_mapping_mismatch)))
-        location_w = max(len(".".join(issue.module_path)) for issue in self.min_max_mapping_mismatch)
-        src_name_w = max(
-            len(issue.source_variable.name) if issue.source_variable else 0 for issue in self.min_max_mapping_mismatch
-        )
-        tgt_name_w = max(len(issue.variable.name) if issue.variable else 0 for issue in self.min_max_mapping_mismatch)
-
-        header = f"      {'Location':<{location_w}}  {'Source Var':<{src_name_w}}  =>  {'Target Var':<{tgt_name_w}}"
-        lines.append(header)
-        lines.append("      " + "-" * len(header.strip()))
-
-        for issue in self.min_max_mapping_mismatch:
-            location = ".".join(issue.module_path)
-            src_name = issue.source_variable.name if issue.source_variable else "?"
-            tgt_name = issue.variable.name if issue.variable else "?"
-            lines.append(f"      {location:<{location_w}}  {src_name:<{src_name_w}}  =>  {tgt_name:<{tgt_name_w}}")
-
-    def _append_magic_numbers(self, lines: list[str]) -> None:
-        title = SECTION_TITLES[IssueKind.MAGIC_NUMBER]
-        if not self.magic_numbers:
-            self._append_empty_section(lines, title)
-            return
-
-        lines.append(self._section_header(title, len(self.magic_numbers)))
-        for issue in self.magic_numbers:
-            lines.append(f"      * {self._format_issue(issue)}")
-
     def _append_section(self, lines: list[str], kind: IssueKind) -> None:
         if kind is IssueKind.UNUSED:
-            self._append_variable_issue_list(
+            append_unused_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.UNUSED],
                 self.unused,
             )
             return
         if kind is IssueKind.UNUSED_DATATYPE_FIELD:
-            self._append_unused_datatype_fields(lines)
+            append_unused_datatype_fields(
+                lines,
+                SECTION_TITLES[IssueKind.UNUSED_DATATYPE_FIELD],
+                self.unused_datatype_fields,
+            )
             return
         if kind is IssueKind.READ_ONLY_NON_CONST:
-            self._append_variable_issue_list(
+            append_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.READ_ONLY_NON_CONST],
                 self.read_only_non_const,
             )
             return
         if kind is IssueKind.NAMING_ROLE_MISMATCH:
-            self._append_variable_issue_list(
+            append_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.NAMING_ROLE_MISMATCH],
                 self.naming_role_mismatch,
             )
             return
         if kind is IssueKind.UI_ONLY:
-            self._append_variable_issue_list(
+            append_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.UI_ONLY],
                 self.ui_only,
@@ -566,28 +395,28 @@ class VariablesReport:
             self._append_procedure_status(lines)
             return
         if kind is IssueKind.NEVER_READ:
-            self._append_variable_issue_list(
+            append_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.NEVER_READ],
                 self.never_read,
             )
             return
         if kind is IssueKind.WRITE_WITHOUT_EFFECT:
-            self._append_variable_issue_list(
+            append_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.WRITE_WITHOUT_EFFECT],
                 self.write_without_effect,
             )
             return
         if kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION:
-            self._append_variable_issue_list(
+            append_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.GLOBAL_SCOPE_MINIMIZATION],
                 self.global_scope_minimization,
             )
             return
         if kind is IssueKind.HIDDEN_GLOBAL_COUPLING:
-            self._append_variable_issue_list(
+            append_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.HIDDEN_GLOBAL_COUPLING],
                 self.hidden_global_coupling,
@@ -606,47 +435,63 @@ class VariablesReport:
             self._append_contract_mismatches(lines)
             return
         if kind is IssueKind.STRING_MAPPING_MISMATCH:
-            self._append_string_mapping_mismatch(lines)
+            append_string_mapping_mismatch(
+                lines,
+                SECTION_TITLES[IssueKind.STRING_MAPPING_MISMATCH],
+                self.string_mapping_mismatch,
+            )
             return
         if kind is IssueKind.DATATYPE_DUPLICATION:
-            self._append_datatype_duplication(lines)
+            append_datatype_duplication(
+                lines,
+                SECTION_TITLES[IssueKind.DATATYPE_DUPLICATION],
+                self.datatype_duplication,
+            )
             return
         if kind is IssueKind.MIN_MAX_MAPPING_MISMATCH:
-            self._append_min_max_mapping_mismatch(lines)
+            append_min_max_mapping_mismatch(
+                lines,
+                SECTION_TITLES[IssueKind.MIN_MAX_MAPPING_MISMATCH],
+                self.min_max_mapping_mismatch,
+            )
             return
         if kind is IssueKind.MAGIC_NUMBER:
-            self._append_magic_numbers(lines)
+            append_magic_numbers(
+                lines,
+                SECTION_TITLES[IssueKind.MAGIC_NUMBER],
+                self.magic_numbers,
+            )
             return
         if kind is IssueKind.NAME_COLLISION:
-            self._append_variable_issue_list(
+            append_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.NAME_COLLISION],
                 self.name_collisions,
             )
             return
         if kind is IssueKind.LAYOUT_OVERLAP:
-            self._append_variable_issue_list(
+            append_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.LAYOUT_OVERLAP],
                 self.layout_overlaps,
             )
             return
         if kind is IssueKind.SHADOWING:
-            self._append_variable_issue_list(
+            append_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.SHADOWING],
                 self.shadowing,
             )
             return
         if kind is IssueKind.RESET_CONTAMINATION:
-            self._append_variable_issue_list(
+            append_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.RESET_CONTAMINATION],
                 self.reset_contamination,
             )
             return
         if kind is IssueKind.IMPLICIT_LATCH:
-            self._append_variable_issue_list(
+            append_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.IMPLICIT_LATCH],
                 self.implicit_latches,

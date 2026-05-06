@@ -127,13 +127,19 @@ def _match_conflicts(targets: list[Path], claims: list[dict[str, object]], cwd: 
                 matches = target == claimed_path or (is_directory and claimed_path in target.parents)
                 if not matches:
                     continue
+                try:
+                    claim_text = claimed_path.resolve().relative_to(cwd.resolve()).as_posix()
+                except ValueError:
+                    claim_text = claimed_path.as_posix()
+                if is_directory:
+                    claim_text = f"{claim_text}/"
                 conflicts.append(
                     {
                         "target": target_relative,
                         "workstream": str(claim["id"]),
                         "owner": str(claim["owner"]),
                         "status": str(claim["status"]),
-                        "claim": str(pattern["raw"]),
+                        "claim": claim_text,
                     }
                 )
     return conflicts

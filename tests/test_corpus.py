@@ -18,6 +18,60 @@ from .helpers.artifact_assertions import (
 )
 
 
+def _patch_workspace_case_loader(monkeypatch) -> None:
+    class _FakeHeader:
+        name = "Program"
+
+    class _FakeBasePicture:
+        header = _FakeHeader()
+
+    class _FakeLoader:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def resolve(self, target_name, strict=False):
+            assert target_name == "Program"
+            assert strict is False
+            return type(
+                "FakeGraph",
+                (),
+                {
+                    "ast_by_name": {"Program": _FakeBasePicture()},
+                    "warnings": [],
+                    "missing": [],
+                    "unavailable_libraries": set(),
+                },
+            )()
+
+    monkeypatch.setattr("sattlint.devtools.corpus.engine_module.SattLineProjectLoader", _FakeLoader)
+    monkeypatch.setattr(
+        "sattlint.devtools.corpus.engine_module.merge_project_basepicture", lambda root_bp, graph: root_bp
+    )
+    monkeypatch.setattr("sattlint.devtools.corpus.engine_module._is_within_directory", lambda path, directory: True)
+
+
+def _semantic_read_before_write_report(*, explanation: str | None = None, suggestion: str | None = None):
+    return SattLineSemanticsReport(
+        basepicture_name="Program",
+        issues=[
+            SemanticIssue(
+                rule=SemanticRule(
+                    id="semantic.read-before-write",
+                    source="dataflow",
+                    category="variable-lifecycle",
+                    severity="warning",
+                    applies_to="variable",
+                    description="Read before write.",
+                    explanation=explanation,
+                    suggestion=suggestion,
+                ),
+                message="Variable 'PumpStart' is read before it is written.",
+                module_path=["Program", "UnitA"],
+            )
+        ],
+    )
+
+
 def test_load_corpus_manifest_reads_expectations(tmp_path):
     manifest_path = tmp_path / "unused-variable.json"
     manifest_path.write_text(
@@ -339,58 +393,10 @@ def test_execute_corpus_case_workspace_writes_semantic_findings(monkeypatch, tmp
         encoding="utf-8",
     )
 
-    class _FakeHeader:
-        name = "Program"
-
-    class _FakeBasePicture:
-        header = _FakeHeader()
-
-    class _FakeLoader:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def resolve(self, target_name, strict=False):
-            assert target_name == "Program"
-            assert strict is False
-            return type(
-                "FakeGraph",
-                (),
-                {
-                    "ast_by_name": {"Program": _FakeBasePicture()},
-                    "warnings": [],
-                    "missing": [],
-                    "unavailable_libraries": set(),
-                },
-            )()
-
-    monkeypatch.setattr("sattlint.devtools.corpus.engine_module.SattLineProjectLoader", _FakeLoader)
-    monkeypatch.setattr(
-        "sattlint.devtools.corpus.engine_module.merge_project_basepicture",
-        lambda root_bp, graph: root_bp,
-    )
-    monkeypatch.setattr(
-        "sattlint.devtools.corpus.engine_module._is_within_directory",
-        lambda path, directory: True,
-    )
+    _patch_workspace_case_loader(monkeypatch)
     monkeypatch.setattr(
         "sattlint.devtools.corpus.analyze_sattline_semantics",
-        lambda *args, **kwargs: SattLineSemanticsReport(
-            basepicture_name="Program",
-            issues=[
-                SemanticIssue(
-                    rule=SemanticRule(
-                        id="semantic.read-before-write",
-                        source="dataflow",
-                        category="variable-lifecycle",
-                        severity="warning",
-                        applies_to="variable",
-                        description="Read before write.",
-                    ),
-                    message="Variable 'PumpStart' is read before it is written.",
-                    module_path=["Program", "UnitA"],
-                )
-            ],
-        ),
+        lambda *args, **kwargs: _semantic_read_before_write_report(),
     )
 
     result = execute_corpus_case(manifest_path, artifact_dir, repo_root=tmp_path)
@@ -427,59 +433,12 @@ def test_execute_corpus_case_workspace_preserves_guidance_for_semantic_findings(
         encoding="utf-8",
     )
 
-    class _FakeHeader:
-        name = "Program"
-
-    class _FakeBasePicture:
-        header = _FakeHeader()
-
-    class _FakeLoader:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def resolve(self, target_name, strict=False):
-            assert target_name == "Program"
-            assert strict is False
-            return type(
-                "FakeGraph",
-                (),
-                {
-                    "ast_by_name": {"Program": _FakeBasePicture()},
-                    "warnings": [],
-                    "missing": [],
-                    "unavailable_libraries": set(),
-                },
-            )()
-
-    monkeypatch.setattr("sattlint.devtools.corpus.engine_module.SattLineProjectLoader", _FakeLoader)
-    monkeypatch.setattr(
-        "sattlint.devtools.corpus.engine_module.merge_project_basepicture",
-        lambda root_bp, graph: root_bp,
-    )
-    monkeypatch.setattr(
-        "sattlint.devtools.corpus.engine_module._is_within_directory",
-        lambda path, directory: True,
-    )
+    _patch_workspace_case_loader(monkeypatch)
     monkeypatch.setattr(
         "sattlint.devtools.corpus.analyze_sattline_semantics",
-        lambda *args, **kwargs: SattLineSemanticsReport(
-            basepicture_name="Program",
-            issues=[
-                SemanticIssue(
-                    rule=SemanticRule(
-                        id="semantic.read-before-write",
-                        source="dataflow",
-                        category="variable-lifecycle",
-                        severity="warning",
-                        applies_to="variable",
-                        description="Read before write.",
-                        explanation="The read can observe undefined state on some control paths.",
-                        suggestion="Initialize the variable before the first possible read.",
-                    ),
-                    message="Variable 'PumpStart' is read before it is written.",
-                    module_path=["Program", "UnitA"],
-                )
-            ],
+        lambda *args, **kwargs: _semantic_read_before_write_report(
+            explanation="The read can observe undefined state on some control paths.",
+            suggestion="Initialize the variable before the first possible read.",
         ),
     )
 

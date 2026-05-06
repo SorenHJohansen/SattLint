@@ -177,7 +177,7 @@ def test_run_simulate_command_delegates_to_cli_owner(monkeypatch):
         mode="steady-state",
         max_scans=25,
         output_format="json",
-        output_path="artifacts/simulation.json",
+        output_path="simulation.json",
         use_cache=False,
     )
 
@@ -188,7 +188,7 @@ def test_run_simulate_command_delegates_to_cli_owner(monkeypatch):
     assert seen["mode"] == "steady-state"
     assert seen["max_scans"] == 25
     assert seen["output_format"] == "json"
-    assert seen["output_path"] == "artifacts/simulation.json"
+    assert seen["output_path"] == "simulation.json"
     assert seen["use_cache"] is False
     assert callable(seen["simulate_fn"])
     assert seen["exit_success"] == app.EXIT_SUCCESS

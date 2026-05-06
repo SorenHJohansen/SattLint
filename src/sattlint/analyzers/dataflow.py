@@ -70,13 +70,17 @@ class _PendingWrite:
 
 
 class DataflowAnalyzer:
+    _analyzed_target_is_library: bool
+
     def __init__(
         self,
         base_picture: BasePicture,
         unavailable_libraries: set[str] | None = None,
+        analyzed_target_is_library: bool = False,
     ) -> None:
         self.bp = base_picture
         self._unavailable_libraries = unavailable_libraries or set()
+        self._analyzed_target_is_library = analyzed_target_is_library
         self._issues: list[Issue] = []
         self._final_root_state: StateMap = {}
         self._site_stack: list[str] = []
@@ -161,7 +165,10 @@ class DataflowAnalyzer:
         return [
             moduletype
             for moduletype in (self.bp.moduletype_defs or [])
-            if self._is_from_root_origin(getattr(moduletype, "origin_file", None))
+            if self._is_from_root_origin(
+                getattr(moduletype, "origin_file", None),
+                getattr(moduletype, "origin_lib", None),
+            )
         ]
 
     def _build_typedef_seed(
@@ -261,7 +268,10 @@ class DataflowAnalyzer:
         except ValueError:
             return state
 
-        if not self._is_from_root_origin(getattr(moduletype, "origin_file", None)):
+        if not self._is_from_root_origin(
+            getattr(moduletype, "origin_file", None),
+            getattr(moduletype, "origin_lib", None),
+        ):
             return state
 
         typedef_context = self._build_typedef_context(moduletype, instance, parent_context, child_path)
@@ -1664,7 +1674,16 @@ class DataflowAnalyzer:
             return f"SFCFork:{node.target}"
         return type(node).__name__
 
-    def _is_from_root_origin(self, origin_file: str | None) -> bool:
+    def _is_from_root_origin(
+        self,
+        origin_file: str | None,
+        origin_lib: str | None = None,
+    ) -> bool:
+        if self._analyzed_target_is_library:
+            root_origin_lib = getattr(self.bp, "origin_lib", None)
+            if root_origin_lib and origin_lib:
+                return origin_lib.casefold() == root_origin_lib.casefold()
+
         if not origin_file:
             return True
         root_origin = getattr(self.bp, "origin_file", None)
@@ -1705,10 +1724,12 @@ def analyze_dataflow(
     base_picture: BasePicture,
     *,
     unavailable_libraries: set[str] | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> SimpleReport:
     analyzer = DataflowAnalyzer(
         base_picture,
         unavailable_libraries=unavailable_libraries,
+        analyzed_target_is_library=analyzed_target_is_library,
     )
     return SimpleReport(name=base_picture.header.name, issues=analyzer.run())
 
@@ -1717,10 +1738,12 @@ def collect_state_inference(
     base_picture: BasePicture,
     *,
     unavailable_libraries: set[str] | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> tuple[list[Issue], dict[str, Any]]:
     analyzer = DataflowAnalyzer(
         base_picture,
         unavailable_libraries=unavailable_libraries,
+        analyzed_target_is_library=analyzed_target_is_library,
     )
     analyzer.run()
 

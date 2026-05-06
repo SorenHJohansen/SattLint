@@ -169,7 +169,10 @@ def _walk_moduletype_instance_subtree(
     if external and not self._analyzed_target_is_library:
         return
 
-    if moduletype is not None and not self._is_from_root_origin(getattr(moduletype, "origin_file", None)):
+    if moduletype is not None and not self._is_from_root_origin(
+        getattr(moduletype, "origin_file", None),
+        getattr(moduletype, "origin_lib", None),
+    ):
         if not self._analyzed_target_is_library and not self._include_dependency_moduletype_usage:
             self._check_param_mappings_for_type_instance(
                 child,
@@ -332,7 +335,10 @@ def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
         _collect_from_module(module, bp_path)
 
     for moduletype in self.bp.moduletype_defs or []:
-        if not self._is_from_root_origin(getattr(moduletype, "origin_file", None)):
+        if not self._is_from_root_origin(
+            getattr(moduletype, "origin_file", None),
+            getattr(moduletype, "origin_lib", None),
+        ):
             continue
         td_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
         for variable in moduletype.moduleparameters or []:

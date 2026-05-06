@@ -41,6 +41,9 @@ FILE_DEBT_TOUCH_RULE_RANKS = {
     "structural": {"must_meet_target": 0, "must_shrink": 1, "must_not_grow": 2},
     "typing": {"must_exit_on_touch": 0},
 }
+FIRST_STRUCTURAL_DEBT_PROOF_COMMAND = (
+    '& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_ratchet_policy.py -x -q --tb=short'
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -441,6 +444,19 @@ def _effective_structural_touch_rule(entry: Mapping[str, Any], *, baseline_lines
     return touch_rule
 
 
+def _structural_debt_guidance(*, rel_path: str, effective_touch_rule: str, reason: str) -> str:
+    enforcement = (
+        "shrink-only touch enforcement" if effective_touch_rule == "must_shrink" else "target-meeting touch enforcement"
+    )
+    guidance = (
+        f" {rel_path} is under {enforcement}; reduce the file in the same change before merge. "
+        f"First proof: {FIRST_STRUCTURAL_DEBT_PROOF_COMMAND}."
+    )
+    if reason.strip():
+        guidance += f" Reason: {reason.strip()}"
+    return guidance
+
+
 def _normalized_file_debt_dimension(
     raw: Any,
     *,
@@ -789,11 +805,21 @@ def _file_debt_runtime_errors(
                 errors.append(
                     f"Touched structural debt file did not shrink: {rel_path} remains {current_lines} lines "
                     f"against baseline {baseline_lines}."
+                    + _structural_debt_guidance(
+                        rel_path=rel_path,
+                        effective_touch_rule=touch_rule,
+                        reason=str(structural_entry.get("reason", "")),
+                    )
                 )
             elif touch_rule == "must_meet_target" and current_lines > structural_entry["target"]:
                 errors.append(
                     f"Touched structural debt file must meet target: {rel_path} is {current_lines} lines "
                     f"but target is {structural_entry['target']}."
+                    + _structural_debt_guidance(
+                        rel_path=rel_path,
+                        effective_touch_rule=touch_rule,
+                        reason=str(structural_entry.get("reason", "")),
+                    )
                 )
 
         coverage_entry = dimensions.get("coverage")

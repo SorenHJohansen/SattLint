@@ -1,0 +1,37 @@
+{
+  "task_id": "ratchet-lane-b-repo-audit-devtools",
+  "stage": "executor",
+  "branch": "ai/task-ratchet-lane-b-repo-audit-devtools",
+  "commit": "85e13bb",
+  "files_changed": [
+    "src/sattlint/devtools/ai_work_map.py",
+    "src/sattlint/devtools/coverage_reports.py",
+    "src/sattlint/devtools/pipeline.py",
+    "src/sattlint/devtools/repo_audit.py",
+    "src/sattlint/devtools/repo_audit_entrypoints.py",
+    "src/sattlint/devtools/structural_reports.py",
+    "src/sattlint/devtools/_ai_work_map_freshness.py",
+    "src/sattlint/devtools/_pipeline_cli.py",
+    "src/sattlint/devtools/_repo_audit_check_specs.py",
+    "src/sattlint/devtools/_repo_audit_entrypoint_runs.py",
+    "src/sattlint/devtools/_repo_audit_full_run.py",
+    "src/sattlint/devtools/_repo_audit_reporting.py",
+    "src/sattlint/devtools/_structural_report_impact.py"
+  ],
+  "summary": "Scoped executor handoff stub for Ratchet Lane B Repo Audit Devtools Extract.",
+  "known_risks": [],
+  "required_tests": [
+    "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_ai_work_map.py tests/test_ai_work_map_harness.py tests/test_corpus.py tests/test_pipeline_collection.py tests/test_pipeline_collection_graphs.py tests/test_pipeline_run.py tests/test_pipeline_run_recommendations.py tests/test_repo_audit.py tests/test_repo_audit_doc_gardener.py tests/test_repo_audit_entrypoints_helpers.py tests/test_repo_audit_entrypoints_verify.py tests/test_recommendation_routing.py tests/test_structural_reports.py tests/test_structural_reports_graphs.py -x -q --tb=short"
+  ],
+  "validation_status": {
+    "state": "pending",
+    "commands": [
+      "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_ai_work_map.py tests/test_ai_work_map_harness.py tests/test_corpus.py tests/test_pipeline_collection.py tests/test_pipeline_collection_graphs.py tests/test_pipeline_run.py tests/test_pipeline_run_recommendations.py tests/test_repo_audit.py tests/test_repo_audit_doc_gardener.py tests/test_repo_audit_entrypoints_helpers.py tests/test_repo_audit_entrypoints_verify.py tests/test_recommendation_routing.py tests/test_structural_reports.py tests/test_structural_reports_graphs.py -x -q --tb=short"
+    ],
+    "notes": [
+      "Replace placeholder scope, files_changed, and validation commands before handing off to Test Agent or Reviewer Agent."
+    ]
+  },
+  "reviewer_notes": [],
+  "status": "draft"
+}

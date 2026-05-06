@@ -410,7 +410,16 @@ def _lookup_global_variable(self: VariablesAnalyzer, base_name: str | None) -> V
     return variables[0] if variables else None
 
 
-def _is_from_root_origin(self: VariablesAnalyzer, origin_file: str | None) -> bool:
+def _is_from_root_origin(
+    self: VariablesAnalyzer,
+    origin_file: str | None,
+    origin_lib: str | None = None,
+) -> bool:
+    if self._analyzed_target_is_library:
+        root_origin_lib = getattr(self.bp, "origin_lib", None)
+        if root_origin_lib and origin_lib:
+            return origin_lib.casefold() == root_origin_lib.casefold()
+
     if not origin_file:
         return True
     root_origin = getattr(self.bp, "origin_file", None)

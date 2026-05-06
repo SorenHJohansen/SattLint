@@ -6,6 +6,7 @@ high fan-in/out, and variables report summary.
 """
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -2041,10 +2042,39 @@ def test_variable_issue_str_formats_datatype_literal_and_role_only_variants():
         variable=None,
         role="missing target",
     )
+    variable_issue = VariableIssue(
+        kind=IssueKind.IMPLICIT_LATCH,
+        module_path=["BasePicture", "Step"],
+        variable=Variable(name="Flag", datatype=Simple_DataType.BOOLEAN),
+        role="localvariable",
+        field_path="State",
+        sequence_name="SeqA",
+        reset_variable="ResetCmd",
+    )
+    empty_issue = VariableIssue(
+        kind=IssueKind.UNUSED,
+        module_path=["BasePicture"],
+        variable=None,
+    )
 
     assert str(datatype_issue) == "[BasePicture.UnitA] datatype 'Payload'.Value"
     assert str(literal_issue) == "[BasePicture.UnitA] magic number 42"
     assert str(role_issue) == "[BasePicture.Child] missing target"
+    assert "'Flag'.State (boolean)" in str(variable_issue)
+    assert "seq='SeqA'" in str(variable_issue)
+    assert "reset='ResetCmd'" in str(variable_issue)
+    assert str(empty_issue) == "[BasePicture]"
+
+
+def test_variables_report_coerces_visible_kinds_and_handles_unknown_selector_kind():
+    report = VariablesReport(
+        basepicture_name="BasePicture",
+        issues=[],
+        visible_kinds=frozenset([IssueKind.UNUSED]),
+    )
+
+    assert isinstance(report.visible_kinds, frozenset)
+    assert report._issues_for_kind(cast(Any, object())) == []
 
 
 def test_variables_report_summary_formats_string_mapping_and_minmax_tables():

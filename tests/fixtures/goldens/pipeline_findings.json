@@ -1,205 +1,205 @@
 {
-    "finding_count": 6,
-    "findings": [
-        {
-            "analyzer": "ruff",
-            "artifact": "findings",
-            "category": "style",
-            "confidence": "high",
-            "data": {
-                "code": "F401",
-                "fix": null,
-                "url": null
-            },
-            "detail": null,
-            "fingerprint": "ruff.f401|src/sample.py|4||Imported but unused",
-            "id": "ruff-f401",
-            "location": {
-                "column": 8,
-                "line": 4,
-                "module_path": [],
-                "path": "src/sample.py",
-                "symbol": null
-            },
-            "file": "src/sample.py",
-            "line": 4,
-            "message": "Imported but unused",
-            "minimal_reproducer": "ruff check src/sample.py",
-            "owner_surface": "python-style",
-            "rule_id": "ruff.f401",
-            "severity": "high",
-            "source": "ruff",
-            "suggested_next_command": "ruff check src/sample.py",
-            "suggestion": null
+  "finding_count": 6,
+  "findings": [
+    {
+      "analyzer": "ruff",
+      "artifact": "findings",
+      "category": "style",
+      "confidence": "high",
+      "data": {
+        "code": "F401",
+        "fix": null,
+        "url": null
+      },
+      "detail": null,
+      "fingerprint": "ruff.f401|src/sample.py|4||Imported but unused",
+      "id": "ruff-f401",
+      "location": {
+        "column": 8,
+        "line": 4,
+        "module_path": [],
+        "path": "src/sample.py",
+        "symbol": null
+      },
+      "file": "src/sample.py",
+      "line": 4,
+      "message": "Imported but unused",
+      "minimal_reproducer": "ruff check src/sample.py",
+      "owner_surface": "python-style",
+      "rule_id": "ruff.f401",
+      "severity": "high",
+      "source": "ruff",
+      "suggested_next_command": "ruff check src/sample.py",
+      "suggestion": null
+    },
+    {
+      "analyzer": "pyright",
+      "artifact": "findings",
+      "category": "typing",
+      "confidence": "high",
+      "data": {
+        "code": "assignment",
+        "rule": "",
+        "severity": "error"
+      },
+      "detail": null,
+      "fingerprint": "pyright.assignment|src/typed.py|9||Incompatible types in assignment",
+      "id": "pyright-error-assignment",
+      "location": {
+        "column": 3,
+        "line": 9,
+        "module_path": [],
+        "path": "src/typed.py",
+        "symbol": null
+      },
+      "file": "src/typed.py",
+      "line": 9,
+      "message": "Incompatible types in assignment",
+      "minimal_reproducer": "pyright src/typed.py",
+      "owner_surface": "python-types",
+      "rule_id": "pyright.assignment",
+      "severity": "high",
+      "source": "pyright",
+      "suggested_next_command": "pyright src/typed.py",
+      "suggestion": null
+    },
+    {
+      "analyzer": "pytest",
+      "artifact": "findings",
+      "category": "correctness",
+      "confidence": "high",
+      "data": {
+        "nodeid": "tests/test_sample.py::test_failure",
+        "outcome": "failed",
+        "summary": {
+          "errors": 0,
+          "failures": 1,
+          "skipped": 0,
+          "tests": 2
         },
-        {
-            "analyzer": "pyright",
-            "artifact": "findings",
-            "category": "typing",
-            "confidence": "high",
-            "data": {
-                "code": "assignment",
-                "rule": "",
-                "severity": "error"
-            },
-            "detail": null,
-            "fingerprint": "pyright.assignment|src/typed.py|9||Incompatible types in assignment",
-            "id": "pyright-error-assignment",
-            "location": {
-                "column": 3,
-                "line": 9,
-                "module_path": [],
-                "path": "src/typed.py",
-                "symbol": null
-            },
-            "file": "src/typed.py",
-            "line": 9,
-            "message": "Incompatible types in assignment",
-            "minimal_reproducer": "pyright src/typed.py",
-            "owner_surface": "python-types",
-            "rule_id": "pyright.assignment",
-            "severity": "high",
-            "source": "pyright",
-            "suggested_next_command": "pyright src/typed.py",
-            "suggestion": null
-        },
-        {
-            "analyzer": "pytest",
-            "artifact": "findings",
-            "category": "correctness",
-            "confidence": "high",
-            "data": {
-                "nodeid": "tests/test_sample.py::test_failure",
-                "outcome": "failed",
-                "summary": {
-                    "errors": 0,
-                    "failures": 1,
-                    "skipped": 0,
-                    "tests": 2
-                },
-                "testcase": {
-                    "classname": "tests.test_sample",
-                    "detail": "tests/test_sample.py:23: AssertionError",
-                    "name": "test_failure",
-                    "nodeid": "tests/test_sample.py::test_failure",
-                    "outcome": "failed"
-                }
-            },
-            "detail": "tests/test_sample.py:23: AssertionError",
-            "fingerprint": "pytest.failures|tests/test_sample.py|23|tests/test_sample.py::test_failure|Pytest failed in test_failure.",
-            "id": "pytest-failed-1",
-            "location": {
-                "column": null,
-                "line": 23,
-                "module_path": [],
-                "path": "tests/test_sample.py",
-                "symbol": "tests/test_sample.py::test_failure"
-            },
-            "file": "tests/test_sample.py",
-            "line": 23,
-            "message": "Pytest failed in test_failure.",
-            "minimal_reproducer": "python -m pytest tests/test_sample.py::test_failure -x -q --tb=short",
-            "owner_surface": "python-tests",
-            "rule_id": "pytest.failures",
-            "severity": "high",
-            "source": "pytest",
-            "suggested_next_command": "python -m pytest tests/test_sample.py::test_failure -x -q --tb=short",
-            "suggestion": null
-        },
-        {
-            "analyzer": "vulture",
-            "artifact": "findings",
-            "category": "dead-code",
-            "confidence": "high",
-            "data": {
-                "confidence_percent": 95,
-                "dead_code_kind": "function",
-                "symbol": "helper"
-            },
-            "detail": null,
-            "fingerprint": "vulture.dead-code|src/dead.py|7||unused function 'helper'",
-            "id": "vulture-dead-code",
-            "location": {
-                "column": null,
-                "line": 7,
-                "module_path": [],
-                "path": "src/dead.py",
-                "symbol": null
-            },
-            "file": "src/dead.py",
-            "line": 7,
-            "message": "unused function 'helper'",
-            "minimal_reproducer": null,
-            "owner_surface": "dead-code",
-            "rule_id": "vulture.dead-code",
-            "severity": "high",
-            "source": "vulture",
-            "suggested_next_command": null,
-            "suggestion": null
-        },
-        {
-            "analyzer": "bandit",
-            "artifact": "findings",
-            "category": "security",
-            "confidence": "high",
-            "data": {
-                "issue_cwe": null,
-                "test_id": "B101",
-                "test_name": null
-            },
-            "detail": null,
-            "fingerprint": "bandit.b101|src/security.py|12||Use of assert detected.",
-            "id": "bandit-b101",
-            "location": {
-                "column": null,
-                "line": 12,
-                "module_path": [],
-                "path": "src/security.py",
-                "symbol": null
-            },
-            "file": "src/security.py",
-            "line": 12,
-            "message": "Use of assert detected.",
-            "minimal_reproducer": null,
-            "owner_surface": "security",
-            "rule_id": "bandit.b101",
-            "severity": "low",
-            "source": "bandit",
-            "suggested_next_command": null,
-            "suggestion": null
-        },
-        {
-            "analyzer": "architecture",
-            "artifact": "findings",
-            "category": "architecture",
-            "confidence": "high",
-            "data": {
-                "missing_analyzers": [
-                    "naming-consistency"
-                ]
-            },
-            "detail": null,
-            "fingerprint": "analyzer-exposure-gap||||Some analyzers are not exposed.",
-            "id": "analyzer-exposure-gap",
-            "location": {
-                "column": null,
-                "line": null,
-                "module_path": [],
-                "path": null,
-                "symbol": null
-            },
-            "file": null,
-            "line": null,
-            "message": "Some analyzers are not exposed.",
-            "minimal_reproducer": null,
-            "owner_surface": "architecture",
-            "rule_id": "analyzer-exposure-gap",
-            "severity": "medium",
-            "source": "pipeline",
-            "suggested_next_command": null,
-            "suggestion": null
+        "testcase": {
+          "classname": "tests.test_sample",
+          "detail": "tests/test_sample.py:23: AssertionError",
+          "name": "test_failure",
+          "nodeid": "tests/test_sample.py::test_failure",
+          "outcome": "failed"
         }
-    ],
-    "kind": "sattlint.findings",
-    "schema_version": 1
+      },
+      "detail": "tests/test_sample.py:23: AssertionError",
+      "fingerprint": "pytest.failures|tests/test_sample.py|23|tests/test_sample.py::test_failure|Pytest failed in test_failure.",
+      "id": "pytest-failed-1",
+      "location": {
+        "column": null,
+        "line": 23,
+        "module_path": [],
+        "path": "tests/test_sample.py",
+        "symbol": "tests/test_sample.py::test_failure"
+      },
+      "file": "tests/test_sample.py",
+      "line": 23,
+      "message": "Pytest failed in test_failure.",
+      "minimal_reproducer": "python -m pytest tests/test_sample.py::test_failure -x -q --tb=short",
+      "owner_surface": "python-tests",
+      "rule_id": "pytest.failures",
+      "severity": "high",
+      "source": "pytest",
+      "suggested_next_command": "python -m pytest tests/test_sample.py::test_failure -x -q --tb=short",
+      "suggestion": null
+    },
+    {
+      "analyzer": "vulture",
+      "artifact": "findings",
+      "category": "dead-code",
+      "confidence": "high",
+      "data": {
+        "confidence_percent": 95,
+        "dead_code_kind": "function",
+        "symbol": "helper"
+      },
+      "detail": null,
+      "fingerprint": "vulture.dead-code|src/dead.py|7||unused function 'helper'",
+      "id": "vulture-dead-code",
+      "location": {
+        "column": null,
+        "line": 7,
+        "module_path": [],
+        "path": "src/dead.py",
+        "symbol": null
+      },
+      "file": "src/dead.py",
+      "line": 7,
+      "message": "unused function 'helper'",
+      "minimal_reproducer": null,
+      "owner_surface": "dead-code",
+      "rule_id": "vulture.dead-code",
+      "severity": "high",
+      "source": "vulture",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "bandit",
+      "artifact": "findings",
+      "category": "security",
+      "confidence": "high",
+      "data": {
+        "issue_cwe": null,
+        "test_id": "B101",
+        "test_name": null
+      },
+      "detail": null,
+      "fingerprint": "bandit.b101|src/security.py|12||Use of assert detected.",
+      "id": "bandit-b101",
+      "location": {
+        "column": null,
+        "line": 12,
+        "module_path": [],
+        "path": "src/security.py",
+        "symbol": null
+      },
+      "file": "src/security.py",
+      "line": 12,
+      "message": "Use of assert detected.",
+      "minimal_reproducer": null,
+      "owner_surface": "security",
+      "rule_id": "bandit.b101",
+      "severity": "low",
+      "source": "bandit",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "architecture",
+      "artifact": "findings",
+      "category": "architecture",
+      "confidence": "high",
+      "data": {
+        "missing_analyzers": [
+          "naming-consistency"
+        ]
+      },
+      "detail": null,
+      "fingerprint": "analyzer-exposure-gap||||Some analyzers are not exposed.",
+      "id": "analyzer-exposure-gap",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [],
+        "path": null,
+        "symbol": null
+      },
+      "file": null,
+      "line": null,
+      "message": "Some analyzers are not exposed.",
+      "minimal_reproducer": null,
+      "owner_surface": "architecture",
+      "rule_id": "analyzer-exposure-gap",
+      "severity": "medium",
+      "source": "pipeline",
+      "suggested_next_command": null,
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
 }

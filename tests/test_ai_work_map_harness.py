@@ -1,0 +1,11 @@
+from __future__ import annotations
+
+from tests import test_ai_work_map as ai_work_map_tests
+
+
+def test_verify_ai_harness_freshness_reports_generated_map_and_metadata_drift(tmp_path):
+    ai_work_map_tests.test_verify_ai_harness_freshness_reports_generated_map_and_metadata_drift(tmp_path)
+
+
+def test_verify_ai_harness_freshness_passes_for_live_metadata(tmp_path):
+    ai_work_map_tests.test_verify_ai_harness_freshness_passes_for_live_metadata(tmp_path)

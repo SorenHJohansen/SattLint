@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
+import shutil
+import subprocess  # nosec B404
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import cache
 from pathlib import Path
 from typing import Any, TypedDict
@@ -20,8 +21,14 @@ SHARED_COORDINATION_DIR_NAME = "sattlint-ai-coordination"
 LOCKFILE_NAME = f"{LOCK_STATE_FILE_NAME}.write.lock"
 LOCK_ACQUIRE_TIMEOUT_SECONDS = 5.0
 LOCK_ACQUIRE_POLL_INTERVAL_SECONDS = 0.05
+FILE_DEBT_RATCHET_PATH = "artifacts/analysis/file_debt_ratchet.json"
 ACTIVE_STATUSES = frozenset({"planned", "active", "blocked", "ready-for-merge"})
 VALID_STATUSES = ACTIVE_STATUSES | frozenset({"done"})
+TASK_CONTRACTS_DIR = Path(".ai/tasks")
+HANDOFFS_DIR = Path(".ai/handoffs")
+DEPRECATED_LOCK_CLAIM_PATH = f".github/coordination/{LOCK_STATE_FILE_NAME}"
+SUPPORTED_STAGE_BRANCH_PREFIXES = ("ai/task-", "test/task-", "review/task-")
+STALE_ENTRY_GRACE_PERIOD = timedelta(hours=12)
 WORKSTREAM_RE = re.compile(r"^### Workstream\s+(?P<id>.+?)\s*$")
 FIELD_RE = re.compile(r"^-\s+(?P<field>[A-Za-z][A-Za-z\-/ ]+):\s*(?P<value>.*)$")
 BACKTICK_ITEM_RE = re.compile(r"`([^`]+)`")
@@ -37,9 +44,18 @@ class LockStateEntry(TypedDict):
 
 
 class ClaimPattern(TypedDict):
-    raw: str
     path: Path
     is_directory: bool
+
+
+class ClaimedFileDebtEntry(TypedDict):
+    path: str
+    dimensions: list[str]
+    touch_rules: dict[str, str]
+    structural_current_baseline: int | None
+    structural_target: int | None
+    structural_touch_rule: str | None
+    reasons: list[str]
 
 
 def utc_now_timestamp() -> str:
@@ -53,13 +69,17 @@ def coordination_dir(repo_root: Path) -> Path:
 @cache
 def git_common_dir(repo_root: Path) -> Path:
     resolved_repo_root = repo_root.resolve()
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        return (resolved_repo_root / ".git").resolve()
+    # Fixed local git metadata query without shell expansion.
     completed = subprocess.run(
-        ["git", "rev-parse", "--git-common-dir"],
+        [git_executable, "rev-parse", "--git-common-dir"],
         cwd=resolved_repo_root,
         check=False,
         capture_output=True,
         text=True,
-    )
+    )  # nosec B603
     if completed.returncode != 0:
         return (resolved_repo_root / ".git").resolve()
 
@@ -99,6 +119,105 @@ def display_path(path: Path, repo_root: Path) -> str:
         return path.resolve().relative_to(repo_root.resolve()).as_posix()
     except ValueError:
         return path.resolve().as_posix()
+
+
+def _parse_attached_worktree_branches(output: str) -> set[str]:
+    branches: set[str] = set()
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if line.startswith("branch refs/heads/"):
+            branches.add(line.removeprefix("branch refs/heads/").strip())
+    return branches
+
+
+def _attached_worktree_branches(repo_root: Path) -> set[str]:
+    resolved_repo_root = repo_root.resolve()
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        return set()
+
+    completed = subprocess.run(
+        [git_executable, "worktree", "list", "--porcelain"],
+        cwd=resolved_repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )  # nosec B603
+    if completed.returncode != 0:
+        return set()
+    return _parse_attached_worktree_branches(completed.stdout)
+
+
+def _task_contract_path_for_workstream(repo_root: Path, workstream_id: str) -> Path:
+    return repo_root / TASK_CONTRACTS_DIR / f"{workstream_id}.json"
+
+
+def _handoff_path_for_workstream(repo_root: Path, workstream_id: str) -> Path:
+    return repo_root / HANDOFFS_DIR / f"{workstream_id}.json"
+
+
+def _expected_workstream_branches(workstream_id: str) -> set[str]:
+    return {workstream_id, *(f"{prefix}{workstream_id}" for prefix in SUPPORTED_STAGE_BRANCH_PREFIXES)}
+
+
+def _parse_updated_at_timestamp(raw_timestamp: str) -> datetime | None:
+    normalized = raw_timestamp.strip()
+    if not normalized:
+        return None
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _entry_has_supporting_artifact(repo_root: Path, workstream_id: str) -> bool:
+    return (
+        _task_contract_path_for_workstream(repo_root, workstream_id).exists()
+        or _handoff_path_for_workstream(repo_root, workstream_id).exists()
+    )
+
+
+def _entry_is_stale(
+    entry: LockStateEntry,
+    *,
+    repo_root: Path,
+    attached_worktree_branches: set[str],
+    now: datetime,
+) -> bool:
+    if _entry_has_supporting_artifact(repo_root, entry["workstream_id"]):
+        return False
+    if _expected_workstream_branches(entry["workstream_id"]) & attached_worktree_branches:
+        return False
+    if DEPRECATED_LOCK_CLAIM_PATH in entry["claimed_paths"]:
+        return True
+
+    updated_at = _parse_updated_at_timestamp(entry["updated_at"])
+    if updated_at is None:
+        return True
+    return now - updated_at > STALE_ENTRY_GRACE_PERIOD
+
+
+def _prune_stale_entries(repo_root: Path, entries: list[LockStateEntry]) -> tuple[list[LockStateEntry], int]:
+    attached_worktree_branches = _attached_worktree_branches(repo_root)
+    now = datetime.now(UTC)
+    kept_entries: list[LockStateEntry] = []
+    dropped_entries = 0
+    for entry in entries:
+        if entry["status"] in ACTIVE_STATUSES and _entry_is_stale(
+            entry,
+            repo_root=repo_root,
+            attached_worktree_branches=attached_worktree_branches,
+            now=now,
+        ):
+            dropped_entries += 1
+            continue
+        kept_entries.append(entry)
+    return kept_entries, dropped_entries
 
 
 def _write_text_atomically(path: Path, text: str) -> None:
@@ -186,12 +305,125 @@ def resolve_claim_patterns(claimed_paths: list[str] | tuple[str, ...], cwd: Path
             continue
         patterns.append(
             {
-                "raw": normalized,
                 "path": resolve_workspace_path(normalized, cwd),
                 "is_directory": normalized.endswith("/"),
             }
         )
     return patterns
+
+
+def load_file_debt_state(repo_root: Path) -> dict[str, dict[str, dict[str, Any]]]:
+    ratchet_path = repo_root / FILE_DEBT_RATCHET_PATH
+    if not ratchet_path.exists():
+        return {}
+
+    payload = json.loads(ratchet_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        return {}
+    raw_files = payload.get("files", {})
+    if not isinstance(raw_files, dict):
+        return {}
+
+    normalized: dict[str, dict[str, dict[str, Any]]] = {}
+    for raw_path, raw_dimensions in raw_files.items():
+        if not isinstance(raw_dimensions, Mapping):
+            continue
+        rel_path = normalize_relative_path(str(raw_path))
+        if not rel_path:
+            continue
+        dimensions: dict[str, dict[str, Any]] = {}
+        for dimension in ("structural", "typing", "coverage"):
+            raw_dimension = raw_dimensions.get(dimension)
+            if isinstance(raw_dimension, Mapping):
+                dimensions[dimension] = dict(raw_dimension)
+        if dimensions:
+            normalized[rel_path] = dimensions
+    return normalized
+
+
+def _claim_matches_path(claim: str, rel_path: str) -> bool:
+    if claim.endswith("/"):
+        return rel_path.startswith(claim)
+    return rel_path == claim
+
+
+def _effective_structural_touch_rule(structural: Mapping[str, Any]) -> str | None:
+    raw_touch_rule = structural.get("touch_rule")
+    if raw_touch_rule is None:
+        return None
+    touch_rule = str(raw_touch_rule)
+    try:
+        baseline = int(structural["current_baseline"])
+        target = int(structural["target"])
+    except (KeyError, TypeError, ValueError):
+        return touch_rule
+    if baseline > target and touch_rule == "must_not_grow":
+        return "must_shrink"
+    if baseline <= target:
+        return "must_meet_target"
+    return touch_rule
+
+
+def claimed_file_debt_entries(
+    repo_root: Path,
+    claimed_paths: list[str] | tuple[str, ...],
+) -> list[ClaimedFileDebtEntry]:
+    normalized_claims = unique_claim_paths(claimed_paths, repo_root=repo_root)
+    if not normalized_claims:
+        return []
+
+    matches: list[ClaimedFileDebtEntry] = []
+    for rel_path, dimensions in sorted(load_file_debt_state(repo_root).items()):
+        if not any(_claim_matches_path(claim, rel_path) for claim in normalized_claims):
+            continue
+        structural = dimensions.get("structural")
+        touch_rules: dict[str, str] = {}
+        for dimension, raw_dimension in sorted(dimensions.items()):
+            if raw_dimension.get("touch_rule") is None:
+                continue
+            if dimension == "structural":
+                touch_rule = _effective_structural_touch_rule(raw_dimension)
+            else:
+                touch_rule = str(raw_dimension.get("touch_rule"))
+            if touch_rule is None:
+                continue
+            touch_rules[dimension] = touch_rule
+        reasons = [
+            str(reason).strip()
+            for reason in (dimension.get("reason") for dimension in dimensions.values())
+            if str(reason).strip()
+        ]
+        matches.append(
+            {
+                "path": rel_path,
+                "dimensions": sorted(dimensions),
+                "touch_rules": touch_rules,
+                "structural_current_baseline": (
+                    int(structural["current_baseline"]) if structural and "current_baseline" in structural else None
+                ),
+                "structural_target": int(structural["target"]) if structural and "target" in structural else None,
+                "structural_touch_rule": (
+                    _effective_structural_touch_rule(structural) if structural is not None else None
+                ),
+                "reasons": reasons,
+            }
+        )
+    return matches
+
+
+def claimed_oversized_structural_debt_entries(
+    repo_root: Path,
+    claimed_paths: list[str] | tuple[str, ...],
+) -> list[ClaimedFileDebtEntry]:
+    oversized: list[ClaimedFileDebtEntry] = []
+    for entry in claimed_file_debt_entries(repo_root, claimed_paths):
+        baseline = entry["structural_current_baseline"]
+        target = entry["structural_target"]
+        if baseline is None or target is None:
+            continue
+        if baseline > target:
+            oversized.append(entry)
+    return oversized
 
 
 def _normalize_status(raw_status: str) -> str:
@@ -336,6 +568,7 @@ def _load_state_entries(repo_root: Path, state_file: Path, *, default_updated_at
 def _write_lock_state_files(repo_root: Path, entries: list[LockStateEntry]) -> list[LockStateEntry]:
     repo_root = repo_root.resolve()
     normalized_entries = _normalize_entries(entries, repo_root=repo_root, default_updated_at=utc_now_timestamp())
+    normalized_entries, _ = _prune_stale_entries(repo_root, normalized_entries)
     coordination_dir(repo_root).mkdir(parents=True, exist_ok=True)
     shared_coordination_dir(repo_root).mkdir(parents=True, exist_ok=True)
     state_file = lock_state_path(repo_root)
@@ -354,14 +587,18 @@ def write_lock_state(repo_root: Path, entries: list[LockStateEntry]) -> list[Loc
         return _write_lock_state_files(repo_root, entries)
 
 
-def load_lock_state(repo_root: Path, *, sync_markdown_if_newer: bool = True) -> list[LockStateEntry]:
+def load_lock_state(repo_root: Path) -> list[LockStateEntry]:
     repo_root = repo_root.resolve()
     default_updated_at = utc_now_timestamp()
     state_file = lock_state_path(repo_root)
     legacy_state_file = legacy_lock_state_path(repo_root)
 
     if state_file.exists():
-        return _load_state_entries(repo_root, state_file, default_updated_at=default_updated_at)
+        entries = _load_state_entries(repo_root, state_file, default_updated_at=default_updated_at)
+        pruned_entries, dropped_entries = _prune_stale_entries(repo_root, entries)
+        if dropped_entries:
+            return write_lock_state(repo_root, pruned_entries)
+        return pruned_entries
 
     if legacy_state_file.exists():
         entries = _load_state_entries(repo_root, legacy_state_file, default_updated_at=default_updated_at)
@@ -440,17 +677,22 @@ def migrate_current_work_ledger(repo_root: Path) -> dict[str, Any]:
 
 __all__ = [
     "ACTIVE_STATUSES",
+    "FILE_DEBT_RATCHET_PATH",
     "LEDGER_FILE_NAME",
     "LEDGER_TEMPLATE_NAME",
     "LOCK_STATE_FILE_NAME",
     "SUMMARY_FILE_NAME",
     "ClaimPattern",
+    "ClaimedFileDebtEntry",
     "LockStateEntry",
+    "claimed_file_debt_entries",
+    "claimed_oversized_structural_debt_entries",
     "coordination_dir",
     "display_path",
     "git_common_dir",
     "ledger_path",
     "legacy_lock_state_path",
+    "load_file_debt_state",
     "load_lock_state",
     "lock_state_path",
     "migrate_current_work_ledger",

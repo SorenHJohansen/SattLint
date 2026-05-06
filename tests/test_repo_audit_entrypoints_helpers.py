@@ -16,6 +16,7 @@ def test_repo_audit_entrypoint_helper_normalizers_and_reason_selection():
     assert repo_audit_entrypoints._focused_python_files(
         [
             "src/main.py",
+            "src/main.py",
             "tests/test_main.py",
             "scripts/build.py",
             "docs/readme.md",
@@ -30,6 +31,8 @@ def test_repo_audit_entrypoint_helper_normalizers_and_reason_selection():
     ) == ["tests/test_a.py", "tests/test_b.py"]
     assert repo_audit_entrypoints._normalize_repo_audit_finding_checks(None) is None
     assert repo_audit_entrypoints._normalize_repo_audit_finding_checks(["text-scan", "text-scan"]) == ("text-scan",)
+    with pytest.raises(ValueError):
+        repo_audit_entrypoints._normalize_repo_audit_finding_checks([])
     with pytest.raises(ValueError):
         repo_audit_entrypoints._normalize_repo_audit_finding_checks(["ghost"])
     with pytest.raises(ValueError):
@@ -57,6 +60,16 @@ def test_repo_audit_entrypoint_helper_normalizers_and_reason_selection():
     )
 
 
+def test_focused_python_files_skips_duplicates_after_normalization(monkeypatch):
+    monkeypatch.setattr(
+        repo_audit_entrypoints,
+        "normalize_changed_files",
+        lambda _changed_files: ["src/main.py", "src/main.py", "tests/test_main.py"],
+    )
+
+    assert repo_audit_entrypoints._focused_python_files(["ignored"]) == ["src/main.py", "tests/test_main.py"]
+
+
 def test_print_cli_summary_prints_terminal_findings(capsys):
     repo_audit_entrypoints._print_cli_summary(
         {
@@ -68,8 +81,8 @@ def test_print_cli_summary_prints_terminal_findings(capsys):
             "fail_on": "high",
             "status_report": "artifacts/audit/status.json",
             "summary_report": "artifacts/audit/summary.json",
-            "latest_status_report": None,
-            "latest_summary_report": None,
+            "latest_status_report": "artifacts/audit/latest/status.json",
+            "latest_summary_report": "artifacts/audit/latest/summary.json",
             "findings": [
                 {
                     "id": "high-risk-path",
@@ -98,10 +111,13 @@ def test_print_cli_summary_prints_terminal_findings(capsys):
     output = capsys.readouterr().out
 
     assert "Detailed findings:" in output
+    assert "Latest status report: artifacts/audit/latest/status.json" in output
+    assert "Latest summary report: artifacts/audit/latest/summary.json" in output
     assert "- HIGH portability high-risk-path [README.md:12]: Absolute path leaked into the repo." in output
     assert "  detail: Found a machine-specific Windows path." in output
     assert "  suggestion: Replace it with a repo-relative path." in output
     assert "- LOW public-readiness missing-doc: A public-facing command is undocumented." in output
+    assert repo_audit_entrypoints._format_terminal_finding_path("README.md", None) == " [README.md]"
 
 
 def test_repo_audit_entrypoint_builds_finish_gate_commands_and_gate_reason(tmp_path):
@@ -545,3 +561,51 @@ def test_run_recommended_repo_audit_slice_writes_combined_reports(monkeypatch, t
     assert status_report["pipeline_status_report"].endswith("/pipeline/status.json")
     assert (tmp_path / "ai_gc.json").exists()
     assert (tmp_path / "cli_consistency.json").exists()
+
+
+def test_repo_audit_entrypoints_cover_delegate_and_default_manifest_branches(monkeypatch, tmp_path):
+    from sattlint.devtools import _repo_audit_full_run as full_run_helper
+
+    sentinel_summary = {"summary": "selected-check"}
+    monkeypatch.setattr(full_run_helper, "_run_repo_audit_findings_checks", lambda *args, **kwargs: sentinel_summary)
+
+    result = repo_audit_entrypoints._run_repo_audit_findings_checks(
+        tmp_path,
+        profile="full",
+        check_ids=["text-scan"],
+        fail_on="high",
+        include_generated=False,
+        suspicious_identifiers=(),
+    )
+
+    fake_repo_audit = SimpleNamespace(PIPELINE_OUTPUT_DIRNAME="pipeline", REPO_ROOT=tmp_path)
+    monkeypatch.setattr(repo_audit_entrypoints, "_repo_audit_module", lambda: fake_repo_audit)
+    monkeypatch.setattr(
+        repo_audit_entrypoints.pipeline_module,
+        "build_pipeline_check_recommendations",
+        lambda **kwargs: {
+            "recommended_check_ids": ["ruff"],
+            "suggested_finish_gate_commands": ["sattlint-analysis-pipeline --run-recommended-finish-gate"],
+        },
+    )
+
+    planning_report = repo_audit_entrypoints._build_selected_finish_gate_plan(
+        profile="full",
+        output_dir=tmp_path,
+        fail_on="high",
+        selected_surface="pipeline",
+        changed_files=["src/main.py"],
+        planning_context={"finish_gate_template": "invalid", "owner_test_targets": ["tests/test_main.py"]},
+        recommendation={"recommended_check_ids": ["cli"]},
+    )
+
+    manifest_dir = tmp_path / "corpus-manifests"
+    monkeypatch.setattr(repo_audit_entrypoints.pipeline_module, "DEFAULT_CORPUS_MANIFEST_DIR", manifest_dir)
+
+    assert result is sentinel_summary
+    assert planning_report["description"] == ""
+    assert planning_report["includes"] == []
+    assert repo_audit_entrypoints._default_corpus_manifest_dir() is None
+
+    manifest_dir.mkdir(parents=True)
+    assert repo_audit_entrypoints._default_corpus_manifest_dir() is None

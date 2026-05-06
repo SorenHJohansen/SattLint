@@ -22,6 +22,15 @@ HANDOFF_TEMPLATE_PATH = REPO_ROOT / ".ai" / "handoffs" / "handoff.example.json"
 TASK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 VALID_STAGE_VALUES = {"executor", "test", "review"}
 VALID_LEDGER_STATUSES = {"planned", "active", "blocked", "ready-for-merge", "done"}
+STRUCTURAL_DEBT_REDUCTION_HINTS = (
+    "decompose",
+    "decomposition",
+    "extract",
+    "split",
+    "shrink",
+    "reduce",
+    "breakdown",
+)
 
 
 class BootstrapError(RuntimeError):
@@ -165,6 +174,33 @@ def _resolve_source_ref(args: argparse.Namespace, *, repo_root: Path, stage: str
 
 def _unique_paths(values: Sequence[str], *, repo_root: Path | None = None) -> tuple[str, ...]:
     return tuple(coordination_lock_state.unique_claim_paths(list(values), repo_root=repo_root))
+
+
+def _is_structural_debt_reduction_slice(config: BootstrapConfig) -> bool:
+    haystack = " ".join((config.task_id, config.title, config.summary, config.notes)).casefold()
+    return any(hint in haystack for hint in STRUCTURAL_DEBT_REDUCTION_HINTS)
+
+
+def _reject_disallowed_structural_debt_claims(config: BootstrapConfig) -> None:
+    oversized_entries = coordination_lock_state.claimed_oversized_structural_debt_entries(
+        config.repo_root,
+        config.files,
+    )
+    if not oversized_entries or _is_structural_debt_reduction_slice(config):
+        return
+
+    claimed = "; ".join(
+        (
+            f"{entry['path']} ({entry['structural_current_baseline']} -> {entry['structural_target']}, "
+            f"touch rule: {entry['structural_touch_rule']})"
+        )
+        for entry in oversized_entries
+    )
+    raise BootstrapError(
+        "Claimed oversized structural debt files require an explicit decomposition or shrink slice before bootstrap: "
+        f"{claimed}. Mark the task metadata with one of {', '.join(STRUCTURAL_DEBT_REDUCTION_HINTS)} "
+        "or narrow the claims to files that are not under oversized structural debt."
+    )
 
 
 def _ensure_templates_exist(repo_root: Path) -> None:
@@ -407,6 +443,7 @@ def _upsert_ledger_entry(config: BootstrapConfig) -> Path:
 
 
 def bootstrap_slice(config: BootstrapConfig, git_runner: GitRunner = _run_git) -> dict[str, str]:
+    _reject_disallowed_structural_debt_claims(config)
     worktree_path = _ensure_worktree(config, git_runner)
     commit = _git_head_commit(worktree_path, git_runner)
 

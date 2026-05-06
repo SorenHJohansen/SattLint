@@ -16,6 +16,7 @@ from sattline_parser.models.ast_model import (
 
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution import AccessKind
+from ..resolution.common import resolve_moduletype_def_strict
 
 _HIGH_FAN_IN_OUT_THRESHOLD = 3
 
@@ -70,7 +71,10 @@ def _iter_variables_for_datatype_field_analysis(
 
     if self._limit_to_module_path is None:
         for mt in self.bp.moduletype_defs or []:
-            if not self._is_from_root_origin(getattr(mt, "origin_file", None)):
+            if not self._is_from_root_origin(
+                getattr(mt, "origin_file", None),
+                getattr(mt, "origin_lib", None),
+            ):
                 continue
             td_path = [self.bp.header.name, f"TypeDef:{mt.name}"]
             for variable in mt.moduleparameters or []:
@@ -85,7 +89,10 @@ def _add_unused_datatype_field_issues(self) -> None:
     datatype_state: dict[str, dict[str, Any]] = {}
 
     for datatype in self.bp.datatype_defs or []:
-        if not self._is_from_root_origin(getattr(datatype, "origin_file", None)):
+        if not self._is_from_root_origin(
+            getattr(datatype, "origin_file", None),
+            getattr(datatype, "origin_lib", None),
+        ):
             continue
         leaf_paths = {
             ".".join(field_path) for field_path in self.type_graph.iter_leaf_field_paths(datatype.name) if field_path
@@ -370,6 +377,7 @@ def _collect_issues_from_module(
     self,
     mod: SingleModule | FrameModule | ModuleTypeInstance,
     path: list[str],
+    current_library: str | None = None,
 ) -> None:
     if isinstance(mod, SingleModule):
         my_path = [*path, mod.header.name]
@@ -438,12 +446,102 @@ def _collect_issues_from_module(
                     role="localvariable",
                 )
         for child in mod.submodules or []:
-            self._collect_issues_from_module(child, my_path)
+            self._collect_issues_from_module(child, my_path, current_library=current_library)
 
     elif isinstance(mod, FrameModule):
         my_path = [*path, mod.header.name]
         for child in mod.submodules or []:
-            self._collect_issues_from_module(child, my_path)
+            self._collect_issues_from_module(child, my_path, current_library=current_library)
 
     elif isinstance(mod, ModuleTypeInstance):
-        return
+        my_path = [*path, mod.header.name]
+        try:
+            moduletype = resolve_moduletype_def_strict(
+                self.bp,
+                mod.moduletype_name,
+                current_library=current_library,
+                unavailable_libraries=self._unavailable_libraries,
+            )
+        except ValueError:
+            return
+
+        if not self._is_from_root_origin(
+            getattr(moduletype, "origin_file", None),
+            getattr(moduletype, "origin_lib", None),
+        ):
+            return
+
+        # Library-wide reports should surface root-owned moduletype findings once
+        # under their TypeDef path rather than once per instance path.
+        if self._analyzed_target_is_library and self._limit_to_module_path is None:
+            return
+
+        for variable in moduletype.moduleparameters or []:
+            usage = self._get_usage(variable)
+            if usage.is_unused:
+                self._add_issue(IssueKind.UNUSED, my_path, variable, role="moduleparameter")
+                continue
+            procedure_status = self._procedure_status_issue(variable, usage)
+            if procedure_status is not None:
+                status_role, field_path = procedure_status
+                self._add_issue(
+                    IssueKind.PROCEDURE_STATUS,
+                    my_path,
+                    variable,
+                    role=status_role,
+                    field_path=field_path,
+                )
+                continue
+            elif usage.is_display_only:
+                self._add_issue(IssueKind.UI_ONLY, my_path, variable, role="moduleparameter")
+            elif (
+                usage.read
+                and usage.written
+                and not self._has_output_effect(variable, my_path)
+                and not self._has_procedure_status_binding(variable)
+            ):
+                self._add_issue(
+                    IssueKind.WRITE_WITHOUT_EFFECT,
+                    my_path,
+                    variable,
+                    role="moduleparameter",
+                )
+
+        for variable in moduletype.localvariables or []:
+            usage = self._get_usage(variable)
+            if usage.is_unused:
+                self._add_issue(IssueKind.UNUSED, my_path, variable, role="localvariable")
+                continue
+            procedure_status = self._procedure_status_issue(variable, usage)
+            if procedure_status is not None:
+                status_role, field_path = procedure_status
+                self._add_issue(
+                    IssueKind.PROCEDURE_STATUS,
+                    my_path,
+                    variable,
+                    role=status_role,
+                    field_path=field_path,
+                )
+                continue
+            elif usage.is_display_only:
+                self._add_issue(IssueKind.UI_ONLY, my_path, variable, role="localvariable")
+            elif usage.is_read_only and not bool(variable.const) and self._is_const_candidate(variable):
+                self._add_issue(IssueKind.READ_ONLY_NON_CONST, my_path, variable, role="localvariable")
+            elif usage.written and not usage.read:
+                self._add_issue(IssueKind.NEVER_READ, my_path, variable, role="localvariable")
+            elif (
+                usage.read
+                and usage.written
+                and not self._has_output_effect(variable, my_path)
+                and not self._has_procedure_status_binding(variable)
+            ):
+                self._add_issue(
+                    IssueKind.WRITE_WITHOUT_EFFECT,
+                    my_path,
+                    variable,
+                    role="localvariable",
+                )
+
+        child_library = moduletype.origin_lib or current_library
+        for child in moduletype.submodules or []:
+            self._collect_issues_from_module(child, my_path, current_library=child_library)
