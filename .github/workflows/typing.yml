@@ -90,6 +90,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          uv pip install --system --upgrade pip
           uv pip install --system -e ".[dev,lsp]"
           uv pip install --system "pip-audit==2.10.0"
 

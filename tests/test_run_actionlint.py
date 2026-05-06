@@ -54,6 +54,17 @@ def test_main_returns_tool_exit_code(monkeypatch) -> None:
     assert result == 1
 
 
+def test_resolve_command_falls_back_to_local_bin(monkeypatch) -> None:
+    monkeypatch.setattr(run_actionlint.shutil, "which", lambda name: None)
+    local_bin = run_actionlint.Path.home() / ".local" / "bin" / "actionlint"
+    monkeypatch.setattr(run_actionlint.Path, "is_file", lambda self: str(self) == str(local_bin))
+
+    command, cwd = run_actionlint._resolve_command([".github/workflows/ci.yml"])
+
+    assert command == [str(local_bin), "-color", ".github/workflows/ci.yml"]
+    assert cwd == run_actionlint.REPO_ROOT
+
+
 def test_main_returns_2_when_unavailable(monkeypatch, capsys) -> None:
     monkeypatch.setattr(run_actionlint, "_resolve_command", lambda tool_args: ([], None))
 
