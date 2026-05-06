@@ -65,6 +65,14 @@ jobs:
       - name: Install markdownlint-cli2
         run: npm install --global markdownlint-cli2@0.22.1
 
+      - name: Install actionlint
+        shell: bash
+        run: |
+          curl -sSL -o /tmp/actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp
+          sudo install -m 0755 /tmp/actionlint /usr/local/bin/actionlint
+          actionlint version
+
       - name: Run pre-commit hooks
         run: python -m pre_commit run --all-files
 

@@ -40,15 +40,28 @@ def _wsl_has_command(command_name: str) -> bool:
     )
 
 
+def _find_actionlint() -> str | None:
+    if shutil.which("actionlint"):
+        return "actionlint"
+
+    candidates = [
+        Path.home() / ".local" / "bin" / "actionlint",
+        Path("/usr/local/bin/actionlint"),
+        Path("/opt/homebrew/bin/actionlint"),
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+
+    return None
+
+
 def _resolve_command(tool_args: list[str]) -> tuple[list[str], Path | None]:
     command_args = ["-color", *tool_args]
 
-    if shutil.which("actionlint"):
-        return ["actionlint", *command_args], REPO_ROOT
-
-    local_bin = Path.home() / ".local" / "bin" / "actionlint"
-    if local_bin.is_file():
-        return [str(local_bin), *command_args], REPO_ROOT
+    executable = _find_actionlint()
+    if executable:
+        return [executable, *command_args], REPO_ROOT
 
     if sys.platform == "win32" and shutil.which("wsl") and _wsl_has_command("actionlint"):
         return ["wsl", "--cd", _windows_path_to_wsl(REPO_ROOT), "actionlint", *_normalize_wsl_args(command_args)], None
