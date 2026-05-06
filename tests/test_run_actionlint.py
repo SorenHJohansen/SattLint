@@ -23,6 +23,7 @@ def test_resolve_command_uses_wsl_actionlint(monkeypatch) -> None:
         lambda name: "wsl.exe" if name == "wsl" else None,
     )
     monkeypatch.setattr(run_actionlint, "_wsl_has_command", lambda command_name: command_name == "actionlint")
+    monkeypatch.setattr(run_actionlint, "_find_actionlint", lambda: None)
 
     command, cwd = run_actionlint._resolve_command([r".github\workflows\ci.yml"])
 
