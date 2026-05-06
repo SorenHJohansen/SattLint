@@ -48,7 +48,7 @@ jobs:
           curl -sSL -o /tmp/actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
           tar -xzf /tmp/actionlint.tar.gz -C /tmp
           sudo install -m 0755 /tmp/actionlint /usr/local/bin/actionlint
-          actionlint version
+          actionlint --version
 
       - name: Check context health
         run: python scripts/context_health.py --check --json-output artifacts/health/context-health.json --markdown-output docs/generated/context-health.md
@@ -116,7 +116,7 @@ jobs:
           curl -sSL -o /tmp/actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
           tar -xzf /tmp/actionlint.tar.gz -C /tmp
           sudo install -m 0755 /tmp/actionlint /usr/local/bin/actionlint
-          actionlint version
+          actionlint --version
 
       - name: Check context health
         run: python scripts/context_health.py --check --json-output artifacts/health/context-health-nightly.json --markdown-output artifacts/health/context-health-nightly.md
