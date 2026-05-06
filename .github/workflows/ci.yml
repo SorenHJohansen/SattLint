@@ -57,7 +57,9 @@ jobs:
         run: actionlint -color
 
       - name: Run fast pre-commit gate
-        run: python -m pre_commit run --all-files
+        run: |
+          export PATH="/usr/local/bin:$PATH"
+          python -m pre_commit run --all-files
 
       - name: Run doc gardener
         run: python -m sattlint.devtools.doc_gardener --check-only
