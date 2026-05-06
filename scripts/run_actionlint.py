@@ -46,6 +46,10 @@ def _resolve_command(tool_args: list[str]) -> tuple[list[str], Path | None]:
     if shutil.which("actionlint"):
         return ["actionlint", *command_args], REPO_ROOT
 
+    local_bin = Path.home() / ".local" / "bin" / "actionlint"
+    if local_bin.is_file():
+        return [str(local_bin), *command_args], REPO_ROOT
+
     if sys.platform == "win32" and shutil.which("wsl") and _wsl_has_command("actionlint"):
         return ["wsl", "--cd", _windows_path_to_wsl(REPO_ROOT), "actionlint", *_normalize_wsl_args(command_args)], None
 

@@ -789,6 +789,7 @@ This tracker remains valid for legacy TD-* entries and scan history.
 
 | Date | Findings | Action Taken |
 |------|-----------|--------------|
+| 2026-05-06 | 0 findings | Doc-gardening scan |
 | 2026-05-04 | 264 findings | Doc-gardening scan |
 | 2026-05-01 | 0 findings | Doc-gardening scan |
 | 2026-04-30 | 15 items | Manual tech debt review and update to exec-plan template |

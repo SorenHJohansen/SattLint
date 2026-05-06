@@ -43,7 +43,6 @@ AI_FIRST_SOURCE_FILES = (
 )
 MARKDOWN_SUFFIXES = {".md", ".txt"}
 MOJIBAKE_TOKENS = (
-    "?",
     "\ufffd",
     "\u00e2\u20ac\u201c",
     "\u00e2\u20ac\u201d",
