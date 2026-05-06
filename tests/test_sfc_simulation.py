@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleCode,
@@ -65,6 +67,7 @@ def test_simulate_module_detects_steady_state():
     assert result.scan_budget_exhausted is False
     assert result.outcome == "steady-state"
     assert result.total_scans == 2
+    assert result.render_summary() == "steady state reached after 2 scans"
     assert result.snapshots[-1].active_steps == ["SeqMain.Init"]
     assert result.snapshots[-1].state["Counter"] == 1
 
@@ -95,6 +98,7 @@ def test_simulate_module_detects_cycle_from_repeated_signature():
     assert result.total_scans == 3
     assert result.cycle_start_scan == 1
     assert result.cycle_length == 2
+    assert result.render_summary() == "cycle detected after 3 scans (start=1, length=2)"
 
 
 def test_simulate_module_json_payload_uses_stable_keys_and_snapshot_shape():
@@ -128,7 +132,35 @@ def test_simulate_module_json_payload_uses_stable_keys_and_snapshot_shape():
         "cycle_length",
         "snapshots",
     ]
-    assert list(payload["snapshots"][0]) == ["scan", "active_steps", "state", "transition_fires"]
+    snapshots = cast(list[dict[str, Any]], payload["snapshots"])
+    assert list(snapshots[0]) == ["scan", "active_steps", "state", "transition_fires"]
     assert payload["target"] == "Main"
     assert payload["mode"] == "steady-state"
     assert payload["total_scans"] == 2
+
+
+def test_simulate_module_reports_scan_budget_exhaustion_summary():
+    bp = BasePicture(
+        header=_hdr("Main"),
+        localvariables=[Variable(name="Counter", datatype=Simple_DataType.INTEGER)],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        _step("Init", [_assign("Counter", 1)], kind="init"),
+                        SFCTransition(name="Next", condition=True),
+                        _step("Hold", [_assign("Counter", 2)]),
+                        SFCTransition(name="Stay", condition=False),
+                    ]
+                )
+            ],
+            equations=[],
+        ),
+    )
+
+    result = simulate_module(bp, module_name="Main", mode="steady-state", max_scans=1)
+
+    assert result.scan_budget_exhausted is True
+    assert result.steady_state_reached is False
+    assert result.cycle_detected is False
+    assert result.render_summary() == "scan budget exhausted after 1 scans"

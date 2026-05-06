@@ -17,18 +17,14 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from defusedxml import ElementTree  # type: ignore[import-untyped]
-
 from sattlint import app as app_module
 from sattlint import config as config_module
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
 from sattlint.devtools import ai_gc as _ai_gc_module
 from sattlint.devtools import ai_work_map as _ai_work_map_module
-from sattlint.devtools import coverage_reports as _coverage_reports_module
 from sattlint.devtools import doc_gardener as _doc_gardener_module
 from sattlint.devtools import pipeline as pipeline_module
 from sattlint.devtools import repo_audit_entrypoints as _repo_audit_entrypoints
-from sattlint.devtools import structural_reports as structural_reports_module
 from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS, artifact_reports_map
 from sattlint.devtools.pipeline_artifacts import write_json_artifact
 from sattlint.devtools.progress_reporting import ProgressReporter
@@ -1320,6 +1316,11 @@ def _extract_documented_commands(paths: Iterable[Path], *, root: Path = REPO_ROO
         rel_path = _relative_path(path, root)
         for line_number, line in enumerate(text.splitlines(), 1):
             for match in _DOCUMENTED_COMMAND_RE.finditer(line):
+                start_index, end_index = match.span(1)
+                if (start_index > 0 and line[start_index - 1] in "/\\") or (
+                    end_index < len(line) and line[end_index] in "/\\"
+                ):
+                    continue
                 command = match.group(1)
                 subcommand = match.group(2)
                 if command == "sattlint" and subcommand in {"and", "is", "supports"}:
@@ -1646,7 +1647,9 @@ def build_coverage_summary_report(root: Path) -> dict[str, Any]:
     Delegates to :mod:`sattlint.devtools.coverage_reports` so that this module
     does not import ``pipeline`` and avoids a circular dependency.
     """
-    return _coverage_reports_module.build_coverage_summary_report(root)
+    from sattlint.devtools import _repo_audit_reporting as helper
+
+    return helper.build_coverage_summary_report(root)
 
 
 def build_ai_gc_report(
@@ -1657,7 +1660,9 @@ def build_ai_gc_report(
     now_ts: float | None = None,
     apply: bool = False,
 ) -> dict[str, Any]:
-    return _ai_gc_module.build_ai_gc_report(
+    from sattlint.devtools import _repo_audit_reporting as helper
+
+    return helper.build_ai_gc_report(
         root,
         tracked_paths=tracked_paths,
         stale_after_days=stale_after_days,
@@ -1674,113 +1679,39 @@ def apply_ai_gc(
     stale_after_days: int = _ai_gc_module.DEFAULT_STALE_AFTER_DAYS,
     now_ts: float | None = None,
 ) -> dict[str, Any]:
-    report = build_ai_gc_report(
+    from sattlint.devtools import _repo_audit_reporting as helper
+
+    return helper.apply_ai_gc(
         root,
+        output_dir=output_dir,
         tracked_paths=tracked_paths,
         stale_after_days=stale_after_days,
         now_ts=now_ts,
-        apply=True,
     )
-    if output_dir is not None:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        write_json_artifact(output_dir / _ai_gc_module.AI_GC_REPORT_FILENAME, report)
-    return report
 
 
 def _ai_gc_report_findings(report: dict[str, Any]) -> list[Finding]:
-    findings: list[Finding] = []
-    for candidate in report.get("candidates", []):
-        if candidate.get("applied"):
-            continue
-        candidate_id = str(candidate.get("candidate_id") or "ai-gc")
-        path = candidate.get("path")
-        age_days = candidate.get("age_days")
-        severity = (
-            "medium"
-            if candidate_id == "stale-generated-output-manifest" or (isinstance(age_days, int) and age_days >= 30)
-            else "low"
-        )
-        if candidate_id == "stale-generated-output-manifest":
-            message = "Generated output drifted from its source-digest manifest."
-            detail = str(candidate.get("reason") or "")
-        else:
-            message = "Stale AI-generated artifact can be collected."
-            detail = (
-                f"age_days={age_days} size_bytes={candidate.get('size_bytes', 0)}"
-                if age_days is not None
-                else str(candidate.get("reason") or "")
-            )
-        findings.append(
-            Finding(
-                id=candidate_id,
-                category="maintenance",
-                severity=severity,
-                confidence="high",
-                message=message,
-                path=path,
-                detail=detail,
-                suggestion="Run sattlint-repo-audit --apply-ai-gc to delete safe stale artifacts.",
-                source="ai-gc",
-            )
-        )
-    return findings
+    from sattlint.devtools import _repo_audit_reporting as helper
+
+    return helper._ai_gc_report_findings(report)
 
 
 def _is_active_output_ai_gc_path(path: str | None, *, output_dir_path: str | None) -> bool:
-    if not path or not output_dir_path:
-        return False
-    return path.rstrip("/") == output_dir_path.rstrip("/")
+    from sattlint.devtools import _repo_audit_reporting as helper
+
+    return helper._is_active_output_ai_gc_path(path, output_dir_path=output_dir_path)
 
 
 def _filter_ai_gc_report_for_output_dir(report: dict[str, Any], *, output_dir_path: str | None) -> dict[str, Any]:
-    candidates = report.get("candidates")
-    if not isinstance(candidates, list):
-        return report
-    filtered_candidates = [
-        candidate
-        for candidate in candidates
-        if not (
-            isinstance(candidate, dict)
-            and str(candidate.get("candidate_id") or "") == "stale-generated-output-manifest"
-            and _is_active_output_ai_gc_path(candidate.get("path"), output_dir_path=output_dir_path)
-        )
-    ]
-    if len(filtered_candidates) == len(candidates):
-        return report
-    filtered_report = dict(report)
-    filtered_report["candidates"] = filtered_candidates
-    filtered_summary = dict(report.get("summary", {}))
-    filtered_summary["candidate_count"] = len(filtered_candidates)
-    filtered_summary["artifact_candidate_count"] = sum(
-        1
-        for candidate in filtered_candidates
-        if candidate.get("candidate_id") in {"stale-ai-artifact", "stale-generated-output-manifest"}
-    )
-    filtered_summary["manifest_drift_candidate_count"] = sum(
-        1 for candidate in filtered_candidates if candidate.get("candidate_id") == "stale-generated-output-manifest"
-    )
-    filtered_report["summary"] = filtered_summary
-    failures = filtered_report.get("failures")
-    filtered_report["status"] = (
-        "fail"
-        if isinstance(failures, list) and failures
-        else "needs-attention"
-        if filtered_candidates and filtered_report.get("mode") != "apply"
-        else "pass"
-    )
-    return filtered_report
+    from sattlint.devtools import _repo_audit_reporting as helper
+
+    return helper._filter_ai_gc_report_for_output_dir(report, output_dir_path=output_dir_path)
 
 
 def _filter_ai_gc_findings_for_output_dir(findings: list[Finding], *, output_dir_path: str | None) -> list[Finding]:
-    return [
-        finding
-        for finding in findings
-        if not (
-            finding.source == "ai-gc"
-            and finding.id == "stale-generated-output-manifest"
-            and _is_active_output_ai_gc_path(finding.path, output_dir_path=output_dir_path)
-        )
-    ]
+    from sattlint.devtools import _repo_audit_reporting as helper
+
+    return helper._filter_ai_gc_findings_for_output_dir(findings, output_dir_path=output_dir_path)
 
 
 CLI_CONSISTENCY_SCHEMA_KIND = "sattlint.cli_consistency"
@@ -1794,12 +1725,9 @@ CLI_CONSISTENCY_DOC_PATHS = (
 
 
 def _cli_consistency_doc_paths(root: Path) -> list[Path]:
-    doc_paths: list[Path] = []
-    for rel_path in CLI_CONSISTENCY_DOC_PATHS:
-        path = root / rel_path
-        if path.exists():
-            doc_paths.append(path)
-    return doc_paths
+    from sattlint.devtools import _repo_audit_reporting as helper
+
+    return helper._cli_consistency_doc_paths(root)
 
 
 def build_cli_consistency_report(*, root: Path = REPO_ROOT) -> dict[str, Any]:
@@ -1811,66 +1739,9 @@ def build_cli_consistency_report(*, root: Path = REPO_ROOT) -> dict[str, Any]:
     artifact with gaps, undocumented commands, and undeclared documented
     references.
     """
-    scripts, subcommands = _collect_cli_metadata()
-    doc_paths = _cli_consistency_doc_paths(root)
-    documented_commands = _extract_documented_commands(doc_paths, root=root)
+    from sattlint.devtools import _repo_audit_reporting as helper
 
-    # Build gap lists
-    undeclared_subcommands: list[dict[str, Any]] = []
-    undeclared_scripts: list[dict[str, Any]] = []
-    for item in documented_commands:
-        if item.command == "sattlint" and item.subcommand and item.subcommand not in subcommands:
-            undeclared_subcommands.append(
-                {
-                    "subcommand": item.subcommand,
-                    "referenced_in": item.path,
-                    "line": item.line,
-                }
-            )
-        if item.command.startswith("sattlint-") and item.command not in scripts:
-            undeclared_scripts.append(
-                {
-                    "script": item.command,
-                    "referenced_in": item.path,
-                    "line": item.line,
-                }
-            )
-
-    # Documented subcommands that are implemented (for completeness)
-    documented_subcommand_names = {
-        item.subcommand for item in documented_commands if item.command == "sattlint" and item.subcommand
-    }
-    undocumented_subcommands = sorted(subcommands - documented_subcommand_names)
-
-    documented_script_names = {item.command for item in documented_commands if item.command.startswith("sattlint-")}
-    undocumented_scripts = sorted(scripts - documented_script_names)
-
-    gap_count = len(undeclared_subcommands) + len(undeclared_scripts)
-    return {
-        "kind": CLI_CONSISTENCY_SCHEMA_KIND,
-        "schema_version": CLI_CONSISTENCY_SCHEMA_VERSION,
-        "generated_by": "sattlint.devtools.repo_audit",
-        "declared": {
-            "scripts": sorted(scripts),
-            "subcommands": sorted(subcommands),
-        },
-        "gaps": {
-            "undeclared_subcommands": undeclared_subcommands,
-            "undeclared_scripts": undeclared_scripts,
-            "undocumented_subcommands": undocumented_subcommands,
-            "undocumented_scripts": undocumented_scripts,
-        },
-        "summary": {
-            "declared_script_count": len(scripts),
-            "declared_subcommand_count": len(subcommands),
-            "undeclared_subcommand_count": len(undeclared_subcommands),
-            "undeclared_script_count": len(undeclared_scripts),
-            "undocumented_subcommand_count": len(undocumented_subcommands),
-            "undocumented_script_count": len(undocumented_scripts),
-            "gap_count": gap_count,
-        },
-        "status": "fail" if gap_count > 0 else "pass",
-    }
+    return helper.build_cli_consistency_report(root=root)
 
 
 def _find_logging_findings(
@@ -1942,42 +1813,9 @@ def _parse_coverage_findings(
     *,
     tracked_paths: tuple[str, ...] | None = None,
 ) -> list[Finding]:
-    coverage_path = root / "coverage.xml"
-    if tracked_paths is not None and "coverage.xml" not in tracked_paths:
-        return []
-    if not coverage_path.exists():
-        return []
+    from sattlint.devtools import _repo_audit_reporting as helper
 
-    findings: list[Finding] = []
-    root_xml = ElementTree.fromstring(coverage_path.read_text(encoding="utf-8"))
-    for class_node in root_xml.findall(".//class"):
-        filename = class_node.attrib.get("filename", "")
-        line_rate = float(class_node.attrib.get("line-rate", "0"))
-        if not filename.startswith("src/"):
-            continue
-        severity = None
-        if line_rate < 0.10:
-            severity = "high"
-        elif line_rate < 0.40:
-            severity = "medium"
-        elif line_rate < 0.60:
-            severity = "low"
-        if severity is None:
-            continue
-        findings.append(
-            Finding(
-                id="low-test-coverage",
-                category="test-coverage",
-                severity=severity,
-                confidence="high",
-                message="Source module has low test coverage.",
-                path=filename,
-                detail=f"line-rate={line_rate:.0%}",
-                suggestion="Add targeted tests for this module or reduce dead code within it.",
-                source="coverage.xml",
-            )
-        )
-    return findings
+    return helper._parse_coverage_findings(root, tracked_paths=tracked_paths)
 
 
 def _find_public_readiness_findings(
@@ -1985,209 +1823,15 @@ def _find_public_readiness_findings(
     *,
     tracked_paths: tuple[str, ...] | None = None,
 ) -> list[Finding]:
-    findings: list[Finding] = []
-    tracked_path_set = None if tracked_paths is None else set(tracked_paths)
-    required_files = ["README.md", "LICENSE", "CONTRIBUTING.md", ".gitignore"]
-    for filename in required_files:
-        exists = (root / filename).exists() if tracked_path_set is None else filename in tracked_path_set
-        if not exists:
-            findings.append(
-                Finding(
-                    id="missing-public-file",
-                    category="public-readiness",
-                    severity="high",
-                    confidence="high",
-                    message=f"Expected public-facing file '{filename}' is missing.",
-                    suggestion="Add the missing file before publishing the repository.",
-                )
-            )
+    from sattlint.devtools import _repo_audit_reporting as helper
 
-    pyproject = _load_pyproject(root)
-    urls = pyproject.get("project", {}).get("urls", {})
-    if not urls:
-        findings.append(
-            Finding(
-                id="missing-project-urls",
-                category="public-readiness",
-                severity="low",
-                confidence="high",
-                message="pyproject metadata does not declare project URLs.",
-                path="pyproject.toml",
-                suggestion="Add homepage, repository, and issue tracker URLs.",
-            )
-        )
-
-    if tracked_path_set is None:
-        workflow_dir = root / ".github" / "workflows"
-        has_workflow = workflow_dir.exists() and any(workflow_dir.glob("*.y*ml"))
-    else:
-        has_workflow = any(
-            rel_path.startswith(".github/workflows/") and rel_path.endswith((".yml", ".yaml"))
-            for rel_path in tracked_path_set
-        )
-    if not has_workflow:
-        findings.append(
-            Finding(
-                id="missing-ci-workflow",
-                category="public-readiness",
-                severity="medium",
-                confidence="high",
-                message="Repository does not define a CI workflow.",
-                suggestion="Add an audit or test workflow so external contributors get immediate feedback.",
-            )
-        )
-
-    tracked = list(tracked_paths or ())
-    if not tracked and tracked_path_set is None:
-        git_executable = shutil.which("git")
-        completed = None
-        if git_executable is not None:
-            try:
-                completed = subprocess.run(  # nosec B603 - fixed git command with controlled arguments
-                    [git_executable, "ls-files", "artifacts", "build", "htmlcov", "coverage.xml"],
-                    cwd=root,
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-            except OSError:
-                completed = None
-        if completed and completed.returncode == 0:
-            tracked = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
-
-    if tracked:
-        generated = [
-            line
-            for line in tracked
-            if any(line == prefix or line.startswith(prefix) for prefix in GENERATED_PATH_PREFIXES)
-        ]
-        if generated:
-            findings.append(
-                Finding(
-                    id="tracked-generated-artifacts",
-                    category="public-readiness",
-                    severity="high",
-                    confidence="high",
-                    message="Generated artifacts are tracked in git and may embed workstation-specific data.",
-                    detail=", ".join(generated[:5]) + (" ..." if len(generated) > 5 else ""),
-                    suggestion="Remove generated outputs from version control and consider history cleanup for already-published leaks.",
-                    history_cleanup_recommended=True,
-                )
-            )
-
-    tracked_top_level_entries = sorted(
-        {
-            rel_path.split("/", 1)[0]
-            for rel_path in (tracked_paths if tracked_paths is not None else (_list_tracked_repo_paths(root) or ()))
-            if rel_path
-        }
-    )
-    unexpected_root_entries = [
-        entry for entry in tracked_top_level_entries if entry not in TOP_LEVEL_TRACKED_ENTRY_ALLOWLIST
-    ]
-    if unexpected_root_entries:
-        findings.append(
-            Finding(
-                id="unexpected-tracked-root-entry",
-                category="public-readiness",
-                severity="medium",
-                confidence="high",
-                message="Repository root contains tracked helper or scratch entries outside the approved top-level layout.",
-                detail=", ".join(unexpected_root_entries[:5]) + (" ..." if len(unexpected_root_entries) > 5 else ""),
-                suggestion="Move reusable tooling under scripts/ or another owner directory, and delete one-off scratch files from the repo root.",
-            )
-        )
-    return findings
+    return helper._find_public_readiness_findings(root, tracked_paths=tracked_paths)
 
 
 def _find_pipeline_findings(output_dir: Path) -> list[Finding]:
-    findings_path = output_dir / "findings.json"
-    if findings_path.exists():
-        payload = json.loads(findings_path.read_text(encoding="utf-8"))
-        normalized_findings: list[Finding] = []
-        for entry in payload.get("findings", []):
-            finding_id = str(entry.get("id") or entry.get("rule_id") or "pipeline-finding")
-            if finding_id in STRUCTURAL_DEBT_FINDING_IDS:
-                continue
-            location = entry.get("location") or {}
-            path = location.get("path")
-            if _should_ignore_normalized_pipeline_finding(finding_id, path):
-                continue
-            normalized_findings.append(
-                Finding(
-                    id=finding_id,
-                    category=str(entry.get("category") or "unknown"),
-                    severity=str(entry.get("severity") or "medium"),
-                    confidence=str(entry.get("confidence") or "medium"),
-                    message=str(entry.get("message") or "Pipeline reported a finding."),
-                    path=path,
-                    line=location.get("line"),
-                    detail=entry.get("detail"),
-                    suggestion=entry.get("suggestion"),
-                    source=str(entry.get("source") or "pipeline"),
-                )
-            )
-        return normalized_findings
+    from sattlint.devtools import _repo_audit_reporting as helper
 
-    findings: list[Finding] = []
-    vulture_path = output_dir / "vulture.json"
-    if vulture_path.exists():
-        payload = json.loads(vulture_path.read_text(encoding="utf-8"))
-        for entry in payload.get("findings", []):
-            findings.append(
-                Finding(
-                    id="vulture-dead-code",
-                    category="dead-code",
-                    severity="medium",
-                    confidence="medium",
-                    message=entry.get("message", "Potential dead code found."),
-                    path=entry.get("file"),
-                    line=entry.get("line"),
-                    source="vulture",
-                )
-            )
-
-    bandit_path = output_dir / "bandit.json"
-    if bandit_path.exists():
-        payload = json.loads(bandit_path.read_text(encoding="utf-8"))
-        for entry in payload.get("findings", []):
-            issue_severity = str(entry.get("issue_severity", "medium")).lower()
-            filename = str(entry.get("filename", ""))
-            issue_text = str(entry.get("issue_text", ""))
-            if filename.replace("\\", "/").endswith("src/sattlint/cache.py") and "pickle" in issue_text.lower():
-                issue_severity = "low"
-            findings.append(
-                Finding(
-                    id="bandit-finding",
-                    category="secrets-pii",
-                    severity=issue_severity if issue_severity in SEVERITY_RANK else "medium",
-                    confidence=str(entry.get("issue_confidence", "medium")).lower(),
-                    message=issue_text or "Bandit reported a security issue.",
-                    path=filename,
-                    line=entry.get("line_number"),
-                    source="bandit",
-                )
-            )
-
-    pytest_path = output_dir / "pytest.json"
-    if pytest_path.exists():
-        payload = json.loads(pytest_path.read_text(encoding="utf-8"))
-        summary = payload.get("summary", {})
-        failures = int(summary.get("failures", 0))
-        errors = int(summary.get("errors", 0))
-        if failures or errors:
-            findings.append(
-                Finding(
-                    id="pytest-failures",
-                    category="correctness",
-                    severity="high",
-                    confidence="high",
-                    message="Pytest reported failing or erroring tests.",
-                    detail=f"failures={failures}, errors={errors}",
-                    source="pytest",
-                )
-            )
-    return findings
+    return helper._find_pipeline_findings(output_dir)
 
 
 def _dedupe_findings(findings: Iterable[Finding]) -> list[Finding]:
@@ -2207,69 +1851,15 @@ def _is_leak_finding(finding: Finding) -> bool:
 
 
 def _structural_report_location_detail(finding: dict[str, Any]) -> tuple[str | None, str | None]:
-    finding_id = finding["id"]
-    if finding_id in {"structural-source-file-budget", "structural-test-file-budget"}:
-        entries = finding.get("over_budget_files", [])
-        if entries:
-            first_entry = entries[0]
-            return first_entry.get("path"), f"{first_entry.get('line_count')} lines"
-    if finding_id == "structural-function-budget":
-        entries = finding.get("over_budget_functions", [])
-        if entries:
-            first_entry = entries[0]
-            return first_entry.get("path"), f"{first_entry.get('qualname')} spans {first_entry.get('line_span')} lines"
-    if finding_id == "structural-class-budget":
-        entries = finding.get("over_budget_classes", [])
-        if entries:
-            first_entry = entries[0]
-            return first_entry.get(
-                "path"
-            ), f"{first_entry.get('qualname')} defines {first_entry.get('method_count')} methods"
-    if finding_id == "structural-private-helper-duplication":
-        entries = finding.get("repeated_private_names", [])
-        if entries:
-            first_entry = entries[0]
-            first_path = next(iter(first_entry.get("paths", [])), None)
-            return first_path, f"{first_entry.get('name')} repeats across {first_entry.get('file_count')} files"
-    if finding_id == "structural-facade-private-boundary":
-        entries = finding.get("private_entrypoints", [])
-        if entries:
-            first_entry = entries[0]
-            return first_entry.get("path"), f"calls {first_entry.get('target')} at line {first_entry.get('line')}"
-    if finding_id == "structural-budget-ratchet-regression":
-        regressions = finding.get("regressions", [])
-        if regressions:
-            first_regression = regressions[0]
-            return None, (
-                f"{first_regression.get('metric')}: {first_regression.get('actual')} > "
-                f"{first_regression.get('expected_max')}"
-            )
-    return None, None
+    from sattlint.devtools import _repo_audit_reporting as helper
+
+    return helper._structural_report_location_detail(finding)
 
 
 def _find_structural_report_findings(root: Path = REPO_ROOT) -> list[Finding]:
-    architecture_report = structural_reports_module.collect_architecture_report(root)
-    structural_findings: list[Finding] = []
-    for finding in architecture_report.get("findings", []):
-        finding_id = finding.get("id")
-        if not isinstance(finding_id, str) or not finding_id.startswith("structural-"):
-            continue
-        if finding_id in STRUCTURAL_DEBT_FINDING_IDS:
-            continue
-        path, detail = _structural_report_location_detail(finding)
-        structural_findings.append(
-            Finding(
-                id=finding_id,
-                category="architecture",
-                severity=str(finding.get("severity", "medium")),
-                confidence="high",
-                message=str(finding.get("message", "Structural report finding.")),
-                path=path,
-                detail=detail,
-                source="structural-reports",
-            )
-        )
-    return structural_findings
+    from sattlint.devtools import _repo_audit_reporting as helper
+
+    return helper._find_structural_report_findings(root)
 
 
 def _build_repo_audit_scan_context(

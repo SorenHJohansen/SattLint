@@ -82,8 +82,9 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
         ):
             self._add_issue(IssueKind.WRITE_WITHOUT_EFFECT, bp_path, variable, role=role)
 
+    current_library = getattr(self.bp, "origin_lib", None)
     for module in self.bp.submodules or []:
-        self._collect_issues_from_module(module, path=bp_path)
+        self._collect_issues_from_module(module, path=bp_path, current_library=current_library)
 
 
 def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
@@ -91,9 +92,13 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
         return
 
     for moduletype in self.bp.moduletype_defs or []:
-        if not self._is_from_root_origin(getattr(moduletype, "origin_file", None)):
+        if not self._is_from_root_origin(
+            getattr(moduletype, "origin_file", None),
+            getattr(moduletype, "origin_lib", None),
+        ):
             continue
         td_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
+        current_library = moduletype.origin_lib or getattr(self.bp, "origin_lib", None)
 
         self._analyze_typedef(moduletype, path=td_path)
 
@@ -117,6 +122,9 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
                 and not self._has_procedure_status_binding(variable)
             ):
                 self._add_issue(IssueKind.WRITE_WITHOUT_EFFECT, td_path, variable, role=role)
+
+        for module in moduletype.submodules or []:
+            self._collect_issues_from_module(module, path=td_path, current_library=current_library)
 
         for variable in moduletype.localvariables or []:
             role = "localvariable"

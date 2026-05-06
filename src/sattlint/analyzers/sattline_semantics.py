@@ -978,6 +978,7 @@ def analyze_sattline_semantics(
     dataflow_report = analyze_dataflow(
         base_picture,
         unavailable_libraries=unavailable_libraries,
+        analyzed_target_is_library=analyzed_target_is_library,
     )
 
     issues.extend(_map_variable_issues(variable_report.issues))

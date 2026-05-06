@@ -428,6 +428,29 @@ def test_collect_facade_private_entrypoints_detects_importfrom_direct_private_ca
     assert any(v["target"].endswith("_helper_func") for v in violations)
 
 
+def test_collect_facade_private_entrypoints_and_exception_normalization_cover_validation_edges():
+    import ast as _ast
+
+    source = "import pkg.helpers as helpers_module\n\ndef run():\n    return helpers_module._secret()\n"
+    tree = _ast.parse(source)
+
+    violations = structural_reports._collect_facade_private_entrypoints(tree, relative_path="src/sattlint/app.py")
+
+    assert violations == [{"path": "src/sattlint/app.py", "line": 4, "target": "pkg.helpers._secret"}]
+
+    with pytest.raises(ValueError, match="JSON object keyed"):
+        structural_reports._normalize_file_line_exceptions([], label="ratchet")
+    with pytest.raises(ValueError, match="non-empty strings"):
+        structural_reports._normalize_file_line_exceptions({"": {"max_lines": 1, "reason": "ok"}}, label="ratchet")
+    with pytest.raises(ValueError, match="JSON object"):
+        structural_reports._normalize_file_line_exceptions({"src/demo.py": []}, label="ratchet")
+    with pytest.raises(ValueError, match="positive integer"):
+        structural_reports._normalize_file_line_exceptions(
+            {"src/demo.py": {"max_lines": 0, "reason": "ok"}},
+            label="ratchet",
+        )
+
+
 def test_structural_ratchet_main_reports_pass(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(
         structural_reports,
@@ -478,6 +501,140 @@ def test_structural_ratchet_main_reports_json_failures(monkeypatch, capsys, tmp_
     captured = capsys.readouterr()
     assert exit_code == 1
     assert json.loads(captured.out) == expected
+
+
+def test_load_structural_budget_ratchet_rejects_invalid_file_debt_shapes(tmp_path):
+    ratchet = tmp_path / "ratchet.json"
+    ratchet.write_text(json.dumps({"kind": "k", "schema_version": 1, "metrics": {}}), encoding="utf-8")
+    file_debt = tmp_path / structural_reports.FILE_DEBT_RATCHET_PATH
+    file_debt.parent.mkdir(parents=True, exist_ok=True)
+
+    file_debt.write_text("{not json", encoding="utf-8")
+    result = structural_reports._load_structural_budget_ratchet(tmp_path, ratchet_path=ratchet)
+    assert result["status"] == "invalid"
+
+    file_debt.write_text(json.dumps({"files": []}), encoding="utf-8")
+    result = structural_reports._load_structural_budget_ratchet(tmp_path, ratchet_path=ratchet)
+    assert result["status"] == "invalid"
+
+    file_debt.write_text(json.dumps({"files": {"src/demo.py": []}}), encoding="utf-8")
+    result = structural_reports._load_structural_budget_ratchet(tmp_path, ratchet_path=ratchet)
+    assert result["status"] == "invalid"
+
+    file_debt.write_text(json.dumps({"files": {"src/demo.py": {"other": {}}}}), encoding="utf-8")
+    result = structural_reports._load_structural_budget_ratchet(tmp_path, ratchet_path=ratchet)
+    assert result["status"] == "loaded"
+    assert result["file_line_exceptions"] == {}
+
+    file_debt.write_text(json.dumps({"files": {"src/demo.py": {"structural": []}}}), encoding="utf-8")
+    result = structural_reports._load_structural_budget_ratchet(tmp_path, ratchet_path=ratchet)
+    assert result["status"] == "invalid"
+
+    file_debt.write_text(
+        json.dumps({"files": {"src/demo.py": {"structural": {"current_baseline": 0, "reason": "ok"}}}}),
+        encoding="utf-8",
+    )
+    result = structural_reports._load_structural_budget_ratchet(tmp_path, ratchet_path=ratchet)
+    assert result["status"] == "invalid"
+
+    file_debt.write_text(
+        json.dumps({"files": {"src/demo.py": {"structural": {"current_baseline": 5, "reason": ""}}}}),
+        encoding="utf-8",
+    )
+    result = structural_reports._load_structural_budget_ratchet(tmp_path, ratchet_path=ratchet)
+    assert result["status"] == "invalid"
+
+    ratchet.write_text(
+        json.dumps(
+            {
+                "kind": "k",
+                "schema_version": 1,
+                "metrics": {},
+                "file_line_exceptions": {"src/demo.py": {"max_lines": 7, "reason": "legacy"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    file_debt.write_text(
+        json.dumps({"files": {"src/demo.py": {"structural": {"current_baseline": 5, "reason": "different"}}}}),
+        encoding="utf-8",
+    )
+    result = structural_reports._load_structural_budget_ratchet(tmp_path, ratchet_path=ratchet)
+    assert result["status"] == "invalid"
+
+
+def test_collect_structural_budget_report_skips_missing_line_counts_and_functions_without_end_lines(
+    monkeypatch, tmp_path
+):
+    source_file = tmp_path / "src" / "demo.py"
+    source_file.parent.mkdir(parents=True, exist_ok=True)
+    source_file.write_text("def helper():\n    return 1\n", encoding="utf-8")
+
+    monkeypatch.setattr(structural_reports, "iter_structural_python_files", lambda _root: (("src", source_file),))
+    monkeypatch.setattr(structural_reports, "iter_structural_markdown_files", lambda _root: ())
+    monkeypatch.setattr(
+        structural_reports,
+        "read_structural_text",
+        lambda _path: (None, None, {"error": "decode failed", "error_type": "UnicodeDecodeError"}),
+    )
+
+    skipped_report = structural_reports.collect_structural_budget_report(tmp_path)
+
+    assert skipped_report["scan_failures"] == [
+        {"path": "src/demo.py", "error": "decode failed", "error_type": "UnicodeDecodeError"}
+    ]
+
+    tree = structural_reports.ast.parse(source_file.read_text(encoding="utf-8"), filename="src/demo.py")
+    function_node = next(
+        node for node in structural_reports.ast.walk(tree) if isinstance(node, structural_reports.ast.FunctionDef)
+    )
+    function_node.end_lineno = None
+    monkeypatch.setattr(
+        structural_reports, "read_structural_text", lambda _path: (source_file.read_text(encoding="utf-8"), 2, None)
+    )
+    monkeypatch.setattr(structural_reports.ast, "parse", lambda *args, **kwargs: tree)
+
+    report = structural_reports.collect_structural_budget_report(tmp_path)
+
+    assert report["functions_over_budget"] == []
+
+
+def test_structural_ratchet_main_reports_text_regressions(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(
+        structural_reports,
+        "collect_structural_budget_report",
+        lambda *_args, **_kwargs: {
+            "ratchet": {
+                "status": "fail",
+                "path": "artifacts/analysis/structural_budget_ratchet.json",
+                "expected_metrics": {},
+                "current_metrics": {},
+                "regressions": [
+                    {"metric": "function_over_budget_count", "expected_max": 3, "actual": 5},
+                    {"path": "src/demo.py", "expected_max": 500, "actual": 520, "reason": "legacy exception regressed"},
+                ],
+            }
+        },
+    )
+
+    exit_code = structural_reports.main(["--repo-root", str(tmp_path)])
+
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "Regressions:" in output
+    assert "function_over_budget_count: 5 > 3" in output
+    assert "src/demo.py: 520 > 500 (legacy exception regressed)" in output
+
+
+def test_structural_reports_module_main_invokes_cli(monkeypatch, tmp_path):
+    import runpy
+
+    monkeypatch.setattr(sys, "argv", ["structural_reports", "--repo-root", str(tmp_path), "--json"])
+
+    with pytest.raises(SystemExit) as exit_info:
+        runpy.run_module("sattlint.devtools.structural_reports", run_name="__main__")
+
+    assert exit_info.value.code in {0, 1}
 
 
 def test_structural_ratchet_main_uses_sys_argv_when_called_without_explicit_args(monkeypatch, capsys, tmp_path):

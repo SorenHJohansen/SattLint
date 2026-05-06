@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import subprocess
@@ -11,7 +12,7 @@ from unittest.mock import call, patch
 
 import pytest
 
-from sattlint.devtools import doc_gardener, repo_audit, repo_audit_entrypoints
+from sattlint.devtools import coordination_lock_state, doc_gardener, repo_audit, repo_audit_entrypoints
 from sattlint.devtools.pipeline_artifacts import artifact_source_manifest_path, write_json_artifact
 
 from .helpers.artifact_assertions import assert_findings_collection, assert_findings_schema
@@ -43,6 +44,18 @@ def test_extract_documented_commands_reads_script_and_subcommand(tmp_path):
 
     assert repo_audit.DocumentedCommand("sattlint", "syntax-check", "README.md", 1) in commands
     assert repo_audit.DocumentedCommand("sattlint-repo-audit", None, "README.md", 1) in commands
+
+
+def test_extract_documented_commands_ignores_paths_with_sattlint_prefix_segments(tmp_path):
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "Claim files in the shared `.git/sattlint-ai-coordination/current_work_lock.json` lock state.\n",
+        encoding="utf-8",
+    )
+
+    commands = repo_audit._extract_documented_commands([readme], root=tmp_path)
+
+    assert commands == []
 
 
 def test_find_documentation_command_gaps_flags_missing_command():
@@ -398,6 +411,61 @@ def test_parse_coverage_findings_handles_missing_file_and_parse_error(tmp_path):
         repo_audit._parse_coverage_findings(tmp_path)
 
 
+def test_repo_audit_ast_path_helpers_cover_branchy_cases():
+    assert repo_audit._leading_string_args(
+        [
+            ast.Constant(value=" docs "),
+            ast.Constant(value=""),
+            ast.Name(id="dynamic_value", ctx=ast.Load()),
+        ]
+    ) == ("docs",)
+
+    invalid_attr = ast.parse("factory().value", mode="eval").body
+    assert isinstance(invalid_attr, ast.Attribute)
+    assert repo_audit._attribute_path(invalid_attr) is None
+
+    assert repo_audit._repo_relative_path_from_expr(ast.parse("REPO_ROOT", mode="eval").body) == ()
+    assert repo_audit._repo_relative_path_from_expr(ast.parse("config.REPO_ROOT", mode="eval").body) == ()
+    assert repo_audit._repo_relative_path_from_expr(ast.parse('_repo_path("docs", "", "cli")', mode="eval").body) == (
+        "docs",
+        "cli",
+    )
+    assert repo_audit._repo_relative_path_from_expr(ast.parse('REPO_ROOT / ""', mode="eval").body) == ()
+    assert repo_audit._repo_relative_path_from_expr(ast.parse("REPO_ROOT / dynamic_name", mode="eval").body) is None
+
+    assert repo_audit._normalize_repo_relative_literal(" https://example.com/demo ") is None
+    assert repo_audit._normalize_repo_relative_literal("./scratch") is None
+    assert repo_audit._normalize_repo_relative_literal("docs/reference/") == "docs/reference"
+
+    assert (
+        repo_audit._is_ignored_repo_path_reference(
+            "artifacts/audit",
+            tracked_paths=("artifacts/audit/status.json",),
+        )
+        is False
+    )
+    assert repo_audit._is_ignored_repo_path_reference(".coverage.worker", tracked_paths=None) is True
+    assert repo_audit._is_ignored_repo_path_reference("Libs/HA/demo.x", tracked_paths=None) is True
+
+
+def test_repo_audit_source_signal_helpers_cover_edge_cases():
+    assert repo_audit._source_segment_summary("value = 1\n", ast.Pass()) is None
+
+    source_text = "result = helper(alpha, beta, gamma, delta)\n"
+    statement = ast.parse(source_text).body[0]
+    summary = repo_audit._source_segment_summary(source_text, statement, max_length=18)
+    assert summary is not None and summary.endswith("...")
+
+    assert repo_audit._contains_host_signal(ast.parse("platform.system()", mode="eval").body) is True
+    assert repo_audit._contains_host_signal(ast.parse("value + 1", mode="eval").body) is False
+
+    assert repo_audit._is_pythonpath_target(ast.parse('os.environ["PYTHONPATH"]', mode="eval").body) is True
+    assert repo_audit._is_pythonpath_target(ast.parse('os.environ["HOME"]', mode="eval").body) is False
+
+    assert repo_audit._find_marker_in_segment("prefix/site-packages/demo") == "site-packages"
+    assert repo_audit._find_marker_in_segment("plain text only") is None
+
+
 def test_load_pyproject_accepts_cp1252_toml(tmp_path):
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_bytes('[project]\nname = "demo"\nauthors = [{ name = "S\u00f8ren" }]\n'.encode("cp1252"))
@@ -467,6 +535,153 @@ def test_build_python_source_scan_context_uses_tracked_files_only(tmp_path):
     )
 
     assert {path.relative_to(tmp_path).as_posix() for path in context.texts} == {"src/tracked.py"}
+
+
+def test_build_python_source_scan_context_skips_syntax_errors_and_builds_documented_commands(tmp_path):
+    source_root = tmp_path / "src"
+    source_root.mkdir(parents=True)
+    (source_root / "good.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (source_root / "broken.py").write_text("if True print('bad')\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("Run `sattlint syntax-check demo.s`.\n", encoding="utf-8")
+
+    context = repo_audit._build_python_source_scan_context(source_root, root=tmp_path)
+    scan_context = repo_audit._build_repo_audit_scan_context(tmp_path, suspicious_identifiers=["  ", "SQHJ "])
+
+    assert {path.name for path in context.texts} == {"broken.py", "good.py"}
+    assert {path.name for path in context.asts} == {"good.py"}
+    assert scan_context.suspicious_identifiers == frozenset({"SQHJ"})
+    assert repo_audit.DocumentedCommand("sattlint", "syntax-check", "README.md", 1) in scan_context.documented_commands
+
+
+def test_write_text_artifact_retries_permission_errors_and_raises_when_attempts_are_exhausted(tmp_path, monkeypatch):
+    artifact_path = tmp_path / "artifacts" / "status.json"
+
+    monkeypatch.setattr(repo_audit.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        repo_audit.os, "replace", lambda _source, _target: (_ for _ in ()).throw(PermissionError("locked"))
+    )
+
+    with pytest.raises(PermissionError, match="locked"):
+        repo_audit._write_text_artifact(artifact_path, "payload")
+
+    assert list(artifact_path.parent.glob(f".{artifact_path.name}.*.tmp")) == []
+
+    monkeypatch.setattr(repo_audit, "range", lambda _count: (), raising=False)
+    with pytest.raises(RuntimeError, match="Failed to write"):
+        repo_audit._write_text_artifact(tmp_path / "no-attempts" / "status.json", "payload")
+
+
+def test_report_copy_and_history_helpers_cover_edge_cases(tmp_path, monkeypatch):
+    source_dir = tmp_path / "reports"
+    latest_dir = tmp_path / "latest"
+    nested_dir = source_dir / "nested"
+    history_dir = source_dir / repo_audit.AUDIT_RUN_HISTORY_DIRNAME
+    source_dir.mkdir(parents=True)
+    nested_dir.mkdir()
+    history_dir.mkdir()
+    (nested_dir / "summary.json").write_text("summary", encoding="utf-8")
+    (source_dir / repo_audit.AUDIT_RUN_HISTORY_FILENAME).write_text("[]", encoding="utf-8")
+    (history_dir / "old.json").write_text("old", encoding="utf-8")
+
+    repo_audit._mirror_latest_reports(source_dir, source_dir)
+    repo_audit._mirror_latest_reports(source_dir, latest_dir)
+    repo_audit._copy_audit_snapshot(source_dir, tmp_path / "snapshot")
+
+    assert (latest_dir / "nested").is_dir()
+    assert (latest_dir / "nested" / "summary.json").read_text(encoding="utf-8") == "summary"
+    assert not (tmp_path / "snapshot" / repo_audit.AUDIT_RUN_HISTORY_FILENAME).exists()
+    assert not (tmp_path / "snapshot" / repo_audit.AUDIT_RUN_HISTORY_DIRNAME).exists()
+
+    history_path = tmp_path / "history.json"
+    history_path.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(repo_audit, "_read_text", lambda _path: (_ for _ in ()).throw(ValueError("bad history")))
+    assert repo_audit._load_audit_run_history(history_path) == []
+
+    monkeypatch.setattr(repo_audit, "_read_text", lambda _path: "[]")
+    assert repo_audit._load_audit_run_history(history_path) == []
+
+    monkeypatch.setattr(repo_audit, "_read_text", lambda _path: '{"runs": "invalid"}')
+    assert repo_audit._load_audit_run_history(history_path) == []
+
+    monkeypatch.setattr(repo_audit.shutil, "which", lambda _name: None)
+    assert repo_audit._collect_audit_git_state(tmp_path) == {"head": None, "dirty": None}
+
+    monkeypatch.setattr(repo_audit.shutil, "which", lambda _name: "git")
+    monkeypatch.setattr(
+        repo_audit.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("git missing"))
+    )
+    assert repo_audit._collect_audit_git_state(tmp_path) == {"head": None, "dirty": None}
+
+
+def test_build_local_import_graph_and_architecture_findings_cover_prefix_and_info_cycles(tmp_path, monkeypatch):
+    source_root = tmp_path / "src"
+    pkg_dir = source_root / "pkg"
+    subpkg_dir = pkg_dir / "subpkg"
+    pkg_dir.mkdir(parents=True)
+    subpkg_dir.mkdir(parents=True)
+    module_a = pkg_dir / "a.py"
+    helper = subpkg_dir / "helper.py"
+
+    graph = repo_audit._build_local_import_graph(
+        source_root,
+        content_by_file={
+            module_a: "import pkg\nfrom . import subpkg\nfrom ... import outside\n",
+            helper: "VALUE = 1\n",
+        },
+    )
+
+    assert graph["pkg.a"] == {"pkg"}
+
+    monkeypatch.setattr(repo_audit, "_build_local_import_graph", lambda *_args, **_kwargs: {"placeholder": set()})
+    monkeypatch.setattr(
+        repo_audit,
+        "_find_import_cycles",
+        lambda _graph: [
+            ["sattline_semantics", "rule_profiles", "sattline_semantics"],
+            ["a", "b", "c", "d", "a"],
+        ],
+    )
+
+    findings = repo_audit._find_architecture_findings(source_root, content_by_file={})
+
+    assert [finding.severity for finding in findings] == ["info", "info"]
+    assert findings[0].message == "Known aggregator cycle (rule metadata requires aggregator)."
+    assert findings[1].message == "Long import cycle through multiple analyzers."
+
+
+def test_structural_detail_and_cached_line_findings_cover_delegate_paths(tmp_path):
+    detail = repo_audit._structural_report_location_detail(
+        {
+            "id": "structural-budget-ratchet-regression",
+            "regressions": [{"metric": "source_files", "actual": 3, "expected_max": 2}],
+        }
+    )
+    empty_context = repo_audit.PythonSourceScanContext(source_root=tmp_path, texts={}, asts={})
+    cached_finding = repo_audit.Finding(
+        id="cached-finding",
+        category="test-coverage",
+        severity="low",
+        confidence="high",
+        message="cached",
+    )
+    context = repo_audit.RepoAuditScanContext(
+        root=tmp_path,
+        include_generated=False,
+        tracked_only=False,
+        tracked_paths=None,
+        suspicious_identifiers=frozenset(),
+        source_context=empty_context,
+        test_context=empty_context,
+        scripts_context=empty_context,
+        scripts=frozenset(),
+        subcommands=frozenset(),
+        documented_commands=(),
+        line_findings=(cached_finding,),
+    )
+
+    assert detail == (None, "source_files: 3 > 2")
+    assert repo_audit._with_shared_text_line_findings(context) is context
 
 
 def test_build_python_source_scan_context_skips_missing_tracked_files(tmp_path):
@@ -1156,9 +1371,7 @@ def test_find_structural_report_findings_translates_structural_architecture_find
         ]
     }
 
-    with patch.object(
-        repo_audit.structural_reports_module, "collect_architecture_report", return_value=architecture_report
-    ):
+    with patch("sattlint.devtools.structural_reports.collect_architecture_report", return_value=architecture_report):
         findings = repo_audit._find_structural_report_findings(tmp_path)
 
     assert len(findings) == 1
@@ -1418,7 +1631,7 @@ def test_doc_gardener_scan_ai_first_status_drift_reports_mismatch(tmp_path):
                         "owner": "Copilot",
                         "status": "active",
                         "claimed_paths": ["src/demo.py"],
-                        "updated_at": "2026-05-04T00:00:00Z",
+                        "updated_at": coordination_lock_state.utc_now_timestamp(),
                         "first_validation": "pytest tests/test_repo_audit.py -x -q --tb=short",
                     },
                     {
@@ -1426,7 +1639,7 @@ def test_doc_gardener_scan_ai_first_status_drift_reports_mismatch(tmp_path):
                         "owner": "Copilot",
                         "status": "blocked",
                         "claimed_paths": ["src/other.py"],
-                        "updated_at": "2026-05-04T00:00:00Z",
+                        "updated_at": coordination_lock_state.utc_now_timestamp(),
                         "first_validation": "pytest tests/test_repo_audit.py -x -q --tb=short",
                     },
                 ]
@@ -1768,7 +1981,7 @@ def test_doc_gardener_flags_refactor_status_mismatch(tmp_path):
                         "owner": "Copilot",
                         "status": "active",
                         "claimed_paths": ["src/sattlint/core/parser.py"],
-                        "updated_at": "2026-05-04T00:00:00Z",
+                        "updated_at": coordination_lock_state.utc_now_timestamp(),
                         "first_validation": "pytest tests/test_repo_audit.py -x -q --tb=short",
                     }
                 ]
@@ -3250,7 +3463,7 @@ def test_doc_gardener_load_active_workstream_statuses_extracts_status_from_lock_
                         "owner": "Copilot",
                         "status": "active",
                         "claimed_paths": ["src/demo.py"],
-                        "updated_at": "2026-05-04T00:00:00Z",
+                        "updated_at": coordination_lock_state.utc_now_timestamp(),
                         "first_validation": "pytest tests/test_repo_audit.py -x -q --tb=short",
                     },
                     {
@@ -3258,7 +3471,7 @@ def test_doc_gardener_load_active_workstream_statuses_extracts_status_from_lock_
                         "owner": "Copilot",
                         "status": "blocked",
                         "claimed_paths": ["src/other.py"],
-                        "updated_at": "2026-05-04T00:00:00Z",
+                        "updated_at": coordination_lock_state.utc_now_timestamp(),
                         "first_validation": "pytest tests/test_repo_audit.py -x -q --tb=short",
                     },
                 ]

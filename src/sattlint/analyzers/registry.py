@@ -20,9 +20,11 @@ from sattlint.analyzers.spec_compliance import analyze_spec_compliance
 from sattlint.analyzers.state_inference import analyze_state_inference
 from sattlint.analyzers.taint_paths import analyze_taint_paths
 
+from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadata, summary_output_for_analyzer
+from ._registry_specs import build_default_analyzers
 from .comment_code import analyze_comment_code
 from .dataflow import analyze_dataflow
-from .framework import AnalysisContext, AnalyzerSpec
+from .framework import AnalyzerSpec
 from .mms import analyze_mms_interface_variables
 from .rule_profiles import get_default_rule_profile_report
 from .sattline_semantics import (
@@ -31,11 +33,7 @@ from .sattline_semantics import (
     analyze_sattline_semantics,
     get_sattline_semantic_rule_groups,
 )
-from .sfc import (
-    analyze_sfc,
-    get_configured_mutually_exclusive_step_sets,
-    get_configured_step_contracts,
-)
+from .sfc import analyze_sfc, get_configured_mutually_exclusive_step_sets, get_configured_step_contracts
 from .shadowing import analyze_shadowing
 from .unsafe_defaults import analyze_unsafe_defaults
 from .variables import analyze_variables
@@ -53,37 +51,32 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 
-
-@dataclass(frozen=True)
-class AnalyzerDeliveryMetadata:
-    scope: str
-    implementation_bucket: str
-    output_artifacts: tuple[str, ...] = ()
-    cli_exposed: bool = False
-    lsp_exposed: bool = False
-    acceptance_tests: tuple[str, ...] = ()
-    depends_on_analyzers: tuple[str, ...] = ()
-    depends_on_artifacts: tuple[str, ...] = ()
-    supports_baselines: bool = True
-    supports_incremental: bool = False
-    min_fixture_set: tuple[str, ...] = ()
-    exposed_via: tuple[str, ...] = ()
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "scope": self.scope,
-            "implementation_bucket": self.implementation_bucket,
-            "output_artifacts": list(self.output_artifacts),
-            "cli_exposed": self.cli_exposed,
-            "lsp_exposed": self.lsp_exposed,
-            "acceptance_tests": list(self.acceptance_tests),
-            "depends_on_analyzers": list(self.depends_on_analyzers),
-            "depends_on_artifacts": list(self.depends_on_artifacts),
-            "supports_baselines": self.supports_baselines,
-            "supports_incremental": self.supports_incremental,
-            "min_fixture_set": list(self.min_fixture_set),
-            "exposed_via": list(self.exposed_via),
-        }
+# Preserve the historical monkeypatch surface that tests and extracted helper modules use.
+_REGISTRY_MONKEYPATCH_SURFACE = (
+    analyze_alarm_integrity,
+    analyze_comment_code,
+    analyze_cyclomatic_complexity,
+    analyze_dataflow,
+    analyze_initial_values,
+    analyze_loop_output_refactor,
+    analyze_mms_interface_variables,
+    analyze_naming_consistency,
+    analyze_parameter_drift,
+    analyze_safety_paths,
+    analyze_sattline_semantics,
+    analyze_scan_loop_resource_usage,
+    analyze_sfc,
+    analyze_shadowing,
+    analyze_spec_compliance,
+    analyze_state_inference,
+    analyze_taint_paths,
+    analyze_unsafe_defaults,
+    analyze_variables,
+    analyze_version_drift,
+    get_configured_mutually_exclusive_step_sets,
+    get_configured_naming_rules,
+    get_configured_step_contracts,
+)
 
 
 @dataclass(frozen=True)
@@ -210,268 +203,6 @@ def get_actual_lsp_analyzer_keys() -> tuple[str, ...]:
     )
 
 
-def _summary_output_for_analyzer(analyzer_key: str) -> str:
-    return f"{analyzer_key}.summary"
-
-
-def _base_delivery_metadata_by_analyzer() -> dict[str, AnalyzerDeliveryMetadata]:
-    shared_fixtures = ("tests/fixtures/sample_sattline_files",)
-    return {
-        "sattline-semantics": AnalyzerDeliveryMetadata(
-            scope="workspace",
-            implementation_bucket="shared-semantic-core",
-            lsp_exposed=True,
-            acceptance_tests=(
-                "tests/test_sattline_semantics.py",
-                "tests/test_pipeline.py",
-            ),
-            min_fixture_set=shared_fixtures,
-        ),
-        "symbolic_lite": AnalyzerDeliveryMetadata(
-            scope="cross-module",
-            implementation_bucket="shared-semantic-core",
-            acceptance_tests=(
-                "tests/test_dataflow.py",
-                "tests/test_sattline_semantics.py",
-            ),
-            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY,),
-            min_fixture_set=shared_fixtures,
-            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY,),
-        ),
-        "variables": AnalyzerDeliveryMetadata(
-            scope="workspace",
-            implementation_bucket="variables-reporting",
-            cli_exposed=True,
-            lsp_exposed=True,
-            acceptance_tests=(
-                "tests/test_analyzers.py",
-                "tests/test_sattline_semantics.py",
-                "tests/test_app.py",
-            ),
-            supports_incremental=True,
-            min_fixture_set=shared_fixtures,
-            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY,),
-        ),
-        "mms-interface": AnalyzerDeliveryMetadata(
-            scope="workspace",
-            implementation_bucket="interface-mapping",
-            cli_exposed=True,
-            acceptance_tests=(
-                "tests/test_analyzers.py",
-                "tests/test_app.py",
-            ),
-            min_fixture_set=shared_fixtures,
-        ),
-        "sfc": AnalyzerDeliveryMetadata(
-            scope="single-file",
-            implementation_bucket="shared-semantic-core",
-            cli_exposed=True,
-            lsp_exposed=True,
-            acceptance_tests=(
-                "tests/test_sfc.py",
-                "tests/test_analyzers.py",
-                "tests/test_sattline_semantics.py",
-            ),
-            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY,),
-            min_fixture_set=shared_fixtures,
-            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY,),
-        ),
-        "comment-code": AnalyzerDeliveryMetadata(
-            scope="single-file",
-            implementation_bucket="comment-scan",
-            cli_exposed=True,
-            acceptance_tests=(
-                "tests/test_comment_code.py",
-                "tests/test_app.py",
-            ),
-        ),
-        "shadowing": AnalyzerDeliveryMetadata(
-            scope="workspace",
-            implementation_bucket="variables-reporting",
-            cli_exposed=True,
-            acceptance_tests=(
-                "tests/test_analyzers.py",
-                "tests/test_app.py",
-                "tests/test_pipeline.py",
-            ),
-            min_fixture_set=shared_fixtures,
-        ),
-        "spec-compliance": AnalyzerDeliveryMetadata(
-            scope="workspace",
-            implementation_bucket="engineering-rules",
-            cli_exposed=True,
-            lsp_exposed=True,
-            acceptance_tests=(
-                "tests/test_spec_compliance.py",
-                "tests/test_app.py",
-            ),
-            min_fixture_set=shared_fixtures,
-        ),
-        "loop-output-refactor": AnalyzerDeliveryMetadata(
-            scope="single-file",
-            implementation_bucket="engineering-rules",
-            cli_exposed=True,
-            acceptance_tests=(
-                "tests/test_analyzers.py",
-                "tests/test_app.py",
-            ),
-            min_fixture_set=shared_fixtures,
-        ),
-        "alarm-integrity": AnalyzerDeliveryMetadata(
-            scope="cross-module",
-            implementation_bucket="shared-semantic-core",
-            lsp_exposed=True,
-            acceptance_tests=(
-                "tests/test_analyzers.py",
-                "tests/test_sattline_semantics.py",
-            ),
-            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY,),
-            min_fixture_set=shared_fixtures,
-            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY,),
-        ),
-        "initial-values": AnalyzerDeliveryMetadata(
-            scope="workspace",
-            implementation_bucket="engineering-rules",
-            lsp_exposed=True,
-            acceptance_tests=("tests/test_analyzers.py",),
-            min_fixture_set=shared_fixtures,
-        ),
-        "naming-consistency": AnalyzerDeliveryMetadata(
-            scope="workspace",
-            implementation_bucket="engineering-rules",
-            acceptance_tests=("tests/test_analyzers.py",),
-            min_fixture_set=shared_fixtures,
-            exposed_via=("pipeline",),
-        ),
-        "cyclomatic-complexity": AnalyzerDeliveryMetadata(
-            scope="single-file",
-            implementation_bucket="engineering-rules",
-            acceptance_tests=("tests/test_analyzers.py",),
-            min_fixture_set=shared_fixtures,
-            exposed_via=("pipeline",),
-        ),
-        "parameter-drift": AnalyzerDeliveryMetadata(
-            scope="cross-module",
-            implementation_bucket="engineering-rules",
-            acceptance_tests=("tests/test_analyzers.py",),
-            min_fixture_set=shared_fixtures,
-            exposed_via=("pipeline",),
-        ),
-        "scan-loop-resource-usage": AnalyzerDeliveryMetadata(
-            scope="single-file",
-            implementation_bucket="engineering-rules",
-            acceptance_tests=("tests/test_analyzers.py",),
-            min_fixture_set=shared_fixtures,
-            exposed_via=("pipeline",),
-        ),
-        "version-drift": AnalyzerDeliveryMetadata(
-            scope="workspace",
-            implementation_bucket="engineering-rules",
-            acceptance_tests=(
-                "tests/test_analyzers.py",
-                "tests/test_docgen.py",
-            ),
-            min_fixture_set=shared_fixtures,
-            exposed_via=("docgen",),
-        ),
-        "safety-paths": AnalyzerDeliveryMetadata(
-            scope="cross-module",
-            implementation_bucket="shared-semantic-core",
-            lsp_exposed=True,
-            acceptance_tests=(
-                "tests/test_analyzers.py",
-                "tests/test_sattline_semantics.py",
-                "tests/test_editor_api.py",
-            ),
-            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY,),
-            min_fixture_set=shared_fixtures,
-            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY, "editor-api"),
-        ),
-        "taint-paths": AnalyzerDeliveryMetadata(
-            scope="cross-module",
-            implementation_bucket="graph-tracing",
-            lsp_exposed=True,
-            acceptance_tests=(
-                "tests/test_analyzers.py",
-                "tests/test_editor_api.py",
-            ),
-            min_fixture_set=shared_fixtures,
-            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY, "editor-api"),
-        ),
-        "unsafe-defaults": AnalyzerDeliveryMetadata(
-            scope="single-file",
-            implementation_bucket="shared-semantic-core",
-            lsp_exposed=True,
-            acceptance_tests=(
-                "tests/test_pipeline.py",
-                "tests/test_sattline_semantics.py",
-            ),
-            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY,),
-            min_fixture_set=shared_fixtures,
-            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY,),
-        ),
-        "dataflow": AnalyzerDeliveryMetadata(
-            scope="workspace",
-            implementation_bucket="shared-semantic-core",
-            lsp_exposed=True,
-            acceptance_tests=(
-                "tests/test_dataflow.py",
-                "tests/test_analyzers.py",
-                "tests/test_sattline_semantics.py",
-            ),
-            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY,),
-            min_fixture_set=shared_fixtures,
-            exposed_via=(SEMANTIC_LAYER_ANALYZER_KEY,),
-        ),
-        "state_inference": AnalyzerDeliveryMetadata(
-            scope="workspace",
-            implementation_bucket="shared-semantic-core",
-            cli_exposed=True,
-            acceptance_tests=(
-                "tests/test_state_inference.py",
-                "tests/test_dataflow.py",
-                "tests/test_cli.py",
-            ),
-            depends_on_analyzers=(SEMANTIC_LAYER_ANALYZER_KEY, "dataflow"),
-            min_fixture_set=shared_fixtures,
-            exposed_via=("cli",),
-        ),
-    }
-
-
-def _build_delivery_metadata(
-    spec: AnalyzerSpec,
-    rule_ids: tuple[str, ...],
-) -> AnalyzerDeliveryMetadata:
-    base = _base_delivery_metadata_by_analyzer().get(spec.key)
-    if base is None:
-        return AnalyzerDeliveryMetadata(
-            scope="workspace",
-            implementation_bucket="analyzers",
-            output_artifacts=(_summary_output_for_analyzer(spec.key),),
-        )
-
-    output_artifacts = [_summary_output_for_analyzer(spec.key)]
-    semantic_summary = _summary_output_for_analyzer(SEMANTIC_LAYER_ANALYZER_KEY)
-    if spec.key != SEMANTIC_LAYER_ANALYZER_KEY and rule_ids and semantic_summary not in output_artifacts:
-        output_artifacts.append(semantic_summary)
-
-    return AnalyzerDeliveryMetadata(
-        scope=base.scope,
-        implementation_bucket=base.implementation_bucket,
-        output_artifacts=tuple(output_artifacts),
-        cli_exposed=base.cli_exposed,
-        lsp_exposed=base.lsp_exposed,
-        acceptance_tests=base.acceptance_tests,
-        depends_on_analyzers=base.depends_on_analyzers,
-        depends_on_artifacts=base.depends_on_artifacts,
-        supports_baselines=base.supports_baselines,
-        supports_incremental=base.supports_incremental,
-        min_fixture_set=base.min_fixture_set,
-        exposed_via=base.exposed_via,
-    )
-
-
 def _iter_semantic_rules(
     semantic_rule_groups: tuple[SemanticRuleGroup, ...],
 ) -> tuple[SemanticRule, ...]:
@@ -518,7 +249,7 @@ def _build_rule_metadata(
         outputs=tuple(
             analyzer_metadata_by_key[analyzer_key].summary_output
             if analyzer_key in analyzer_metadata_by_key
-            else _summary_output_for_analyzer(analyzer_key)
+            else summary_output_for_analyzer(analyzer_key)
             for analyzer_key in mapped_analyzers
         ),
         acceptance_tests=(None if rule.acceptance_tests is None else tuple(sorted(rule.acceptance_tests))),
@@ -526,6 +257,14 @@ def _build_rule_metadata(
         mutation_applicability=rule.mutation_applicability,
         suppression_modes=(None if rule.suppression_modes is None else tuple(sorted(rule.suppression_modes))),
         incremental_safe=rule.incremental_safe,
+    )
+
+
+def _build_delivery_metadata(spec: AnalyzerSpec, rule_ids: tuple[str, ...]) -> AnalyzerDeliveryMetadata:
+    return build_delivery_metadata(
+        spec,
+        rule_ids,
+        semantic_layer_analyzer_key=SEMANTIC_LAYER_ANALYZER_KEY,
     )
 
 
@@ -550,10 +289,7 @@ def get_default_analyzer_catalog() -> AnalyzerCatalog:
         AnalyzerMetadata(
             spec=spec,
             rule_ids=tuple(sorted(rule_ids_by_analyzer.get(spec.key, []))),
-            delivery=_build_delivery_metadata(
-                spec,
-                tuple(sorted(rule_ids_by_analyzer.get(spec.key, []))),
-            ),
+            delivery=_build_delivery_metadata(spec, tuple(sorted(rule_ids_by_analyzer.get(spec.key, [])))),
         )
         for spec in analyzer_specs
     )
@@ -584,267 +320,4 @@ def get_default_cli_analyzers() -> list[AnalyzerSpec]:
 
 
 def get_default_analyzers() -> list[AnalyzerSpec]:
-    def _run_variables(context: AnalysisContext):
-        return analyze_variables(
-            context.base_picture,
-            debug=context.debug,
-            unavailable_libraries=context.unavailable_libraries,
-            analyzed_target_is_library=context.target_is_library,
-            config=context.config,
-        )
-
-    def _run_sattline_semantics(context: AnalysisContext):
-        return analyze_sattline_semantics(
-            context.base_picture,
-            debug=context.debug,
-            unavailable_libraries=context.unavailable_libraries,
-            analyzed_target_is_library=context.target_is_library,
-            sfc_mutually_exclusive_steps=get_configured_mutually_exclusive_step_sets(context.config),
-            sfc_step_contracts=get_configured_step_contracts(context.config),
-            config=context.config,
-        )
-
-    def _run_mms_interface(context: AnalysisContext):
-        return analyze_mms_interface_variables(
-            context.base_picture,
-            debug=context.debug,
-            config=context.config,
-        )
-
-    def _run_sfc_checks(context: AnalysisContext):
-        return analyze_sfc(
-            context.base_picture,
-            mutually_exclusive_steps=get_configured_mutually_exclusive_step_sets(context.config),
-            step_contracts=get_configured_step_contracts(context.config),
-        )
-
-    def _run_shadowing(context: AnalysisContext):
-        return analyze_shadowing(
-            context.base_picture,
-            debug=context.debug,
-            unavailable_libraries=context.unavailable_libraries,
-        )
-
-    def _run_spec_compliance(context: AnalysisContext):
-        return analyze_spec_compliance(
-            context.base_picture,
-            debug=context.debug,
-            unavailable_libraries=context.unavailable_libraries,
-        )
-
-    def _run_loop_output_refactor(context: AnalysisContext):
-        return analyze_loop_output_refactor(context.base_picture)
-
-    def _run_alarm_integrity(context: AnalysisContext):
-        return analyze_alarm_integrity(
-            context.base_picture,
-            debug=context.debug,
-            unavailable_libraries=context.unavailable_libraries,
-        )
-
-    def _run_initial_values(context: AnalysisContext):
-        return analyze_initial_values(
-            context.base_picture,
-            debug=context.debug,
-            unavailable_libraries=context.unavailable_libraries,
-        )
-
-    def _run_naming_consistency(context: AnalysisContext):
-        return analyze_naming_consistency(
-            context.base_picture,
-            rules=get_configured_naming_rules(context.config),
-        )
-
-    def _run_cyclomatic_complexity(context: AnalysisContext):
-        return analyze_cyclomatic_complexity(context.base_picture)
-
-    def _run_parameter_drift(context: AnalysisContext):
-        return analyze_parameter_drift(
-            context.base_picture,
-            unavailable_libraries=context.unavailable_libraries,
-        )
-
-    def _run_scan_loop_resource_usage(context: AnalysisContext):
-        return analyze_scan_loop_resource_usage(context.base_picture)
-
-    def _run_version_drift(context: AnalysisContext):
-        return analyze_version_drift(
-            context.base_picture,
-            debug=context.debug,
-        )
-
-    def _run_safety_paths(context: AnalysisContext):
-        return analyze_safety_paths(
-            context.base_picture,
-            debug=context.debug,
-            unavailable_libraries=context.unavailable_libraries,
-            analyzed_target_is_library=context.target_is_library,
-        )
-
-    def _run_taint_paths(context: AnalysisContext):
-        return analyze_taint_paths(
-            context.base_picture,
-            debug=context.debug,
-            unavailable_libraries=context.unavailable_libraries,
-            analyzed_target_is_library=context.target_is_library,
-        )
-
-    def _run_unsafe_defaults(context: AnalysisContext):
-        return analyze_unsafe_defaults(context.base_picture)
-
-    def _run_dataflow(context: AnalysisContext):
-        return analyze_dataflow(
-            context.base_picture,
-            unavailable_libraries=context.unavailable_libraries,
-        )
-
-    def _run_state_inference(context: AnalysisContext):
-        return analyze_state_inference(
-            context.base_picture,
-            unavailable_libraries=context.unavailable_libraries,
-        )
-
-    def _run_comment_code(context: AnalysisContext):
-        return analyze_comment_code(context)
-
-    return [
-        AnalyzerSpec(
-            key=SEMANTIC_LAYER_ANALYZER_KEY,
-            name="SattLine semantics",
-            description="Aggregated domain-aware semantic checks for SattLine programs and libraries",
-            run=_run_sattline_semantics,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="variables",
-            name="Variable issues",
-            description="Unused/read-only/never-read variables and type mismatches",
-            run=_run_variables,
-            supports_live_diagnostics=True,
-        ),
-        AnalyzerSpec(
-            key="mms-interface",
-            name="MMS interface mappings",
-            description="MMSWriteVar/MMSReadVar inventory with OPC and MES validation checks",
-            run=_run_mms_interface,
-        ),
-        AnalyzerSpec(
-            key="sfc",
-            name="SFC checks",
-            description="Parallel-branch write race and structural dead-path detection",
-            run=_run_sfc_checks,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="comment-code",
-            name="Commented-out code",
-            description="Code-like content inside comments",
-            run=_run_comment_code,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="shadowing",
-            name="Variable shadowing",
-            description="Local variables hiding outer or global names",
-            run=_run_shadowing,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="spec-compliance",
-            name="Engineering spec compliance",
-            description="AST-visible checks from the application engineering spec",
-            run=_run_spec_compliance,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="loop-output-refactor",
-            name="Loop output refactor",
-            description="Detect dependency loops across sorted equation blocks and active step code",
-            run=_run_loop_output_refactor,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="alarm-integrity",
-            name="Alarm integrity",
-            description="Cross-module duplicate tag, duplicate condition, priority, and latch-style alarm checks",
-            run=_run_alarm_integrity,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="initial-values",
-            name="Initial value validation",
-            description="Detect recipe and engineering parameter modules that do not resolve a required startup value",
-            run=_run_initial_values,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="naming-consistency",
-            name="Naming consistency",
-            description="Detect inconsistent naming styles for variables, modules, and instances across the analyzed target",
-            run=_run_naming_consistency,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="cyclomatic-complexity",
-            name="Cyclomatic complexity",
-            description="Detect modules and SFC steps whose control-flow complexity exceeds default thresholds",
-            run=_run_cyclomatic_complexity,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="parameter-drift",
-            name="Parameter drift",
-            description="Detect moduletype instances whose resolved literal parameter values drift across the analyzed target",
-            run=_run_parameter_drift,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="scan-loop-resource-usage",
-            name="Scan-loop resource usage",
-            description="Detect non precision-scan-safe builtin calls inside equation blocks and SFC active code",
-            run=_run_scan_loop_resource_usage,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="version-drift",
-            name="Version drift",
-            description="Detect repeated module names that have drifted structurally beyond datecode-only changes",
-            run=_run_version_drift,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="safety-paths",
-            name="Safety paths",
-            description="Cross-module tracing for shutdown and emergency signal propagation",
-            run=_run_safety_paths,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="taint-paths",
-            name="Taint paths",
-            description="Cross-module taint tracing from external inputs to safety-critical sinks",
-            run=_run_taint_paths,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="unsafe-defaults",
-            name="Unsafe defaults",
-            description="Explicit boolean defaults that can enable logic or bypass safeguards at startup",
-            run=_run_unsafe_defaults,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="dataflow",
-            name="Lightweight dataflow",
-            description="Constant-condition and unreachable-path detection across branches",
-            run=_run_dataflow,
-            enabled=True,
-        ),
-        AnalyzerSpec(
-            key="state_inference",
-            name="State inference",
-            description="Infer stable boolean and numeric state and report contradictory control flow",
-            run=_run_state_inference,
-            enabled=True,
-        ),
-    ]
+    return build_default_analyzers(semantic_layer_analyzer_key=SEMANTIC_LAYER_ANALYZER_KEY)

@@ -1,4 +1,8 @@
 import json
+import sys
+from typing import Any, cast
+
+import pytest
 
 from sattlint.devtools import ai_work_map
 from sattlint.devtools.ai_work_map import (
@@ -293,6 +297,271 @@ def test_archive_completed_exec_plans_moves_only_fully_checked_plans(tmp_path):
     assert active_plan.exists()
 
 
+def test_ai_work_map_reference_update_helpers_cover_skip_and_decode_edges(tmp_path, monkeypatch):
+    class _FakePath:
+        def __init__(self, *, suffix: str, relative_parts: tuple[str, ...] | None = None, fail_relative: bool = False):
+            self.suffix = suffix
+            self._relative_parts = relative_parts
+            self._fail_relative = fail_relative
+
+        def is_file(self) -> bool:
+            return True
+
+        def relative_to(self, _repo_root):
+            if self._fail_relative:
+                raise ValueError("outside root")
+            assert self._relative_parts is not None
+            return type("RelativePath", (), {"parts": self._relative_parts})()
+
+    class _FakeRepoRoot:
+        def __init__(self, paths: list[_FakePath]):
+            self._paths = paths
+
+        def rglob(self, _pattern: str) -> list[_FakePath]:
+            return self._paths
+
+    invalid_path = _FakePath(suffix=".md", fail_relative=True)
+    skipped_path = _FakePath(suffix=".md", relative_parts=(".venv-cache", "ignored.md"))
+    kept_path = _FakePath(suffix=".md", relative_parts=("docs", "plan.md"))
+
+    files = ai_work_map._iter_reference_update_files(cast(Any, _FakeRepoRoot([invalid_path, skipped_path, kept_path])))
+    ai_work_map._rewrite_exec_plan_references([], repo_root=tmp_path)
+
+    undecodable = tmp_path / "notes.md"
+    undecodable.write_bytes(b"\xff")
+    monkeypatch.setattr(ai_work_map, "_iter_reference_update_files", lambda _repo_root: [undecodable])
+    ai_work_map._rewrite_exec_plan_references(
+        [{"from": "docs/exec-plans/active/one.md", "to": "docs/exec-plans/completed/one.md"}],
+        repo_root=tmp_path,
+    )
+
+    assert files == [kept_path]
+    assert undecodable.read_bytes() == b"\xff"
+
+
+def test_archive_completed_exec_plans_raises_when_destination_already_exists(tmp_path):
+    active_dir = tmp_path / "docs" / "exec-plans" / "active"
+    completed_dir = tmp_path / "docs" / "exec-plans" / "completed"
+    active_dir.mkdir(parents=True)
+    completed_dir.mkdir(parents=True)
+
+    plan = active_dir / "done.md"
+    plan.write_text("## Progress\n\n- [x] done\n", encoding="utf-8")
+    (completed_dir / "done.md").write_text("existing\n", encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="Completed exec plan already exists"):
+        ai_work_map.archive_completed_exec_plans(active_dir=active_dir, completed_dir=completed_dir)
+
+
+def test_ai_work_map_parsers_cover_ignored_lines_and_plan_collection(tmp_path, monkeypatch):
+    frontmatter = tmp_path / "agent.instructions.md"
+    frontmatter.write_text("---\nname: Demo\nnot-a-field\n---\nbody\n", encoding="utf-8")
+    routes_file = tmp_path / "routes.md"
+    routes_file.write_text(
+        "\n".join(
+            [
+                "Intro",
+                "- Parser:",
+                "  ",
+                "  `cmd one`",
+                "  note",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    plan = tmp_path / "plan.md"
+    plan.write_text(
+        "\n".join(
+            [
+                "Primary owner suites for this plan:",
+                "note before suites",
+                "- `tests/test_alpha.py` -> `src/pkg/alpha.py`",
+                "",
+                "Per-slice first validations:",
+                "",
+                "    pytest tests/test_alpha.py -x -q --tb=short",
+                "Tail",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    exec_plans_dir = tmp_path / "plans"
+    exec_plans_dir.mkdir()
+    collected_plan = exec_plans_dir / "alpha.md"
+    collected_plan.write_text(plan.read_text(encoding="utf-8"), encoding="utf-8")
+
+    payload = ai_work_map._parse_frontmatter(frontmatter)
+    routes = ai_work_map._parse_validation_routes(routes_file)
+    suites = ai_work_map._parse_owner_suites(plan)
+    commands = ai_work_map._parse_first_validation_commands(plan)
+    monkeypatch.setattr(ai_work_map, "REPO_ROOT", tmp_path)
+
+    collected = ai_work_map._collect_owner_suite_plans(exec_plans_dir)
+
+    assert payload == {"name": "Demo"}
+    assert routes == [{"surface": "Parser", "commands": ["cmd one"], "notes": ["note"]}]
+    assert suites == [
+        {
+            "tests": ["tests/test_alpha.py"],
+            "targets": ["src/pkg/alpha.py"],
+            "target_summary": "`src/pkg/alpha.py`",
+        }
+    ]
+    assert commands == ["pytest tests/test_alpha.py -x -q --tb=short"]
+    assert collected[0]["plan_path"].endswith("alpha.md")
+
+
+def test_ai_work_map_parsers_skip_blank_and_non_command_lines_before_collecting(tmp_path):
+    owner_suites_plan = tmp_path / "owner-suites.md"
+    owner_suites_plan.write_text(
+        "\n".join(
+            [
+                "Primary owner suites for this plan:",
+                "",
+                "note before suites",
+                "- `tests/test_alpha.py` -> `src/pkg/alpha.py`",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    first_validations_plan = tmp_path / "first-validations.md"
+    first_validations_plan.write_text(
+        "\n".join(
+            [
+                "Per-slice first validations:",
+                "misc note",
+                "    pytest tests/test_alpha.py -x -q --tb=short",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    suites = ai_work_map._parse_owner_suites(owner_suites_plan)
+    commands = ai_work_map._parse_first_validation_commands(first_validations_plan)
+
+    assert suites == [
+        {
+            "tests": ["tests/test_alpha.py"],
+            "targets": ["src/pkg/alpha.py"],
+            "target_summary": "`src/pkg/alpha.py`",
+        }
+    ]
+    assert commands == ["pytest tests/test_alpha.py -x -q --tb=short"]
+
+
+def test_ai_work_map_planning_helpers_cover_empty_paths_and_unmatched_rules():
+    work_map = {
+        "instructions": [
+            {"file_path": "", "name": "ignored"},
+            {"file_path": ".github/instructions/cli.instructions.md", "name": "CLI", "apply_to": ["src/app.py"]},
+        ],
+        "pipeline_checks": ["ignore-me", {"id": "ruff"}],
+        "repo_audit_checks": [{"id": "cli"}],
+        "agents": [{"name": "CLI Agent"}],
+        "agent_routing": [
+            "ignore-me",
+            {"agent_name": "CLI Agent", "path_globs": ["docs/**"], "selected_surfaces": ["repo-audit"]},
+        ],
+        "finish_gate_templates": ["ignore-me", {"selected_surface": "repo-audit", "command": "run", "includes": []}],
+    }
+
+    instruction_lookup = ai_work_map._instruction_lookup(work_map)
+    all_checks = ai_work_map._all_check_entries(work_map)
+    merged_instructions = ai_work_map._merge_instruction_files_for_planning(
+        work_map,
+        ["src/app.py"],
+        [{"id": "cli", "ai_instruction_files": ["", ".github/instructions/cli.instructions.md"]}],
+    )
+    owner_suites = ai_work_map._match_owner_suites(
+        {
+            "owner_suite_plans": [
+                {
+                    "plan_path": "plan.md",
+                    "suites": [{"tests": ["tests/test_alpha.py"], "targets": ["src/pkg/alpha.py"]}],
+                    "first_validation_commands": [],
+                }
+            ]
+        },
+        changed_files=["docs/readme.md"],
+        owner_test_targets=["tests/test_other.py"],
+    )
+    matched_agents = ai_work_map._match_agents(work_map, ["src/app.py"], ["cli"], "repo-audit")
+    finish_gate_template = ai_work_map._select_finish_gate_template(work_map, "repo-audit")
+
+    assert instruction_lookup == {".github/instructions/cli.instructions.md": work_map["instructions"][1]}
+    assert [entry["id"] for entry in all_checks] == ["ruff", "cli"]
+    assert merged_instructions == [
+        {
+            "name": "CLI",
+            "file_path": ".github/instructions/cli.instructions.md",
+            "description": "",
+            "matched_files": ["src/app.py"],
+            "selection_reasons": ["changed-files", "recommended-check:cli"],
+        }
+    ]
+    assert owner_suites == []
+    assert matched_agents == [
+        {
+            "name": "CLI Agent",
+            "file_path": "",
+            "description": "",
+            "matched_files": [],
+            "matched_owner_surfaces": [],
+            "score": 1,
+        }
+    ]
+    assert finish_gate_template == {
+        "selected_surface": "repo-audit",
+        "command": "run",
+        "description": "",
+        "includes": [],
+    }
+
+
+def test_merge_instruction_files_for_planning_skips_blank_matched_file_paths(monkeypatch):
+    monkeypatch.setattr(
+        ai_work_map,
+        "_match_instruction_files",
+        lambda _work_map, _changed_files: [{"file_path": "", "matched_files": ["src/app.py"]}],
+    )
+
+    merged = ai_work_map._merge_instruction_files_for_planning({"instructions": []}, ["src/app.py"], [])
+
+    assert merged == []
+
+
+def test_write_ai_check_catalog_and_module_main(tmp_path, monkeypatch):
+    import runpy
+
+    catalog_path = tmp_path / "nested" / "ai-check-catalog.md"
+    monkeypatch.setattr(ai_work_map, "render_ai_check_catalog", lambda work_map=None: "# Catalog\n")
+
+    written_path = ai_work_map.write_ai_check_catalog(catalog_path)
+
+    assert written_path == catalog_path
+    assert catalog_path.read_text(encoding="utf-8") == "# Catalog\n"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ai_work_map",
+            "--check",
+            "--output",
+            str(tmp_path / "missing-work.json"),
+            "--session-output",
+            str(tmp_path / "missing-session.json"),
+            "--reference-output",
+            str(tmp_path / "missing-reference.md"),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        runpy.run_module("sattlint.devtools.ai_work_map", run_name="__main__")
+
+    assert exit_info.value.code == 1
+
+
 def test_load_and_write_work_maps_cover_fallback_and_persistence(tmp_path, monkeypatch):
     work_path = tmp_path / "work.json"
     session_path = tmp_path / "session.json"
@@ -576,6 +845,59 @@ def test_verify_ai_harness_freshness_passes_for_live_metadata(tmp_path):
                 "command": "repo-audit --check cli",
             }
         ],
+    }
+    session_context_map = {"kind": "session-map", "instructions": [], "agents": []}
+    output_path.write_text(json.dumps(work_map, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    session_output_path.write_text(json.dumps(session_context_map, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    check_catalog_output_path.write_text(render_ai_check_catalog(work_map), encoding="utf-8")
+
+    report = verify_ai_harness_freshness(
+        work_map=work_map,
+        session_context_map=session_context_map,
+        repo_root=tmp_path,
+        output_path=output_path,
+        session_output_path=session_output_path,
+        check_catalog_output_path=check_catalog_output_path,
+    )
+
+    assert report["status"] == "pass"
+    assert report["issues"] == []
+
+
+def test_verify_ai_harness_freshness_allows_virtual_git_lock_glob(tmp_path):
+    agent_path = tmp_path / ".github" / "agents" / "sattlint-orchestrator.agent.md"
+    output_path = tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
+    session_output_path = (
+        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-session-context-map.json"
+    )
+    check_catalog_output_path = (
+        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-check-catalog.md"
+    )
+    agent_path.parent.mkdir(parents=True, exist_ok=True)
+    agent_path.write_text("# Orchestrator\n", encoding="utf-8")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    session_output_path.parent.mkdir(parents=True, exist_ok=True)
+    check_catalog_output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    work_map = {
+        "instructions": [],
+        "agents": [
+            {
+                "name": "SattLint Orchestrator",
+                "file_path": ".github/agents/sattlint-orchestrator.agent.md",
+                "user_invocable": True,
+            }
+        ],
+        "agent_routing": [
+            {
+                "agent_name": "SattLint Orchestrator",
+                "path_globs": [".git/sattlint-ai-coordination/current_work_lock.json"],
+                "owner_surface_keywords": ["structural"],
+                "selected_surfaces": ["repo-audit"],
+            }
+        ],
+        "pipeline_checks": [],
+        "repo_audit_checks": [],
     }
     session_context_map = {"kind": "session-map", "instructions": [], "agents": []}
     output_path.write_text(json.dumps(work_map, indent=2, sort_keys=True) + "\n", encoding="utf-8")

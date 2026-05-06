@@ -5,6 +5,8 @@ version drift, initial values, naming consistency, alarm integrity,
 safety paths, and taint paths.
 """
 
+import json
+from types import SimpleNamespace
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
@@ -30,9 +32,11 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
+from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers._sfc_guard_logic import _normalize_guard_signature
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.dataflow import analyze_dataflow
+from sattlint.analyzers.framework import AnalyzerSpec
 from sattlint.analyzers.initial_values import analyze_initial_values
 from sattlint.analyzers.mms import (
     _extract_external_tag,
@@ -1072,6 +1076,132 @@ def test_initial_value_validation_analyzer_is_enabled_by_default():
 
     assert "initial-values" in specs
     assert specs["initial-values"].enabled is True
+
+
+def test_registry_catalog_report_and_key_helpers_cover_metadata_branches():
+    catalog = registry_module.get_default_analyzer_catalog()
+
+    report = cast(dict[str, Any], catalog.to_report(generated_by="test-suite"))
+
+    assert catalog.enabled_specs()
+    assert report["generated_by"] == "test-suite"
+    assert report["analyzers"]
+    assert report["rules"]
+    assert report["semantic_layer"]["analyzer_key"] == registry_module.SEMANTIC_LAYER_ANALYZER_KEY
+    assert registry_module.get_declared_cli_analyzer_keys() == tuple(
+        sorted(analyzer.spec.key for analyzer in catalog.analyzers if analyzer.delivery.cli_exposed)
+    )
+    assert registry_module.get_actual_cli_analyzer_keys() == tuple(
+        spec.key for spec in registry_module.get_default_cli_analyzers()
+    )
+    assert registry_module.get_declared_lsp_analyzer_keys() == tuple(
+        sorted(analyzer.spec.key for analyzer in catalog.analyzers if analyzer.delivery.lsp_exposed)
+    )
+    assert registry_module.get_actual_lsp_analyzer_keys()
+
+
+def test_build_delivery_metadata_falls_back_for_unknown_analyzer_key():
+    spec = AnalyzerSpec(
+        key="custom-analyzer",
+        name="Custom analyzer",
+        description="Synthetic analyzer for fallback coverage.",
+        run=lambda context: cast(Any, "custom-analyzer"),
+    )
+
+    delivery = registry_module._build_delivery_metadata(spec, ())
+
+    assert delivery.scope == "workspace"
+    assert delivery.implementation_bucket == "analyzers"
+    assert delivery.output_artifacts == ("custom-analyzer.summary",)
+
+
+def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_paths(tmp_path, monkeypatch):
+    missing_manifest_dir = tmp_path / "missing-manifests"
+    monkeypatch.setattr(registry_module, "DEFAULT_CORPUS_MANIFEST_DIR", missing_manifest_dir)
+    registry_module._rule_corpus_cases_by_rule_id.cache_clear()
+    assert registry_module._rule_corpus_cases_by_rule_id() == {}
+
+    manifest_dir = tmp_path / "manifests"
+    manifest_dir.mkdir()
+    (manifest_dir / "skip.json").mkdir()
+    (manifest_dir / "case-a.json").write_text(
+        json.dumps({"expectation": {"expected_finding_ids": ["rule-A"]}}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(registry_module, "DEFAULT_CORPUS_MANIFEST_DIR", manifest_dir)
+    registry_module._rule_corpus_cases_by_rule_id.cache_clear()
+    assert registry_module._rule_corpus_cases_by_rule_id() == {"rule-A": ("case-a",)}
+
+    calls: list[str] = []
+
+    def _record(name: str):
+        def _runner(*args, **kwargs):
+            calls.append(name)
+            return name
+
+        return _runner
+
+    monkeypatch.setattr(registry_module, "analyze_variables", _record("variables"))
+    monkeypatch.setattr(registry_module, "analyze_sattline_semantics", _record("sattline-semantics"))
+    monkeypatch.setattr(registry_module, "analyze_mms_interface_variables", _record("mms-interface"))
+    monkeypatch.setattr(registry_module, "analyze_sfc", _record("sfc"))
+    monkeypatch.setattr(registry_module, "analyze_shadowing", _record("shadowing"))
+    monkeypatch.setattr(registry_module, "analyze_spec_compliance", _record("spec-compliance"))
+    monkeypatch.setattr(registry_module, "analyze_loop_output_refactor", _record("loop-output-refactor"))
+    monkeypatch.setattr(registry_module, "analyze_alarm_integrity", _record("alarm-integrity"))
+    monkeypatch.setattr(registry_module, "analyze_initial_values", _record("initial-values"))
+    monkeypatch.setattr(registry_module, "analyze_naming_consistency", _record("naming-consistency"))
+    monkeypatch.setattr(registry_module, "analyze_cyclomatic_complexity", _record("cyclomatic-complexity"))
+    monkeypatch.setattr(registry_module, "analyze_parameter_drift", _record("parameter-drift"))
+    monkeypatch.setattr(registry_module, "analyze_scan_loop_resource_usage", _record("scan-loop-resource-usage"))
+    monkeypatch.setattr(registry_module, "analyze_version_drift", _record("version-drift"))
+    monkeypatch.setattr(registry_module, "analyze_safety_paths", _record("safety-paths"))
+    monkeypatch.setattr(registry_module, "analyze_taint_paths", _record("taint-paths"))
+    monkeypatch.setattr(registry_module, "analyze_unsafe_defaults", _record("unsafe-defaults"))
+    monkeypatch.setattr(registry_module, "analyze_dataflow", _record("dataflow"))
+    monkeypatch.setattr(registry_module, "analyze_state_inference", _record("state_inference"))
+    monkeypatch.setattr(registry_module, "analyze_comment_code", _record("comment-code"))
+    monkeypatch.setattr(registry_module, "get_configured_mutually_exclusive_step_sets", lambda config: ("mutex",))
+    monkeypatch.setattr(registry_module, "get_configured_step_contracts", lambda config: ("contracts",))
+    monkeypatch.setattr(registry_module, "get_configured_naming_rules", lambda config: ("rules",))
+
+    specs = {spec.key: spec for spec in registry_module.get_default_analyzers()}
+    context: Any = SimpleNamespace(
+        base_picture="bp",
+        debug=True,
+        unavailable_libraries={"MissingLib"},
+        target_is_library=True,
+        config={"profile": "test"},
+    )
+    expected_keys = {
+        registry_module.SEMANTIC_LAYER_ANALYZER_KEY,
+        "variables",
+        "mms-interface",
+        "sfc",
+        "shadowing",
+        "spec-compliance",
+        "loop-output-refactor",
+        "alarm-integrity",
+        "initial-values",
+        "naming-consistency",
+        "cyclomatic-complexity",
+        "parameter-drift",
+        "scan-loop-resource-usage",
+        "version-drift",
+        "safety-paths",
+        "taint-paths",
+        "unsafe-defaults",
+        "dataflow",
+        "state_inference",
+        "comment-code",
+    }
+
+    for key in expected_keys:
+        assert specs[key].run(context) == key
+
+    assert set(calls) == expected_keys
+    registry_module._rule_corpus_cases_by_rule_id.cache_clear()
 
 
 def test_naming_consistency_flags_inconsistent_variable_names():

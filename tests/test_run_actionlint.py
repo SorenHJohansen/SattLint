@@ -7,9 +7,7 @@ from scripts import run_actionlint
 
 
 def test_resolve_command_prefers_native_actionlint(monkeypatch) -> None:
-    monkeypatch.setattr(
-        run_actionlint.shutil, "which", lambda name: "C:/tools/actionlint.exe" if name == "actionlint" else None
-    )
+    monkeypatch.setattr(run_actionlint.shutil, "which", lambda name: "actionlint.exe" if name == "actionlint" else None)
 
     command, cwd = run_actionlint._resolve_command([".github/workflows/ci.yml"])
 
@@ -22,7 +20,7 @@ def test_resolve_command_uses_wsl_actionlint(monkeypatch) -> None:
     monkeypatch.setattr(
         run_actionlint.shutil,
         "which",
-        lambda name: "C:/Windows/System32/wsl.exe" if name == "wsl" else None,
+        lambda name: "wsl.exe" if name == "wsl" else None,
     )
     monkeypatch.setattr(run_actionlint, "_wsl_has_command", lambda command_name: command_name == "actionlint")
 

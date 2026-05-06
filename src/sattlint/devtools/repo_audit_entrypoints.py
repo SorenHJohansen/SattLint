@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-import json
 import subprocess  # nosec
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
-from sattlint.contracts import FindingCollection
 from sattlint.devtools import pipeline as pipeline_module
-from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS, artifact_reports_map
+from sattlint.devtools import pipeline_checks as pipeline_checks_module
 from sattlint.devtools.pipeline_artifacts import write_json_artifact
-from sattlint.devtools.pipeline_checks import matching_changed_files, normalize_changed_files, verify_check_catalog
-from sattlint.devtools.progress_reporting import ProgressReporter
+from sattlint.devtools.pipeline_checks import matching_changed_files, normalize_changed_files
 from sattlint.path_sanitizer import sanitize_path_for_report
+
+verify_check_catalog = pipeline_checks_module.verify_check_catalog
 
 REPO_AUDIT_FINDING_CHECK_IDS = (
     "text-scan",
@@ -366,81 +365,9 @@ def _repo_audit_finding_check_definitions() -> tuple[dict[str, Any], ...]:
 
 
 def _run_verify_recommendations_check(_context: Any) -> list[Any]:
-    from sattlint.devtools import ai_work_map as ai_work_map_module
+    from sattlint.devtools import _repo_audit_check_specs as helper
 
-    repo_audit = _repo_audit_module()
-    output_dir = repo_audit.DEFAULT_OUTPUT_DIR
-    pipeline_catalog = pipeline_module.build_pipeline_check_catalog(
-        profile="full", output_dir=output_dir / repo_audit.PIPELINE_OUTPUT_DIRNAME
-    )
-    repo_catalog = build_repo_audit_check_catalog(profile="full", output_dir=output_dir, fail_on="high")
-    reports = (
-        verify_check_catalog(pipeline_catalog, repo_root=repo_audit.REPO_ROOT),
-        verify_check_catalog(repo_catalog, repo_root=repo_audit.REPO_ROOT),
-    )
-    findings: list[Any] = []
-    for report in reports:
-        for issue in report["issues"]:
-            findings.append(
-                repo_audit.Finding(
-                    id=f"recommendation-{issue['issue_id']}-{issue['check_id']}",
-                    category="feature-wiring",
-                    severity="high",
-                    confidence="high",
-                    message=issue["message"],
-                    detail=json.dumps(issue, sort_keys=True),
-                    source="verify-recommendations",
-                )
-            )
-    generated_artifacts = (
-        (
-            ai_work_map_module.DEFAULT_OUTPUT_PATH,
-            ai_work_map_module.render_ai_work_map(),
-            "ai-work-map",
-        ),
-        (
-            ai_work_map_module.DEFAULT_SESSION_CONTEXT_OUTPUT_PATH,
-            ai_work_map_module.render_session_context_map(),
-            "ai-session-context-map",
-        ),
-        (
-            ai_work_map_module.DEFAULT_CHECK_CATALOG_OUTPUT_PATH,
-            ai_work_map_module.render_ai_check_catalog(),
-            "ai-check-catalog",
-        ),
-    )
-    regenerate_command = "python -m sattlint.devtools.ai_work_map --write"
-    for artifact_path, expected, artifact_id in generated_artifacts:
-        actual = artifact_path.read_text(encoding="utf-8") if artifact_path.exists() else None
-        if actual == expected:
-            continue
-        try:
-            relative_path = artifact_path.relative_to(repo_audit.REPO_ROOT).as_posix()
-        except ValueError:
-            relative_path = artifact_path.as_posix()
-        findings.append(
-            repo_audit.Finding(
-                id=f"recommendation-generated-artifact-drift-{artifact_id}",
-                category="feature-wiring",
-                severity="high",
-                confidence="high",
-                message=(
-                    f"Checked-in generated routing artifact '{relative_path}' is stale. Regenerate with "
-                    f"'{regenerate_command}'."
-                ),
-                detail=json.dumps(
-                    {
-                        "artifact_id": artifact_id,
-                        "artifact_path": relative_path,
-                        "regenerate_command": regenerate_command,
-                    },
-                    sort_keys=True,
-                ),
-                path=relative_path,
-                source="verify-recommendations",
-            )
-        )
-    return findings
+    return helper._run_verify_recommendations_check(_context)
 
 
 def _shell_command(command: list[str]) -> str:
@@ -642,112 +569,13 @@ def build_repo_audit_check_catalog(
     output_dir: Path | None = None,
     fail_on: str = "high",
 ) -> dict[str, Any]:
-    repo_audit = _repo_audit_module()
-    if profile not in repo_audit.AUDIT_PROFILE_CHOICES:
-        raise ValueError(f"Unsupported audit profile: {profile}")
-    resolved_output_dir = (output_dir or repo_audit.DEFAULT_OUTPUT_DIR).resolve()
-    sanitized_output_dir = (
-        sanitize_path_for_report(resolved_output_dir, repo_root=repo_audit.REPO_ROOT) or resolved_output_dir.as_posix()
-    )
-    pipeline_catalog = pipeline_module.build_pipeline_check_catalog(
+    from sattlint.devtools import _repo_audit_check_specs as helper
+
+    return helper.build_repo_audit_check_catalog(
         profile=profile,
-        output_dir=resolved_output_dir / repo_audit.PIPELINE_OUTPUT_DIRNAME,
+        output_dir=output_dir,
+        fail_on=fail_on,
     )
-    checks: list[dict[str, Any]] = []
-    for entry in pipeline_catalog["checks"]:
-        checks.append(
-            {
-                "id": entry["id"],
-                "label": entry["label"],
-                "profiles": entry["profiles"],
-                "artifact_ids": entry["artifact_ids"],
-                "source": "pipeline",
-                "owner_surface": entry["owner_surface"],
-                "estimated_cost": entry["estimated_cost"],
-                "path_globs": entry["path_globs"],
-                "owner_test_targets": entry["owner_test_targets"],
-                "ai_summary": entry["ai_summary"],
-                "ai_instruction_files": entry["ai_instruction_files"],
-                "command": entry["command"],
-            }
-        )
-    for definition in _repo_audit_finding_check_definitions():
-        if profile not in tuple(definition["profiles"]):
-            continue
-        checks.append(
-            {
-                "id": definition["id"],
-                "label": definition["label"],
-                "profiles": list(definition["profiles"]),
-                "artifact_ids": [
-                    "progress",
-                    "status",
-                    "summary",
-                    "findings",
-                    "summary_markdown",
-                    "run_history",
-                    *(["ai_gc"] if definition["id"] == "ai-gc" else []),
-                ],
-                "source": "repo-audit",
-                "owner_surface": definition["owner_surface"],
-                "estimated_cost": definition["estimated_cost"],
-                "path_globs": list(definition["path_globs"]),
-                "owner_test_targets": list(definition["owner_test_targets"]),
-                "ai_summary": definition["ai_summary"],
-                "ai_instruction_files": list(definition["ai_instruction_files"]),
-                "command": (
-                    f"sattlint-repo-audit --profile {profile} --check {definition['id']} --skip-pipeline "
-                    f"--fail-on {fail_on} --output-dir {sanitized_output_dir}"
-                ),
-            }
-        )
-    if profile == "full":
-        checks.append(
-            {
-                "id": "cli-consistency",
-                "label": "Build the full CLI consistency report",
-                "profiles": ["full"],
-                "artifact_ids": [
-                    "progress",
-                    "status",
-                    "summary",
-                    "findings",
-                    "summary_markdown",
-                    "run_history",
-                    "cli_consistency",
-                ],
-                "source": "repo-audit",
-                "owner_surface": "cli-docs",
-                "estimated_cost": "low",
-                "path_globs": [
-                    "README.md",
-                    "CONTRIBUTING.md",
-                    "docs/references/cli-commands.md",
-                    "docs/references/ai-agent-reference.md",
-                    "pyproject.toml",
-                    "src/sattlint/cli/**",
-                    "src/sattlint/app*.py",
-                    "src/sattlint/devtools/repo_audit_cli.py",
-                ],
-                "owner_test_targets": ["tests/test_repo_audit.py"],
-                "ai_summary": "Use when CLI consistency reporting or command-reference alignment changes.",
-                "ai_instruction_files": [
-                    ".github/instructions/cli-app.instructions.md",
-                    ".github/instructions/repo-audit.instructions.md",
-                ],
-                "command": (
-                    f"sattlint-repo-audit --profile full --check cli-consistency --skip-pipeline "
-                    f"--fail-on {fail_on} --output-dir {sanitized_output_dir}"
-                ),
-            }
-        )
-    return {
-        "kind": "sattlint.repo_audit.check_catalog",
-        "schema_version": 1,
-        "profile": profile,
-        "fail_on": fail_on,
-        "checks": checks,
-    }
 
 
 def build_repo_audit_check_recommendations(
@@ -757,101 +585,14 @@ def build_repo_audit_check_recommendations(
     fail_on: str = "high",
     changed_files: Iterable[str] | None = None,
 ) -> dict[str, Any]:
-    repo_audit = _repo_audit_module()
-    resolved_output_dir = (output_dir or repo_audit.DEFAULT_OUTPUT_DIR).resolve()
-    changed_file_list = normalize_changed_files(
-        pipeline_module._detect_changed_files(repo_root=repo_audit.REPO_ROOT)
-        if changed_files is None
-        else changed_files
-    )
-    catalog = build_repo_audit_check_catalog(
+    from sattlint.devtools import _repo_audit_check_specs as helper
+
+    return helper.build_repo_audit_check_recommendations(
         profile=profile,
-        output_dir=resolved_output_dir,
+        output_dir=output_dir,
         fail_on=fail_on,
+        changed_files=changed_files,
     )
-    fallback_required = False
-    fallback_reason: str | None = None
-    recommendation_reasons: dict[str, str] = {}
-
-    if not changed_file_list:
-        fallback_required = True
-        fallback_reason = (
-            "No changed files were provided or detected, so the full supported repo-audit profile is recommended."
-        )
-    elif matching_changed_files(changed_file_list, REPO_AUDIT_RECOMMENDATION_FALLBACK_GLOBS):
-        fallback_required = True
-        fallback_reason = "Changed files touch the repo-audit control surface, so the full supported repo-audit profile is recommended."
-
-    if fallback_required and fallback_reason is not None:
-        for entry in catalog["checks"]:
-            recommendation_reasons[entry["id"]] = fallback_reason
-    else:
-        for entry in catalog["checks"]:
-            matched_files = matching_changed_files(changed_file_list, entry["path_globs"])
-            if not matched_files:
-                continue
-            recommendation_reasons[entry["id"]] = f"Matched {matched_files[0]} against the {entry['id']} routing globs."
-        if not recommendation_reasons:
-            fallback_required = True
-            fallback_reason = "No audit routing globs matched the changed files, so the full supported repo-audit profile is recommended."
-            for entry in catalog["checks"]:
-                recommendation_reasons[entry["id"]] = fallback_reason
-
-    recommended_checks: list[dict[str, Any]] = []
-    skipped_checks: list[dict[str, Any]] = []
-    for entry in catalog["checks"]:
-        reason = recommendation_reasons.get(entry["id"])
-        if reason is None:
-            skipped_checks.append(
-                {
-                    "id": entry["id"],
-                    "label": entry["label"],
-                    "reason": "No changed-file route matched this check.",
-                }
-            )
-            continue
-        recommended_checks.append({**entry, "reason": reason})
-
-    suggested_finish_gate_commands = _build_repo_audit_finish_gate_commands(
-        profile=profile,
-        output_dir=resolved_output_dir,
-        fail_on=fail_on,
-        changed_files=changed_file_list,
-        recommended_checks=recommended_checks,
-        ruff_command=["ruff"],
-        pyright_command=["pyright"],
-        python_command=["python"],
-    )
-
-    return {
-        "kind": "sattlint.repo_audit.check_recommendations",
-        "schema_version": 1,
-        "profile": profile,
-        "fail_on": fail_on,
-        "changed_files": list(changed_file_list),
-        "fallback_required": fallback_required,
-        "fallback_reason": fallback_reason,
-        "recommended_check_ids": [entry["id"] for entry in recommended_checks],
-        "recommended_pipeline_check_ids": [
-            entry["id"] for entry in recommended_checks if entry["source"] == "pipeline"
-        ],
-        "recommended_repo_audit_check_ids": [
-            entry["id"] for entry in recommended_checks if entry["source"] == "repo-audit"
-        ],
-        "suggested_check_commands": [entry["command"] for entry in recommended_checks],
-        "suggested_finish_gate_commands": [entry["command"] for entry in suggested_finish_gate_commands],
-        "recommended_checks": recommended_checks,
-        "skipped_checks": skipped_checks,
-        "proof_requirements": pipeline_module.build_change_proof_requirements(
-            changed_files=changed_file_list,
-            recommended_checks=recommended_checks,
-        ),
-        "why_this_gate": _build_recommendation_why_this_gate(
-            changed_files=changed_file_list,
-            recommended_checks=recommended_checks,
-            skipped_checks=skipped_checks,
-        ),
-    }
 
 
 def collect_custom_findings(
@@ -892,126 +633,17 @@ def _run_repo_audit_findings_checks(
     suspicious_identifiers: Iterable[str],
     latest_output_dir: Path | None = None,
 ) -> dict[str, Any]:
-    repo_audit = _repo_audit_module()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    ai_gc_report = None
-    sanitized_output_dir = sanitize_path_for_report(output_dir, repo_root=repo_audit.REPO_ROOT) or output_dir.as_posix()
-    sanitized_latest_output_dir = (
-        None
-        if latest_output_dir is None
-        else sanitize_path_for_report(latest_output_dir, repo_root=repo_audit.REPO_ROOT) or latest_output_dir.as_posix()
-    )
-    selected_checks = list(dict.fromkeys(check_ids))
-    progress = ProgressReporter(
-        kind="sattlint.repo_audit.progress",
-        title="Repository audit",
-        output_dir=output_dir,
-        write_json=write_json_artifact,
-        stages=[
-            ("custom_scan", "Run repository-specific checks"),
-            ("write_reports", "Write audit reports"),
-        ],
-        canonical_command=(
-            "sattlint-repo-audit "
-            f"--profile {profile} "
-            f"{' '.join(f'--check {check_id}' for check_id in selected_checks)} "
-            f"--skip-pipeline --fail-on {fail_on} --output-dir {sanitized_output_dir}"
-        ),
-    )
-    progress.start_stage("custom_scan")
-    findings = collect_custom_findings(
-        repo_audit.REPO_ROOT,
-        include_generated=include_generated,
-        tracked_only=True,
-        suspicious_identifiers=suspicious_identifiers,
-        selected_checks=selected_checks,
-    )
-    progress.complete_stage("custom_scan", detail=f"{len(findings)} findings")
-    blocking_count = _blocking_finding_count(findings, fail_on)
-    enabled_audit_artifact_ids = {"progress", "status", "summary", "findings", "summary_markdown", "run_history"}
-    if "ai-gc" in selected_checks:
-        ai_gc_report = repo_audit.build_ai_gc_report(repo_audit.REPO_ROOT)
-        enabled_audit_artifact_ids.add("ai_gc")
-    reports = artifact_reports_map(
-        AUDIT_ARTIFACTS,
-        profile=profile,
-        enabled_artifact_ids=enabled_audit_artifact_ids,
-    )
-    reports["pipeline_status"] = None
-    reports["pipeline_summary"] = None
-    finding_collection = FindingCollection(tuple(finding.to_record() for finding in findings))
-    overall_status_value = "fail" if blocking_count else "pass"
-    summary = {
-        "generated_by": "sattlint.devtools.repo_audit_entrypoints",
-        "output_dir": sanitized_output_dir,
-        "profile": profile,
-        "entry_report": "status.json",
-        "canonical_command": progress.to_dict()["canonical_command"],
-        "pipeline_ran": False,
-        "pipeline_summary": None,
-        "reports": reports,
-        "finding_count": len(findings),
-        "severity_counts": _severity_counts(findings),
-        "category_counts": _category_counts(findings),
-        "max_severity": _max_severity(findings),
-        "findings_schema": finding_collection.schema_metadata,
-        "history_cleanup_findings": [finding.to_dict() for finding in findings if finding.history_cleanup_recommended],
-        "findings": [finding.to_dict() for finding in findings],
-        "selected_checks": selected_checks,
-    }
-    status_report = {
-        "kind": "sattlint.repo_audit.status",
-        "generated_by": "sattlint.devtools.repo_audit_entrypoints",
-        "profile": profile,
-        "fail_on": fail_on,
-        "overall_status": overall_status_value,
-        "canonical_command": summary["canonical_command"],
-        "status_report": f"{sanitized_output_dir}/status.json",
-        "summary_report": f"{sanitized_output_dir}/summary.json",
-        "progress_report": f"{sanitized_output_dir}/progress.json",
-        "finding_count": summary["finding_count"],
-        "blocking_finding_count": blocking_count,
-        "max_severity": summary["max_severity"],
-        "severity_counts": summary["severity_counts"],
-        "category_counts": summary["category_counts"],
-        "findings_schema": summary["findings_schema"],
-        "pipeline_status_report": None,
-        "latest_status_report": None
-        if sanitized_latest_output_dir is None
-        else f"{sanitized_latest_output_dir}/status.json",
-        "latest_summary_report": None
-        if sanitized_latest_output_dir is None
-        else f"{sanitized_latest_output_dir}/summary.json",
-        "top_findings": [
-            {
-                "id": finding.id,
-                "severity": finding.severity,
-                "path": finding.path,
-                "line": finding.line,
-                "message": finding.message,
-            }
-            for finding in findings[:5]
-        ],
-        "selected_checks": selected_checks,
-    }
-    progress.start_stage("write_reports")
-    write_json_artifact(output_dir / "status.json", status_report)
-    write_json_artifact(output_dir / "summary.json", summary)
-    write_json_artifact(output_dir / "findings.json", finding_collection.to_dict())
-    if ai_gc_report is not None:
-        write_json_artifact(output_dir / "ai_gc.json", ai_gc_report)
-    repo_audit._write_markdown(output_dir / "summary.md", findings, summary)
-    repo_audit._write_audit_run_history(
+    from sattlint.devtools import _repo_audit_full_run as helper
+
+    return helper._run_repo_audit_findings_checks(
         output_dir,
+        profile=profile,
+        check_ids=check_ids,
+        fail_on=fail_on,
+        include_generated=include_generated,
+        suspicious_identifiers=suspicious_identifiers,
         latest_output_dir=latest_output_dir,
-        report_kind="repo_audit_selected_check",
-        primary_payload=summary,
-        status_payload=status_report,
-        summary_payload=summary,
     )
-    progress.complete_stage("write_reports")
-    progress.finalize(overall_status=overall_status_value)
-    return summary
 
 
 def _run_repo_audit_cli_consistency_check(
@@ -1020,123 +652,13 @@ def _run_repo_audit_cli_consistency_check(
     fail_on: str,
     latest_output_dir: Path | None = None,
 ) -> dict[str, Any]:
-    repo_audit = _repo_audit_module()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    sanitized_output_dir = sanitize_path_for_report(output_dir, repo_root=repo_audit.REPO_ROOT) or output_dir.as_posix()
-    sanitized_latest_output_dir = (
-        None
-        if latest_output_dir is None
-        else sanitize_path_for_report(latest_output_dir, repo_root=repo_audit.REPO_ROOT) or latest_output_dir.as_posix()
-    )
-    progress = ProgressReporter(
-        kind="sattlint.repo_audit.progress",
-        title="Repository audit",
-        output_dir=output_dir,
-        write_json=write_json_artifact,
-        stages=[
-            ("custom_scan", "Build CLI consistency report"),
-            ("write_reports", "Write audit reports"),
-        ],
-        canonical_command=(
-            f"sattlint-repo-audit --profile full --check cli-consistency --skip-pipeline "
-            f"--fail-on {fail_on} --output-dir {sanitized_output_dir}"
-        ),
-    )
-    progress.start_stage("custom_scan")
-    cli_consistency_report = repo_audit.build_cli_consistency_report(root=repo_audit.REPO_ROOT)
-    findings = _cli_consistency_findings(cli_consistency_report)
-    progress.complete_stage("custom_scan", detail=f"{len(findings)} findings")
-    blocking_count = _blocking_finding_count(findings, fail_on)
-    enabled_audit_artifact_ids = {
-        "progress",
-        "status",
-        "summary",
-        "findings",
-        "summary_markdown",
-        "run_history",
-        "cli_consistency",
-    }
-    reports = artifact_reports_map(
-        AUDIT_ARTIFACTS,
-        profile="full",
-        enabled_artifact_ids=enabled_audit_artifact_ids,
-    )
-    reports["pipeline_status"] = None
-    reports["pipeline_summary"] = None
-    finding_collection = FindingCollection(tuple(finding.to_record() for finding in findings))
-    overall_status_value = "fail" if cli_consistency_report.get("status") == "fail" else "pass"
-    summary = {
-        "generated_by": "sattlint.devtools.repo_audit_entrypoints",
-        "output_dir": sanitized_output_dir,
-        "profile": "full",
-        "entry_report": "status.json",
-        "canonical_command": progress.to_dict()["canonical_command"],
-        "pipeline_ran": False,
-        "pipeline_summary": None,
-        "reports": reports,
-        "finding_count": len(findings),
-        "severity_counts": _severity_counts(findings),
-        "category_counts": _category_counts(findings),
-        "max_severity": _max_severity(findings),
-        "findings_schema": finding_collection.schema_metadata,
-        "history_cleanup_findings": [],
-        "findings": [finding.to_dict() for finding in findings],
-        "selected_checks": ["cli-consistency"],
-        "cli_consistency_status": cli_consistency_report.get("status"),
-    }
-    status_report = {
-        "kind": "sattlint.repo_audit.status",
-        "generated_by": "sattlint.devtools.repo_audit_entrypoints",
-        "profile": "full",
-        "fail_on": fail_on,
-        "overall_status": overall_status_value,
-        "canonical_command": summary["canonical_command"],
-        "status_report": f"{sanitized_output_dir}/status.json",
-        "summary_report": f"{sanitized_output_dir}/summary.json",
-        "progress_report": f"{sanitized_output_dir}/progress.json",
-        "finding_count": summary["finding_count"],
-        "blocking_finding_count": blocking_count,
-        "max_severity": summary["max_severity"],
-        "severity_counts": summary["severity_counts"],
-        "category_counts": summary["category_counts"],
-        "findings_schema": summary["findings_schema"],
-        "pipeline_status_report": None,
-        "latest_status_report": None
-        if sanitized_latest_output_dir is None
-        else f"{sanitized_latest_output_dir}/status.json",
-        "latest_summary_report": None
-        if sanitized_latest_output_dir is None
-        else f"{sanitized_latest_output_dir}/summary.json",
-        "top_findings": [
-            {
-                "id": finding.id,
-                "severity": finding.severity,
-                "path": finding.path,
-                "line": finding.line,
-                "message": finding.message,
-            }
-            for finding in findings[:5]
-        ],
-        "selected_checks": ["cli-consistency"],
-        "cli_consistency_status": cli_consistency_report.get("status"),
-    }
-    progress.start_stage("write_reports")
-    write_json_artifact(output_dir / "status.json", status_report)
-    write_json_artifact(output_dir / "summary.json", summary)
-    write_json_artifact(output_dir / "findings.json", finding_collection.to_dict())
-    write_json_artifact(output_dir / "cli_consistency.json", cli_consistency_report)
-    repo_audit._write_markdown(output_dir / "summary.md", findings, summary)
-    repo_audit._write_audit_run_history(
+    from sattlint.devtools import _repo_audit_full_run as helper
+
+    return helper._run_repo_audit_cli_consistency_check(
         output_dir,
+        fail_on=fail_on,
         latest_output_dir=latest_output_dir,
-        report_kind="repo_audit_cli_consistency",
-        primary_payload=summary,
-        status_payload=status_report,
-        summary_payload=summary,
     )
-    progress.complete_stage("write_reports")
-    progress.finalize(overall_status=overall_status_value)
-    return summary
 
 
 def run_recommended_repo_audit_slice(
@@ -1152,205 +674,20 @@ def run_recommended_repo_audit_slice(
     latest_output_dir: Path | None = None,
     record_history: bool = True,
 ) -> dict[str, Any]:
-    repo_audit = _repo_audit_module()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    ai_gc_report = None
-    resolved_changed_files = normalize_changed_files(
-        pipeline_module._detect_changed_files(repo_root=repo_audit.REPO_ROOT)
-        if changed_files is None
-        else changed_files
-    )
-    recommendation = build_repo_audit_check_recommendations(
+    from sattlint.devtools import _repo_audit_entrypoint_runs as helper
+
+    return helper.run_recommended_repo_audit_slice(
+        output_dir,
         profile=profile,
-        output_dir=output_dir,
         fail_on=fail_on,
-        changed_files=resolved_changed_files,
+        include_generated=include_generated,
+        suspicious_identifiers=suspicious_identifiers,
+        skip_vulture=skip_vulture,
+        skip_bandit=skip_bandit,
+        changed_files=changed_files,
+        latest_output_dir=latest_output_dir,
+        record_history=record_history,
     )
-    pipeline_check_ids = recommendation["recommended_pipeline_check_ids"]
-    repo_check_ids = recommendation["recommended_repo_audit_check_ids"]
-    repo_finding_check_ids = [check_id for check_id in repo_check_ids if check_id in REPO_AUDIT_FINDING_CHECK_IDS]
-    sanitized_output_dir = sanitize_path_for_report(output_dir, repo_root=repo_audit.REPO_ROOT) or output_dir.as_posix()
-    sanitized_latest_output_dir = (
-        None
-        if latest_output_dir is None
-        else sanitize_path_for_report(latest_output_dir, repo_root=repo_audit.REPO_ROOT) or latest_output_dir.as_posix()
-    )
-    progress = ProgressReporter(
-        kind="sattlint.repo_audit.progress",
-        title="Repository audit",
-        output_dir=output_dir,
-        write_json=write_json_artifact,
-        stages=[
-            ("pipeline", "Run recommended pipeline checks"),
-            ("custom_scan", "Run recommended repository-specific checks"),
-            ("merge_findings", "Merge and normalize findings"),
-            ("write_reports", "Write audit reports"),
-        ],
-        canonical_command=(
-            f"sattlint-repo-audit --profile {profile} --run-recommended-slice --fail-on {fail_on} "
-            f"--output-dir {sanitized_output_dir}"
-        ),
-    )
-    pipeline_summary: dict[str, Any] | None = None
-    pipeline_findings: list[Any] = []
-    if pipeline_check_ids:
-        pipeline_output_dir = output_dir / repo_audit.PIPELINE_OUTPUT_DIRNAME
-        progress.start_stage("pipeline")
-        pipeline_summary = pipeline_module._run_pipeline(
-            pipeline_output_dir,
-            trace_target=(
-                pipeline_module.DEFAULT_TRACE_TARGET if pipeline_module.DEFAULT_TRACE_TARGET.exists() else None
-            ),
-            profile=profile,
-            include_vulture=False if skip_vulture else None,
-            include_bandit=False if skip_bandit else None,
-            corpus_manifest_dir=_default_corpus_manifest_dir(),
-            changed_files=list(resolved_changed_files),
-            selected_checks=pipeline_check_ids,
-        )
-        pipeline_findings = repo_audit._find_pipeline_findings(pipeline_output_dir)
-        progress.complete_stage("pipeline", detail=f"{len(pipeline_findings)} pipeline findings")
-    else:
-        progress.skip_stage("pipeline", detail="no pipeline checks recommended")
-
-    progress.start_stage("custom_scan")
-    custom_findings: list[Any] = []
-    cli_consistency_report = None
-    if repo_finding_check_ids:
-        custom_findings.extend(
-            collect_custom_findings(
-                repo_audit.REPO_ROOT,
-                include_generated=include_generated,
-                tracked_only=True,
-                suspicious_identifiers=suspicious_identifiers,
-                selected_checks=repo_finding_check_ids,
-            )
-        )
-    if "ai-gc" in repo_check_ids:
-        ai_gc_report = repo_audit.build_ai_gc_report(repo_audit.REPO_ROOT)
-    if "cli-consistency" in repo_check_ids:
-        cli_consistency_report = repo_audit.build_cli_consistency_report(root=repo_audit.REPO_ROOT)
-        custom_findings.extend(_cli_consistency_findings(cli_consistency_report))
-    progress.complete_stage("custom_scan", detail=f"{len(custom_findings)} custom findings")
-
-    progress.start_stage("merge_findings")
-    findings = repo_audit._dedupe_findings([*pipeline_findings, *custom_findings])
-    findings = sorted(
-        findings,
-        key=lambda item: (
-            -repo_audit.SEVERITY_RANK[item.severity],
-            item.category,
-            item.path or "",
-            item.line or 0,
-            item.id,
-        ),
-    )
-    blocking_count = _blocking_finding_count(findings, fail_on)
-    enabled_audit_artifact_ids = {"progress", "status", "summary", "findings", "summary_markdown", "run_history"}
-    if cli_consistency_report is not None:
-        enabled_audit_artifact_ids.add("cli_consistency")
-    if ai_gc_report is not None:
-        enabled_audit_artifact_ids.add("ai_gc")
-    reports = artifact_reports_map(
-        AUDIT_ARTIFACTS,
-        profile=profile,
-        enabled_artifact_ids=enabled_audit_artifact_ids,
-    )
-    progress.complete_stage("merge_findings", detail=f"{len(findings)} total findings")
-    reports["pipeline_status"] = (
-        None if pipeline_summary is None else f"{repo_audit.PIPELINE_OUTPUT_DIRNAME}/status.json"
-    )
-    reports["pipeline_summary"] = (
-        None if pipeline_summary is None else f"{repo_audit.PIPELINE_OUTPUT_DIRNAME}/summary.json"
-    )
-    finding_collection = FindingCollection(tuple(finding.to_record() for finding in findings))
-    overall_status_value = "fail" if blocking_count else "pass"
-    if cli_consistency_report is not None and cli_consistency_report.get("status") == "fail":
-        overall_status_value = "fail"
-    summary = {
-        "generated_by": "sattlint.devtools.repo_audit_entrypoints",
-        "output_dir": sanitized_output_dir,
-        "profile": profile,
-        "entry_report": "status.json",
-        "canonical_command": progress.to_dict()["canonical_command"],
-        "pipeline_ran": bool(pipeline_check_ids),
-        "pipeline_summary": pipeline_summary,
-        "reports": reports,
-        "finding_count": len(findings),
-        "severity_counts": _severity_counts(findings),
-        "category_counts": _category_counts(findings),
-        "max_severity": _max_severity(findings),
-        "findings_schema": finding_collection.schema_metadata,
-        "history_cleanup_findings": [finding.to_dict() for finding in findings if finding.history_cleanup_recommended],
-        "findings": [finding.to_dict() for finding in findings],
-        "selected_checks": recommendation["recommended_check_ids"],
-        "selected_pipeline_checks": pipeline_check_ids,
-        "selected_repo_audit_checks": repo_check_ids,
-        "recommendation": recommendation,
-        "cli_consistency_status": None if cli_consistency_report is None else cli_consistency_report.get("status"),
-    }
-    status_report = {
-        "kind": "sattlint.repo_audit.status",
-        "generated_by": "sattlint.devtools.repo_audit_entrypoints",
-        "profile": profile,
-        "fail_on": fail_on,
-        "overall_status": overall_status_value,
-        "canonical_command": summary["canonical_command"],
-        "status_report": f"{sanitized_output_dir}/status.json",
-        "summary_report": f"{sanitized_output_dir}/summary.json",
-        "progress_report": f"{sanitized_output_dir}/progress.json",
-        "finding_count": summary["finding_count"],
-        "blocking_finding_count": blocking_count,
-        "max_severity": summary["max_severity"],
-        "severity_counts": summary["severity_counts"],
-        "category_counts": summary["category_counts"],
-        "findings_schema": summary["findings_schema"],
-        "pipeline_status_report": None
-        if pipeline_summary is None
-        else f"{sanitized_output_dir}/{repo_audit.PIPELINE_OUTPUT_DIRNAME}/status.json",
-        "latest_status_report": None
-        if sanitized_latest_output_dir is None
-        else f"{sanitized_latest_output_dir}/status.json",
-        "latest_summary_report": None
-        if sanitized_latest_output_dir is None
-        else f"{sanitized_latest_output_dir}/summary.json",
-        "top_findings": [
-            {
-                "id": finding.id,
-                "severity": finding.severity,
-                "path": finding.path,
-                "line": finding.line,
-                "message": finding.message,
-            }
-            for finding in findings[:5]
-        ],
-        "selected_checks": recommendation["recommended_check_ids"],
-        "selected_pipeline_checks": pipeline_check_ids,
-        "selected_repo_audit_checks": repo_check_ids,
-        "cli_consistency_status": None if cli_consistency_report is None else cli_consistency_report.get("status"),
-    }
-    progress.start_stage("write_reports")
-    write_json_artifact(output_dir / "status.json", status_report)
-    write_json_artifact(output_dir / "summary.json", summary)
-    write_json_artifact(output_dir / "findings.json", finding_collection.to_dict())
-    if ai_gc_report is not None:
-        write_json_artifact(output_dir / "ai_gc.json", ai_gc_report)
-    repo_audit._write_markdown(output_dir / "summary.md", findings, summary)
-    if cli_consistency_report is not None:
-        write_json_artifact(output_dir / "cli_consistency.json", cli_consistency_report)
-    if record_history:
-        repo_audit._write_audit_run_history(
-            output_dir,
-            latest_output_dir=latest_output_dir,
-            report_kind="repo_audit_recommended_slice",
-            primary_payload=summary,
-            status_payload=status_report,
-            summary_payload=summary,
-        )
-    repo_audit._mirror_latest_reports(output_dir, latest_output_dir)
-    progress.complete_stage("write_reports")
-    progress.finalize(overall_status=overall_status_value)
-    return summary
 
 
 def run_recommended_repo_audit_finish_gate(
@@ -1365,17 +702,9 @@ def run_recommended_repo_audit_finish_gate(
     changed_files: Iterable[str] | None,
     latest_output_dir: Path | None = None,
 ) -> dict[str, Any]:
-    recommendation = build_repo_audit_check_recommendations(
-        profile=profile,
-        output_dir=output_dir,
-        fail_on=fail_on,
-        changed_files=changed_files,
-    )
-    proof_requirements = recommendation.get("proof_requirements") or pipeline_module.build_change_proof_requirements(
-        changed_files=recommendation.get("changed_files", []),
-        recommended_checks=recommendation.get("recommended_checks", []),
-    )
-    summary = run_recommended_repo_audit_slice(
+    from sattlint.devtools import _repo_audit_entrypoint_runs as helper
+
+    return helper.run_recommended_repo_audit_finish_gate(
         output_dir,
         profile=profile,
         fail_on=fail_on,
@@ -1385,96 +714,7 @@ def run_recommended_repo_audit_finish_gate(
         skip_bandit=skip_bandit,
         changed_files=changed_files,
         latest_output_dir=latest_output_dir,
-        record_history=False,
     )
-    finish_gate_steps = _build_repo_audit_finish_gate_commands(
-        profile=profile,
-        output_dir=output_dir,
-        fail_on=fail_on,
-        changed_files=recommendation["changed_files"],
-        recommended_checks=recommendation["recommended_checks"],
-        ruff_command=[pipeline_module._resolve_venv_tool("ruff") or "ruff"],
-        pyright_command=[pipeline_module._resolve_venv_tool("pyright") or "pyright"],
-        python_command=[pipeline_module._resolve_python_executable()],
-    )[1:]
-    step_reports: list[dict[str, Any]] = []
-    finish_gate_status = "pass"
-    coverage_proof: dict[str, Any] = {
-        "status": "not-required",
-        "mode": "skipped",
-        "coverage_path": None,
-    }
-    for step in finish_gate_steps:
-        result = pipeline_module._run_command(step["id"], step["argv"])
-        step_status = "pass" if result.exit_code == 0 else "fail"
-        if step_status == "fail":
-            finish_gate_status = "fail"
-        step_reports.append(
-            {
-                "id": step["id"],
-                "label": step["label"],
-                "command": step["command"],
-                "exit_code": result.exit_code,
-                "duration_seconds": result.duration_seconds,
-                "status": step_status,
-            }
-        )
-    if proof_requirements["focused_behavior_test"]["status"] == "missing":
-        finish_gate_status = "fail"
-        step_reports.append(
-            {
-                "id": "focused-behavior-test",
-                "label": "Require focused owner pytest for changed code",
-                "command": "",
-                "exit_code": None,
-                "duration_seconds": 0.0,
-                "status": "fail",
-                "detail": proof_requirements["focused_behavior_test"]["reason"],
-            }
-        )
-    coverage_step = next((step for step in finish_gate_steps if step["id"] == "owner-pytest-coverage"), None)
-    if coverage_step is not None:
-        coverage_proof = pipeline_module.evaluate_change_scoped_coverage_proof(
-            repo_root=_repo_audit_module().REPO_ROOT,
-            coverage_output_path=Path(str(coverage_step["coverage_output_path"])),
-            changed_files=recommendation["changed_files"],
-        )
-        if coverage_proof["status"] == "fail":
-            finish_gate_status = "fail"
-    elif proof_requirements["coverage"]["required"]:
-        coverage_proof = {
-            "status": "fail",
-            "mode": "skipped",
-            "coverage_path": None,
-            "reason": "Focused coverage proof is required for changed source files but no owner pytest coverage step was available.",
-        }
-        finish_gate_status = "fail"
-    finish_gate_report = {
-        "kind": "sattlint.repo_audit.finish_gate",
-        "schema_version": 1,
-        "generated_by": "sattlint.devtools.repo_audit_entrypoints",
-        "status": finish_gate_status,
-        "commands": step_reports,
-        "changed_files": recommendation["changed_files"],
-        "owner_test_targets": _owner_test_targets_for_checks(recommendation["recommended_checks"]),
-        "proof_requirements": proof_requirements,
-        "coverage_proof": coverage_proof,
-    }
-    write_json_artifact(output_dir / "finish_gate.json", finish_gate_report)
-    summary["finish_gate"] = finish_gate_report
-    summary["overall_status"] = (
-        "fail" if summary.get("overall_status") == "fail" or finish_gate_status == "fail" else "pass"
-    )
-    repo_audit = _repo_audit_module()
-    repo_audit._write_audit_run_history(
-        output_dir,
-        latest_output_dir=latest_output_dir,
-        report_kind="repo_audit_finish_gate",
-        primary_payload=summary,
-        status_payload=None,
-        summary_payload=summary,
-    )
-    return summary
 
 
 def _selected_surface_and_reason(recommendation: dict[str, Any]) -> tuple[str, str]:

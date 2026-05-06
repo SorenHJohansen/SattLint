@@ -2,6 +2,8 @@
 
 import logging
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import (
@@ -19,8 +21,6 @@ from sattline_parser.models.ast_model import (
     ModuleTypeInstance,
     ParameterMapping,
     Sequence,
-    SFCCodeBlocks,
-    SFCStep,
     SFCTransition,
     Simple_DataType,
     SingleModule,
@@ -28,19 +28,33 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
-from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
-from sattlint.analyzers.loop_output_refactor import analyze_loop_output_refactor
-from sattlint.analyzers.mms import analyze_mms_interface_variables
-from sattlint.analyzers.parameter_drift import analyze_parameter_drift
-from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage
+from sattlint.analyzers import _variables_execution as variables_execution_module
+from sattlint.analyzers import variable_issue_collection as variable_issue_collection_module
 from sattlint.analyzers.shadowing import analyze_shadowing
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.engine import parse_source_file
-from sattlint.reporting.icf_report import ICFEntry
 from sattlint.reporting.variables_report import (
+    VariableIssue,
     VariablesReport,
 )
 from sattlint.resolution.scope import ScopeContext
+from tests._analyzers_variables_adjacent_analyzers import (  # noqa: F401
+    test_cyclomatic_complexity_flags_high_complexity_program_modulecode,
+    test_cyclomatic_complexity_flags_high_complexity_sfc_step,
+    test_cyclomatic_complexity_ignores_low_complexity_program_modulecode,
+    test_loop_output_refactor_detects_cycle_across_equations_and_active_step,
+    test_loop_output_refactor_ignores_acyclic_sorted_blocks,
+    test_mms_interface_collects_nested_typedef_mappings_and_write_locations,
+    test_mms_interface_flags_dead_tags_for_unwritten_outgoing_variables,
+    test_mms_interface_flags_duplicate_tags_and_datatype_mismatch_from_icf_entries,
+    test_mms_interface_flags_naming_drift_from_icf_entries,
+    test_mms_interface_uses_moduletype_default_tags_for_duplicate_and_dead_tag_checks,
+    test_parameter_drift_flags_diverging_literal_parameter_values,
+    test_parameter_drift_ignores_aligned_literal_parameter_values,
+    test_scan_loop_resource_usage_flags_non_precision_builtin_in_active_step_code,
+    test_scan_loop_resource_usage_flags_non_precision_builtin_in_equation_block,
+    test_scan_loop_resource_usage_ignores_non_precision_builtin_outside_active_scan_context,
+)
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -87,775 +101,53 @@ def _status_bridge_typedef() -> ModuleTypeDef:
     )
 
 
-def test_mms_interface_flags_dead_tags_for_unwritten_outgoing_variables():
-    sender = ModuleTypeInstance(
-        header=_hdr("SendToOpc"),
-        moduletype_name="MMSWriteVar",
-        parametermappings=[
-            ParameterMapping(
-                target=_varref("RemoteVarName"),
-                source_type=const.KEY_VALUE,
-                is_duration=False,
-                is_source_global=False,
-                source=None,
-                source_literal="Plant.Result",
-            ),
-            ParameterMapping(
-                target=_varref("LocalVariable"),
-                source_type=const.TREE_TAG_VARIABLE_NAME,
-                is_duration=False,
-                is_source_global=False,
-                source=_varref("ExportValue"),
-                source_literal=None,
-            ),
-        ],
+class _UsageStub:
+    def __init__(
+        self,
+        *,
+        is_unused: bool = False,
+        is_display_only: bool = False,
+        is_read_only: bool = False,
+        read: bool = False,
+        written: bool = False,
+        field_reads: dict[str, list[object]] | None = None,
+        field_writes: dict[str, list[object]] | None = None,
+        usage_locations: list[tuple[object, str]] | None = None,
+    ) -> None:
+        self.is_unused = is_unused
+        self.is_display_only = is_display_only
+        self.is_read_only = is_read_only
+        self.read = read
+        self.written = written
+        self.field_reads = field_reads or {}
+        self.field_writes = field_writes or {}
+        self.usage_locations = usage_locations or []
+
+    def mark_field_read(self, field_path: str, location: object) -> None:
+        self.field_reads.setdefault(field_path, []).append(location)
+
+    def mark_field_written(self, field_path: str, location: object) -> None:
+        self.field_writes.setdefault(field_path, []).append(location)
+
+    def mark_read(self, location: object) -> None:
+        self.read = True
+        self.usage_locations.append((location, "read"))
+
+    def mark_written(self, location: object) -> None:
+        self.written = True
+        self.usage_locations.append((location, "write"))
+
+
+def _access_event(
+    path_parts: tuple[str, ...],
+    use_module_path: list[str],
+    kind: object,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        canonical_path=SimpleNamespace(key=lambda: path_parts),
+        use_module_path=use_module_path,
+        kind=kind,
     )
-
-    unit = SingleModule(
-        header=_hdr("Unit"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="ExportValue", datatype=Simple_DataType.INTEGER)],
-        submodules=[sender],
-        modulecode=None,
-        parametermappings=[],
-    )
-
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[unit],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    report = analyze_mms_interface_variables(bp)
-
-    dead_tag_issues = [issue for issue in report.issues if issue.kind == "mms.dead_tag"]
-    assert len(dead_tag_issues) == 1
-    assert "Plant.Result" in dead_tag_issues[0].message
-
-
-def test_mms_interface_flags_duplicate_tags_and_datatype_mismatch_from_icf_entries():
-    unit_a = SingleModule(
-        header=_hdr("UnitA"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Result", datatype=Simple_DataType.INTEGER)],
-        submodules=[],
-        modulecode=None,
-        parametermappings=[],
-    )
-    unit_b = SingleModule(
-        header=_hdr("UnitB"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="Result", datatype=Simple_DataType.BOOLEAN)],
-        submodules=[],
-        modulecode=None,
-        parametermappings=[],
-    )
-
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[unit_a, unit_b],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    entries = [
-        ICFEntry(
-            file_path=Path("Program.icf"),
-            line_no=1,
-            section="JournalData_DCStoMES",
-            key="ResultCode",
-            value="Program:UnitA.Result",
-        ),
-        ICFEntry(
-            file_path=Path("Program.icf"),
-            line_no=2,
-            section="JournalData_DCStoMES",
-            key="ResultCode",
-            value="Program:UnitB.Result",
-        ),
-    ]
-
-    report = analyze_mms_interface_variables(bp, icf_entries=entries)
-
-    assert "mms.duplicate_tag" in _issue_kinds(report)
-    assert "mms.datatype_mismatch" in _issue_kinds(report)
-
-
-def test_mms_interface_flags_naming_drift_from_icf_entries():
-    unit = SingleModule(
-        header=_hdr("Unit"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="ResultText", datatype=Simple_DataType.STRING)],
-        submodules=[],
-        modulecode=None,
-        parametermappings=[],
-    )
-
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[unit],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    entries = [
-        ICFEntry(
-            file_path=Path("Program.icf"),
-            line_no=1,
-            section="JournalData_DCStoMES",
-            key="ResultText",
-            value="Program:Unit.ResultText",
-        ),
-        ICFEntry(
-            file_path=Path("Program.icf"),
-            line_no=2,
-            section="JournalData_DCStoMES",
-            key="RESULT_TEXT",
-            value="Program:Unit.ResultText",
-        ),
-    ]
-
-    report = analyze_mms_interface_variables(bp, icf_entries=entries)
-
-    naming_drift_issues = [issue for issue in report.issues if issue.kind == "mms.naming_drift"]
-    assert len(naming_drift_issues) == 1
-    assert "ResultText" in naming_drift_issues[0].message
-    assert "RESULT_TEXT" in naming_drift_issues[0].message
-
-
-def test_mms_interface_collects_nested_typedef_mappings_and_write_locations():
-    wrapper = ModuleTypeDef(
-        name="WriterWrapper",
-        moduleparameters=[Variable(name="MappedOut", datatype=Simple_DataType.INTEGER)],
-        localvariables=[],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("SendToOpc"),
-                moduletype_name="MMSWriteVar",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("WriteData"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=_varref("MappedOut"),
-                        source_literal=None,
-                    ),
-                    ParameterMapping(
-                        target=_varref("RemoteVarName"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=None,
-                        source_literal="Plant.Result",
-                    ),
-                ],
-            )
-        ],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-        origin_file="Program.s",
-    )
-    unit = SingleModule(
-        header=_hdr("Unit"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[Variable(name="ExportValue", datatype=Simple_DataType.INTEGER)],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("Wrapper"),
-                moduletype_name="WriterWrapper",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("MappedOut"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=_varref("ExportValue"),
-                        source_literal=None,
-                    )
-                ],
-            )
-        ],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (const.KEY_ASSIGN, _varref("ExportValue"), IntLiteral(1)),
-                    ],
-                )
-            ]
-        ),
-        parametermappings=[],
-    )
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[wrapper],
-        localvariables=[],
-        submodules=[unit],
-        modulecode=None,
-        moduledef=None,
-        origin_file="Program.s",
-    )
-
-    report = analyze_mms_interface_variables(bp)
-
-    assert report.issues == []
-    assert len(report.hits) == 1
-    hit = report.hits[0]
-    assert hit.module_path == ["Program", "Unit", "Wrapper", "SendToOpc"]
-    assert hit.source_variable == "ExportValue"
-    assert hit.write_note is None
-    assert any(field_path == "" for field_path, _locations in hit.write_fields)
-    assert any(
-        path == ("Program", "Unit") and count == 1
-        for _field_path, locations in hit.write_fields
-        for path, count in locations
-    )
-
-
-def test_mms_interface_uses_moduletype_default_tags_for_duplicate_and_dead_tag_checks():
-    mms_write_type = ModuleTypeDef(
-        name="MMSWriteVar",
-        moduleparameters=[Variable(name="Tag", datatype=Simple_DataType.STRING, init_value="Plant.Default.Tag")],
-        localvariables=[],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-    )
-    unit = SingleModule(
-        header=_hdr("Unit"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[
-            Variable(name="FirstValue", datatype=Simple_DataType.INTEGER),
-            Variable(name="SecondValue", datatype=Simple_DataType.INTEGER),
-        ],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("SenderA"),
-                moduletype_name="MMSWriteVar",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("WriteData"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=_varref("FirstValue"),
-                        source_literal=None,
-                    )
-                ],
-            ),
-            ModuleTypeInstance(
-                header=_hdr("SenderB"),
-                moduletype_name="MMSWriteVar",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("WriteData"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=_varref("SecondValue"),
-                        source_literal=None,
-                    )
-                ],
-            ),
-        ],
-        modulecode=None,
-        parametermappings=[],
-    )
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[mms_write_type],
-        localvariables=[],
-        submodules=[unit],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    report = analyze_mms_interface_variables(bp)
-
-    duplicate_issues = [issue for issue in report.issues if issue.kind == "mms.duplicate_tag"]
-    dead_tag_issues = [issue for issue in report.issues if issue.kind == "mms.dead_tag"]
-
-    assert len(report.hits) == 2
-    assert len(duplicate_issues) == 1
-    assert duplicate_issues[0].data is not None
-    assert duplicate_issues[0].data["tag"] == "Plant.Default.Tag"
-    assert len(dead_tag_issues) == 2
-    assert all("Plant.Default.Tag" in issue.message for issue in dead_tag_issues)
-
-
-def test_loop_output_refactor_detects_cycle_across_equations_and_active_step():
-    eq_input = Equation(
-        name="Input",
-        position=(0.0, 0.0),
-        size=(1.0, 1.0),
-        code=[(const.KEY_ASSIGN, _varref("A"), _varref("B"))],
-    )
-    eq_feedback = Equation(
-        name="Feedback",
-        position=(1.0, 0.0),
-        size=(1.0, 1.0),
-        code=[(const.KEY_ASSIGN, _varref("B"), _varref("C"))],
-    )
-    seq = Sequence(
-        name="MainSeq",
-        type="sequence",
-        position=(0.0, 1.0),
-        size=(1.0, 1.0),
-        code=[
-            SFCStep(
-                kind="step",
-                name="Transfer",
-                code=SFCCodeBlocks(active=[(const.KEY_ASSIGN, _varref("C"), _varref("A"))]),
-            )
-        ],
-    )
-    bp = BasePicture(
-        header=_hdr("BasePicture"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[
-            Variable(name="A", datatype=Simple_DataType.INTEGER),
-            Variable(name="B", datatype=Simple_DataType.INTEGER),
-            Variable(name="C", datatype=Simple_DataType.INTEGER),
-        ],
-        submodules=[],
-        modulecode=ModuleCode(equations=[eq_input, eq_feedback], sequences=[seq]),
-        moduledef=None,
-    )
-
-    report = analyze_loop_output_refactor(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "sorting.loop_output_refactor"]
-    assert len(issues) == 1
-    issue = issues[0]
-    assert issue.data is not None
-    assert issue.data["dependency_variables"] == ["a", "b", "c"]
-    assert issue.data["blocks"] == [
-        "EquationBlock 'Input'",
-        "EquationBlock 'Feedback'",
-        "Sequence 'MainSeq' step 'Transfer' ACTIVE",
-    ]
-    assert "Sequence 'MainSeq' step 'Transfer' ACTIVE" in issue.data["loop_text"]
-    assert "At least one dependency in this cycle is delayed by one scan" in issue.data["loop_text"]
-
-    summary = report.summary()
-    assert "semantic.loop-output-refactor" in summary
-    assert "Suggested fix:" in summary
-
-
-def test_loop_output_refactor_ignores_acyclic_sorted_blocks():
-    eq_source = Equation(
-        name="Source",
-        position=(0.0, 0.0),
-        size=(1.0, 1.0),
-        code=[(const.KEY_ASSIGN, _varref("A"), _varref("B"))],
-    )
-    eq_sink = Equation(
-        name="Sink",
-        position=(1.0, 0.0),
-        size=(1.0, 1.0),
-        code=[(const.KEY_ASSIGN, _varref("C"), _varref("A"))],
-    )
-    bp = BasePicture(
-        header=_hdr("BasePicture"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[
-            Variable(name="A", datatype=Simple_DataType.INTEGER),
-            Variable(name="B", datatype=Simple_DataType.INTEGER),
-            Variable(name="C", datatype=Simple_DataType.INTEGER),
-        ],
-        submodules=[],
-        modulecode=ModuleCode(equations=[eq_source, eq_sink], sequences=[]),
-        moduledef=None,
-    )
-
-    report = analyze_loop_output_refactor(bp)
-
-    assert not any(issue.kind == "sorting.loop_output_refactor" for issue in report.issues)
-
-
-def test_parameter_drift_flags_diverging_literal_parameter_values():
-    typedef = ModuleTypeDef(
-        name="DoseValve",
-        moduleparameters=[
-            Variable(name="Timeout", datatype=Simple_DataType.INTEGER, init_value=10),
-        ],
-        localvariables=[],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-    )
-
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[typedef],
-        localvariables=[],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("ValveA"),
-                moduletype_name="DoseValve",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("Timeout"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=None,
-                        source_literal=10,
-                    )
-                ],
-            ),
-            ModuleTypeInstance(
-                header=_hdr("ValveB"),
-                moduletype_name="DoseValve",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("Timeout"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=None,
-                        source_literal=15,
-                    )
-                ],
-            ),
-        ],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    report = analyze_parameter_drift(bp)
-
-    drift_issues = [issue for issue in report.issues if issue.kind == "module.parameter_drift"]
-    assert len(drift_issues) == 2
-    assert all("Timeout" in issue.message for issue in drift_issues)
-    assert any("Program.ValveA=10" in issue.message for issue in drift_issues)
-    assert any("Program.ValveB=15" in issue.message for issue in drift_issues)
-
-
-def test_parameter_drift_ignores_aligned_literal_parameter_values():
-    typedef = ModuleTypeDef(
-        name="DoseValve",
-        moduleparameters=[
-            Variable(name="Timeout", datatype=Simple_DataType.INTEGER, init_value=10),
-        ],
-        localvariables=[],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-    )
-
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[typedef],
-        localvariables=[],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("ValveA"),
-                moduletype_name="DoseValve",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("Timeout"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=None,
-                        source_literal=10,
-                    )
-                ],
-            ),
-            ModuleTypeInstance(
-                header=_hdr("ValveB"),
-                moduletype_name="DoseValve",
-                parametermappings=[],
-            ),
-        ],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    report = analyze_parameter_drift(bp)
-
-    assert not any(issue.kind == "module.parameter_drift" for issue in report.issues)
-
-
-def test_cyclomatic_complexity_ignores_low_complexity_program_modulecode():
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="MainEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[(const.KEY_ASSIGN, _varref("Output"), IntLiteral(1))],
-                )
-            ]
-        ),
-        moduledef=None,
-    )
-
-    report = analyze_cyclomatic_complexity(bp)
-
-    assert not any(issue.kind == "module.cyclomatic_complexity" for issue in report.issues)
-    assert not any(issue.kind == "step.cyclomatic_complexity" for issue in report.issues)
-
-
-def test_cyclomatic_complexity_flags_high_complexity_program_modulecode():
-    decision_statements = [
-        (
-            const.GRAMMAR_VALUE_IF,
-            [
-                (
-                    _varref(f"Cond{index}"),
-                    [(const.KEY_ASSIGN, _varref("Output"), IntLiteral(index))],
-                )
-            ],
-            [],
-        )
-        for index in range(10)
-    ]
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[Variable(name=f"Cond{index}", datatype=Simple_DataType.BOOLEAN) for index in range(10)],
-        submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="MainEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=decision_statements,
-                )
-            ]
-        ),
-        moduledef=None,
-    )
-
-    report = analyze_cyclomatic_complexity(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "module.cyclomatic_complexity"]
-    assert len(issues) == 1
-    assert issues[0].data == {"scope": "program", "complexity": 11, "threshold": 10}
-    assert "Program" in issues[0].message
-
-
-def test_cyclomatic_complexity_flags_high_complexity_sfc_step():
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[],
-        modulecode=ModuleCode(
-            sequences=[
-                Sequence(
-                    name="MainSeq",
-                    type="SEQUENCE",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        SFCStep(
-                            kind="step",
-                            name="HeatUp",
-                            code=SFCCodeBlocks(
-                                active=[
-                                    (
-                                        const.GRAMMAR_VALUE_IF,
-                                        [
-                                            (
-                                                _varref(f"StepCond{index}"),
-                                                [(const.KEY_ASSIGN, _varref("Output"), IntLiteral(index))],
-                                            )
-                                        ],
-                                        [],
-                                    )
-                                    for index in range(6)
-                                ]
-                            ),
-                        ),
-                        SFCTransition(name="Continue", condition=_varref("Proceed")),
-                    ],
-                )
-            ]
-        ),
-        moduledef=None,
-    )
-
-    report = analyze_cyclomatic_complexity(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "step.cyclomatic_complexity"]
-    assert len(issues) == 1
-    assert issues[0].data == {
-        "scope": "step",
-        "sequence": "MainSeq",
-        "step": "HeatUp",
-        "complexity": 7,
-        "threshold": 6,
-    }
-    assert "HeatUp" in issues[0].message
-    assert "MainSeq" in issues[0].message
-
-
-def test_scan_loop_resource_usage_flags_non_precision_builtin_in_equation_block():
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="MainEq",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "AssignSystemString",
-                            [_varref("SysVarId"), _varref("Value"), _varref("Status")],
-                        )
-                    ],
-                )
-            ]
-        ),
-        moduledef=None,
-    )
-
-    report = analyze_scan_loop_resource_usage(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "scan_cycle.resource_usage"]
-    assert len(issues) == 1
-    assert issues[0].data == {
-        "call": "assignsystemstring",
-        "context": "equation block 'MainEq'",
-        "precision_scangroup": False,
-    }
-    assert "AssignSystemString" in issues[0].message
-
-
-def test_scan_loop_resource_usage_flags_non_precision_builtin_in_active_step_code():
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[],
-        modulecode=ModuleCode(
-            sequences=[
-                Sequence(
-                    name="MainSeq",
-                    type="SEQUENCE",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        SFCStep(
-                            kind="step",
-                            name="Poll",
-                            code=SFCCodeBlocks(
-                                active=[
-                                    (
-                                        const.KEY_FUNCTION_CALL,
-                                        "AssignSystemString",
-                                        [_varref("SysVarId"), _varref("Value"), _varref("Status")],
-                                    )
-                                ]
-                            ),
-                        )
-                    ],
-                )
-            ]
-        ),
-        moduledef=None,
-    )
-
-    report = analyze_scan_loop_resource_usage(bp)
-
-    issues = [issue for issue in report.issues if issue.kind == "scan_cycle.resource_usage"]
-    assert len(issues) == 1
-    assert issues[0].data == {
-        "call": "assignsystemstring",
-        "context": "active code of step 'Poll' in sequence 'MainSeq'",
-        "precision_scangroup": False,
-    }
-    assert "Poll" in issues[0].message
-    assert "MainSeq" in issues[0].message
-
-
-def test_scan_loop_resource_usage_ignores_non_precision_builtin_outside_active_scan_context():
-    bp = BasePicture(
-        header=_hdr("Program"),
-        datatype_defs=[],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[],
-        modulecode=ModuleCode(
-            sequences=[
-                Sequence(
-                    name="MainSeq",
-                    type="SEQUENCE",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        SFCStep(
-                            kind="step",
-                            name="Setup",
-                            code=SFCCodeBlocks(
-                                enter=[
-                                    (
-                                        const.KEY_FUNCTION_CALL,
-                                        "AssignSystemString",
-                                        [_varref("SysVarId"), _varref("Value"), _varref("Status")],
-                                    )
-                                ]
-                            ),
-                        )
-                    ],
-                )
-            ]
-        ),
-        moduledef=None,
-    )
-
-    report = analyze_scan_loop_resource_usage(bp)
-
-    assert not any(issue.kind == "scan_cycle.resource_usage" for issue in report.issues)
 
 
 def test_min_max_mapping_mismatch_detected():
@@ -2230,3 +1522,603 @@ def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
     assert "+ PhaseTimerCopy (localvariable)" in summary
     assert "AnyType" not in summary
     assert "TypeDef:Applik" not in summary
+
+
+def test_library_target_report_shows_typedef_for_same_lib_different_file_moduletype():
+    typedef = ModuleTypeDef(
+        name="InfoPanelType",
+        moduleparameters=[Variable(name="EnableInteraktion", datatype=Simple_DataType.BOOLEAN)],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+        origin_file="InfoPanel.s",
+        origin_lib="KaHAApplSupportLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[typedef],
+        localvariables=[],
+        submodules=[
+            ModuleTypeInstance(header=_hdr("Y_Info_Panel"), moduletype_name="InfoPanelType", parametermappings=[]),
+            ModuleTypeInstance(header=_hdr("X_Info_Panel"), moduletype_name="InfoPanelType", parametermappings=[]),
+        ],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAApplSupportLib.s",
+        origin_lib="KaHAApplSupportLib",
+    )
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer.run()
+
+    assert any(
+        issue.kind is IssueKind.UNUSED
+        and issue.variable is not None
+        and issue.variable.name == "EnableInteraktion"
+        and issue.module_path == ["BasePicture", "TypeDef:InfoPanelType"]
+        for issue in analyzer.issues
+    )
+
+    summary = VariablesReport(basepicture_name=bp.header.name, issues=analyzer.issues).summary()
+    assert "      Moduletype:" in summary
+    assert "BasePicture.TypeDef:InfoPanelType :: moduleparameter EnableInteraktion (boolean)" in summary
+    assert "      SingleModule:" in summary
+    assert "BasePicture.Y_Info_Panel :: moduleparameter EnableInteraktion (boolean)" not in summary
+    assert "BasePicture.X_Info_Panel :: moduleparameter EnableInteraktion (boolean)" not in summary
+
+
+def test_unused_summary_splits_moduletype_and_singlemodule_groups():
+    moduletype_var = Variable(name="EnableInteraktion", datatype=Simple_DataType.BOOLEAN)
+    singlemodule_var = Variable(name="MinMax", datatype=Simple_DataType.INTEGER)
+    issues = [
+        VariableIssue(
+            kind=IssueKind.UNUSED,
+            module_path=["BasePicture", "TypeDef:InfoPanelType"],
+            variable=moduletype_var,
+            role="moduleparameter",
+        ),
+        VariableIssue(
+            kind=IssueKind.UNUSED,
+            module_path=["BasePicture", "TypeDef:Soejle", "L1", "L2", "RPDisp"],
+            variable=singlemodule_var,
+            role="localvariable",
+        ),
+    ]
+
+    summary = VariablesReport(basepicture_name="BasePicture", issues=issues).summary()
+
+    assert "      Moduletype:" in summary
+    assert "BasePicture.TypeDef:InfoPanelType :: moduleparameter EnableInteraktion (boolean)" in summary
+    assert "      SingleModule:" in summary
+    assert "BasePicture.Soejle.L1.L2.RPDisp :: localvariable MinMax (integer)" in summary
+    assert "BasePicture.TypeDef:Soejle.L1.L2.RPDisp :: localvariable MinMax (integer)" not in summary
+
+
+def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles():
+    display_param = Variable(name="DisplayParam", datatype=Simple_DataType.INTEGER)
+    effect_param = Variable(name="EffectParam", datatype=Simple_DataType.INTEGER)
+    procedure_local = Variable(name="ProcedureLocal", datatype=Simple_DataType.INTEGER)
+    display_local = Variable(name="DisplayLocal", datatype=Simple_DataType.INTEGER)
+    read_only_local = Variable(name="ReadOnlyLocal", datatype=Simple_DataType.INTEGER)
+    written_only_local = Variable(name="WrittenOnlyLocal", datatype=Simple_DataType.INTEGER)
+    effect_local = Variable(name="EffectLocal", datatype=Simple_DataType.INTEGER)
+    moduletype = ModuleTypeDef(
+        name="WorkerType",
+        moduleparameters=[display_param, effect_param],
+        localvariables=[procedure_local, display_local, read_only_local, written_only_local, effect_local],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[moduletype],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+    usage_by_id = {
+        id(display_param): _UsageStub(is_display_only=True),
+        id(effect_param): _UsageStub(read=True, written=True),
+        id(procedure_local): _UsageStub(read=True),
+        id(display_local): _UsageStub(is_display_only=True),
+        id(read_only_local): _UsageStub(read=True, is_read_only=True),
+        id(written_only_local): _UsageStub(written=True),
+        id(effect_local): _UsageStub(read=True, written=True),
+    }
+    issues: list[tuple[IssueKind, tuple[str, ...], str, str, str | None]] = []
+    helper: Any = SimpleNamespace(
+        bp=bp,
+        _limit_to_module_path=None,
+        _analyze_typedef=lambda *args, **kwargs: None,
+        _is_from_root_origin=lambda origin, origin_lib=None: True,
+        _get_usage=lambda variable: usage_by_id[id(variable)],
+        _procedure_status_issue=lambda variable, usage: (
+            ("procedure-status", "Status") if variable is procedure_local else None
+        ),
+        _add_issue=lambda kind, path, variable, role, field_path=None: issues.append(
+            (kind, tuple(path), variable.name, role, field_path)
+        ),
+        _has_output_effect=lambda *args, **kwargs: False,
+        _has_procedure_status_binding=lambda *args, **kwargs: False,
+        _is_const_candidate=lambda *args, **kwargs: True,
+    )
+
+    variables_execution_module._collect_typedef_issues(helper)
+
+    assert (IssueKind.UI_ONLY, ("Root", "TypeDef:WorkerType"), "DisplayParam", "moduleparameter", None) in issues
+    assert (
+        IssueKind.WRITE_WITHOUT_EFFECT,
+        ("Root", "TypeDef:WorkerType"),
+        "EffectParam",
+        "moduleparameter",
+        None,
+    ) in issues
+    assert (
+        IssueKind.PROCEDURE_STATUS,
+        ("Root", "TypeDef:WorkerType"),
+        "ProcedureLocal",
+        "procedure-status",
+        "Status",
+    ) in issues
+    assert (IssueKind.UI_ONLY, ("Root", "TypeDef:WorkerType"), "DisplayLocal", "localvariable", None) in issues
+    assert (
+        IssueKind.READ_ONLY_NON_CONST,
+        ("Root", "TypeDef:WorkerType"),
+        "ReadOnlyLocal",
+        "localvariable",
+        None,
+    ) in issues
+    assert (
+        IssueKind.NEVER_READ,
+        ("Root", "TypeDef:WorkerType"),
+        "WrittenOnlyLocal",
+        "localvariable",
+        None,
+    ) in issues
+    assert (
+        IssueKind.WRITE_WITHOUT_EFFECT,
+        ("Root", "TypeDef:WorkerType"),
+        "EffectLocal",
+        "localvariable",
+        None,
+    ) in issues
+
+
+def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_paths(monkeypatch):
+    log_messages: list[tuple[object, ...]] = []
+    original_get_logger = logging.getLogger
+    monkeypatch.setattr(
+        logging,
+        "getLogger",
+        lambda name=None: (
+            SimpleNamespace(debug=lambda *args: log_messages.append(args))
+            if name == "SattLint"
+            else original_get_logger(name)
+        ),
+    )
+
+    runner: Any = SimpleNamespace(
+        _issues=[],
+        context_builder=SimpleNamespace(issues=None),
+        _limit_to_module_path=None,
+        bp=BasePicture(
+            header=_hdr("Root"),
+            datatype_defs=[],
+            moduletype_defs=[],
+            localvariables=[],
+            submodules=[],
+            modulecode=None,
+            moduledef=None,
+        ),
+        debug=True,
+        _analysis_warnings=[],
+        _alias_links=[],
+        _trace=lambda *args, **kwargs: None,
+        _analyze_root_scope=lambda: None,
+        _apply_alias_back_propagation=lambda: None,
+        _propagate_procedure_status_bindings=lambda: None,
+        _run_post_traversal_analyses=lambda: None,
+        _collect_basepicture_issues=lambda bp_path: None,
+        _collect_typedef_issues=lambda: None,
+        _add_naming_role_mismatch_issues=lambda: None,
+        _add_global_scope_minimization_issues=lambda: None,
+        _add_hidden_global_coupling_issues=lambda: None,
+        _add_high_fan_in_out_issues=lambda: None,
+        _add_unused_datatype_field_issues=lambda: None,
+    )
+
+    assert variables_execution_module.run(runner) == []
+    assert runner.context_builder.issues == []
+    assert len(log_messages) == 2
+
+    assert variables_execution_module._is_external_typename(
+        cast(Any, SimpleNamespace(typedef_index={"knowntype": object()})),
+        "UnknownType",
+    )
+    assert not variables_execution_module._is_external_typename(
+        cast(Any, SimpleNamespace(typedef_index={"knowntype": object()})),
+        "KnownType",
+    )
+
+    colliding_param = Variable(name="Shared", datatype=Simple_DataType.INTEGER)
+    input_param = Variable(name="Input", datatype=Simple_DataType.INTEGER)
+    colliding_local = Variable(name="Shared", datatype=Simple_DataType.INTEGER)
+    usage_by_id = {
+        id(colliding_param): _UsageStub(),
+        id(input_param): _UsageStub(read=True),
+        id(colliding_local): _UsageStub(),
+    }
+    moduletype = ModuleTypeDef(
+        name="ChildType",
+        moduleparameters=[colliding_param, input_param],
+        localvariables=[colliding_local],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[
+            ParameterMapping(
+                target=_varref("Input"),
+                source_type=const.KEY_VALUE,
+                is_duration=False,
+                is_source_global=False,
+                source=None,
+                source_literal=1,
+            )
+        ],
+    )
+    captured_display_paths: list[list[str]] = []
+    checked_targets: list[tuple[Variable | None, tuple[str, ...], tuple[str, ...]]] = []
+    collision_issues: list[VariableIssue] = []
+    helper: Any = SimpleNamespace(
+        _analyzing_typedefs={"childtype"},
+        _append_issue=lambda issue: collision_issues.append(issue),
+        _get_usage=lambda variable: usage_by_id[id(variable)],
+        used_params_by_typedef={},
+        param_reads_by_typedef={},
+        param_writes_by_typedef={},
+        _walk_moduledef=lambda moduledef, context, path: captured_display_paths.append(
+            list(context.display_module_path)
+        ),
+        _walk_module_code=lambda *args, **kwargs: None,
+        _walk_submodules=lambda *args, **kwargs: None,
+        _walk_typedef_groupconn=lambda *args, **kwargs: None,
+        _check_param_mapping=lambda mapping, target_var, env, path: checked_targets.append(
+            (target_var, tuple(sorted(env)), tuple(path))
+        ),
+    )
+
+    variables_execution_module._analyze_typedef(helper, moduletype, ["Root", "TypeDef:ChildType", "Nested"])
+    assert collision_issues == []
+    assert captured_display_paths == []
+
+    helper._analyzing_typedefs = set()
+    variables_execution_module._analyze_typedef(helper, moduletype, ["Root", "TypeDef:ChildType", "Nested"])
+    assert collision_issues[0].kind is IssueKind.NAME_COLLISION
+    assert collision_issues[0].source_variable is colliding_param
+    assert captured_display_paths[0] == [
+        variables_execution_module.decorate_segment("Root", "BP"),
+        variables_execution_module.decorate_segment("TypeDef:ChildType", "TD"),
+        "Nested",
+    ]
+    assert helper.used_params_by_typedef["ChildType"] == {"input"}
+    assert helper.param_reads_by_typedef["childtype"] == {"input"}
+    assert helper.param_writes_by_typedef["childtype"] == set()
+    assert checked_targets[0][0] is input_param
+
+    read_param = Variable(name="ReadParam", datatype=Simple_DataType.INTEGER)
+    write_param = Variable(name="WriteParam", datatype=Simple_DataType.INTEGER)
+    usage_by_id[id(read_param)] = _UsageStub(read=True)
+    usage_by_id[id(write_param)] = _UsageStub(written=True)
+    module = SingleModule(
+        header=_hdr("Worker"),
+        moduledef=None,
+        moduleparameters=[read_param, write_param],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[],
+    )
+    context = ScopeContext(
+        env={},
+        param_mappings={},
+        module_path=["Root"],
+        display_module_path=["Root"],
+        current_library=None,
+        parent_context=None,
+    )
+    simple_helper: Any = SimpleNamespace(
+        _walk_moduledef=lambda *args, **kwargs: None,
+        _walk_module_code=lambda *args, **kwargs: None,
+        _walk_submodules=lambda *args, **kwargs: None,
+        _get_usage=lambda variable: usage_by_id[id(variable)],
+        _analyzing_typedefs={"childtype"},
+    )
+    used_reads, used_writes = variables_execution_module._analyze_single_module_with_context(
+        simple_helper,
+        module,
+        context,
+        ["Root", "Worker"],
+    )
+    assert used_reads == {"readparam"}
+    assert used_writes == {"writeparam"}
+
+    variables_execution_module._analyze_typedef_with_context(
+        simple_helper,
+        moduletype,
+        context,
+        ["Root", "TypeDef:ChildType"],
+    )
+
+
+def test_variables_execution_apply_alias_back_propagation_covers_prefixed_and_direct_marks():
+    parent = Variable(name="Parent", datatype="Payload")
+    child = Variable(name="Child", datatype="Payload")
+    root_parent = Variable(name="RootParent", datatype=Simple_DataType.INTEGER)
+    root_child = Variable(name="RootChild", datatype=Simple_DataType.INTEGER)
+
+    parent_usage = _UsageStub()
+    child_usage = _UsageStub(
+        field_reads={"Leaf": [("reader", 1)], "": [("reader-empty", 3)]},
+        field_writes={"": [("writer", 2)], "LeafWrite": [("writer-leaf", 4)]},
+        usage_locations=[(("step", 1), "read"), (("step", 2), "write")],
+    )
+    root_parent_usage = _UsageStub()
+    root_child_usage = _UsageStub(
+        field_reads={"DirectLeaf": [("root-reader", 5)]},
+        field_writes={"DirectWrite": [("root-writer", 6)]},
+        usage_locations=[(("root", 1), "read"), (("root", 2), "write")],
+    )
+    usage_by_id = {
+        id(parent): parent_usage,
+        id(child): child_usage,
+        id(root_parent): root_parent_usage,
+        id(root_child): root_child_usage,
+    }
+    helper: Any = SimpleNamespace(
+        _alias_links=[(parent, child, "Alias"), (root_parent, root_child, "")],
+        _get_usage=lambda variable: usage_by_id[id(variable)],
+    )
+
+    variables_execution_module._apply_alias_back_propagation(helper)
+
+    assert parent_usage.field_reads["Alias.Leaf"] == [("reader", 1)]
+    assert parent_usage.field_reads["Alias"] == [("reader-empty", 3), ("step", 1)]
+    assert parent_usage.field_writes["Alias"] == [("writer", 2), ("step", 2)]
+    assert parent_usage.field_writes["Alias.LeafWrite"] == [("writer-leaf", 4)]
+    assert root_parent_usage.field_reads["DirectLeaf"] == [("root-reader", 5)]
+    assert root_parent_usage.field_writes["DirectWrite"] == [("root-writer", 6)]
+    assert root_parent_usage.usage_locations == [(("root", 1), "read"), (("root", 2), "write")]
+
+
+def test_variable_issue_collection_datatype_field_helper_covers_remaining_branches():
+    external_datatype = DataType(name="ExternalPayload", description=None, datecode=None, var_list=[])
+    cast(Any, external_datatype).origin_file = "external.s"
+    empty_datatype = DataType(name="EmptyPayload", description=None, datecode=None, var_list=[])
+    library_datatype = DataType(
+        name="LibraryPayload",
+        description=None,
+        datecode=None,
+        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+    )
+    no_access_datatype = DataType(
+        name="PayloadNoAccess",
+        description=None,
+        datecode=None,
+        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+    )
+    partial_datatype = DataType(
+        name="PayloadPartial",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="Used", datatype=Simple_DataType.INTEGER),
+            Variable(name="Unused", datatype=Simple_DataType.INTEGER),
+        ],
+    )
+    library_var = Variable(name="LibraryVar", datatype="LibraryPayload")
+    no_access_var = Variable(name="NoAccessVar", datatype="PayloadNoAccess")
+    partial_var = Variable(name="PartialVar", datatype="PayloadPartial")
+    missing_var = Variable(name="MissingVar", datatype="MissingPayload")
+    primitive_var = Variable(name="PrimitiveVar", datatype=Simple_DataType.INTEGER)
+    usage_by_id = {
+        id(library_var): _UsageStub(),
+        id(no_access_var): _UsageStub(),
+        id(partial_var): _UsageStub(field_reads={"Used": [("reader", 1)]}),
+        id(missing_var): _UsageStub(),
+        id(primitive_var): _UsageStub(),
+    }
+    issues: list[VariableIssue] = []
+    helper: Any = SimpleNamespace(
+        bp=BasePicture(
+            header=_hdr("Root"),
+            datatype_defs=[external_datatype, empty_datatype, library_datatype, no_access_datatype, partial_datatype],
+            moduletype_defs=[],
+            localvariables=[],
+            submodules=[],
+            modulecode=None,
+            moduledef=None,
+        ),
+        _is_from_root_origin=lambda origin, origin_lib=None: origin != "external.s",
+        type_graph=SimpleNamespace(
+            iter_leaf_field_paths=lambda name: {
+                "EmptyPayload": [],
+                "LibraryPayload": [("FieldA",)],
+                "PayloadNoAccess": [("FieldA",)],
+                "PayloadPartial": [("Used",), ("Unused",)],
+            }.get(name, [])
+        ),
+        _iter_variables_for_datatype_field_analysis=lambda: [
+            (["Root"], primitive_var, "localvariable"),
+            (["Root"], missing_var, "localvariable"),
+            (["Root", "TypeDef:Carrier"], library_var, "moduleparameter"),
+            (["Root"], no_access_var, "localvariable"),
+            (["Root"], partial_var, "localvariable"),
+        ],
+        _analyzed_target_is_library=True,
+        _get_usage=lambda variable: usage_by_id[id(variable)],
+        _append_issue=lambda issue: issues.append(issue),
+    )
+
+    variable_issue_collection_module._add_unused_datatype_field_issues(helper)
+
+    assert len(issues) == 1
+    issue = issues[0]
+    assert issue.kind is IssueKind.UNUSED_DATATYPE_FIELD
+    assert issue.datatype_name == "PayloadPartial"
+    assert issue.field_path == "Unused"
+
+
+def test_variable_issue_collection_direct_global_helpers_cover_remaining_branches():
+    shared = Variable(name="Shared", datatype=Simple_DataType.INTEGER)
+    issues: list[VariableIssue] = []
+    helper: Any = SimpleNamespace(
+        bp=BasePicture(
+            header=_hdr("Root"),
+            datatype_defs=[],
+            moduletype_defs=[],
+            localvariables=[shared],
+            submodules=[],
+            modulecode=None,
+            moduledef=None,
+        ),
+        _analyzed_target_is_library=False,
+        _trace=lambda *args, **kwargs: None,
+        _append_issue=lambda issue: issues.append(issue),
+    )
+    helper.access_graph = SimpleNamespace(
+        events=[
+            _access_event(("root",), ["Root", "Short"], variable_issue_collection_module.AccessKind.READ),
+            _access_event(("root", "other"), ["Root", "Other"], variable_issue_collection_module.AccessKind.READ),
+            _access_event(("root", "shared"), ["Root", "Writer"], variable_issue_collection_module.AccessKind.WRITE),
+            _access_event(("root", "shared"), ["Root", "Reader"], variable_issue_collection_module.AccessKind.READ),
+        ]
+    )
+
+    variable_issue_collection_module._add_hidden_global_coupling_issues(helper)
+
+    assert len(issues) == 1
+    assert "Writer (write)" in (issues[0].role or "")
+    assert "Reader (read)" in (issues[0].role or "")
+
+    issues.clear()
+    helper.access_graph = SimpleNamespace(
+        events=[
+            _access_event(("root", "shared"), ["Root", "ReaderA"], variable_issue_collection_module.AccessKind.READ),
+            _access_event(("root", "shared"), ["Root", "ReaderB"], variable_issue_collection_module.AccessKind.READ),
+        ]
+    )
+    variable_issue_collection_module._add_hidden_global_coupling_issues(helper)
+    assert issues == []
+
+    helper.access_graph = SimpleNamespace(
+        events=[
+            _access_event(("root",), ["Root", "Short"], variable_issue_collection_module.AccessKind.READ),
+            _access_event(("root", "other"), ["Root", "Other"], variable_issue_collection_module.AccessKind.READ),
+            _access_event(("root", "shared"), ["Root", "ReaderA"], variable_issue_collection_module.AccessKind.READ),
+            _access_event(("root", "shared"), ["Root", "ReaderB"], variable_issue_collection_module.AccessKind.READ),
+            _access_event(("root", "shared"), ["Root", "ReaderC"], variable_issue_collection_module.AccessKind.READ),
+            _access_event(("root", "shared"), ["Root", "WriterA"], variable_issue_collection_module.AccessKind.WRITE),
+            _access_event(("root", "shared"), ["Root", "WriterB"], variable_issue_collection_module.AccessKind.WRITE),
+            _access_event(("root", "shared"), ["Root", "WriterC"], variable_issue_collection_module.AccessKind.WRITE),
+        ]
+    )
+    variable_issue_collection_module._add_high_fan_in_out_issues(helper)
+
+    assert len(issues) == 1
+    assert "high fan-in with 3 readers" in (issues[0].role or "")
+    assert "high fan-out with 3 writers" in (issues[0].role or "")
+
+    issues.clear()
+    helper.access_graph = SimpleNamespace(
+        events=[
+            _access_event(("root",), ["Root", "Short"], variable_issue_collection_module.AccessKind.READ),
+            _access_event(("root", "shared"), ["Root", "Worker"], variable_issue_collection_module.AccessKind.READ),
+            _access_event(
+                ("root", "shared"), ["Root", "Worker", "Nested"], variable_issue_collection_module.AccessKind.WRITE
+            ),
+        ]
+    )
+    variable_issue_collection_module._add_global_scope_minimization_issues(helper)
+
+    assert len(issues) == 1
+    assert "module subtree Worker" in (issues[0].role or "")
+    assert "Worker.Nested" in (issues[0].role or "")
+
+
+def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_branches():
+    procedure_param = Variable(name="ProcedureParam", datatype=Simple_DataType.INTEGER)
+    ui_param = Variable(name="UiParam", datatype=Simple_DataType.INTEGER)
+    effect_param = Variable(name="EffectParam", datatype=Simple_DataType.INTEGER)
+    procedure_local = Variable(name="ProcedureLocal", datatype=Simple_DataType.INTEGER)
+    ui_local = Variable(name="UiLocal", datatype=Simple_DataType.INTEGER)
+    read_only_local = Variable(name="ReadOnlyLocal", datatype=Simple_DataType.INTEGER)
+    usage_by_id = {
+        id(procedure_param): _UsageStub(read=True),
+        id(ui_param): _UsageStub(is_display_only=True),
+        id(effect_param): _UsageStub(read=True, written=True),
+        id(procedure_local): _UsageStub(read=True),
+        id(ui_local): _UsageStub(is_display_only=True),
+        id(read_only_local): _UsageStub(read=True, is_read_only=True),
+    }
+    issues: list[tuple[IssueKind, tuple[str, ...], str, str, str | None]] = []
+    module = SingleModule(
+        header=_hdr("Worker"),
+        moduledef=None,
+        moduleparameters=[procedure_param, ui_param, effect_param],
+        localvariables=[procedure_local, ui_local, read_only_local],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[],
+    )
+    helper: Any = SimpleNamespace(
+        _get_usage=lambda variable: usage_by_id[id(variable)],
+        _procedure_status_issue=lambda variable, usage: (
+            ("procedure-status", "Status") if variable is procedure_param or variable is procedure_local else None
+        ),
+        _add_issue=lambda kind, path, variable, role, field_path=None: issues.append(
+            (kind, tuple(path), variable.name, role, field_path)
+        ),
+        _has_output_effect=lambda *args, **kwargs: False,
+        _has_procedure_status_binding=lambda *args, **kwargs: False,
+        _is_const_candidate=lambda *args, **kwargs: True,
+    )
+
+    variable_issue_collection_module._collect_issues_from_module(helper, module, ["Root"])
+
+    assert (
+        IssueKind.PROCEDURE_STATUS,
+        ("Root", "Worker"),
+        "ProcedureParam",
+        "procedure-status",
+        "Status",
+    ) in issues
+    assert (IssueKind.UI_ONLY, ("Root", "Worker"), "UiParam", "moduleparameter", None) in issues
+    assert (
+        IssueKind.WRITE_WITHOUT_EFFECT,
+        ("Root", "Worker"),
+        "EffectParam",
+        "moduleparameter",
+        None,
+    ) in issues
+    assert (
+        IssueKind.PROCEDURE_STATUS,
+        ("Root", "Worker"),
+        "ProcedureLocal",
+        "procedure-status",
+        "Status",
+    ) in issues
+    assert (IssueKind.UI_ONLY, ("Root", "Worker"), "UiLocal", "localvariable", None) in issues
+    assert (
+        IssueKind.READ_ONLY_NON_CONST,
+        ("Root", "Worker"),
+        "ReadOnlyLocal",
+        "localvariable",
+        None,
+    ) in issues

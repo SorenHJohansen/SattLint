@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
@@ -101,6 +101,7 @@ def _discover_changed_line_map(root: Path, changed_files: Iterable[str] | None) 
     )
     for command in commands:
         try:
+            # Fixed local git diff invocation without shell expansion.
             completed = subprocess.run(
                 command,
                 cwd=root,
@@ -108,7 +109,7 @@ def _discover_changed_line_map(root: Path, changed_files: Iterable[str] | None) 
                 text=True,
                 encoding="utf-8",
                 check=False,
-            )
+            )  # nosec B603
         except OSError:
             continue
         if completed.returncode != 0 or not completed.stdout:
@@ -379,12 +380,13 @@ def build_coverage_summary_report(
     """Build a machine-readable coverage summary from coverage.xml."""
     resolved_coverage_path = coverage_path or (root / "coverage.xml")
     ratchet_state = _load_coverage_ratchet(root)
-    if not resolved_coverage_path.exists():
+
+    def skipped_report(skip_reason: str, error_type: str) -> dict[str, Any]:
         return {
             "kind": COVERAGE_SUMMARY_SCHEMA_KIND,
             "schema_version": COVERAGE_SUMMARY_SCHEMA_VERSION,
             "skipped": True,
-            "skip_reason": "coverage.xml not found",
+            "skip_reason": skip_reason,
             "modules": [],
             "findings": [],
             "change_scoped": _summarize_change_scoped_coverage(
@@ -400,8 +402,8 @@ def build_coverage_summary_report(
                 "setpoint_metrics": dict(COVERAGE_RATCHET_SETPOINTS),
                 "current_metrics": {},
                 "regressions": [],
-                "error": "coverage.xml not found",
-                "error_type": "FileNotFoundError",
+                "error": skip_reason,
+                "error_type": error_type,
             },
             "summary": {
                 "module_count": 0,
@@ -414,7 +416,18 @@ def build_coverage_summary_report(
             },
         }
 
-    root_xml = ElementTree.fromstring(resolved_coverage_path.read_text(encoding="utf-8"))
+    if not resolved_coverage_path.exists():
+        return skipped_report("coverage.xml not found", "FileNotFoundError")
+
+    coverage_xml = resolved_coverage_path.read_text(encoding="utf-8")
+    if not coverage_xml.strip():
+        return skipped_report("coverage.xml was empty", "ParseError")
+
+    try:
+        root_xml = ElementTree.fromstring(coverage_xml)
+    except ElementTree.ParseError:
+        return skipped_report("coverage.xml parse error", "ParseError")
+
     low_coverage: list[dict[str, Any]] = []
     modules, module_lookup, line_rates = _collect_modules(root_xml)
 

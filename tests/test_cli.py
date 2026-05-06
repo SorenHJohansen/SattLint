@@ -188,7 +188,7 @@ def test_run_cli_simulate_passes_flags():
             "--format",
             "json",
             "--output",
-            "artifacts/simulation.json",
+            "simulation.json",
         ],
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
@@ -223,7 +223,7 @@ def test_run_cli_simulate_passes_flags():
     assert seen["mode"] == "steady-state"
     assert seen["max_scans"] == 25
     assert seen["output_format"] == "json"
-    assert seen["output_path"] == "artifacts/simulation.json"
+    assert seen["output_path"] == "simulation.json"
     assert seen["use_cache"] is False
 
 

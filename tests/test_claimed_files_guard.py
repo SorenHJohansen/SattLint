@@ -34,7 +34,7 @@ def _write_lock_state(tmp_path: Path, *, workstream_id: str, claimed_paths: list
                         "owner": "Copilot",
                         "status": status,
                         "claimed_paths": claimed_paths,
-                        "updated_at": "2026-05-04T00:00:00Z",
+                        "updated_at": claimed_files_guard.coordination_lock_state.utc_now_timestamp(),
                         "first_validation": "pytest tests/test_claimed_files_guard.py -x -q --tb=short",
                     }
                 ]

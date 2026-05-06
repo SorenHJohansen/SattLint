@@ -42,6 +42,7 @@ See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface
 - Use `@context-optimizer /audit` before growing AI control files.
 - Keep AGENTS small, scoped instructions rich, and handoffs machine-readable.
 - AI must fix code or tests before any ratchet rebaseline.
+- When a claimed owner file is already oversized in `artifacts/analysis/file_debt_ratchet.json`, default to extraction into sibling modules or an explicit shrink/decomposition slice instead of appending more code to that owner file.
 - Restart the language server after `src/sattlint_lsp/`, `src/sattlint/core/`, `src/sattlint/editor_api.py`, or `vscode/` edits.
 
 ## Workflow Rules

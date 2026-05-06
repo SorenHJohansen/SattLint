@@ -39,10 +39,12 @@ def analyze_state_inference(
     base_picture: BasePicture,
     *,
     unavailable_libraries: set[str] | None = None,
+    analyzed_target_is_library: bool = False,
 ) -> StateInferenceReport:
     issues, summary_data = collect_state_inference(
         base_picture,
         unavailable_libraries=unavailable_libraries,
+        analyzed_target_is_library=analyzed_target_is_library,
     )
     return StateInferenceReport(
         name=base_picture.header.name,
