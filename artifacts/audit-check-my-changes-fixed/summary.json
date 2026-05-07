@@ -1,0 +1,526 @@
+{
+  "canonical_command": "sattlint-repo-audit --profile full --run-recommended-slice --fail-on high --output-dir artifacts/audit-check-my-changes-fixed",
+  "category_counts": {},
+  "cli_consistency_status": "pass",
+  "entry_report": "status.json",
+  "finding_count": 0,
+  "findings": [],
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "history_cleanup_findings": [],
+  "max_severity": null,
+  "output_dir": "artifacts/audit-check-my-changes-fixed",
+  "pipeline_ran": false,
+  "pipeline_summary": null,
+  "profile": "full",
+  "recommendation": {
+    "changed_files": [
+      "docs/references/cli-commands.md"
+    ],
+    "fail_on": "high",
+    "fallback_reason": null,
+    "fallback_required": false,
+    "kind": "sattlint.repo_audit.check_recommendations",
+    "profile": "full",
+    "recommended_check_ids": [
+      "text-scan",
+      "documented-commands",
+      "public-readiness",
+      "verify-recommendations",
+      "cli-consistency"
+    ],
+    "recommended_checks": [
+      {
+        "artifact_ids": [
+          "progress",
+          "status",
+          "summary",
+          "findings",
+          "summary_markdown"
+        ],
+        "command": "sattlint-repo-audit --profile full --check text-scan --skip-pipeline --fail-on high --output-dir artifacts/audit-check-my-changes-fixed",
+        "estimated_cost": "low",
+        "id": "text-scan",
+        "label": "Scan repository text for leaks and local paths",
+        "owner_surface": "text-scan",
+        "owner_test_targets": [
+          "tests/test_repo_audit.py"
+        ],
+        "path_globs": [
+          "README.md",
+          "CONTRIBUTING.md",
+          "SECURITY.md",
+          "docs/**",
+          ".github/**",
+          "src/**/*.py",
+          "tests/**/*.py",
+          "scripts/**/*.py",
+          "pyproject.toml"
+        ],
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "reason": "Matched docs/references/cli-commands.md against the text-scan routing globs.",
+        "source": "repo-audit"
+      },
+      {
+        "artifact_ids": [
+          "progress",
+          "status",
+          "summary",
+          "findings",
+          "summary_markdown"
+        ],
+        "command": "sattlint-repo-audit --profile full --check documented-commands --skip-pipeline --fail-on high --output-dir artifacts/audit-check-my-changes-fixed",
+        "estimated_cost": "low",
+        "id": "documented-commands",
+        "label": "Check documented commands against implemented CLI surfaces",
+        "owner_surface": "cli-docs",
+        "owner_test_targets": [
+          "tests/test_repo_audit.py"
+        ],
+        "path_globs": [
+          "README.md",
+          "CONTRIBUTING.md",
+          "docs/references/cli-commands.md",
+          "docs/references/ai-agent-reference.md",
+          "pyproject.toml",
+          "src/sattlint/cli/**",
+          "src/sattlint/app*.py",
+          "src/sattlint/devtools/repo_audit_cli.py"
+        ],
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "reason": "Matched docs/references/cli-commands.md against the documented-commands routing globs.",
+        "source": "repo-audit"
+      },
+      {
+        "artifact_ids": [
+          "progress",
+          "status",
+          "summary",
+          "findings",
+          "summary_markdown"
+        ],
+        "command": "sattlint-repo-audit --profile full --check public-readiness --skip-pipeline --fail-on high --output-dir artifacts/audit-check-my-changes-fixed",
+        "estimated_cost": "low",
+        "id": "public-readiness",
+        "label": "Check public-repository readiness files and metadata",
+        "owner_surface": "public-readiness",
+        "owner_test_targets": [
+          "tests/test_repo_audit.py"
+        ],
+        "path_globs": [
+          "README.md",
+          "CONTRIBUTING.md",
+          "SECURITY.md",
+          "LICENSE",
+          ".github/**",
+          "docs/**",
+          "pyproject.toml"
+        ],
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "reason": "Matched docs/references/cli-commands.md against the public-readiness routing globs.",
+        "source": "repo-audit"
+      },
+      {
+        "artifact_ids": [
+          "progress",
+          "status",
+          "summary",
+          "findings",
+          "summary_markdown"
+        ],
+        "command": "sattlint-repo-audit --profile full --check verify-recommendations --skip-pipeline --fail-on high --output-dir artifacts/audit-check-my-changes-fixed",
+        "estimated_cost": "low",
+        "id": "verify-recommendations",
+        "label": "Verify recommendation metadata and routing catalog coverage",
+        "owner_surface": "recommendations",
+        "owner_test_targets": [
+          "tests/test_pipeline_run.py",
+          "tests/test_repo_audit.py",
+          "tests/test_recommendation_routing.py"
+        ],
+        "path_globs": [
+          "src/sattlint/devtools/pipeline.py",
+          "src/sattlint/devtools/pipeline_checks.py",
+          "src/sattlint/devtools/repo_audit.py",
+          "src/sattlint/devtools/repo_audit_cli.py",
+          "src/sattlint/devtools/repo_audit_entrypoints.py",
+          "tests/test_pipeline_run.py",
+          "tests/test_repo_audit.py",
+          "tests/test_recommendation_routing.py",
+          "docs/references/cli-commands.md",
+          "docs/references/ai-agent-reference.md"
+        ],
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "reason": "Matched docs/references/cli-commands.md against the verify-recommendations routing globs.",
+        "source": "repo-audit"
+      },
+      {
+        "artifact_ids": [
+          "progress",
+          "status",
+          "summary",
+          "findings",
+          "summary_markdown",
+          "cli_consistency"
+        ],
+        "command": "sattlint-repo-audit --profile full --check cli-consistency --skip-pipeline --fail-on high --output-dir artifacts/audit-check-my-changes-fixed",
+        "estimated_cost": "low",
+        "id": "cli-consistency",
+        "label": "Build the full CLI consistency report",
+        "owner_surface": "cli-docs",
+        "owner_test_targets": [
+          "tests/test_repo_audit.py"
+        ],
+        "path_globs": [
+          "README.md",
+          "CONTRIBUTING.md",
+          "docs/references/cli-commands.md",
+          "docs/references/ai-agent-reference.md",
+          "pyproject.toml",
+          "src/sattlint/cli/**",
+          "src/sattlint/app*.py",
+          "src/sattlint/devtools/repo_audit_cli.py"
+        ],
+        "profiles": [
+          "full"
+        ],
+        "reason": "Matched docs/references/cli-commands.md against the cli-consistency routing globs.",
+        "source": "repo-audit"
+      }
+    ],
+    "recommended_pipeline_check_ids": [],
+    "recommended_repo_audit_check_ids": [
+      "text-scan",
+      "documented-commands",
+      "public-readiness",
+      "verify-recommendations",
+      "cli-consistency"
+    ],
+    "schema_version": 1,
+    "skipped_checks": [
+      {
+        "id": "ruff",
+        "label": "Run Ruff",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "pyright",
+        "label": "Run pyright",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "pytest",
+        "label": "Run pytest",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "vulture",
+        "label": "Run Vulture",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "bandit",
+        "label": "Run Bandit",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "structural-reports",
+        "label": "Collect structural reports",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "trace",
+        "label": "Collect trace report",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "corpus",
+        "label": "Run corpus suite",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "unused-config-keys",
+        "label": "Report declared but unused config keys",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "architecture",
+        "label": "Run repository architecture checks",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "structural-report",
+        "label": "Translate structural report findings into repo-audit findings",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "cli",
+        "label": "Validate CLI descriptions and subcommand help",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "logging",
+        "label": "Check library modules for unexpected print calls",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "ai-gc",
+        "label": "Report stale AI-generated artifacts and oversized local coordination state",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "ignored-repo-paths",
+        "label": "Detect references to ignored repo-local paths",
+        "reason": "No changed-file route matched this check."
+      },
+      {
+        "id": "coverage",
+        "label": "Translate low-coverage modules into audit findings",
+        "reason": "No changed-file route matched this check."
+      }
+    ],
+    "suggested_check_commands": [
+      "sattlint-repo-audit --profile full --check text-scan --skip-pipeline --fail-on high --output-dir artifacts/audit-check-my-changes-fixed",
+      "sattlint-repo-audit --profile full --check documented-commands --skip-pipeline --fail-on high --output-dir artifacts/audit-check-my-changes-fixed",
+      "sattlint-repo-audit --profile full --check public-readiness --skip-pipeline --fail-on high --output-dir artifacts/audit-check-my-changes-fixed",
+      "sattlint-repo-audit --profile full --check verify-recommendations --skip-pipeline --fail-on high --output-dir artifacts/audit-check-my-changes-fixed",
+      "sattlint-repo-audit --profile full --check cli-consistency --skip-pipeline --fail-on high --output-dir artifacts/audit-check-my-changes-fixed"
+    ],
+    "suggested_finish_gate_commands": [
+      "sattlint-repo-audit --profile full --run-recommended-finish-gate --changed-file docs/references/cli-commands.md --fail-on high --output-dir artifacts/audit-check-my-changes-fixed",
+      "python -m pytest --no-cov tests/test_repo_audit.py tests/test_pipeline_run.py tests/test_recommendation_routing.py -x -q --tb=short"
+    ],
+    "why_this_gate": {
+      "changed_files": [
+        "docs/references/cli-commands.md"
+      ],
+      "matched_routes": [
+        {
+          "check_id": "text-scan",
+          "matched_files": [
+            "docs/references/cli-commands.md"
+          ],
+          "owner_surface": "text-scan",
+          "path_globs": [
+            "README.md",
+            "CONTRIBUTING.md",
+            "SECURITY.md",
+            "docs/**",
+            ".github/**",
+            "src/**/*.py",
+            "tests/**/*.py",
+            "scripts/**/*.py",
+            "pyproject.toml"
+          ],
+          "reason": "Matched docs/references/cli-commands.md against the text-scan routing globs.",
+          "source": "repo-audit"
+        },
+        {
+          "check_id": "documented-commands",
+          "matched_files": [
+            "docs/references/cli-commands.md"
+          ],
+          "owner_surface": "cli-docs",
+          "path_globs": [
+            "README.md",
+            "CONTRIBUTING.md",
+            "docs/references/cli-commands.md",
+            "docs/references/ai-agent-reference.md",
+            "pyproject.toml",
+            "src/sattlint/cli/**",
+            "src/sattlint/app*.py",
+            "src/sattlint/devtools/repo_audit_cli.py"
+          ],
+          "reason": "Matched docs/references/cli-commands.md against the documented-commands routing globs.",
+          "source": "repo-audit"
+        },
+        {
+          "check_id": "public-readiness",
+          "matched_files": [
+            "docs/references/cli-commands.md"
+          ],
+          "owner_surface": "public-readiness",
+          "path_globs": [
+            "README.md",
+            "CONTRIBUTING.md",
+            "SECURITY.md",
+            "LICENSE",
+            ".github/**",
+            "docs/**",
+            "pyproject.toml"
+          ],
+          "reason": "Matched docs/references/cli-commands.md against the public-readiness routing globs.",
+          "source": "repo-audit"
+        },
+        {
+          "check_id": "verify-recommendations",
+          "matched_files": [
+            "docs/references/cli-commands.md"
+          ],
+          "owner_surface": "recommendations",
+          "path_globs": [
+            "src/sattlint/devtools/pipeline.py",
+            "src/sattlint/devtools/pipeline_checks.py",
+            "src/sattlint/devtools/repo_audit.py",
+            "src/sattlint/devtools/repo_audit_cli.py",
+            "src/sattlint/devtools/repo_audit_entrypoints.py",
+            "tests/test_pipeline_run.py",
+            "tests/test_repo_audit.py",
+            "tests/test_recommendation_routing.py",
+            "docs/references/cli-commands.md",
+            "docs/references/ai-agent-reference.md"
+          ],
+          "reason": "Matched docs/references/cli-commands.md against the verify-recommendations routing globs.",
+          "source": "repo-audit"
+        },
+        {
+          "check_id": "cli-consistency",
+          "matched_files": [
+            "docs/references/cli-commands.md"
+          ],
+          "owner_surface": "cli-docs",
+          "path_globs": [
+            "README.md",
+            "CONTRIBUTING.md",
+            "docs/references/cli-commands.md",
+            "docs/references/ai-agent-reference.md",
+            "pyproject.toml",
+            "src/sattlint/cli/**",
+            "src/sattlint/app*.py",
+            "src/sattlint/devtools/repo_audit_cli.py"
+          ],
+          "reason": "Matched docs/references/cli-commands.md against the cli-consistency routing globs.",
+          "source": "repo-audit"
+        }
+      ],
+      "skipped_checks": [
+        {
+          "id": "ruff",
+          "label": "Run Ruff",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "pyright",
+          "label": "Run pyright",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "pytest",
+          "label": "Run pytest",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "vulture",
+          "label": "Run Vulture",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "bandit",
+          "label": "Run Bandit",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "structural-reports",
+          "label": "Collect structural reports",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "trace",
+          "label": "Collect trace report",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "corpus",
+          "label": "Run corpus suite",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "unused-config-keys",
+          "label": "Report declared but unused config keys",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "architecture",
+          "label": "Run repository architecture checks",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "structural-report",
+          "label": "Translate structural report findings into repo-audit findings",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "cli",
+          "label": "Validate CLI descriptions and subcommand help",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "logging",
+          "label": "Check library modules for unexpected print calls",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "ai-gc",
+          "label": "Report stale AI-generated artifacts and oversized local coordination state",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "ignored-repo-paths",
+          "label": "Detect references to ignored repo-local paths",
+          "reason": "No changed-file route matched this check."
+        },
+        {
+          "id": "coverage",
+          "label": "Translate low-coverage modules into audit findings",
+          "reason": "No changed-file route matched this check."
+        }
+      ]
+    }
+  },
+  "reports": {
+    "ai_gc": null,
+    "cli_consistency": "cli_consistency.json",
+    "findings": "findings.json",
+    "pipeline_status": null,
+    "pipeline_summary": null,
+    "progress": "progress.json",
+    "status": "status.json",
+    "summary": "summary.json",
+    "summary_markdown": "summary.md"
+  },
+  "selected_checks": [
+    "text-scan",
+    "documented-commands",
+    "public-readiness",
+    "verify-recommendations",
+    "cli-consistency"
+  ],
+  "selected_pipeline_checks": [],
+  "selected_repo_audit_checks": [
+    "text-scan",
+    "documented-commands",
+    "public-readiness",
+    "verify-recommendations",
+    "cli-consistency"
+  ],
+  "severity_counts": {
+    "critical": 0,
+    "high": 0,
+    "low": 0,
+    "medium": 0
+  }
+}

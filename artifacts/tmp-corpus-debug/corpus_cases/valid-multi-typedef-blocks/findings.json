@@ -1,0 +1,36 @@
+{
+  "finding_count": 1,
+  "findings": [
+    {
+      "analyzer": "corpus-runner",
+      "artifact": "findings",
+      "category": "runner",
+      "confidence": "high",
+      "data": {
+        "mode": "workspace"
+      },
+      "detail": null,
+      "file": "tests/fixtures/corpus/valid/MultiTypedefBlocks.s",
+      "fingerprint": "corpus.execution-error|tests/fixtures/corpus/valid/MultiTypedefBlocks.s|||'DataflowAnalyzer' object has no attribute '_analyzed_target_is_library'",
+      "id": "corpus.execution-error",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [],
+        "path": "tests/fixtures/corpus/valid/MultiTypedefBlocks.s",
+        "symbol": null
+      },
+      "message": "'DataflowAnalyzer' object has no attribute '_analyzed_target_is_library'",
+      "minimal_reproducer": null,
+      "owner_surface": "runner",
+      "rule_id": "corpus.execution-error",
+      "severity": "high",
+      "source": "corpus-runner",
+      "suggested_next_command": null,
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

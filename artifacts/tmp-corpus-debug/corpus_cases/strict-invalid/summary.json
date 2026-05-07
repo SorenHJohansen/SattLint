@@ -1,0 +1,14 @@
+{
+  "case_id": "strict-invalid",
+  "finding_count": 1,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "message": "Unexpected token Token('NAME', 'This') at line 1, column 1.. Expected one of: STRING\nThis is not valid SattLine.\n^",
+  "mode": "strict",
+  "stage": "parse",
+  "target_file": "tests/fixtures/corpus/invalid/NotSattLine.s",
+  "validation_ok": false
+}

@@ -1,0 +1,357 @@
+{
+  "finding_count": 12,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "never_read",
+        "variable": "Dest"
+      },
+      "detail": "Variables that are written but never subsequently read.",
+      "fingerprint": "semantic.never-read-write|tests/fixtures/corpus/valid/BuiltinCalls.s|||Variable 'Dest' is written but never read.",
+      "id": "semantic.never-read-write",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/BuiltinCalls.s",
+        "symbol": null
+      },
+      "message": "Variable 'Dest' is written but never read.",
+      "rule_id": "semantic.never-read-write",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "procedure-status",
+        "role": "procedure status output from 'CopyVariable' parameter 'Status' is ignored after the procedure writes it.",
+        "source_kind": "procedure_status",
+        "variable": "CopyStatus"
+      },
+      "detail": "Procedure status outputs should be checked in control logic instead of being ignored or shown only in UI.",
+      "fingerprint": "semantic.procedure-status-handling|tests/fixtures/corpus/valid/BuiltinCalls.s|||procedure status output from 'CopyVariable' parameter 'Status' is ignored after the procedure writes it.",
+      "id": "semantic.procedure-status-handling",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/BuiltinCalls.s",
+        "symbol": null
+      },
+      "message": "procedure status output from 'CopyVariable' parameter 'Status' is ignored after the procedure writes it.",
+      "rule_id": "semantic.procedure-status-handling",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "never_read",
+        "variable": "IsEqual"
+      },
+      "detail": "Variables that are written but never subsequently read.",
+      "fingerprint": "semantic.never-read-write|tests/fixtures/corpus/valid/BuiltinCalls.s|||Variable 'IsEqual' is written but never read.",
+      "id": "semantic.never-read-write",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/BuiltinCalls.s",
+        "symbol": null
+      },
+      "message": "Variable 'IsEqual' is written but never read.",
+      "rule_id": "semantic.never-read-write",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "A"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/BuiltinCalls.s|||Variable 'A' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/BuiltinCalls.s",
+        "symbol": null
+      },
+      "message": "Variable 'A' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "B"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/BuiltinCalls.s|||Variable 'B' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/BuiltinCalls.s",
+        "symbol": null
+      },
+      "message": "Variable 'B' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "never_read",
+        "variable": "StrLen"
+      },
+      "detail": "Variables that are written but never subsequently read.",
+      "fingerprint": "semantic.never-read-write|tests/fixtures/corpus/valid/BuiltinCalls.s|||Variable 'StrLen' is written but never read.",
+      "id": "semantic.never-read-write",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/BuiltinCalls.s",
+        "symbol": null
+      },
+      "message": "Variable 'StrLen' is written but never read.",
+      "rule_id": "semantic.never-read-write",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "CursorPos"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/BuiltinCalls.s|||Variable 'CursorPos' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/BuiltinCalls.s",
+        "symbol": null
+      },
+      "message": "Variable 'CursorPos' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "procedure-status",
+        "role": "procedure status output from 'SetStringPos' parameter 'Status' is ignored after the procedure writes it.",
+        "source_kind": "procedure_status",
+        "variable": "StrStatus"
+      },
+      "detail": "Procedure status outputs should be checked in control logic instead of being ignored or shown only in UI.",
+      "fingerprint": "semantic.procedure-status-handling|tests/fixtures/corpus/valid/BuiltinCalls.s|||procedure status output from 'SetStringPos' parameter 'Status' is ignored after the procedure writes it.",
+      "id": "semantic.procedure-status-handling",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/BuiltinCalls.s",
+        "symbol": null
+      },
+      "message": "procedure status output from 'SetStringPos' parameter 'Status' is ignored after the procedure writes it.",
+      "rule_id": "semantic.procedure-status-handling",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "site": "EQ:Main",
+        "source_kind": "dataflow.read_before_write",
+        "symbol": "Source"
+      },
+      "detail": "Variable reads that can occur before any definite assignment on the current path.",
+      "fingerprint": "semantic.read-before-write|tests/fixtures/corpus/valid/BuiltinCalls.s|||Variable reference 'Source' may be read before it is assigned on this path.",
+      "id": "semantic.read-before-write",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/BuiltinCalls.s",
+        "symbol": null
+      },
+      "message": "Variable reference 'Source' may be read before it is assigned on this path.",
+      "rule_id": "semantic.read-before-write",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "site": "EQ:Main",
+        "source_kind": "dataflow.read_before_write",
+        "symbol": "Dest"
+      },
+      "detail": "Variable reads that can occur before any definite assignment on the current path.",
+      "fingerprint": "semantic.read-before-write|tests/fixtures/corpus/valid/BuiltinCalls.s|||Variable reference 'Dest' may be read before it is assigned on this path.",
+      "id": "semantic.read-before-write",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/BuiltinCalls.s",
+        "symbol": null
+      },
+      "message": "Variable reference 'Dest' may be read before it is assigned on this path.",
+      "rule_id": "semantic.read-before-write",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "overwrite_symbol": "StrLen",
+        "previous_sites": [
+          "EQ:Main"
+        ],
+        "site": "EQ:Main",
+        "source_kind": "dataflow.dead_overwrite",
+        "symbol": "StrLen"
+      },
+      "detail": "Writes whose value is overwritten before any later read can observe it.",
+      "fingerprint": "semantic.dead-overwrite|tests/fixtures/corpus/valid/BuiltinCalls.s|||Variable reference 'StrLen' is overwritten before its previous value is read.",
+      "id": "semantic.dead-overwrite",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/BuiltinCalls.s",
+        "symbol": null
+      },
+      "message": "Variable reference 'StrLen' is overwritten before its previous value is read.",
+      "rule_id": "semantic.dead-overwrite",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/valid/BuiltinCalls.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/BuiltinCalls.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

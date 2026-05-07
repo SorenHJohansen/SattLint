@@ -1,0 +1,965 @@
+{
+  "finding_count": 33,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "StartCmd"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SequenceParallel.s|||Variable 'StartCmd' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Variable 'StartCmd' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "DoneA"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SequenceParallel.s|||Variable 'DoneA' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Variable 'DoneA' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "DoneB"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SequenceParallel.s|||Variable 'DoneB' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Variable 'DoneB' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "OutputA"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SequenceParallel.s|||Variable 'OutputA' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Variable 'OutputA' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "OutputB"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SequenceParallel.s|||Variable 'OutputB' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Variable 'OutputB' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "unused",
+        "variable": "Combined"
+      },
+      "detail": "Declared variables that are never read or written.",
+      "fingerprint": "semantic.unused-variable|tests/fixtures/corpus/valid/SequenceParallel.s|||Variable 'Combined' is never used.",
+      "id": "semantic.unused-variable",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Variable 'Combined' is never used.",
+      "rule_id": "semantic.unused-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "transition",
+        "branch_path": [],
+        "condition": "True",
+        "normalized_guard": "('bool', True)",
+        "sequence": "ParSeq",
+        "source_kind": "sfc_transition_always_true",
+        "transition_name": "TrFork"
+      },
+      "detail": "Transitions with guards that simplify to true and therefore always fire when reached.",
+      "fingerprint": "semantic.transition-always-true|tests/fixtures/corpus/valid/SequenceParallel.s|||Transition 'TrFork' in sequence 'ParSeq' has a guard that is always true: True.",
+      "id": "semantic.transition-always-true",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrFork' in sequence 'ParSeq' has a guard that is always true: True.",
+      "rule_id": "semantic.transition-always-true",
+      "severity": "medium",
+      "source": "sfc",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "StartCmd",
+        "site": "SEQ:ParSeq > TRANS:TrStart",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SequenceParallel.s|||Condition 'StartCmd' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Condition 'StartCmd' is always false at this point.",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "True",
+        "site": "SEQ:ParSeq > TRANS:TrFork",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/valid/SequenceParallel.s|||Condition 'True' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Condition 'True' is always true at this point.",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "OutputA >= 3",
+        "site": "SEQ:ParSeq > PAR:BRANCH:0 > TRANS:TrDoneA",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SequenceParallel.s|||Condition 'OutputA >= 3' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Condition 'OutputA >= 3' is always false at this point.",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "DoneA",
+        "site": "SEQ:ParSeq > PAR:BRANCH:0 > TRANS:TrExitA",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SequenceParallel.s|||Condition 'DoneA' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Condition 'DoneA' is always false at this point.",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "OutputB >= 5",
+        "site": "SEQ:ParSeq > PAR:BRANCH:1 > TRANS:TrDoneB",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SequenceParallel.s|||Condition 'OutputB >= 5' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Condition 'OutputB >= 5' is always false at this point.",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "DoneB",
+        "site": "SEQ:ParSeq > PAR:BRANCH:1 > TRANS:TrExitB",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SequenceParallel.s|||Condition 'DoneB' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Condition 'DoneB' is always false at this point.",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "DoneA AND  DoneB",
+        "site": "SEQ:ParSeq > TRANS:TrMerge",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SequenceParallel.s|||Condition 'DoneA AND  DoneB' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Condition 'DoneA AND  DoneB' is always false at this point.",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "NOT(StartCmd)",
+        "site": "SEQ:ParSeq > TRANS:TrReset",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/valid/SequenceParallel.s|||Condition 'NOT(StartCmd)' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Condition 'NOT(StartCmd)' is always true at this point.",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/valid/SequenceParallel.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Init"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Sequence step 'Init' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Init' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrStart"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Transition 'TrStart' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrStart' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Launch"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Sequence step 'Launch' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Launch' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrFork"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Transition 'TrFork' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrFork' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "BranchA"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Sequence step 'BranchA' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'BranchA' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrDoneA"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Transition 'TrDoneA' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrDoneA' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "FinishA"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Sequence step 'FinishA' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'FinishA' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrExitA"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Transition 'TrExitA' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrExitA' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "JoinedA"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Sequence step 'JoinedA' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'JoinedA' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "BranchB"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Sequence step 'BranchB' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'BranchB' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrDoneB"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Transition 'TrDoneB' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrDoneB' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "FinishB"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Sequence step 'FinishB' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'FinishB' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrExitB"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Transition 'TrExitB' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrExitB' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "JoinedB"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Sequence step 'JoinedB' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'JoinedB' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrMerge"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Transition 'TrMerge' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrMerge' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Merge"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Sequence step 'Merge' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Merge' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "ParSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrReset"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceParallel.s|||Transition 'TrReset' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceParallel.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrReset' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

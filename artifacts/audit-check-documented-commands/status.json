@@ -1,0 +1,31 @@
+{
+  "blocking_finding_count": 0,
+  "canonical_command": "sattlint-repo-audit --profile full --check documented-commands --skip-pipeline --fail-on high --output-dir artifacts/audit-check-documented-commands",
+  "category_counts": {},
+  "fail_on": "high",
+  "finding_count": 0,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.repo_audit.status",
+  "latest_status_report": "artifacts/audit/status.json",
+  "latest_summary_report": "artifacts/audit/summary.json",
+  "max_severity": null,
+  "overall_status": "pass",
+  "pipeline_status_report": null,
+  "profile": "full",
+  "progress_report": "artifacts/audit-check-documented-commands/progress.json",
+  "selected_checks": [
+    "documented-commands"
+  ],
+  "severity_counts": {
+    "critical": 0,
+    "high": 0,
+    "low": 0,
+    "medium": 0
+  },
+  "status_report": "artifacts/audit-check-documented-commands/status.json",
+  "summary_report": "artifacts/audit-check-documented-commands/summary.json",
+  "top_findings": []
+}

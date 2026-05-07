@@ -1,0 +1,239 @@
+{
+  "finding_count": 8,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "RunFlag"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/OldNewOnStateField.s|||Variable 'RunFlag' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OldNewOnStateField.s",
+        "symbol": null
+      },
+      "message": "Variable 'RunFlag' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "never_read",
+        "variable": "OpenedThisScan"
+      },
+      "detail": "Variables that are written but never subsequently read.",
+      "fingerprint": "semantic.never-read-write|tests/fixtures/corpus/valid/OldNewOnStateField.s|||Variable 'OpenedThisScan' is written but never read.",
+      "id": "semantic.never-read-write",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OldNewOnStateField.s",
+        "symbol": null
+      },
+      "message": "Variable 'OpenedThisScan' is written but never read.",
+      "rule_id": "semantic.never-read-write",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "never_read",
+        "variable": "ClosedThisScan"
+      },
+      "detail": "Variables that are written but never subsequently read.",
+      "fingerprint": "semantic.never-read-write|tests/fixtures/corpus/valid/OldNewOnStateField.s|||Variable 'ClosedThisScan' is written but never read.",
+      "id": "semantic.never-read-write",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OldNewOnStateField.s",
+        "symbol": null
+      },
+      "message": "Variable 'ClosedThisScan' is written but never read.",
+      "rule_id": "semantic.never-read-write",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "never_read",
+        "variable": "ValveJustOpened"
+      },
+      "detail": "Variables that are written but never subsequently read.",
+      "fingerprint": "semantic.never-read-write|tests/fixtures/corpus/valid/OldNewOnStateField.s|||Variable 'ValveJustOpened' is written but never read.",
+      "id": "semantic.never-read-write",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OldNewOnStateField.s",
+        "symbol": null
+      },
+      "message": "Variable 'ValveJustOpened' is written but never read.",
+      "rule_id": "semantic.never-read-write",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "datatype-field",
+        "datatype_name": "ValveType",
+        "field_path": "Position",
+        "role": "datatype field",
+        "source_kind": "unused_datatype_field"
+      },
+      "detail": "Datatype fields that are never used across the analyzed target.",
+      "fingerprint": "semantic.unused-datatype-field|tests/fixtures/corpus/valid/OldNewOnStateField.s|||Datatype field ValveType.Position is never used.",
+      "id": "semantic.unused-datatype-field",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture",
+          "DataType:ValveType"
+        ],
+        "path": "tests/fixtures/corpus/valid/OldNewOnStateField.s",
+        "symbol": null
+      },
+      "message": "Datatype field ValveType.Position is never used.",
+      "rule_id": "semantic.unused-datatype-field",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "site": "EQ:Main",
+        "source_kind": "dataflow.read_before_write",
+        "symbol": "Valve.IsOpen:New"
+      },
+      "detail": "Variable reads that can occur before any definite assignment on the current path.",
+      "fingerprint": "semantic.read-before-write|tests/fixtures/corpus/valid/OldNewOnStateField.s|||Variable reference 'Valve.IsOpen:New' may be read before it is assigned on this path.",
+      "id": "semantic.read-before-write",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OldNewOnStateField.s",
+        "symbol": null
+      },
+      "message": "Variable reference 'Valve.IsOpen:New' may be read before it is assigned on this path.",
+      "rule_id": "semantic.read-before-write",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "site": "EQ:Main",
+        "source_kind": "dataflow.read_before_write",
+        "symbol": "Valve.IsOpen:Old"
+      },
+      "detail": "Variable reads that can occur before any definite assignment on the current path.",
+      "fingerprint": "semantic.read-before-write|tests/fixtures/corpus/valid/OldNewOnStateField.s|||Variable reference 'Valve.IsOpen:Old' may be read before it is assigned on this path.",
+      "id": "semantic.read-before-write",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OldNewOnStateField.s",
+        "symbol": null
+      },
+      "message": "Variable reference 'Valve.IsOpen:Old' may be read before it is assigned on this path.",
+      "rule_id": "semantic.read-before-write",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/valid/OldNewOnStateField.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OldNewOnStateField.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

@@ -1,0 +1,31 @@
+{
+  "finding_count": 1,
+  "findings": [
+    {
+      "analyzer": "syntax-check",
+      "artifact": "findings",
+      "category": "syntax",
+      "confidence": "high",
+      "data": {
+        "stage": "validation"
+      },
+      "detail": null,
+      "fingerprint": "syntax.validation|tests/fixtures/corpus/invalid/OldNewOnNonState.s|20||BasePicture equation 'Main' uses OLD on non-STATE variable 'Counter'",
+      "id": "syntax.validation",
+      "location": {
+        "column": 10,
+        "line": 20,
+        "module_path": [],
+        "path": "tests/fixtures/corpus/invalid/OldNewOnNonState.s",
+        "symbol": null
+      },
+      "message": "BasePicture equation 'Main' uses OLD on non-STATE variable 'Counter'",
+      "rule_id": "syntax.validation",
+      "severity": "high",
+      "source": "corpus-runner",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

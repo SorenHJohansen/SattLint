@@ -1,0 +1,115 @@
+{
+  "active_stage": null,
+  "canonical_command": "sattlint-analysis-pipeline --profile full --output-dir artifacts/analysis",
+  "completed_at": 1776853127.2571034,
+  "completed_stage_count": 10,
+  "created_at": 1776852964.3654518,
+  "failed_stage_count": 0,
+  "kind": "sattlint.pipeline.progress",
+  "overall_status": "fail",
+  "skipped_stage_count": 1,
+  "stage_count": 11,
+  "stages": [
+    {
+      "detail": null,
+      "duration_seconds": 0.23,
+      "ended_at": 1776852964.5971544,
+      "key": "environment",
+      "label": "Collect environment",
+      "started_at": 1776852964.367293,
+      "status": "completed"
+    },
+    {
+      "detail": "5 findings",
+      "duration_seconds": 1.311,
+      "ended_at": 1776852965.9101703,
+      "key": "ruff",
+      "label": "Run Ruff",
+      "started_at": 1776852964.5988882,
+      "status": "completed"
+    },
+    {
+      "detail": "0 errors, 0 warnings",
+      "duration_seconds": 0.225,
+      "ended_at": 1776852966.1369472,
+      "key": "pyright",
+      "label": "Run pyright",
+      "started_at": 1776852965.9123437,
+      "status": "completed"
+    },
+    {
+      "detail": "451 tests, 0 failures, 0 errors",
+      "duration_seconds": 74.814,
+      "ended_at": 1776853040.95334,
+      "key": "pytest",
+      "label": "Run pytest",
+      "started_at": 1776852966.139109,
+      "status": "completed"
+    },
+    {
+      "detail": "0 findings",
+      "duration_seconds": 2.098,
+      "ended_at": 1776853043.0549715,
+      "key": "vulture",
+      "label": "Run Vulture",
+      "started_at": 1776853040.9571168,
+      "status": "completed"
+    },
+    {
+      "detail": "0 findings",
+      "duration_seconds": 5.826,
+      "ended_at": 1776853048.8843684,
+      "key": "bandit",
+      "label": "Run Bandit",
+      "started_at": 1776853043.0581775,
+      "status": "completed"
+    },
+    {
+      "detail": "4 dependency edges, 41 call edges",
+      "duration_seconds": 77.995,
+      "ended_at": 1776853126.882781,
+      "key": "structural_reports",
+      "label": "Collect structural reports",
+      "started_at": 1776853048.8876343,
+      "status": "completed"
+    },
+    {
+      "detail": "tests/fixtures/sample_sattline_files/LinterTestProgram.s",
+      "duration_seconds": 0.107,
+      "ended_at": 1776853126.9927104,
+      "key": "trace",
+      "label": "Collect trace report",
+      "started_at": 1776853126.8854222,
+      "status": "completed"
+    },
+    {
+      "detail": "no manifest directory",
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "corpus",
+      "label": "Run corpus suite",
+      "started_at": null,
+      "status": "skipped"
+    },
+    {
+      "detail": "7 normalized findings",
+      "duration_seconds": 0.047,
+      "ended_at": 1776853127.0740986,
+      "key": "findings",
+      "label": "Normalize findings",
+      "started_at": 1776853127.0266554,
+      "status": "completed"
+    },
+    {
+      "detail": null,
+      "duration_seconds": 0.148,
+      "ended_at": 1776853127.2552094,
+      "key": "write_artifacts",
+      "label": "Write artifacts",
+      "started_at": 1776853127.1072044,
+      "status": "completed"
+    }
+  ],
+  "title": "Pipeline",
+  "updated_at": 1776853127.2571056
+}

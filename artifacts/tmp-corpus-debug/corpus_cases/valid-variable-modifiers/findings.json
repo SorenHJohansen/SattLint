@@ -1,0 +1,245 @@
+{
+  "finding_count": 7,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "ActiveFlag"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/VariableModifiers.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/VariableModifiers.s|||Variable 'ActiveFlag' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/VariableModifiers.s",
+        "symbol": null
+      },
+      "message": "Variable 'ActiveFlag' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "OperatorSetpoint"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/VariableModifiers.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/VariableModifiers.s|||Variable 'OperatorSetpoint' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/VariableModifiers.s",
+        "symbol": null
+      },
+      "message": "Variable 'OperatorSetpoint' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "never_read",
+        "variable": "Output"
+      },
+      "detail": "Variables that are written but never subsequently read.",
+      "file": "tests/fixtures/corpus/valid/VariableModifiers.s",
+      "fingerprint": "semantic.never-read-write|tests/fixtures/corpus/valid/VariableModifiers.s|||Variable 'Output' is written but never read.",
+      "id": "semantic.never-read-write",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/VariableModifiers.s",
+        "symbol": null
+      },
+      "message": "Variable 'Output' is written but never read.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.never-read-write",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "never_read",
+        "variable": "Changed"
+      },
+      "detail": "Variables that are written but never subsequently read.",
+      "file": "tests/fixtures/corpus/valid/VariableModifiers.s",
+      "fingerprint": "semantic.never-read-write|tests/fixtures/corpus/valid/VariableModifiers.s|||Variable 'Changed' is written but never read.",
+      "id": "semantic.never-read-write",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/VariableModifiers.s",
+        "symbol": null
+      },
+      "message": "Variable 'Changed' is written but never read.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.never-read-write",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "OperatorSetpoint > MaxLimit",
+        "site": "EQ:Main",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/VariableModifiers.s",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/VariableModifiers.s|||Condition 'OperatorSetpoint > MaxLimit' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/VariableModifiers.s",
+        "symbol": null
+      },
+      "message": "Condition 'OperatorSetpoint > MaxLimit' is always false at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "branch",
+        "branch": "IF",
+        "branch_index": 0,
+        "condition": "OperatorSetpoint > MaxLimit",
+        "site": "EQ:Main",
+        "source_kind": "dataflow.unreachable_branch"
+      },
+      "detail": "Branches that cannot execute because control-flow facts make them impossible.",
+      "file": "tests/fixtures/corpus/valid/VariableModifiers.s",
+      "fingerprint": "semantic.unreachable-branch|tests/fixtures/corpus/valid/VariableModifiers.s|||IF branch is unreachable because condition 'OperatorSetpoint > MaxLimit' is always false at this point.",
+      "id": "semantic.unreachable-branch",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/VariableModifiers.s",
+        "symbol": null
+      },
+      "message": "IF branch is unreachable because condition 'OperatorSetpoint > MaxLimit' is always false at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unreachable-branch",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "file": "tests/fixtures/corpus/valid/VariableModifiers.s",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/valid/VariableModifiers.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/VariableModifiers.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

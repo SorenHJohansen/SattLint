@@ -1,0 +1,14 @@
+{
+  "case_id": "invalid-consecutive-seq-steps",
+  "finding_count": 1,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "message": "BasePicture sequence 'BadSeq' has step 'Step2' immediately after step 'Step1' without an intervening transition",
+  "mode": "strict",
+  "stage": "validation",
+  "target_file": "tests/fixtures/corpus/invalid/ConsecutiveSeqSteps.s",
+  "validation_ok": false
+}

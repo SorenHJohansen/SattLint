@@ -1,0 +1,38 @@
+{
+  "blocking_finding_count": 0,
+  "canonical_command": "sattlint-repo-audit --profile quick --fail-on high --output-dir artifacts/audit-review-quick-ignored-path",
+  "category_counts": {
+    "architecture": 1
+  },
+  "fail_on": "high",
+  "finding_count": 1,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.repo_audit.status",
+  "latest_status_report": "artifacts/audit/status.json",
+  "latest_summary_report": "artifacts/audit/summary.json",
+  "max_severity": "medium",
+  "overall_status": "pass",
+  "pipeline_status_report": "artifacts/audit-review-quick-ignored-path/pipeline/status.json",
+  "profile": "quick",
+  "progress_report": "artifacts/audit-review-quick-ignored-path/progress.json",
+  "severity_counts": {
+    "critical": 0,
+    "high": 0,
+    "low": 0,
+    "medium": 1
+  },
+  "status_report": "artifacts/audit-review-quick-ignored-path/status.json",
+  "summary_report": "artifacts/audit-review-quick-ignored-path/summary.json",
+  "top_findings": [
+    {
+      "id": "structural-budget-ratchet-regression",
+      "line": null,
+      "message": "Structural debt regressed beyond the checked-in ratchet baseline.",
+      "path": null,
+      "severity": "medium"
+    }
+  ]
+}

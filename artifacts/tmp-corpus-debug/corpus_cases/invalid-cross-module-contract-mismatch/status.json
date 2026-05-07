@@ -1,0 +1,13 @@
+{
+  "case_id": "invalid-cross-module-contract-mismatch",
+  "error": "'DataflowAnalyzer' object has no attribute '_analyzed_target_is_library'",
+  "execution_status": "error",
+  "finding_count": 1,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_status",
+  "mode": "workspace",
+  "target_file": "tests/fixtures/corpus/invalid/CrossModuleContractMismatch.s"
+}

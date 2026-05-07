@@ -1,0 +1,188 @@
+{
+  "command": [
+    ".venv/Scripts/ruff.exe",
+    "check",
+    "src",
+    "tests",
+    "--output-format",
+    "json"
+  ],
+  "duration_seconds": 1.26,
+  "exit_code": 1,
+  "finding_count": 5,
+  "findings": [
+    {
+      "cell": null,
+      "code": "I001",
+      "end_location": {
+        "column": 61,
+        "row": 72
+      },
+      "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\devtools\\pipeline.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "from __future__ import annotations\n\nimport argparse\nimport importlib.metadata as metadata\nimport json\nimport os\nimport platform\nimport re\nimport shutil\nimport subprocess  # nosec B404 - pipeline intentionally executes trusted local developer tools\nimport sys\nimport time\nimport tomllib\nfrom collections.abc import Callable\nfrom dataclasses import dataclass\nfrom pathlib import Path\nfrom typing import Any\n\nfrom defusedxml import ElementTree  # type: ignore[import-untyped]\n\nfrom sattlint.devtools.artifact_registry import (\n    PIPELINE_ARTIFACTS,\n    artifact_reports_map,\n    build_artifact_registry_report,\n)\nfrom sattlint.devtools.baselines import build_analysis_diff_report, load_finding_collection\nfrom sattlint.devtools.corpus import CORPUS_RESULTS_FILENAME, run_corpus_suite\nfrom sattlint.devtools.finding_exports import build_pipeline_finding_collection\nfrom sattlint.devtools.pipeline_artifacts import (\n    PipelineArtifactContext,\n    write_pipeline_artifacts,\n)\nfrom sattlint.devtools.progress_reporting import ProgressReporter\nfrom sattlint.devtools.status_reports import (\n    build_pipeline_status_report,\n    build_pipeline_summary_report,\n    build_tool_status,\n    overall_status,\n)\nfrom sattlint.devtools.structural_reports import (\n    StructuralReportsBundle,\n    WorkspaceGraphInputs,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_analyzer_registry_report as build_analyzer_registry_report,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_architecture_report as build_architecture_report,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_call_graph_report as build_call_graph_report,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_dependency_graph_report as build_dependency_graph_report,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_impact_analysis_report as build_impact_analysis_report,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_phase2_rule_metadata_gate as build_phase2_rule_metadata_gate,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_structural_reports as build_structural_reports,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_workspace_graph_inputs as build_workspace_graph_inputs,\n)\nfrom sattlint.devtools.tool_reports import build_command_report\nfrom sattlint.devtools.trace_reports import collect_trace_report as build_trace_report\nfrom sattlint.path_sanitizer import sanitize_path_for_report\n\n",
+            "end_location": {
+              "column": 1,
+              "row": 74
+            },
+            "location": {
+              "column": 1,
+              "row": 3
+            }
+          }
+        ],
+        "message": "Organize imports"
+      },
+      "location": {
+        "column": 1,
+        "row": 3
+      },
+      "message": "Import block is un-sorted or un-formatted",
+      "noqa_row": 3,
+      "severity": "error",
+      "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+    },
+    {
+      "cell": null,
+      "code": "W292",
+      "end_location": {
+        "column": 51,
+        "row": 198
+      },
+      "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\graphics_validation.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "\r\n",
+            "end_location": {
+              "column": 51,
+              "row": 198
+            },
+            "location": {
+              "column": 51,
+              "row": 198
+            }
+          }
+        ],
+        "message": "Add trailing newline"
+      },
+      "location": {
+        "column": 51,
+        "row": 198
+      },
+      "message": "No newline at end of file",
+      "noqa_row": 198,
+      "severity": "error",
+      "url": "https://docs.astral.sh/ruff/rules/missing-newline-at-end-of-file"
+    },
+    {
+      "cell": null,
+      "code": "I001",
+      "end_location": {
+        "column": 2,
+        "row": 24
+      },
+      "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\tests\\test_app.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "import builtins\nimport os\nfrom copy import deepcopy\nfrom pathlib import Path\nfrom types import SimpleNamespace\nfrom typing import ClassVar, cast\n\nimport pytest\n\nfrom sattline_parser import parse_source_text as parser_core_parse_source_text\nfrom sattlint import app\nfrom sattlint.analyzers import variable_usage_reporting as variables_reporting_module\nfrom sattlint.analyzers import variables as variables_module\nfrom sattlint.analyzers.framework import AnalyzerSpec, SimpleReport\nfrom sattlint.analyzers.registry import get_actual_cli_analyzer_keys\nfrom sattlint.models.ast_model import FrameModule, ModuleTypeInstance, SingleModule\nfrom sattlint.reporting.variables_report import (\n    ALL_VARIABLE_ANALYSIS_KINDS,\n    DEFAULT_VARIABLE_ANALYSIS_KINDS,\n    VariableIssue,\n    VariablesReport,\n)\n\n",
+            "end_location": {
+              "column": 1,
+              "row": 26
+            },
+            "location": {
+              "column": 1,
+              "row": 3
+            }
+          }
+        ],
+        "message": "Organize imports"
+      },
+      "location": {
+        "column": 1,
+        "row": 3
+      },
+      "message": "Import block is un-sorted or un-formatted",
+      "noqa_row": 3,
+      "severity": "error",
+      "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+    },
+    {
+      "cell": null,
+      "code": "W292",
+      "end_location": {
+        "column": 61,
+        "row": 71
+      },
+      "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\tests\\test_graphics_validation.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "\r\n",
+            "end_location": {
+              "column": 61,
+              "row": 71
+            },
+            "location": {
+              "column": 61,
+              "row": 71
+            }
+          }
+        ],
+        "message": "Add trailing newline"
+      },
+      "location": {
+        "column": 61,
+        "row": 71
+      },
+      "message": "No newline at end of file",
+      "noqa_row": 71,
+      "severity": "error",
+      "url": "https://docs.astral.sh/ruff/rules/missing-newline-at-end-of-file"
+    },
+    {
+      "cell": null,
+      "code": "I001",
+      "end_location": {
+        "column": 2,
+        "row": 31
+      },
+      "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\tests\\test_pipeline.py",
+      "fix": {
+        "applicability": "safe",
+        "edits": [
+          {
+            "content": "import json\nfrom types import SimpleNamespace\n\nfrom sattlint.analyzers.registry import (\n    get_actual_cli_analyzer_keys,\n    get_actual_lsp_analyzer_keys,\n    get_declared_cli_analyzer_keys,\n    get_declared_lsp_analyzer_keys,\n)\nfrom sattlint.contracts import FindingCollection, FindingRecord\nfrom sattlint.devtools import corpus, pipeline, structural_reports\nfrom sattlint.devtools.artifact_registry import ArtifactDefinition\nfrom sattlint.devtools.baselines import build_analysis_diff_report\nfrom sattlint.devtools.finding_exports import build_pipeline_finding_collection\nfrom sattlint.devtools.pipeline_artifacts import (\n    PipelineArtifactContext,\n    PipelineArtifactProducer,\n    validate_pipeline_artifact_producers,\n    write_pipeline_artifacts,\n)\nfrom sattlint.devtools.progress_reporting import ProgressReporter\nfrom sattlint.reporting.variables_report import IssueKind\n\nfrom .helpers.artifact_assertions import (\n    assert_analysis_diff_report,\n    assert_artifact_registry_report,\n    assert_corpus_results_report,\n    assert_findings_collection,\n    assert_findings_schema,\n)\n\n\n",
+            "end_location": {
+              "column": 1,
+              "row": 34
+            },
+            "location": {
+              "column": 1,
+              "row": 1
+            }
+          }
+        ],
+        "message": "Organize imports"
+      },
+      "location": {
+        "column": 1,
+        "row": 1
+      },
+      "message": "Import block is un-sorted or un-formatted",
+      "noqa_row": 1,
+      "severity": "error",
+      "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+    }
+  ],
+  "stderr": "",
+  "stdout": "[\n  {\n    \"cell\": null,\n    \"code\": \"I001\",\n    \"end_location\": {\n      \"column\": 61,\n      \"row\": 72\n    },\n    \"filename\": \"C:\\\\Users\\\\SQHJ\\\\OneDrive - Novo Nordisk\\\\Workspace\\\\GitHub.com\\\\SattLint\\\\src\\\\sattlint\\\\devtools\\\\pipeline.py\",\n    \"fix\": {\n      \"applicability\": \"safe\",\n      \"edits\": [\n        {\n          \"content\": \"from __future__ import annotations\\n\\nimport argparse\\nimport importlib.metadata as metadata\\nimport json\\nimport os\\nimport platform\\nimport re\\nimport shutil\\nimport subprocess  # nosec B404 - pipeline intentionally executes trusted local developer tools\\nimport sys\\nimport time\\nimport tomllib\\nfrom collections.abc import Callable\\nfrom dataclasses import dataclass\\nfrom pathlib import Path\\nfrom typing import Any\\n\\nfrom defusedxml import ElementTree  # type: ignore[import-untyped]\\n\\nfrom sattlint.devtools.artifact_registry import (\\n    PIPELINE_ARTIFACTS,\\n    artifact_reports_map,\\n    build_artifact_registry_report,\\n)\\nfrom sattlint.devtools.baselines import build_analysis_diff_report, load_finding_collection\\nfrom sattlint.devtools.corpus import CORPUS_RESULTS_FILENAME, run_corpus_suite\\nfrom sattlint.devtools.finding_exports import build_pipeline_finding_collection\\nfrom sattlint.devtools.pipeline_artifacts import (\\n    PipelineArtifactContext,\\n    write_pipeline_artifacts,\\n)\\nfrom sattlint.devtools.progress_reporting import ProgressReporter\\nfrom sattlint.devtools.status_reports import (\\n    build_pipeline_status_report,\\n    build_pipeline_summary_report,\\n    build_tool_status,\\n    overall_status,\\n)\\nfrom sattlint.devtools.structural_reports import (\\n    StructuralReportsBundle,\\n    WorkspaceGraphInputs,\\n)\\nfrom sattlint.devtools.structural_reports import (\\n    collect_analyzer_registry_report as build_analyzer_registry_report,\\n)\\nfrom sattlint.devtools.structural_reports import (\\n    collect_architecture_report as build_architecture_report,\\n)\\nfrom sattlint.devtools.structural_reports import (\\n    collect_call_graph_report as build_call_graph_report,\\n)\\nfrom sattlint.devtools.structural_reports import (\\n    collect_dependency_graph_report as build_dependency_graph_report,\\n)\\nfrom sattlint.devtools.structural_reports import (\\n    collect_impact_analysis_report as build_impact_analysis_report,\\n)\\nfrom sattlint.devtools.structural_reports import (\\n    collect_phase2_rule_metadata_gate as build_phase2_rule_metadata_gate,\\n)\\nfrom sattlint.devtools.structural_reports import (\\n    collect_structural_reports as build_structural_reports,\\n)\\nfrom sattlint.devtools.structural_reports import (\\n    collect_workspace_graph_inputs as build_workspace_graph_inputs,\\n)\\nfrom sattlint.devtools.tool_reports import build_command_report\\nfrom sattlint.devtools.trace_reports import collect_trace_report as build_trace_report\\nfrom sattlint.path_sanitizer import sanitize_path_for_report\\n\\n\",\n          \"end_location\": {\n            \"column\": 1,\n            \"row\": 74\n          },\n          \"location\": {\n            \"column\": 1,\n            \"row\": 3\n          }\n        }\n      ],\n      \"message\": \"Organize imports\"\n    },\n    \"location\": {\n      \"column\": 1,\n      \"row\": 3\n    },\n    \"message\": \"Import block is un-sorted or un-formatted\",\n    \"noqa_row\": 3,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/unsorted-imports\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"W292\",\n    \"end_location\": {\n      \"column\": 51,\n      \"row\": 198\n    },\n    \"filename\": \"C:\\\\Users\\\\SQHJ\\\\OneDrive - Novo Nordisk\\\\Workspace\\\\GitHub.com\\\\SattLint\\\\src\\\\sattlint\\\\graphics_validation.py\",\n    \"fix\": {\n      \"applicability\": \"safe\",\n      \"edits\": [\n        {\n          \"content\": \"\\r\\n\",\n          \"end_location\": {\n            \"column\": 51,\n            \"row\": 198\n          },\n          \"location\": {\n            \"column\": 51,\n            \"row\": 198\n          }\n        }\n      ],\n      \"message\": \"Add trailing newline\"\n    },\n    \"location\": {\n      \"column\": 51,\n      \"row\": 198\n    },\n    \"message\": \"No newline at end of file\",\n    \"noqa_row\": 198,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/missing-newline-at-end-of-file\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"I001\",\n    \"end_location\": {\n      \"column\": 2,\n      \"row\": 24\n    },\n    \"filename\": \"C:\\\\Users\\\\SQHJ\\\\OneDrive - Novo Nordisk\\\\Workspace\\\\GitHub.com\\\\SattLint\\\\tests\\\\test_app.py\",\n    \"fix\": {\n      \"applicability\": \"safe\",\n      \"edits\": [\n        {\n          \"content\": \"import builtins\\nimport os\\nfrom copy import deepcopy\\nfrom pathlib import Path\\nfrom types import SimpleNamespace\\nfrom typing import ClassVar, cast\\n\\nimport pytest\\n\\nfrom sattline_parser import parse_source_text as parser_core_parse_source_text\\nfrom sattlint import app\\nfrom sattlint.analyzers import variable_usage_reporting as variables_reporting_module\\nfrom sattlint.analyzers import variables as variables_module\\nfrom sattlint.analyzers.framework import AnalyzerSpec, SimpleReport\\nfrom sattlint.analyzers.registry import get_actual_cli_analyzer_keys\\nfrom sattlint.models.ast_model import FrameModule, ModuleTypeInstance, SingleModule\\nfrom sattlint.reporting.variables_report import (\\n    ALL_VARIABLE_ANALYSIS_KINDS,\\n    DEFAULT_VARIABLE_ANALYSIS_KINDS,\\n    VariableIssue,\\n    VariablesReport,\\n)\\n\\n\",\n          \"end_location\": {\n            \"column\": 1,\n            \"row\": 26\n          },\n          \"location\": {\n            \"column\": 1,\n            \"row\": 3\n          }\n        }\n      ],\n      \"message\": \"Organize imports\"\n    },\n    \"location\": {\n      \"column\": 1,\n      \"row\": 3\n    },\n    \"message\": \"Import block is un-sorted or un-formatted\",\n    \"noqa_row\": 3,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/unsorted-imports\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"W292\",\n    \"end_location\": {\n      \"column\": 61,\n      \"row\": 71\n    },\n    \"filename\": \"C:\\\\Users\\\\SQHJ\\\\OneDrive - Novo Nordisk\\\\Workspace\\\\GitHub.com\\\\SattLint\\\\tests\\\\test_graphics_validation.py\",\n    \"fix\": {\n      \"applicability\": \"safe\",\n      \"edits\": [\n        {\n          \"content\": \"\\r\\n\",\n          \"end_location\": {\n            \"column\": 61,\n            \"row\": 71\n          },\n          \"location\": {\n            \"column\": 61,\n            \"row\": 71\n          }\n        }\n      ],\n      \"message\": \"Add trailing newline\"\n    },\n    \"location\": {\n      \"column\": 61,\n      \"row\": 71\n    },\n    \"message\": \"No newline at end of file\",\n    \"noqa_row\": 71,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/missing-newline-at-end-of-file\"\n  },\n  {\n    \"cell\": null,\n    \"code\": \"I001\",\n    \"end_location\": {\n      \"column\": 2,\n      \"row\": 31\n    },\n    \"filename\": \"C:\\\\Users\\\\SQHJ\\\\OneDrive - Novo Nordisk\\\\Workspace\\\\GitHub.com\\\\SattLint\\\\tests\\\\test_pipeline.py\",\n    \"fix\": {\n      \"applicability\": \"safe\",\n      \"edits\": [\n        {\n          \"content\": \"import json\\nfrom types import SimpleNamespace\\n\\nfrom sattlint.analyzers.registry import (\\n    get_actual_cli_analyzer_keys,\\n    get_actual_lsp_analyzer_keys,\\n    get_declared_cli_analyzer_keys,\\n    get_declared_lsp_analyzer_keys,\\n)\\nfrom sattlint.contracts import FindingCollection, FindingRecord\\nfrom sattlint.devtools import corpus, pipeline, structural_reports\\nfrom sattlint.devtools.artifact_registry import ArtifactDefinition\\nfrom sattlint.devtools.baselines import build_analysis_diff_report\\nfrom sattlint.devtools.finding_exports import build_pipeline_finding_collection\\nfrom sattlint.devtools.pipeline_artifacts import (\\n    PipelineArtifactContext,\\n    PipelineArtifactProducer,\\n    validate_pipeline_artifact_producers,\\n    write_pipeline_artifacts,\\n)\\nfrom sattlint.devtools.progress_reporting import ProgressReporter\\nfrom sattlint.reporting.variables_report import IssueKind\\n\\nfrom .helpers.artifact_assertions import (\\n    assert_analysis_diff_report,\\n    assert_artifact_registry_report,\\n    assert_corpus_results_report,\\n    assert_findings_collection,\\n    assert_findings_schema,\\n)\\n\\n\\n\",\n          \"end_location\": {\n            \"column\": 1,\n            \"row\": 34\n          },\n          \"location\": {\n            \"column\": 1,\n            \"row\": 1\n          }\n        }\n      ],\n      \"message\": \"Organize imports\"\n    },\n    \"location\": {\n      \"column\": 1,\n      \"row\": 1\n    },\n    \"message\": \"Import block is un-sorted or un-formatted\",\n    \"noqa_row\": 1,\n    \"severity\": \"error\",\n    \"url\": \"https://docs.astral.sh/ruff/rules/unsorted-imports\"\n  }\n]",
+  "tool": "ruff"
+}

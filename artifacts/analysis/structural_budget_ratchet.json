@@ -1,0 +1,20 @@
+{
+  "kind": "sattlint.structural_budget_ratchet",
+  "schema_version": 3,
+  "metrics": {
+    "class_max_methods": 67,
+    "class_over_budget_count": 3,
+    "facade_private_entrypoint_count": 0,
+    "function_max_lines": 383,
+    "function_over_budget_count": 22,
+    "markdown_file_max_lines": 1453,
+    "markdown_file_over_budget_count": 0,
+    "repeated_private_name_count": 0,
+    "repeated_private_name_max_files": 0,
+    "source_file_max_lines": 2297,
+    "source_file_over_budget_count": 0,
+    "test_file_max_lines": 2605,
+    "test_file_over_budget_count": 0
+  },
+  "file_line_exceptions": {}
+}

@@ -1,0 +1,36 @@
+{
+  "finding_count": 1,
+  "findings": [
+    {
+      "analyzer": "syntax-check",
+      "artifact": "findings",
+      "category": "syntax",
+      "confidence": "high",
+      "data": {
+        "stage": "validation"
+      },
+      "detail": null,
+      "file": "tests/fixtures/corpus/invalid/BadTimeLiteral.s",
+      "fingerprint": "syntax.validation|tests/fixtures/corpus/invalid/BadTimeLiteral.s|14||BasePicture variable 'Timestamp' has invalid time literal 'not-a-timestamp'",
+      "id": "syntax.validation",
+      "line": 14,
+      "location": {
+        "column": 4,
+        "line": 14,
+        "module_path": [],
+        "path": "tests/fixtures/corpus/invalid/BadTimeLiteral.s",
+        "symbol": null
+      },
+      "message": "BasePicture variable 'Timestamp' has invalid time literal 'not-a-timestamp'",
+      "minimal_reproducer": "sattlint syntax-check tests/fixtures/corpus/invalid/BadTimeLiteral.s",
+      "owner_surface": "syntax-check",
+      "rule_id": "syntax.validation",
+      "severity": "high",
+      "source": "corpus-runner",
+      "suggested_next_command": "sattlint syntax-check tests/fixtures/corpus/invalid/BadTimeLiteral.s",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

@@ -1,0 +1,1329 @@
+[
+  {
+    "cell": null,
+    "code": "N801",
+    "end_location": {
+      "column": 22,
+      "row": 49
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\models\\ast_model.py",
+    "fix": null,
+    "location": {
+      "column": 7,
+      "row": 49
+    },
+    "message": "Class name `Simple_DataType` should use CapWords convention",
+    "noqa_row": 49,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-class-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 24,
+      "row": 204
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 204
+    },
+    "message": "Function name `IGNOREMAXMODULE` should be lowercase",
+    "noqa_row": 204,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 20,
+      "row": 207
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 207
+    },
+    "message": "Function name `LAYERMODULE` should be lowercase",
+    "noqa_row": 207,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "RUF003",
+    "end_location": {
+      "column": 55,
+      "row": 707
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 54,
+      "row": 707
+    },
+    "message": "Comment contains ambiguous `’` (RIGHT SINGLE QUOTATION MARK). Did you mean ``` (GRAVE ACCENT)?",
+    "noqa_row": 707,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/ambiguous-unicode-character-comment"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 17,
+      "row": 943
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 943
+    },
+    "message": "Function name `ZOOMABLE` should be lowercase",
+    "noqa_row": 943,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 13,
+      "row": 1912
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1912
+    },
+    "message": "Function name `NAME` should be lowercase",
+    "noqa_row": 1912,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 15,
+      "row": 1915
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1915
+    },
+    "message": "Function name `STRING` should be lowercase",
+    "noqa_row": 1915,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 20,
+      "row": 1918
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1918
+    },
+    "message": "Function name `STRING_CRLF` should be lowercase",
+    "noqa_row": 1918,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 19,
+      "row": 1922
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1922
+    },
+    "message": "Function name `SIGNED_INT` should be lowercase",
+    "noqa_row": 1922,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 26,
+      "row": 1926
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1926
+    },
+    "message": "Function name `SIGNED_INT_NOTAIL` should be lowercase",
+    "noqa_row": 1926,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 13,
+      "row": 1929
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1929
+    },
+    "message": "Function name `REAL` should be lowercase",
+    "noqa_row": 1929,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 20,
+      "row": 1933
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1933
+    },
+    "message": "Function name `REAL_NOTAIL` should be lowercase",
+    "noqa_row": 1933,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 13,
+      "row": 1936
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1936
+    },
+    "message": "Function name `BOOL` should be lowercase",
+    "noqa_row": 1936,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 20,
+      "row": 1944
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1944
+    },
+    "message": "Function name `BOOL_NOTAIL` should be lowercase",
+    "noqa_row": 1944,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 22,
+      "row": 1947
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1947
+    },
+    "message": "Function name `STRING_NOTAIL` should be lowercase",
+    "noqa_row": 1947,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 18,
+      "row": 1951
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1951
+    },
+    "message": "Function name `GLOBAL_KW` should be lowercase",
+    "noqa_row": 1951,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 17,
+      "row": 1954
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1954
+    },
+    "message": "Function name `CONST_KW` should be lowercase",
+    "noqa_row": 1954,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 17,
+      "row": 1957
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1957
+    },
+    "message": "Function name `STATE_KW` should be lowercase",
+    "noqa_row": 1957,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "RUF003",
+    "end_location": {
+      "column": 10,
+      "row": 1960
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1960
+    },
+    "message": "Comment contains ambiguous `’` (RIGHT SINGLE QUOTATION MARK). Did you mean ``` (GRAVE ACCENT)?",
+    "noqa_row": 1960,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/ambiguous-unicode-character-comment"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 18,
+      "row": 1961
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1961
+    },
+    "message": "Function name `OPSAVE_KW` should be lowercase",
+    "noqa_row": 1961,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 18,
+      "row": 1964
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1964
+    },
+    "message": "Function name `SECURE_KW` should be lowercase",
+    "noqa_row": 1964,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 16,
+      "row": 1968
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1968
+    },
+    "message": "Function name `DEFAULT` should be lowercase",
+    "noqa_row": 1968,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "RUF003",
+    "end_location": {
+      "column": 33,
+      "row": 1971
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 32,
+      "row": 1971
+    },
+    "message": "Comment contains ambiguous `’` (RIGHT SINGLE QUOTATION MARK). Did you mean ``` (GRAVE ACCENT)?",
+    "noqa_row": 1971,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/ambiguous-unicode-character-comment"
+  },
+  {
+    "cell": null,
+    "code": "RUF003",
+    "end_location": {
+      "column": 76,
+      "row": 1971
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 75,
+      "row": 1971
+    },
+    "message": "Comment contains ambiguous `’` (RIGHT SINGLE QUOTATION MARK). Did you mean ``` (GRAVE ACCENT)?",
+    "noqa_row": 1971,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/ambiguous-unicode-character-comment"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 14,
+      "row": 1972
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1972
+    },
+    "message": "Function name `COLON` should be lowercase",
+    "noqa_row": 1972,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 14,
+      "row": 1975
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1975
+    },
+    "message": "Function name `COMMA` should be lowercase",
+    "noqa_row": 1975,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 13,
+      "row": 1978
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1978
+    },
+    "message": "Function name `SEMI` should be lowercase",
+    "noqa_row": 1978,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 26,
+      "row": 1982
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1982
+    },
+    "message": "Function name `ASSIGN_INIT_VALUE` should be lowercase",
+    "noqa_row": 1982,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "N802",
+    "end_location": {
+      "column": 23,
+      "row": 1985
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattline_parser\\transformer\\sl_transformer.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1985
+    },
+    "message": "Function name `DURATION_VALUE` should be lowercase",
+    "noqa_row": 1985,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/invalid-function-name"
+  },
+  {
+    "cell": null,
+    "code": "SIM102",
+    "end_location": {
+      "column": 81,
+      "row": 1408
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\analyzers\\dataflow.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1407
+    },
+    "message": "Use a single `if` statement instead of nested `if` statements",
+    "noqa_row": 1407,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/collapsible-if"
+  },
+  {
+    "cell": null,
+    "code": "SIM102",
+    "end_location": {
+      "column": 81,
+      "row": 1414
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\analyzers\\dataflow.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 1413
+    },
+    "message": "Use a single `if` statement instead of nested `if` statements",
+    "noqa_row": 1413,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/collapsible-if"
+  },
+  {
+    "cell": null,
+    "code": "RUF012",
+    "end_location": {
+      "column": 6,
+      "row": 51
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\analyzers\\validators.py",
+    "fix": null,
+    "location": {
+      "column": 50,
+      "row": 45
+    },
+    "message": "Mutable default value for class attribute",
+    "noqa_row": 45,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/mutable-class-default"
+  },
+  {
+    "cell": null,
+    "code": "RUF012",
+    "end_location": {
+      "column": 69,
+      "row": 52
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\analyzers\\validators.py",
+    "fix": null,
+    "location": {
+      "column": 43,
+      "row": 52
+    },
+    "message": "Mutable default value for class attribute",
+    "noqa_row": 52,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/mutable-class-default"
+  },
+  {
+    "cell": null,
+    "code": "RUF012",
+    "end_location": {
+      "column": 52,
+      "row": 86
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\analyzers\\validators.py",
+    "fix": null,
+    "location": {
+      "column": 34,
+      "row": 86
+    },
+    "message": "Mutable default value for class attribute",
+    "noqa_row": 86,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/mutable-class-default"
+  },
+  {
+    "cell": null,
+    "code": "RUF012",
+    "end_location": {
+      "column": 52,
+      "row": 87
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\analyzers\\validators.py",
+    "fix": null,
+    "location": {
+      "column": 34,
+      "row": 87
+    },
+    "message": "Mutable default value for class attribute",
+    "noqa_row": 87,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/mutable-class-default"
+  },
+  {
+    "cell": null,
+    "code": "SIM102",
+    "end_location": {
+      "column": 70,
+      "row": 445
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\analyzers\\variable_usage_reporting.py",
+    "fix": null,
+    "location": {
+      "column": 17,
+      "row": 444
+    },
+    "message": "Use a single `if` statement instead of nested `if` statements",
+    "noqa_row": 444,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/collapsible-if"
+  },
+  {
+    "cell": null,
+    "code": "SIM102",
+    "end_location": {
+      "column": 81,
+      "row": 486
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\analyzers\\variable_usage_reporting.py",
+    "fix": null,
+    "location": {
+      "column": 17,
+      "row": 485
+    },
+    "message": "Use a single `if` statement instead of nested `if` statements",
+    "noqa_row": 485,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/collapsible-if"
+  },
+  {
+    "cell": null,
+    "code": "B023",
+    "end_location": {
+      "column": 72,
+      "row": 486
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\analyzers\\variable_usage_reporting.py",
+    "fix": null,
+    "location": {
+      "column": 53,
+      "row": 486
+    },
+    "message": "Function definition does not bind loop variable `parent_typedef_name`",
+    "noqa_row": 486,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/function-uses-loop-variable"
+  },
+  {
+    "cell": null,
+    "code": "B023",
+    "end_location": {
+      "column": 41,
+      "row": 487
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\analyzers\\variable_usage_reporting.py",
+    "fix": null,
+    "location": {
+      "column": 25,
+      "row": 487
+    },
+    "message": "Function definition does not bind loop variable `parent_instances`",
+    "noqa_row": 487,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/function-uses-loop-variable"
+  },
+  {
+    "cell": null,
+    "code": "RUF012",
+    "end_location": {
+      "column": 6,
+      "row": 165
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\analyzers\\variables.py",
+    "fix": null,
+    "location": {
+      "column": 39,
+      "row": 156
+    },
+    "message": "Mutable default value for class attribute",
+    "noqa_row": 156,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/mutable-class-default"
+  },
+  {
+    "cell": null,
+    "code": "SIM102",
+    "end_location": {
+      "column": 19,
+      "row": 1596
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\analyzers\\variables.py",
+    "fix": null,
+    "location": {
+      "column": 13,
+      "row": 1589
+    },
+    "message": "Use a single `if` statement instead of nested `if` statements",
+    "noqa_row": 1589,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/collapsible-if"
+  },
+  {
+    "cell": null,
+    "code": "N818",
+    "end_location": {
+      "column": 14,
+      "row": 412
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\app.py",
+    "fix": null,
+    "location": {
+      "column": 7,
+      "row": 412
+    },
+    "message": "Exception name `QuitApp` should be named with an Error suffix",
+    "noqa_row": 412,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/error-suffix-on-exception-name"
+  },
+  {
+    "cell": null,
+    "code": "SIM102",
+    "end_location": {
+      "column": 57,
+      "row": 2065
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\app.py",
+    "fix": null,
+    "location": {
+      "column": 13,
+      "row": 2064
+    },
+    "message": "Use a single `if` statement instead of nested `if` statements",
+    "noqa_row": 2064,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/collapsible-if"
+  },
+  {
+    "cell": null,
+    "code": "SIM108",
+    "end_location": {
+      "column": 28,
+      "row": 234
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\config.py",
+    "fix": null,
+    "location": {
+      "column": 5,
+      "row": 231
+    },
+    "message": "Use ternary operator `extensions = [\".s\", \".x\"] if cfg[\"mode\"] == \"draft\" else [\".x\"]` instead of `if`-`else`-block",
+    "noqa_row": 231,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/if-else-block-instead-of-if-exp"
+  },
+  {
+    "cell": null,
+    "code": "C414",
+    "end_location": {
+      "column": 14,
+      "row": 174
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\core\\taint_paths.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "sorted(\r\n                target_key\r\n                    for target_key in normalized_edges.get(current_key, ())\r\n                    if target_key in runtime_keys,\r\n                key=lambda item: display_names.get(item, \".\".join(item)).casefold(),\r\n            )",
+          "end_location": {
+            "column": 14,
+            "row": 174
+          },
+          "location": {
+            "column": 31,
+            "row": 167
+          }
+        }
+      ],
+      "message": "Remove the inner `tuple()` call"
+    },
+    "location": {
+      "column": 31,
+      "row": 167
+    },
+    "message": "Unnecessary `tuple()` call within `sorted()`",
+    "noqa_row": 167,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unnecessary-double-cast-or-process"
+  },
+  {
+    "cell": null,
+    "code": "RUF005",
+    "end_location": {
+      "column": 57,
+      "row": 178
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\core\\taint_paths.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "(*current_path, target_key)",
+          "end_location": {
+            "column": 57,
+            "row": 178
+          },
+          "location": {
+            "column": 29,
+            "row": 178
+          }
+        }
+      ],
+      "message": "Replace with `(*current_path, target_key)`"
+    },
+    "location": {
+      "column": 29,
+      "row": 178
+    },
+    "message": "Consider `(*current_path, target_key)` instead of concatenation",
+    "noqa_row": 178,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/collection-literal-concatenation"
+  },
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 61,
+      "row": 55
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\devtools\\pipeline.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from __future__ import annotations\n\nimport argparse\nimport importlib.metadata as metadata\nimport json\nimport os\nimport platform\nimport re\nimport shutil\nimport subprocess  # nosec B404 - pipeline intentionally executes trusted local developer tools\nimport sys\nimport time\nimport tomllib\nfrom dataclasses import dataclass\nfrom pathlib import Path\nfrom typing import Any\n\nfrom defusedxml import ElementTree as ET  # type: ignore[import-untyped]\n\nfrom sattlint.devtools.artifact_registry import (\n    PIPELINE_ARTIFACTS,\n    artifact_reports_map,\n    build_artifact_registry_report,\n)\nfrom sattlint.devtools.baselines import build_analysis_diff_report, load_finding_collection\nfrom sattlint.devtools.corpus import CORPUS_RESULTS_FILENAME, run_corpus_suite\nfrom sattlint.devtools.finding_exports import build_pipeline_finding_collection\nfrom sattlint.devtools.pipeline_artifacts import (\n    PipelineArtifactContext,\n    write_pipeline_artifacts,\n)\nfrom sattlint.devtools.progress_reporting import ProgressReporter\nfrom sattlint.devtools.status_reports import (\n    build_pipeline_status_report,\n    build_pipeline_summary_report,\n    build_tool_status,\n    overall_status,\n)\nfrom sattlint.devtools.structural_reports import (\n    StructuralReportsBundle,\n    WorkspaceGraphInputs,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_analyzer_registry_report as build_analyzer_registry_report,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_architecture_report as build_architecture_report,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_call_graph_report as build_call_graph_report,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_dependency_graph_report as build_dependency_graph_report,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_impact_analysis_report as build_impact_analysis_report,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_phase2_rule_metadata_gate as build_phase2_rule_metadata_gate,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_structural_reports as build_structural_reports,\n)\nfrom sattlint.devtools.structural_reports import (\n    collect_workspace_graph_inputs as build_workspace_graph_inputs,\n)\nfrom sattlint.devtools.tool_reports import build_command_report\nfrom sattlint.devtools.trace_reports import collect_trace_report as build_trace_report\nfrom sattlint.path_sanitizer import sanitize_path_for_report\n\n",
+          "end_location": {
+            "column": 1,
+            "row": 57
+          },
+          "location": {
+            "column": 1,
+            "row": 3
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 3
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "noqa_row": 3,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "N817",
+    "end_location": {
+      "column": 41,
+      "row": 20
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\devtools\\pipeline.py",
+    "fix": null,
+    "location": {
+      "column": 24,
+      "row": 20
+    },
+    "message": "CamelCase `ElementTree` imported as acronym `ET`",
+    "noqa_row": 20,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/camelcase-imported-as-acronym"
+  },
+  {
+    "cell": null,
+    "code": "SIM108",
+    "end_location": {
+      "column": 55,
+      "row": 104
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\devtools\\pipeline.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "venv_python = Path(\".venv\") / \"Scripts\" / \"python.exe\" if os.name == \"nt\" else Path(\".venv\") / \"bin\" / \"python\"",
+          "end_location": {
+            "column": 55,
+            "row": 104
+          },
+          "location": {
+            "column": 5,
+            "row": 101
+          }
+        }
+      ],
+      "message": "Replace `if`-`else`-block with `venv_python = Path(\".venv\") / \"Scripts\" / \"python.exe\" if os.name == \"nt\" else Path(\".venv\") / \"bin\" / \"python\"`"
+    },
+    "location": {
+      "column": 5,
+      "row": 101
+    },
+    "message": "Use ternary operator `venv_python = Path(\".venv\") / \"Scripts\" / \"python.exe\" if os.name == \"nt\" else Path(\".venv\") / \"bin\" / \"python\"` instead of `if`-`else`-block",
+    "noqa_row": 101,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/if-else-block-instead-of-if-exp"
+  },
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 33,
+      "row": 8
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\devtools\\progress_reporting.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from __future__ import annotations\r\n\r\nimport time\r\nfrom dataclasses import dataclass\r\nfrom pathlib import Path\r\nfrom typing import Any, Callable\r\n\r\n\r\n",
+          "end_location": {
+            "column": 1,
+            "row": 11
+          },
+          "location": {
+            "column": 1,
+            "row": 3
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 3
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "noqa_row": 3,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "UP035",
+    "end_location": {
+      "column": 33,
+      "row": 8
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\devtools\\progress_reporting.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from typing import Any\r\nfrom collections.abc import Callable",
+          "end_location": {
+            "column": 33,
+            "row": 8
+          },
+          "location": {
+            "column": 1,
+            "row": 8
+          }
+        }
+      ],
+      "message": "Import from `collections.abc`"
+    },
+    "location": {
+      "column": 1,
+      "row": 8
+    },
+    "message": "Import from `collections.abc` instead: `Callable`",
+    "noqa_row": 8,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/deprecated-import"
+  },
+  {
+    "cell": null,
+    "code": "N817",
+    "end_location": {
+      "column": 41,
+      "row": 19
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\devtools\\repo_audit.py",
+    "fix": null,
+    "location": {
+      "column": 24,
+      "row": 19
+    },
+    "message": "CamelCase `ElementTree` imported as acronym `ET`",
+    "noqa_row": 19,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/camelcase-imported-as-acronym"
+  },
+  {
+    "cell": null,
+    "code": "UP028",
+    "end_location": {
+      "column": 23,
+      "row": 511
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\devtools\\structural_reports.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "yield from iterable",
+          "end_location": {
+            "column": 23,
+            "row": 511
+          },
+          "location": {
+            "column": 9,
+            "row": 510
+          }
+        }
+      ],
+      "message": "Replace with `yield from`"
+    },
+    "location": {
+      "column": 9,
+      "row": 510
+    },
+    "message": "Replace `yield` over `for` loop with `yield from`",
+    "noqa_row": 510,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/yield-in-for-loop"
+  },
+  {
+    "cell": null,
+    "code": "B019",
+    "end_location": {
+      "column": 28,
+      "row": 317
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\docgenerator\\configgen.py",
+    "fix": null,
+    "location": {
+      "column": 5,
+      "row": 317
+    },
+    "message": "Use of `functools.lru_cache` or `functools.cache` on methods can lead to memory leaks",
+    "noqa_row": 317,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/cached-instance-method"
+  },
+  {
+    "cell": null,
+    "code": "SIM102",
+    "end_location": {
+      "column": 68,
+      "row": 358
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\docgenerator\\configgen.py",
+    "fix": null,
+    "location": {
+      "column": 17,
+      "row": 357
+    },
+    "message": "Use a single `if` statement instead of nested `if` statements",
+    "noqa_row": 357,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/collapsible-if"
+  },
+  {
+    "cell": null,
+    "code": "B007",
+    "end_location": {
+      "column": 23,
+      "row": 787
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint\\docgenerator\\configgen.py",
+    "fix": null,
+    "location": {
+      "column": 13,
+      "row": 787
+    },
+    "message": "Loop control variable `station_id` not used within loop body",
+    "noqa_row": 787,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-loop-control-variable"
+  },
+  {
+    "cell": null,
+    "code": "N806",
+    "end_location": {
+      "column": 33,
+      "row": 396
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\src\\sattlint_lsp\\local_parser.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 396
+    },
+    "message": "Variable `_MAX_DESIRED_CHECKPOINTS` in function should be lowercase",
+    "noqa_row": 396,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/non-lowercase-variable-in-function"
+  },
+  {
+    "cell": null,
+    "code": "RUF012",
+    "end_location": {
+      "column": 30,
+      "row": 62
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\tests\\test_app.py",
+    "fix": null,
+    "location": {
+      "column": 28,
+      "row": 62
+    },
+    "message": "Mutable default value for class attribute",
+    "noqa_row": 62,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/mutable-class-default"
+  },
+  {
+    "cell": null,
+    "code": "RUF043",
+    "end_location": {
+      "column": 130,
+      "row": 855
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\tests\\test_editor_api.py",
+    "fix": null,
+    "location": {
+      "column": 44,
+      "row": 855
+    },
+    "message": "Pattern passed to `match=` contains metacharacters but is neither escaped nor raw",
+    "noqa_row": 855,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/pytest-raises-ambiguous-pattern"
+  },
+  {
+    "cell": null,
+    "code": "B017",
+    "end_location": {
+      "column": 34,
+      "row": 83
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\tests\\test_parser.py",
+    "fix": null,
+    "location": {
+      "column": 10,
+      "row": 83
+    },
+    "message": "Do not assert blind exception: `Exception`",
+    "noqa_row": 83,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/assert-raises-exception"
+  },
+  {
+    "cell": null,
+    "code": "SIM117",
+    "end_location": {
+      "column": 91,
+      "row": 153
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\tests\\test_repo_audit.py",
+    "fix": null,
+    "location": {
+      "column": 5,
+      "row": 152
+    },
+    "message": "Use a single `with` statement with multiple contexts instead of nested `with` statements",
+    "noqa_row": 152,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/multiple-with-statements"
+  },
+  {
+    "cell": null,
+    "code": "C401",
+    "end_location": {
+      "column": 84,
+      "row": 176
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\tests\\test_repo_audit.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "{",
+          "end_location": {
+            "column": 20,
+            "row": 176
+          },
+          "location": {
+            "column": 16,
+            "row": 176
+          }
+        },
+        {
+          "content": "}",
+          "end_location": {
+            "column": 84,
+            "row": 176
+          },
+          "location": {
+            "column": 83,
+            "row": 176
+          }
+        }
+      ],
+      "message": "Rewrite as a set comprehension"
+    },
+    "location": {
+      "column": 16,
+      "row": 176
+    },
+    "message": "Unnecessary generator (rewrite as a set comprehension)",
+    "noqa_row": 176,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unnecessary-generator-set"
+  },
+  {
+    "cell": null,
+    "code": "SIM117",
+    "end_location": {
+      "column": 88,
+      "row": 235
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\tests\\test_repo_audit.py",
+    "fix": null,
+    "location": {
+      "column": 5,
+      "row": 234
+    },
+    "message": "Use a single `with` statement with multiple contexts instead of nested `with` statements",
+    "noqa_row": 234,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/multiple-with-statements"
+  },
+  {
+    "cell": null,
+    "code": "SIM117",
+    "end_location": {
+      "column": 83,
+      "row": 317
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\tests\\test_repo_audit.py",
+    "fix": null,
+    "location": {
+      "column": 5,
+      "row": 316
+    },
+    "message": "Use a single `with` statement with multiple contexts instead of nested `with` statements",
+    "noqa_row": 316,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/multiple-with-statements"
+  },
+  {
+    "cell": null,
+    "code": "SIM117",
+    "end_location": {
+      "column": 83,
+      "row": 366
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\tests\\test_repo_audit.py",
+    "fix": null,
+    "location": {
+      "column": 5,
+      "row": 365
+    },
+    "message": "Use a single `with` statement with multiple contexts instead of nested `with` statements",
+    "noqa_row": 365,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/multiple-with-statements"
+  },
+  {
+    "cell": null,
+    "code": "SIM117",
+    "end_location": {
+      "column": 83,
+      "row": 446
+    },
+    "filename": "C:\\Users\\SQHJ\\OneDrive - Novo Nordisk\\Workspace\\GitHub.com\\SattLint\\tests\\test_repo_audit.py",
+    "fix": null,
+    "location": {
+      "column": 5,
+      "row": 445
+    },
+    "message": "Use a single `with` statement with multiple contexts instead of nested `with` statements",
+    "noqa_row": 445,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/multiple-with-statements"
+  }
+]

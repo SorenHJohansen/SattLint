@@ -1,0 +1,115 @@
+{
+  "active_stage": null,
+  "canonical_command": "sattlint-analysis-pipeline --profile quick --output-dir artifacts/audit-review-quick-ignored-path/pipeline",
+  "completed_at": 1777634417.1974354,
+  "completed_stage_count": 7,
+  "created_at": 1777634386.2248833,
+  "failed_stage_count": 0,
+  "kind": "sattlint.pipeline.progress",
+  "overall_status": "pass",
+  "skipped_stage_count": 4,
+  "stage_count": 11,
+  "stages": [
+    {
+      "detail": null,
+      "duration_seconds": 0.14,
+      "ended_at": 1777634386.36679,
+      "key": "environment",
+      "label": "Collect environment",
+      "started_at": 1777634386.2266588,
+      "status": "completed"
+    },
+    {
+      "detail": "0 findings",
+      "duration_seconds": 0.719,
+      "ended_at": 1777634387.087637,
+      "key": "ruff",
+      "label": "Run Ruff",
+      "started_at": 1777634386.3683128,
+      "status": "completed"
+    },
+    {
+      "detail": "0 errors, 0 warnings",
+      "duration_seconds": 16.574,
+      "ended_at": 1777634403.6635277,
+      "key": "pyright",
+      "label": "Run pyright",
+      "started_at": 1777634387.089397,
+      "status": "completed"
+    },
+    {
+      "detail": "220 tests, 0 failures, 0 errors",
+      "duration_seconds": 10.987,
+      "ended_at": 1777634414.6533537,
+      "key": "pytest",
+      "label": "Run pytest",
+      "started_at": 1777634403.6661177,
+      "status": "completed"
+    },
+    {
+      "detail": "skipped by profile",
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "vulture",
+      "label": "Run Vulture",
+      "started_at": null,
+      "status": "skipped"
+    },
+    {
+      "detail": "skipped by profile",
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "bandit",
+      "label": "Run Bandit",
+      "started_at": null,
+      "status": "skipped"
+    },
+    {
+      "detail": "skipped by profile",
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "structural_reports",
+      "label": "Collect structural reports",
+      "started_at": null,
+      "status": "skipped"
+    },
+    {
+      "detail": "skipped by profile",
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "trace",
+      "label": "Collect trace report",
+      "started_at": null,
+      "status": "skipped"
+    },
+    {
+      "detail": "48 cases, 0 failed",
+      "duration_seconds": 2.228,
+      "ended_at": 1777634417.0027473,
+      "key": "corpus",
+      "label": "Run corpus suite",
+      "started_at": 1777634414.7745745,
+      "status": "completed"
+    },
+    {
+      "detail": "0 normalized findings",
+      "duration_seconds": 0.006,
+      "ended_at": 1777634417.1398935,
+      "key": "findings",
+      "label": "Normalize findings",
+      "started_at": 1777634417.1339717,
+      "status": "completed"
+    },
+    {
+      "detail": null,
+      "duration_seconds": 0.049,
+      "ended_at": 1777634417.1939402,
+      "key": "write_artifacts",
+      "label": "Write artifacts",
+      "started_at": 1777634417.145147,
+      "status": "completed"
+    }
+  ],
+  "title": "Pipeline",
+  "updated_at": 1777634417.1974387
+}

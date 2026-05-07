@@ -1,0 +1,36 @@
+{
+  "finding_count": 1,
+  "findings": [
+    {
+      "analyzer": "syntax-check",
+      "artifact": "findings",
+      "category": "syntax",
+      "confidence": "high",
+      "data": {
+        "stage": "validation"
+      },
+      "detail": null,
+      "file": "tests/fixtures/corpus/invalid/StringLiteralInCallArgument.s",
+      "fingerprint": "syntax.validation|tests/fixtures/corpus/invalid/StringLiteralInCallArgument.s|||BasePicture program name name 'StringLiteralInCallArgument' exceeds 20 characters",
+      "id": "syntax.validation",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [],
+        "path": "tests/fixtures/corpus/invalid/StringLiteralInCallArgument.s",
+        "symbol": null
+      },
+      "message": "BasePicture program name name 'StringLiteralInCallArgument' exceeds 20 characters",
+      "minimal_reproducer": "sattlint syntax-check tests/fixtures/corpus/invalid/StringLiteralInCallArgument.s",
+      "owner_surface": "syntax-check",
+      "rule_id": "syntax.validation",
+      "severity": "high",
+      "source": "corpus-runner",
+      "suggested_next_command": "sattlint syntax-check tests/fixtures/corpus/invalid/StringLiteralInCallArgument.s",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

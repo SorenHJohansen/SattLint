@@ -1,0 +1,15 @@
+{
+  "lane": "lane-c",
+  "branch": "ai/task-ratchet-lane-c-uncovered-typing-inventory",
+  "worktree": "c:/Users/SQHJ/OneDrive - Novo Nordisk/Workspace/GitHub.com/SattLint-ai-ratchet-lane-c-uncovered-typing-inventory",
+  "backed_up_at": "2026-05-06T11:27:33.8884132Z",
+  "files": [
+    "src/sattlint/simulation/__init__.py",
+    "src/sattlint/simulation/runtime.py",
+    ".ai/handoffs/ratchet-lane-c-uncovered-typing-inventory.json",
+    ".ai/tasks/ratchet-lane-c-uncovered-typing-inventory.json",
+    "src/sattlint/analyzers/_registry_delivery.py",
+    "src/sattlint/analyzers/_registry_specs.py",
+    "src/sattlint/simulation/_runtime_models.py"
+  ]
+}

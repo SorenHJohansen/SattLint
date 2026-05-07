@@ -1,0 +1,19 @@
+{
+  "case_id": "valid-nested-submodules",
+  "finding_count": 1,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "missing_dependencies": [],
+  "mode": "workspace",
+  "resolved_targets": [
+    "NestedSubmodules"
+  ],
+  "rule_counts": {
+    "semantic.write-without-effect": 1
+  },
+  "target_file": "tests/fixtures/corpus/valid/NestedSubmodules.s",
+  "warnings": []
+}

@@ -1,0 +1,447 @@
+{
+  "finding_count": 13,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "DurFull"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/DurationAndTime.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/DurationAndTime.s|||Variable 'DurFull' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/DurationAndTime.s",
+        "symbol": null
+      },
+      "message": "Variable 'DurFull' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "DurBare"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/DurationAndTime.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/DurationAndTime.s|||Variable 'DurBare' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/DurationAndTime.s",
+        "symbol": null
+      },
+      "message": "Variable 'DurBare' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "DurHours"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/DurationAndTime.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/DurationAndTime.s|||Variable 'DurHours' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/DurationAndTime.s",
+        "symbol": null
+      },
+      "message": "Variable 'DurHours' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "unused",
+        "variable": "DurMinutes"
+      },
+      "detail": "Declared variables that are never read or written.",
+      "file": "tests/fixtures/corpus/valid/DurationAndTime.s",
+      "fingerprint": "semantic.unused-variable|tests/fixtures/corpus/valid/DurationAndTime.s|||Variable 'DurMinutes' is never used.",
+      "id": "semantic.unused-variable",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/DurationAndTime.s",
+        "symbol": null
+      },
+      "message": "Variable 'DurMinutes' is never used.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unused-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "unused",
+        "variable": "DurComplex"
+      },
+      "detail": "Declared variables that are never read or written.",
+      "file": "tests/fixtures/corpus/valid/DurationAndTime.s",
+      "fingerprint": "semantic.unused-variable|tests/fixtures/corpus/valid/DurationAndTime.s|||Variable 'DurComplex' is never used.",
+      "id": "semantic.unused-variable",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/DurationAndTime.s",
+        "symbol": null
+      },
+      "message": "Variable 'DurComplex' is never used.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unused-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "unused",
+        "variable": "DurSeconds"
+      },
+      "detail": "Declared variables that are never read or written.",
+      "file": "tests/fixtures/corpus/valid/DurationAndTime.s",
+      "fingerprint": "semantic.unused-variable|tests/fixtures/corpus/valid/DurationAndTime.s|||Variable 'DurSeconds' is never used.",
+      "id": "semantic.unused-variable",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/DurationAndTime.s",
+        "symbol": null
+      },
+      "message": "Variable 'DurSeconds' is never used.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unused-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "DurZero"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/DurationAndTime.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/DurationAndTime.s|||Variable 'DurZero' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/DurationAndTime.s",
+        "symbol": null
+      },
+      "message": "Variable 'DurZero' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "unused",
+        "variable": "DurNegative"
+      },
+      "detail": "Declared variables that are never read or written.",
+      "file": "tests/fixtures/corpus/valid/DurationAndTime.s",
+      "fingerprint": "semantic.unused-variable|tests/fixtures/corpus/valid/DurationAndTime.s|||Variable 'DurNegative' is never used.",
+      "id": "semantic.unused-variable",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/DurationAndTime.s",
+        "symbol": null
+      },
+      "message": "Variable 'DurNegative' is never used.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unused-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "TimeFull"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/DurationAndTime.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/DurationAndTime.s|||Variable 'TimeFull' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/DurationAndTime.s",
+        "symbol": null
+      },
+      "message": "Variable 'TimeFull' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "TimeBare"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/DurationAndTime.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/DurationAndTime.s|||Variable 'TimeBare' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/DurationAndTime.s",
+        "symbol": null
+      },
+      "message": "Variable 'TimeBare' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "unused",
+        "variable": "TimeMidnight"
+      },
+      "detail": "Declared variables that are never read or written.",
+      "file": "tests/fixtures/corpus/valid/DurationAndTime.s",
+      "fingerprint": "semantic.unused-variable|tests/fixtures/corpus/valid/DurationAndTime.s|||Variable 'TimeMidnight' is never used.",
+      "id": "semantic.unused-variable",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/DurationAndTime.s",
+        "symbol": null
+      },
+      "message": "Variable 'TimeMidnight' is never used.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unused-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "never_read",
+        "variable": "Sink"
+      },
+      "detail": "Variables that are written but never subsequently read.",
+      "file": "tests/fixtures/corpus/valid/DurationAndTime.s",
+      "fingerprint": "semantic.never-read-write|tests/fixtures/corpus/valid/DurationAndTime.s|||Variable 'Sink' is written but never read.",
+      "id": "semantic.never-read-write",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/DurationAndTime.s",
+        "symbol": null
+      },
+      "message": "Variable 'Sink' is written but never read.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.never-read-write",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "file": "tests/fixtures/corpus/valid/DurationAndTime.s",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/valid/DurationAndTime.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/DurationAndTime.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

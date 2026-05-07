@@ -1,0 +1,725 @@
+{
+  "finding_count": 21,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "StartCmd"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Variable 'StartCmd' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Variable 'StartCmd' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "DoneCmd"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Variable 'DoneCmd' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Variable 'DoneCmd' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "unused",
+        "variable": "Status"
+      },
+      "detail": "Declared variables that are never read or written.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "semantic.unused-variable|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Variable 'Status' is never used.",
+      "id": "semantic.unused-variable",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Variable 'Status' is never used.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unused-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "transition",
+        "branch_path": [],
+        "condition": "True",
+        "normalized_guard": "('bool', True)",
+        "sequence": "MainSeq",
+        "source_kind": "sfc_transition_always_true",
+        "transition_name": "TrReady"
+      },
+      "detail": "Transitions with guards that simplify to true and therefore always fire when reached.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "semantic.transition-always-true|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Transition 'TrReady' in sequence 'MainSeq' has a guard that is always true: True.",
+      "id": "semantic.transition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrReady' in sequence 'MainSeq' has a guard that is always true: True.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.transition-always-true",
+      "severity": "medium",
+      "source": "sfc",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "transition",
+        "branch_path": [],
+        "condition": "True",
+        "normalized_guard": "('bool', True)",
+        "sequence": "MainSeq",
+        "source_kind": "sfc_transition_always_true",
+        "transition_name": "TrWorkLoop"
+      },
+      "detail": "Transitions with guards that simplify to true and therefore always fire when reached.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "semantic.transition-always-true|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Transition 'TrWorkLoop' in sequence 'MainSeq' has a guard that is always true: True.",
+      "id": "semantic.transition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrWorkLoop' in sequence 'MainSeq' has a guard that is always true: True.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.transition-always-true",
+      "severity": "medium",
+      "source": "sfc",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "StartCmd",
+        "site": "SEQ:MainSeq > TRANS:TrStart",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Condition 'StartCmd' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Condition 'StartCmd' is always false at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "True",
+        "site": "SEQ:MainSeq > TRANS:TrReady",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Condition 'True' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Condition 'True' is always true at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "True",
+        "site": "SEQ:MainSeq > SUBSEQ:WorkPhase > TRANS:TrWorkLoop",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Condition 'True' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Condition 'True' is always true at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "DoneCmd",
+        "site": "SEQ:MainSeq > SUBSEQ:WorkPhase > TRANS:TrWorkDone",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Condition 'DoneCmd' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Condition 'DoneCmd' is always false at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "NOT(StartCmd)",
+        "site": "SEQ:MainSeq > TRANS:TrEnd",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Condition 'NOT(StartCmd)' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Condition 'NOT(StartCmd)' is always true at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/valid/SubsequenceBlock.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Idle"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Sequence step 'Idle' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Idle' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrStart"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Transition 'TrStart' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrStart' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Prepare"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Sequence step 'Prepare' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Prepare' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrReady"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Transition 'TrReady' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrReady' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "WorkEntry"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Sequence step 'WorkEntry' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'WorkEntry' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrWorkLoop"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Transition 'TrWorkLoop' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrWorkLoop' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "WorkLoop"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Sequence step 'WorkLoop' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'WorkLoop' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrWorkDone"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Transition 'TrWorkDone' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrWorkDone' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Cleanup"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Sequence step 'Cleanup' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Cleanup' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrEnd"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SubsequenceBlock.s|||Transition 'TrEnd' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SubsequenceBlock.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrEnd' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

@@ -1,0 +1,1083 @@
+{
+  "ast_summary": {
+    "datatype_definition_count": 1,
+    "equation_count": 1,
+    "frame_module_count": 0,
+    "module_localvariable_count": 15,
+    "moduleparameter_count": 6,
+    "moduletype_definition_count": 1,
+    "moduletype_instance_count": 1,
+    "root_localvariable_count": 2,
+    "sequence_count": 0,
+    "single_module_count": 0,
+    "submodule_count": 1
+  },
+  "basepicture_name": "BasePicture",
+  "dataflow_analysis": {
+    "findings": [
+      {
+        "data": {
+          "site": "EQ:Main",
+          "symbol": "vIf"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'vIf' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "VariableTest"
+        ]
+      },
+      {
+        "data": {
+          "site": "EQ:Main",
+          "symbol": "vTernary"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'vTernary' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "VariableTest"
+        ]
+      },
+      {
+        "data": {
+          "site": "EQ:Main",
+          "symbol": "vProcedure"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'vProcedure' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "VariableTest"
+        ]
+      },
+      {
+        "data": {
+          "site": "EQ:Main",
+          "symbol": "si"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'si' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "VariableTest"
+        ]
+      },
+      {
+        "data": {
+          "site": "EQ:Main",
+          "symbol": "vFunction"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'vFunction' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "VariableTest"
+        ]
+      },
+      {
+        "data": {
+          "site": "EQ:Equa1",
+          "symbol": "pTransReadOnly"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'pTransReadOnly' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "VariableTest",
+          "FM1",
+          "SM1"
+        ]
+      },
+      {
+        "data": {
+          "site": "EQ:Equa1",
+          "symbol": "pGlobalUsed"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'pGlobalUsed' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "VariableTest",
+          "FM1",
+          "SM1"
+        ]
+      },
+      {
+        "data": {
+          "site": "EQ:Main",
+          "symbol": "vIf"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'vIf' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ]
+      },
+      {
+        "data": {
+          "site": "EQ:Main",
+          "symbol": "vTernary"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'vTernary' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ]
+      },
+      {
+        "data": {
+          "site": "EQ:Main",
+          "symbol": "vProcedure"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'vProcedure' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ]
+      },
+      {
+        "data": {
+          "site": "EQ:Main",
+          "symbol": "si"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'si' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ]
+      },
+      {
+        "data": {
+          "site": "EQ:Main",
+          "symbol": "vFunction"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'vFunction' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ]
+      },
+      {
+        "data": {
+          "site": "EQ:Equa1",
+          "symbol": "pTransReadOnly"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'pTransReadOnly' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test",
+          "FM1",
+          "SM1"
+        ]
+      },
+      {
+        "data": {
+          "site": "EQ:Equa1",
+          "symbol": "pGlobalUsed"
+        },
+        "kind": "dataflow.read_before_write",
+        "message": "Variable reference 'pGlobalUsed' may be read before it is assigned on this path.",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test",
+          "FM1",
+          "SM1"
+        ]
+      }
+    ],
+    "issue_count": 14,
+    "issue_counts": {
+      "dataflow.read_before_write": 14
+    }
+  },
+  "events": [
+    {
+      "action": "validated",
+      "data": {
+        "column": null,
+        "line": null,
+        "message": null,
+        "ok": true,
+        "stage": "ok"
+      },
+      "phase": "syntax",
+      "time_offset_ms": 59.318
+    },
+    {
+      "action": "basepicture-loaded",
+      "data": {
+        "basepicture_name": "BasePicture",
+        "source_file": "tests/fixtures/sample_sattline_files/LinterTestProgram.s"
+      },
+      "phase": "analysis",
+      "time_offset_ms": 65.92
+    },
+    {
+      "action": "ast-summary",
+      "data": {
+        "datatype_definition_count": 1,
+        "equation_count": 1,
+        "frame_module_count": 0,
+        "module_localvariable_count": 15,
+        "moduleparameter_count": 6,
+        "moduletype_definition_count": 1,
+        "moduletype_instance_count": 1,
+        "root_localvariable_count": 2,
+        "sequence_count": 0,
+        "single_module_count": 0,
+        "submodule_count": 1
+      },
+      "phase": "analysis",
+      "time_offset_ms": 65.938
+    },
+    {
+      "action": "start",
+      "data": {
+        "apply_alias_back_propagation": true,
+        "basepicture_name": "BasePicture",
+        "limit_to_module_path": null,
+        "localvariable_count": 2,
+        "moduletype_count": 1,
+        "submodule_count": 1
+      },
+      "phase": "variables",
+      "time_offset_ms": 65.987
+    },
+    {
+      "action": "root-context-built",
+      "data": {
+        "root_symbols": 2
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.007
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "VariableTest"
+        ],
+        "role": "literal",
+        "site": "EQ:Main",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.296
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "VariableTest"
+        ],
+        "role": "literal",
+        "site": "EQ:Main",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.324
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "VariableTest"
+        ],
+        "role": "literal",
+        "site": "EQ:Main",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.345
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "VariableTest"
+        ],
+        "role": "literal",
+        "site": "EQ:Main",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.385
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "VariableTest"
+        ],
+        "role": "literal",
+        "site": "EQ:Main",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.389
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "VariableTest"
+        ],
+        "role": "literal",
+        "site": "EQ:Main",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.479
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "VariableTest",
+          "FM1",
+          "SM1"
+        ],
+        "role": "literal",
+        "site": "EQ:Equa1",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.556
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "VariableTest",
+          "FM1",
+          "SM1"
+        ],
+        "role": "literal",
+        "site": "EQ:Equa1",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.56
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "VariableTest",
+          "FM1",
+          "SM1"
+        ],
+        "role": "literal",
+        "site": "EQ:Equa1",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.57
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "VariableTest",
+          "FM1",
+          "SM1"
+        ],
+        "role": "literal",
+        "site": "EQ:Equa1",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.573
+    },
+    {
+      "action": "alias-back-propagation",
+      "data": {
+        "alias_link_count": 3
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.692
+    },
+    {
+      "action": "reset-contamination-scan",
+      "data": {
+        "added_issue_count": 0
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.712
+    },
+    {
+      "action": "implicit-latch-scan",
+      "data": {
+        "added_issue_count": 0
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.73
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "read_only_non_const",
+        "module_path": [
+          "BasePicture"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "Used"
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.75
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "unused",
+        "module_path": [
+          "BasePicture"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "Unused"
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.755
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "literal",
+        "site": "EQ:Main",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.802
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "literal",
+        "site": "EQ:Main",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.824
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "literal",
+        "site": "EQ:Main",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.843
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "literal",
+        "site": "EQ:Main",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.883
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "literal",
+        "site": "EQ:Main",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.886
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "literal",
+        "site": "EQ:Main",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 66.962
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test",
+          "FM1",
+          "SM1"
+        ],
+        "role": "literal",
+        "site": "EQ:Equa1",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.03
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test",
+          "FM1",
+          "SM1"
+        ],
+        "role": "literal",
+        "site": "EQ:Equa1",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.034
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test",
+          "FM1",
+          "SM1"
+        ],
+        "role": "literal",
+        "site": "EQ:Equa1",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.042
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "magic_number",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test",
+          "FM1",
+          "SM1"
+        ],
+        "role": "literal",
+        "site": "EQ:Equa1",
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.045
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "unused",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "moduleparameter",
+        "site": null,
+        "variable": "pReadOnly"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.129
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "unused",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "moduleparameter",
+        "site": null,
+        "variable": "pWriteOnly"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.132
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "unused",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "moduleparameter",
+        "site": null,
+        "variable": "pUnused"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.135
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "unused",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "moduleparameter",
+        "site": null,
+        "variable": "pTransUnused"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.14
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "write_without_effect",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "Value"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.147
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "never_read",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "'Value'"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.151
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "never_read",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "Shadow"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.154
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "read_only_non_const",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "vReadOnly"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.157
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "never_read",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "vWriteOnly"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.16
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "unused",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "vUnused"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.164
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "ui_only",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "vTekst"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.167
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "ui_only",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "Enable"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.17
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "read_only_non_const",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "vIf"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.173
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "write_without_effect",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "vTernary"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.178
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "write_without_effect",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "vFunction"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.183
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "write_without_effect",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "vProcedure"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.187
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "unused",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "vAssignment"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.191
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "never_read",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "localvariable",
+        "site": null,
+        "variable": "vExpression"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.194
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": null,
+        "kind": "procedure_status",
+        "module_path": [
+          "BasePicture",
+          "TypeDef:Linter_Test"
+        ],
+        "role": "procedure status output from 'CopyVariable' parameter 'Status' is ignored after the procedure writes it.",
+        "site": null,
+        "variable": "si"
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.2
+    },
+    {
+      "action": "global-scope-minimization-scan",
+      "data": {
+        "added_issue_count": 0
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.261
+    },
+    {
+      "action": "hidden-global-coupling-scan",
+      "data": {
+        "added_issue_count": 0
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.321
+    },
+    {
+      "action": "high-fan-in-out-scan",
+      "data": {
+        "added_issue_count": 0
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.379
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": "rReadOnly",
+        "kind": "unused_datatype_field",
+        "module_path": [
+          "BasePicture",
+          "DataType:ShadowType"
+        ],
+        "role": "datatype field",
+        "site": null,
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.401
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": "rUnused",
+        "kind": "unused_datatype_field",
+        "module_path": [
+          "BasePicture",
+          "DataType:ShadowType"
+        ],
+        "role": "datatype field",
+        "site": null,
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.405
+    },
+    {
+      "action": "issue",
+      "data": {
+        "field_path": "rWriteOnly",
+        "kind": "unused_datatype_field",
+        "module_path": [
+          "BasePicture",
+          "DataType:ShadowType"
+        ],
+        "role": "datatype field",
+        "site": null,
+        "variable": null
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.408
+    },
+    {
+      "action": "complete",
+      "data": {
+        "issue_counts": {
+          "magic_number": 20,
+          "never_read": 4,
+          "procedure_status": 1,
+          "read_only_non_const": 3,
+          "ui_only": 2,
+          "unused": 7,
+          "unused_datatype_field": 3,
+          "write_without_effect": 4
+        },
+        "total_issue_count": 44,
+        "warning_count": 0
+      },
+      "phase": "variables",
+      "time_offset_ms": 67.431
+    },
+    {
+      "action": "completed",
+      "data": {
+        "dataflow_issue_count": 14,
+        "issue_count": 44,
+        "transform_violation_count": 0,
+        "unreachable_logic_count": 0
+      },
+      "phase": "analysis",
+      "time_offset_ms": 68.501
+    }
+  ],
+  "heuristics": {
+    "transform_invariant_violations": [],
+    "unreachable_logic": []
+  },
+  "source_file": "tests/fixtures/sample_sattline_files/LinterTestProgram.s",
+  "syntax_validation": {
+    "column": null,
+    "line": null,
+    "message": null,
+    "ok": true,
+    "stage": "ok"
+  },
+  "variable_analysis": {
+    "issue_count": 44,
+    "issue_counts": {
+      "magic_number": 20,
+      "never_read": 4,
+      "procedure_status": 1,
+      "read_only_non_const": 3,
+      "ui_only": 2,
+      "unused": 7,
+      "unused_datatype_field": 3,
+      "write_without_effect": 4
+    }
+  }
+}

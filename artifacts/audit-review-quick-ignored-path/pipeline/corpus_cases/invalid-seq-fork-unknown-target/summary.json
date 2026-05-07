@@ -1,0 +1,14 @@
+{
+  "case_id": "invalid-seq-fork-unknown-target",
+  "finding_count": 1,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "message": "BasePicture sequence 'MainSeq' alternative branch 2 has SEQFORK target 'MissingTarget' that does not exist in the sequence or module",
+  "mode": "strict",
+  "stage": "validation",
+  "target_file": "tests/fixtures/corpus/invalid/SeqForkUnknownTarget.s",
+  "validation_ok": false
+}

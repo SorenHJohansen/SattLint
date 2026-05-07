@@ -1,0 +1,34 @@
+{
+  "active_stage": null,
+  "canonical_command": "sattlint-repo-audit --profile full --check cli-consistency --skip-pipeline --fail-on high --output-dir artifacts/audit-cli-consistency-fix",
+  "completed_at": 1777641113.3449929,
+  "completed_stage_count": 2,
+  "created_at": 1777641113.301556,
+  "failed_stage_count": 0,
+  "kind": "sattlint.repo_audit.progress",
+  "overall_status": "pass",
+  "skipped_stage_count": 0,
+  "stage_count": 2,
+  "stages": [
+    {
+      "detail": "0 findings",
+      "duration_seconds": 0.02,
+      "ended_at": 1777641113.3240297,
+      "key": "custom_scan",
+      "label": "Build CLI consistency report",
+      "started_at": 1777641113.303824,
+      "status": "completed"
+    },
+    {
+      "detail": null,
+      "duration_seconds": 0.014,
+      "ended_at": 1777641113.3415198,
+      "key": "write_reports",
+      "label": "Write audit reports",
+      "started_at": 1777641113.3277948,
+      "status": "completed"
+    }
+  ],
+  "title": "Repository audit",
+  "updated_at": 1777641113.3449955
+}
