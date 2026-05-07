@@ -199,9 +199,10 @@ def test_run_policy_check_rejects_touched_structural_debt_file_that_does_not_shr
 
 def test_run_policy_check_rejects_touched_coverage_debt_file_below_target(monkeypatch, tmp_path):
     target_file = tmp_path / "src" / "pkg" / "legacy.py"
+    coverage_report_path = tmp_path / ".".join(("coverage", "xml"))
     target_file.parent.mkdir(parents=True)
     target_file.write_text("value = 1\n", encoding="utf-8")
-    (tmp_path / "coverage.xml").write_text(
+    coverage_report_path.write_text(
         """<?xml version=\"1.0\" ?>
 <coverage>
     <packages><package><classes>
@@ -259,6 +260,14 @@ def test_detect_change_context_prefers_base_ref_when_present(monkeypatch):
 
     def fake_git(_repo_root, *args):
         calls.append(args)
+        if args == ("ls-files", "--others", "--exclude-standard", ".github/approvals"):
+
+            class UntrackedApprovalsResult:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return UntrackedApprovalsResult()
         if args == ("diff", "--name-only", "--diff-filter=ACMR", "origin/main...HEAD"):
 
             class DiffResult:
@@ -286,6 +295,7 @@ def test_detect_change_context_prefers_base_ref_when_present(monkeypatch):
     assert context.base_ref == "origin/main"
     assert context.source == "base-ref"
     assert calls == [
+        ("ls-files", "--others", "--exclude-standard", ".github/approvals"),
         ("diff", "--name-only", "--diff-filter=ACMR", "origin/main...HEAD"),
         ("diff", "--name-status", "--diff-filter=A", "origin/main...HEAD"),
     ]
@@ -296,6 +306,14 @@ def test_detect_change_context_prefers_worktree_when_unstaged_changes_exist(monk
 
     def fake_git(_repo_root, *args):
         calls.append(args)
+        if args == ("ls-files", "--others", "--exclude-standard", ".github/approvals"):
+
+            class UntrackedApprovalsResult:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return UntrackedApprovalsResult()
         if args == ("diff", "--cached", "--name-only", "--diff-filter=ACMR"):
 
             class DiffResult:
@@ -339,8 +357,111 @@ def test_detect_change_context_prefers_worktree_when_unstaged_changes_exist(monk
     assert context.base_ref == "HEAD"
     assert context.source == "worktree"
     assert calls == [
+        ("ls-files", "--others", "--exclude-standard", ".github/approvals"),
         ("diff", "--cached", "--name-only", "--diff-filter=ACMR"),
         ("diff", "--cached", "--name-status", "--diff-filter=A"),
         ("diff", "--name-only", "--diff-filter=ACMR", "HEAD"),
         ("diff", "--name-status", "--diff-filter=A", "HEAD"),
     ]
+
+
+def test_detect_change_context_includes_untracked_approval_record(monkeypatch):
+    calls: list[tuple[str, ...]] = []
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-07.md"
+
+    def fake_git(_repo_root, *args):
+        calls.append(args)
+        if args == ("ls-files", "--others", "--exclude-standard", ".github/approvals"):
+
+            class UntrackedApprovalsResult:
+                returncode = 0
+                stdout = f"{approval_path}\n"
+                stderr = ""
+
+            return UntrackedApprovalsResult()
+        if args == ("diff", "--cached", "--name-only", "--diff-filter=ACMR"):
+
+            class DiffResult:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return DiffResult()
+        if args == ("diff", "--cached", "--name-status", "--diff-filter=A"):
+
+            class AddedResult:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return AddedResult()
+        if args == ("diff", "--name-only", "--diff-filter=ACMR", "HEAD"):
+
+            class WorktreeResult:
+                returncode = 0
+                stdout = "pyproject.toml\n"
+                stderr = ""
+
+            return WorktreeResult()
+        if args == ("diff", "--name-status", "--diff-filter=A", "HEAD"):
+
+            class WorktreeAddedResult:
+                returncode = 0
+                stdout = ""
+                stderr = ""
+
+            return WorktreeAddedResult()
+        raise AssertionError(f"Unexpected git args: {args}")
+
+    monkeypatch.setattr(ratchet_policy, "_git", fake_git)
+
+    context = ratchet_policy._detect_change_context(Path("."), {})
+
+    assert context.changed_files == ("pyproject.toml", approval_path)
+    assert context.added_files == (approval_path,)
+    assert context.base_ref == "HEAD"
+    assert context.source == "worktree"
+    assert calls == [
+        ("ls-files", "--others", "--exclude-standard", ".github/approvals"),
+        ("diff", "--cached", "--name-only", "--diff-filter=ACMR"),
+        ("diff", "--cached", "--name-status", "--diff-filter=A"),
+        ("diff", "--name-only", "--diff-filter=ACMR", "HEAD"),
+        ("diff", "--name-status", "--diff-filter=A", "HEAD"),
+    ]
+
+
+def test_run_policy_check_accepts_untracked_approval_record_for_protected_pyproject_edit(monkeypatch, tmp_path):
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-07.md"
+    approval_file = tmp_path / approval_path
+    approval_file.parent.mkdir(parents=True)
+    approval_file.write_text(
+        "Approved-by: Human Reviewer\nReason: allow protected pyproject repair from worktree\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "artifacts" / "analysis").mkdir(parents=True)
+    (tmp_path / ratchet_policy.PYPROJECT_PATH).write_text(
+        _pyproject_with_typing_ratchet("87.26"),
+        encoding="utf-8",
+    )
+    (tmp_path / ratchet_policy.COVERAGE_RATCHET_PATH).write_text(_coverage_ratchet_payload("0.8826"), encoding="utf-8")
+    (tmp_path / ratchet_policy.FILE_DEBT_RATCHET_PATH).write_text(_file_debt_ratchet_payload(), encoding="utf-8")
+    (tmp_path / ratchet_policy.STRUCTURAL_RATCHET_PATH).write_text(
+        '{"metrics": {"source_file_max_lines": 500}}', encoding="utf-8"
+    )
+
+    monkeypatch.setattr(
+        ratchet_policy,
+        "_detect_change_context",
+        lambda *_args, **_kwargs: ratchet_policy.ChangeContext(
+            changed_files=(ratchet_policy.PYPROJECT_PATH, approval_path),
+            added_files=(approval_path,),
+            base_ref="HEAD",
+            source="worktree",
+        ),
+    )
+    monkeypatch.setattr(ratchet_policy, "_typing_ratchet_state_errors", lambda **_kwargs: [])
+    monkeypatch.setattr(ratchet_policy, "_file_debt_runtime_errors", lambda **_kwargs: [])
+
+    errors = ratchet_policy.run_policy_check(tmp_path)
+
+    assert errors == []

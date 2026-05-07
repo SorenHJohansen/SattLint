@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess  # nosec B404
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
@@ -139,7 +140,7 @@ def entry_has_supporting_artifact(
 
 
 def entry_is_stale(
-    entry: dict[str, Any],
+    entry: Mapping[str, Any],
     *,
     repo_root: Path,
     attached_worktree_branches: set[str],
@@ -163,16 +164,16 @@ def entry_is_stale(
     return now - updated_at > stale_entry_grace_period
 
 
-def prune_stale_entries(
+def prune_stale_entries[EntryT: Mapping[str, Any]](
     repo_root: Path,
-    entries: list[dict[str, Any]],
+    entries: list[EntryT],
     *,
     attached_worktree_branches: Any,
     now: datetime,
     active_statuses: set[str] | frozenset[str],
     entry_is_stale: Any,
-) -> tuple[list[dict[str, Any]], int]:
-    kept_entries: list[dict[str, Any]] = []
+) -> tuple[list[EntryT], int]:
+    kept_entries: list[EntryT] = []
     dropped_entries = 0
     for entry in entries:
         if entry["status"] in active_statuses and entry_is_stale(

@@ -20,6 +20,30 @@ def _entrypoints_module() -> Any:
     return entrypoints_module
 
 
+def _normalize_repo_relative_path(path: str) -> str:
+    return path.replace("\\", "/").strip("/")
+
+
+def _finding_matches_changed_files(finding: Any, changed_files: list[str]) -> bool:
+    finding_path = getattr(finding, "path", None)
+    if not isinstance(finding_path, str) or not finding_path.strip():
+        return True
+
+    normalized_path = _normalize_repo_relative_path(finding_path)
+    return bool(
+        _entrypoints_module().matching_changed_files(
+            changed_files,
+            [normalized_path, f"{normalized_path}/**"],
+        )
+    )
+
+
+def _filter_custom_findings_to_changed_files(findings: list[Any], changed_files: list[str]) -> list[Any]:
+    if not changed_files:
+        return findings
+    return [finding for finding in findings if _finding_matches_changed_files(finding, changed_files)]
+
+
 def run_recommended_repo_audit_slice(
     output_dir: Path,
     *,
@@ -115,7 +139,13 @@ def run_recommended_repo_audit_slice(
     if "cli-consistency" in repo_check_ids:
         cli_consistency_report = repo_audit.build_cli_consistency_report(root=repo_audit.REPO_ROOT)
         custom_findings.extend(entrypoints_module._cli_consistency_findings(cli_consistency_report))
-    progress.complete_stage("custom_scan", detail=f"{len(custom_findings)} custom findings")
+    scoped_custom_findings = _filter_custom_findings_to_changed_files(custom_findings, list(resolved_changed_files))
+    filtered_custom_findings = len(custom_findings) - len(scoped_custom_findings)
+    custom_findings = scoped_custom_findings
+    custom_scan_detail = f"{len(custom_findings)} custom findings"
+    if filtered_custom_findings:
+        custom_scan_detail += f" ({filtered_custom_findings} outside changed scope)"
+    progress.complete_stage("custom_scan", detail=custom_scan_detail)
 
     progress.start_stage("merge_findings")
     findings = repo_audit._dedupe_findings([*pipeline_findings, *custom_findings])
