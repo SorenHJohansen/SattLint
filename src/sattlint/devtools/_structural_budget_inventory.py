@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any
 
 
+def count_structural_lines(text: str) -> int:
+    return sum(1 for line in text.splitlines() if (stripped := line.strip()) and not stripped.startswith("#"))
+
+
 def iter_structural_python_files(repo_root: Path) -> Iterator[tuple[str, Path]]:
     for path in sorted((repo_root / "src").rglob("*.py")):
         if path.is_file():
@@ -60,7 +64,7 @@ def read_structural_text(path: Path) -> tuple[str | None, int | None, dict[str, 
             return None, None, {"error": str(read_exc), "error_type": type(read_exc).__name__}
     except OSError as exc:
         return None, None, {"error": str(exc), "error_type": type(exc).__name__}
-    return text, len(text.splitlines()), None
+    return text, count_structural_lines(text), None
 
 
 def summarize_structural_budget_metrics(report: dict[str, Any]) -> dict[str, int]:

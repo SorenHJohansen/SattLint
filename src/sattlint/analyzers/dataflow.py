@@ -49,6 +49,15 @@ def _is_scalar_value(value: ScalarValue | object) -> TypeGuard[ScalarValue]:
     return isinstance(value, bool | int | float | str)
 
 
+def _invert_compare_operator(operator: str) -> str:
+    return {
+        "<": ">",
+        ">": "<",
+        "<=": ">=",
+        ">=": "<=",
+    }.get(operator, operator)
+
+
 @dataclass(frozen=True)
 class _ResolvedRef:
     key: tuple[str, ...]
@@ -819,7 +828,7 @@ class DataflowAnalyzer:
         if right_ref is not None and left_ref is None and left_literal is not _UNKNOWN:
             return self._fact_from_ref_and_literal(
                 right_ref,
-                self._invert_compare_operator(operator),
+                _invert_compare_operator(operator),
                 left_literal,
             )
 
@@ -842,14 +851,6 @@ class DataflowAnalyzer:
             return ("compare", resolved.key, (operator, literal))
 
         return None
-
-    def _invert_compare_operator(self, operator: str) -> str:
-        return {
-            "<": ">",
-            ">": "<",
-            "<=": ">=",
-            ">=": "<=",
-        }.get(operator, operator)
 
     def _facts_contradict(self, facts: list[ConditionFact]) -> bool | None:
         if not facts:

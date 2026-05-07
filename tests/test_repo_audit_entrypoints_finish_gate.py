@@ -1,0 +1,223 @@
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+from sattlint.devtools import repo_audit, repo_audit_entrypoints
+
+
+def test_run_recommended_repo_audit_finish_gate_writes_failed_step_report(monkeypatch, tmp_path):
+    recommendation = {
+        "changed_files": ["src/sattlint/app.py"],
+        "recommended_checks": [
+            {
+                "id": "cli",
+                "source": "repo-audit",
+                "owner_surface": "cli",
+                "path_globs": ["src/sattlint/app.py"],
+                "owner_test_targets": ["tests/test_app.py"],
+                "reason": "Matched src/sattlint/app.py against the cli routing globs.",
+            }
+        ],
+    }
+    run_results = iter(
+        [
+            SimpleNamespace(exit_code=0, duration_seconds=0.1),
+            SimpleNamespace(exit_code=1, duration_seconds=0.2),
+            SimpleNamespace(exit_code=0, duration_seconds=0.3),
+            SimpleNamespace(exit_code=0, duration_seconds=0.4),
+        ]
+    )
+
+    monkeypatch.setattr(
+        repo_audit_entrypoints,
+        "build_repo_audit_check_recommendations",
+        lambda **kwargs: recommendation,
+    )
+    monkeypatch.setattr(
+        repo_audit_entrypoints,
+        "run_recommended_repo_audit_slice",
+        lambda *args, **kwargs: {"overall_status": "pass", "finding_count": 0},
+    )
+    monkeypatch.setattr(
+        repo_audit_entrypoints.pipeline_module,
+        "_resolve_venv_tool",
+        lambda tool: f".venv/Scripts/{tool}.exe",
+    )
+    monkeypatch.setattr(
+        repo_audit_entrypoints.pipeline_module,
+        "_resolve_python_executable",
+        lambda: ".venv/Scripts/python.exe",
+    )
+    monkeypatch.setattr(repo_audit_entrypoints.pipeline_module, "_run_command", lambda *_args: next(run_results))
+    monkeypatch.setattr(repo_audit, "_write_audit_run_history", lambda *args, **kwargs: None)
+
+    summary = repo_audit_entrypoints.run_recommended_repo_audit_finish_gate(
+        tmp_path,
+        profile="full",
+        fail_on="high",
+        include_generated=False,
+        suspicious_identifiers=[],
+        skip_vulture=False,
+        skip_bandit=False,
+        changed_files=["src/sattlint/app.py"],
+    )
+
+    finish_gate = json.loads((tmp_path / "finish_gate.json").read_text(encoding="utf-8"))
+
+    assert summary["overall_status"] == "fail"
+    assert finish_gate["status"] == "fail"
+    assert [entry["id"] for entry in finish_gate["commands"]] == [
+        "ruff-touched-python",
+        "pyright-touched-python",
+        "ratchet-policy",
+        "owner-pytest-coverage",
+    ]
+    assert finish_gate["commands"][1]["status"] == "fail"
+    assert finish_gate["commands"][1]["exit_code"] == 1
+    assert finish_gate["owner_test_targets"] == ["tests/test_app.py"]
+
+
+def test_run_recommended_repo_audit_slice_writes_combined_reports(monkeypatch, tmp_path):
+    recommendation = {
+        "recommended_check_ids": ["ruff", "cli", "ai-gc", "cli-consistency"],
+        "recommended_pipeline_check_ids": ["ruff"],
+        "recommended_repo_audit_check_ids": ["cli", "ai-gc", "cli-consistency"],
+    }
+    pipeline_finding = repo_audit.Finding(
+        "pipeline-gap",
+        "coverage",
+        "medium",
+        "high",
+        "Pipeline gap.",
+        path="src/pipeline.py",
+    )
+    custom_finding = repo_audit.Finding(
+        "custom-gap",
+        "architecture",
+        "medium",
+        "high",
+        "Custom gap.",
+        path="src/custom.py",
+    )
+    cli_consistency_report = {
+        "status": "fail",
+        "gaps": {
+            "undeclared_subcommands": [{"subcommand": "ghost", "referenced_in": "README.md", "line": 7}],
+            "undeclared_scripts": [{"script": "ghost-script", "referenced_in": "README.md", "line": 9}],
+        },
+    }
+    ai_gc_report = {
+        "kind": "sattlint.ai_gc",
+        "schema_version": 1,
+        "generated_by": "sattlint.devtools.ai_gc",
+        "mode": "report",
+        "root": ".",
+        "status": "needs-attention",
+        "summary": {
+            "candidate_count": 1,
+            "artifact_candidate_count": 1,
+            "manifest_drift_candidate_count": 0,
+            "ledger_candidate_count": 0,
+            "applied_count": 0,
+            "failure_count": 0,
+            "total_candidate_bytes": 12,
+        },
+        "candidates": [],
+        "applied_actions": [],
+        "failures": [],
+    }
+
+    monkeypatch.setattr(
+        repo_audit_entrypoints,
+        "build_repo_audit_check_recommendations",
+        lambda **kwargs: recommendation,
+    )
+    monkeypatch.setattr(
+        repo_audit_entrypoints.pipeline_module,
+        "_run_pipeline",
+        lambda *args, **kwargs: {"status": {"overall_status": "pass"}},
+    )
+    monkeypatch.setattr(repo_audit, "_find_pipeline_findings", lambda *_args: [pipeline_finding])
+    monkeypatch.setattr(repo_audit_entrypoints, "collect_custom_findings", lambda *args, **kwargs: [custom_finding])
+    monkeypatch.setattr(repo_audit, "build_ai_gc_report", lambda *_args, **_kwargs: ai_gc_report)
+    monkeypatch.setattr(
+        repo_audit,
+        "build_cli_consistency_report",
+        lambda *args, **kwargs: cli_consistency_report,
+    )
+    monkeypatch.setattr(repo_audit, "_write_markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(repo_audit, "_write_audit_run_history", lambda *args, **kwargs: None)
+    monkeypatch.setattr(repo_audit, "_mirror_latest_reports", lambda *args, **kwargs: None)
+
+    summary = repo_audit_entrypoints.run_recommended_repo_audit_slice(
+        tmp_path,
+        profile="full",
+        fail_on="high",
+        include_generated=False,
+        suspicious_identifiers=[],
+        skip_vulture=False,
+        skip_bandit=False,
+        changed_files=["src/sattlint/app.py"],
+    )
+
+    status_report = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    summary_report = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+
+    assert summary["cli_consistency_status"] == "fail"
+    assert summary_report["pipeline_ran"] is True
+    assert summary_report["selected_pipeline_checks"] == ["ruff"]
+    assert summary_report["selected_repo_audit_checks"] == ["cli", "ai-gc", "cli-consistency"]
+    assert summary_report["cli_consistency_status"] == "fail"
+    assert status_report["overall_status"] == "fail"
+    assert status_report["pipeline_status_report"].endswith("/pipeline/status.json")
+    assert (tmp_path / "ai_gc.json").exists()
+    assert (tmp_path / "cli_consistency.json").exists()
+
+
+def test_repo_audit_entrypoints_cover_delegate_and_default_manifest_branches(monkeypatch, tmp_path):
+    from sattlint.devtools import _repo_audit_full_run as full_run_helper
+
+    sentinel_summary = {"summary": "selected-check"}
+    monkeypatch.setattr(full_run_helper, "_run_repo_audit_findings_checks", lambda *args, **kwargs: sentinel_summary)
+
+    result = repo_audit_entrypoints._run_repo_audit_findings_checks(
+        tmp_path,
+        profile="full",
+        check_ids=["text-scan"],
+        fail_on="high",
+        include_generated=False,
+        suspicious_identifiers=(),
+    )
+
+    fake_repo_audit = SimpleNamespace(PIPELINE_OUTPUT_DIRNAME="pipeline", REPO_ROOT=tmp_path)
+    monkeypatch.setattr(repo_audit_entrypoints, "_repo_audit_module", lambda: fake_repo_audit)
+    monkeypatch.setattr(
+        repo_audit_entrypoints.pipeline_module,
+        "build_pipeline_check_recommendations",
+        lambda **kwargs: {
+            "recommended_check_ids": ["ruff"],
+            "suggested_finish_gate_commands": ["sattlint-analysis-pipeline --run-recommended-finish-gate"],
+        },
+    )
+
+    planning_report = repo_audit_entrypoints._build_selected_finish_gate_plan(
+        profile="full",
+        output_dir=tmp_path,
+        fail_on="high",
+        selected_surface="pipeline",
+        changed_files=["src/main.py"],
+        planning_context={"finish_gate_template": "invalid", "owner_test_targets": ["tests/test_main.py"]},
+        recommendation={"recommended_check_ids": ["cli"]},
+    )
+
+    manifest_dir = tmp_path / "corpus-manifests"
+    monkeypatch.setattr(repo_audit_entrypoints.pipeline_module, "DEFAULT_CORPUS_MANIFEST_DIR", manifest_dir)
+
+    assert result is sentinel_summary
+    assert planning_report["description"] == ""
+    assert planning_report["includes"] == []
+    assert repo_audit_entrypoints._default_corpus_manifest_dir() is None
+
+    manifest_dir.mkdir(parents=True)
+    assert repo_audit_entrypoints._default_corpus_manifest_dir() is None

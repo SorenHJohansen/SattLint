@@ -32,6 +32,7 @@ from sattlint.analyzers.registry import (
 from sattlint.app import VARIABLE_ANALYSES
 from sattlint.core.semantic import discover_workspace_sources, load_workspace_snapshot
 from sattlint.devtools._structural_budget_inventory import (
+    count_structural_lines,
     iter_structural_markdown_files,
     iter_structural_python_files,
     read_structural_text,
@@ -500,6 +501,7 @@ def collect_structural_budget_report(
     test_file_line_counts: list[int] = []
     markdown_file_line_counts: list[int] = []
     current_file_line_counts: dict[str, int] = {}
+    source_lines_by_path: dict[str, list[str]] = {}
 
     for scope, path in chain(iter_structural_python_files(repo_root), iter_structural_markdown_files(repo_root)):
         relative_path = sanitize_path_for_report(path, repo_root=repo_root) or path.as_posix()
@@ -536,6 +538,8 @@ def collect_structural_budget_report(
         if text is None or scope == "markdown":
             continue
 
+        source_lines_by_path[relative_path] = text.splitlines()
+
         try:
             tree = ast.parse(text, filename=relative_path)
         except SyntaxError as exc:
@@ -569,7 +573,8 @@ def collect_structural_budget_report(
                 end_lineno = getattr(node, "end_lineno", None)
                 if end_lineno is None:
                     continue
-                line_span = end_lineno - node.lineno + 1
+                function_lines = source_lines_by_path[relative_path][node.lineno - 1 : end_lineno]
+                line_span = count_structural_lines("\n".join(function_lines))
                 if line_span > function_max_lines:
                     functions_over_budget.append(
                         {

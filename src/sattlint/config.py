@@ -396,6 +396,168 @@ def target_exists(target: str, cfg: dict) -> bool:
     return False
 
 
+def _self_check_directories(cfg: dict) -> bool:
+    ok = True
+
+    for name in ("program_dir", "ABB_lib_dir", "icf_dir"):
+        raw = cfg.get(name, "")
+        if not raw:
+            print(f"⚠ {name} not set")
+            continue
+        p = Path(raw)
+        if not p.exists():
+            print(f"❌ {name} does not exist: {p}")
+            ok = False
+        elif not os.access(p, os.R_OK):
+            print(f"❌ {name} not readable: {p}")
+            ok = False
+        else:
+            print(f"✔ {name}: {p}")
+
+    for p in cfg.get("other_lib_dirs", []):
+        path = Path(p)
+        if not path.exists():
+            print(f"⚠ other_lib_dirs entry missing: {path}")
+        else:
+            print(f"✔ other_lib_dirs: {path}")
+
+    return ok
+
+
+def _self_check_targets(cfg: dict) -> bool:
+    ok = True
+    targets = [str(target).strip() for target in cfg.get("analyzed_programs_and_libraries", []) if str(target).strip()]
+    if not targets:
+        print("WARNING analyzed_programs_and_libraries is empty")
+        print("Configure targets before running analyses, documentation, or AST cache refresh.")
+        return ok
+
+    print("Analyzed programs/libraries:")
+    for target in targets:
+        if target_exists(target, cfg):
+            print(f"✔ {target}")
+        else:
+            print(f"❌ {target} (not found)")
+            ok = False
+    return ok
+
+
+def _self_check_documentation(cfg: dict) -> bool:
+    ok = True
+    documentation = cfg.get("documentation", {})
+    if not isinstance(documentation, dict):
+        print("❌ documentation must be a table/object")
+        return False
+
+    classifications = documentation.get("classifications", {})
+    if not isinstance(classifications, dict) or not classifications:
+        print("❌ documentation.classifications must be a non-empty table/object")
+        return False
+
+    for category, rule in classifications.items():
+        if category not in _DOCUMENTATION_CATEGORY_KEYS:
+            print(f"❌ documentation.classifications.{category} is not a supported category")
+            ok = False
+            continue
+        if not isinstance(rule, dict):
+            print(f"❌ documentation.classifications.{category} must be a table/object")
+            ok = False
+            continue
+        for key in _DOCUMENTATION_RULE_LIST_KEYS:
+            values = rule.get(key, [])
+            if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+                print(f"❌ documentation.classifications.{category}.{key} must be a list of strings")
+                ok = False
+        for key in _DOCUMENTATION_RULE_LIST_KEYS:
+            values = [str(item) for item in rule.get(key, []) if str(item).strip()]
+            if values:
+                print(f"✔ documentation.classifications.{category}.{key}: " + ", ".join(values))
+
+    return ok
+
+
+def _self_check_analysis(cfg: dict) -> bool:
+    ok = True
+    analysis = cfg.get("analysis", {})
+    if not isinstance(analysis, dict):
+        print("❌ analysis must be a table/object")
+        return False
+
+    sfc = analysis.get("sfc", {})
+    if not isinstance(sfc, dict):
+        print("❌ analysis.sfc must be a table/object")
+        ok = False
+    else:
+        step_groups = sfc.get("mutually_exclusive_steps", [])
+        if not isinstance(step_groups, list):
+            print("❌ analysis.sfc.mutually_exclusive_steps must be a list")
+            ok = False
+        else:
+            for index, group in enumerate(step_groups, start=1):
+                if not isinstance(group, list) or not all(isinstance(item, str) for item in group):
+                    print(f"❌ analysis.sfc.mutually_exclusive_steps[{index}] must be a list of strings")
+                    ok = False
+
+        step_contracts = sfc.get("step_contracts", {})
+        if not isinstance(step_contracts, dict):
+            print("❌ analysis.sfc.step_contracts must be a table/object")
+            ok = False
+        else:
+            for step_name, contract in step_contracts.items():
+                if not isinstance(step_name, str) or not step_name.strip():
+                    print("❌ analysis.sfc.step_contracts keys must be non-empty strings")
+                    ok = False
+                    continue
+                if not isinstance(contract, dict):
+                    print(f"❌ analysis.sfc.step_contracts.{step_name} must be a table/object")
+                    ok = False
+                    continue
+                for key in ("required_enter_writes", "required_exit_writes"):
+                    values = contract.get(key, [])
+                    if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+                        print(f"❌ analysis.sfc.step_contracts.{step_name}.{key} must be a list of strings")
+                        ok = False
+
+    naming = analysis.get("naming", {})
+    if not isinstance(naming, dict):
+        print("❌ analysis.naming must be a table/object")
+        return False if ok else False
+
+    for target in _NAMING_RULE_TARGETS:
+        rule = naming.get(target, {})
+        if not isinstance(rule, dict):
+            print(f"❌ analysis.naming.{target} must be a table/object")
+            ok = False
+            continue
+        style = str(rule.get("style", "infer")).strip().lower()
+        if style not in _NAMING_STYLE_KEYS:
+            print(f"❌ analysis.naming.{target}.style must be one of: " + ", ".join(_NAMING_STYLE_KEYS))
+            ok = False
+        allow = rule.get("allow", [])
+        if not isinstance(allow, list) or not all(isinstance(item, str) for item in allow):
+            print(f"❌ analysis.naming.{target}.allow must be a list of strings")
+            ok = False
+
+    return ok
+
+
+def _self_check_graphics_rules() -> bool:
+    graphics_rules_path = get_graphics_rules_path()
+    if graphics_rules_path.exists():
+        from . import graphics_rules as graphics_rules_module
+
+        try:
+            graphics_rules, _created = graphics_rules_module.load_graphics_rules(graphics_rules_path)
+        except Exception as exc:
+            print(f"? graphics_rules_path invalid: {graphics_rules_path} ({exc})")
+            return False
+        print(f"? graphics_rules_path: {graphics_rules_path} ({len(graphics_rules.get('rules', []))} rules)")
+        return True
+
+    print(f"? graphics_rules_path not created yet: {graphics_rules_path}")
+    return True
+
+
 def self_check(cfg: dict) -> bool:
     print("\n--- Self-check diagnostics ---")
     ok = True
@@ -421,145 +583,11 @@ def self_check(cfg: dict) -> bool:
             print(f"❌ Missing config key: {k}")
             ok = False
 
-    # Directories
-    for name in ("program_dir", "ABB_lib_dir", "icf_dir"):
-        raw = cfg.get(name, "")
-        if not raw:
-            print(f"⚠ {name} not set")
-            continue
-        p = Path(raw)
-        if not p.exists():
-            print(f"❌ {name} does not exist: {p}")
-            ok = False
-        elif not os.access(p, os.R_OK):
-            print(f"❌ {name} not readable: {p}")
-            ok = False
-        else:
-            print(f"✔ {name}: {p}")
-
-    # other_lib_dirs
-    for p in cfg.get("other_lib_dirs", []):
-        path = Path(p)
-        if not path.exists():
-            print(f"⚠ other_lib_dirs entry missing: {path}")
-        else:
-            print(f"✔ other_lib_dirs: {path}")
-
-    targets = [str(target).strip() for target in cfg.get("analyzed_programs_and_libraries", []) if str(target).strip()]
-    if not targets:
-        print("WARNING analyzed_programs_and_libraries is empty")
-        print("Configure targets before running analyses, documentation, or AST cache refresh.")
-    else:
-        print("Analyzed programs/libraries:")
-        for target in targets:
-            if target_exists(target, cfg):
-                print(f"✔ {target}")
-            else:
-                print(f"❌ {target} (not found)")
-                ok = False
-
-    documentation = cfg.get("documentation", {})
-    if not isinstance(documentation, dict):
-        print("❌ documentation must be a table/object")
-        ok = False
-    else:
-        classifications = documentation.get("classifications", {})
-        if not isinstance(classifications, dict) or not classifications:
-            print("❌ documentation.classifications must be a non-empty table/object")
-            ok = False
-        else:
-            for category, rule in classifications.items():
-                if category not in _DOCUMENTATION_CATEGORY_KEYS:
-                    print(f"❌ documentation.classifications.{category} is not a supported category")
-                    ok = False
-                    continue
-                if not isinstance(rule, dict):
-                    print(f"❌ documentation.classifications.{category} must be a table/object")
-                    ok = False
-                    continue
-                for key in _DOCUMENTATION_RULE_LIST_KEYS:
-                    values = rule.get(key, [])
-                    if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
-                        print(f"❌ documentation.classifications.{category}.{key} must be a list of strings")
-                        ok = False
-                for key in _DOCUMENTATION_RULE_LIST_KEYS:
-                    values = [str(item) for item in rule.get(key, []) if str(item).strip()]
-                    if values:
-                        print(f"✔ documentation.classifications.{category}.{key}: " + ", ".join(values))
-
-    analysis = cfg.get("analysis", {})
-    if not isinstance(analysis, dict):
-        print("❌ analysis must be a table/object")
-        ok = False
-    else:
-        sfc = analysis.get("sfc", {})
-        if not isinstance(sfc, dict):
-            print("❌ analysis.sfc must be a table/object")
-            ok = False
-        else:
-            step_groups = sfc.get("mutually_exclusive_steps", [])
-            if not isinstance(step_groups, list):
-                print("❌ analysis.sfc.mutually_exclusive_steps must be a list")
-                ok = False
-            else:
-                for index, group in enumerate(step_groups, start=1):
-                    if not isinstance(group, list) or not all(isinstance(item, str) for item in group):
-                        print(f"❌ analysis.sfc.mutually_exclusive_steps[{index}] must be a list of strings")
-                        ok = False
-
-            step_contracts = sfc.get("step_contracts", {})
-            if not isinstance(step_contracts, dict):
-                print("❌ analysis.sfc.step_contracts must be a table/object")
-                ok = False
-            else:
-                for step_name, contract in step_contracts.items():
-                    if not isinstance(step_name, str) or not step_name.strip():
-                        print("❌ analysis.sfc.step_contracts keys must be non-empty strings")
-                        ok = False
-                        continue
-                    if not isinstance(contract, dict):
-                        print(f"❌ analysis.sfc.step_contracts.{step_name} must be a table/object")
-                        ok = False
-                        continue
-                    for key in ("required_enter_writes", "required_exit_writes"):
-                        values = contract.get(key, [])
-                        if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
-                            print(f"❌ analysis.sfc.step_contracts.{step_name}.{key} must be a list of strings")
-                            ok = False
-
-        naming = analysis.get("naming", {})
-        if not isinstance(naming, dict):
-            print("❌ analysis.naming must be a table/object")
-            ok = False
-        else:
-            for target in _NAMING_RULE_TARGETS:
-                rule = naming.get(target, {})
-                if not isinstance(rule, dict):
-                    print(f"❌ analysis.naming.{target} must be a table/object")
-                    ok = False
-                    continue
-                style = str(rule.get("style", "infer")).strip().lower()
-                if style not in _NAMING_STYLE_KEYS:
-                    print(f"❌ analysis.naming.{target}.style must be one of: " + ", ".join(_NAMING_STYLE_KEYS))
-                    ok = False
-                allow = rule.get("allow", [])
-                if not isinstance(allow, list) or not all(isinstance(item, str) for item in allow):
-                    print(f"❌ analysis.naming.{target}.allow must be a list of strings")
-                    ok = False
-
-    graphics_rules_path = get_graphics_rules_path()
-    if graphics_rules_path.exists():
-        from . import graphics_rules as graphics_rules_module
-
-        try:
-            graphics_rules, _created = graphics_rules_module.load_graphics_rules(graphics_rules_path)
-        except Exception as exc:
-            print(f"? graphics_rules_path invalid: {graphics_rules_path} ({exc})")
-            ok = False
-        else:
-            print(f"? graphics_rules_path: {graphics_rules_path} ({len(graphics_rules.get('rules', []))} rules)")
-    else:
-        print(f"? graphics_rules_path not created yet: {graphics_rules_path}")
+    ok = _self_check_directories(cfg) and ok
+    ok = _self_check_targets(cfg) and ok
+    ok = _self_check_documentation(cfg) and ok
+    ok = _self_check_analysis(cfg) and ok
+    ok = _self_check_graphics_rules() and ok
 
     print("------------------------------\n")
     return ok
