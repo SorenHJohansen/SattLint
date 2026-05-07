@@ -26,6 +26,13 @@ def _read_json(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _read_json_optional(path: Path) -> dict[str, Any]:
+    try:
+        return _read_json(path)
+    except FileNotFoundError:
+        return {}
+
+
 def _safe_float(value: Any) -> float:
     try:
         return float(value)
@@ -263,8 +270,8 @@ def build_report(audit_dir: Path) -> dict[str, Any]:
     ruff_report = _read_json(audit_dir / "pipeline" / "ruff.json")
     pyright_report = _read_json(audit_dir / "pipeline" / "pyright.json")
     pytest_report = _read_json(audit_dir / "pipeline" / "pytest.json")
-    coverage_ratchet = _read_json(DEFAULT_COVERAGE_RATCHET)
-    structural_ratchet = _read_json(DEFAULT_STRUCTURAL_RATCHET)
+    coverage_ratchet = _read_json_optional(DEFAULT_COVERAGE_RATCHET)
+    structural_ratchet = _read_json_optional(DEFAULT_STRUCTURAL_RATCHET)
     context_report = context_health.build_report()
 
     largest_files = _largest_files()
