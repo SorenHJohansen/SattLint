@@ -1,0 +1,23 @@
+from __future__ import annotations
+
+from tests import test_pipeline_run as pipeline_run_tests
+
+
+def test_build_pipeline_check_recommendations_routes_changed_files_to_matching_checks(tmp_path):
+    pipeline_run_tests.test_build_pipeline_check_recommendations_routes_changed_files_to_matching_checks(tmp_path)
+
+
+def test_run_recommended_pipeline_finish_gate_records_change_scoped_coverage(monkeypatch, tmp_path):
+    pipeline_run_tests.test_run_recommended_pipeline_finish_gate_records_change_scoped_coverage(monkeypatch, tmp_path)
+
+
+def test_main_recommend_checks_prints_json(tmp_path, capsys):
+    pipeline_run_tests.test_main_recommend_checks_prints_json(tmp_path, capsys)
+
+
+def test_main_run_recommended_slice_uses_recommended_check_ids(monkeypatch, tmp_path):
+    pipeline_run_tests.test_main_run_recommended_slice_uses_recommended_check_ids(monkeypatch, tmp_path)
+
+
+def test_main_run_recommended_finish_gate_uses_finish_gate_runner(monkeypatch, tmp_path):
+    pipeline_run_tests.test_main_run_recommended_finish_gate_uses_finish_gate_runner(monkeypatch, tmp_path)

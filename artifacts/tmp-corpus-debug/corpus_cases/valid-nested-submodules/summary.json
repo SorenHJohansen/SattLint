@@ -1,0 +1,12 @@
+{
+  "case_id": "valid-nested-submodules",
+  "error": "'DataflowAnalyzer' object has no attribute '_analyzed_target_is_library'",
+  "finding_count": 1,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "mode": "workspace",
+  "target_file": "tests/fixtures/corpus/valid/NestedSubmodules.s"
+}

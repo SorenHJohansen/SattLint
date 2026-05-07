@@ -1,0 +1,373 @@
+{
+  "artifact_registry": {
+    "artifacts": [
+      {
+        "artifact_id": "progress",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "progress.json",
+        "optional": false,
+        "producer": "progress",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.pipeline.progress",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "status",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "status.json",
+        "optional": false,
+        "producer": "status",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.pipeline.status",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "summary",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "summary.json",
+        "optional": false,
+        "producer": "summary",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.pipeline.summary",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "findings",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "findings.json",
+        "optional": false,
+        "producer": "findings",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.findings",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "analysis_diff",
+        "blocking": false,
+        "depends_on": [
+          "findings"
+        ],
+        "enabled": false,
+        "filename": "analysis_diff.json",
+        "optional": true,
+        "producer": "analysis_diff",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.analysis_diff",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "corpus_results",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "corpus_results.json",
+        "optional": true,
+        "producer": "corpus_results",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.corpus_results",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "artifact_registry",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "artifact_registry.json",
+        "optional": false,
+        "producer": "artifact_registry",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.artifact_registry",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "environment",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "environment.json",
+        "optional": false,
+        "producer": "environment",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.environment",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "ruff",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "ruff.json",
+        "optional": false,
+        "producer": "ruff",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.tool_report",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "pyright",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "pyright.json",
+        "optional": false,
+        "producer": "pyright",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.tool_report",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "pytest",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "pytest.json",
+        "optional": false,
+        "producer": "pytest",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.tool_report",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "incremental_analysis",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "incremental_analysis.json",
+        "optional": true,
+        "producer": "incremental_analysis",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.incremental_analysis",
+        "schema_version": 1,
+        "used_by": []
+      }
+    ],
+    "generated_by": "sattlint.devtools.pipeline",
+    "profile": "quick"
+  },
+  "canonical_command": "sattlint-analysis-pipeline --profile quick --output-dir artifacts/audit-review-quick-ignored-path/pipeline",
+  "counts": {
+    "architecture_findings": 0,
+    "bandit_findings": 0,
+    "baseline_changed_findings": 0,
+    "baseline_new_findings": 0,
+    "baseline_resolved_findings": 0,
+    "baseline_unchanged_findings": 0,
+    "call_graph_edges": 0,
+    "corpus_case_count": 48,
+    "corpus_execution_error_count": 0,
+    "corpus_failed_case_count": 0,
+    "corpus_passed_case_count": 48,
+    "dependency_graph_edges": 0,
+    "graphics_layout_entries": 0,
+    "graphics_layout_findings": 0,
+    "graphics_layout_groups": 0,
+    "impact_analysis_library_nodes": 0,
+    "impact_analysis_module_nodes": 0,
+    "incremental_blocking_analyzer_count": 0,
+    "incremental_candidate_analyzer_count": 0,
+    "incremental_changed_file_count": 13,
+    "normalized_findings": 0,
+    "performance_budget_violation_count": 0,
+    "phase2_rule_metadata_advisory_gaps": 0,
+    "phase2_rule_metadata_blocking_gaps": 0,
+    "profiling_phase_count": 0,
+    "profiling_slow_phase_count": 0,
+    "profiling_total_duration_ms": 0.0,
+    "pyright_errors": 0,
+    "pyright_warnings": 0,
+    "pytest_errors": 0,
+    "pytest_failures": 0,
+    "ruff_findings": 0,
+    "semantic_rule_count": 0,
+    "trace_dataflow_issues": 0,
+    "trace_transform_violations": 0,
+    "trace_unreachable_logic": 0,
+    "vulture_findings": 0,
+    "workspace_graph_snapshot_failures": 0
+  },
+  "entry_report": "status.json",
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "output_dir": "artifacts/audit-review-quick-ignored-path/pipeline",
+  "profile": "quick",
+  "progress_report": "artifacts/audit-review-quick-ignored-path/pipeline/progress.json",
+  "reports": {
+    "accuracy_metrics": null,
+    "ai_templates": null,
+    "analysis_diff": null,
+    "analyzer_registry": null,
+    "architecture": null,
+    "artifact_registry": "artifact_registry.json",
+    "bandit": null,
+    "call_graph": null,
+    "corpus_results": "corpus_results.json",
+    "coverage_summary": null,
+    "dependency_graph": null,
+    "differential": null,
+    "environment": "environment.json",
+    "findings": "findings.json",
+    "graphics_layout": null,
+    "impact_analysis": null,
+    "incremental_analysis": "incremental_analysis.json",
+    "mutation_results": null,
+    "performance_budget": null,
+    "production_summary": null,
+    "profiling_summary": null,
+    "progress": "progress.json",
+    "pyright": "pyright.json",
+    "pytest": "pytest.json",
+    "ruff": "ruff.json",
+    "rule_metrics": null,
+    "sattline_semantic": null,
+    "status": "status.json",
+    "summary": "summary.json",
+    "symbolic_summary": null,
+    "trace": null,
+    "vulture": null
+  },
+  "status": {
+    "bandit_exit_code": null,
+    "baseline_drift_exit_code": null,
+    "corpus_exit_code": 0,
+    "failing_tools": [],
+    "non_blocking_tools": [],
+    "overall_status": "pass",
+    "performance_budget_exit_code": null,
+    "pyright_exit_code": 0,
+    "pytest_exit_code": 0,
+    "ruff_exit_code": 0,
+    "rule_metadata_exit_code": null,
+    "tool_statuses": {
+      "bandit": {
+        "detail": "skipped by profile",
+        "finding_count": 0,
+        "normalized_exit_code": 0,
+        "raw_exit_code": null,
+        "report": null,
+        "status": "skipped"
+      },
+      "baseline_drift": {
+        "detail": "skipped: no baseline supplied",
+        "finding_count": 0,
+        "normalized_exit_code": null,
+        "raw_exit_code": null,
+        "report": null,
+        "status": "skipped"
+      },
+      "corpus": {
+        "detail": "48 cases, 0 failed",
+        "finding_count": 0,
+        "normalized_exit_code": 0,
+        "raw_exit_code": null,
+        "report": "corpus_results.json",
+        "status": "pass"
+      },
+      "performance_budget": {
+        "detail": "skipped because trace profiling is unavailable",
+        "finding_count": 0,
+        "normalized_exit_code": null,
+        "raw_exit_code": null,
+        "report": null,
+        "status": "skipped"
+      },
+      "pyright": {
+        "detail": "0 errors, 0 warnings",
+        "finding_count": 0,
+        "normalized_exit_code": 0,
+        "raw_exit_code": 0,
+        "report": "pyright.json",
+        "status": "pass"
+      },
+      "pytest": {
+        "detail": "220 tests, 0 failures, 0 errors",
+        "finding_count": 0,
+        "normalized_exit_code": 0,
+        "raw_exit_code": 0,
+        "report": "pytest.json",
+        "status": "pass"
+      },
+      "ruff": {
+        "detail": "0 findings",
+        "finding_count": 0,
+        "normalized_exit_code": 0,
+        "raw_exit_code": 0,
+        "report": "ruff.json",
+        "status": "pass"
+      },
+      "rule_metadata": {
+        "detail": "skipped by profile",
+        "finding_count": 0,
+        "normalized_exit_code": null,
+        "raw_exit_code": null,
+        "report": null,
+        "status": "skipped"
+      },
+      "vulture": {
+        "detail": "skipped by profile",
+        "finding_count": 0,
+        "normalized_exit_code": 0,
+        "raw_exit_code": null,
+        "report": null,
+        "status": "skipped"
+      }
+    },
+    "vulture_exit_code": null
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "finding_count": 1,
+  "findings": [
+    {
+      "analyzer": "syntax-check",
+      "artifact": "findings",
+      "category": "syntax",
+      "confidence": "high",
+      "data": {
+        "stage": "validation"
+      },
+      "detail": null,
+      "fingerprint": "syntax.validation|tests/fixtures/corpus/invalid/BuiltinWrongArity.s|||BasePicture equation 'Main' call 'EqualStrings' has 2 arguments but builtin expects 3",
+      "id": "syntax.validation",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [],
+        "path": "tests/fixtures/corpus/invalid/BuiltinWrongArity.s",
+        "symbol": null
+      },
+      "message": "BasePicture equation 'Main' call 'EqualStrings' has 2 arguments but builtin expects 3",
+      "rule_id": "syntax.validation",
+      "severity": "high",
+      "source": "corpus-runner",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

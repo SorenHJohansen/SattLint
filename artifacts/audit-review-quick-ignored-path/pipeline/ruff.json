@@ -1,0 +1,17 @@
+{
+  "command": [
+    ".venv/Scripts/ruff.exe",
+    "check",
+    "src",
+    "tests",
+    "--output-format",
+    "json"
+  ],
+  "duration_seconds": 0.717,
+  "exit_code": 0,
+  "finding_count": 0,
+  "findings": [],
+  "stderr": "",
+  "stdout": "[]",
+  "tool": "ruff"
+}

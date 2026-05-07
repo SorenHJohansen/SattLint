@@ -1,0 +1,37 @@
+{
+  "finding_count": 1,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "write_without_effect",
+        "variable": "MiddleVal"
+      },
+      "detail": "Variables whose written values are read internally but never reach a root-visible output.",
+      "fingerprint": "semantic.write-without-effect|tests/fixtures/corpus/valid/NestedSubmodules.s|||Variable 'MiddleVal' is written and read internally, but its value never reaches a root-visible output.",
+      "id": "semantic.write-without-effect",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture",
+          "TypeDef:MiddleType"
+        ],
+        "path": "tests/fixtures/corpus/valid/NestedSubmodules.s",
+        "symbol": null
+      },
+      "message": "Variable 'MiddleVal' is written and read internally, but its value never reaches a root-visible output.",
+      "rule_id": "semantic.write-without-effect",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

@@ -1,0 +1,193 @@
+{
+  "canonical_command": "sattlint-repo-audit --leaks-only --fail-on medium --output-dir artifacts/audit-leaks",
+  "category_counts": {
+    "secrets-pii": 6
+  },
+  "entry_report": "status.json",
+  "finding_count": 6,
+  "findings": [
+    {
+      "category": "secrets-pii",
+      "confidence": "medium",
+      "detail": "Matched <redacted>",
+      "history_cleanup_recommended": true,
+      "id": "secret-assignment",
+      "line": 347,
+      "message": "Potential hardcoded secret-like value found.",
+      "path": "tests/test_parser_core.py",
+      "severity": "medium",
+      "source": "custom",
+      "suggestion": "Move secret material to runtime configuration or secure secret storage."
+    },
+    {
+      "category": "secrets-pii",
+      "confidence": "medium",
+      "detail": "Matched <redacted>",
+      "history_cleanup_recommended": true,
+      "id": "secret-assignment",
+      "line": 362,
+      "message": "Potential hardcoded secret-like value found.",
+      "path": "tests/test_parser_core.py",
+      "severity": "medium",
+      "source": "custom",
+      "suggestion": "Move secret material to runtime configuration or secure secret storage."
+    },
+    {
+      "category": "secrets-pii",
+      "confidence": "medium",
+      "detail": "Matched <redacted>",
+      "history_cleanup_recommended": true,
+      "id": "secret-assignment",
+      "line": 384,
+      "message": "Potential hardcoded secret-like value found.",
+      "path": "tests/test_parser_core.py",
+      "severity": "medium",
+      "source": "custom",
+      "suggestion": "Move secret material to runtime configuration or secure secret storage."
+    },
+    {
+      "category": "secrets-pii",
+      "confidence": "medium",
+      "detail": "Matched <redacted>",
+      "history_cleanup_recommended": true,
+      "id": "secret-assignment",
+      "line": 400,
+      "message": "Potential hardcoded secret-like value found.",
+      "path": "tests/test_parser_core.py",
+      "severity": "medium",
+      "source": "custom",
+      "suggestion": "Move secret material to runtime configuration or secure secret storage."
+    },
+    {
+      "category": "secrets-pii",
+      "confidence": "medium",
+      "detail": "Matched <redacted>",
+      "history_cleanup_recommended": true,
+      "id": "secret-assignment",
+      "line": 1343,
+      "message": "Potential hardcoded secret-like value found.",
+      "path": "tests/test_parser_core.py",
+      "severity": "medium",
+      "source": "custom",
+      "suggestion": "Move secret material to runtime configuration or secure secret storage."
+    },
+    {
+      "category": "secrets-pii",
+      "confidence": "medium",
+      "detail": "Matched <redacted>",
+      "history_cleanup_recommended": true,
+      "id": "secret-assignment",
+      "line": 1348,
+      "message": "Potential hardcoded secret-like value found.",
+      "path": "tests/test_parser_core.py",
+      "severity": "medium",
+      "source": "custom",
+      "suggestion": "Move secret material to runtime configuration or secure secret storage."
+    }
+  ],
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "history_cleanup_findings": [
+    {
+      "category": "secrets-pii",
+      "confidence": "medium",
+      "detail": "Matched <redacted>",
+      "history_cleanup_recommended": true,
+      "id": "secret-assignment",
+      "line": 347,
+      "message": "Potential hardcoded secret-like value found.",
+      "path": "tests/test_parser_core.py",
+      "severity": "medium",
+      "source": "custom",
+      "suggestion": "Move secret material to runtime configuration or secure secret storage."
+    },
+    {
+      "category": "secrets-pii",
+      "confidence": "medium",
+      "detail": "Matched <redacted>",
+      "history_cleanup_recommended": true,
+      "id": "secret-assignment",
+      "line": 362,
+      "message": "Potential hardcoded secret-like value found.",
+      "path": "tests/test_parser_core.py",
+      "severity": "medium",
+      "source": "custom",
+      "suggestion": "Move secret material to runtime configuration or secure secret storage."
+    },
+    {
+      "category": "secrets-pii",
+      "confidence": "medium",
+      "detail": "Matched <redacted>",
+      "history_cleanup_recommended": true,
+      "id": "secret-assignment",
+      "line": 384,
+      "message": "Potential hardcoded secret-like value found.",
+      "path": "tests/test_parser_core.py",
+      "severity": "medium",
+      "source": "custom",
+      "suggestion": "Move secret material to runtime configuration or secure secret storage."
+    },
+    {
+      "category": "secrets-pii",
+      "confidence": "medium",
+      "detail": "Matched <redacted>",
+      "history_cleanup_recommended": true,
+      "id": "secret-assignment",
+      "line": 400,
+      "message": "Potential hardcoded secret-like value found.",
+      "path": "tests/test_parser_core.py",
+      "severity": "medium",
+      "source": "custom",
+      "suggestion": "Move secret material to runtime configuration or secure secret storage."
+    },
+    {
+      "category": "secrets-pii",
+      "confidence": "medium",
+      "detail": "Matched <redacted>",
+      "history_cleanup_recommended": true,
+      "id": "secret-assignment",
+      "line": 1343,
+      "message": "Potential hardcoded secret-like value found.",
+      "path": "tests/test_parser_core.py",
+      "severity": "medium",
+      "source": "custom",
+      "suggestion": "Move secret material to runtime configuration or secure secret storage."
+    },
+    {
+      "category": "secrets-pii",
+      "confidence": "medium",
+      "detail": "Matched <redacted>",
+      "history_cleanup_recommended": true,
+      "id": "secret-assignment",
+      "line": 1348,
+      "message": "Potential hardcoded secret-like value found.",
+      "path": "tests/test_parser_core.py",
+      "severity": "medium",
+      "source": "custom",
+      "suggestion": "Move secret material to runtime configuration or secure secret storage."
+    }
+  ],
+  "max_severity": "medium",
+  "output_dir": "artifacts/audit-leaks",
+  "pipeline_ran": false,
+  "pipeline_summary": null,
+  "profile": "leaks",
+  "reports": {
+    "cli_consistency": null,
+    "findings": "findings.json",
+    "pipeline_status": null,
+    "pipeline_summary": null,
+    "progress": "progress.json",
+    "status": "status.json",
+    "summary": "summary.json",
+    "summary_markdown": "summary.md"
+  },
+  "severity_counts": {
+    "critical": 0,
+    "high": 0,
+    "low": 0,
+    "medium": 6
+  }
+}

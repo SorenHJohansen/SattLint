@@ -1,0 +1,247 @@
+{
+  "finding_count": 7,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "RawA"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/MultiEquationBlocks.s|||Variable 'RawA' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+        "symbol": null
+      },
+      "message": "Variable 'RawA' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "RawB"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/MultiEquationBlocks.s|||Variable 'RawB' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+        "symbol": null
+      },
+      "message": "Variable 'RawB' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "Scaled > 100.0",
+        "site": "EQ:Logic",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/MultiEquationBlocks.s|||Condition 'Scaled > 100.0' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+        "symbol": null
+      },
+      "message": "Condition 'Scaled > 100.0' is always false at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "branch",
+        "branch": "IF",
+        "branch_index": 0,
+        "condition": "Scaled > 100.0",
+        "site": "EQ:Logic",
+        "source_kind": "dataflow.unreachable_branch"
+      },
+      "detail": "Branches that cannot execute because control-flow facts make them impossible.",
+      "file": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+      "fingerprint": "semantic.unreachable-branch|tests/fixtures/corpus/valid/MultiEquationBlocks.s|||IF branch is unreachable because condition 'Scaled > 100.0' is always false at this point.",
+      "id": "semantic.unreachable-branch",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+        "symbol": null
+      },
+      "message": "IF branch is unreachable because condition 'Scaled > 100.0' is always false at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unreachable-branch",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "Output",
+        "site": "EQ:Accum",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/MultiEquationBlocks.s|||Condition 'Output' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+        "symbol": null
+      },
+      "message": "Condition 'Output' is always false at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "branch",
+        "branch": "IF",
+        "branch_index": 0,
+        "condition": "Output",
+        "site": "EQ:Accum",
+        "source_kind": "dataflow.unreachable_branch"
+      },
+      "detail": "Branches that cannot execute because control-flow facts make them impossible.",
+      "file": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+      "fingerprint": "semantic.unreachable-branch|tests/fixtures/corpus/valid/MultiEquationBlocks.s|||IF branch is unreachable because condition 'Output' is always false at this point.",
+      "id": "semantic.unreachable-branch",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+        "symbol": null
+      },
+      "message": "IF branch is unreachable because condition 'Output' is always false at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unreachable-branch",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "file": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/valid/MultiEquationBlocks.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/MultiEquationBlocks.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

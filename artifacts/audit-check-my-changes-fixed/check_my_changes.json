@@ -1,0 +1,40 @@
+{
+  "changed_files": [
+    "docs/references/cli-commands.md"
+  ],
+  "fail_on": "high",
+  "finish_gate_status": "fail",
+  "kind": "sattlint.check_my_changes",
+  "output_dir": "artifacts/audit-check-my-changes-fixed",
+  "overall_status": "fail",
+  "profile": "full",
+  "recommendation": {
+    "fallback_reason": null,
+    "fallback_required": false,
+    "recommended_check_ids": [
+      "text-scan",
+      "documented-commands",
+      "public-readiness",
+      "verify-recommendations",
+      "cli-consistency"
+    ],
+    "recommended_pipeline_check_ids": [],
+    "recommended_repo_audit_check_ids": [
+      "text-scan",
+      "documented-commands",
+      "public-readiness",
+      "verify-recommendations",
+      "cli-consistency"
+    ]
+  },
+  "report_path": "artifacts/audit-check-my-changes-fixed/check_my_changes.json",
+  "reports": {
+    "finish_gate": "artifacts/audit-check-my-changes-fixed/finish_gate.json",
+    "status": "artifacts/audit-check-my-changes-fixed/status.json",
+    "summary": "artifacts/audit-check-my-changes-fixed/summary.json"
+  },
+  "schema_version": 1,
+  "selected_command": "sattlint-repo-audit --profile full --run-recommended-finish-gate --changed-file docs/references/cli-commands.md --fail-on high --output-dir artifacts/audit-check-my-changes-fixed",
+  "selected_reason": "Repo-audit-specific checks were recommended, so the combined repo-audit finish gate is required.",
+  "selected_surface": "repo-audit"
+}

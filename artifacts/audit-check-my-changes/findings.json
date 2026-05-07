@@ -1,0 +1,79 @@
+{
+  "finding_count": 3,
+  "findings": [
+    {
+      "analyzer": "repo-audit",
+      "artifact": "findings",
+      "category": "feature-wiring",
+      "confidence": "high",
+      "data": {
+        "history_cleanup_recommended": false
+      },
+      "detail": null,
+      "fingerprint": "cli-consistency-undeclared-subcommand||48||Documented CLI subcommand 'tests' is not declared.",
+      "id": "cli-consistency-undeclared-subcommand",
+      "location": {
+        "column": null,
+        "line": 48,
+        "module_path": [],
+        "path": null,
+        "symbol": null
+      },
+      "message": "Documented CLI subcommand 'tests' is not declared.",
+      "rule_id": "cli-consistency-undeclared-subcommand",
+      "severity": "medium",
+      "source": "cli-consistency",
+      "suggestion": null
+    },
+    {
+      "analyzer": "repo-audit",
+      "artifact": "findings",
+      "category": "feature-wiring",
+      "confidence": "high",
+      "data": {
+        "history_cleanup_recommended": false
+      },
+      "detail": null,
+      "fingerprint": "cli-consistency-undeclared-script||60||Documented CLI script 'None' is not declared.",
+      "id": "cli-consistency-undeclared-script",
+      "location": {
+        "column": null,
+        "line": 60,
+        "module_path": [],
+        "path": null,
+        "symbol": null
+      },
+      "message": "Documented CLI script 'None' is not declared.",
+      "rule_id": "cli-consistency-undeclared-script",
+      "severity": "medium",
+      "source": "cli-consistency",
+      "suggestion": null
+    },
+    {
+      "analyzer": "repo-audit",
+      "artifact": "findings",
+      "category": "feature-wiring",
+      "confidence": "high",
+      "data": {
+        "history_cleanup_recommended": false
+      },
+      "detail": null,
+      "fingerprint": "cli-consistency-undeclared-script||80||Documented CLI script 'None' is not declared.",
+      "id": "cli-consistency-undeclared-script",
+      "location": {
+        "column": null,
+        "line": 80,
+        "module_path": [],
+        "path": null,
+        "symbol": null
+      },
+      "message": "Documented CLI script 'None' is not declared.",
+      "rule_id": "cli-consistency-undeclared-script",
+      "severity": "medium",
+      "source": "cli-consistency",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

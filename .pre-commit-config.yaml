@@ -56,3 +56,4 @@ repos:
         args: [--fix=lf]
       - id: check-added-large-files
         args: ['--maxkb=500']
+        exclude: ^artifacts/analysis/impact_analysis\.json$

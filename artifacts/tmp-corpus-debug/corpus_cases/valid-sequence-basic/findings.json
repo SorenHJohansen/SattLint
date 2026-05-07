@@ -1,0 +1,447 @@
+{
+  "finding_count": 13,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "StartCmd"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/SequenceBasic.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SequenceBasic.s|||Variable 'StartCmd' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceBasic.s",
+        "symbol": null
+      },
+      "message": "Variable 'StartCmd' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "StopCmd"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/SequenceBasic.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SequenceBasic.s|||Variable 'StopCmd' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceBasic.s",
+        "symbol": null
+      },
+      "message": "Variable 'StopCmd' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "Output"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/SequenceBasic.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SequenceBasic.s|||Variable 'Output' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceBasic.s",
+        "symbol": null
+      },
+      "message": "Variable 'Output' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "StartCmd",
+        "site": "SEQ:MainSeq > TRANS:TrStart",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/SequenceBasic.s",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SequenceBasic.s|||Condition 'StartCmd' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceBasic.s",
+        "symbol": null
+      },
+      "message": "Condition 'StartCmd' is always false at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "StopCmd OR  Output > 100",
+        "site": "SEQ:MainSeq > TRANS:TrStop",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/SequenceBasic.s",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SequenceBasic.s|||Condition 'StopCmd OR  Output > 100' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceBasic.s",
+        "symbol": null
+      },
+      "message": "Condition 'StopCmd OR  Output > 100' is always false at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "NOT(StopCmd)",
+        "site": "SEQ:MainSeq > TRANS:TrDone",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/SequenceBasic.s",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/valid/SequenceBasic.s|||Condition 'NOT(StopCmd)' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceBasic.s",
+        "symbol": null
+      },
+      "message": "Condition 'NOT(StopCmd)' is always true at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "file": "tests/fixtures/corpus/valid/SequenceBasic.s",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/valid/SequenceBasic.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceBasic.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Idle"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SequenceBasic.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceBasic.s|||Sequence step 'Idle' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceBasic.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Idle' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrStart"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SequenceBasic.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceBasic.s|||Transition 'TrStart' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceBasic.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrStart' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Running"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SequenceBasic.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceBasic.s|||Sequence step 'Running' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceBasic.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Running' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrStop"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SequenceBasic.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceBasic.s|||Transition 'TrStop' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceBasic.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrStop' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Stopping"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SequenceBasic.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceBasic.s|||Sequence step 'Stopping' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceBasic.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Stopping' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrDone"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/SequenceBasic.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceBasic.s|||Transition 'TrDone' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceBasic.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrDone' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

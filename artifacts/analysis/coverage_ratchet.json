@@ -1,0 +1,16 @@
+{
+    "kind": "sattlint.coverage_ratchet",
+    "schema_version": 1,
+    "metrics": {
+        "min_line_rate_basis_points": 8726,
+        "min_changed_line_rate_basis_points": 10000,
+        "min_touched_file_line_rate_basis_points": 9000
+    },
+    "summary": {
+        "total_line_rate": 0.8826,
+        "total_lines_valid": 27356,
+        "total_lines_covered": 24144,
+        "total_lines_missing": 3212
+    },
+    "source": "coverage.xml"
+}

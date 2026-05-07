@@ -1,0 +1,63 @@
+{
+  "declared": {
+    "scripts": [
+      "sattlint",
+      "sattlint-analysis-pipeline",
+      "sattlint-corpus-runner",
+      "sattlint-doc-gardener",
+      "sattlint-gui",
+      "sattlint-layer-lint",
+      "sattlint-lsp",
+      "sattlint-observability",
+      "sattlint-repo-audit",
+      "sattlint-review",
+      "sattlint-structural-ratchet",
+      "sattlint-trace"
+    ],
+    "subcommands": [
+      "analyze",
+      "docgen",
+      "format-icf",
+      "repo-audit",
+      "syntax-check",
+      "validate-config"
+    ]
+  },
+  "gaps": {
+    "undeclared_scripts": [
+      {
+        "line": 60,
+        "referenced_in": "docs/exec-plans/active/06-d-wave-1-pre-commit-hooks.md",
+        "script": "sattlint-syntax-check"
+      },
+      {
+        "line": 80,
+        "referenced_in": "docs/exec-plans/active/06-d-wave-1-pre-commit-hooks.md",
+        "script": "sattlint-syntax-check"
+      }
+    ],
+    "undeclared_subcommands": [
+      {
+        "line": 48,
+        "referenced_in": "docs/exec-plans/completed/03-cli-doc-parity.md",
+        "subcommand": "tests"
+      }
+    ],
+    "undocumented_scripts": [
+      "sattlint"
+    ],
+    "undocumented_subcommands": []
+  },
+  "kind": "sattlint.cli_consistency",
+  "schema_version": 1,
+  "status": "fail",
+  "summary": {
+    "declared_script_count": 12,
+    "declared_subcommand_count": 6,
+    "gap_count": 3,
+    "undeclared_script_count": 2,
+    "undeclared_subcommand_count": 1,
+    "undocumented_script_count": 1,
+    "undocumented_subcommand_count": 0
+  }
+}

@@ -1,0 +1,237 @@
+{
+  "finding_count": 8,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "IFState"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/QuotedIdentifiers.s|||Variable 'IFState' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/QuotedIdentifiers.s",
+        "symbol": null
+      },
+      "message": "Variable 'IFState' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "never_read",
+        "variable": "ANDFailed"
+      },
+      "detail": "Variables that are written but never subsequently read.",
+      "fingerprint": "semantic.never-read-write|tests/fixtures/corpus/valid/QuotedIdentifiers.s|||Variable 'ANDFailed' is written but never read.",
+      "id": "semantic.never-read-write",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/QuotedIdentifiers.s",
+        "symbol": null
+      },
+      "message": "Variable 'ANDFailed' is written but never read.",
+      "rule_id": "semantic.never-read-write",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "NOTOGActive"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/QuotedIdentifiers.s|||Variable 'NOTOGActive' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/QuotedIdentifiers.s",
+        "symbol": null
+      },
+      "message": "Variable 'NOTOGActive' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "ThenValue"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/QuotedIdentifiers.s|||Variable 'ThenValue' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/QuotedIdentifiers.s",
+        "symbol": null
+      },
+      "message": "Variable 'ThenValue' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "ElseValue"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/QuotedIdentifiers.s|||Variable 'ElseValue' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/QuotedIdentifiers.s",
+        "symbol": null
+      },
+      "message": "Variable 'ElseValue' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "never_read",
+        "variable": "Sink"
+      },
+      "detail": "Variables that are written but never subsequently read.",
+      "fingerprint": "semantic.never-read-write|tests/fixtures/corpus/valid/QuotedIdentifiers.s|||Variable 'Sink' is written but never read.",
+      "id": "semantic.never-read-write",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/QuotedIdentifiers.s",
+        "symbol": null
+      },
+      "message": "Variable 'Sink' is written but never read.",
+      "rule_id": "semantic.never-read-write",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "IFState",
+        "site": "EQ:Main",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/QuotedIdentifiers.s|||Condition 'IFState' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/QuotedIdentifiers.s",
+        "symbol": null
+      },
+      "message": "Condition 'IFState' is always false at this point.",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/valid/QuotedIdentifiers.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/QuotedIdentifiers.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

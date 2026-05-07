@@ -1,0 +1,11 @@
+from __future__ import annotations
+
+from tests import test_pipeline_collection as pipeline_collection_tests
+
+
+def test_collect_graphics_layout_report_resolves_moduletype_moduledefs(tmp_path):
+    pipeline_collection_tests.test_collect_graphics_layout_report_resolves_moduletype_moduledefs(tmp_path)
+
+
+def test_collect_graphics_layout_report_flags_repeated_module_name_drift(tmp_path):
+    pipeline_collection_tests.test_collect_graphics_layout_report_flags_repeated_module_name_drift(tmp_path)

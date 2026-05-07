@@ -1,0 +1,880 @@
+{
+  "finding_count": 30,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "StartCmd"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SequenceAlternative.s|||Variable 'StartCmd' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Variable 'StartCmd' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "Mode"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SequenceAlternative.s|||Variable 'Mode' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Variable 'Mode' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "OutputA"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SequenceAlternative.s|||Variable 'OutputA' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Variable 'OutputA' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "OutputB"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/SequenceAlternative.s|||Variable 'OutputB' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Variable 'OutputB' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "unused",
+        "variable": "OutputC"
+      },
+      "detail": "Declared variables that are never read or written.",
+      "fingerprint": "semantic.unused-variable|tests/fixtures/corpus/valid/SequenceAlternative.s|||Variable 'OutputC' is never used.",
+      "id": "semantic.unused-variable",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Variable 'OutputC' is never used.",
+      "rule_id": "semantic.unused-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "unused",
+        "variable": "Done"
+      },
+      "detail": "Declared variables that are never read or written.",
+      "fingerprint": "semantic.unused-variable|tests/fixtures/corpus/valid/SequenceAlternative.s|||Variable 'Done' is never used.",
+      "id": "semantic.unused-variable",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Variable 'Done' is never used.",
+      "rule_id": "semantic.unused-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "transition",
+        "branch_path": [
+          2
+        ],
+        "condition": "True",
+        "normalized_guard": "('bool', True)",
+        "sequence": "AltSeq",
+        "source_kind": "sfc_transition_always_true",
+        "transition_name": "DoneDefault"
+      },
+      "detail": "Transitions with guards that simplify to true and therefore always fire when reached.",
+      "fingerprint": "semantic.transition-always-true|tests/fixtures/corpus/valid/SequenceAlternative.s|||Transition 'DoneDefault' in sequence 'AltSeq' branch 3 has a guard that is always true: True.",
+      "id": "semantic.transition-always-true",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Transition 'DoneDefault' in sequence 'AltSeq' branch 3 has a guard that is always true: True.",
+      "rule_id": "semantic.transition-always-true",
+      "severity": "medium",
+      "source": "sfc",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "StartCmd",
+        "site": "SEQ:AltSeq > TRANS:TrBegin",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SequenceAlternative.s|||Condition 'StartCmd' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Condition 'StartCmd' is always false at this point.",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "Mode == 1",
+        "site": "SEQ:AltSeq > ALT:BRANCH:0 > TRANS:TrModeA",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SequenceAlternative.s|||Condition 'Mode == 1' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Condition 'Mode == 1' is always false at this point.",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "OutputA >= 5",
+        "site": "SEQ:AltSeq > ALT:BRANCH:0 > TRANS:DoneA",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SequenceAlternative.s|||Condition 'OutputA >= 5' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Condition 'OutputA >= 5' is always false at this point.",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "Mode == 2",
+        "site": "SEQ:AltSeq > ALT:BRANCH:1 > TRANS:TrModeB",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SequenceAlternative.s|||Condition 'Mode == 2' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Condition 'Mode == 2' is always false at this point.",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "OutputB >= 3",
+        "site": "SEQ:AltSeq > ALT:BRANCH:1 > TRANS:DoneB",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/SequenceAlternative.s|||Condition 'OutputB >= 3' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Condition 'OutputB >= 3' is always false at this point.",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "Mode <> 1 AND  Mode <> 2",
+        "site": "SEQ:AltSeq > ALT:BRANCH:2 > TRANS:TrDefault",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/valid/SequenceAlternative.s|||Condition 'Mode <> 1 AND  Mode <> 2' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Condition 'Mode <> 1 AND  Mode <> 2' is always true at this point.",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "True",
+        "site": "SEQ:AltSeq > ALT:BRANCH:2 > TRANS:DoneDefault",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/valid/SequenceAlternative.s|||Condition 'True' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Condition 'True' is always true at this point.",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "NOT(StartCmd)",
+        "site": "SEQ:AltSeq > TRANS:TrReset",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/valid/SequenceAlternative.s|||Condition 'NOT(StartCmd)' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Condition 'NOT(StartCmd)' is always true at this point.",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/valid/SequenceAlternative.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Init"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Sequence step 'Init' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Init' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrBegin"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Transition 'TrBegin' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrBegin' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Dispatch"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Sequence step 'Dispatch' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Dispatch' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrModeA"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Transition 'TrModeA' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrModeA' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "ModeA"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Sequence step 'ModeA' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'ModeA' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "DoneA"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Transition 'DoneA' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Transition 'DoneA' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrModeB"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Transition 'TrModeB' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrModeB' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "ModeB"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Sequence step 'ModeB' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'ModeB' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "DoneB"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Transition 'DoneB' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Transition 'DoneB' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrDefault"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Transition 'TrDefault' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrDefault' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "ModeDefault"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Sequence step 'ModeDefault' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'ModeDefault' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "DoneDefault"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Transition 'DoneDefault' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Transition 'DoneDefault' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Finish"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Sequence step 'Finish' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Finish' must start with 'ST_' according to the engineering spec.",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "AltSeq",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrReset"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/SequenceAlternative.s|||Transition 'TrReset' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrReset' must start with 'TR_' according to the engineering spec.",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

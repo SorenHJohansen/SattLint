@@ -1,0 +1,14 @@
+{
+  "case_id": "invalid-builtin-wrong-arity",
+  "finding_count": 1,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "message": "BasePicture equation 'Main' call 'EqualStrings' has 2 arguments but builtin expects 3",
+  "mode": "strict",
+  "stage": "validation",
+  "target_file": "tests/fixtures/corpus/invalid/BuiltinWrongArity.s",
+  "validation_ok": false
+}

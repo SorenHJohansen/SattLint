@@ -1,0 +1,121 @@
+{
+  "finding_count": 4,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "module-structure",
+      "confidence": "high",
+      "data": {
+        "applies_to": "layout",
+        "role": "graph object RectangleObject #1 overlaps graph object TextObject #2",
+        "source_kind": "layout_overlap"
+      },
+      "detail": "Sibling module invocations and rectangular graph or interact objects should not overlap in the same layout scope.",
+      "fingerprint": "semantic.layout-overlap|tests/fixtures/corpus/valid/GraphicsObjects.s|||graph object RectangleObject #1 overlaps graph object TextObject #2",
+      "id": "semantic.layout-overlap",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/GraphicsObjects.s",
+        "symbol": null
+      },
+      "message": "graph object RectangleObject #1 overlaps graph object TextObject #2",
+      "rule_id": "semantic.layout-overlap",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "ui_only",
+        "variable": "LabelEnable"
+      },
+      "detail": "Variables that are only consumed through graphics or interact display wiring.",
+      "fingerprint": "semantic.ui-only-variable|tests/fixtures/corpus/valid/GraphicsObjects.s|||Variable 'LabelEnable' is only read through graphics or interact UI wiring.",
+      "id": "semantic.ui-only-variable",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/GraphicsObjects.s",
+        "symbol": null
+      },
+      "message": "Variable 'LabelEnable' is only read through graphics or interact UI wiring.",
+      "rule_id": "semantic.ui-only-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "default": true,
+        "reason": "which can activate equipment or logic from startup",
+        "source_kind": "unsafe_defaults.true_boolean_default",
+        "variable": "LabelEnable"
+      },
+      "detail": "Boolean defaults that enable logic or bypass safeguards from startup.",
+      "fingerprint": "semantic.unsafe-default-true|tests/fixtures/corpus/valid/GraphicsObjects.s|||Boolean variable 'LabelEnable' defaults to True, which can activate equipment or logic from startup.",
+      "id": "semantic.unsafe-default-true",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/GraphicsObjects.s",
+        "symbol": null
+      },
+      "message": "Boolean variable 'LabelEnable' defaults to True, which can activate equipment or logic from startup.",
+      "rule_id": "semantic.unsafe-default-true",
+      "severity": "medium",
+      "source": "unsafe-defaults",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/valid/GraphicsObjects.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/GraphicsObjects.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

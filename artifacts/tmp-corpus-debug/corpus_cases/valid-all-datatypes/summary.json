@@ -1,0 +1,23 @@
+{
+  "case_id": "valid-all-datatypes",
+  "finding_count": 16,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "missing_dependencies": [],
+  "mode": "workspace",
+  "resolved_targets": [
+    "AllDatatypes"
+  ],
+  "rule_counts": {
+    "semantic.never-read-write": 4,
+    "semantic.procedure-status-handling": 1,
+    "semantic.read-only-non-const": 8,
+    "semantic.unused-variable": 2,
+    "spec.basepicture_direct_code": 1
+  },
+  "target_file": "tests/fixtures/corpus/valid/AllDatatypes.s",
+  "warnings": []
+}

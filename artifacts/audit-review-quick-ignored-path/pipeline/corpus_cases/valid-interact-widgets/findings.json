@@ -1,0 +1,294 @@
+{
+  "finding_count": 10,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "boolean-variable",
+        "role": "implicit latch across alternative paths at EQ:Main > IF",
+        "source_kind": "implicit_latch",
+        "variable": "EnableFlag"
+      },
+      "detail": "Boolean values that are set on some branches or steps without a matching False write on the complementary path.",
+      "fingerprint": "semantic.implicit-latch|tests/fixtures/corpus/valid/InteractWidgets.s|||implicit latch across alternative paths at EQ:Main > IF",
+      "id": "semantic.implicit-latch",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/InteractWidgets.s",
+        "symbol": null
+      },
+      "message": "implicit latch across alternative paths at EQ:Main > IF",
+      "rule_id": "semantic.implicit-latch",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "module-structure",
+      "confidence": "high",
+      "data": {
+        "applies_to": "layout",
+        "role": "graph object RectangleObject #1 overlaps interact object Interact #1",
+        "source_kind": "layout_overlap"
+      },
+      "detail": "Sibling module invocations and rectangular graph or interact objects should not overlap in the same layout scope.",
+      "fingerprint": "semantic.layout-overlap|tests/fixtures/corpus/valid/InteractWidgets.s|||graph object RectangleObject #1 overlaps interact object Interact #1",
+      "id": "semantic.layout-overlap",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/InteractWidgets.s",
+        "symbol": null
+      },
+      "message": "graph object RectangleObject #1 overlaps interact object Interact #1",
+      "rule_id": "semantic.layout-overlap",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "module-structure",
+      "confidence": "high",
+      "data": {
+        "applies_to": "layout",
+        "role": "graph object RectangleObject #1 overlaps interact object Interact #2",
+        "source_kind": "layout_overlap"
+      },
+      "detail": "Sibling module invocations and rectangular graph or interact objects should not overlap in the same layout scope.",
+      "fingerprint": "semantic.layout-overlap|tests/fixtures/corpus/valid/InteractWidgets.s|||graph object RectangleObject #1 overlaps interact object Interact #2",
+      "id": "semantic.layout-overlap",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/InteractWidgets.s",
+        "symbol": null
+      },
+      "message": "graph object RectangleObject #1 overlaps interact object Interact #2",
+      "rule_id": "semantic.layout-overlap",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "module-structure",
+      "confidence": "high",
+      "data": {
+        "applies_to": "layout",
+        "role": "graph object RectangleObject #1 overlaps interact object ComButProc_ #3",
+        "source_kind": "layout_overlap"
+      },
+      "detail": "Sibling module invocations and rectangular graph or interact objects should not overlap in the same layout scope.",
+      "fingerprint": "semantic.layout-overlap|tests/fixtures/corpus/valid/InteractWidgets.s|||graph object RectangleObject #1 overlaps interact object ComButProc_ #3",
+      "id": "semantic.layout-overlap",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/InteractWidgets.s",
+        "symbol": null
+      },
+      "message": "graph object RectangleObject #1 overlaps interact object ComButProc_ #3",
+      "rule_id": "semantic.layout-overlap",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "ui_only",
+        "variable": "InputValue"
+      },
+      "detail": "Variables that are only consumed through graphics or interact display wiring.",
+      "fingerprint": "semantic.ui-only-variable|tests/fixtures/corpus/valid/InteractWidgets.s|||Variable 'InputValue' is only read through graphics or interact UI wiring.",
+      "id": "semantic.ui-only-variable",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/InteractWidgets.s",
+        "symbol": null
+      },
+      "message": "Variable 'InputValue' is only read through graphics or interact UI wiring.",
+      "rule_id": "semantic.ui-only-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "ui_only",
+        "variable": "EnableFlag"
+      },
+      "detail": "Variables that are only consumed through graphics or interact display wiring.",
+      "fingerprint": "semantic.ui-only-variable|tests/fixtures/corpus/valid/InteractWidgets.s|||Variable 'EnableFlag' is only read through graphics or interact UI wiring.",
+      "id": "semantic.ui-only-variable",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/InteractWidgets.s",
+        "symbol": null
+      },
+      "message": "Variable 'EnableFlag' is only read through graphics or interact UI wiring.",
+      "rule_id": "semantic.ui-only-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "ToggleBit"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/InteractWidgets.s|||Variable 'ToggleBit' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/InteractWidgets.s",
+        "symbol": null
+      },
+      "message": "Variable 'ToggleBit' is read but never written, yet it is not CONST.",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "ToggleBit",
+        "site": "EQ:Main",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/InteractWidgets.s|||Condition 'ToggleBit' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/InteractWidgets.s",
+        "symbol": null
+      },
+      "message": "Condition 'ToggleBit' is always false at this point.",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "branch",
+        "branch": "IF",
+        "branch_index": 0,
+        "condition": "ToggleBit",
+        "site": "EQ:Main",
+        "source_kind": "dataflow.unreachable_branch"
+      },
+      "detail": "Branches that cannot execute because control-flow facts make them impossible.",
+      "fingerprint": "semantic.unreachable-branch|tests/fixtures/corpus/valid/InteractWidgets.s|||IF branch is unreachable because condition 'ToggleBit' is always false at this point.",
+      "id": "semantic.unreachable-branch",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/InteractWidgets.s",
+        "symbol": null
+      },
+      "message": "IF branch is unreachable because condition 'ToggleBit' is always false at this point.",
+      "rule_id": "semantic.unreachable-branch",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/valid/InteractWidgets.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/InteractWidgets.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}
