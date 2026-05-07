@@ -3,15 +3,15 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
-import subprocess  # nosec B404
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from functools import cache
+from functools import partial
 from pathlib import Path
 from typing import Any, TypedDict
+
+from sattlint.devtools import _coordination_lock_paths as lock_paths
 
 LEDGER_FILE_NAME = "current-work.md"
 LEDGER_TEMPLATE_NAME = "current-work.template.md"
@@ -62,162 +62,63 @@ def utc_now_timestamp() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-def coordination_dir(repo_root: Path) -> Path:
-    return repo_root / ".github" / "coordination"
-
-
-@cache
-def git_common_dir(repo_root: Path) -> Path:
-    resolved_repo_root = repo_root.resolve()
-    git_executable = shutil.which("git")
-    if git_executable is None:
-        return (resolved_repo_root / ".git").resolve()
-    # Fixed local git metadata query without shell expansion.
-    completed = subprocess.run(
-        [git_executable, "rev-parse", "--git-common-dir"],
-        cwd=resolved_repo_root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )  # nosec B603
-    if completed.returncode != 0:
-        return (resolved_repo_root / ".git").resolve()
-
-    raw_value = completed.stdout.strip() or ".git"
-    path = Path(raw_value)
-    if not path.is_absolute():
-        path = (resolved_repo_root / path).resolve()
-    return path.resolve()
-
-
-def shared_coordination_dir(repo_root: Path) -> Path:
-    return git_common_dir(repo_root) / SHARED_COORDINATION_DIR_NAME
-
-
-def ledger_path(repo_root: Path) -> Path:
-    return coordination_dir(repo_root) / LEDGER_FILE_NAME
-
-
-def template_path(repo_root: Path) -> Path:
-    return coordination_dir(repo_root) / LEDGER_TEMPLATE_NAME
-
-
-def legacy_lock_state_path(repo_root: Path) -> Path:
-    return coordination_dir(repo_root) / LOCK_STATE_FILE_NAME
-
-
-def lock_state_path(repo_root: Path) -> Path:
-    return shared_coordination_dir(repo_root) / LOCK_STATE_FILE_NAME
-
-
-def summary_path(repo_root: Path) -> Path:
-    return coordination_dir(repo_root) / SUMMARY_FILE_NAME
-
-
-def display_path(path: Path, repo_root: Path) -> str:
-    try:
-        return path.resolve().relative_to(repo_root.resolve()).as_posix()
-    except ValueError:
-        return path.resolve().as_posix()
-
-
-def _parse_attached_worktree_branches(output: str) -> set[str]:
-    branches: set[str] = set()
-    for raw_line in output.splitlines():
-        line = raw_line.strip()
-        if line.startswith("branch refs/heads/"):
-            branches.add(line.removeprefix("branch refs/heads/").strip())
-    return branches
-
-
-def _attached_worktree_branches(repo_root: Path) -> set[str]:
-    resolved_repo_root = repo_root.resolve()
-    git_executable = shutil.which("git")
-    if git_executable is None:
-        return set()
-
-    completed = subprocess.run(
-        [git_executable, "worktree", "list", "--porcelain"],
-        cwd=resolved_repo_root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )  # nosec B603
-    if completed.returncode != 0:
-        return set()
-    return _parse_attached_worktree_branches(completed.stdout)
-
-
-def _task_contract_path_for_workstream(repo_root: Path, workstream_id: str) -> Path:
-    return repo_root / TASK_CONTRACTS_DIR / f"{workstream_id}.json"
-
-
-def _handoff_path_for_workstream(repo_root: Path, workstream_id: str) -> Path:
-    return repo_root / HANDOFFS_DIR / f"{workstream_id}.json"
-
-
-def _expected_workstream_branches(workstream_id: str) -> set[str]:
-    return {workstream_id, *(f"{prefix}{workstream_id}" for prefix in SUPPORTED_STAGE_BRANCH_PREFIXES)}
-
-
-def _parse_updated_at_timestamp(raw_timestamp: str) -> datetime | None:
-    normalized = raw_timestamp.strip()
-    if not normalized:
-        return None
-    if normalized.endswith("Z"):
-        normalized = f"{normalized[:-1]}+00:00"
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
-
-
-def _entry_has_supporting_artifact(repo_root: Path, workstream_id: str) -> bool:
-    return (
-        _task_contract_path_for_workstream(repo_root, workstream_id).exists()
-        or _handoff_path_for_workstream(repo_root, workstream_id).exists()
-    )
-
-
-def _entry_is_stale(
-    entry: LockStateEntry,
-    *,
-    repo_root: Path,
-    attached_worktree_branches: set[str],
-    now: datetime,
-) -> bool:
-    if _entry_has_supporting_artifact(repo_root, entry["workstream_id"]):
-        return False
-    if _expected_workstream_branches(entry["workstream_id"]) & attached_worktree_branches:
-        return False
-    if DEPRECATED_LOCK_CLAIM_PATH in entry["claimed_paths"]:
-        return True
-
-    updated_at = _parse_updated_at_timestamp(entry["updated_at"])
-    if updated_at is None:
-        return True
-    return now - updated_at > STALE_ENTRY_GRACE_PERIOD
+coordination_dir = lock_paths.coordination_dir
+git_common_dir = lock_paths.git_common_dir
+shared_coordination_dir = partial(
+    lock_paths.shared_coordination_dir,
+    shared_coordination_dir_name=SHARED_COORDINATION_DIR_NAME,
+)
+ledger_path = partial(lock_paths.ledger_path, ledger_file_name=LEDGER_FILE_NAME)
+template_path = partial(lock_paths.template_path, ledger_template_name=LEDGER_TEMPLATE_NAME)
+legacy_lock_state_path = partial(lock_paths.legacy_lock_state_path, lock_state_file_name=LOCK_STATE_FILE_NAME)
+lock_state_path = partial(
+    lock_paths.lock_state_path,
+    shared_coordination_dir_name=SHARED_COORDINATION_DIR_NAME,
+    lock_state_file_name=LOCK_STATE_FILE_NAME,
+)
+summary_path = partial(lock_paths.summary_path, summary_file_name=SUMMARY_FILE_NAME)
+display_path = lock_paths.display_path
+_parse_attached_worktree_branches = lock_paths._parse_attached_worktree_branches
+_attached_worktree_branches = lock_paths._attached_worktree_branches
+_task_contract_path_for_workstream = partial(
+    lock_paths._task_contract_path_for_workstream,
+    task_contracts_dir=TASK_CONTRACTS_DIR,
+)
+_handoff_path_for_workstream = partial(
+    lock_paths._handoff_path_for_workstream,
+    handoffs_dir=HANDOFFS_DIR,
+)
+_expected_workstream_branches = partial(
+    lock_paths._expected_workstream_branches,
+    supported_stage_branch_prefixes=SUPPORTED_STAGE_BRANCH_PREFIXES,
+)
+_parse_updated_at_timestamp = lock_paths.parse_updated_at_timestamp
+_entry_has_supporting_artifact = partial(
+    lock_paths.entry_has_supporting_artifact,
+    task_contract_path_for_workstream=_task_contract_path_for_workstream,
+    handoff_path_for_workstream=_handoff_path_for_workstream,
+)
+_entry_is_stale = partial(
+    lock_paths.entry_is_stale,
+    entry_has_supporting_artifact=_entry_has_supporting_artifact,
+    expected_workstream_branches=_expected_workstream_branches,
+    parse_updated_at_timestamp=_parse_updated_at_timestamp,
+    deprecated_lock_claim_path=DEPRECATED_LOCK_CLAIM_PATH,
+    stale_entry_grace_period=STALE_ENTRY_GRACE_PERIOD,
+)
 
 
 def _prune_stale_entries(repo_root: Path, entries: list[LockStateEntry]) -> tuple[list[LockStateEntry], int]:
     attached_worktree_branches = _attached_worktree_branches(repo_root)
     now = datetime.now(UTC)
-    kept_entries: list[LockStateEntry] = []
-    dropped_entries = 0
-    for entry in entries:
-        if entry["status"] in ACTIVE_STATUSES and _entry_is_stale(
-            entry,
-            repo_root=repo_root,
-            attached_worktree_branches=attached_worktree_branches,
-            now=now,
-        ):
-            dropped_entries += 1
-            continue
-        kept_entries.append(entry)
-    return kept_entries, dropped_entries
+    return lock_paths.prune_stale_entries(
+        repo_root,
+        entries,
+        attached_worktree_branches=attached_worktree_branches,
+        now=now,
+        active_statuses=ACTIVE_STATUSES,
+        entry_is_stale=_entry_is_stale,
+    )
 
 
 def _write_text_atomically(path: Path, text: str) -> None:
@@ -250,66 +151,12 @@ def _hold_lock(repo_root: Path):
         lock_path.unlink(missing_ok=True)
 
 
-def normalize_relative_path(raw_path: str) -> str:
-    normalized = raw_path.strip().strip("`'\"")
-    normalized = normalized.replace("\\", "/")
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-    return normalized.rstrip("/")
-
-
-def normalize_claim_path(raw_path: str, *, repo_root: Path | None = None) -> str:
-    normalized = normalize_relative_path(raw_path)
-    if not normalized:
-        return ""
-    is_directory = raw_path.strip().rstrip().endswith(("/", "\\"))
-    if not is_directory and repo_root is not None:
-        is_directory = (repo_root / normalized).is_dir()
-    return f"{normalized}/" if is_directory else normalized
-
-
-def split_claim_text(raw_claims: str) -> list[str]:
-    backtick_items = BACKTICK_ITEM_RE.findall(raw_claims)
-    if backtick_items:
-        return backtick_items
-    return [part.strip() for part in raw_claims.split(",") if part.strip()]
-
-
-def unique_claim_paths(values: list[str] | tuple[str, ...], *, repo_root: Path | None = None) -> list[str]:
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for raw_value in values:
-        value = normalize_claim_path(raw_value, repo_root=repo_root)
-        if not value:
-            continue
-        seen_key = value.casefold()
-        if seen_key in seen:
-            continue
-        seen.add(seen_key)
-        normalized.append(value)
-    return normalized
-
-
-def resolve_workspace_path(raw_path: str, cwd: Path) -> Path:
-    path = Path(normalize_relative_path(raw_path))
-    if not path.is_absolute():
-        path = cwd / path
-    return path.resolve()
-
-
-def resolve_claim_patterns(claimed_paths: list[str] | tuple[str, ...], cwd: Path) -> list[ClaimPattern]:
-    patterns: list[ClaimPattern] = []
-    for raw_path in claimed_paths:
-        normalized = normalize_claim_path(raw_path, repo_root=cwd)
-        if not normalized:
-            continue
-        patterns.append(
-            {
-                "path": resolve_workspace_path(normalized, cwd),
-                "is_directory": normalized.endswith("/"),
-            }
-        )
-    return patterns
+normalize_relative_path = lock_paths.normalize_relative_path
+normalize_claim_path = lock_paths.normalize_claim_path
+split_claim_text = partial(lock_paths.split_claim_text, backtick_item_re=BACKTICK_ITEM_RE)
+unique_claim_paths = lock_paths.unique_claim_paths
+resolve_workspace_path = lock_paths.resolve_workspace_path
+resolve_claim_patterns = lock_paths.resolve_claim_patterns
 
 
 def load_file_debt_state(repo_root: Path) -> dict[str, dict[str, dict[str, Any]]]:
@@ -341,10 +188,7 @@ def load_file_debt_state(repo_root: Path) -> dict[str, dict[str, dict[str, Any]]
     return normalized
 
 
-def _claim_matches_path(claim: str, rel_path: str) -> bool:
-    if claim.endswith("/"):
-        return rel_path.startswith(claim)
-    return rel_path == claim
+_claim_matches_path = lock_paths._claim_matches_path
 
 
 def _effective_structural_touch_rule(structural: Mapping[str, Any]) -> str | None:
