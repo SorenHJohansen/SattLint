@@ -34,8 +34,9 @@ htmlcov/
 dist/
 build/
 
-# Project outputs
-artifacts/
+# Project outputs (keep artifacts/analysis/ ratchet files)
+artifacts/audit/
+artifacts/health/
 *.docx
 *.xlsx
 *.txt

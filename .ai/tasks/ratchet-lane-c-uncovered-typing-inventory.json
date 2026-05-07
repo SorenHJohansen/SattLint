@@ -4,7 +4,7 @@
     "owner": "Copilot",
     "stage": "executor",
     "branch": "ai/task-ratchet-lane-c-uncovered-typing-inventory",
-    "worktree": "c:/Users/SQHJ/OneDrive - Novo Nordisk/Workspace/GitHub.com/SattLint-ai-ratchet-lane-c-uncovered-typing-inventory",
+    "worktree": "../SattLint-ai-ratchet-lane-c-uncovered-typing-inventory",
     "summary": "Keep the lane-C uncovered typing slice local to the claimed registry, devtools, and simulation files; make the owned production files pyright-clean without touching pyproject.toml; and capture the exact future strict-move candidates for lane D.",
     "files": [
         "src/sattlint/analyzers/_registry_delivery.py",

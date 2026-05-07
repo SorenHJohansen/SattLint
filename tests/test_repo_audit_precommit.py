@@ -69,7 +69,7 @@ def test_main_skips_when_no_repo_audit_checks_are_recommended(monkeypatch, tmp_p
     monkeypatch.setattr(
         repo_audit_precommit.sys,
         "argv",
-        ["run_repo_audit_precommit.py", "src\\sattlint\\app.py", "tests/test_repo_audit.py"],
+        ["run_repo_audit_precommit.py", "src/sattlint/app.py", "tests/test_repo_audit.py"],
     )
 
     exit_code = repo_audit_precommit.main()
