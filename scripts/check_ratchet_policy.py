@@ -91,8 +91,28 @@ def _normalize_rel_path(path: str) -> str:
     return path.replace("\\", "/").strip().strip("/")
 
 
+def _merge_unique_paths(*groups: Sequence[str]) -> tuple[str, ...]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        for path in group:
+            if path in seen:
+                continue
+            seen.add(path)
+            merged.append(path)
+    return tuple(merged)
+
+
+def _detect_untracked_approval_records(repo_root: Path) -> tuple[str, ...]:
+    completed = _git(repo_root, "ls-files", "--others", "--exclude-standard", ".github/approvals")
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip() or "Failed to inspect untracked approval records.")
+    return tuple(path for path in _normalize_changed_files(completed.stdout) if _is_approval_record_path(path))
+
+
 def _detect_change_context(repo_root: Path, env: Mapping[str, str] | None = None) -> ChangeContext:
     effective_env = os.environ if env is None else env
+    untracked_approval_records = _detect_untracked_approval_records(repo_root)
     base_ref_name = effective_env.get("SATTLINT_RATCHET_BASE_REF")
     if not base_ref_name and effective_env.get("GITHUB_BASE_REF"):
         base_ref_name = f"origin/{effective_env['GITHUB_BASE_REF']}"
@@ -124,8 +144,13 @@ def _detect_change_context(repo_root: Path, env: Mapping[str, str] | None = None
     worktree_added = _git(repo_root, "diff", "--name-status", "--diff-filter=A", "HEAD")
     if worktree.returncode == 0 and worktree_added.returncode == 0:
         worktree_files = _normalize_changed_files(worktree.stdout)
-        if worktree_files:
-            return ChangeContext(worktree_files, _normalize_added_files(worktree_added.stdout), "HEAD", "worktree")
+        if worktree_files or untracked_approval_records:
+            return ChangeContext(
+                _merge_unique_paths(worktree_files, untracked_approval_records),
+                _merge_unique_paths(_normalize_added_files(worktree_added.stdout), untracked_approval_records),
+                "HEAD",
+                "worktree",
+            )
 
     parent = _git(repo_root, "rev-parse", "--verify", "HEAD^")
     if parent.returncode == 0:
@@ -305,9 +330,25 @@ def _typing_ratchet_state_errors(
             + "."
         )
 
-    uncovered_scope_files = sorted(scope_files - strict_paths - debt_allowlist)
-    if uncovered_scope_files:
-        errors.append("Typing ratchet scope has uncovered Python files: " + ", ".join(uncovered_scope_files) + ".")
+    uncovered_scope_files = set(scope_files - strict_paths - debt_allowlist)
+    if base_state is None:
+        if uncovered_scope_files:
+            errors.append(
+                "Typing ratchet scope has uncovered Python files: " + ", ".join(sorted(uncovered_scope_files)) + "."
+            )
+    else:
+        base_uncovered_scope_files = (
+            set(_typing_scope_python_files(repo_root, base_state.strict_roots))
+            - set(base_state.strict_paths)
+            - set(base_state.debt_allowlist)
+        )
+        newly_uncovered_scope_files = sorted(uncovered_scope_files - base_uncovered_scope_files)
+        if newly_uncovered_scope_files:
+            errors.append(
+                "Typing ratchet scope gained newly uncovered Python files: "
+                + ", ".join(newly_uncovered_scope_files)
+                + "."
+            )
 
     added_scope_files = sorted(
         rel_path
@@ -1030,7 +1071,14 @@ def evaluate_policy_change(
             base_typing_state = (
                 _typing_ratchet_state(base_text, PYPROJECT_PATH, allow_missing=True) if base_text else None
             )
-            errors.extend(_typing_ratchet_state_errors(repo_root=repo_root, added_files=(), state=head_state))
+            errors.extend(
+                _typing_ratchet_state_errors(
+                    repo_root=repo_root,
+                    added_files=(),
+                    base_state=base_typing_state,
+                    state=head_state,
+                )
+            )
             errors.extend(_typing_ratchet_backslide_errors(base_typing_state, head_state))
 
     if COVERAGE_RATCHET_PATH in protected and PYPROJECT_PATH not in protected:

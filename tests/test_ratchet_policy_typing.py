@@ -186,6 +186,43 @@ def test_evaluate_policy_change_allows_typing_scope_expansion_inventory_for_exis
     assert errors == []
 
 
+def test_evaluate_policy_change_allows_protected_pyproject_edit_with_preexisting_uncovered_files(tmp_path):
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-07.md"
+    uncovered_file = tmp_path / "src" / "sattlint" / "devtools" / "legacy.py"
+    uncovered_file.parent.mkdir(parents=True)
+    uncovered_file.write_text("value = 1\n", encoding="utf-8")
+
+    base_pyproject = _pyproject_with_typing_ratchet(
+        "87.26",
+        strict_paths=(),
+        debt_allowlist=(),
+        strict_roots=("src/sattlint",),
+    )
+    head_pyproject = "\n".join(
+        [
+            base_pyproject,
+            "",
+            "[tool.ruff.lint.per-file-ignores]",
+            '"src/sattlint/config.py" = ["RUF034"]',
+        ]
+    )
+
+    errors = ratchet_policy.evaluate_policy_change(
+        repo_root=tmp_path,
+        changed_files=(ratchet_policy.PYPROJECT_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.PYPROJECT_PATH: head_pyproject,
+            approval_path: "Approved-by: Human Reviewer\nReason: allow unrelated protected-path repair\n",
+        },
+        base_text_by_path={
+            ratchet_policy.PYPROJECT_PATH: base_pyproject,
+            approval_path: None,
+        },
+    )
+
+    assert errors == []
+
+
 def test_evaluate_policy_change_rejects_pyright_strict_shrink_even_with_approval():
     approval_path = ".github/approvals/ratchet-rebaseline-2026-05-01.md"
     base_pyproject = _pyproject_with_typing_ratchet(

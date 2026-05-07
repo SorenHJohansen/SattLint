@@ -202,6 +202,7 @@ def _find_public_readiness_findings(
                     severity="high",
                     confidence="high",
                     message=f"Expected public-facing file '{filename}' is missing.",
+                    path=filename,
                     suggestion="Add the missing file before publishing the repository.",
                 )
             )
@@ -237,6 +238,7 @@ def _find_public_readiness_findings(
                 severity="medium",
                 confidence="high",
                 message="Repository does not define a CI workflow.",
+                path=".github/workflows",
                 suggestion="Add an audit or test workflow so external contributors get immediate feedback.",
             )
         )
@@ -266,6 +268,7 @@ def _find_public_readiness_findings(
             if any(line == prefix or line.startswith(prefix) for prefix in repo_audit.GENERATED_PATH_PREFIXES)
         ]
         if generated:
+            generated_scope_path = generated[0].split("/", 1)[0]
             findings.append(
                 repo_audit.Finding(
                     id="tracked-generated-artifacts",
@@ -273,6 +276,7 @@ def _find_public_readiness_findings(
                     severity="high",
                     confidence="high",
                     message="Generated artifacts are tracked in git and may embed workstation-specific data.",
+                    path=generated_scope_path,
                     detail=", ".join(generated[:5]) + (" ..." if len(generated) > 5 else ""),
                     suggestion="Remove generated outputs from version control and consider history cleanup for already-published leaks.",
                     history_cleanup_recommended=True,
@@ -299,6 +303,7 @@ def _find_public_readiness_findings(
                 severity="medium",
                 confidence="high",
                 message="Repository root contains tracked helper or scratch entries outside the approved top-level layout.",
+                path=unexpected_root_entries[0],
                 detail=", ".join(unexpected_root_entries[:5]) + (" ..." if len(unexpected_root_entries) > 5 else ""),
                 suggestion="Move reusable tooling under scripts/ or another owner directory, and delete one-off scratch files from the repo root.",
             )

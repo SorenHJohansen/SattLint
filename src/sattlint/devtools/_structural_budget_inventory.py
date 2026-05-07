@@ -64,7 +64,8 @@ def read_structural_text(path: Path) -> tuple[str | None, int | None, dict[str, 
             return None, None, {"error": str(read_exc), "error_type": type(read_exc).__name__}
     except OSError as exc:
         return None, None, {"error": str(exc), "error_type": type(exc).__name__}
-    return text, count_structural_lines(text), None
+    line_count = len(text.splitlines()) if path.suffix.casefold() == ".md" else count_structural_lines(text)
+    return text, line_count, None
 
 
 def summarize_structural_budget_metrics(report: dict[str, Any]) -> dict[str, int]:

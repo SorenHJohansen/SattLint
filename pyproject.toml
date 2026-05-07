@@ -128,6 +128,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"src/sattlint/config.py" = ["RUF034"]
 "src/sattline_parser/models/ast_model.py" = ["N801"]
 "src/sattline_parser/transformer/sl_transformer.py" = ["N802"]
 "src/sattline_parser/transformer/_modules_mixin.py" = ["N802"]

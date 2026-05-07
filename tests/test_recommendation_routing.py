@@ -3,7 +3,7 @@ from typing import Any, cast
 
 import pytest
 
-from sattlint.devtools import pipeline, repo_audit
+from sattlint.devtools import _repo_audit_entrypoint_runs, pipeline, repo_audit
 from sattlint.devtools.pipeline_checks import (
     collect_repo_file_inventory,
     normalize_changed_files,
@@ -82,6 +82,120 @@ def test_repo_audit_route_cases_cover_positive_and_negative_paths(tmp_path, chec
 
     assert path_matches_globs(positive_path, path_globs)
     assert not path_matches_globs(negative_path, path_globs)
+
+
+def test_repo_audit_helper_filters_findings_to_changed_scope():
+    related_finding = repo_audit.Finding(
+        "related-gap",
+        "public-readiness",
+        "medium",
+        "high",
+        "Related finding.",
+        path="src/sattlint/devtools/repo_audit.py",
+    )
+    directory_finding = repo_audit.Finding(
+        "directory-gap",
+        "public-readiness",
+        "medium",
+        "high",
+        "Directory finding.",
+        path="artifacts",
+    )
+    pathless_finding = repo_audit.Finding(
+        "pathless-gap",
+        "public-readiness",
+        "low",
+        "high",
+        "Pathless finding.",
+    )
+
+    filtered = _repo_audit_entrypoint_runs._filter_custom_findings_to_changed_files(
+        [related_finding, directory_finding, pathless_finding],
+        ["src/sattlint/devtools/repo_audit.py"],
+    )
+
+    assert [finding.id for finding in filtered] == ["related-gap", "pathless-gap"]
+    assert _repo_audit_entrypoint_runs._filter_custom_findings_to_changed_files([directory_finding], []) == [
+        directory_finding
+    ]
+
+
+def test_find_public_readiness_findings_assigns_scope_paths_for_finish_gate_coverage(tmp_path):
+    tracked_generated_path = "/".join(("artifacts", "audit", "status.json"))
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "demo"\nversion = "0.1.0"\n[project.urls]\nRepository = "https://example.invalid/demo"\n',
+        encoding="utf-8",
+    )
+
+    findings = repo_audit._find_public_readiness_findings(
+        tmp_path,
+        tracked_paths=(
+            "LICENSE",
+            "CONTRIBUTING.md",
+            ".gitignore",
+            "pyproject.toml",
+            tracked_generated_path,
+        ),
+    )
+    findings_by_id = {finding.id: finding for finding in findings}
+
+    assert findings_by_id["missing-public-file"].path == "README.md"
+    assert findings_by_id["missing-ci-workflow"].path == ".github/workflows"
+    assert findings_by_id["tracked-generated-artifacts"].path == "artifacts"
+    assert findings_by_id["unexpected-tracked-root-entry"].path == "artifacts"
+
+
+def test_run_recommended_repo_audit_slice_filters_findings_in_owner_covered_suite(monkeypatch, tmp_path):
+    recommendation = {
+        "recommended_check_ids": ["public-readiness"],
+        "recommended_pipeline_check_ids": [],
+        "recommended_repo_audit_check_ids": ["public-readiness"],
+    }
+    unrelated_finding = repo_audit.Finding(
+        "tracked-generated-artifacts",
+        "public-readiness",
+        "high",
+        "high",
+        "Tracked generated artifacts.",
+        path="artifacts",
+    )
+    related_finding = repo_audit.Finding(
+        "changed-file-warning",
+        "public-readiness",
+        "medium",
+        "high",
+        "Changed file warning.",
+        path="src/sattlint/devtools/repo_audit.py",
+    )
+
+    monkeypatch.setattr(
+        repo_audit._repo_audit_entrypoints,
+        "build_repo_audit_check_recommendations",
+        lambda **_kwargs: recommendation,
+    )
+    monkeypatch.setattr(
+        repo_audit._repo_audit_entrypoints,
+        "collect_custom_findings",
+        lambda *args, **kwargs: [unrelated_finding, related_finding],
+    )
+    monkeypatch.setattr(repo_audit, "_write_markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(repo_audit, "_write_audit_run_history", lambda *args, **kwargs: None)
+    monkeypatch.setattr(repo_audit, "_mirror_latest_reports", lambda *args, **kwargs: None)
+
+    summary = repo_audit.run_recommended_repo_audit_slice(
+        tmp_path,
+        profile="full",
+        fail_on="high",
+        include_generated=False,
+        suspicious_identifiers=[],
+        skip_vulture=False,
+        skip_bandit=False,
+        changed_files=["src/sattlint/devtools/repo_audit.py"],
+    )
+
+    assert summary["finding_count"] == 1
+    assert [finding["id"] for finding in summary["findings"]] == ["changed-file-warning"]
 
 
 def test_verify_check_catalog_passes_for_pipeline_catalog(tmp_path):

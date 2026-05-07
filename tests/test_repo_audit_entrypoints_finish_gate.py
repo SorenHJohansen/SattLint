@@ -175,6 +175,85 @@ def test_run_recommended_repo_audit_slice_writes_combined_reports(monkeypatch, t
     assert (tmp_path / "cli_consistency.json").exists()
 
 
+def test_run_recommended_repo_audit_slice_filters_custom_findings_outside_changed_scope(monkeypatch, tmp_path):
+    recommendation = {
+        "recommended_check_ids": ["public-readiness"],
+        "recommended_pipeline_check_ids": [],
+        "recommended_repo_audit_check_ids": ["public-readiness"],
+    }
+    unrelated_finding = repo_audit.Finding(
+        "tracked-generated-artifacts",
+        "public-readiness",
+        "high",
+        "high",
+        "Tracked generated artifacts.",
+        path="artifacts",
+    )
+    related_finding = repo_audit.Finding(
+        "changed-file-warning",
+        "public-readiness",
+        "medium",
+        "high",
+        "Changed file warning.",
+        path="src/sattlint/app.py",
+    )
+
+    monkeypatch.setattr(
+        repo_audit_entrypoints,
+        "build_repo_audit_check_recommendations",
+        lambda **kwargs: recommendation,
+    )
+    monkeypatch.setattr(
+        repo_audit_entrypoints, "collect_custom_findings", lambda *args, **kwargs: [unrelated_finding, related_finding]
+    )
+    monkeypatch.setattr(repo_audit, "_write_markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(repo_audit, "_write_audit_run_history", lambda *args, **kwargs: None)
+    monkeypatch.setattr(repo_audit, "_mirror_latest_reports", lambda *args, **kwargs: None)
+
+    summary = repo_audit_entrypoints.run_recommended_repo_audit_slice(
+        tmp_path,
+        profile="full",
+        fail_on="high",
+        include_generated=False,
+        suspicious_identifiers=[],
+        skip_vulture=False,
+        skip_bandit=False,
+        changed_files=["src/sattlint/app.py"],
+    )
+    status_report = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+
+    assert status_report["overall_status"] == "pass"
+    assert summary["finding_count"] == 1
+    assert [finding["id"] for finding in summary["findings"]] == ["changed-file-warning"]
+
+
+def test_find_public_readiness_findings_assigns_change_scope_paths(tmp_path):
+    pyproject = tmp_path / "pyproject.toml"
+    tracked_generated_path = "/".join(("artifacts", "audit", "status.json"))
+    pyproject.write_text(
+        '[project]\nname = "demo"\nversion = "0.1.0"\n[project.urls]\nRepository = "https://example.invalid/demo"\n',
+        encoding="utf-8",
+    )
+
+    findings = repo_audit._find_public_readiness_findings(
+        tmp_path,
+        tracked_paths=(
+            "README.md",
+            "LICENSE",
+            "CONTRIBUTING.md",
+            ".gitignore",
+            "pyproject.toml",
+            tracked_generated_path,
+        ),
+    )
+
+    findings_by_id = {finding.id: finding for finding in findings}
+
+    assert findings_by_id["missing-ci-workflow"].path == ".github/workflows"
+    assert findings_by_id["tracked-generated-artifacts"].path == "artifacts"
+    assert findings_by_id["unexpected-tracked-root-entry"].path == "artifacts"
+
+
 def test_repo_audit_entrypoints_cover_delegate_and_default_manifest_branches(monkeypatch, tmp_path):
     from sattlint.devtools import _repo_audit_full_run as full_run_helper
 
