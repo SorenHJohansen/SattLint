@@ -58,7 +58,9 @@ def _merge_reset_states(left: str, right: str) -> str | None:
     return None
 
 
-def _path_state_fingerprint(state: _PathState) -> tuple[
+def _path_state_fingerprint(
+    state: _PathState,
+) -> tuple[
     str,
     tuple[tuple[WriteKey, str, str], ...],
     tuple[tuple[WriteKey, str, str], ...],
