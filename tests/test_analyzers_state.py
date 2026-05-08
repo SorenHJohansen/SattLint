@@ -2448,12 +2448,11 @@ def test_effect_flow_tracker_copyvariable_inputs_only_include_source():
         record_access_fn=lambda _kind, _path, _ctx, _ref: None,
     )
 
-    sources = tracker.collect_function_input_effect_keys(
-        "CopyVariable",
-        [_varref("Source"), _varref("Target")],
-        context,
-    )
-    init_sources = tracker.collect_function_input_effect_keys("InitVariable", [_varref("Target"), _varref("Source")], context)
+    collect_input_effect_keys = tracker.collect_function_input_effect_keys
+    source_target_args = [_varref("Source"), _varref("Target")]
+    target_source_args = [_varref("Target"), _varref("Source")]
+    sources = collect_input_effect_keys("CopyVariable", source_target_args, context)
+    init_sources = collect_input_effect_keys("InitVariable", target_source_args, context)
     assert sources == {("root", "source")}
     assert init_sources == {("root", "source")}
 

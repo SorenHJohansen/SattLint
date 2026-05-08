@@ -192,15 +192,7 @@ def test_run_cli_simulate_passes_flags():
         ],
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
-        run_simulate_command_fn=lambda cfg,
-        *,
-        target_path,
-        module_name,
-        mode,
-        max_scans,
-        output_format,
-        output_path,
-        use_cache: (
+        run_simulate_command_fn=lambda cfg, *, target_path, module_name, mode, max_scans, output_format, output_path, use_cache: (
             seen.update(
                 {
                     "cfg": cfg,

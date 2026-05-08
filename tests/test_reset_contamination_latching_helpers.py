@@ -113,7 +113,9 @@ def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
     )
 
     assert any(
-        issue.module_path == ["Root", "Frame", "Child"] and issue.variable is not None and issue.variable.name == "Counter"
+        issue.module_path == ["Root", "Frame", "Child"]
+        and issue.variable is not None
+        and issue.variable.name == "Counter"
         for issue in reset_issues
     )
     assert [(issue.module_path, issue.variable.name) for issue in latch_issues if issue.variable is not None] == [
