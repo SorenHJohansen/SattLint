@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 from sattlint.contracts import FindingCollection
 from sattlint.devtools import pipeline as pipeline_module
+from sattlint.devtools._pipeline_finish_gate import execute_finish_gate_steps, summarize_finish_gate_timing
 from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS, artifact_reports_map
 from sattlint.devtools.pipeline_artifacts import write_json_artifact
 from sattlint.devtools.progress_reporting import ProgressReporter
 from sattlint.path_sanitizer import sanitize_path_for_report
+
+RECOMMENDED_REPO_AUDIT_MAX_WORKERS = 2
 
 
 def _entrypoints_module() -> Any:
@@ -44,6 +48,84 @@ def _filter_custom_findings_to_changed_files(findings: list[Any], changed_files:
     return [finding for finding in findings if _finding_matches_changed_files(finding, changed_files)]
 
 
+def _progress_stage_duration(progress: ProgressReporter, key: str) -> float:
+    for stage in progress.to_dict().get("stages", []):
+        if stage.get("key") != key:
+            continue
+        try:
+            return float(stage.get("duration_seconds") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+    return 0.0
+
+
+def _run_recommended_pipeline_slice(
+    *,
+    output_dir: Path,
+    profile: str,
+    skip_vulture: bool,
+    skip_bandit: bool,
+    changed_files: list[str],
+    entrypoints_module: Any,
+    repo_audit: Any,
+    pipeline_check_ids: list[str],
+    pytest_workers: str | None,
+) -> dict[str, Any]:
+    pipeline_summary = pipeline_module._run_pipeline(
+        output_dir,
+        trace_target=(pipeline_module.DEFAULT_TRACE_TARGET if pipeline_module.DEFAULT_TRACE_TARGET.exists() else None),
+        profile=profile,
+        include_vulture=False if skip_vulture else None,
+        include_bandit=False if skip_bandit else None,
+        corpus_manifest_dir=entrypoints_module._default_corpus_manifest_dir(),
+        changed_files=list(changed_files),
+        selected_checks=pipeline_check_ids,
+        pytest_workers=pytest_workers,
+    )
+    return {
+        "pipeline_summary": pipeline_summary,
+        "pipeline_findings": repo_audit._find_pipeline_findings(output_dir),
+    }
+
+
+def _run_recommended_custom_scan(
+    *,
+    repo_root: Path,
+    include_generated: bool,
+    suspicious_identifiers: Iterable[str],
+    resolved_changed_files: list[str],
+    repo_finding_check_ids: list[str],
+    repo_check_ids: list[str],
+    entrypoints_module: Any,
+    repo_audit: Any,
+) -> dict[str, Any]:
+    custom_findings: list[Any] = []
+    cli_consistency_report = None
+    ai_gc_report = None
+    if repo_finding_check_ids:
+        custom_findings.extend(
+            entrypoints_module.collect_custom_findings(
+                repo_root,
+                include_generated=include_generated,
+                tracked_only=True,
+                suspicious_identifiers=suspicious_identifiers,
+                selected_checks=repo_finding_check_ids,
+            )
+        )
+    if "ai-gc" in repo_check_ids:
+        ai_gc_report = repo_audit.build_ai_gc_report(repo_root)
+    if "cli-consistency" in repo_check_ids:
+        cli_consistency_report = repo_audit.build_cli_consistency_report(root=repo_root)
+        custom_findings.extend(entrypoints_module._cli_consistency_findings(cli_consistency_report))
+    scoped_custom_findings = _filter_custom_findings_to_changed_files(custom_findings, list(resolved_changed_files))
+    return {
+        "custom_findings": scoped_custom_findings,
+        "filtered_custom_findings": len(custom_findings) - len(scoped_custom_findings),
+        "ai_gc_report": ai_gc_report,
+        "cli_consistency_report": cli_consistency_report,
+    }
+
+
 def run_recommended_repo_audit_slice(
     output_dir: Path,
     *,
@@ -54,6 +136,7 @@ def run_recommended_repo_audit_slice(
     skip_vulture: bool,
     skip_bandit: bool,
     changed_files: Iterable[str] | None,
+    pytest_workers: str | None = None,
     latest_output_dir: Path | None = None,
     record_history: bool = True,
 ) -> dict[str, Any]:
@@ -101,51 +184,61 @@ def run_recommended_repo_audit_slice(
     )
     pipeline_summary: dict[str, Any] | None = None
     pipeline_findings: list[Any] = []
-    if pipeline_check_ids:
-        pipeline_output_dir = output_dir / repo_audit.PIPELINE_OUTPUT_DIRNAME
-        progress.start_stage("pipeline")
-        pipeline_summary = pipeline_module._run_pipeline(
-            pipeline_output_dir,
-            trace_target=(
-                pipeline_module.DEFAULT_TRACE_TARGET if pipeline_module.DEFAULT_TRACE_TARGET.exists() else None
-            ),
-            profile=profile,
-            include_vulture=False if skip_vulture else None,
-            include_bandit=False if skip_bandit else None,
-            corpus_manifest_dir=entrypoints_module._default_corpus_manifest_dir(),
-            changed_files=list(resolved_changed_files),
-            selected_checks=pipeline_check_ids,
-        )
-        pipeline_findings = repo_audit._find_pipeline_findings(pipeline_output_dir)
-        progress.complete_stage("pipeline", detail=f"{len(pipeline_findings)} pipeline findings")
-    else:
-        progress.skip_stage("pipeline", detail="no pipeline checks recommended")
-
-    progress.start_stage("custom_scan")
     custom_findings: list[Any] = []
     cli_consistency_report = None
-    if repo_finding_check_ids:
-        custom_findings.extend(
-            entrypoints_module.collect_custom_findings(
-                repo_audit.REPO_ROOT,
-                include_generated=include_generated,
-                tracked_only=True,
-                suspicious_identifiers=suspicious_identifiers,
-                selected_checks=repo_finding_check_ids,
+    filtered_custom_findings = 0
+    pipeline_output_dir = output_dir / repo_audit.PIPELINE_OUTPUT_DIRNAME
+    pipeline_future = None
+    custom_scan_future = None
+    if pipeline_check_ids:
+        progress.start_stage("pipeline")
+    else:
+        progress.skip_stage("pipeline", detail="no pipeline checks recommended")
+    if repo_finding_check_ids or "ai-gc" in repo_check_ids or "cli-consistency" in repo_check_ids:
+        progress.start_stage("custom_scan")
+    else:
+        progress.skip_stage("custom_scan", detail="no repo-audit checks recommended")
+    with ThreadPoolExecutor(max_workers=RECOMMENDED_REPO_AUDIT_MAX_WORKERS) as executor:
+        if pipeline_check_ids:
+            pipeline_future = executor.submit(
+                _run_recommended_pipeline_slice,
+                output_dir=pipeline_output_dir,
+                profile=profile,
+                skip_vulture=skip_vulture,
+                skip_bandit=skip_bandit,
+                changed_files=list(resolved_changed_files),
+                entrypoints_module=entrypoints_module,
+                repo_audit=repo_audit,
+                pipeline_check_ids=pipeline_check_ids,
+                pytest_workers=pytest_workers,
             )
-        )
-    if "ai-gc" in repo_check_ids:
-        ai_gc_report = repo_audit.build_ai_gc_report(repo_audit.REPO_ROOT)
-    if "cli-consistency" in repo_check_ids:
-        cli_consistency_report = repo_audit.build_cli_consistency_report(root=repo_audit.REPO_ROOT)
-        custom_findings.extend(entrypoints_module._cli_consistency_findings(cli_consistency_report))
-    scoped_custom_findings = _filter_custom_findings_to_changed_files(custom_findings, list(resolved_changed_files))
-    filtered_custom_findings = len(custom_findings) - len(scoped_custom_findings)
-    custom_findings = scoped_custom_findings
-    custom_scan_detail = f"{len(custom_findings)} custom findings"
-    if filtered_custom_findings:
-        custom_scan_detail += f" ({filtered_custom_findings} outside changed scope)"
-    progress.complete_stage("custom_scan", detail=custom_scan_detail)
+        if repo_finding_check_ids or "ai-gc" in repo_check_ids or "cli-consistency" in repo_check_ids:
+            custom_scan_future = executor.submit(
+                _run_recommended_custom_scan,
+                repo_root=repo_audit.REPO_ROOT,
+                include_generated=include_generated,
+                suspicious_identifiers=suspicious_identifiers,
+                resolved_changed_files=list(resolved_changed_files),
+                repo_finding_check_ids=repo_finding_check_ids,
+                repo_check_ids=repo_check_ids,
+                entrypoints_module=entrypoints_module,
+                repo_audit=repo_audit,
+            )
+        if pipeline_future is not None:
+            pipeline_result = pipeline_future.result()
+            pipeline_summary = pipeline_result["pipeline_summary"]
+            pipeline_findings = list(pipeline_result["pipeline_findings"])
+            progress.complete_stage("pipeline", detail=f"{len(pipeline_findings)} pipeline findings")
+        if custom_scan_future is not None:
+            custom_scan_result = custom_scan_future.result()
+            custom_findings = list(custom_scan_result["custom_findings"])
+            filtered_custom_findings = int(custom_scan_result["filtered_custom_findings"])
+            ai_gc_report = custom_scan_result["ai_gc_report"]
+            cli_consistency_report = custom_scan_result["cli_consistency_report"]
+            custom_scan_detail = f"{len(custom_findings)} custom findings"
+            if filtered_custom_findings:
+                custom_scan_detail += f" ({filtered_custom_findings} outside changed scope)"
+            progress.complete_stage("custom_scan", detail=custom_scan_detail)
 
     progress.start_stage("merge_findings")
     findings = repo_audit._dedupe_findings([*pipeline_findings, *custom_findings])
@@ -187,6 +280,7 @@ def run_recommended_repo_audit_slice(
         "profile": profile,
         "entry_report": "status.json",
         "canonical_command": progress.to_dict()["canonical_command"],
+        "overall_status": overall_status_value,
         "pipeline_ran": bool(pipeline_check_ids),
         "pipeline_summary": pipeline_summary,
         "reports": reports,
@@ -202,6 +296,22 @@ def run_recommended_repo_audit_slice(
         "selected_repo_audit_checks": repo_check_ids,
         "recommendation": recommendation,
         "cli_consistency_status": None if cli_consistency_report is None else cli_consistency_report.get("status"),
+        "timing": {
+            "stage_durations_seconds": {
+                "pipeline": round(_progress_stage_duration(progress, "pipeline"), 3),
+                "custom_scan": round(_progress_stage_duration(progress, "custom_scan"), 3),
+                "merge_findings": round(_progress_stage_duration(progress, "merge_findings"), 3),
+                "write_reports": 0.0,
+            },
+            "selected_pipeline_check_durations_seconds": (
+                {}
+                if pipeline_summary is None
+                else dict((pipeline_summary.get("timing") or {}).get("check_durations_seconds") or {})
+            ),
+            "parallel_worker_count": RECOMMENDED_REPO_AUDIT_MAX_WORKERS,
+            "critical_path_duration_seconds": 0.0,
+            "total_duration_seconds": 0.0,
+        },
     }
     status_report = {
         "kind": "sattlint.repo_audit.status",
@@ -264,6 +374,17 @@ def run_recommended_repo_audit_slice(
     repo_audit._mirror_latest_reports(output_dir, latest_output_dir)
     progress.complete_stage("write_reports")
     progress.finalize(overall_status=overall_status_value)
+    write_reports_duration = round(_progress_stage_duration(progress, "write_reports"), 3)
+    stage_durations = summary["timing"]["stage_durations_seconds"]
+    stage_durations["write_reports"] = write_reports_duration
+    critical_path_duration = round(
+        max(stage_durations["pipeline"], stage_durations["custom_scan"])
+        + stage_durations["merge_findings"]
+        + write_reports_duration,
+        3,
+    )
+    summary["timing"]["critical_path_duration_seconds"] = critical_path_duration
+    summary["timing"]["total_duration_seconds"] = round(sum(float(value) for value in stage_durations.values()), 3)
     return summary
 
 
@@ -277,6 +398,7 @@ def run_recommended_repo_audit_finish_gate(
     skip_vulture: bool,
     skip_bandit: bool,
     changed_files: Iterable[str] | None,
+    pytest_workers: str | None = None,
     latest_output_dir: Path | None = None,
 ) -> dict[str, Any]:
     entrypoints_module = _entrypoints_module()
@@ -299,6 +421,7 @@ def run_recommended_repo_audit_finish_gate(
         skip_vulture=skip_vulture,
         skip_bandit=skip_bandit,
         changed_files=changed_files,
+        pytest_workers=pytest_workers,
         latest_output_dir=latest_output_dir,
         record_history=False,
     )
@@ -311,29 +434,23 @@ def run_recommended_repo_audit_finish_gate(
         ruff_command=[pipeline_module._resolve_venv_tool("ruff") or "ruff"],
         pyright_command=[pipeline_module._resolve_venv_tool("pyright") or "pyright"],
         python_command=[pipeline_module._resolve_python_executable()],
+        pytest_workers=pytest_workers,
     )[1:]
-    step_reports: list[dict[str, Any]] = []
+    step_reports = execute_finish_gate_steps(
+        steps=finish_gate_steps,
+        run_command=pipeline_module._run_command,
+        pipeline_summary=summary.get("pipeline_summary"),
+    )
     finish_gate_status = "pass"
     coverage_proof: dict[str, Any] = {
         "status": "not-required",
         "mode": "skipped",
         "coverage_path": None,
     }
-    for step in finish_gate_steps:
-        result = pipeline_module._run_command(step["id"], step["argv"])
-        step_status = "pass" if result.exit_code == 0 else "fail"
+    for step_report in step_reports:
+        step_status = str(step_report.get("status", "pass"))
         if step_status == "fail":
             finish_gate_status = "fail"
-        step_reports.append(
-            {
-                "id": step["id"],
-                "label": step["label"],
-                "command": step["command"],
-                "exit_code": result.exit_code,
-                "duration_seconds": result.duration_seconds,
-                "status": step_status,
-            }
-        )
     if proof_requirements["focused_behavior_test"]["status"] == "missing":
         finish_gate_status = "fail"
         step_reports.append(
@@ -374,6 +491,7 @@ def run_recommended_repo_audit_finish_gate(
         "owner_test_targets": entrypoints_module._owner_test_targets_for_checks(recommendation["recommended_checks"]),
         "proof_requirements": proof_requirements,
         "coverage_proof": coverage_proof,
+        "timing": summarize_finish_gate_timing(step_reports),
     }
     write_json_artifact(output_dir / "finish_gate.json", finish_gate_report)
     summary["finish_gate"] = finish_gate_report

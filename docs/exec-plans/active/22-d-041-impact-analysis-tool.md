@@ -64,16 +64,16 @@ Inspect the existing collectors and pipeline artifact plumbing:
 
 After implementing the wrapper and its tests, run the narrow validation first:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_impact_analyzer.py tests/test_pipeline_collection.py tests/test_pipeline_run.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_impact_analyzer.py tests/test_pipeline_collection.py tests/test_pipeline_run.py -x -q --tb=short
 
 Exercise the tool directly on the repository workspace:
 
-    & ".venv/Scripts/python.exe" -m sattlint.devtools.impact_analyzer --workspace-root . --library support --format json --output-dir artifacts/impact-analysis
+    python scripts/run_repo_python.py -m sattlint.devtools.impact_analyzer --workspace-root . --library support --format json --output-dir artifacts/impact-analysis
 
 Run touched-file quality gates after the focused tests pass:
 
-    & ".venv/Scripts/python.exe" -m ruff check src/sattlint/devtools/impact_analyzer.py src/sattlint/devtools/structural_reports.py tests/test_impact_analyzer.py tests/test_pipeline_collection.py tests/test_pipeline_run.py
-    & ".venv/Scripts/python.exe" -m pyright src/sattlint/devtools/impact_analyzer.py src/sattlint/devtools/structural_reports.py
+    python scripts/run_repo_python.py -m ruff check src/sattlint/devtools/impact_analyzer.py src/sattlint/devtools/structural_reports.py tests/test_impact_analyzer.py tests/test_pipeline_collection.py tests/test_pipeline_run.py
+    python scripts/run_repo_python.py -m pyright src/sattlint/devtools/impact_analyzer.py src/sattlint/devtools/structural_reports.py
 
 Expected success signal: the direct command exits with code `0`, writes a stable JSON file when requested, and the filtered report clearly lists direct and transitive dependents for the requested selectors.
 

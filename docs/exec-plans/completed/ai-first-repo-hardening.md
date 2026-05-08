@@ -121,7 +121,7 @@ Validate new planning docs render and are linked:
 
 Optional quick doc-health check:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_repo_audit.py -x -q --tb=short -k "doc_gardener or ai_first or debt_register"
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_repo_audit.py -x -q --tb=short -k "doc_gardener or ai_first or debt_register"
 
 Expected outcomes:
 

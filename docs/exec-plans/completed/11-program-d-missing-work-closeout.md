@@ -115,28 +115,28 @@ Run commands from the repository root.
 
 Milestone A first validation is documentation-only. After editing Program D roadmap or active-plan ownership, run:
 
-    & ".venv/Scripts/python.exe" scripts/run_markdownlint.py docs/exec-plans/feature-roadmap.md docs/exec-plans/active/*.md docs/exec-plans/completed/07-d-wave-2-3-backlog-execution.md
+    python scripts/run_repo_python.py scripts/run_markdownlint.py docs/exec-plans/feature-roadmap.md docs/exec-plans/active/*.md docs/exec-plans/completed/07-d-wave-2-3-backlog-execution.md
 
 Milestone B first validation starts with the named failing tests:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_repo_audit.py tests/test_repo_audit_entrypoints_helpers.py -x -q --tb=short -k "planning_context or verify_recommendations"
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_repo_audit.py tests/test_repo_audit_entrypoints_helpers.py -x -q --tb=short -k "planning_context or verify_recommendations"
 
 When that passes, rerun the quick audit:
 
-    & ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit-review-quick
+    python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit-review-quick
 
 If the audit still fails, fix only the remaining blocker classes already recorded by `08` and `09`, then rerun the same quick-audit command before widening.
 
 Milestone C first validation is the D-Wave-1 gate:
 
-    & ".venv/Scripts/python.exe" -m pre_commit run --all-files
+    python scripts/run_repo_python.py -m pre_commit run --all-files
 
 If that command applies auto-fixes, normalize or stage the affected files, rerun the same command, and do not mark the plan complete until it exits with status `0` from a clean baseline.
 
 Milestone D broad closeout validation happens only after Milestones B and C are complete:
 
-    & ".venv/Scripts/python.exe" -m pytest -q
-    & ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit-review-quick
+    python scripts/run_repo_python.py -m pytest -q
+    python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit-review-quick
 
 ## Validation and Acceptance
 

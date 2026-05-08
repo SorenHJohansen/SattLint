@@ -29,6 +29,7 @@ from ..resolution.common import (
     resolve_moduletype_def_strict,
 )
 from ..resolution.type_graph import TypeGraph
+from ._icf_datatype_resolution import resolve_leaf_datatype, resolve_record_datatype
 
 _ICF_REF_RE = re.compile(r"(?:^|.*?)(?:[A-Za-z]::)?(?P<program>[^:]+):(?P<path>.+)$")
 _ICF_HEADER_RE = re.compile(r"^\[(?P<tag>[^\]\s]+)(?:\s+(?P<label>.+?))?\]$")
@@ -565,9 +566,6 @@ def _validate_field_path(
         if isinstance(current_type, Simple_DataType):
             return False, f"datatype {current_type.value} has no field {field!r}"
 
-        if current_type is None:
-            return False, f"unknown datatype for field {field!r}"
-
         field_def = type_graph.field(str(current_type), field)
         if field_def is None:
             return False, f"field {field!r} not found in datatype {current_type}"
@@ -582,43 +580,20 @@ def _validate_field_path(
     )
 
 
-def _resolve_leaf_datatype(
-    type_graph: TypeGraph,
-    root_var: Variable,
+def _validate_entry_key_case(
+    entry: ICFEntry,
+    *,
+    variable_name: str,
     field_segments: list[str],
-) -> Simple_DataType | str | None:
-    current_type: Simple_DataType | str | None = root_var.datatype
-    for field in field_segments:
-        if isinstance(current_type, Simple_DataType):
-            return None
-        if current_type is None:
-            return None
-        field_def = type_graph.field(str(current_type), field)
-        if field_def is None:
-            return None
-        current_type = field_def.datatype
-    return current_type
-
-
-def _resolve_record_datatype(
-    type_graph: TypeGraph,
-    root_datatype: Simple_DataType | str | None,
-    field_segments: list[str],
-) -> str | None:
-    current_type: Simple_DataType | str | None = root_datatype
-    for field in field_segments:
-        if isinstance(current_type, Simple_DataType):
-            return None
-        if current_type is None:
-            return None
-        field_def = type_graph.field(str(current_type), field)
-        if field_def is None:
-            return None
-        current_type = field_def.datatype
-
-    if isinstance(current_type, Simple_DataType) or current_type is None:
+) -> ICFValidationIssue | None:
+    expected_name = field_segments[-1] if field_segments else variable_name
+    if entry.key == expected_name or _cf(entry.key) != _cf(expected_name):
         return None
-    return str(current_type)
+    return ICFValidationIssue(
+        entry=entry,
+        reason="key case mismatch",
+        detail=f"resolved SattLine name is {expected_name!r}, but ICF key is {entry.key!r}",
+    )
 
 
 def _validate_entry_context(entry: ICFEntry, path: str) -> list[ICFValidationIssue]:
@@ -673,7 +648,7 @@ def _validate_parameter_record_completeness(
         if not field_segments:
             continue
         record_path = tuple(field_segments[:-1])
-        datatype_name = _resolve_record_datatype(type_graph, resolved.root_datatype, list(record_path))
+        datatype_name = resolve_record_datatype(type_graph, resolved.root_datatype, list(record_path))
         if datatype_name is None:
             continue
         record = type_graph.record(datatype_name)
@@ -888,7 +863,7 @@ def validate_icf_entries_against_program(
             )
             continue
 
-        leaf_datatype = _resolve_leaf_datatype(type_graph, var, field_segments)
+        leaf_datatype = resolve_leaf_datatype(type_graph, var, field_segments)
         if leaf_datatype is None:
             issues.append(
                 ICFValidationIssue(
@@ -899,7 +874,6 @@ def validate_icf_entries_against_program(
             )
             continue
 
-        valid += 1
         resolved_entries.append(
             ICFResolvedEntry(
                 entry=entry,
@@ -911,6 +885,17 @@ def validate_icf_entries_against_program(
                 datatype=leaf_datatype,
             )
         )
+
+        key_case_issue = _validate_entry_key_case(
+            entry,
+            variable_name=var.name,
+            field_segments=field_segments,
+        )
+        if key_case_issue is not None:
+            issues.append(key_case_issue)
+            continue
+
+        valid += 1
 
     issues.extend(_validate_parameter_record_completeness(type_graph, resolved_entries, placeholder_entries))
     issues.extend(_validate_unit_structure(base_picture, entries, moduletype_index=moduletype_index))

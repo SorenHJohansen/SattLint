@@ -42,11 +42,11 @@ Observable outcome: maintainers can run deterministic mutation and differential 
   Evidence: `src/sattlint/devtools/pipeline.py` now threads mutation controls through `_prepare_pipeline_run()` and `_run_pipeline()`, and `src/sattlint/devtools/pipeline_artifacts.py` now publishes the `differential` payload instead of a no-op artifact.
 - Outcome: normalized Vulture dead-code findings now carry confidence-derived severity plus structured dead-code metadata for clearer triage quality.
   Evidence: `src/sattlint/devtools/finding_exports.py` now derives severity from Vulture confidence and extracts `dead_code_kind` and `symbol` metadata from the raw message when available.
-- Validation: focused regression coverage passed with `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_pipeline_run.py -q`, `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_pipeline_collection.py -q`, and `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_devtools_orphans.py -q -k "mutation or differential"`.
+- Validation: focused regression coverage passed with `python scripts/run_repo_python.py -m pytest --no-cov tests/test_pipeline_run.py -q`, `python scripts/run_repo_python.py -m pytest --no-cov tests/test_pipeline_collection.py -q`, and `python scripts/run_repo_python.py -m pytest --no-cov tests/test_devtools_orphans.py -q -k "mutation or differential"`.
 - Outcome: roadmap hygiene for completed D-Wave-3 items is now restored in `docs/exec-plans/feature-roadmap.md`.
   Evidence: Program D now contains an explicit D-Wave-3 summary row plus `Done` entries for D-020, D-024, and D-034.
 - Closeout: wave-close validation is now complete after the shared Program D closeout fixes landed.
-  Evidence: `& ".venv/Scripts/python.exe" -m pytest -q` now passes at `1606 passed in 210.13s`, and `& ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit-review-quick` now reports `Overall status: pass` with `0 blocking at fail-on high`.
+  Evidence: `python scripts/run_repo_python.py -m pytest -q` now passes at `1606 passed in 210.13s`, and `python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit-review-quick` now reports `Overall status: pass` with `0 blocking at fail-on high`.
 
 ## Context and Orientation
 
@@ -78,20 +78,20 @@ Run commands from repository root.
 
 Milestone A first validation:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py -x -q --tb=short
 
 Milestone B first validation:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py tests/test_editor_api.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py tests/test_editor_api.py -x -q --tb=short
 
 Milestone C first validation:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_pipeline.py tests/test_repo_audit.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_pipeline.py tests/test_repo_audit.py -x -q --tb=short
 
 Wave-close validation:
 
-    & ".venv/Scripts/python.exe" -m pytest -q
-    & ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit-review-quick
+    python scripts/run_repo_python.py -m pytest -q
+    python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit-review-quick
 
 ## Validation and Acceptance
 

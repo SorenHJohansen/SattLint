@@ -137,3 +137,72 @@ def test_repo_audit_cli_conflicts_and_latest_links(monkeypatch, tmp_path):
         "default-audit/status.json",
         "default-audit/summary.json",
     )
+
+
+@pytest.mark.parametrize(
+    ("arg_overrides", "message"),
+    [
+        (
+            {"leaks_only": True, "recommend_checks": True},
+            "--leaks-only cannot be combined with --recommend-checks or --run-recommended-slice.",
+        ),
+        (
+            {"check_my_changes": True, "list_checks": True},
+            "--check-my-changes must be run on its own.",
+        ),
+        (
+            {"planning_context": True, "apply_ai_gc": True},
+            "--planning-context must be run on its own.",
+        ),
+        (
+            {"apply_ai_gc": True, "list_checks": True},
+            "--apply-ai-gc must be run on its own.",
+        ),
+    ],
+)
+def test_repo_audit_cli_conflict_guards_cover_remaining_exclusive_modes(
+    monkeypatch,
+    tmp_path,
+    arg_overrides,
+    message,
+):
+    fake_repo_audit = _fake_repo_audit_module(tmp_path, [])
+
+    class ParserStub:
+        def error(self, error_message: str) -> None:
+            raise RuntimeError(error_message)
+
+    monkeypatch.setattr(repo_audit_cli, "_repo_audit_module", lambda: fake_repo_audit)
+
+    args = {
+        "check": None,
+        "recommend_checks": False,
+        "run_recommended_slice": False,
+        "run_recommended_finish_gate": False,
+        "check_my_changes": False,
+        "list_checks": False,
+        "planning_context": False,
+        "leaks_only": False,
+        "apply_ai_gc": False,
+    }
+    args.update(arg_overrides)
+
+    with pytest.raises(RuntimeError, match=message):
+        repo_audit_cli._check_mode_conflicts(argparse.Namespace(**args), ParserStub())
+
+
+def test_run_selected_checks_rejects_mixed_cli_consistency_selection(monkeypatch, tmp_path):
+    fake_repo_audit = _fake_repo_audit_module(tmp_path, [])
+    monkeypatch.setattr(repo_audit_cli, "_repo_audit_module", lambda: fake_repo_audit)
+
+    with pytest.raises(ValueError, match="cli-consistency must be run alone"):
+        repo_audit_cli._run_selected_checks(
+            argparse.Namespace(
+                check=["cli-consistency", "public-readiness"],
+                output_dir=str(tmp_path),
+                profile="full",
+                include_generated=False,
+                suspicious_identifier=[],
+            ),
+            "high",
+        )

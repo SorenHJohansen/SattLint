@@ -44,6 +44,7 @@ Each worktree keeps a local session summary JSON; the deprecated markdown coordi
 ### Planner
 
 - Reads the shared `.git/sattlint-ai-coordination/current_work_lock.json` first.
+- When a request starts from CI failures, separates current-slice failures from inherited repo debt before choosing the owner surface.
 - Chooses the owning surface, file claims, and first validation command.
 - Keeps work in one scoped slice when possible.
 - Escalates to `SattLint Orchestrator` only for parallel lanes or shared-file coordination.
@@ -52,7 +53,13 @@ Each worktree keeps a local session summary JSON; the deprecated markdown coordi
 
 - Claims files through the shared `.git/sattlint-ai-coordination/current_work_lock.json`.
 - Works from one task contract in `.ai/tasks/`.
+- Classifies the touched surface before the first edit: safe owner, debt-controlled owner, protected config, or shared infra.
+- Routes debt-controlled owners toward a sibling helper seam or explicit decomposition slice before editing the owner directly.
+- Checks approval-record requirements and change-context detection before editing protected config paths such as `pyproject.toml` or ratchet files.
 - Runs focused validation immediately after the first substantive edit.
+- If the first validation fails for ratchet or finish-gate policy rather than behavior, hops once to the controlling policy seam and recuts the slice there.
+- Does not widen a local CI failure into inherited repo-wide debt unless the user explicitly asks for repo-wide remediation.
+- Treats finish-gate JSON and audit artifacts as point-in-time evidence. Refreshes them after meaningful validation changes before using them to drive more edits.
 - Emits a handoff with changed files, known risks, and required tests.
 
 ### Test Agent

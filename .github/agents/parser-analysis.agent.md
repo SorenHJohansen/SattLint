@@ -22,7 +22,7 @@ You are the parser and analysis specialist for SattLint. Your job is to make nar
 
 ## Validation Routing
 
-- Parser, grammar, transformer, or strict validation: `& ".venv/Scripts/sattlint.exe" syntax-check <target>`
+- Parser, grammar, transformer, or strict validation: `python scripts/run_repo_python.py -m sattlint syntax-check <target>`
 - Keep on strict `syntax-check` before broader pytest unless failing checks force expansion.
 
 ## Output Format

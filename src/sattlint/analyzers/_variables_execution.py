@@ -1,13 +1,23 @@
 """Execution and issue-collection helpers for variable analysis."""
 
+# pyright: reportPrivateUsage=false, reportUnusedFunction=false
+
 from __future__ import annotations
 
 from collections import Counter
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from sattline_parser.models.ast_model import ModuleTypeDef
+from sattline_parser.models.ast_model import (
+    FrameModule,
+    ModuleTypeDef,
+    ModuleTypeInstance,
+    ParameterMapping,
+    SingleModule,
+    Variable,
+)
 from sattlint.analyzers.layout_geometry import collect_layout_overlap_issues
 
+from ..grammar import constants as const
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution import decorate_segment
 from ..resolution.common import varname_base
@@ -16,6 +26,36 @@ from .reset_contamination import detect_implicit_latching, detect_reset_contamin
 
 if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
+
+
+class _ModuleWithParameters(Protocol):
+    @property
+    def moduledef(self) -> Any: ...
+
+    @property
+    def modulecode(self) -> Any: ...
+
+    @property
+    def submodules(self) -> list[SingleModule | FrameModule | ModuleTypeInstance] | None: ...
+
+    @property
+    def moduleparameters(self) -> list[Variable] | None: ...
+
+
+class _ParameterMappingTarget(Protocol):
+    target: object
+
+
+def _mapping_target_name(mapping: ParameterMapping) -> str | None:
+    target = cast(_ParameterMappingTarget, mapping).target
+    if isinstance(target, str):
+        return varname_base(target)
+    if isinstance(target, dict):
+        target_dict = cast(dict[str, object], target)
+        target_name = target_dict.get(const.KEY_VAR_NAME)
+        if isinstance(target_name, str):
+            return varname_base(target_name)
+    return None
 
 
 def _analyze_root_scope(self: VariablesAnalyzer) -> ScopeContext:
@@ -35,7 +75,13 @@ def _analyze_root_scope(self: VariablesAnalyzer) -> ScopeContext:
 def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
     self._detect_datatype_duplications()
     issue_count_before_reset = len(self._issues)
-    detect_reset_contamination(self.bp, self._issues, self._limit_to_module_path)
+    detect_reset_contamination(
+        self.bp,
+        self._issues,
+        self._limit_to_module_path,
+        debug=self.debug,
+        trace_fn=self._trace,
+    )
     self._trace(
         "reset-contamination-scan",
         added_issue_count=len(self._issues) - issue_count_before_reset,
@@ -282,7 +328,7 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
         self.param_writes_by_typedef[mt.name.lower()] = used_writes
 
         for mapping in mt.parametermappings or []:
-            target_name = varname_base(mapping.target)
+            target_name = _mapping_target_name(mapping)
             target_var = env.get(target_name) if target_name else None
             self._check_param_mapping(mapping, target_var, env, path)
     finally:
@@ -331,7 +377,7 @@ def _apply_alias_back_propagation(self: VariablesAnalyzer) -> None:
 
 def _analyze_single_module_with_context(
     self: VariablesAnalyzer,
-    mod,
+    mod: _ModuleWithParameters,
     context: ScopeContext,
     path: list[str],
 ) -> tuple[set[str], set[str]]:

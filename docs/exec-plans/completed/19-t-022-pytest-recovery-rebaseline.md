@@ -19,7 +19,7 @@ T-022 says the repository has 22 failing tests spread across tracker, editor, LS
 ## Surprises & Discoveries
 
 - Observation: by implementation time the earlier 4-failure snapshot no longer reproduced; the live baseline had only one failing test.
-  Evidence: `& ".venv/Scripts/python.exe" -m pytest --tb=short -q` reported only `tests/test_repo_audit.py::test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_source` as failing before any code edit.
+  Evidence: `python scripts/run_repo_python.py -m pytest --tb=short -q` reported only `tests/test_repo_audit.py::test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_source` as failing before any code edit.
 - Observation: the AI work-map and parser routes were already green on the current branch.
   Evidence: the same full-suite baseline showed no failures in `tests/test_ai_work_map.py` or `tests/test_parser.py`, so the planned AI-map regeneration and fuzz-helper repair were unnecessary for this branch state.
 - Observation: the remaining failure was a stale unit-test assumption, not a repo-audit runtime defect.
@@ -83,17 +83,17 @@ Run commands from the repository root.
 
 Per-slice first validations:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_ai_work_map.py -x -q --tb=short
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_repo_audit.py -x -q --tb=short -k "collect_custom_findings_aggregates_scanners_and_filters_repo_audit_source"
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_parser.py -x -q --tb=short -k "GenerateRandomText"
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_ai_work_map.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_repo_audit.py -x -q --tb=short -k "collect_custom_findings_aggregates_scanners_and_filters_repo_audit_source"
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_parser.py -x -q --tb=short -k "GenerateRandomText"
 
 Regenerate the checked-in AI-map artifacts before rerunning `tests/test_ai_work_map.py`:
 
-    & ".venv/Scripts/python.exe" -c "from sattlint.devtools.ai_work_map import DEFAULT_OUTPUT_PATH, DEFAULT_SESSION_CONTEXT_OUTPUT_PATH, render_ai_work_map, render_session_context_map; DEFAULT_OUTPUT_PATH.write_text(render_ai_work_map() + '\n', encoding='utf-8'); DEFAULT_SESSION_CONTEXT_OUTPUT_PATH.write_text(render_session_context_map() + '\n', encoding='utf-8')"
+    python scripts/run_repo_python.py -c "from sattlint.devtools.ai_work_map import DEFAULT_OUTPUT_PATH, DEFAULT_SESSION_CONTEXT_OUTPUT_PATH, render_ai_work_map, render_session_context_map; DEFAULT_OUTPUT_PATH.write_text(render_ai_work_map() + '\n', encoding='utf-8'); DEFAULT_SESSION_CONTEXT_OUTPUT_PATH.write_text(render_session_context_map() + '\n', encoding='utf-8')"
 
 Once the three focused routes are green, rerun the full suite:
 
-    & ".venv/Scripts/python.exe" -m pytest --tb=short -q
+    python scripts/run_repo_python.py -m pytest --tb=short -q
 
 Observed failing baseline before repair:
 
@@ -122,16 +122,16 @@ AI-map regeneration is safe to repeat; it rewrites checked-in generated JSON fro
 
 Recorded validation evidence:
 
-  & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_repo_audit.py -x -q --tb=short -k "collect_custom_findings_aggregates_scanners_and_filters_repo_audit_source"
+  python scripts/run_repo_python.py -m pytest --no-cov tests/test_repo_audit.py -x -q --tb=short -k "collect_custom_findings_aggregates_scanners_and_filters_repo_audit_source"
   1 passed, 113 deselected in 0.54s
 
-  & ".venv/Scripts/python.exe" -m pytest --tb=short -q
+  python scripts/run_repo_python.py -m pytest --tb=short -q
   1551 passed, 1 warning in 92.83s (0:01:32)
 
-  & ".venv/Scripts/ruff.exe" check tests/test_repo_audit.py
+  python scripts/run_repo_python.py -m ruff check tests/test_repo_audit.py
   All checks passed!
 
-  & ".venv/Scripts/pyright.exe" tests/test_repo_audit.py
+  python scripts/run_repo_python.py -m pyright tests/test_repo_audit.py
   0 errors, 0 warnings, 0 informations
 
 ## Interfaces and Dependencies

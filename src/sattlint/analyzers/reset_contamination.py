@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from itertools import product
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -32,31 +33,56 @@ from sattline_parser.models.ast_model import (
 from ..grammar import constants as const
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution.common import path_startswith_casefold
-from .sattline_builtins import get_function_signature
+from . import _reset_path_collection as _reset_path_collection_module
+from . import _reset_path_state as _reset_path_state_module
+from ._reset_path_state import WriteKey, WriteMap
 
-WriteKey = tuple[str, str]
-WriteEntry = tuple[Variable, str]
-WriteMap = dict[WriteKey, WriteEntry]
+_PathCollectionDebug = _reset_path_state_module.PathCollectionDebug
+_PathState = _reset_path_state_module.PathState
+_compact_path_states = _reset_path_state_module.compact_path_states
+_merge_parallel_branch_results = _reset_path_state_module.merge_parallel_branch_results
+_classify_reset_condition = _reset_path_collection_module.classify_reset_condition
+_clone_with_reset_state = _reset_path_collection_module.clone_with_reset_state
+_collect_assignment_paths = _reset_path_collection_module.collect_assignment_paths
+_collect_function_call_paths = _reset_path_collection_module.collect_function_call_paths
+_collect_if_stmt_paths = _reset_path_collection_module.collect_if_stmt_paths
+_collect_paths_from_items = _reset_path_collection_module.collect_paths_from_items
+_collect_paths_in_modulecode = _reset_path_collection_module.collect_paths_in_modulecode
+_collect_seq_block_paths = _reset_path_collection_module.collect_seq_block_paths
+_collect_seq_node_paths = _reset_path_collection_module.collect_seq_node_paths
+_collect_stmt_block_paths = _reset_path_collection_module.collect_stmt_block_paths
+_collect_stmt_paths = _reset_path_collection_module.collect_stmt_paths
+_infer_alternative_states = _reset_path_collection_module.infer_alternative_states
+_is_exact_reset_condition = _reset_path_collection_module.is_exact_reset_condition
+_is_exact_run_condition = _reset_path_collection_module.is_exact_run_condition
+_path_covers_write = _reset_path_collection_module.path_covers_write
+_record_function_call_writes = _reset_path_collection_module.record_function_call_writes
+_record_mode_function_call_writes = _reset_path_collection_module.record_mode_function_call_writes
+_record_mode_write = _reset_path_collection_module.record_mode_write
+_record_write = _reset_path_collection_module.record_write
+_split_var_ref = _reset_path_collection_module.split_var_ref
+_take_condition_branch = _reset_path_collection_module.take_condition_branch
+_varref_casefold = _reset_path_collection_module.varref_casefold
+
+type _StmtBranch = tuple[Any, list[Any]]
+type _IfTuple = tuple[str, list[_StmtBranch] | None, list[Any] | None]
+type _AssignTuple = tuple[str, Any, Any]
+type _FunctionCallTuple = tuple[str, str, list[Any] | None]
 
 
-@dataclass
-class _PathState:
-    reset_state: str = "unknown"
-    run_writes: WriteMap = field(default_factory=dict)
-    reset_writes: WriteMap = field(default_factory=dict)
+def _new_boolean_write_map() -> dict[WriteKey, tuple[Variable, str]]:
+    return {}
 
-    def clone(self) -> _PathState:
-        return _PathState(
-            reset_state=self.reset_state,
-            run_writes=dict(self.run_writes),
-            reset_writes=dict(self.reset_writes),
-        )
+
+def _children_of(obj: Any) -> list[Any] | None:
+    children = getattr(obj, "children", None)
+    return cast(list[Any], children) if isinstance(children, list) else None
 
 
 @dataclass
 class _BooleanPathState:
-    true_writes: WriteMap = field(default_factory=dict)
-    false_writes: WriteMap = field(default_factory=dict)
+    true_writes: dict[WriteKey, tuple[Variable, str]] = field(default_factory=_new_boolean_write_map)
+    false_writes: dict[WriteKey, tuple[Variable, str]] = field(default_factory=_new_boolean_write_map)
 
     def clone(self) -> _BooleanPathState:
         return _BooleanPathState(
@@ -69,13 +95,18 @@ def detect_reset_contamination(
     bp: BasePicture,
     issues: list[VariableIssue],
     limit_to_module_path: list[str] | None = None,
+    *,
+    debug: bool = False,
+    trace_fn: Callable[..., None] | None = None,
 ) -> None:
     """Scan all SingleModules and ModuleTypeDefs for reset-contaminated variables."""
     root_path = [bp.header.name]
     root_origin = getattr(bp, "origin_file", None)
+    path_debug = _PathCollectionDebug(enabled=debug, trace_fn=trace_fn)
+    reset_check = partial(_check_for_modulecode, path_debug=path_debug)
 
     for mod in bp.submodules or []:
-        _collect_from_module(mod, root_path, issues, limit_to_module_path, check_fn=_check_for_modulecode)
+        _collect_from_module(mod, root_path, issues, limit_to_module_path, check_fn=reset_check)
 
     if limit_to_module_path is not None:
         return
@@ -84,7 +115,7 @@ def detect_reset_contamination(
         if not _is_from_root_origin(getattr(mt, "origin_file", None), root_origin):
             continue
         td_path = [bp.header.name, f"TypeDef:{mt.name}"]
-        _check_for_typedef(mt, td_path, issues, check_fn=_check_for_modulecode)
+        _check_for_typedef(mt, td_path, issues, check_fn=reset_check)
 
 
 def detect_implicit_latching(
@@ -136,7 +167,7 @@ def _collect_from_module(
     issues: list[VariableIssue],
     limit_to_module_path: list[str] | None,
     *,
-    check_fn: Callable,
+    check_fn: Callable[..., None],
 ) -> None:
     if isinstance(mod, SingleModule):
         mod_path = [*path, mod.header.name]
@@ -162,14 +193,18 @@ def _build_local_env(
     return env
 
 
-def _check_for_single(mod: SingleModule, path: list[str], issues: list[VariableIssue], *, check_fn: Callable) -> None:
+def _check_for_single(
+    mod: SingleModule, path: list[str], issues: list[VariableIssue], *, check_fn: Callable[..., None]
+) -> None:
     if mod.modulecode is None:
         return
     env = _build_local_env(mod.moduleparameters, mod.localvariables)
     check_fn(mod.modulecode, env, path, issues)
 
 
-def _check_for_typedef(mt: ModuleTypeDef, path: list[str], issues: list[VariableIssue], *, check_fn: Callable) -> None:
+def _check_for_typedef(
+    mt: ModuleTypeDef, path: list[str], issues: list[VariableIssue], *, check_fn: Callable[..., None]
+) -> None:
     if mt.modulecode is None:
         return
     env = _build_local_env(mt.moduleparameters, mt.localvariables)
@@ -181,6 +216,8 @@ def _check_for_modulecode(
     env: dict[str, Variable],
     path: list[str],
     issues: list[VariableIssue],
+    *,
+    path_debug: _PathCollectionDebug | None = None,
 ) -> None:
     sequences = list(modulecode.sequences or [])
     if not sequences:
@@ -203,7 +240,17 @@ def _check_for_modulecode(
             env,
             reset_ref_cf,
             reset_old_cf,
+            path_debug=path_debug,
         )
+        if path_debug is not None:
+            path_debug.emit(
+                "modulecode-path-summary",
+                module_path=path,
+                sequence_name=seq_name,
+                path_count=len(path_states),
+                reset_path_count=sum(1 for state in path_states if state.reset_state == "reset"),
+                run_write_count=sum(len(state.run_writes) for state in path_states),
+            )
 
         run_writes: WriteMap = {}
         for state in path_states:
@@ -273,12 +320,12 @@ def _collect_var_refs(modulecode: ModuleCode) -> set[str]:
         if obj is None:
             return
         if isinstance(obj, dict) and const.KEY_VAR_NAME in obj:
-            full = obj[const.KEY_VAR_NAME]
+            full = cast(dict[str, object], obj).get(const.KEY_VAR_NAME)
             if isinstance(full, str) and full:
                 refs.add(full.casefold())
             return
         if isinstance(obj, list):
-            for item in obj:
+            for item in cast(list[Any], obj):
                 visit(item)
             return
         if isinstance(obj, SFCStep):
@@ -302,11 +349,12 @@ def _collect_var_refs(modulecode: ModuleCode) -> set[str]:
                 visit(item)
             return
         if isinstance(obj, tuple):
-            for item in obj:
+            for item in cast(tuple[Any, ...], obj):
                 visit(item)
             return
-        if hasattr(obj, "children"):
-            for child in getattr(obj, "children", []):
+        children = _children_of(obj)
+        if children is not None:
+            for child in children:
                 visit(child)
 
     for seq in modulecode.sequences or []:
@@ -354,7 +402,7 @@ def _scan_stmt_for_latching(
     if obj is None:
         return
     if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
-        for child in getattr(obj, "children", []):
+        for child in _children_of(obj) or []:
             _scan_stmt_for_latching(
                 child,
                 env,
@@ -366,7 +414,7 @@ def _scan_stmt_for_latching(
             )
         return
     if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
-        _, branches, else_block = obj
+        _, branches, else_block = cast(_IfTuple, obj)
         branch_states: list[tuple[str, list[_BooleanPathState]]] = []
         for index, (_cond, branch_stmts) in enumerate(branches or []):
             label = "IF" if index == 0 else f"ELSIF:{index}"
@@ -421,7 +469,7 @@ def _scan_stmt_for_latching(
             )
         return
     if isinstance(obj, list):
-        for item in obj:
+        for item in cast(list[Any], obj):
             _scan_stmt_for_latching(
                 item,
                 env,
@@ -432,8 +480,9 @@ def _scan_stmt_for_latching(
                 sequence_name=sequence_name,
             )
         return
-    if hasattr(obj, "children"):
-        for child in getattr(obj, "children", []):
+    children = _children_of(obj)
+    if children is not None:
+        for child in children:
             _scan_stmt_for_latching(
                 child,
                 env,
@@ -636,12 +685,12 @@ def _collect_boolean_stmt_paths(
         return states
     if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
         next_states = states
-        for child in getattr(obj, "children", []):
+        for child in _children_of(obj) or []:
             next_states = _collect_boolean_stmt_paths(child, env, next_states)
         return next_states
 
     if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
-        _, branches, else_block = obj
+        _, branches, else_block = cast(_IfTuple, obj)
         branch_states: list[_BooleanPathState] = []
         for state in states:
             for _cond, branch_stmts in branches or []:
@@ -665,7 +714,7 @@ def _collect_boolean_stmt_paths(
         return branch_states or states
 
     if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
-        _, target, expr = obj
+        _, target, expr = cast(_AssignTuple, obj)
         assigned_states: list[_BooleanPathState] = []
         for state in states:
             next_state = state.clone()
@@ -674,7 +723,7 @@ def _collect_boolean_stmt_paths(
         return assigned_states or states
 
     if isinstance(obj, tuple) and obj and obj[0] == const.KEY_FUNCTION_CALL:
-        _, fn_name, args = obj
+        _, fn_name, args = cast(_FunctionCallTuple, obj)
         call_states: list[_BooleanPathState] = []
         for state in states:
             next_state = state.clone()
@@ -684,13 +733,14 @@ def _collect_boolean_stmt_paths(
 
     if isinstance(obj, list):
         next_states = states
-        for item in obj:
+        for item in cast(list[Any], obj):
             next_states = _collect_boolean_stmt_paths(item, env, next_states)
         return next_states
 
-    if hasattr(obj, "children"):
+    children = _children_of(obj)
+    if children is not None:
         next_states = states
-        for child in getattr(obj, "children", []):
+        for child in children:
             next_states = _collect_boolean_stmt_paths(child, env, next_states)
         return next_states
 
@@ -813,28 +863,28 @@ def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[st
         if obj is None:
             return
         if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
-            for child in getattr(obj, "children", []):
+            for child in _children_of(obj) or []:
                 visit(child)
             return
         if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
-            _, target, expr = obj
+            _, target, expr = cast(_AssignTuple, obj)
             if (
                 (
                     isinstance(expr, dict)
                     and const.KEY_VAR_NAME in expr
-                    and isinstance(expr[const.KEY_VAR_NAME], str)
-                    and expr[const.KEY_VAR_NAME].casefold() == reset_ref_cf
+                    and isinstance(cast(dict[str, object], expr).get(const.KEY_VAR_NAME), str)
+                    and cast(str, cast(dict[str, object], expr).get(const.KEY_VAR_NAME)).casefold() == reset_ref_cf
                 )
                 and isinstance(target, dict)
                 and const.KEY_VAR_NAME in target
             ):
-                target_name = target[const.KEY_VAR_NAME]
+                target_name = cast(dict[str, object], target).get(const.KEY_VAR_NAME)
                 if isinstance(target_name, str) and target_name:
                     reset_old_vars.add(target_name)
             visit(expr)
             return
         if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
-            _, branches, else_block = obj
+            _, branches, else_block = cast(_IfTuple, obj)
             for cond, stmts in branches or []:
                 visit(cond)
                 for stmt in stmts or []:
@@ -843,7 +893,7 @@ def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[st
                 visit(stmt)
             return
         if isinstance(obj, list):
-            for item in obj:
+            for item in cast(list[Any], obj):
                 visit(item)
             return
         if isinstance(obj, SFCStep):
@@ -867,11 +917,12 @@ def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[st
                 visit(item)
             return
         if isinstance(obj, tuple):
-            for item in obj:
+            for item in cast(tuple[Any, ...], obj):
                 visit(item)
             return
-        if hasattr(obj, "children"):
-            for child in getattr(obj, "children", []):
+        children = _children_of(obj)
+        if children is not None:
+            for child in children:
                 visit(child)
 
     for seq in modulecode.sequences or []:
@@ -884,643 +935,10 @@ def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[st
     return reset_old_vars
 
 
-def _collect_paths_in_modulecode(
-    modulecode: ModuleCode,
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-) -> list[_PathState]:
-    states = [_PathState()]
-
-    for eq in modulecode.equations or []:
-        states = _collect_stmt_block_paths(
-            eq.code or [],
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-
-    for seq in modulecode.sequences or []:
-        states = _collect_seq_block_paths(
-            seq.code or [],
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-
-    return states
-
-
-def _collect_seq_block_paths(
-    nodes: list[Any],
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-) -> list[_PathState]:
-    next_states = states
-    for node in nodes:
-        next_states = _collect_seq_node_paths(
-            node,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            next_states,
-        )
-    return next_states
-
-
-def _collect_seq_node_paths(
-    node: Any,
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-) -> list[_PathState]:
-    if isinstance(node, SFCStep):
-        next_states = _collect_stmt_block_paths(
-            node.code.enter or [],
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-        next_states = _collect_stmt_block_paths(
-            node.code.active or [],
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            next_states,
-        )
-        return _collect_stmt_block_paths(
-            node.code.exit or [],
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            next_states,
-        )
-
-    if isinstance(node, SFCTransition):
-        return states
-
-    if isinstance(node, SFCAlternative):
-        if not node.branches:
-            return states
-        alternative_states: list[_PathState] = []
-        for state in states:
-            for branch in node.branches or []:
-                alternative_states.extend(
-                    _collect_seq_block_paths(
-                        branch or [],
-                        env,
-                        reset_ref_cf,
-                        reset_old_vars_cf,
-                        [state.clone()],
-                    )
-                )
-        return alternative_states or states
-
-    if isinstance(node, SFCParallel):
-        if not node.branches:
-            return states
-        parallel_states: list[_PathState] = []
-        for state in states:
-            branch_results = [
-                _collect_seq_block_paths(
-                    branch or [],
-                    env,
-                    reset_ref_cf,
-                    reset_old_vars_cf,
-                    [state.clone()],
-                )
-                for branch in node.branches or []
-            ]
-            parallel_states.extend(_merge_parallel_branch_results(branch_results))
-        return parallel_states or states
-
-    if isinstance(node, SFCSubsequence):
-        return _collect_seq_block_paths(
-            node.body or [],
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-
-    if isinstance(node, SFCTransitionSub):
-        return _collect_seq_block_paths(
-            node.body or [],
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-
-    return states
-
-
-def _collect_stmt_block_paths(
-    stmts: list[Any],
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-) -> list[_PathState]:
-    return _collect_paths_from_items(
-        stmts,
-        env,
-        reset_ref_cf,
-        reset_old_vars_cf,
-        states,
-    )
-
-
-def _collect_paths_from_items(
-    items: list[Any],
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-) -> list[_PathState]:
-    next_states = states
-    for stmt in items:
-        next_states = _collect_stmt_paths(
-            stmt,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            next_states,
-        )
-    return next_states
-
-
-def _collect_if_stmt_paths(
-    branches: list[tuple[Any, list[Any]]] | None,
-    else_block: list[Any] | None,
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-) -> list[_PathState]:
-    branch_outcomes: list[_PathState] = []
-    for state in states:
-        saw_run = False
-        saw_reset = False
-        saw_exact_run = False
-        saw_exact_reset = False
-        branch_matched = False
-
-        for cond, stmts in branches or []:
-            cond_flags = _classify_reset_condition(cond, reset_ref_cf, reset_old_vars_cf)
-            saw_run = saw_run or cond_flags["run"]
-            saw_reset = saw_reset or cond_flags["reset"]
-            saw_exact_run = saw_exact_run or cond_flags["exact_run"]
-            saw_exact_reset = saw_exact_reset or cond_flags["exact_reset"]
-
-            branch_states = _take_condition_branch(state, cond_flags)
-            if not branch_states:
-                continue
-            branch_matched = True
-            branch_outcomes.extend(
-                _collect_stmt_block_paths(
-                    stmts or [],
-                    env,
-                    reset_ref_cf,
-                    reset_old_vars_cf,
-                    branch_states,
-                )
-            )
-
-        fallback_states = _infer_alternative_states(
-            state,
-            saw_run=saw_run,
-            saw_reset=saw_reset,
-            saw_exact_run=saw_exact_run,
-            saw_exact_reset=saw_exact_reset,
-        )
-        if else_block:
-            if fallback_states:
-                branch_outcomes.extend(
-                    _collect_stmt_block_paths(
-                        else_block or [],
-                        env,
-                        reset_ref_cf,
-                        reset_old_vars_cf,
-                        fallback_states,
-                    )
-                )
-        elif fallback_states or not branch_matched:
-            branch_outcomes.extend(fallback_states or [state.clone()])
-    return branch_outcomes or states
-
-
-def _collect_assignment_paths(
-    target: Any,
-    expr: Any,
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-) -> list[_PathState]:
-    assigned_states: list[_PathState] = []
-    for state in states:
-        next_state = state.clone()
-        _record_mode_write(target, env, next_state)
-        assigned_states.extend(
-            _collect_stmt_paths(
-                expr,
-                env,
-                reset_ref_cf,
-                reset_old_vars_cf,
-                [next_state],
-            )
-        )
-    return assigned_states
-
-
-def _collect_function_call_paths(
-    fn_name: str,
-    args: list[Any] | None,
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-) -> list[_PathState]:
-    call_states: list[_PathState] = []
-    for state in states:
-        next_state = state.clone()
-        _record_mode_function_call_writes(fn_name, args or [], env, next_state)
-        arg_states = _collect_paths_from_items(
-            list(args or []),
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            [next_state],
-        )
-        call_states.extend(arg_states)
-    return call_states
-
-
-def _collect_stmt_paths(
-    obj: Any,
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-) -> list[_PathState]:
-    if obj is None:
-        return states
-    if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
-        return _collect_paths_from_items(
-            list(getattr(obj, "children", [])),
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-
-    if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
-        _, branches, else_block = obj
-        return _collect_if_stmt_paths(
-            branches,
-            else_block,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-
-    if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
-        _, target, expr = obj
-        return _collect_assignment_paths(
-            target,
-            expr,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-
-    if isinstance(obj, tuple) and obj and obj[0] == const.KEY_FUNCTION_CALL:
-        _, fn_name, args = obj
-        return _collect_function_call_paths(
-            fn_name,
-            args,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-
-    if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_TERNARY, "Ternary"):
-        _, branches, else_expr = obj
-        next_states = states
-        for cond, then_expr in branches or []:
-            next_states = _collect_stmt_paths(
-                cond,
-                env,
-                reset_ref_cf,
-                reset_old_vars_cf,
-                next_states,
-            )
-            next_states = _collect_stmt_paths(
-                then_expr,
-                env,
-                reset_ref_cf,
-                reset_old_vars_cf,
-                next_states,
-            )
-        if else_expr is not None:
-            next_states = _collect_stmt_paths(
-                else_expr,
-                env,
-                reset_ref_cf,
-                reset_old_vars_cf,
-                next_states,
-            )
-        return next_states
-
-    if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_COMPARE, "compare"):
-        _, left, pairs = obj
-        next_states = _collect_stmt_paths(
-            left,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-        for _sym, rhs in pairs or []:
-            next_states = _collect_stmt_paths(
-                rhs,
-                env,
-                reset_ref_cf,
-                reset_old_vars_cf,
-                next_states,
-            )
-        return next_states
-
-    if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_ADD, const.KEY_MUL):
-        _, left, parts = obj
-        next_states = _collect_stmt_paths(
-            left,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-        for _opval, rhs in parts or []:
-            next_states = _collect_stmt_paths(
-                rhs,
-                env,
-                reset_ref_cf,
-                reset_old_vars_cf,
-                next_states,
-            )
-        return next_states
-
-    if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_PLUS, const.KEY_MINUS):
-        return _collect_stmt_paths(
-            obj[1],
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-
-    if isinstance(obj, tuple) and obj and obj[0] in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND):
-        return _collect_paths_from_items(
-            list(obj[1] or []),
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-
-    if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_NOT:
-        return _collect_stmt_paths(
-            obj[1],
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-
-    if isinstance(obj, list):
-        return _collect_paths_from_items(
-            obj,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-
-    if hasattr(obj, "children"):
-        return _collect_paths_from_items(
-            list(getattr(obj, "children", [])),
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-        )
-
-    return states
-
-
-def _classify_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: set[str]) -> dict[str, bool]:
-    positives: set[str] = set()
-    negatives: set[str] = set()
-
-    def visit(obj: Any, negated: bool) -> None:
-        if obj is None:
-            return
-        if isinstance(obj, dict) and const.KEY_VAR_NAME in obj:
-            full = obj[const.KEY_VAR_NAME]
-            if isinstance(full, str) and full:
-                name_cf = full.casefold()
-                if name_cf == reset_ref_cf or name_cf in reset_old_vars_cf:
-                    if negated:
-                        negatives.add(name_cf)
-                    else:
-                        positives.add(name_cf)
-            return
-        if isinstance(obj, tuple) and obj:
-            if obj[0] == const.GRAMMAR_VALUE_NOT:
-                visit(obj[1], not negated)
-                return
-            for item in obj[1:]:
-                visit(item, negated)
-            return
-        if isinstance(obj, list):
-            for item in obj:
-                visit(item, negated)
-            return
-        if hasattr(obj, "children"):
-            for child in getattr(obj, "children", []):
-                visit(child, negated)
-
-    visit(cond, False)
-
-    return {
-        "run": reset_ref_cf in negatives,
-        "reset": reset_ref_cf in positives or bool(negatives & reset_old_vars_cf),
-        "exact_run": _is_exact_run_condition(cond, reset_ref_cf),
-        "exact_reset": _is_exact_reset_condition(cond, reset_ref_cf, reset_old_vars_cf),
-    }
-
-
-def _is_exact_run_condition(cond: Any, reset_ref_cf: str) -> bool:
-    return (
-        isinstance(cond, tuple)
-        and len(cond) == 2
-        and cond[0] == const.GRAMMAR_VALUE_NOT
-        and _varref_casefold(cond[1]) == reset_ref_cf
-    )
-
-
-def _is_exact_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: set[str]) -> bool:
-    if _varref_casefold(cond) == reset_ref_cf:
-        return True
-    return (
-        isinstance(cond, tuple)
-        and len(cond) == 2
-        and cond[0] == const.GRAMMAR_VALUE_NOT
-        and _varref_casefold(cond[1]) in reset_old_vars_cf
-    )
-
-
-def _varref_casefold(obj: Any) -> str | None:
-    if not isinstance(obj, dict) or const.KEY_VAR_NAME not in obj:
-        return None
-    full = obj[const.KEY_VAR_NAME]
-    if not isinstance(full, str) or not full:
-        return None
-    return full.casefold()
-
-
-def _take_condition_branch(state: _PathState, cond_flags: dict[str, bool]) -> list[_PathState]:
-    if cond_flags["run"] and not cond_flags["reset"]:
-        return _clone_with_reset_state(state, "run")
-    if cond_flags["reset"] and not cond_flags["run"]:
-        return _clone_with_reset_state(state, "reset")
-    return [state.clone()]
-
-
-def _infer_alternative_states(
-    state: _PathState,
-    *,
-    saw_run: bool,
-    saw_reset: bool,
-    saw_exact_run: bool,
-    saw_exact_reset: bool,
-) -> list[_PathState]:
-    if saw_exact_run and saw_exact_reset:
-        return []
-    if saw_exact_run and not saw_reset:
-        return _clone_with_reset_state(state, "reset")
-    if saw_exact_reset and not saw_run:
-        return _clone_with_reset_state(state, "run")
-    if saw_run ^ saw_reset:
-        if state.reset_state == "unknown":
-            return _clone_with_reset_state(state, "run") + _clone_with_reset_state(state, "reset")
-        return [state.clone()]
-    return [state.clone()]
-
-
-def _clone_with_reset_state(state: _PathState, reset_state: str) -> list[_PathState]:
-    if state.reset_state != "unknown" and state.reset_state != reset_state:
-        return []
-    clone = state.clone()
-    clone.reset_state = reset_state
-    return [clone]
-
-
-def _merge_parallel_branch_results(
-    branch_results: list[list[_PathState]],
-) -> list[_PathState]:
-    if not branch_results:
-        return []
-
-    merged_states: list[_PathState] = []
-    for combo in product(*branch_results):
-        merged = combo[0].clone()
-        compatible = True
-        for branch_state in combo[1:]:
-            merged_reset_state = _merge_reset_states(
-                merged.reset_state,
-                branch_state.reset_state,
-            )
-            if merged_reset_state is None:
-                compatible = False
-                break
-            merged.reset_state = merged_reset_state
-            merged.run_writes.update(branch_state.run_writes)
-            merged.reset_writes.update(branch_state.reset_writes)
-        if compatible:
-            merged_states.append(merged)
-    return merged_states
-
-
-def _merge_reset_states(left: str, right: str) -> str | None:
-    if left == right:
-        return left
-    if left == "unknown":
-        return right
-    if right == "unknown":
-        return left
-    return None
-
-
-def _path_covers_write(reset_writes: WriteMap, key: WriteKey) -> bool:
-    var_key, _field_key = key
-    return key in reset_writes or (var_key, "") in reset_writes
-
-
-def _record_mode_write(target: Any, env: dict[str, Variable], state: _PathState) -> None:
-    bucket = state.reset_writes if state.reset_state == "reset" else state.run_writes
-    _record_write(target, env, bucket)
-
-
-def _record_mode_function_call_writes(
-    fn_name: str,
-    args: list[Any],
-    env: dict[str, Variable],
-    state: _PathState,
-) -> None:
-    bucket = state.reset_writes if state.reset_state == "reset" else state.run_writes
-    _record_function_call_writes(fn_name, args, env, bucket)
-
-
-def _split_var_ref(full_ref: str) -> tuple[str, str]:
-    if not full_ref:
-        return "", ""
-    if "." not in full_ref:
-        return full_ref, ""
-    base, field_path = full_ref.split(".", 1)
-    return base, field_path
-
-
-def _record_write(target: Any, env: dict[str, Variable], out: WriteMap) -> None:
-    if not isinstance(target, dict) or const.KEY_VAR_NAME not in target:
-        return
-    full_ref = target[const.KEY_VAR_NAME]
-    if not isinstance(full_ref, str) or not full_ref:
-        return
-    base, field_path = _split_var_ref(full_ref)
-    if not base:
-        return
-    var = env.get(base.casefold())
-    if var is None:
-        return
-    field_path = field_path or ""
-    out[(var.name.casefold(), field_path.casefold())] = (var, field_path)
-
-
 def _record_boolean_write(target: Any, env: dict[str, Variable], out: WriteMap) -> None:
     if not isinstance(target, dict) or const.KEY_VAR_NAME not in target:
         return
-    full_ref = target[const.KEY_VAR_NAME]
+    full_ref = cast(dict[str, object], target).get(const.KEY_VAR_NAME)
     if not isinstance(full_ref, str) or not full_ref:
         return
     base, field_path = _split_var_ref(full_ref)
@@ -1530,22 +948,3 @@ def _record_boolean_write(target: Any, env: dict[str, Variable], out: WriteMap) 
     if var is None or var.datatype_text.casefold() != "boolean":
         return
     out[(var.name.casefold(), "")] = (var, "")
-
-
-def _record_function_call_writes(
-    fn_name: str,
-    args: list[Any],
-    env: dict[str, Variable],
-    out: WriteMap,
-) -> None:
-    sig = get_function_signature(fn_name)
-    if sig is None:
-        return
-    for idx, arg in enumerate(args):
-        if idx >= len(sig.parameters):
-            break
-        direction = sig.parameters[idx].direction
-        if direction not in ("out", "inout"):
-            continue
-        if isinstance(arg, dict) and const.KEY_VAR_NAME in arg:
-            _record_write(arg, env, out)

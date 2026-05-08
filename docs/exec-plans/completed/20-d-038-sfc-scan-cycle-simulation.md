@@ -73,16 +73,16 @@ Inspect the current CLI and command seams before editing:
 
 Implement the simulation package and CLI wiring, then run the narrow tests first:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_sfc_simulation.py tests/test_cli.py tests/test_app_cli_commands.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_sfc_simulation.py tests/test_cli.py tests/test_app_cli_commands.py -x -q --tb=short
 
 Exercise the new command on a real target once the tests pass:
 
-  & ".venv/Scripts/python.exe" -m sattlint simulate tests/fixtures/corpus/semantic/ParallelWriteRace.s --module BasePicture --mode steady-state --max-scans 4 --format json
+  python scripts/run_repo_python.py -m sattlint simulate tests/fixtures/corpus/semantic/ParallelWriteRace.s --module BasePicture --mode steady-state --max-scans 4 --format json
 
 Run touched-file quality gates after the feature-specific checks pass:
 
-    & ".venv/Scripts/python.exe" -m ruff check src/sattlint/cli/entry.py src/sattlint/app_base.py src/sattlint/app.py src/sattlint/app_cli_commands.py src/sattlint/simulation tests/test_sfc_simulation.py tests/test_cli.py tests/test_app_cli_commands.py
-    & ".venv/Scripts/python.exe" -m pyright src/sattlint/cli/entry.py src/sattlint/app_base.py src/sattlint/app.py src/sattlint/app_cli_commands.py src/sattlint/simulation
+    python scripts/run_repo_python.py -m ruff check src/sattlint/cli/entry.py src/sattlint/app_base.py src/sattlint/app.py src/sattlint/app_cli_commands.py src/sattlint/simulation tests/test_sfc_simulation.py tests/test_cli.py tests/test_app_cli_commands.py
+    python scripts/run_repo_python.py -m pyright src/sattlint/cli/entry.py src/sattlint/app_base.py src/sattlint/app.py src/sattlint/app_cli_commands.py src/sattlint/simulation
 
 Expected success signal for the user-facing command: the process exits with code `0`, prints whether steady state or a cycle was reached, and when `--format json` is used, emits a JSON object containing the selected target, total scan count, steady-state or cycle summary, and a bounded list of scan snapshots.
 
@@ -100,10 +100,10 @@ This plan is safe to execute incrementally. The CLI wiring and runtime package a
 
 Recorded artifacts for closeout:
 
-- Focused validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_sfc_simulation.py tests/test_cli.py tests/test_app_cli_commands.py -x -q --tb=short` -> `39 passed in 1.06s`
-- Touched-file lint: `& ".venv/Scripts/python.exe" -m ruff check src/sattlint/cli/entry.py src/sattlint/app_base.py src/sattlint/app.py src/sattlint/app_cli_commands.py src/sattlint/simulation/runtime.py tests/test_cli.py tests/test_app_cli_commands.py tests/test_sfc_simulation.py` -> `All checks passed!`
-- Touched-file typing: `& ".venv/Scripts/pyright.exe" src/sattlint/cli/entry.py src/sattlint/app_base.py src/sattlint/app.py src/sattlint/app_cli_commands.py src/sattlint/simulation/runtime.py tests/test_cli.py tests/test_app_cli_commands.py tests/test_sfc_simulation.py` -> `0 errors, 0 warnings, 0 informations`
-- Real CLI proof: `& ".venv/Scripts/python.exe" -m sattlint simulate tests/fixtures/corpus/semantic/ParallelWriteRace.s --module BasePicture --max-scans 4 --format json` -> exit `0` and a steady-state JSON payload with bounded scan snapshots.
+- Focused validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_sfc_simulation.py tests/test_cli.py tests/test_app_cli_commands.py -x -q --tb=short` -> `39 passed in 1.06s`
+- Touched-file lint: `python scripts/run_repo_python.py -m ruff check src/sattlint/cli/entry.py src/sattlint/app_base.py src/sattlint/app.py src/sattlint/app_cli_commands.py src/sattlint/simulation/runtime.py tests/test_cli.py tests/test_app_cli_commands.py tests/test_sfc_simulation.py` -> `All checks passed!`
+- Touched-file typing: `python scripts/run_repo_python.py -m pyright src/sattlint/cli/entry.py src/sattlint/app_base.py src/sattlint/app.py src/sattlint/app_cli_commands.py src/sattlint/simulation/runtime.py tests/test_cli.py tests/test_app_cli_commands.py tests/test_sfc_simulation.py` -> `0 errors, 0 warnings, 0 informations`
+- Real CLI proof: `python scripts/run_repo_python.py -m sattlint simulate tests/fixtures/corpus/semantic/ParallelWriteRace.s --module BasePicture --max-scans 4 --format json` -> exit `0` and a steady-state JSON payload with bounded scan snapshots.
 
 Resolved semantic difference: the dataflow engine stores state on case-folded tuple keys, while the user-facing simulation payload needs declared variable names. The final runtime exports state using the resolved scope declarations so JSON output stays stable and human-readable.
 

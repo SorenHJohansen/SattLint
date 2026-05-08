@@ -99,7 +99,7 @@ Run commands from the repository root.
 
 First focused validation after the first substantive edit:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_ai_work_map.py tests/test_ai_work_map_harness.py tests/test_corpus.py tests/test_pipeline_collection.py tests/test_pipeline_collection_graphs.py tests/test_pipeline_run.py tests/test_pipeline_run_recommendations.py tests/test_repo_audit.py tests/test_repo_audit_doc_gardener.py tests/test_repo_audit_entrypoints_helpers.py tests/test_repo_audit_entrypoints_verify.py tests/test_recommendation_routing.py tests/test_structural_reports.py tests/test_structural_reports_graphs.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_ai_work_map.py tests/test_ai_work_map_harness.py tests/test_corpus.py tests/test_pipeline_collection.py tests/test_pipeline_collection_graphs.py tests/test_pipeline_run.py tests/test_pipeline_run_recommendations.py tests/test_repo_audit.py tests/test_repo_audit_doc_gardener.py tests/test_repo_audit_entrypoints_helpers.py tests/test_repo_audit_entrypoints_verify.py tests/test_recommendation_routing.py tests/test_structural_reports.py tests/test_structural_reports_graphs.py -x -q --tb=short
 
 Lane-local type proof:
 
@@ -107,11 +107,11 @@ Lane-local type proof:
 
 Lane-local coverage proof:
 
-    & ".venv/Scripts/python.exe" -m pytest tests/test_ai_work_map.py tests/test_ai_work_map_harness.py tests/test_corpus.py tests/test_pipeline_collection.py tests/test_pipeline_collection_graphs.py tests/test_pipeline_run.py tests/test_pipeline_run_recommendations.py tests/test_repo_audit.py tests/test_repo_audit_doc_gardener.py tests/test_repo_audit_entrypoints_helpers.py tests/test_repo_audit_entrypoints_verify.py tests/test_recommendation_routing.py tests/test_structural_reports.py tests/test_structural_reports_graphs.py -x -q --tb=short --cov=src/sattlint/devtools/ai_work_map.py --cov=src/sattlint/devtools/coverage_reports.py --cov=src/sattlint/devtools/pipeline.py --cov=src/sattlint/devtools/repo_audit.py --cov=src/sattlint/devtools/repo_audit_entrypoints.py --cov=src/sattlint/devtools/structural_reports.py --cov-report=term-missing --cov-report=xml:artifacts/audit/coverage-lane-b-repo-audit-devtools.xml --cov-fail-under=0
+    python scripts/run_repo_python.py -m pytest tests/test_ai_work_map.py tests/test_ai_work_map_harness.py tests/test_corpus.py tests/test_pipeline_collection.py tests/test_pipeline_collection_graphs.py tests/test_pipeline_run.py tests/test_pipeline_run_recommendations.py tests/test_repo_audit.py tests/test_repo_audit_doc_gardener.py tests/test_repo_audit_entrypoints_helpers.py tests/test_repo_audit_entrypoints_verify.py tests/test_recommendation_routing.py tests/test_structural_reports.py tests/test_structural_reports_graphs.py -x -q --tb=short --cov=src/sattlint/devtools/ai_work_map.py --cov=src/sattlint/devtools/coverage_reports.py --cov=src/sattlint/devtools/pipeline.py --cov=src/sattlint/devtools/repo_audit.py --cov=src/sattlint/devtools/repo_audit_entrypoints.py --cov=src/sattlint/devtools/structural_reports.py --cov-report=term-missing --cov-report=xml:artifacts/audit/coverage-lane-b-repo-audit-devtools.xml --cov-fail-under=0
 
 Optional quick audit after the six touched owners are green:
 
-    & ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit-lane-b-quick
+    python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit-lane-b-quick
 
 ## Validation and Acceptance
 

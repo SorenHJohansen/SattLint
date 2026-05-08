@@ -47,14 +47,14 @@ Run commands from repository root.
 
 Per-slice first validations:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_dataflow.py tests/test_analyzers_variables.py -x -q --tb=short
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py -x -q --tb=short
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_editor_api.py -x -q --tb=short
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_moduletype_resolution_scoped.py tests/test_canonical_resolution.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_dataflow.py tests/test_analyzers_variables.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_editor_api.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_moduletype_resolution_scoped.py tests/test_canonical_resolution.py -x -q --tb=short
 
 Plan-close validation:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py tests/test_dataflow.py tests/test_analyzers_variables.py tests/test_editor_api.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_moduletype_resolution_scoped.py tests/test_canonical_resolution.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py tests/test_dataflow.py tests/test_analyzers_variables.py tests/test_editor_api.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_moduletype_resolution_scoped.py tests/test_canonical_resolution.py -x -q --tb=short
 
 ## Validation and Acceptance
 

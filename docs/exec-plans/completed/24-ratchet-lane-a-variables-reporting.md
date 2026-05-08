@@ -84,7 +84,7 @@ Run commands from the repository root.
 
 First focused validation after the first substantive edit:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_state.py tests/test_analyzers_suites.py tests/test_analyzers_variables.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_state.py tests/test_analyzers_suites.py tests/test_analyzers_variables.py -x -q --tb=short
 
 Lane-local type proof:
 
@@ -92,11 +92,11 @@ Lane-local type proof:
 
 Lane-local coverage proof:
 
-    & ".venv/Scripts/python.exe" -m pytest tests/test_analyzers_state.py tests/test_analyzers_suites.py tests/test_analyzers_variables.py -x -q --tb=short --cov=src/sattlint/analyzers/_variables_execution.py --cov=src/sattlint/analyzers/registry.py --cov=src/sattlint/analyzers/variable_issue_collection.py --cov=src/sattlint/reporting/variables_report.py --cov-report=term-missing --cov-report=xml:artifacts/audit/coverage-lane-a-variables-reporting.xml --cov-fail-under=0
+    python scripts/run_repo_python.py -m pytest tests/test_analyzers_state.py tests/test_analyzers_suites.py tests/test_analyzers_variables.py -x -q --tb=short --cov=src/sattlint/analyzers/_variables_execution.py --cov=src/sattlint/analyzers/registry.py --cov=src/sattlint/analyzers/variable_issue_collection.py --cov=src/sattlint/reporting/variables_report.py --cov-report=term-missing --cov-report=xml:artifacts/audit/coverage-lane-a-variables-reporting.xml --cov-fail-under=0
 
 Optional structural proof after the shrink work lands:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_ratchet_policy.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_ratchet_policy.py -x -q --tb=short
 
 ## Validation and Acceptance
 

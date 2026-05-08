@@ -41,7 +41,7 @@ See [validation map](./references/validation-map.md).
 
 ## Finish Gate
 
-- Python files touched: `& ".venv/Scripts/ruff.exe" check <touched_python_files>`
-- Python files touched: `& ".venv/Scripts/pyright.exe" <touched_python_files>`
+- Python files touched: `python scripts/run_repo_python.py -m ruff check <touched_python_files>`
+- Python files touched: `python scripts/run_repo_python.py -m pyright <touched_python_files>`
 - Non-Python files touched: use owning executable check or workspace diagnostics for the edited file type.
 - Shared devtools or audit wiring: add owner-suite validation or `sattlint-repo-audit --profile quick` after touched-file checks.

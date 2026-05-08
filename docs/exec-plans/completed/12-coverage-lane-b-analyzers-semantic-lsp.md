@@ -54,11 +54,11 @@ This lane closed successfully because:
 
 ## Outcomes & Retrospective
 
-- Slice 1 validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_dataflow.py tests/test_analyzers_variables.py -x -q --tb=short` -> `63 passed`.
-- Slice 2 validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_suites.py -x -q --tb=short` -> `52 passed`.
-- Slice 3 validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_variables.py -x -q --tb=short` -> `44 passed`.
-- Lane-close validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py tests/test_dataflow.py tests/test_analyzers_variables.py tests/test_editor_api.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_moduletype_resolution_scoped.py tests/test_canonical_resolution.py -x -q --tb=short` -> `243 passed`.
-- Shared checkpoint refresh result: `& ".venv/Scripts/python.exe" -m pytest -q --cov-fail-under=0` -> `1236 passed, 1 warning` and about `82.35%` coverage with `4794` uncovered lines.
+- Slice 1 validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_dataflow.py tests/test_analyzers_variables.py -x -q --tb=short` -> `63 passed`.
+- Slice 2 validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_suites.py -x -q --tb=short` -> `52 passed`.
+- Slice 3 validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_variables.py -x -q --tb=short` -> `44 passed`.
+- Lane-close validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py tests/test_dataflow.py tests/test_analyzers_variables.py tests/test_editor_api.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_moduletype_resolution_scoped.py tests/test_canonical_resolution.py -x -q --tb=short` -> `243 passed`.
+- Shared checkpoint refresh result: `python scripts/run_repo_python.py -m pytest -q --cov-fail-under=0` -> `1236 passed, 1 warning` and about `82.35%` coverage with `4794` uncovered lines.
 - Acceptance result: the refreshed artifacts put the remaining analyzer/semantic/LSP debt below the app/devtools cluster, so this first-generation lane no longer controlled the campaign backlog.
 
 ## Artifacts and Notes

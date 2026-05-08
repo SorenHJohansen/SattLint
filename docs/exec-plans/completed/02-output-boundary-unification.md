@@ -17,7 +17,7 @@ This plan finishes the user-visible output cleanup across the CLI, console, and 
 - Observation: W3 already moved important output paths to `console.print_output`, so the remaining work is concentrated in follow-on surfaces rather than the first app slice.
   Evidence: the shared active-claim lock recorded the first W3 slice as validated across `tests/test_app.py`, `tests/test_app_analysis.py`, `tests/test_app_menus.py`, and `tests/test_cli.py`.
 - Observation: The earlier parser-validation regression is no longer reproducible in the focused output-boundary test slice.
-  Evidence: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py tests/test_app_analysis.py tests/test_app_menus.py tests/test_cli.py -x -q --tb=long` now passes (143 passed), and `test_syntax_check_command_ok` passes consistently in repeated runs.
+  Evidence: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_app.py tests/test_app_analysis.py tests/test_app_menus.py tests/test_cli.py -x -q --tb=long` now passes (143 passed), and `test_syntax_check_command_ok` passes consistently in repeated runs.
 
 ## Decision Log
 
@@ -44,8 +44,8 @@ Start by finding the remaining user-facing output paths that still bypass the sh
 Run from repository root:
 
     rg -n "print\(" src/sattlint
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py tests/test_app_analysis.py tests/test_app_menus.py tests/test_cli.py -x -q --tb=short
-    & ".venv/Scripts/ruff.exe" check src/sattlint/engine.py src/sattlint/casefolding.py src/sattlint/__init__.py
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_app.py tests/test_app_analysis.py tests/test_app_menus.py tests/test_cli.py -x -q --tb=short
+    python scripts/run_repo_python.py -m ruff check src/sattlint/engine.py src/sattlint/casefolding.py src/sattlint/__init__.py
 
 ## Validation and Acceptance
 
@@ -67,9 +67,9 @@ Migrated modules in this slice:
 
 Validation notes:
 
-- `& ".venv/Scripts/ruff.exe" check src/sattlint/engine.py src/sattlint/casefolding.py src/sattlint/__init__.py` passed.
-- `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py tests/test_app_analysis.py tests/test_app_menus.py tests/test_cli.py -x -q --tb=long` passed (143 passed).
-- `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py -k test_syntax_check_command_ok -q --tb=short` passed in three consecutive runs.
+- `python scripts/run_repo_python.py -m ruff check src/sattlint/engine.py src/sattlint/casefolding.py src/sattlint/__init__.py` passed.
+- `python scripts/run_repo_python.py -m pytest --no-cov tests/test_app.py tests/test_app_analysis.py tests/test_app_menus.py tests/test_cli.py -x -q --tb=long` passed (143 passed).
+- `python scripts/run_repo_python.py -m pytest --no-cov tests/test_app.py -k test_syntax_check_command_ok -q --tb=short` passed in three consecutive runs.
 
 ## Interfaces and Dependencies
 

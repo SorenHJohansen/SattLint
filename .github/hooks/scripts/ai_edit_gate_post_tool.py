@@ -5,6 +5,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from hook_path_compat import normalize_payload_path_text, resolve_payload_cwd  # noqa: E402
+
 EDIT_TOOL_NAMES = {
     "apply_patch",
     "create_file",
@@ -28,8 +34,7 @@ def _normalize_tool_name(tool_name: str) -> str:
 
 
 def _normalize_relative(raw_path: str) -> str:
-    cleaned = raw_path.strip().strip("`'")
-    cleaned = cleaned.replace("\\", "/")
+    cleaned = normalize_payload_path_text(raw_path)
     while cleaned.startswith("./"):
         cleaned = cleaned[2:]
     return cleaned.rstrip("/")
@@ -136,7 +141,7 @@ def main() -> int:
         if payload.get("hookEventName") != "PostToolUse":
             return 0
 
-        cwd = Path(payload.get("cwd") or ".").resolve()
+        cwd = resolve_payload_cwd(str(payload.get("cwd") or "."))
         tool_name = str(payload.get("tool_name") or "")
         targets = _extract_tool_paths(tool_name, payload.get("tool_input"), cwd)
         rel_paths = _relative_targets(targets, cwd)

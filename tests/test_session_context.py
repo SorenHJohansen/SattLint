@@ -119,3 +119,39 @@ def test_write_summary_records_first_validation_commands(tmp_path):
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
 
     assert payload["planning"]["first_validation_commands"] == ["pytest tests/test_app.py -x -q --tb=short"]
+
+
+def test_rank_workstreams_handles_claim_patterns_without_raw_metadata(monkeypatch, tmp_path):
+    session_context = _load_session_context_module()
+    claimed_path = tmp_path / "src" / "sattlint" / "app.py"
+    claimed_path.parent.mkdir(parents=True)
+    claimed_path.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(
+        session_context.coordination_lock_state,
+        "load_lock_state",
+        lambda repo_root: [
+            {
+                "workstream_id": "session-start-hook-compat",
+                "owner": "Copilot",
+                "status": "active",
+                "claimed_paths": ["src/sattlint/app.py"],
+                "updated_at": "2026-05-08T00:00:00Z",
+                "first_validation": "pytest tests/test_session_context.py -x -q --tb=short",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        session_context.coordination_lock_state,
+        "resolve_claim_patterns",
+        lambda claimed_paths, cwd: [{"path": claimed_path, "is_directory": False}],
+    )
+
+    entries = session_context._load_active_workstreams(tmp_path, tmp_path)
+    ranked = session_context._rank_workstreams(
+        entries,
+        {"paths": [claimed_path], "keywords": set(), "text": ""},
+    )
+
+    assert entries[0]["claim_paths"] == [{"raw": "src/sattlint/app.py", "path": claimed_path, "is_directory": False}]
+    assert ranked[0]["matched_claims"] == ["src/sattlint/app.py"]

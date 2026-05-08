@@ -22,7 +22,7 @@ The first coverage-lane generation is finished. Lane A, lane B, and lane C all c
 
 ## Current Baseline
 
-- Last clean shared checkpoint: `Remove-Item -Force .coverage* -ErrorAction SilentlyContinue ; & ".venv/Scripts/python.exe" -m pytest -q --cov-fail-under=0` is clean at `1342 passed, 1 warning`.
+- Last clean shared checkpoint: `Remove-Item -Force .coverage* -ErrorAction SilentlyContinue ; python scripts/run_repo_python.py -m pytest -q --cov-fail-under=0` is clean at `1342 passed, 1 warning`.
 - Coverage baseline: `coverage.xml` now reports `88.26%` line coverage with `3212` uncovered lines.
 - Ratchet baseline: `artifacts/analysis/coverage_ratchet.json` keeps the recorded `88.26%` baseline in `summary.total_line_rate`, while repository-default `pytest -q` and `metrics.min_line_rate_basis_points` now enforce the buffered `87.26%` effective floor.
 - Dominant remaining file misses: `reset_contamination.py` (`241`), `modules.py` (`200`), `engine.py` (`138`), `repo_audit.py` (`134`), `variables.py` (`117`), `app_graphics.py` (`111`), `dataflow.py` (`106`), `mms.py` (`102`), `doc_gardener.py` (`99`), `pipeline.py` (`95`), `core/semantic.py` (`87`), `_variables_effect_flow.py` (`85`), `config.py` (`79`), `_server_document.py` (`76`), and `_server_helpers.py` (`58`).
@@ -91,11 +91,11 @@ Coverage triage support:
 
 Shared checkpoint:
 
-  & ".venv/Scripts/python.exe" -m pytest -q
+  python scripts/run_repo_python.py -m pytest -q
 
 Final acceptance:
 
-    & ".venv/Scripts/python.exe" -m pytest -q
+    python scripts/run_repo_python.py -m pytest -q
 
 Expected final transcript:
 

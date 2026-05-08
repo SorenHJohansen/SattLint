@@ -20,12 +20,12 @@ Run both local verification gates. They must pass.
 
 **Step 1 — fast local hygiene gate:**
 ```
-& ".venv/Scripts/python.exe" -m pre_commit run --all-files
+python scripts/run_repo_python.py -m pre_commit run --all-files
 ```
 
 **Step 2 — local pre-push gate:**
 ```
-& ".venv/Scripts/sattlint-repo-audit.exe" --profile full --check-my-changes --output-dir artifacts/audit
+python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile full --check-my-changes --output-dir artifacts/audit
 ```
 Covers: Step 1 handles fast Ruff, formatting, changed Markdown lint, staged SattLine syntax-check, trailing-whitespace, end-of-file-fixer, YAML/TOML check, large-file checks, and targeted context-health. Step 2 handles focused owner tests, touched-file Ruff and Pyright, ratchet policy, and the recommended repo-audit slice for the current change set.
 
@@ -42,10 +42,10 @@ Covers: Step 1 handles fast Ruff, formatting, changed Markdown lint, staged Satt
 
 ## Additional Validation Commands (use as needed)
 
-- Syntax/parser changes: `& ".venv/Scripts/sattlint.exe" syntax-check <target>`
-- Focused tests: `& ".venv/Scripts/python.exe" -m pytest <test_file> -x -q --tb=short`
-- Repo audit (quick): `& ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit`
-- Repo audit (full): `& ".venv/Scripts/sattlint-repo-audit.exe" --profile full --output-dir artifacts/audit`
+- Syntax/parser changes: `python scripts/run_repo_python.py -m sattlint syntax-check <target>`
+- Focused tests: `python scripts/run_repo_python.py -m pytest <test_file> -x -q --tb=short`
+- Repo audit (quick): `python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit`
+- Repo audit (full): `python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile full --output-dir artifacts/audit`
 
 ## Report Format
 

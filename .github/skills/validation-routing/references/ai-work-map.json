@@ -970,14 +970,14 @@
   "validation_routes": [
     {
       "commands": [
-        "& \".venv/Scripts/sattlint.exe\" syntax-check <target>"
+        "python scripts/run_repo_python.py -m sattlint syntax-check <target>"
       ],
       "notes": [],
       "surface": "Parser, grammar, transformer, AST, or strict validation"
     },
     {
       "commands": [
-        "& \".venv/Scripts/python.exe\" -m pytest <test_file> -x -q --tb=short",
+        "python scripts/run_repo_python.py -m pytest <test_file> -x -q --tb=short",
         "sattlineLsp.restartServer"
       ],
       "notes": [
@@ -987,21 +987,21 @@
     },
     {
       "commands": [
-        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_cli.py -x -q --tb=short"
+        "python scripts/run_repo_python.py -m pytest --no-cov tests/test_cli.py -x -q --tb=short"
       ],
       "notes": [],
       "surface": "CLI routing or argparse behavior"
     },
     {
       "commands": [
-        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_app.py tests/test_app_menus.py tests/test_app_analysis.py -x -q --tb=short"
+        "python scripts/run_repo_python.py -m pytest --no-cov tests/test_app.py tests/test_app_menus.py tests/test_app_analysis.py -x -q --tb=short"
       ],
       "notes": [],
       "surface": "CLI menu, prompt, or interactive app behavior"
     },
     {
       "commands": [
-        "& \".venv/Scripts/python.exe\" -m pytest --no-cov tests/test_docgen.py -x -q --tb=short",
+        "python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen.py -x -q --tb=short",
         "tests/test_app.py",
         "tests/test_gui.py"
       ],
@@ -1012,7 +1012,7 @@
     },
     {
       "commands": [
-        "& \".venv/Scripts/sattlint-repo-audit.exe\" --profile quick --output-dir artifacts/audit",
+        "python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit",
         "tests/test_repo_audit.py",
         "tests/test_pipeline.py"
       ],
@@ -1023,15 +1023,15 @@
     },
     {
       "commands": [
-        "& \".venv/Scripts/python.exe\" -m pytest <test_file> -x -q --tb=short"
+        "python scripts/run_repo_python.py -m pytest <test_file> -x -q --tb=short"
       ],
       "notes": [],
       "surface": "Python behavior with a nearby focused test"
     },
     {
       "commands": [
-        "& \".venv/Scripts/ruff.exe\" check <touched_python_files>",
-        "& \".venv/Scripts/pyright.exe\" <touched_python_files>"
+        "python scripts/run_repo_python.py -m ruff check <touched_python_files>",
+        "python scripts/run_repo_python.py -m pyright <touched_python_files>"
       ],
       "notes": [
         "then"
@@ -1040,7 +1040,7 @@
     },
     {
       "commands": [
-        "& \".venv/Scripts/sattlint-repo-audit.exe\" --profile quick --output-dir artifacts/audit"
+        "python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit"
       ],
       "notes": [
         "owner-suite validation or"
@@ -1049,14 +1049,14 @@
     },
     {
       "commands": [
-        "& \".venv/Scripts/python.exe\" -m pre_commit run --all-files"
+        "python scripts/run_repo_python.py -m pre_commit run --all-files"
       ],
       "notes": [],
       "surface": "Fast local hygiene gate"
     },
     {
       "commands": [
-        "& \".venv/Scripts/sattlint-repo-audit.exe\" --profile full --check-my-changes --output-dir artifacts/audit",
+        "python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile full --check-my-changes --output-dir artifacts/audit",
         "Repo Verify"
       ],
       "notes": [

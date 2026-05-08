@@ -1,44 +1,32 @@
 """Repeatable static-analysis pipeline that emits machine-readable JSON reports."""
 
+# pyright: reportPrivateUsage=false, reportUnusedFunction=false
+
 from __future__ import annotations
 
 import argparse
 import contextlib
-import importlib.metadata as metadata
 import json
 import os
 import platform
 import re
 import shutil
-
-# Pipeline intentionally executes trusted local developer tools.
-import subprocess  # nosec B404
-import sys
-import time
-import tomllib
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-
-from defusedxml import ElementTree  # type: ignore[import-untyped]
+from typing import Any, cast
 
 from sattlint.devtools import _pipeline_cli as pipeline_cli_helpers
+from sattlint.devtools import _pipeline_execution as pipeline_execution_helpers
+from sattlint.devtools import _pipeline_finish_gate as pipeline_finish_gate_helpers
+from sattlint.devtools import _pipeline_optional_reports_helpers as pipeline_optional_report_helpers
+from sattlint.devtools import _pipeline_parsing_helpers as pipeline_parsing_helpers
 from sattlint.devtools.artifact_registry import (
     PIPELINE_ARTIFACTS,
     artifact_reports_map,
     build_artifact_registry_report,
 )
-from sattlint.devtools.baselines import build_analysis_diff_report, load_finding_collection
 from sattlint.devtools.corpus import CORPUS_RESULTS_FILENAME, run_corpus_suite
 from sattlint.devtools.coverage_reports import build_coverage_summary_report
-from sattlint.devtools.derived_reports import (
-    build_incremental_analysis_report,
-    build_performance_budget_report,
-    build_profiling_summary_report,
-)
-from sattlint.devtools.differential import build_differential_report
-from sattlint.devtools.finding_exports import build_pipeline_finding_collection
 from sattlint.devtools.pipeline_artifacts import (
     PipelineArtifactContext,
     write_json_artifact,
@@ -51,7 +39,6 @@ from sattlint.devtools.pipeline_checks import (
     skipped_stage_report,
 )
 from sattlint.devtools.progress_reporting import ProgressReporter
-from sattlint.devtools.semantic_reports import build_rule_metrics_report, build_sattline_semantic_report
 from sattlint.devtools.status_reports import (
     build_pipeline_status_report,
     build_pipeline_summary_report,
@@ -107,135 +94,31 @@ DEFAULT_QUICK_PYTEST_TARGETS = (
 )
 _VULTURE_LINE_RE = re.compile(r"^(?P<file>.*?):(?P<line>\d+): (?P<message>.*) \((?P<confidence>\d+)% confidence\)$")
 
-
-@dataclass(slots=True)
-class CommandResult:
-    name: str
-    command: list[str]
-    exit_code: int
-    duration_seconds: float
-    stdout: str
-    stderr: str
+CommandResult = pipeline_execution_helpers.CommandResult
 
 
 def _read_pyproject() -> dict[str, Any]:
-    raw = PYPROJECT_PATH.read_bytes()
-    for encoding in ("utf-8", "utf-8-sig", "cp1252", "latin-1"):
-        try:
-            return tomllib.loads(raw.decode(encoding))
-        except (UnicodeDecodeError, tomllib.TOMLDecodeError):
-            continue
-    return tomllib.loads(raw.decode("utf-8", errors="replace"))
+    return pipeline_parsing_helpers.read_pyproject(PYPROJECT_PATH)
 
 
 def _tool_version(package_name: str) -> str | None:
-    try:
-        return metadata.version(package_name)
-    except metadata.PackageNotFoundError:
-        return None
+    return pipeline_parsing_helpers.tool_version(package_name)
 
 
 def _resolve_python_executable() -> str:
-    candidates: list[Path] = []
-
-    venv_python = Path(".venv") / "Scripts" / "python.exe" if os.name == "nt" else Path(".venv") / "bin" / "python"
-    if venv_python.exists():
-        return str(venv_python.resolve())
-
-    override = os.environ.get("SATTLINT_PYTHON")
-    if override:
-        candidates.append(Path(override))
-
-    if sys.executable:
-        candidates.append(Path(sys.executable))
-
-    base_executable = getattr(sys, "_base_executable", "")
-    if base_executable:
-        candidates.append(Path(base_executable))
-
-    prefix = Path(sys.prefix)
-    if os.name == "nt":
-        candidates.append(prefix / "Scripts" / "python.exe")
-    else:
-        candidates.append(prefix / "bin" / "python")
-
-    for candidate in candidates:
-        if candidate.exists():
-            return str(candidate.resolve())
-
-    fallback = shutil.which("python")
-    if fallback:
-        return fallback
-
-    return sys.executable
+    return pipeline_execution_helpers._resolve_python_executable()
 
 
 def _resolve_venv_tool(tool_name: str) -> str | None:
-    candidates: list[Path]
-    if os.name == "nt":
-        candidates = [Path(".venv") / "Scripts" / f"{tool_name}.exe"]
-    else:
-        candidates = [Path(".venv") / "bin" / tool_name]
-
-    for candidate in candidates:
-        if candidate.exists():
-            return str(candidate.resolve())
-
-    return shutil.which(tool_name)
+    return pipeline_execution_helpers._resolve_venv_tool(tool_name)
 
 
 def _run_command(name: str, command: list[str], *, cwd: Path = REPO_ROOT) -> CommandResult:
-    start = time.perf_counter()
-    # Command list is constructed internally.
-    completed = subprocess.run(  # nosec B603
-        command,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    duration = time.perf_counter() - start
-    return CommandResult(
-        name=name,
-        command=command,
-        exit_code=completed.returncode,
-        duration_seconds=round(duration, 3),
-        stdout=completed.stdout,
-        stderr=completed.stderr,
-    )
+    return pipeline_execution_helpers._run_command(name, command, cwd=cwd)
 
 
 def _detect_changed_files(*, repo_root: Path = REPO_ROOT) -> list[str]:
-    try:
-        git_executable = shutil.which("git")
-        if git_executable is None:
-            return []
-        # Fixed internal git command.
-        completed = subprocess.run(  # nosec B603
-            [git_executable, "status", "--porcelain", "--untracked-files=all"],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-        )
-    except OSError:
-        return []
-
-    if completed.returncode != 0:
-        return []
-
-    changed_files: set[str] = set()
-    for raw_line in completed.stdout.splitlines():
-        if len(raw_line) < 4:
-            continue
-        path_text = raw_line[3:].strip()
-        if not path_text:
-            continue
-        if " -> " in path_text:
-            path_text = path_text.split(" -> ", 1)[1].strip()
-        changed_files.add(path_text.replace("\\", "/"))
-    return sorted(changed_files)
+    return pipeline_execution_helpers._detect_changed_files(repo_root=repo_root)
 
 
 def _profile_settings(profile: str) -> dict[str, Any]:
@@ -271,11 +154,25 @@ _build_recommendation_why_this_gate = pipeline_cli_helpers._build_recommendation
 _build_recommendation_drift_report = pipeline_cli_helpers._build_recommendation_drift_report
 build_pipeline_check_recommendations = pipeline_cli_helpers.build_pipeline_check_recommendations
 run_recommended_pipeline_finish_gate = pipeline_cli_helpers.run_recommended_pipeline_finish_gate
+_pytest_worker_args = pipeline_finish_gate_helpers._pytest_worker_args
 
 
-def _build_pytest_command(python_cmd: list[str], junit_path: Path, *, profile: str) -> list[str]:
+def _normalize_pytest_workers(pytest_workers: str | None) -> str | None:
+    if pytest_workers is None:
+        return None
+    normalized = str(pytest_workers).strip()
+    return normalized or None
+
+
+def _build_pytest_command(
+    python_cmd: list[str],
+    junit_path: Path,
+    *,
+    profile: str,
+    pytest_workers: str | None = None,
+) -> list[str]:
     settings = _profile_settings(profile)
-    command = [*python_cmd, "-m", "pytest", "-q"]
+    command = [*python_cmd, "-m", "pytest", *_pytest_worker_args(pytest_workers), "-q"]
     addopts_override = settings.get("pytest_addopts_override")
     if addopts_override:
         command.extend(["-o", f"addopts={addopts_override}"])
@@ -283,6 +180,47 @@ def _build_pytest_command(python_cmd: list[str], junit_path: Path, *, profile: s
         command.extend(DEFAULT_QUICK_PYTEST_TARGETS)
     command.append(f"--junitxml={junit_path}")
     return command
+
+
+def _build_pipeline_timing_summary(
+    *,
+    progress: ProgressReporter,
+    tool_statuses: dict[str, dict[str, Any]],
+    pytest_workers: str | None,
+) -> dict[str, Any]:
+    stage_durations: dict[str, float] = {}
+    for stage in progress.to_dict().get("stages", []):
+        stage_key = str(stage.get("key", "")).strip()
+        if not stage_key:
+            continue
+        try:
+            stage_durations[stage_key] = round(float(stage.get("duration_seconds") or 0.0), 3)
+        except (TypeError, ValueError):
+            stage_durations[stage_key] = 0.0
+    check_stage_map = {
+        "ruff": "ruff",
+        "pyright": "pyright",
+        "pytest": "pytest",
+        "vulture": "vulture",
+        "bandit": "bandit",
+        "structural-reports": "structural_reports",
+        "trace": "trace",
+        "corpus": "corpus",
+    }
+    check_durations = {
+        check_id: stage_durations.get(stage_key, 0.0)
+        for check_id, stage_key in check_stage_map.items()
+        if tool_statuses.get(check_id, {}).get("status") != "skipped"
+    }
+    timing_summary: dict[str, Any] = {
+        "stage_durations_seconds": stage_durations,
+        "check_durations_seconds": check_durations,
+        "total_duration_seconds": round(sum(stage_durations.values()), 3),
+    }
+    normalized_workers = _normalize_pytest_workers(pytest_workers)
+    if normalized_workers is not None:
+        timing_summary["pytest_workers"] = normalized_workers
+    return timing_summary
 
 
 def _make_tool_status(
@@ -333,7 +271,7 @@ def _print_cli_summary(status_report: dict[str, Any]) -> None:
         if detail:
             line = f"{line} ({detail})"
         print(line)
-    analysis_diff_summary = status_report.get("analysis_diff_summary") or {}
+    analysis_diff_summary = cast(dict[str, Any], status_report.get("analysis_diff_summary") or {})
     analysis_diff_report = status_report.get("analysis_diff_report")
     if analysis_diff_report:
         print(
@@ -356,68 +294,15 @@ def _command_payload(result: CommandResult, **extra: Any) -> dict[str, Any]:
 
 
 def _parse_json_lines(raw_output: str) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    for line in raw_output.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        records.append(json.loads(stripped))
-    return records
+    return pipeline_parsing_helpers.parse_json_lines(raw_output)
 
 
 def _parse_vulture_output(raw_output: str) -> list[dict[str, Any]]:
-    findings: list[dict[str, Any]] = []
-    for line in raw_output.splitlines():
-        match = _VULTURE_LINE_RE.match(line.strip())
-        if match is None:
-            continue
-        findings.append(
-            {
-                "file": match.group("file"),
-                "line": int(match.group("line")),
-                "message": match.group("message"),
-                "confidence": int(match.group("confidence")),
-            }
-        )
-    return findings
+    return pipeline_parsing_helpers.parse_vulture_output(raw_output, _VULTURE_LINE_RE)
 
 
 def _parse_pytest_junit(xml_path: Path) -> dict[str, Any]:
-    root = ElementTree.fromstring(xml_path.read_text(encoding="utf-8"))
-    suites = root.findall("testsuite") if root.tag == "testsuites" else [root]
-    testcases: list[dict[str, Any]] = []
-    summary = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
-    for suite in suites:
-        summary["tests"] += int(suite.attrib.get("tests", 0))
-        summary["failures"] += int(suite.attrib.get("failures", 0))
-        summary["errors"] += int(suite.attrib.get("errors", 0))
-        summary["skipped"] += int(suite.attrib.get("skipped", 0))
-        for testcase in suite.findall("testcase"):
-            failure = testcase.find("failure")
-            error = testcase.find("error")
-            skipped = testcase.find("skipped")
-            if failure is not None:
-                outcome = "failed"
-                detail = failure.attrib.get("message") or (failure.text or "")
-            elif error is not None:
-                outcome = "error"
-                detail = error.attrib.get("message") or (error.text or "")
-            elif skipped is not None:
-                outcome = "skipped"
-                detail = skipped.attrib.get("message") or (skipped.text or "")
-            else:
-                outcome = "passed"
-                detail = ""
-            testcases.append(
-                {
-                    "classname": testcase.attrib.get("classname", ""),
-                    "name": testcase.attrib.get("name", ""),
-                    "time": testcase.attrib.get("time", "0"),
-                    "outcome": outcome,
-                    "detail": detail.strip(),
-                }
-            )
-    return {"summary": summary, "testcases": testcases}
+    return pipeline_parsing_helpers.parse_pytest_junit(xml_path)
 
 
 def _collect_environment_report() -> dict[str, Any]:
@@ -588,6 +473,7 @@ def _run_pytest_stage(
     output_dir: Path,
     python_cmd: list[str],
     profile: str,
+    pytest_workers: str | None = None,
 ) -> dict[str, Any]:
     junit_path = output_dir / "pytest.junit.xml"
     coverage_data_path = output_dir / ".coverage.pytest"
@@ -600,7 +486,7 @@ def _run_pytest_stage(
     try:
         pytest_result = _run_command(
             "pytest",
-            _build_pytest_command(python_cmd, junit_path, profile=profile),
+            _build_pytest_command(python_cmd, junit_path, profile=profile, pytest_workers=pytest_workers),
         )
     finally:
         if previous_coverage_file is None:
@@ -640,6 +526,7 @@ def _prepare_pipeline_run(
     changed_files: list[str] | None,
     selected_checks: Iterable[str] | None,
     run_mutation_analysis: bool,
+    pytest_workers: str | None,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     if baseline_findings is not None and not baseline_findings.exists():
@@ -672,6 +559,9 @@ def _prepare_pipeline_run(
         canonical_command = f"{canonical_command} " + " ".join(
             f"--check {check_id}" for check_id in normalized_selected_checks
         )
+    normalized_pytest_workers = _normalize_pytest_workers(pytest_workers)
+    if normalized_pytest_workers is not None:
+        canonical_command = f"{canonical_command} --pytest-workers {normalized_pytest_workers}"
     progress = ProgressReporter(
         kind="sattlint.pipeline.progress",
         title="Pipeline",
@@ -753,6 +643,7 @@ def _prepare_pipeline_run(
         "output_dir": output_dir,
         "profile": profile,
         "progress": progress,
+        "pytest_workers": normalized_pytest_workers,
         "python_cmd": python_cmd,
         "resolved_changed_files": resolved_changed_files,
         "resolved_corpus_manifest_dir": resolved_corpus_manifest_dir,
@@ -828,85 +719,14 @@ def _collect_optional_reports(
     *,
     trace_target: Path | None,
 ) -> dict[str, Any]:
-    progress = context["progress"]
-    architecture_report: dict[str, Any] = {"findings": [], "skipped": not context["run_structural_reports"]}
-    analyzer_registry_report: dict[str, Any] = {"rules": [], "skipped": not context["run_structural_reports"]}
-    dependency_graph_report: dict[str, Any] = {"edges": [], "skipped": not context["run_structural_reports"]}
-    call_graph_report: dict[str, Any] = {"edges": [], "skipped": not context["run_structural_reports"]}
-    graphics_layout_report: dict[str, Any] = {
-        "entries": [],
-        "groups": [],
-        "findings": [],
-        "skipped": not context["run_structural_reports"],
-    }
-    impact_analysis_report: dict[str, Any] = {
-        "library_impacts": [],
-        "module_impacts": [],
-        "skipped": not context["run_structural_reports"],
-    }
-    workspace_graph_inputs: WorkspaceGraphInputs | None = None
-
-    if context["run_structural_reports"]:
-        progress.start_stage("structural_reports")
-        structural_reports = _collect_structural_report_bundle(progress_callback=progress.log)
-        architecture_report = structural_reports.architecture_report
-        analyzer_registry_report = structural_reports.analyzer_registry_report
-        workspace_graph_inputs = structural_reports.graph_inputs
-        dependency_graph_report = structural_reports.dependency_graph_report
-        call_graph_report = structural_reports.call_graph_report
-        graphics_layout_report = structural_reports.graphics_layout_report
-        impact_analysis_report = structural_reports.impact_analysis_report
-        progress.complete_stage(
-            "structural_reports",
-            detail=(
-                f"{len(dependency_graph_report['edges'])} dependency edges, "
-                f"{len(call_graph_report['edges'])} call edges"
-            ),
-        )
-    else:
-        progress.skip_stage("structural_reports", detail="skipped by profile")
-
-    trace_report: dict[str, Any] | None = None
-    if context["run_trace"]:
-        if trace_target is None:
-            raise ValueError("trace_target is required when run_trace is enabled")
-        trace_target_label = sanitize_path_for_report(trace_target, repo_root=REPO_ROOT) or trace_target.as_posix()
-        progress.start_stage("trace", detail=trace_target_label)
-        trace_report = _collect_trace_report(trace_target)
-        progress.complete_stage("trace", detail=trace_target_label)
-    else:
-        progress.skip_stage("trace", detail="skipped by profile")
-
-    corpus_results_report: dict[str, Any] | None = None
-    if context["run_corpus"]:
-        progress.start_stage("corpus")
-        corpus_results_report = run_corpus_suite(
-            context["output_dir"],
-            manifest_dir=context["resolved_corpus_manifest_dir"],
-            repo_root=REPO_ROOT,
-            write_results=False,
-        ).to_dict()
-        progress.complete_stage(
-            "corpus",
-            detail=(
-                f"{corpus_results_report['summary']['case_count']} cases, "
-                f"{corpus_results_report['summary']['failed_count']} failed"
-            ),
-        )
-    else:
-        progress.skip_stage("corpus", detail="no manifest directory")
-
-    return {
-        "analyzer_registry_report": analyzer_registry_report,
-        "architecture_report": architecture_report,
-        "call_graph_report": call_graph_report,
-        "corpus_results_report": corpus_results_report,
-        "dependency_graph_report": dependency_graph_report,
-        "graphics_layout_report": graphics_layout_report,
-        "impact_analysis_report": impact_analysis_report,
-        "trace_report": trace_report,
-        "workspace_graph_inputs": workspace_graph_inputs,
-    }
+    return pipeline_optional_report_helpers.collect_optional_reports(
+        context,
+        trace_target=trace_target,
+        repo_root=REPO_ROOT,
+        collect_structural_report_bundle=_collect_structural_report_bundle,
+        collect_trace_report=_collect_trace_report,
+        run_corpus_suite_fn=run_corpus_suite,
+    )
 
 
 def _build_derived_reports(
@@ -919,123 +739,18 @@ def _build_derived_reports(
     phase_budget_ms: float,
     total_budget_ms: float,
 ) -> dict[str, Any]:
-    incremental_analysis_report = build_incremental_analysis_report(
-        context["resolved_changed_files"],
-        repo_root=REPO_ROOT,
-        analyzer_registry_report=(
-            optional_reports["analyzer_registry_report"] if context["run_structural_reports"] else None
-        ),
-    )
-    coverage_summary_report: dict[str, Any] | None = None
-    if context["run_coverage_summary"]:
-        coverage_summary_report = build_coverage_summary_report(REPO_ROOT)
-
-    profiling_summary_report = build_profiling_summary_report(
-        optional_reports["trace_report"],
+    return pipeline_optional_report_helpers.build_derived_reports(
+        context,
+        stage_reports,
+        optional_reports,
+        baseline_findings=baseline_findings,
         slow_phase_threshold_ms=slow_phase_threshold_ms,
-    )
-    performance_budget_report = build_performance_budget_report(
-        profiling_summary_report,
-        total_budget_ms=total_budget_ms,
         phase_budget_ms=phase_budget_ms,
-    )
-
-    phase2_rule_metadata_gate = {
-        "status": "skipped",
-        "enforced_fields": ["acceptance_tests", "mutation_applicability"],
-        "advisory_fields": ["corpus_cases"],
-        "blocking_finding_ids": [],
-        "advisory_finding_ids": [],
-        "blocking_rule_ids": [],
-        "advisory_rule_ids": [],
-    }
-    if context["run_structural_reports"]:
-        phase2_rule_metadata_gate = optional_reports["architecture_report"].get(
-            "phase2_rule_metadata_gate",
-            phase2_rule_metadata_gate,
-        )
-
-    context["progress"].start_stage("findings")
-    finding_collection = build_pipeline_finding_collection(
+        total_budget_ms=total_budget_ms,
         repo_root=REPO_ROOT,
-        ruff_findings=stage_reports["ruff_findings"],
-        pyright_findings=stage_reports["pyright_findings"],
-        pytest_report=stage_reports["pytest_report"],
-        vulture_findings=(
-            []
-            if stage_reports["vulture_report"].get("skipped")
-            else list(stage_reports["vulture_report"].get("findings", []))
-        ),
-        bandit_findings=(
-            []
-            if stage_reports["bandit_report"].get("skipped")
-            else list(stage_reports["bandit_report"].get("findings", []))
-        ),
-        architecture_findings=list(optional_reports["architecture_report"].get("findings", [])),
+        default_trace_target=DEFAULT_TRACE_TARGET,
+        build_coverage_summary_report_fn=build_coverage_summary_report,
     )
-    context["progress"].complete_stage(
-        "findings",
-        detail=f"{len(finding_collection.findings)} normalized findings",
-    )
-
-    sattline_semantic_report: dict[str, Any] | None = None
-    rule_metrics_report: dict[str, Any] | None = None
-    if context["run_structural_reports"]:
-        findings_dict = finding_collection.to_dict()
-        sattline_semantic_report = build_sattline_semantic_report(findings_dict)
-        rule_metrics_report = build_rule_metrics_report(
-            findings_dict,
-            optional_reports["analyzer_registry_report"]
-            if not optional_reports["analyzer_registry_report"].get("skipped")
-            else None,
-        )
-
-    analysis_diff_report: dict[str, Any] | None = None
-    differential_report: dict[str, Any] | None = None
-    if baseline_findings is not None:
-        baseline_collection = load_finding_collection(baseline_findings)
-        analysis_diff_report = build_analysis_diff_report(
-            baseline=baseline_collection,
-            current=finding_collection,
-            baseline_label=(
-                sanitize_path_for_report(baseline_findings, repo_root=REPO_ROOT) or baseline_findings.as_posix()
-            ),
-            current_label="findings.json",
-        )
-        differential_report = build_differential_report(
-            baseline_collection,
-            finding_collection,
-            baseline_label=(
-                sanitize_path_for_report(baseline_findings, repo_root=REPO_ROOT) or baseline_findings.as_posix()
-            ),
-            current_label="findings.json",
-        ).to_dict()
-
-    mutation_results: dict[str, Any] | None = None
-    if context.get("run_mutation_analysis") and finding_collection is not None:
-        from sattlint.devtools.mutation_engine import run_mutation_analysis
-
-        target = context.get("mutation_target") or DEFAULT_TRACE_TARGET
-        if target.exists():
-            mutation_results = run_mutation_analysis(
-                target,
-                finding_collection,
-            ).to_dict()
-
-    return {
-        "analysis_diff_report": analysis_diff_report,
-        "coverage_summary_report": coverage_summary_report,
-        "differential_report": differential_report,
-        "finding_collection": finding_collection,
-        "findings_schema": finding_collection.schema_metadata,
-        "incremental_analysis_report": incremental_analysis_report,
-        "performance_budget_report": performance_budget_report,
-        "phase2_rule_metadata_gate": phase2_rule_metadata_gate,
-        "profiling_summary_report": profiling_summary_report,
-        "rule_metrics_report": rule_metrics_report,
-        "sattline_semantic_report": sattline_semantic_report,
-        "mutation_results": mutation_results,
-    }
 
 
 def _build_static_tool_statuses(stage_reports: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -1500,8 +1215,9 @@ def _check_core_invariants(
             seen_fingerprints.add(fingerprint)
 
     # Invariant: transform-invariant violations must be reported
-    trace_report = derived_reports.get("trace_report") or {}
-    transform_violations = trace_report.get("heuristics", {}).get("transform_invariant_violations", [])
+    trace_report = cast(dict[str, Any], derived_reports.get("trace_report") or {})
+    heuristics = cast(dict[str, Any], trace_report.get("heuristics") or {})
+    transform_violations = cast(list[Any], heuristics.get("transform_invariant_violations") or [])
     if transform_violations:
         violations.append(f"Transform invariant violations: {len(transform_violations)}")
 
@@ -1645,6 +1361,15 @@ def _finalize_pipeline_outputs(
     )
     context["progress"].complete_stage("write_artifacts")
     context["progress"].finalize(overall_status=overall_status_value)
+    timing_summary = _build_pipeline_timing_summary(
+        progress=context["progress"],
+        tool_statuses=tool_statuses,
+        pytest_workers=context.get("pytest_workers"),
+    )
+    status_report["timing"] = timing_summary
+    summary["timing"] = timing_summary
+    write_json_artifact(context["output_dir"] / "status.json", status_report)
+    write_json_artifact(context["output_dir"] / "summary.json", summary)
     return summary
 
 
@@ -1666,6 +1391,7 @@ def _run_pipeline(
     fail_on_budget: bool = False,
     selected_checks: Iterable[str] | None = None,
     run_mutation_analysis: bool = False,
+    pytest_workers: str | None = None,
 ) -> dict[str, Any]:
     context = _prepare_pipeline_run(
         output_dir,
@@ -1679,6 +1405,7 @@ def _run_pipeline(
         changed_files=changed_files,
         selected_checks=selected_checks,
         run_mutation_analysis=run_mutation_analysis,
+        pytest_workers=pytest_workers,
     )
     progress = context["progress"]
     selected_checks = context.get("selected_checks")
@@ -1707,6 +1434,7 @@ def _run_pipeline(
             output_dir=context["output_dir"],
             python_cmd=context["python_cmd"],
             profile=context["profile"],
+            pytest_workers=context.get("pytest_workers"),
         )
     else:
         pytest_report = skipped_stage_report("pytest")
@@ -1836,6 +1564,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Run only the named pipeline check. Repeatable.",
     )
     parser.add_argument(
+        "--pytest-workers",
+        default=None,
+        help="Optional pytest-xdist worker setting forwarded as '-n <value>' to pipeline and finish-gate pytest runs.",
+    )
+    parser.add_argument(
         "--list-checks",
         action="store_true",
         help="Print the individually runnable pipeline checks for the selected profile as JSON and exit.",
@@ -1917,6 +1650,7 @@ def main(argv: list[str] | None = None) -> int:
             total_budget_ms=args.total_budget_ms,
             fail_on_drift=args.fail_on_drift,
             fail_on_budget=args.fail_on_budget,
+            pytest_workers=args.pytest_workers,
         )
         summary = finish_gate["pipeline_summary"]
         _print_cli_summary(
@@ -1976,6 +1710,7 @@ def main(argv: list[str] | None = None) -> int:
         fail_on_budget=args.fail_on_budget,
         selected_checks=selected_checks,
         run_mutation_analysis=(args.run_mutation_analysis or bool(args.mutation_target)),
+        pytest_workers=args.pytest_workers,
     )
     if save_baseline is not None:
         findings_src = Path(args.output_dir).resolve() / "findings.json"

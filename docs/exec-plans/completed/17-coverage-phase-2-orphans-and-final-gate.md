@@ -53,10 +53,10 @@ Run commands from repository root.
 
 Per-slice first validations:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_corpus.py tests/test_artifact_contracts.py tests/test_pipeline.py tests/test_pipeline_collection.py tests/test_pipeline_run.py tests/test_pipeline_phase2.py tests/test_structural_reports.py -x -q --tb=short
-    & ".venv/Scripts/python.exe" -m pytest --no-cov <new dedicated orphan suite> -x -q --tb=short
-  & ".venv/Scripts/python.exe" -m pytest -q
-    & ".venv/Scripts/python.exe" -m pytest -q
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_corpus.py tests/test_artifact_contracts.py tests/test_pipeline.py tests/test_pipeline_collection.py tests/test_pipeline_run.py tests/test_pipeline_phase2.py tests/test_structural_reports.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov <new dedicated orphan suite> -x -q --tb=short
+  python scripts/run_repo_python.py -m pytest -q
+    python scripts/run_repo_python.py -m pytest -q
 
 ## Validation and Acceptance
 
@@ -107,8 +107,8 @@ Plan created from the clean `82.35%` checkpoint.
 - Owner search confirmed no stable existing test owner for the orphan modules, so dedicated suites were justified.
 - Added `tests/test_devtools_orphans.py` for `accuracy_metrics.py`, `ai_templates.py`, `differential.py`, `mutation_engine.py`, `parser_properties.py`, and `production_summary.py`.
 - Added `tests/test_symbolic_lite.py` for `src/sattlint/analyzers/symbolic_lite.py`.
-- Focused validation passed: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_devtools_orphans.py tests/test_symbolic_lite.py -x -q --tb=short` -> `12 passed`.
-- Fresh shared checkpoint passed: `& ".venv/Scripts/python.exe" -m pytest -q --cov-fail-under=0` with `COVERAGE_FILE=.coverage.orphans-final` -> `1272 passed, 1 warning` and `TOTAL 27153 / 4171 missing / 85%`.
+- Focused validation passed: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_devtools_orphans.py tests/test_symbolic_lite.py -x -q --tb=short` -> `12 passed`.
+- Fresh shared checkpoint passed: `python scripts/run_repo_python.py -m pytest -q --cov-fail-under=0` with `COVERAGE_FILE=.coverage.orphans-final` -> `1272 passed, 1 warning` and `TOTAL 27153 / 4171 missing / 85%`.
 - Orphan-module result from the fresh checkpoint: `accuracy_metrics.py`, `ai_templates.py`, `differential.py`, `mutation_engine.py`, `parser_properties.py`, `production_summary.py`, and `symbolic_lite.py` all reached `100%`.
 - Remaining blockers for this plan are no longer the zero-owner files; they are the long-tail owner surfaces, currently led by `validation.py` (`30` misses), `structural_reports.py` (`44` misses), and `corpus.py` (`41` misses), plus the unfinished repository-default `pytest -q` acceptance gate.
 

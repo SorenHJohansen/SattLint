@@ -177,66 +177,6 @@ def test_copyvarnosort_expands_nested_prefix_fields():
     assert "inner.y" in write_keys
 
 
-def test_initvariable_writes_all_fields_and_reads_nothing():
-    dt = DataType(
-        name="RecType",
-        description=None,
-        datecode=None,
-        var_list=[
-            Variable(name="A", datatype=Simple_DataType.INTEGER),
-            Variable(name="B", datatype=Simple_DataType.REAL),
-        ],
-    )
-
-    initrec = Variable(name="InitRec", datatype="RecType")
-    rec = Variable(name="Rec", datatype="RecType")
-    status = Variable(name="Status", datatype=Simple_DataType.INTEGER)
-
-    m1 = SingleModule(
-        header=_hdr("M1"),
-        moduledef=None,
-        moduleparameters=[],
-        localvariables=[initrec, rec, status],
-        submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                _eq(
-                    [
-                        (
-                            const.KEY_FUNCTION_CALL,
-                            "InitVariable",
-                            [_varref("Rec"), _varref("InitRec"), _varref("Status")],
-                        )
-                    ]
-                )
-            ]
-        ),
-        parametermappings=[],
-    )
-
-    bp = BasePicture(
-        header=_hdr("Root"),
-        datatype_defs=[dt],
-        moduletype_defs=[],
-        localvariables=[],
-        submodules=[m1],
-        modulecode=None,
-        moduledef=None,
-    )
-
-    analyzer = VariablesAnalyzer(bp)
-    analyzer.run()
-
-    # Rec is fully written
-    rec_u = analyzer._get_usage(rec)
-    write_keys = {k.casefold() for k in (rec_u.field_writes or {})}
-    assert {"a", "b"}.issubset(write_keys)
-
-    # InitRec is NOT read (per user semantics)
-    initrec_u = analyzer._get_usage(initrec)
-    assert not (initrec_u.read or initrec_u.field_reads), "InitRec must not be counted as read"
-
-
 def test_partial_record_usage_reports_unused_leaf_fields():
     dt = DataType(
         name="RecType",

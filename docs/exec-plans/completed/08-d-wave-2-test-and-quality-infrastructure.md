@@ -75,33 +75,33 @@ Observable outcome: maintainers can run focused test or audit commands per subsy
 - 2026-05-04: D-016 completed.
   Added `src/sattlint/devtools/fault_injection.py` with deterministic checkpoint-triggered faults, isolated campaign execution, and `fault_injection_results.json` output.
   Added `tests/test_fault_injection.py` covering deterministic trigger counts, expected injected faults, missed-fault reporting, unexpected error reporting, and machine-readable report output.
-  Focused validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_fault_injection.py -x -q --tb=short` -> `4 passed`.
+  Focused validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_fault_injection.py -x -q --tb=short` -> `4 passed`.
   Roadmap status update applied: `docs/exec-plans/feature-roadmap.md` D-016 -> `Done`.
 - 2026-05-04: D-017 and D-018 completed.
   Repaired `src/sattlint/devtools/parser_properties.py` so generated samples are strict-valid SattLine, kept D-017 on the existing `src/sattlint/devtools/property_tests.py` surface, and created the missing `src/sattlint/devtools/fuzzer.py` owner module that `sattlint.devtools` already exported for D-018.
   Added focused Milestone B coverage in `tests/test_property_based.py` for strict-valid generated samples, property summary reporting, corpus forwarding, crash classification, and report serialization.
-  Focused validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_property_based.py -x -q --tb=short` -> `12 passed`; adjacent validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_devtools_orphans.py -x -q --tb=short -k "parser_property_helpers"` -> `1 passed, 9 deselected`.
+  Focused validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_property_based.py -x -q --tb=short` -> `12 passed`; adjacent validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_devtools_orphans.py -x -q --tb=short -k "parser_property_helpers"` -> `1 passed, 9 deselected`.
   Roadmap status updates applied: `docs/exec-plans/feature-roadmap.md` D-017 -> `Done`, D-018 -> `Done`.
 - 2026-05-04: D-022 completed.
   Extended `src/sattlint/devtools/accuracy_metrics.py` with a dedicated report writer and validation-annotation filename contract, exported the seam from `sattlint.devtools`, and wired `src/sattlint/devtools/pipeline.py` plus `src/sattlint/devtools/pipeline_artifacts.py` to emit `accuracy_metrics.json` during full-profile runs.
   Added focused Milestone C coverage in `tests/test_pipeline_run.py` for annotation-driven `accuracy_metrics.json` emission and in `tests/test_devtools_orphans.py` for direct accuracy-metrics report writing.
-  Focused validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_pipeline_run.py -x -q --tb=short -k "accuracy_metrics"` -> `1 passed, 40 deselected`; adjacent validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_devtools_orphans.py -x -q --tb=short -k "accuracy_metrics"` -> `2 passed, 9 deselected`.
+  Focused validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_pipeline_run.py -x -q --tb=short -k "accuracy_metrics"` -> `1 passed, 40 deselected`; adjacent validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_devtools_orphans.py -x -q --tb=short -k "accuracy_metrics"` -> `2 passed, 9 deselected`.
   Roadmap status update applied: `docs/exec-plans/feature-roadmap.md` D-022 -> `Done`.
 - 2026-05-04: D-023 and D-033 completed.
   Confirmed that `src/sattlint/devtools/pipeline.py` already enforced core invariant violations and that `src/sattlint/devtools/structural_reports.py` plus `src/sattlint/devtools/repo_audit.py` already covered maintainability and test-quality findings such as structural file budgets and facade-private-boundary violations.
-  Focused validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_pipeline_collection.py tests/test_pipeline_run.py tests/test_structural_reports.py tests/test_repo_audit.py -x -q --tb=short -k "test_check_core_invariants_reports_duplicate_fingerprints_and_transform_violations or test_run_pipeline_prints_core_invariant_violations or test_collect_architecture_report_includes_structural_budget_findings or test_collect_structural_budget_report_flags_facade_private_entrypoints_and_ratchet or test_find_structural_report_findings_translates_structural_architecture_findings"` -> `5 passed, 279 deselected`.
+  Focused validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_pipeline_collection.py tests/test_pipeline_run.py tests/test_structural_reports.py tests/test_repo_audit.py -x -q --tb=short -k "test_check_core_invariants_reports_duplicate_fingerprints_and_transform_violations or test_run_pipeline_prints_core_invariant_violations or test_collect_architecture_report_includes_structural_budget_findings or test_collect_structural_budget_report_flags_facade_private_entrypoints_and_ratchet or test_find_structural_report_findings_translates_structural_architecture_findings"` -> `5 passed, 279 deselected`.
   Roadmap status updates applied: `docs/exec-plans/feature-roadmap.md` D-023 -> `Done`, D-033 -> `Done`.
 - 2026-05-04: D-026 and D-030 completed.
   Confirmed that `src/sattlint/config.py` already validated configuration structure and naming rules, `src/sattlint/app.py` plus `src/sattlint/cli/entry.py` already exposed `validate-config`, and `src/sattlint/devtools/observability.py`, `src/sattlint/devtools/review_tool.py`, and `src/sattlint/devtools/repo_audit.py` already covered observability metrics and logging hygiene checks.
-  Focused validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_config_validation.py tests/test_app_cli_commands.py tests/test_cli.py -x -q --tb=short -k "validate_config"` -> `7 passed, 35 deselected`; adjacent validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_devtools_review_observability.py tests/test_repo_audit.py -x -q --tb=short -k "observability or unexpected_print or logging_findings"` -> `11 passed, 115 deselected`.
+  Focused validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_app_config_validation.py tests/test_app_cli_commands.py tests/test_cli.py -x -q --tb=short -k "validate_config"` -> `7 passed, 35 deselected`; adjacent validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_devtools_review_observability.py tests/test_repo_audit.py -x -q --tb=short -k "observability or unexpected_print or logging_findings"` -> `11 passed, 115 deselected`.
   Roadmap status updates applied: `docs/exec-plans/feature-roadmap.md` D-026 -> `Done`, D-030 row restored and set to `Done`.
 - 2026-05-04: D-036 and D-037 completed.
   Confirmed that `src/sattlint/docgenerator/analyzer_ref.py` already generated analyzer reference entries, markdown, and serialized outputs with example fixtures, and that `src/sattlint/devtools/ai_templates.py` already built reusable AI task templates from analyzer registry and findings.
-  Focused validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_docgen.py tests/test_devtools_orphans.py -x -q --tb=short -k "analyzer_reference or ai_templates"` -> `7 passed, 66 deselected`.
+  Focused validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen.py tests/test_devtools_orphans.py -x -q --tb=short -k "analyzer_reference or ai_templates"` -> `7 passed, 66 deselected`.
   Roadmap status updates applied: `docs/exec-plans/feature-roadmap.md` D-036 -> `Done`, D-037 row restored and set to `Done`.
 - 2026-05-04: Wave-close validation complete.
-  Broad validation: `& ".venv/Scripts/python.exe" -m pytest -q` -> `1606 passed in 210.13s` after clearing one stale local `.coverage` database that was outside D-Wave-2 implementation scope.
-  Broad validation: `& ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit-review-quick` -> `Overall status: pass` with `12 total` findings and `0 blocking at fail-on high`.
+  Broad validation: `python scripts/run_repo_python.py -m pytest -q` -> `1606 passed in 210.13s` after clearing one stale local `.coverage` database that was outside D-Wave-2 implementation scope.
+  Broad validation: `python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit-review-quick` -> `Overall status: pass` with `12 total` findings and `0 blocking at fail-on high`.
   Closeout note: the remaining quick-audit findings are medium-severity structural or hygiene debt and no longer block D-Wave-2 archival status.
 
 ## Context and Orientation
@@ -144,33 +144,33 @@ Run commands from repository root.
 
 Milestone A first validation:
 
-  & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_fault_injection.py -x -q --tb=short
+  python scripts/run_repo_python.py -m pytest --no-cov tests/test_fault_injection.py -x -q --tb=short
 
 Milestone B first validation:
 
-  & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_property_based.py -x -q --tb=short
+  python scripts/run_repo_python.py -m pytest --no-cov tests/test_property_based.py -x -q --tb=short
 
 Milestone C first validation:
 
-  & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_pipeline_run.py -x -q --tb=short -k "accuracy_metrics"
+  python scripts/run_repo_python.py -m pytest --no-cov tests/test_pipeline_run.py -x -q --tb=short -k "accuracy_metrics"
 
 Milestone D first validation:
 
-  & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_pipeline_collection.py tests/test_pipeline_run.py tests/test_structural_reports.py tests/test_repo_audit.py -x -q --tb=short -k "test_check_core_invariants_reports_duplicate_fingerprints_and_transform_violations or test_run_pipeline_prints_core_invariant_violations or test_collect_architecture_report_includes_structural_budget_findings or test_collect_structural_budget_report_flags_facade_private_entrypoints_and_ratchet or test_find_structural_report_findings_translates_structural_architecture_findings"
+  python scripts/run_repo_python.py -m pytest --no-cov tests/test_pipeline_collection.py tests/test_pipeline_run.py tests/test_structural_reports.py tests/test_repo_audit.py -x -q --tb=short -k "test_check_core_invariants_reports_duplicate_fingerprints_and_transform_violations or test_run_pipeline_prints_core_invariant_violations or test_collect_architecture_report_includes_structural_budget_findings or test_collect_structural_budget_report_flags_facade_private_entrypoints_and_ratchet or test_find_structural_report_findings_translates_structural_architecture_findings"
 
 Milestone E first validation:
 
-  & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app_config_validation.py tests/test_app_cli_commands.py tests/test_cli.py -x -q --tb=short -k "validate_config"
-  & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_devtools_review_observability.py tests/test_repo_audit.py -x -q --tb=short -k "observability or unexpected_print or logging_findings"
+  python scripts/run_repo_python.py -m pytest --no-cov tests/test_app_config_validation.py tests/test_app_cli_commands.py tests/test_cli.py -x -q --tb=short -k "validate_config"
+  python scripts/run_repo_python.py -m pytest --no-cov tests/test_devtools_review_observability.py tests/test_repo_audit.py -x -q --tb=short -k "observability or unexpected_print or logging_findings"
 
 Milestone F first validation:
 
-  & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_docgen.py tests/test_devtools_orphans.py -x -q --tb=short -k "analyzer_reference or ai_templates"
+  python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen.py tests/test_devtools_orphans.py -x -q --tb=short -k "analyzer_reference or ai_templates"
 
 Wave-close validation:
 
-    & ".venv/Scripts/python.exe" -m pytest -q
-    & ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit-review-quick
+    python scripts/run_repo_python.py -m pytest -q
+    python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit-review-quick
 
 ## Validation and Acceptance
 

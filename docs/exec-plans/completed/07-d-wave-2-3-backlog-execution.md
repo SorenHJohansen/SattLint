@@ -86,27 +86,27 @@ Run commands from repository root.
 
 Milestone A first validation:
 
-    & ".venv/Scripts/sattlint.exe" syntax-check tests/fixtures/corpus/valid/VariableModifiers.s
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_parser_core.py tests/test_transformer.py -x -q --tb=short
+    python scripts/run_repo_python.py -m sattlint syntax-check tests/fixtures/corpus/valid/VariableModifiers.s
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_parser_core.py tests/test_transformer.py -x -q --tb=short
 
 Milestone B first validation:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_repo_audit.py tests/test_pipeline.py -x -q --tb=short
-    & ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit-review-quick
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_repo_audit.py tests/test_pipeline.py -x -q --tb=short
+    python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit-review-quick
 
 Milestone C first validation:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_cli.py tests/test_app.py tests/test_gui.py tests/test_docgen.py -x -q --tb=short
-    & ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit-review-quick
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_cli.py tests/test_app.py tests/test_gui.py tests/test_docgen.py -x -q --tb=short
+    python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit-review-quick
 
 Milestone D/E first validation:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py tests/test_pipeline.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py tests/test_pipeline.py -x -q --tb=short
 
 Wave-close validation:
 
-    & ".venv/Scripts/python.exe" -m pytest -q
-    & ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit-review-quick
+    python scripts/run_repo_python.py -m pytest -q
+    python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit-review-quick
 
 ## Validation and Acceptance
 

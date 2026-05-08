@@ -18,7 +18,7 @@ T-009 says the language-server code still has blocking import and typing debt in
 ## Surprises & Discoveries
 
 - Observation: the tracker text for T-009 is stale relative to the current codebase.
-  Evidence: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py -x -q --tb=short` completed at `104 passed`, `& ".venv/Scripts/ruff.exe" check src/sattlint_lsp/server.py src/sattlint_lsp/_server_document.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py` reported `All checks passed!`, and `& ".venv/Scripts/pyright.exe" src/sattlint_lsp/server.py src/sattlint_lsp/_server_document.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py` reported `0 errors, 0 warnings, 0 informations`.
+  Evidence: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py -x -q --tb=short` completed at `104 passed`, `python scripts/run_repo_python.py -m ruff check src/sattlint_lsp/server.py src/sattlint_lsp/_server_document.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py` reported `All checks passed!`, and `python scripts/run_repo_python.py -m pyright src/sattlint_lsp/server.py src/sattlint_lsp/_server_document.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py` reported `0 errors, 0 warnings, 0 informations`.
 - Observation: the source files already contain the threading and guarded thread-start behavior called out by the debt item.
   Evidence: `src/sattlint_lsp/server.py` imports `threading` and stores `workspace_scan_condition` plus `workspace_scan_thread`; `src/sattlint_lsp/_server_document.py` builds the worker thread inside `_schedule_workspace_scan()` and starts it only after a `None` check.
 - Observation: there is already an active broad workstream claiming some LSP files and tests.
@@ -66,9 +66,9 @@ Run commands from the repository root.
 
 Per-slice first validations:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py -x -q --tb=short
-    & ".venv/Scripts/ruff.exe" check src/sattlint_lsp/server.py src/sattlint_lsp/_server_document.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py
-    & ".venv/Scripts/pyright.exe" src/sattlint_lsp/server.py src/sattlint_lsp/_server_document.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py -x -q --tb=short
+    python scripts/run_repo_python.py -m ruff check src/sattlint_lsp/server.py src/sattlint_lsp/_server_document.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py
+    python scripts/run_repo_python.py -m pyright src/sattlint_lsp/server.py src/sattlint_lsp/_server_document.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py
 
 If a code repair is required, rerun the same three commands before reading other files.
 
@@ -103,9 +103,9 @@ The verification steps are safe to rerun. If the first focused route passes, do 
 
 ## Artifacts and Notes
 
-- `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py -x -q --tb=short` -> `104 passed in 6.16s`
-- `& ".venv/Scripts/ruff.exe" check src/sattlint_lsp/server.py src/sattlint_lsp/_server_document.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py` -> `All checks passed!`
-- `& ".venv/Scripts/pyright.exe" src/sattlint_lsp/server.py src/sattlint_lsp/_server_document.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py` -> `0 errors, 0 warnings, 0 informations`
+- `python scripts/run_repo_python.py -m pytest --no-cov tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py -x -q --tb=short` -> `104 passed in 6.16s`
+- `python scripts/run_repo_python.py -m ruff check src/sattlint_lsp/server.py src/sattlint_lsp/_server_document.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py` -> `All checks passed!`
+- `python scripts/run_repo_python.py -m pyright src/sattlint_lsp/server.py src/sattlint_lsp/_server_document.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py tests/test_editor_api.py` -> `0 errors, 0 warnings, 0 informations`
 - No files under `src/sattlint_lsp/` or `src/sattlint/core/` changed during closeout, so no language-server restart was required.
 
 ## Interfaces and Dependencies

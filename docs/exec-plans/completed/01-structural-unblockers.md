@@ -42,9 +42,9 @@ First restore parser test stability in the W6 slice. Fix the missing import or o
 
 Run from repository root:
 
-    & ".venv/Scripts/sattlint.exe" syntax-check tests/fixtures/corpus/valid/VariableModifiers.s
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_transformer.py tests/test_parser_core.py -x -q --tb=short
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_variables.py -x -q --tb=short
+    python scripts/run_repo_python.py -m sattlint syntax-check tests/fixtures/corpus/valid/VariableModifiers.s
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_transformer.py tests/test_parser_core.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_variables.py -x -q --tb=short
 
 ## Validation and Acceptance
 
@@ -63,9 +63,9 @@ Implemented fixes:
 
 First passing focused validations:
 
-- `& ".venv/Scripts/sattlint.exe" syntax-check tests/fixtures/corpus/valid/VariableModifiers.s` -> `OK`
-- `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_transformer.py tests/test_parser_core.py -x -q --tb=short` -> `23 passed`
-- `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_variables.py -x -q --tb=short` -> `40 passed`
+- `python scripts/run_repo_python.py -m sattlint syntax-check tests/fixtures/corpus/valid/VariableModifiers.s` -> `OK`
+- `python scripts/run_repo_python.py -m pytest --no-cov tests/test_transformer.py tests/test_parser_core.py -x -q --tb=short` -> `23 passed`
+- `python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_variables.py -x -q --tb=short` -> `40 passed`
 
 ## Interfaces and Dependencies
 

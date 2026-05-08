@@ -5,12 +5,18 @@ import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypedDict
+from typing import NotRequired, TypedDict
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SRC_PATH = REPO_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
+
+from hook_path_compat import normalize_payload_path_text, resolve_payload_cwd  # noqa: E402
 
 from sattlint.devtools import coordination_lock_state  # noqa: E402
 
@@ -29,7 +35,7 @@ STATUS_BONUS = {
 
 
 class ClaimInfo(TypedDict):
-    raw: str
+    raw: NotRequired[str]
     path: Path
     is_directory: bool
 
@@ -78,7 +84,16 @@ def _load_active_workstreams(repo_root: Path, cwd: Path) -> list[WorkstreamEntry
     entries = coordination_lock_state.load_lock_state(repo_root)
     normalized: list[WorkstreamEntry] = []
     for index, entry in enumerate(entries):
-        claim_paths = coordination_lock_state.resolve_claim_patterns(entry["claimed_paths"], cwd)
+        resolved_claim_paths = coordination_lock_state.resolve_claim_patterns(entry["claimed_paths"], cwd)
+        claim_paths: list[ClaimInfo] = []
+        for claim_index, claim in enumerate(resolved_claim_paths):
+            claim_paths.append(
+                {
+                    "raw": claim.get("raw") or entry["claimed_paths"][claim_index],
+                    "path": claim["path"],
+                    "is_directory": bool(claim.get("is_directory")),
+                }
+            )
         normalized.append(
             {
                 "id": entry["workstream_id"],
@@ -99,7 +114,7 @@ def _collect_payload_signals(payload: object, cwd: Path) -> PayloadSignals:
     text_fragments: list[str] = []
 
     def add_path(raw_path: str) -> None:
-        normalized = coordination_lock_state.normalize_relative_path(raw_path)
+        normalized = coordination_lock_state.normalize_relative_path(normalize_payload_path_text(raw_path))
         if not normalized:
             return
         try:
@@ -162,8 +177,8 @@ def _score_workstream(entry: WorkstreamEntry, signals: PayloadSignals) -> Ranked
 
     for claim in entry["claim_paths"]:
         claim_path = claim["path"]
-        claim_raw = claim["raw"] or claim_path.name
-        is_directory = claim["is_directory"]
+        claim_raw = claim.get("raw") or claim_path.name
+        is_directory = bool(claim.get("is_directory"))
         for signal_path in signal_paths:
             if signal_path == claim_path:
                 score += 80
@@ -344,7 +359,7 @@ def main() -> int:
         payload = _load_payload()
         if payload.get("hookEventName") != "SessionStart":
             return 0
-        cwd = Path(payload.get("cwd") or ".").resolve()
+        cwd = resolve_payload_cwd(str(payload.get("cwd") or "."))
         entries = _load_active_workstreams(cwd, cwd)
         signals = _collect_payload_signals(payload, cwd)
         ranked = _rank_workstreams(entries, signals)
