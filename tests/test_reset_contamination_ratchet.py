@@ -191,9 +191,9 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
         limited_latch_issues,
         limit_to_module_path=["Root", "NoMatch"],
     )
-    assert [(issue.module_path, issue.variable.name) for issue in limited_latch_issues if issue.variable is not None] == [
-        (["Root"], "RootLatched")
-    ]
+    assert [
+        (issue.module_path, issue.variable.name) for issue in limited_latch_issues if issue.variable is not None
+    ] == [(["Root"], "RootLatched")]
 
 
 def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: Any) -> None:
@@ -276,7 +276,9 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
     assert traversed_paths == [["Root", "Parent", "Child"]]
 
     no_sequence_issues: list[VariableIssue] = []
-    reset_contamination_module._check_for_modulecode(ModuleCode(equations=[], sequences=[]), env, ["Root"], no_sequence_issues)
+    reset_contamination_module._check_for_modulecode(
+        ModuleCode(equations=[], sequences=[]), env, ["Root"], no_sequence_issues
+    )
     reset_contamination_module._check_for_modulecode(
         ModuleCode(
             equations=[],
@@ -356,8 +358,12 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
     reset_contamination_module._record_boolean_assignment(_varref("Flag"), "True", env, bool_state)
     reset_contamination_module._record_boolean_function_call("Other", [_varref("Flag"), True], env, bool_state)
     reset_contamination_module._record_boolean_function_call("SetBooleanValue", [_varref("Flag")], env, bool_state)
-    reset_contamination_module._record_boolean_function_call("SetBooleanValue", [_varref("Flag"), "True"], env, bool_state)
-    reset_contamination_module._record_boolean_function_call("SetBooleanValue", [_varref("Flag"), True], env, bool_state)
+    reset_contamination_module._record_boolean_function_call(
+        "SetBooleanValue", [_varref("Flag"), "True"], env, bool_state
+    )
+    reset_contamination_module._record_boolean_function_call(
+        "SetBooleanValue", [_varref("Flag"), True], env, bool_state
+    )
     assert set(bool_state.true_writes) == {("flag", "")}
     assert bool_state.false_writes == {}
 
@@ -422,9 +428,7 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
                                         kind="step",
                                         name="LeftA",
                                         code=SFCCodeBlocks(
-                                            active=[
-                                                (const.KEY_ASSIGN, _varref("Counter.Left"), _varref("Source"))
-                                            ]
+                                            active=[(const.KEY_ASSIGN, _varref("Counter.Left"), _varref("Source"))]
                                         ),
                                     )
                                 ],
@@ -433,9 +437,7 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
                                         kind="step",
                                         name="LeftB",
                                         code=SFCCodeBlocks(
-                                            active=[
-                                                (const.KEY_ASSIGN, _varref("Counter.Left"), _varref("Source"))
-                                            ]
+                                            active=[(const.KEY_ASSIGN, _varref("Counter.Left"), _varref("Source"))]
                                         ),
                                     )
                                 ],
@@ -450,9 +452,7 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
                                         kind="step",
                                         name="RightA",
                                         code=SFCCodeBlocks(
-                                            active=[
-                                                (const.KEY_ASSIGN, _varref("Counter.Right"), _varref("Source"))
-                                            ]
+                                            active=[(const.KEY_ASSIGN, _varref("Counter.Right"), _varref("Source"))]
                                         ),
                                     )
                                 ],
@@ -461,9 +461,7 @@ def test_reset_contamination_helpers_bound_duplicate_paths_and_emit_debug(caplog
                                         kind="step",
                                         name="RightB",
                                         code=SFCCodeBlocks(
-                                            active=[
-                                                (const.KEY_ASSIGN, _varref("Counter.Right"), _varref("Source"))
-                                            ]
+                                            active=[(const.KEY_ASSIGN, _varref("Counter.Right"), _varref("Source"))]
                                         ),
                                     )
                                 ],
@@ -564,7 +562,9 @@ def test_implicit_latch_helper_guard_paths_and_issue_suppression() -> None:
         )
         == base_states
     )
-    assert reset_contamination_module._collect_boolean_seq_node_paths(SimpleNamespace(), env, base_states) == base_states
+    assert (
+        reset_contamination_module._collect_boolean_seq_node_paths(SimpleNamespace(), env, base_states) == base_states
+    )
 
     issues: list[VariableIssue] = []
     seen: set[tuple[tuple[str, ...], str, str]] = set()
@@ -720,30 +720,39 @@ def test_reset_contamination_remaining_branch_coverage(caplog: Any) -> None:
 
     path_debug = reset_contamination_module._PathCollectionDebug(enabled=True)
     with caplog.at_level("DEBUG", logger="SattLint"):
-        assert reset_contamination_module._collect_seq_node_paths(
-            SFCAlternative(branches=[]),
-            env,
-            "opseq.reset",
-            {"seqresetold"},
-            [reset_contamination_module._PathState()],
-            path_debug=path_debug,
-        )[0].reset_state == "unknown"
-        assert reset_contamination_module._collect_seq_node_paths(
-            SFCParallel(branches=[]),
-            env,
-            "opseq.reset",
-            {"seqresetold"},
-            [reset_contamination_module._PathState()],
-            path_debug=path_debug,
-        )[0].reset_state == "unknown"
-        assert reset_contamination_module._collect_seq_node_paths(
-            reset_contamination_module.SFCTransition(name="Gate", condition=True),
-            env,
-            "opseq.reset",
-            {"seqresetold"},
-            [reset_contamination_module._PathState()],
-            path_debug=path_debug,
-        )[0].reset_state == "unknown"
+        assert (
+            reset_contamination_module._collect_seq_node_paths(
+                SFCAlternative(branches=[]),
+                env,
+                "opseq.reset",
+                {"seqresetold"},
+                [reset_contamination_module._PathState()],
+                path_debug=path_debug,
+            )[0].reset_state
+            == "unknown"
+        )
+        assert (
+            reset_contamination_module._collect_seq_node_paths(
+                SFCParallel(branches=[]),
+                env,
+                "opseq.reset",
+                {"seqresetold"},
+                [reset_contamination_module._PathState()],
+                path_debug=path_debug,
+            )[0].reset_state
+            == "unknown"
+        )
+        assert (
+            reset_contamination_module._collect_seq_node_paths(
+                reset_contamination_module.SFCTransition(name="Gate", condition=True),
+                env,
+                "opseq.reset",
+                {"seqresetold"},
+                [reset_contamination_module._PathState()],
+                path_debug=path_debug,
+            )[0].reset_state
+            == "unknown"
+        )
         reset_contamination_module._collect_seq_node_paths(
             SimpleNamespace(),
             env,
@@ -817,24 +826,33 @@ def test_reset_contamination_remaining_branch_coverage(caplog: Any) -> None:
     assert cond_flags["reset"] is True
     assert reset_contamination_module._is_exact_reset_condition(_varref("OpSeq.Reset"), "opseq.reset", {"seqresetold"})
     assert reset_contamination_module._varref_casefold(_varref("OpSeq.Reset")) == "opseq.reset"
-    assert reset_contamination_module._take_condition_branch(
-        reset_contamination_module._PathState(),
-        {"run": True, "reset": True},
-    )[0].reset_state == "unknown"
-    assert reset_contamination_module._infer_alternative_states(
-        reset_contamination_module._PathState(reset_state="run"),
-        saw_run=True,
-        saw_reset=False,
-        saw_exact_run=False,
-        saw_exact_reset=False,
-    )[0].reset_state == "run"
-    assert reset_contamination_module._infer_alternative_states(
-        reset_contamination_module._PathState(reset_state="run"),
-        saw_run=False,
-        saw_reset=False,
-        saw_exact_run=False,
-        saw_exact_reset=False,
-    )[0].reset_state == "run"
+    assert (
+        reset_contamination_module._take_condition_branch(
+            reset_contamination_module._PathState(),
+            {"run": True, "reset": True},
+        )[0].reset_state
+        == "unknown"
+    )
+    assert (
+        reset_contamination_module._infer_alternative_states(
+            reset_contamination_module._PathState(reset_state="run"),
+            saw_run=True,
+            saw_reset=False,
+            saw_exact_run=False,
+            saw_exact_reset=False,
+        )[0].reset_state
+        == "run"
+    )
+    assert (
+        reset_contamination_module._infer_alternative_states(
+            reset_contamination_module._PathState(reset_state="run"),
+            saw_run=False,
+            saw_reset=False,
+            saw_exact_run=False,
+            saw_exact_reset=False,
+        )[0].reset_state
+        == "run"
+    )
 
     assert "node_type='subsequence'" in "\n".join(caplog.messages)
     assert "node_type='transition-sub'" in "\n".join(caplog.messages)

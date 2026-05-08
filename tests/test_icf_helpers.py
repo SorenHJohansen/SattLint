@@ -82,10 +82,7 @@ def test_icf_helper_decode_and_format_edges(tmp_path):
 def test_icf_helper_parse_and_extract_edge_cases(tmp_path):
     icf_file = tmp_path / "Program.icf"
     icf_file.write_text(
-        "[Unit KaHA221A]\n"
-        "[Other Ignored]\n"
-        "not an assignment\n"
-        "Key = Program:KaHA221A.Value\n",
+        "[Unit KaHA221A]\n[Other Ignored]\nnot an assignment\nKey = Program:KaHA221A.Value\n",
         encoding="utf-8",
     )
 
@@ -268,7 +265,12 @@ def test_icf_helper_validation_edges_and_case_only_regression(monkeypatch):
     assert field_ok is False
     assert "not found" in str(field_detail)
 
-    assert icf_module._validate_entry_key_case(_entry("LogTag", "Program:KaHA221A.HSSetLogData.LogTag"), variable_name="LogTag", field_segments=[]) is None
+    assert (
+        icf_module._validate_entry_key_case(
+            _entry("LogTag", "Program:KaHA221A.HSSetLogData.LogTag"), variable_name="LogTag", field_segments=[]
+        )
+        is None
+    )
 
     context_issues = icf_module._validate_entry_context(
         _entry(
@@ -375,7 +377,13 @@ def test_icf_helper_parameter_completeness_and_unit_structure_edges():
         _entry("Other", "Program:KaHA221B.Path", line_no=2, unit="KaHA221B", group="JournalData_Parameters"),
     ]
     structure_issues = icf_module._validate_unit_structure(
-        BasePicture(header=_header("Program"), submodules=[SingleModule(header=_header("KaHA221A"), moduledef=None), SingleModule(header=_header("KaHA221B"), moduledef=None)]),
+        BasePicture(
+            header=_header("Program"),
+            submodules=[
+                SingleModule(header=_header("KaHA221A"), moduledef=None),
+                SingleModule(header=_header("KaHA221B"), moduledef=None),
+            ],
+        ),
         structure_entries,
     )
     assert len(structure_issues) == 1
@@ -388,10 +396,7 @@ def test_icf_helper_additional_format_summary_and_parse_branches(tmp_path, monke
 
     parse_file = tmp_path / "Ops.icf"
     parse_file.write_text(
-        "[Unit KaHA221A]\n"
-        "[Operation Start]\n"
-        "[Journal HygienicStatus]\n"
-        "Key=Program:KaHA221A.Value\n",
+        "[Unit KaHA221A]\n[Operation Start]\n[Journal HygienicStatus]\nKey=Program:KaHA221A.Value\n",
         encoding="utf-8",
     )
     parsed = icf_module.parse_icf_file(parse_file)
@@ -412,7 +417,11 @@ def test_icf_helper_additional_format_summary_and_parse_branches(tmp_path, monke
     assert "..." in overflow
     assert icf_module._summarize_signature_diff((), ()) == "entry ordering differs"
 
-    monkeypatch.setattr(icf_module, "resolve_module_by_strict_path", lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("missing")))
+    monkeypatch.setattr(
+        icf_module,
+        "resolve_module_by_strict_path",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("missing")),
+    )
     fallback = icf_module._resolve_unit_type_label(
         BasePicture(header=_header("Program"), submodules=[]),
         "KaHA221A",
@@ -440,7 +449,10 @@ def test_icf_helper_additional_path_and_field_validation_branches(monkeypatch):
     simple_var = Variable(name="Count", datatype=Simple_DataType.INTEGER)
     unknown_var = SimpleNamespace(name="Mystery", datatype=None)
 
-    assert icf_module._validate_field_path(type_graph, simple_var, ["Field"]) == (False, "datatype integer has no field 'Field'")
+    assert icf_module._validate_field_path(type_graph, simple_var, ["Field"]) == (
+        False,
+        "datatype integer has no field 'Field'",
+    )
     assert icf_module._validate_field_path(type_graph, cast(Any, unknown_var), ["Field"]) == (
         False,
         "field 'Field' not found in datatype None",
@@ -493,7 +505,9 @@ def test_icf_helper_additional_parameter_record_skip_branches(monkeypatch):
         datecode=None,
         var_list=[Variable(name="Nested", datatype="NestedRecord")],
     )
-    type_graph = icf_module.TypeGraph.from_basepicture(BasePicture(header=_header("Program"), datatype_defs=[nested, root]))
+    type_graph = icf_module.TypeGraph.from_basepicture(
+        BasePicture(header=_header("Program"), datatype_defs=[nested, root])
+    )
     entry = _entry("Leaf", "Program:Unit.Record.Nested.Leaf", unit="Unit", journal="J", group="JournalData_Parameters")
 
     weird_root = ICFResolvedEntry(
@@ -610,18 +624,24 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
     instance = ModuleTypeInstance(header=_header("Child"), moduletype_name="WorkerType")
     base_picture = BasePicture(header=_header("Program"), moduletype_defs=[moduletype])
 
-    assert icf_module._find_variable_in_module_scope(
-        instance,
-        base_picture,
-        "typelocal",
-        moduletype_index={"workertype": [moduletype]},
-    ) is type_local
-    assert icf_module._find_variable_in_module_scope(
-        instance,
-        base_picture,
-        "typeparam",
-        moduletype_index={"workertype": [moduletype]},
-    ) is type_param
+    assert (
+        icf_module._find_variable_in_module_scope(
+            instance,
+            base_picture,
+            "typelocal",
+            moduletype_index={"workertype": [moduletype]},
+        )
+        is type_local
+    )
+    assert (
+        icf_module._find_variable_in_module_scope(
+            instance,
+            base_picture,
+            "typeparam",
+            moduletype_index={"workertype": [moduletype]},
+        )
+        is type_param
+    )
     assert icf_module._find_variable_in_module_scope(moduletype, base_picture, "missing") is None
 
     resolved = SimpleNamespace(
@@ -667,7 +687,9 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
         datecode=None,
         var_list=[Variable(name="Nested", datatype="NestedRecord"), Variable(name="Other", datatype="NestedRecord")],
     )
-    type_graph = icf_module.TypeGraph.from_basepicture(BasePicture(header=_header("Program"), datatype_defs=[nested, root]))
+    type_graph = icf_module.TypeGraph.from_basepicture(
+        BasePicture(header=_header("Program"), datatype_defs=[nested, root])
+    )
     entry = _entry("Leaf", "Program:Unit.Record.Nested.Leaf", unit="Unit", journal="J", group="JournalData_Parameters")
     grouped_entry = ICFResolvedEntry(
         entry=entry,
@@ -679,7 +701,9 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
         datatype=Simple_DataType.STRING,
     )
     other_unit = ICFResolvedEntry(
-        entry=_entry("Leaf", "Program:Other.Record.Nested.Leaf", unit="Other", journal="J", group="JournalData_Parameters"),
+        entry=_entry(
+            "Leaf", "Program:Other.Record.Nested.Leaf", unit="Other", journal="J", group="JournalData_Parameters"
+        ),
         module_path=["Program", "Other"],
         variable_name="Record",
         root_datatype="RootRecord",
@@ -688,7 +712,9 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
         datatype=Simple_DataType.STRING,
     )
     other_path = ICFResolvedEntry(
-        entry=_entry("Leaf", "Program:Unit.Record.Nested.Leaf", unit="Unit", journal="J", group="JournalData_Parameters"),
+        entry=_entry(
+            "Leaf", "Program:Unit.Record.Nested.Leaf", unit="Unit", journal="J", group="JournalData_Parameters"
+        ),
         module_path=["Program", "Elsewhere"],
         variable_name="Record",
         root_datatype="RootRecord",
@@ -697,7 +723,9 @@ def test_icf_helper_remaining_resolution_and_grouping_branches(monkeypatch):
         datatype=Simple_DataType.STRING,
     )
     prefix_mismatch = ICFResolvedEntry(
-        entry=_entry("Leaf", "Program:Unit.Record.Other.Leaf", unit="Unit", journal="J", group="JournalData_Parameters"),
+        entry=_entry(
+            "Leaf", "Program:Unit.Record.Other.Leaf", unit="Unit", journal="J", group="JournalData_Parameters"
+        ),
         module_path=["Program", "Unit"],
         variable_name="Record",
         root_datatype="RootRecord",
@@ -733,10 +761,14 @@ def test_icf_helper_final_parse_and_reference_branches(tmp_path, monkeypatch):
     assert len(icf_module.parse_icf_file(parse_file)) == 1
     assert icf_module._extract_icf_sattline_ref(":Path") == (None, None)
 
-    moduletype = ModuleTypeDef(name="WorkerType", moduleparameters=[], localvariables=[], moduledef=None, modulecode=None)
+    moduletype = ModuleTypeDef(
+        name="WorkerType", moduleparameters=[], localvariables=[], moduledef=None, modulecode=None
+    )
     instance = ModuleTypeInstance(header=_header("Child"), moduletype_name="WorkerType")
     monkeypatch.setattr(icf_module, "resolve_moduletype_def_strict", lambda *_args, **_kwargs: moduletype)
-    assert icf_module._find_variable_in_module_scope(instance, BasePicture(header=_header("Program")), "missing") is None
+    assert (
+        icf_module._find_variable_in_module_scope(instance, BasePicture(header=_header("Program")), "missing") is None
+    )
 
 
 def test_icf_helper_final_path_branches(monkeypatch):
@@ -745,7 +777,9 @@ def test_icf_helper_final_path_branches(monkeypatch):
     monkeypatch.setattr(
         icf_module,
         "resolve_module_by_strict_path",
-        lambda _bp, path, moduletype_index=None: SimpleNamespace(node=None) if path == "Program.Unit" else (_ for _ in ()).throw(ValueError("missing")),
+        lambda _bp, path, moduletype_index=None: (
+            SimpleNamespace(node=None) if path == "Program.Unit" else (_ for _ in ()).throw(ValueError("missing"))
+        ),
     )
     assert icf_module._resolve_icf_path(base_picture, "Program.Unit") == (None, None, [])
 
@@ -774,8 +808,12 @@ def test_icf_helper_final_parameter_grouping_filters():
         datecode=None,
         var_list=[Variable(name="Nested", datatype="NestedRecord"), Variable(name="Other", datatype="NestedRecord")],
     )
-    type_graph = icf_module.TypeGraph.from_basepicture(BasePicture(header=_header("Program"), datatype_defs=[nested, root]))
-    base_entry = _entry("Leaf", "Program:Unit.Record.Nested.Leaf", unit="Unit", journal="J", group="JournalData_Parameters")
+    type_graph = icf_module.TypeGraph.from_basepicture(
+        BasePicture(header=_header("Program"), datatype_defs=[nested, root])
+    )
+    base_entry = _entry(
+        "Leaf", "Program:Unit.Record.Nested.Leaf", unit="Unit", journal="J", group="JournalData_Parameters"
+    )
     grouped_entry = ICFResolvedEntry(
         entry=base_entry,
         module_path=["Program", "Unit"],
@@ -786,7 +824,9 @@ def test_icf_helper_final_parameter_grouping_filters():
         datatype=Simple_DataType.STRING,
     )
     diff_unit = ICFResolvedEntry(
-        entry=_entry("Leaf", "Program:Other.Record.Nested.Leaf", unit="Other", journal="J", group="JournalData_Parameters"),
+        entry=_entry(
+            "Leaf", "Program:Other.Record.Nested.Leaf", unit="Other", journal="J", group="JournalData_Parameters"
+        ),
         module_path=["Program", "Other"],
         variable_name="Record",
         root_datatype="RootRecord",
@@ -795,7 +835,9 @@ def test_icf_helper_final_parameter_grouping_filters():
         datatype=Simple_DataType.STRING,
     )
     diff_path = ICFResolvedEntry(
-        entry=_entry("Leaf", "Program:Unit.OtherRecord.Nested.Leaf", unit="Unit", journal="J", group="JournalData_Parameters"),
+        entry=_entry(
+            "Leaf", "Program:Unit.OtherRecord.Nested.Leaf", unit="Unit", journal="J", group="JournalData_Parameters"
+        ),
         module_path=["Program", "Elsewhere"],
         variable_name="Record",
         root_datatype="RootRecord",
@@ -804,7 +846,9 @@ def test_icf_helper_final_parameter_grouping_filters():
         datatype=Simple_DataType.STRING,
     )
     prefix_mismatch = ICFResolvedEntry(
-        entry=_entry("Leaf", "Program:Unit.Record.Other.Leaf", unit="Unit", journal="J", group="JournalData_Parameters"),
+        entry=_entry(
+            "Leaf", "Program:Unit.Record.Other.Leaf", unit="Unit", journal="J", group="JournalData_Parameters"
+        ),
         module_path=["Program", "Unit"],
         variable_name="Record",
         root_datatype="RootRecord",
@@ -835,7 +879,7 @@ def test_icf_helper_final_prefix_mismatch_filter(monkeypatch):
     fake_type_graph = cast(
         Any,
         SimpleNamespace(
-        record=lambda _name: SimpleNamespace(fields_by_key={"leaf": SimpleNamespace(name="Leaf")}),
+            record=lambda _name: SimpleNamespace(fields_by_key={"leaf": SimpleNamespace(name="Leaf")}),
         ),
     )
     entry = _entry("Leaf", "Program:Unit.Record.Nested.Leaf", unit="Unit", journal="J", group="JournalData_Parameters")
@@ -849,7 +893,9 @@ def test_icf_helper_final_prefix_mismatch_filter(monkeypatch):
         datatype=Simple_DataType.STRING,
     )
     prefix_mismatch = ICFResolvedEntry(
-        entry=_entry("Leaf", "Program:Unit.Record.Other.Child.Leaf", unit="Unit", journal="J", group="JournalData_Parameters"),
+        entry=_entry(
+            "Leaf", "Program:Unit.Record.Other.Child.Leaf", unit="Unit", journal="J", group="JournalData_Parameters"
+        ),
         module_path=["Program", "Unit"],
         variable_name="Record",
         root_datatype="RootRecord",

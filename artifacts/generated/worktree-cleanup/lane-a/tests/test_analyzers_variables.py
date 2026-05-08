@@ -1566,9 +1566,9 @@ def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles
         _analyze_typedef=lambda *args, **kwargs: None,
         _is_from_root_origin=lambda origin: True,
         _get_usage=lambda variable: usage_by_id[id(variable)],
-        _procedure_status_issue=lambda variable, usage: ("procedure-status", "Status")
-        if variable is procedure_local
-        else None,
+        _procedure_status_issue=lambda variable, usage: (
+            ("procedure-status", "Status") if variable is procedure_local else None
+        ),
         _add_issue=lambda kind, path, variable, role, field_path=None: issues.append(
             (kind, tuple(path), variable.name, role, field_path)
         ),
@@ -1624,9 +1624,11 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
     monkeypatch.setattr(
         logging,
         "getLogger",
-        lambda name=None: SimpleNamespace(debug=lambda *args: log_messages.append(args))
-        if name == "SattLint"
-        else original_get_logger(name),
+        lambda name=None: (
+            SimpleNamespace(debug=lambda *args: log_messages.append(args))
+            if name == "SattLint"
+            else original_get_logger(name)
+        ),
     )
 
     runner: Any = SimpleNamespace(
@@ -2004,9 +2006,9 @@ def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_
     )
     helper: Any = SimpleNamespace(
         _get_usage=lambda variable: usage_by_id[id(variable)],
-        _procedure_status_issue=lambda variable, usage: ("procedure-status", "Status")
-        if variable is procedure_param or variable is procedure_local
-        else None,
+        _procedure_status_issue=lambda variable, usage: (
+            ("procedure-status", "Status") if variable is procedure_param or variable is procedure_local else None
+        ),
         _add_issue=lambda kind, path, variable, role, field_path=None: issues.append(
             (kind, tuple(path), variable.name, role, field_path)
         ),
