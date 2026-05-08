@@ -91,7 +91,6 @@ SKIP_CONTENT_SCAN_PREFIXES = (
     "tests/fixtures/",
 )
 GENERATED_PATH_PREFIXES = (
-    "artifacts/",
     "build/",
     "dist/",
     "coverage.xml",
@@ -99,6 +98,7 @@ GENERATED_PATH_PREFIXES = (
 )
 TOP_LEVEL_TRACKED_ENTRY_ALLOWLIST = frozenset(
     {
+        ".codegraph",
         ".ai",
         ".editorconfig",
         ".gitattributes",
@@ -116,6 +116,7 @@ TOP_LEVEL_TRACKED_ENTRY_ALLOWLIST = frozenset(
         "LICENSE",
         "README.md",
         "SECURITY.md",
+        "artifacts",
         "custom.toml",
         "docs",
         "metrics",
@@ -134,6 +135,7 @@ IGNORED_REPO_PATH_REFERENCE_ALLOWLIST_PATHS = {
     "tests/test_devtools_review_observability.py",
     "tests/test_pipeline_collection.py",
     "tests/test_pipeline_run.py",
+    "tests/test_repo_audit_reporting_helpers.py",
     "tests/test_context_health.py",
     "tests/test_repo_audit.py",
     "tests/test_repo_audit_entrypoints_helpers.py",
