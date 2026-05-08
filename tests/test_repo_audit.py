@@ -2873,13 +2873,14 @@ def test_run_recommended_repo_audit_finish_gate_runs_ratchet_policy(monkeypatch,
         changed_files=["src/sattlint/app.py"],
     )
 
-    assert [step[0] for step in executed_steps] == [
+    executed_step_commands = dict(executed_steps)
+    assert set(executed_step_commands) == {
         "ruff-touched-python",
         "pyright-touched-python",
         "ratchet-policy",
         "owner-pytest-coverage",
-    ]
-    assert executed_steps[2][1][1:] == ["scripts/check_ratchet_policy.py"]
+    }
+    assert executed_step_commands["ratchet-policy"][1:] == ["scripts/check_ratchet_policy.py"]
     assert [step["id"] for step in result["finish_gate"]["commands"]] == [
         "ruff-touched-python",
         "pyright-touched-python",

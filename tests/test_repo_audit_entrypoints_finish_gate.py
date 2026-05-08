@@ -20,14 +20,12 @@ def test_run_recommended_repo_audit_finish_gate_writes_failed_step_report(monkey
             }
         ],
     }
-    run_results = iter(
-        [
-            SimpleNamespace(exit_code=0, duration_seconds=0.1),
-            SimpleNamespace(exit_code=1, duration_seconds=0.2),
-            SimpleNamespace(exit_code=0, duration_seconds=0.3),
-            SimpleNamespace(exit_code=0, duration_seconds=0.4),
-        ]
-    )
+    run_results = {
+        "ruff-touched-python": SimpleNamespace(exit_code=0, duration_seconds=0.1),
+        "pyright-touched-python": SimpleNamespace(exit_code=1, duration_seconds=0.2),
+        "ratchet-policy": SimpleNamespace(exit_code=0, duration_seconds=0.3),
+        "owner-pytest-coverage": SimpleNamespace(exit_code=0, duration_seconds=0.4),
+    }
 
     monkeypatch.setattr(
         repo_audit_entrypoints,
@@ -49,7 +47,11 @@ def test_run_recommended_repo_audit_finish_gate_writes_failed_step_report(monkey
         "_resolve_python_executable",
         lambda: ".venv/Scripts/python.exe",
     )
-    monkeypatch.setattr(repo_audit_entrypoints.pipeline_module, "_run_command", lambda *_args: next(run_results))
+    monkeypatch.setattr(
+        repo_audit_entrypoints.pipeline_module,
+        "_run_command",
+        lambda step_id, _argv: run_results[step_id],
+    )
     monkeypatch.setattr(repo_audit, "_write_audit_run_history", lambda *args, **kwargs: None)
 
     summary = repo_audit_entrypoints.run_recommended_repo_audit_finish_gate(

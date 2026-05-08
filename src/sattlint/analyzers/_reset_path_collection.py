@@ -116,7 +116,9 @@ def _collect_seq_node_paths(
             next_states,
             path_debug=path_debug,
         )
-        result = _compact_path_states(result, debug=path_debug, site=f"seq-node:step:{getattr(node, 'name', '<unnamed>')}")
+        result = _compact_path_states(
+            result, debug=path_debug, site=f"seq-node:step:{getattr(node, 'name', '<unnamed>')}"
+        )
         if path_debug is not None:
             path_debug.emit(
                 "collect-seq-node-paths",

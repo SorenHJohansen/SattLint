@@ -90,10 +90,7 @@ def collect_optional_reports(
         corpus_summary = corpus_results_report["summary"]
         progress.complete_stage(
             "corpus",
-            detail=(
-                f"{corpus_summary['case_count']} cases, "
-                f"{corpus_summary['failed_count']} failed"
-            ),
+            detail=(f"{corpus_summary['case_count']} cases, {corpus_summary['failed_count']} failed"),
         )
     else:
         progress.skip_stage("corpus", detail="no manifest directory")
@@ -199,7 +196,9 @@ def build_derived_reports(
     differential_report: dict[str, Any] | None = None
     if baseline_findings is not None:
         baseline_collection = load_finding_collection(baseline_findings)
-        baseline_label = sanitize_path_for_report(baseline_findings, repo_root=repo_root) or baseline_findings.as_posix()
+        baseline_label = (
+            sanitize_path_for_report(baseline_findings, repo_root=repo_root) or baseline_findings.as_posix()
+        )
         analysis_diff_report = build_analysis_diff_report(
             baseline=baseline_collection,
             current=finding_collection,
