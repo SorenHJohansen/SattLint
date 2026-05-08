@@ -6,7 +6,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 Lane D is the serial closeout step that turns the three parallel execution lanes into one green ratchet result. The earlier lanes intentionally avoid `pyproject.toml` so they can run without merge collisions. This lane owns the shared typing inventory edit in `pyproject.toml`, any legitimate cleanup in `artifacts/analysis/file_debt_ratchet.json` after debt is actually cleared, the ratchet-policy tests, and the final end-to-end ratchet proof. After this lane lands, the typing inventory will match reality, touched files that became type-clean will be moved into `tool.pyright.strict`, any truly cleared coverage debt entries will be removed instead of left stale, and the ratchet and pre-push checks will pass on the merged worktree.
 
-Observable outcome: `& ".venv/Scripts/python.exe" scripts/check_ratchet_policy.py` exits `0`, and `& ".venv/Scripts/sattlint-repo-audit.exe" --profile full --check-my-changes --output-dir artifacts/audit` no longer reports ratchet-policy blockers.
+Observable outcome: `python scripts/run_repo_python.py scripts/check_ratchet_policy.py` exits `0`, and `python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile full --check-my-changes --output-dir artifacts/audit` no longer reports ratchet-policy blockers.
 
 ## Progress
 
@@ -59,7 +59,7 @@ When lane D starts, it should expect three handoff inputs from the executor lane
 
 The executor plans for lane A, lane B, and lane C are now archived under `docs/exec-plans/completed/`, and their temporary executor worktrees should stay retired. This is now the only active ratchet-policy closeout plan for this slice.
 
-Before resuming the remaining work, rerun `& ".venv/Scripts/python.exe" scripts/check_ratchet_policy.py` and refresh the lists below against the current main worktree.
+Before resuming the remaining work, rerun `python scripts/run_repo_python.py scripts/check_ratchet_policy.py` and refresh the lists below against the current main worktree.
 
 The current touched files that must leave the typing debt allowlist once they are clean are:
 
@@ -115,15 +115,15 @@ Run commands from the repository root.
 
 First focused validation after the first substantive edit:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_ratchet_policy.py tests/test_ratchet_policy_typing.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_ratchet_policy.py tests/test_ratchet_policy_typing.py -x -q --tb=short
 
 Standalone ratchet proof:
 
-    & ".venv/Scripts/python.exe" scripts/check_ratchet_policy.py
+    python scripts/run_repo_python.py scripts/check_ratchet_policy.py
 
 Final closeout gate:
 
-    & ".venv/Scripts/sattlint-repo-audit.exe" --profile full --check-my-changes --output-dir artifacts/audit
+    python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile full --check-my-changes --output-dir artifacts/audit
 
 ## Validation and Acceptance
 

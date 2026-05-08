@@ -5,9 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from sattlint.path_sanitizer import sanitize_path_for_report
+
+
+class _ErrorCapableParser(Protocol):
+    def error(self, message: str, /) -> None: ...
 
 
 def _repo_audit_module() -> Any:
@@ -73,6 +77,11 @@ def _build_cli_parser() -> argparse.ArgumentParser:
         help="Repo-relative changed file path used for recommendation and slice routing. Repeatable.",
     )
     parser.add_argument(
+        "--pytest-workers",
+        default=None,
+        help="Optional pytest-xdist worker setting forwarded as '-n <value>' to recommended pipeline and finish-gate pytest runs.",
+    )
+    parser.add_argument(
         "--recommend-checks",
         action="store_true",
         help="Print machine-readable recommended repo-audit checks for the changed files and exit.",
@@ -110,7 +119,7 @@ def _build_cli_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _check_mode_conflicts(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+def _check_mode_conflicts(args: argparse.Namespace, parser: _ErrorCapableParser) -> None:
     if args.check and (args.recommend_checks or args.run_recommended_slice or args.run_recommended_finish_gate):
         parser.error("--check cannot be combined with --recommend-checks or --run-recommended-slice.")
     if args.leaks_only and (args.recommend_checks or args.run_recommended_slice or args.run_recommended_finish_gate):
@@ -274,6 +283,7 @@ def main(argv: list[str] | None = None) -> int:
             skip_vulture=args.skip_vulture,
             skip_bandit=args.skip_bandit,
             changed_files=args.changed_file,
+            pytest_workers=args.pytest_workers,
             latest_output_dir=repo_audit.DEFAULT_OUTPUT_DIR.resolve(),
         )
         print(json.dumps(report, indent=2))
@@ -292,6 +302,7 @@ def main(argv: list[str] | None = None) -> int:
             skip_vulture=args.skip_vulture,
             skip_bandit=args.skip_bandit,
             changed_files=args.changed_file,
+            pytest_workers=args.pytest_workers,
             latest_output_dir=repo_audit.DEFAULT_OUTPUT_DIR.resolve(),
         )
         exit_code, status_report = _selected_check_exit_code(summary, fail_on)
@@ -307,6 +318,7 @@ def main(argv: list[str] | None = None) -> int:
             skip_vulture=args.skip_vulture,
             skip_bandit=args.skip_bandit,
             changed_files=args.changed_file,
+            pytest_workers=args.pytest_workers,
             latest_output_dir=repo_audit.DEFAULT_OUTPUT_DIR.resolve(),
         )
         exit_code, status_report = _selected_check_exit_code(summary, fail_on)

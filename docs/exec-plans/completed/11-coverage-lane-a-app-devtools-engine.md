@@ -42,14 +42,14 @@ Run commands from repository root.
 
 Per-slice first validations:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_docgen.py -x -q --tb=short
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_repo_audit.py -x -q --tb=short
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py tests/test_app_analysis.py tests/test_app_menus.py tests/test_cli.py -x -q --tb=short
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_engine.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_repo_audit.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_app.py tests/test_app_analysis.py tests/test_app_menus.py tests/test_cli.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_engine.py -x -q --tb=short
 
 Lane-close validation:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_docgen.py tests/test_repo_audit.py tests/test_app.py tests/test_app_analysis.py tests/test_app_menus.py tests/test_cli.py tests/test_engine.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen.py tests/test_repo_audit.py tests/test_app.py tests/test_app_analysis.py tests/test_app_menus.py tests/test_cli.py tests/test_engine.py -x -q --tb=short
 
 Suggested claim bundles when splitting this lane further:
 

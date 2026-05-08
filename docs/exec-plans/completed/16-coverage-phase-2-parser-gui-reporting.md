@@ -51,14 +51,14 @@ Run commands from repository root.
 
 Per-slice first validations:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_docgen.py -x -q --tb=short
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_parser_core.py tests/test_parser_validation.py tests/test_parser.py -x -q --tb=short
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_graphics_validation.py -x -q --tb=short
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_gui.py tests/test_icf_validation.py tests/test_mms_report.py tests/test_analyzers_state.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_parser_core.py tests/test_parser_validation.py tests/test_parser.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_graphics_validation.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_gui.py tests/test_icf_validation.py tests/test_mms_report.py tests/test_analyzers_state.py -x -q --tb=short
 
 Plan-close validation:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_docgen.py tests/test_parser_core.py tests/test_parser_validation.py tests/test_parser.py tests/test_graphics_validation.py tests/test_gui.py tests/test_icf_validation.py tests/test_mms_report.py tests/test_analyzers_state.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen.py tests/test_parser_core.py tests/test_parser_validation.py tests/test_parser.py tests/test_graphics_validation.py tests/test_gui.py tests/test_icf_validation.py tests/test_mms_report.py tests/test_analyzers_state.py -x -q --tb=short
 
 ## Validation and Acceptance
 
@@ -117,8 +117,8 @@ Validated outcomes:
 - `tests/test_parser_core.py tests/test_parser_validation.py tests/test_parser.py` -> `143 passed`
 - `tests/test_graphics_validation.py` -> `7 passed`
 - `tests/test_gui.py tests/test_icf_validation.py tests/test_mms_report.py tests/test_analyzers_state.py` -> `104 passed`
-- Plan-close validation: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_docgen.py tests/test_parser_core.py tests/test_parser_validation.py tests/test_parser.py tests/test_graphics_validation.py tests/test_gui.py tests/test_icf_validation.py tests/test_mms_report.py tests/test_analyzers_state.py -x -q --tb=short` -> `310 passed`
-- Shared checkpoint refresh: `Remove-Item -Force .coverage* -ErrorAction SilentlyContinue ; & ".venv/Scripts/python.exe" -m pytest -q --cov-fail-under=0` -> `1342 passed, 1 warning`, `86%` total coverage, about `422` misses left in the broader plan-16 bucket
+- Plan-close validation: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen.py tests/test_parser_core.py tests/test_parser_validation.py tests/test_parser.py tests/test_graphics_validation.py tests/test_gui.py tests/test_icf_validation.py tests/test_mms_report.py tests/test_analyzers_state.py -x -q --tb=short` -> `310 passed`
+- Shared checkpoint refresh: `Remove-Item -Force .coverage* -ErrorAction SilentlyContinue ; python scripts/run_repo_python.py -m pytest -q --cov-fail-under=0` -> `1342 passed, 1 warning`, `86%` total coverage, about `422` misses left in the broader plan-16 bucket
 
 `classification.py`, `docgen.py`, `sl_transformer.py`, `graphics_rules.py`, and `window.py` are now fully drained in focused owner slices, but ExecPlan 16 itself is not complete yet. The remaining work has moved into parser mixins, headless GUI frame and widget files, reporting support code, `graphics_validation.py`, and adjacent docgen support modules. A new shared checkpoint is still pending before the orchestrator baseline should be rewritten.
 

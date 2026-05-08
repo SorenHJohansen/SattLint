@@ -128,8 +128,8 @@ Readiness checks:
 
 If promoted, first focused validation routes:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py tests/test_pipeline.py -x -q --tb=short
-    & ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit-review-quick
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_suites.py tests/test_analyzers_state.py tests/test_pipeline.py -x -q --tb=short
+    python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit-review-quick
 
 ## Validation and Acceptance
 

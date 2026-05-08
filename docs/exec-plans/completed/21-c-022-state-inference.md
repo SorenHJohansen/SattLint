@@ -75,16 +75,16 @@ Inspect the existing dataflow and analyzer registration seams:
 
 After implementing the new analyzer and its tests, run the narrow validation first:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_state_inference.py tests/test_dataflow.py tests/test_app_analysis.py tests/test_cli.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_state_inference.py tests/test_dataflow.py tests/test_app_analysis.py tests/test_cli.py -x -q --tb=short
 
 Exercise the new analyzer through the normal CLI path:
 
-    & ".venv/Scripts/python.exe" -m sattlint.app analyze --check state_inference
+    python scripts/run_repo_python.py -m sattlint.app analyze --check state_inference
 
 Run touched-file quality gates after the focused tests pass:
 
-    & ".venv/Scripts/python.exe" -m ruff check src/sattlint/analyzers/state_inference.py src/sattlint/analyzers/dataflow.py src/sattlint/analyzers/registry.py src/sattlint/app_analysis.py tests/test_state_inference.py tests/test_dataflow.py tests/test_app_analysis.py tests/test_cli.py
-    & ".venv/Scripts/python.exe" -m pyright src/sattlint/analyzers/state_inference.py src/sattlint/analyzers/dataflow.py src/sattlint/analyzers/registry.py src/sattlint/app_analysis.py
+    python scripts/run_repo_python.py -m ruff check src/sattlint/analyzers/state_inference.py src/sattlint/analyzers/dataflow.py src/sattlint/analyzers/registry.py src/sattlint/app_analysis.py tests/test_state_inference.py tests/test_dataflow.py tests/test_app_analysis.py tests/test_cli.py
+    python scripts/run_repo_python.py -m pyright src/sattlint/analyzers/state_inference.py src/sattlint/analyzers/dataflow.py src/sattlint/analyzers/registry.py src/sattlint/app_analysis.py
 
 Expected success signal: the CLI accepts `state_inference` as a valid analyzer key, the dedicated test file passes, and at least one state-inference scenario produces a finding or summary that was not available as a dedicated surface before the change.
 
@@ -106,13 +106,13 @@ The first milestone should also record the chosen finding IDs and summary schema
 
 Recorded closeout validation:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_state_inference.py tests/test_dataflow.py tests/test_app_analysis.py tests/test_cli.py::test_run_cli_analyze_passes_opt_in_state_inference_key tests/test_analyzers_suites.py::test_state_inference_analyzer_is_not_in_default_cli_subset -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_state_inference.py tests/test_dataflow.py tests/test_app_analysis.py tests/test_cli.py::test_run_cli_analyze_passes_opt_in_state_inference_key tests/test_analyzers_suites.py::test_state_inference_analyzer_is_not_in_default_cli_subset -x -q --tb=short
     77 passed in 2.20s
 
-    & ".venv/Scripts/python.exe" -m ruff check src/sattlint/analyzers/dataflow.py src/sattlint/analyzers/state_inference.py src/sattlint/analyzers/registry.py src/sattlint/app.py tests/test_state_inference.py tests/test_dataflow.py tests/test_analyzers_suites.py tests/test_app_analysis.py tests/test_cli.py
+    python scripts/run_repo_python.py -m ruff check src/sattlint/analyzers/dataflow.py src/sattlint/analyzers/state_inference.py src/sattlint/analyzers/registry.py src/sattlint/app.py tests/test_state_inference.py tests/test_dataflow.py tests/test_analyzers_suites.py tests/test_app_analysis.py tests/test_cli.py
     All checks passed!
 
-    & ".venv/Scripts/python.exe" -m pyright src/sattlint/analyzers/dataflow.py src/sattlint/analyzers/state_inference.py src/sattlint/analyzers/registry.py src/sattlint/app.py tests/test_state_inference.py tests/test_dataflow.py tests/test_analyzers_suites.py tests/test_app_analysis.py tests/test_cli.py
+    python scripts/run_repo_python.py -m pyright src/sattlint/analyzers/dataflow.py src/sattlint/analyzers/state_inference.py src/sattlint/analyzers/registry.py src/sattlint/app.py tests/test_state_inference.py tests/test_dataflow.py tests/test_analyzers_suites.py tests/test_app_analysis.py tests/test_cli.py
     0 errors, 0 warnings, 0 informations
 
 The touched CLI file still contains unrelated pre-existing drift in broader simulate-command coverage, so the closeout evidence records the exact touched CLI assertion rather than claiming the whole legacy `tests/test_cli.py` file is green.

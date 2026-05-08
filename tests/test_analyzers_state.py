@@ -2453,10 +2453,9 @@ def test_effect_flow_tracker_copyvariable_inputs_only_include_source():
         [_varref("Source"), _varref("Target")],
         context,
     )
-    init_sources = tracker.collect_function_input_effect_keys("InitVariable", [_varref("Source")], context)
-
+    init_sources = tracker.collect_function_input_effect_keys("InitVariable", [_varref("Target"), _varref("Source")], context)
     assert sources == {("root", "source")}
-    assert init_sources == set()
+    assert init_sources == {("root", "source")}
 
 
 def test_effect_flow_tracker_global_mapping_uses_lookup_fallback():

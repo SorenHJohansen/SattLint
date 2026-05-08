@@ -22,8 +22,8 @@ You are the repo-audit specialist for SattLint. Your job is to make narrow chang
 
 ## Validation Routing
 
-- Focused pytest: `& ".venv/Scripts/python.exe" -m pytest tests/test_repo_audit.py tests/test_pipeline.py -x -q --tb=short`
-- Quick audit: `& ".venv/Scripts/sattlint-repo-audit.exe" --profile quick --output-dir artifacts/audit`
+- Focused pytest: `python scripts/run_repo_python.py -m pytest tests/test_repo_audit.py tests/test_pipeline.py -x -q --tb=short`
+- Quick audit: `python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit`
 - Widen to quick audit or pipeline slices only after the narrow check passes.
 
 ## Output Format

@@ -78,6 +78,25 @@ def test_run_recommended_repo_audit_finish_gate_writes_failed_step_report(monkey
     assert finish_gate["owner_test_targets"] == ["tests/test_app.py"]
 
 
+def test_build_repo_audit_finish_gate_commands_include_pytest_workers(monkeypatch, tmp_path):
+    fake_repo_audit = SimpleNamespace(REPO_ROOT=tmp_path)
+    monkeypatch.setattr(repo_audit_entrypoints, "_repo_audit_module", lambda: fake_repo_audit)
+
+    commands = repo_audit_entrypoints._build_repo_audit_finish_gate_commands(
+        profile="full",
+        output_dir=tmp_path,
+        fail_on="high",
+        changed_files=["src/sattlint/app.py"],
+        recommended_checks=[],
+        ruff_command=["ruff"],
+        pyright_command=["pyright"],
+        python_command=["python"],
+        pytest_workers=" 3 ",
+    )
+
+    assert commands[0]["argv"][-2:] == ["--pytest-workers", "3"]
+
+
 def test_run_recommended_repo_audit_slice_writes_combined_reports(monkeypatch, tmp_path):
     recommendation = {
         "recommended_check_ids": ["ruff", "cli", "ai-gc", "cli-consistency"],

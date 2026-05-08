@@ -14,7 +14,7 @@ The hooks chosen for this repo are scoped to fast, deterministic checks that giv
 
 ## Context
 
-The SattLint repository uses Python 3.x and is developed inside a virtual environment at `.venv/`. The project is built with `pyproject.toml` using a `[project]` table (PEP 517/518 layout). The main entry points are `sattlint` and `sattlint-repo-audit`, both installed into `.venv/Scripts/`. Tests live in `tests/` and are run with `pytest`. The existing CI pipeline runs `pytest` and `sattlint syntax-check` as quality gates.
+The SattLint repository uses Python 3.x and is developed inside a virtual environment at `.venv/`. The project is built with `pyproject.toml` using a `[project]` table (PEP 517/518 layout). The main entry points are `sattlint` and `sattlint-repo-audit`, and repo docs invoke them portably through `python scripts/run_repo_python.py -m ...`. Tests live in `tests/` and are run with `pytest`. The existing CI pipeline runs `pytest` and `sattlint syntax-check` as quality gates.
 
 The relevant files touched by this plan are:
 
@@ -62,7 +62,7 @@ Create `.pre-commit-config.yaml` at the repository root. The minimum set of hook
           - id: sattlint-syntax-check
             name: SattLint syntax-check (staged SattLine files)
             language: system
-            entry: .venv/Scripts/python.exe -m sattlint syntax-check
+            entry: python scripts/run_repo_python.py -m sattlint syntax-check
             files: \.(g|l|s)$
             pass_filenames: true
 

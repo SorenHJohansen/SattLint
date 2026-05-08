@@ -2483,106 +2483,6 @@ def test_build_repo_audit_check_catalog_lists_pipeline_and_custom_checks(tmp_pat
     assert local_ci_entry["owner_surface"] == "local-ci-parity"
 
 
-def test_build_repo_audit_check_recommendations_combines_pipeline_and_repo_audit_routes(tmp_path):
-    recommendations = repo_audit.build_repo_audit_check_recommendations(
-        profile="full",
-        output_dir=tmp_path,
-        fail_on="high",
-        changed_files=["docs/references/cli-commands.md"],
-    )
-
-    assert recommendations["kind"] == "sattlint.repo_audit.check_recommendations"
-    assert recommendations["fallback_required"] is False
-    assert "documented-commands" in recommendations["recommended_repo_audit_check_ids"]
-    assert "cli-consistency" in recommendations["recommended_repo_audit_check_ids"]
-    assert recommendations["suggested_check_commands"]
-    assert recommendations["suggested_finish_gate_commands"]
-    assert recommendations["proof_requirements"]["focused_behavior_test"]["required"] is False
-    assert recommendations["proof_requirements"]["coverage"]["required"] is False
-    assert recommendations["why_this_gate"]["matched_routes"]
-
-
-def test_build_repo_audit_check_recommendations_routes_harness_freshness(tmp_path):
-    recommendations = repo_audit.build_repo_audit_check_recommendations(
-        profile="full",
-        output_dir=tmp_path,
-        fail_on="high",
-        changed_files=["AGENTS.md"],
-    )
-
-    assert "harness-freshness" in recommendations["recommended_repo_audit_check_ids"]
-
-
-def test_main_list_checks_prints_catalog(tmp_path, capsys):
-    exit_code = repo_audit.main(["--profile", "full", "--output-dir", str(tmp_path), "--list-checks"])
-
-    payload = json.loads(capsys.readouterr().out)
-
-    assert exit_code == 0
-    assert payload["kind"] == "sattlint.repo_audit.check_catalog"
-    assert any(entry["id"] == "cli-consistency" for entry in payload["checks"])
-
-
-def test_main_recommend_checks_prints_catalog(tmp_path, capsys):
-    exit_code = repo_audit.main(
-        [
-            "--profile",
-            "full",
-            "--output-dir",
-            str(tmp_path),
-            "--recommend-checks",
-            "--changed-file",
-            "docs/references/cli-commands.md",
-        ]
-    )
-
-    payload = json.loads(capsys.readouterr().out)
-
-    assert exit_code == 0
-    assert payload["kind"] == "sattlint.repo_audit.check_recommendations"
-    assert "documented-commands" in payload["recommended_repo_audit_check_ids"]
-
-
-def test_main_planning_context_prints_machine_readable_report(monkeypatch, tmp_path, capsys):
-    report = {
-        "kind": "sattlint.planning_context",
-        "schema_version": 1,
-        "changed_files": ["src/sattlint/app.py"],
-        "owning_surface": "repo-audit",
-        "selected_surface": "repo-audit",
-        "planning_context": {
-            "primary_agent": "CLI App Menu",
-            "instruction_files": [],
-            "nearest_owner_suites": [],
-            "blocking_invariants": [],
-        },
-        "finish_gate": {"command": "sattlint-repo-audit --run-recommended-finish-gate"},
-    }
-
-    with patch.object(
-        repo_audit._repo_audit_entrypoints,
-        "build_check_my_changes_planning_report",
-        return_value=report,
-    ) as build_planning_report:
-        exit_code = repo_audit.main(
-            [
-                "--planning-context",
-                "--output-dir",
-                str(tmp_path),
-                "--changed-file",
-                "src/sattlint/app.py",
-            ]
-        )
-
-    payload = json.loads(capsys.readouterr().out)
-
-    assert exit_code == 0
-    assert payload["kind"] == "sattlint.planning_context"
-    assert payload["planning_context"]["primary_agent"] == "CLI App Menu"
-    assert payload["finish_gate"]["command"] == "sattlint-repo-audit --run-recommended-finish-gate"
-    assert build_planning_report.call_args.kwargs["changed_files"] == ["src/sattlint/app.py"]
-
-
 def test_main_check_routes_finding_checks(monkeypatch, tmp_path):
     summary = {
         "profile": "full",
@@ -2656,71 +2556,6 @@ def test_main_check_cli_consistency_exits_nonzero_and_writes_report(monkeypatch,
     assert findings_report["finding_count"] == 1
 
 
-def test_main_run_recommended_slice_uses_combined_recommendation(monkeypatch, tmp_path):
-    summary = {
-        "profile": "full",
-        "output_dir": f"<external>/{tmp_path.name}",
-        "finding_count": 0,
-        "findings_schema": {"kind": "sattlint.findings", "schema_version": 1},
-        "findings": [],
-        "cli_consistency_status": None,
-    }
-
-    with (
-        patch.object(repo_audit, "run_recommended_repo_audit_slice", return_value=summary) as run_slice,
-        patch.object(repo_audit, "_print_cli_summary") as print_cli_summary,
-    ):
-        exit_code = repo_audit.main(
-            [
-                "--profile",
-                "full",
-                "--output-dir",
-                str(tmp_path),
-                "--run-recommended-slice",
-                "--changed-file",
-                "docs/references/cli-commands.md",
-            ]
-        )
-
-    assert exit_code == 0
-    assert run_slice.call_args.kwargs["changed_files"] == ["docs/references/cli-commands.md"]
-    printed = print_cli_summary.call_args.args[0]
-    assert printed["overall_status"] == "pass"
-
-
-def test_main_run_recommended_finish_gate_uses_combined_recommendation(monkeypatch, tmp_path):
-    summary = {
-        "profile": "full",
-        "output_dir": f"<external>/{tmp_path.name}",
-        "finding_count": 0,
-        "findings_schema": {"kind": "sattlint.findings", "schema_version": 1},
-        "findings": [],
-        "cli_consistency_status": None,
-        "finish_gate": {"status": "pass"},
-    }
-
-    with (
-        patch.object(repo_audit, "run_recommended_repo_audit_finish_gate", return_value=summary) as run_finish_gate,
-        patch.object(repo_audit, "_print_cli_summary") as print_cli_summary,
-    ):
-        exit_code = repo_audit.main(
-            [
-                "--profile",
-                "full",
-                "--output-dir",
-                str(tmp_path),
-                "--run-recommended-finish-gate",
-                "--changed-file",
-                "docs/references/cli-commands.md",
-            ]
-        )
-
-    assert exit_code == 0
-    assert run_finish_gate.call_args.kwargs["changed_files"] == ["docs/references/cli-commands.md"]
-    printed = print_cli_summary.call_args.args[0]
-    assert printed["overall_status"] == "pass"
-
-
 def test_run_check_my_changes_uses_pipeline_finish_gate_when_no_repo_checks_are_recommended(monkeypatch, tmp_path):
     recommendation = {
         "changed_files": ["src/sattlint/devtools/pipeline.py"],
@@ -2740,8 +2575,8 @@ def test_run_check_my_changes_uses_pipeline_finish_gate_when_no_repo_checks_are_
             "run_recommended_pipeline_finish_gate",
             return_value={
                 "overall_status": "pass",
-                "finish_gate": {"status": "pass"},
-                "pipeline_summary": {},
+                "finish_gate": {"status": "pass", "timing": {"critical_path_duration_seconds": 1.25}},
+                "pipeline_summary": {"timing": {"total_duration_seconds": 2.5}},
             },
         ) as run_pipeline_finish_gate,
         patch.object(repo_audit, "run_recommended_repo_audit_finish_gate") as run_repo_finish_gate,
@@ -2755,13 +2590,17 @@ def test_run_check_my_changes_uses_pipeline_finish_gate_when_no_repo_checks_are_
             skip_vulture=False,
             skip_bandit=False,
             changed_files=["src/sattlint/devtools/pipeline.py"],
+            pytest_workers="2",
         )
 
     assert report["selected_surface"] == "pipeline"
     assert report["overall_status"] == "pass"
     assert "sattlint-analysis-pipeline" in report["selected_command"]
+    assert "--pytest-workers 2" in report["selected_command"]
     assert report["reports"]["finish_gate"].endswith("/pipeline/finish_gate.json")
     assert report["reports"]["ai_feedback"].endswith("/ai_feedback.json")
+    assert report["timing"]["selected_run"]["total_duration_seconds"] == 2.5
+    assert report["timing"]["finish_gate"]["critical_path_duration_seconds"] == 1.25
     assert (tmp_path / "check_my_changes.json").exists()
     assert (tmp_path / "ai_feedback.json").exists()
     assert run_pipeline_finish_gate.called
@@ -2798,11 +2637,13 @@ def test_run_check_my_changes_uses_repo_audit_finish_gate_when_repo_checks_are_r
             skip_vulture=False,
             skip_bandit=False,
             changed_files=["docs/references/cli-commands.md"],
+            pytest_workers="2",
         )
 
     assert report["selected_surface"] == "repo-audit"
     assert report["overall_status"] == "pass"
     assert "sattlint-repo-audit" in report["selected_command"]
+    assert "--pytest-workers 2" in report["selected_command"]
     assert report["reports"]["finish_gate"].endswith("/finish_gate.json")
     assert report["reports"]["ai_feedback"].endswith("/ai_feedback.json")
     assert run_repo_finish_gate.called

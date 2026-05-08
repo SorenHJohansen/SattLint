@@ -9,6 +9,10 @@ applyTo: ["src/sattlint/devtools/**", "tests/test_repo_audit.py", "tests/test_pi
 - Keep outputs machine-readable and actionable.
 - Choose the first focused validation route from [validation map](../skills/validation-routing/references/validation-map.md) before full-profile verification.
 - Open `artifacts/audit/status.json` first when inspecting audit results.
+- For `--check-my-changes` triage, separate current-slice findings from inherited repo findings before choosing the owner seam or widening scope.
+- Prefer scoping and path-attribution fixes before suppressing findings or broadening checks.
+- Treat finish-gate JSON and other `artifacts/audit/` outputs as point-in-time snapshots. After narrow validation changes, regenerate stale artifacts before treating them as blockers.
+- If a structural-report failure comes from counting or inventory behavior, prefer the inventory or helper seam before editing debt-controlled report owners.
 - Any new full-profile repo-audit or shared-pipeline check must have a registry-backed individual command and appear in the `--list-checks` catalog exposed by `sattlint-repo-audit` or `sattlint-analysis-pipeline`.
 
 ## Scope Of Permitted Changes

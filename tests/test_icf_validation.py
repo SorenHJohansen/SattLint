@@ -189,7 +189,6 @@ def test_icf_validation_reports_valid_and_invalid_entries():
         entries,
         expected_program="Program",
     )
-
     assert report.valid_entries == 1
     assert len(report.issues) == 1
     assert report.issues[0].reason == "invalid field path"
@@ -648,14 +647,14 @@ def test_icf_validation_treats_nested_parameter_descendants_as_parent_record_cov
 
     entries = [
         _entry(
-            "Status",
+            "status",
             "Program:KaHA221A.LogValue.status",
             unit="KaHA221A",
             journal="HygienicStatus",
             group="JournalData_Parameters",
         ),
         _entry(
-            "Meaning",
+            "meaning",
             "Program:KaHA221A.LogValue.meaning",
             line_no=2,
             unit="KaHA221A",

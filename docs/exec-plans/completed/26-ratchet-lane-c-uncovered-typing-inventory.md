@@ -85,7 +85,7 @@ Run commands from the repository root.
 
 First focused validation after the first substantive edit:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_analyzers_version_drift.py tests/test_fault_injection.py tests/test_property_based.py tests/test_sfc_simulation.py tests/test_state_inference.py tests/test_app_cli_commands.py tests/test_cli.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_version_drift.py tests/test_fault_injection.py tests/test_property_based.py tests/test_sfc_simulation.py tests/test_state_inference.py tests/test_app_cli_commands.py tests/test_cli.py -x -q --tb=short
 
 Lane-local type proof:
 
@@ -93,7 +93,7 @@ Lane-local type proof:
 
 Optional second proof if simulation or CLI paths change materially:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_sfc_simulation.py tests/test_app_cli_commands.py tests/test_cli.py -x -q --tb=short
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_sfc_simulation.py tests/test_app_cli_commands.py tests/test_cli.py -x -q --tb=short
 
 ## Validation and Acceptance
 

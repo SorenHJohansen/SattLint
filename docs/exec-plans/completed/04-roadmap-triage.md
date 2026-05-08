@@ -45,7 +45,7 @@ Review each backlog program, group related items into a few concrete waves, and 
 Run from repository root:
 
     rg -n "^## Program [CDE]|^\| C-|^\| D-|^### E|^\- E-GUI" docs/exec-plans/feature-roadmap.md
-    & ".venv/Scripts/python.exe" -m sattlint.devtools.doc_gardener
+    python scripts/run_repo_python.py -m sattlint.devtools.doc_gardener
 
 ## Validation and Acceptance
 

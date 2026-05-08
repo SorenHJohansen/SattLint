@@ -12,6 +12,7 @@ def test_repo_audit_entrypoint_helper_normalizers_and_reason_selection():
         "--changed-file",
         "src/main.py",
     ]
+    assert repo_audit_entrypoints._string_list(("not", "a", "list")) == []
     assert repo_audit_entrypoints._focused_python_files(
         [
             "src/main.py",

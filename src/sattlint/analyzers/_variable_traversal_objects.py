@@ -1,0 +1,112 @@
+"""Header and object traversal helpers for variable analysis."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, cast
+
+from sattline_parser.models.ast_model import ModuleDef
+
+from ..grammar import constants as const
+from ..resolution import AccessKind
+from ..resolution.scope import ScopeContext
+
+if TYPE_CHECKING:
+    from .variables import VariablesAnalyzer
+
+
+def _walk_header_enable(self: VariablesAnalyzer, header: Any, context: ScopeContext, path: list[str]) -> None:
+    tail = getattr(header, "enable_tail", None)
+    if tail is not None:
+        self._walk_tail(tail, context, path, is_ui_read=True)
+
+
+def _walk_header_invoke_tails(self: VariablesAnalyzer, header: Any, context: ScopeContext, path: list[str]) -> None:
+    for tail in getattr(header, "invoke_coord_tails", []) or []:
+        self._walk_tail(tail, context, path, is_ui_read=True)
+
+
+def _walk_header_groupconn(self: VariablesAnalyzer, header: Any, context: ScopeContext, path: list[str]) -> None:
+    var_dict = getattr(header, "groupconn", None)
+    if not isinstance(var_dict, dict):
+        return
+    base = var_dict.get(const.KEY_VAR_NAME)
+    if not isinstance(base, str):
+        return
+    var, _field_prefix, _decl_path, _decl_display = context.resolve_variable(base)
+    if var is not None:
+        self._mark_ref_access(base, context, path, AccessKind.READ)
+        return
+    var = self._lookup_env_var_from_varname_dict(base, context.env)
+    if var is not None:
+        self._get_usage(var).mark_read(path)
+
+
+def _walk_typedef_groupconn(self: VariablesAnalyzer, mt: Any, context: ScopeContext, path: list[str]) -> None:
+    var_dict = getattr(mt, "groupconn", None)
+    if not isinstance(var_dict, dict):
+        return
+    base = var_dict.get(const.KEY_VAR_NAME)
+    if not isinstance(base, str):
+        return
+    var, _field_prefix, _decl_path, _decl_display = context.resolve_variable(base)
+    if var is not None:
+        self._mark_ref_access(base, context, path, AccessKind.READ)
+
+
+def _walk_moduledef(
+    self: VariablesAnalyzer,
+    mdef: ModuleDef | None,
+    context: ScopeContext,
+    path: list[str],
+) -> None:
+    if mdef is None:
+        return
+    for graph_object in mdef.graph_objects or []:
+        self._walk_graph_object(graph_object, context, path)
+    for interact_object in mdef.interact_objects or []:
+        self._walk_interact_object(interact_object, context, path)
+
+    props = cast(dict[str, Any], getattr(mdef, "properties", {}) or {})
+    for tail in cast(list[Any], props.get(const.KEY_TAILS, []) or []):
+        self._walk_tail(tail, context, path, is_ui_read=True)
+
+
+def _walk_graph_object(self: VariablesAnalyzer, go: Any, context: ScopeContext, path: list[str]) -> None:
+    props = cast(dict[str, Any], getattr(go, "properties", {}) or {})
+    for text_var in cast(list[Any], props.get("text_vars", []) or []):
+        base = text_var.split(".", 1)[0] if isinstance(text_var, str) else None
+        self._mark_var_by_basename(base, context.env, path, is_ui_read=True)
+    for tail in cast(list[Any], props.get(const.KEY_TAILS, []) or []):
+        self._walk_tail(tail, context, path, is_ui_read=True)
+
+
+def _walk_interact_object(self: VariablesAnalyzer, io: Any, context: ScopeContext, path: list[str]) -> None:
+    props = cast(dict[str, Any], getattr(io, "properties", {}) or {})
+    for tail in cast(list[Any], props.get(const.KEY_TAILS, []) or []):
+        self._walk_tail(tail, context, path, is_ui_read=True)
+    self._scan_for_varrefs(props.get(const.KEY_BODY), context, path, is_ui_read=True)
+
+    procedure = props.get(const.KEY_PROCEDURE)
+    if isinstance(procedure, dict) and const.KEY_PROCEDURE_CALL in procedure:
+        call = procedure.get(const.KEY_PROCEDURE_CALL)
+        if isinstance(call, dict):
+            fn_name = call.get(const.KEY_NAME)
+            args = call.get(const.KEY_ARGS)
+            self._handle_function_call(
+                fn_name if isinstance(fn_name, str) else None,
+                cast(list[Any], args) if isinstance(args, list) else [],
+                context,
+                path,
+                is_ui_read=True,
+            )
+
+
+__all__ = [
+    "_walk_graph_object",
+    "_walk_header_enable",
+    "_walk_header_groupconn",
+    "_walk_header_invoke_tails",
+    "_walk_interact_object",
+    "_walk_moduledef",
+    "_walk_typedef_groupconn",
+]

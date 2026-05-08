@@ -1,7 +1,5 @@
 import json
 from types import SimpleNamespace
-from typing import Any
-from unittest.mock import patch
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -540,202 +538,6 @@ def test_build_pipeline_check_catalog_lists_full_checks_and_commands(tmp_path):
     assert "src/**/*.py" in ruff_entry["path_globs"]
 
 
-def test_build_pipeline_check_recommendations_routes_changed_files_to_matching_checks(tmp_path):
-    recommendations = pipeline.build_pipeline_check_recommendations(
-        profile="full",
-        output_dir=tmp_path,
-        changed_files=["src/sattlint/devtools/repo_audit.py"],
-    )
-
-    recommended_ids = set(recommendations["recommended_check_ids"])
-
-    assert recommendations["kind"] == "sattlint.pipeline.check_recommendations"
-    assert recommendations["fallback_required"] is False
-    assert {"ruff", "pyright", "pytest", "vulture", "bandit"} <= recommended_ids
-    assert "trace" not in recommended_ids
-    assert recommendations["suggested_check_commands"]
-    assert recommendations["suggested_finish_gate_commands"]
-    assert recommendations["proof_requirements"]["focused_behavior_test"]["required"] is True
-    assert recommendations["proof_requirements"]["focused_behavior_test"]["status"] == "satisfied"
-    assert recommendations["proof_requirements"]["coverage"]["required"] is True
-    assert recommendations["proof_requirements"]["coverage"]["touched_source_files"] == [
-        "src/sattlint/devtools/repo_audit.py"
-    ]
-    assert "routing" in recommendations["proof_requirements"]["mutation_guidance"]["critical_surfaces"]
-    assert recommendations["why_this_gate"]["matched_routes"]
-
-
-def test_run_recommended_pipeline_finish_gate_records_change_scoped_coverage(monkeypatch, tmp_path):
-    recommendation = {
-        "changed_files": ["src/sattlint/devtools/repo_audit.py"],
-        "recommended_check_ids": ["ruff", "pyright", "pytest"],
-        "recommended_checks": [{"owner_test_targets": ["tests/test_pipeline_run.py"]}],
-        "proof_requirements": {
-            "focused_behavior_test": {
-                "required": True,
-                "status": "satisfied",
-                "owner_test_targets": ["tests/test_pipeline_run.py"],
-                "reason": "Code changes require at least one focused owner pytest target.",
-            },
-            "coverage": {
-                "required": True,
-                "preferred_mode": "changed-lines",
-                "fallback_mode": "touched-files",
-                "touched_source_files": ["src/sattlint/devtools/repo_audit.py"],
-                "reason": "Touched source files should be proven by focused coverage.",
-            },
-            "mutation_guidance": {
-                "status": "advisory",
-                "critical_surfaces": ["routing"],
-                "suggested_commands": [],
-                "suggestion": "Prefer mutation-style or property-style assertions.",
-            },
-        },
-    }
-    monkeypatch.setattr(pipeline, "build_pipeline_check_recommendations", lambda **_kwargs: recommendation)
-    monkeypatch.setattr(
-        pipeline,
-        "_run_pipeline",
-        lambda *_args, **_kwargs: {"status": {"overall_status": "pass"}},
-    )
-    monkeypatch.setattr(
-        pipeline,
-        "_run_command",
-        lambda name, command, cwd=pipeline.REPO_ROOT: pipeline.CommandResult(
-            name=name,
-            command=command,
-            exit_code=0,
-            duration_seconds=0.0,
-            stdout="",
-            stderr="",
-        ),
-    )
-    monkeypatch.setattr(
-        pipeline,
-        "evaluate_change_scoped_coverage_proof",
-        lambda **_kwargs: {"status": "pass", "mode": "changed-lines", "coverage_path": "coverage_proof.xml"},
-    )
-
-    result = pipeline.run_recommended_pipeline_finish_gate(
-        tmp_path,
-        trace_target=None,
-        profile="full",
-        include_vulture=False,
-        include_bandit=False,
-        baseline_findings=None,
-        corpus_manifest_dir=None,
-        changed_files=["src/sattlint/devtools/repo_audit.py"],
-        slow_phase_threshold_ms=25.0,
-        phase_budget_ms=50.0,
-        total_budget_ms=250.0,
-        fail_on_drift=False,
-        fail_on_budget=False,
-    )
-
-    assert result["finish_gate"]["status"] == "pass"
-    assert result["finish_gate"]["coverage_proof"]["mode"] == "changed-lines"
-    assert any(command["id"] == "owner-pytest-coverage" for command in result["finish_gate"]["commands"])
-
-
-def test_main_recommend_checks_prints_json(tmp_path, capsys):
-    exit_code = pipeline.main(
-        [
-            "--profile",
-            "full",
-            "--output-dir",
-            str(tmp_path),
-            "--recommend-checks",
-            "--changed-file",
-            "src/sattlint/devtools/repo_audit.py",
-        ]
-    )
-
-    payload = json.loads(capsys.readouterr().out)
-
-    assert exit_code == 0
-    assert payload["kind"] == "sattlint.pipeline.check_recommendations"
-    assert "ruff" in payload["recommended_check_ids"]
-
-
-def test_main_run_recommended_slice_uses_recommended_check_ids(monkeypatch, tmp_path):
-    observed: dict[str, Any] = {}
-
-    def fake_run_pipeline(output_dir, **kwargs):
-        observed["selected_checks"] = kwargs["selected_checks"]
-        return {
-            "profile": "full",
-            "output_dir": f"<external>/{tmp_path.name}",
-            "status": {"overall_status": "pass", "tool_statuses": {}},
-            "reports": {},
-            "counts": {
-                "baseline_new_findings": 0,
-                "baseline_resolved_findings": 0,
-                "baseline_changed_findings": 0,
-                "baseline_unchanged_findings": 0,
-            },
-            "findings_schema": {"kind": "sattlint.findings", "schema_version": 1},
-        }
-
-    monkeypatch.setattr(pipeline, "_run_pipeline", fake_run_pipeline)
-    monkeypatch.setattr(pipeline, "_print_cli_summary", lambda *_args, **_kwargs: None)
-
-    exit_code = pipeline.main(
-        [
-            "--profile",
-            "full",
-            "--output-dir",
-            str(tmp_path),
-            "--run-recommended-slice",
-            "--changed-file",
-            "tests/test_repo_audit.py",
-        ]
-    )
-
-    assert exit_code == 0
-    assert observed["selected_checks"]
-
-
-def test_main_run_recommended_finish_gate_uses_finish_gate_runner(monkeypatch, tmp_path):
-    summary = {
-        "profile": "full",
-        "output_dir": f"<external>/{tmp_path.name}",
-        "status": {"overall_status": "pass", "tool_statuses": {}},
-        "reports": {},
-        "counts": {
-            "baseline_new_findings": 0,
-            "baseline_resolved_findings": 0,
-            "baseline_changed_findings": 0,
-            "baseline_unchanged_findings": 0,
-        },
-        "findings_schema": {"kind": "sattlint.findings", "schema_version": 1},
-    }
-
-    with (
-        patch.object(
-            pipeline,
-            "run_recommended_pipeline_finish_gate",
-            return_value={"pipeline_summary": summary, "overall_status": "pass"},
-        ) as run_finish_gate,
-        patch.object(pipeline, "_print_cli_summary") as print_cli_summary,
-    ):
-        exit_code = pipeline.main(
-            [
-                "--profile",
-                "full",
-                "--output-dir",
-                str(tmp_path),
-                "--run-recommended-finish-gate",
-                "--changed-file",
-                "src/sattlint/devtools/repo_audit.py",
-            ]
-        )
-
-    assert exit_code == 0
-    assert run_finish_gate.call_args.kwargs["changed_files"] == ["src/sattlint/devtools/repo_audit.py"]
-    printed = print_cli_summary.call_args.args[0]
-    assert printed["overall_status"] == "pass"
-
-
 def test_run_pytest_stage_uses_isolated_coverage_file_and_restores_environment(monkeypatch, tmp_path):
     observed_coverage_files: list[str | None] = []
 
@@ -852,7 +654,11 @@ def test_run_pipeline_prints_core_invariant_violations(monkeypatch, tmp_path, ca
     monkeypatch.setattr(pipeline, "_run_environment_stage", lambda progress: {"python": {"executable": "python"}})
     monkeypatch.setattr(pipeline, "_run_ruff_stage", lambda progress, python_cmd: ({}, []))
     monkeypatch.setattr(pipeline, "_run_pyright_stage", lambda progress, python_cmd: ({}, []))
-    monkeypatch.setattr(pipeline, "_run_pytest_stage", lambda progress, output_dir, python_cmd, profile: {})
+    monkeypatch.setattr(
+        pipeline,
+        "_run_pytest_stage",
+        lambda progress, output_dir, python_cmd, profile, pytest_workers=None: {},
+    )
     monkeypatch.setattr(pipeline, "_run_vulture_stage", lambda progress, python_cmd, run_vulture: ({}, []))
     monkeypatch.setattr(pipeline, "_run_bandit_stage", lambda progress, python_cmd, run_bandit: {})
     monkeypatch.setattr(pipeline, "_collect_optional_reports", lambda context, trace_target=None: {})
@@ -918,7 +724,7 @@ def test_run_pipeline_baseline_drift_status_skipped_without_baseline(monkeypatch
 def test_run_pipeline_fail_on_drift_passes_when_no_new_findings(monkeypatch, tmp_path):
     """fail_on_drift=True should not fail when findings are unchanged."""
     baseline_path = tmp_path / "baseline.json"
-    # Baseline with zero findings — current run also has zero findings.
+    # Baseline with zero findings - current run also has zero findings.
     baseline_path.write_text(
         json.dumps({"kind": "sattlint.findings", "schema_version": 1, "finding_count": 0, "findings": []}),
         encoding="utf-8",

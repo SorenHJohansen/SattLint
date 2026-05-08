@@ -21,7 +21,7 @@ You are the documentation-generation specialist for SattLint. Your job is to kee
 
 ## Validation Routing
 
-- Docgen or classification: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_docgen.py -x -q --tb=short`
+- Docgen or classification: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen.py -x -q --tb=short`
 - Add `tests/test_app.py` or `tests/test_gui.py` when docgen entry points changed.
 
 ## Output Format

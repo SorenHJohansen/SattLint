@@ -5,10 +5,16 @@ import re
 import sys
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SRC_PATH = REPO_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
+
+from hook_path_compat import normalize_payload_path_text, resolve_payload_cwd  # noqa: E402
 
 from sattlint.devtools import coordination_lock_state  # noqa: E402
 
@@ -42,7 +48,7 @@ def _normalize_tool_name(tool_name: str) -> str:
 
 
 def _normalize_relative(raw_path: str) -> str:
-    return coordination_lock_state.normalize_relative_path(raw_path)
+    return coordination_lock_state.normalize_relative_path(normalize_payload_path_text(raw_path))
 
 
 def _resolve_workspace_path(raw_path: str, cwd: Path) -> Path:
@@ -172,7 +178,7 @@ def main() -> int:
         if payload.get("hookEventName") != "PreToolUse":
             return 0
 
-        cwd = Path(payload.get("cwd") or ".").resolve()
+        cwd = resolve_payload_cwd(str(payload.get("cwd") or "."))
         tool_name = str(payload.get("tool_name") or "")
         tool_input = payload.get("tool_input")
         targets = _extract_tool_paths(tool_name, tool_input, cwd)

@@ -21,8 +21,8 @@ You are the CLI and app-menu specialist for SattLint. Your job is to keep consol
 
 ## Validation Routing
 
-- CLI routing or argparse: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_cli.py -x -q --tb=short`
-- Menu or interactive app: `& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_app.py tests/test_app_menus.py tests/test_app_analysis.py -x -q --tb=short`
+- CLI routing or argparse: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_cli.py -x -q --tb=short`
+- Menu or interactive app: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_app.py tests/test_app_menus.py tests/test_app_analysis.py -x -q --tb=short`
 - Match validation to CLI routing versus interactive app behavior before expanding scope.
 
 ## Output Format

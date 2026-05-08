@@ -3,18 +3,68 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from sattline_parser.models.ast_model import ParameterMapping, Variable
+from sattline_parser.models.ast_model import BasePicture, ParameterMapping, Variable
 from sattlint.resolution import AccessKind, decorate_segment
 from sattlint.resolution.common import varname_base
 from sattlint.resolution.scope import ScopeContext
 
 from ..grammar import constants as const
+from ._variables_effect_sources import (
+    collect_expression_effect_sources as _collect_expression_effect_sources,
+)
+from ._variables_effect_sources import (
+    collect_function_input_effect_keys as _collect_function_input_effect_keys,
+)
 from .sattline_builtins import get_function_signature
 
 if TYPE_CHECKING:
     pass
+
+
+type EffectKey = tuple[str, ...]
+type LookupGlobalVariableFn = Callable[[str], Variable | None]
+type CanonicalPathFn = Callable[[list[str], Variable, str], Any]
+type RecordAccessFn = Callable[[AccessKind, Any, ScopeContext, str], None]
+type GetUsageCallback = Callable[[Variable], object]
+
+
+class UsageRecorder(Protocol):
+    def mark_read(self, path: list[str]) -> None: ...
+
+    def mark_written(self, path: list[str]) -> None: ...
+
+    def mark_field_read(self, field_path: str, path: list[str]) -> None: ...
+
+    def mark_field_written(self, field_path: str, path: list[str]) -> None: ...
+
+
+class _ParameterMappingPayloads(Protocol):
+    source: object
+    target: object
+
+
+def _var_ref_text(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        value_dict = cast(dict[str, object], value)
+        ref_text = value_dict.get(const.KEY_VAR_NAME)
+        if isinstance(ref_text, str):
+            return ref_text
+    return None
+
+
+def _mapping_source_ref(pm: ParameterMapping) -> str | None:
+    typed_pm = cast(_ParameterMappingPayloads, pm)
+    return _var_ref_text(typed_pm.source)
+
+
+def _mapping_target_ref(pm: ParameterMapping) -> str | None:
+    typed_pm = cast(_ParameterMappingPayloads, pm)
+    return _var_ref_text(typed_pm.target)
 
 
 class EffectFlowTracker:
@@ -22,24 +72,27 @@ class EffectFlowTracker:
 
     def __init__(
         self,
-        effect_flow_edges: dict[tuple[str, ...], set[tuple[str, ...]]],
-        effect_flow_display_names: dict[tuple[str, ...], str],
-        external_effect_sinks: set[tuple[str, ...]],
-        effective_output_keys: set[tuple[str, ...]],
-        lookup_global_variable_fn,
-        get_usage_fn,
-        canonical_path_fn,
-        record_access_fn,
+        effect_flow_edges: dict[EffectKey, set[EffectKey]],
+        effect_flow_display_names: dict[EffectKey, str],
+        external_effect_sinks: set[EffectKey],
+        effective_output_keys: set[EffectKey],
+        lookup_global_variable_fn: LookupGlobalVariableFn,
+        get_usage_fn: GetUsageCallback,
+        canonical_path_fn: CanonicalPathFn,
+        record_access_fn: RecordAccessFn,
     ):
         """Initialize with references to analyzer's data structures and methods."""
         self._effect_flow_edges = effect_flow_edges
         self._effect_flow_display_names = effect_flow_display_names
         self._external_effect_sinks = external_effect_sinks
         self._effective_output_keys = effective_output_keys
-        self._lookup_global_variable = lookup_global_variable_fn
-        self._get_usage = get_usage_fn
-        self._canonical_path = canonical_path_fn
-        self._record_access = record_access_fn
+        self._lookup_global_variable: LookupGlobalVariableFn = lookup_global_variable_fn
+        self._get_usage: Callable[[Variable], UsageRecorder] = cast(
+            Callable[[Variable], UsageRecorder],
+            get_usage_fn,
+        )
+        self._canonical_path: CanonicalPathFn = canonical_path_fn
+        self._record_access: RecordAccessFn = record_access_fn
 
     def effect_key_for_variable(
         self,
@@ -76,33 +129,23 @@ class EffectFlowTracker:
         parent_context: ScopeContext | None,
     ) -> tuple[str, ...] | None:
         """Get the effect key for a parameter mapping's source."""
+        full_source = _mapping_source_ref(pm)
+        if full_source is None:
+            return None
+
         if pm.is_source_global:
-            full_source = None
-            if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
-                full_source = pm.source[const.KEY_VAR_NAME]
-            elif isinstance(pm.source, str):
-                full_source = pm.source
-            if not full_source:
-                return None
             source_base = full_source.split(".", 1)[0]
             if parent_context is not None:
                 source_var, decl_path, _decl_display = parent_context.resolve_global_name(source_base)
             else:
                 source_var = parent_env.get(source_base.casefold())
-                decl_path = []
+                decl_path: list[str] = []
                 if source_var is None:
                     source_var = self._lookup_global_variable(source_base)
                     decl_path = [source_base] if source_var is not None else []
             if source_var is None:
                 return None
             return self.effect_key_for_variable(source_var, decl_path)
-
-        if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
-            full_source = pm.source[const.KEY_VAR_NAME]
-        elif isinstance(pm.source, str):
-            full_source = pm.source
-        else:
-            return None
 
         if parent_context is not None:
             return self.resolve_effect_key(full_source, parent_context)
@@ -157,38 +200,12 @@ class EffectFlowTracker:
         context: ScopeContext,
     ) -> set[tuple[str, ...]]:
         """Collect effect keys for function inputs based on signature."""
-        if not fn_name:
-            input_sources: set[tuple[str, ...]] = set()
-            for arg in args:
-                input_sources.update(self.collect_expression_effect_sources(arg, context))
-            return input_sources
-
-        fn_key = fn_name.casefold()
-        if fn_key in {"copyvariable", "copyvarnosort"}:
-            if args and isinstance(args[0], dict) and const.KEY_VAR_NAME in args[0]:
-                key = self.resolve_effect_key(args[0][const.KEY_VAR_NAME], context)
-                return {key} if key is not None else set()
-            return set()
-
-        if fn_key == "initvariable":
-            return set()
-
-        sig = get_function_signature(fn_name)
-        if sig is None:
-            fallback_sources: set[tuple[str, ...]] = set()
-            for arg in args:
-                fallback_sources.update(self.collect_expression_effect_sources(arg, context))
-            return fallback_sources
-
-        signature_sources: set[tuple[str, ...]] = set()
-        for idx, arg in enumerate(args):
-            direction = "in"
-            if idx < len(sig.parameters):
-                direction = sig.parameters[idx].direction
-            if direction not in {"in", "in var", "inout"}:
-                continue
-            signature_sources.update(self.collect_expression_effect_sources(arg, context))
-        return signature_sources
+        return _collect_function_input_effect_keys(
+            fn_name,
+            args,
+            context,
+            resolve_effect_key=self.resolve_effect_key,
+        )
 
     def collect_expression_effect_sources(
         self,
@@ -196,41 +213,11 @@ class EffectFlowTracker:
         context: ScopeContext,
     ) -> set[tuple[str, ...]]:
         """Recursively collect effect keys from an expression."""
-        sources: set[tuple[str, ...]] = set()
-
-        if obj is None:
-            return sources
-
-        if isinstance(obj, dict):
-            if const.KEY_VAR_NAME in obj:
-                full_ref = obj[const.KEY_VAR_NAME]
-                key = self.resolve_effect_key(full_ref, context)
-                if key is not None:
-                    sources.add(key)
-                return sources
-            for value in obj.values():
-                sources.update(self.collect_expression_effect_sources(value, context))
-            return sources
-
-        if isinstance(obj, list):
-            for item in obj:
-                sources.update(self.collect_expression_effect_sources(item, context))
-            return sources
-
-        if hasattr(obj, "data"):
-            for child in getattr(obj, "children", []):
-                sources.update(self.collect_expression_effect_sources(child, context))
-            return sources
-
-        if isinstance(obj, tuple):
-            if obj and obj[0] == const.KEY_FUNCTION_CALL:
-                _, fn_name, args = obj
-                return self.collect_function_input_effect_keys(fn_name, args or [], context)
-            for item in obj[1:] if obj and isinstance(obj[0], str) else obj:
-                sources.update(self.collect_expression_effect_sources(item, context))
-            return sources
-
-        return sources
+        return _collect_expression_effect_sources(
+            obj,
+            context,
+            resolve_effect_key=self.resolve_effect_key,
+        )
 
     def record_assignment_effect_flow(
         self,
@@ -264,12 +251,32 @@ class EffectFlowTracker:
                 and const.KEY_VAR_NAME in args[1]
             ):
                 return
-            source_key = self.resolve_effect_key(args[0][const.KEY_VAR_NAME], context)
-            target_key = self.resolve_effect_key(args[1][const.KEY_VAR_NAME], context)
+            source_ref = _var_ref_text(cast(object, args[0]))
+            target_ref = _var_ref_text(cast(object, args[1]))
+            if source_ref is None or target_ref is None:
+                return
+            source_key = self.resolve_effect_key(source_ref, context)
+            target_key = self.resolve_effect_key(target_ref, context)
             self.record_effect_flow(source_key, target_key)
             return
 
         if fn_key == "initvariable":
+            if len(args) < 2:
+                return
+            if not (
+                isinstance(args[0], dict)
+                and const.KEY_VAR_NAME in args[0]
+                and isinstance(args[1], dict)
+                and const.KEY_VAR_NAME in args[1]
+            ):
+                return
+            source_ref = _var_ref_text(cast(object, args[1]))
+            target_ref = _var_ref_text(cast(object, args[0]))
+            if source_ref is None or target_ref is None:
+                return
+            source_key = self.resolve_effect_key(source_ref, context)
+            target_key = self.resolve_effect_key(target_ref, context)
+            self.record_effect_flow(source_key, target_key)
             return
 
         sig = get_function_signature(fn_name)
@@ -286,8 +293,9 @@ class EffectFlowTracker:
             if direction in {"in", "in var", "inout"}:
                 input_keys.update(self.collect_expression_effect_sources(arg, context))
 
-            if direction in {"out", "inout"} and isinstance(arg, dict) and const.KEY_VAR_NAME in arg:
-                key = self.resolve_effect_key(arg[const.KEY_VAR_NAME], context)
+            if direction in {"out", "inout"}:
+                arg_ref = _var_ref_text(cast(object, arg))
+                key = self.resolve_effect_key(arg_ref, context) if arg_ref is not None else None
                 if key is not None:
                     output_keys.add(key)
 
@@ -296,7 +304,10 @@ class EffectFlowTracker:
                 self.record_effect_flow(input_key, output_key)
 
     def collect_effect_sink_keys(
-        self, bp, analyzed_target_is_library: bool, is_from_root_origin_fn
+        self,
+        bp: BasePicture,
+        analyzed_target_is_library: bool,
+        is_from_root_origin_fn: Callable[[str | None], bool],
     ) -> set[tuple[str, ...]]:
         """Collect all variables that should be treated as effect sinks."""
         sink_keys = set(self._external_effect_sinks)
@@ -309,7 +320,7 @@ class EffectFlowTracker:
             for moduletype in bp.moduletype_defs or []:
                 if not is_from_root_origin_fn(getattr(moduletype, "origin_file", None)):
                     continue
-                decl_path = [bp.header.name, f"TypeDef:{moduletype.name}"]
+                decl_path: list[str] = [bp.header.name, f"TypeDef:{moduletype.name}"]
                 for variable in moduletype.moduleparameters or []:
                     sink_keys.add(self.effect_key_for_variable(variable, decl_path))
 
@@ -348,7 +359,8 @@ class EffectFlowTracker:
         child_context: ScopeContext | None = None,
     ) -> None:
         """Propagate mapping effects to parent scope."""
-        target_name = varname_base(pm.target)
+        target_ref = _mapping_target_ref(pm)
+        target_name = varname_base(target_ref) if target_ref is not None else None
 
         if child_context is not None and target_name is not None:
             target_var = child_context.env.get(target_name.casefold())
@@ -366,13 +378,8 @@ class EffectFlowTracker:
 
         # GLOBAL: resolve by walking up scopes, and only mark if parameter is used
         if pm.is_source_global:
-            full_source = None
-            if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
-                full_source = pm.source[const.KEY_VAR_NAME]
-            elif isinstance(pm.source, str):
-                full_source = pm.source
-
-            if not full_source:
+            full_source = _mapping_source_ref(pm)
+            if full_source is None:
                 return
 
             source_parts = full_source.split(".", 1)
@@ -438,11 +445,8 @@ class EffectFlowTracker:
             return
 
         # Extract full source path with fields
-        if isinstance(pm.source, dict) and const.KEY_VAR_NAME in pm.source:
-            full_source = pm.source[const.KEY_VAR_NAME]
-        elif isinstance(pm.source, str):
-            full_source = pm.source
-        else:
+        full_source = _mapping_source_ref(pm)
+        if full_source is None:
             return
 
         # Parse the source to get base and field path

@@ -42,6 +42,8 @@ See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface
 - Use `@context-optimizer /audit` before growing AI control files.
 - Keep AGENTS small, scoped instructions rich, and handoffs machine-readable.
 - AI must fix code or tests before any ratchet rebaseline.
+- Before editing a failing owner file, classify it as a safe owner, debt-controlled owner, protected config, or shared infra. If the owner is debt-controlled or protected, prefer the nearest helper, policy, or extraction seam instead of patching the owner directly.
+- If the first fix trips ratchet, approval, or finish-gate policy rather than behavior, stop and recut the slice around the controlling policy seam. Treat `artifacts/audit/` outputs as snapshots and refresh or mark them stale when newer focused validation contradicts them.
 - When a claimed owner file is already oversized in `artifacts/analysis/file_debt_ratchet.json`, default to extraction into sibling modules or an explicit shrink/decomposition slice instead of appending more code to that owner file.
 - Restart the language server after `src/sattlint_lsp/`, `src/sattlint/core/`, `src/sattlint/editor_api.py`, or `vscode/` edits.
 
@@ -74,4 +76,4 @@ See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface
 
 ## Last Updated
 
-2026-05-04
+2026-05-07

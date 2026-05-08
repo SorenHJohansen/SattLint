@@ -16,6 +16,7 @@ if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
 from sattlint.devtools import coordination_lock_state  # noqa: E402
+from sattlint.devtools._portable_command_text import pytest_command  # noqa: E402
 
 TASK_TEMPLATE_PATH = REPO_ROOT / ".ai" / "tasks" / "task-contract.example.json"
 HANDOFF_TEMPLATE_PATH = REPO_ROOT / ".ai" / "handoffs" / "handoff.example.json"
@@ -243,7 +244,13 @@ def _collect_config(args: argparse.Namespace, input_func: InputFunc = input) -> 
             _prompt_value(
                 input_func,
                 "First validation command",
-                default=f'& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_{task_id.replace("-", "_")}.py -x -q --tb=short',
+                default=pytest_command(
+                    "--no-cov",
+                    f"tests/test_{task_id.replace('-', '_')}.py",
+                    "-x",
+                    "-q",
+                    "--tb=short",
+                ),
             ),
         )
 

@@ -13,6 +13,8 @@ Requirements:
 
 - Use the `parallel-debt-routing` skill first.
 - The skill must reuse `debt-id-routing` against `docs/exec-plans/tech-debt-tracker.md` for each requested debt ID before grouping anything.
+- Use the `codegraph-routing` skill for owner-surface, caller, or impact checks before widening to broad text search.
+- If grouping still depends on broader read-only exploration, use the `Explore` agent and tell it to use CodeGraph as its primary source.
 - Read `.git/sattlint-ai-coordination/current_work_lock.json` before proposing claims.
 - Keep branch policy explicit: use one branch and one worktree per isolated slice, not one per raw debt ID unless that debt item stays isolated after grouping.
 - Use `.ai/tasks/task-contract.example.json` and `.ai/handoffs/handoff.example.json` as the artifact shape references when suggesting task and handoff paths.

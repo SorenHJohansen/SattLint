@@ -57,13 +57,11 @@ cd SattLint
 
 # Preferred: install through uv
 uv venv
-.venv\Scripts\Activate.ps1
-uv pip install -e .[dev,lsp]
+python scripts/run_repo_python.py -m pip install -e .[dev,lsp]
 
 # Fallback
 # python -m venv .venv
-# .venv\Scripts\Activate.ps1
-# pip install -e .[dev,lsp]
+# python scripts/run_repo_python.py -m pip install -e .[dev,lsp]
 
 # Recommended VS Code extensions are listed in .vscode/extensions.json
 ```

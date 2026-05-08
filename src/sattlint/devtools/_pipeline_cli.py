@@ -10,11 +10,14 @@ from sattlint.devtools._pipeline_finish_gate import (
     _build_finish_gate_commands,
     _build_owner_pytest_step,
     _changed_file_flag_args,
+    _finish_gate_pipeline_check_ids,
     _focused_python_files,
     _owner_test_targets_for_checks,
     _shell_command,
     build_change_proof_requirements,
     evaluate_change_scoped_coverage_proof,
+    execute_finish_gate_steps,
+    summarize_finish_gate_timing,
 )
 
 
@@ -126,16 +129,19 @@ def build_pipeline_check_recommendations(
             "No changed files were provided or detected, so the full supported pipeline slice is recommended."
         )
     elif pipeline_checks.matching_changed_files(
-        resolved_changed_files, pipeline_checks.PIPELINE_RECOMMENDATION_FALLBACK_GLOBS
+        resolved_changed_files, pipeline_checks.PIPELINE_RECOMMENDATION_CONTROL_SURFACE_GLOBS
     ):
         fallback_required = True
-        fallback_reason = (
-            "Changed files touch the pipeline control surface, so the full supported pipeline slice is recommended."
-        )
+        fallback_reason = "Changed files touch the pipeline control surface, so targeted Python proof is recommended instead of widening to the full supported pipeline slice."
+        for entry in catalog["checks"]:
+            if entry["id"] not in set(pipeline_checks.PIPELINE_RECOMMENDATION_CONTROL_SURFACE_CHECK_IDS):
+                continue
+            recommendation_reasons[entry["id"]] = fallback_reason
 
     if fallback_required and fallback_reason is not None:
-        for entry in catalog["checks"]:
-            recommendation_reasons[entry["id"]] = fallback_reason
+        if not recommendation_reasons:
+            for entry in catalog["checks"]:
+                recommendation_reasons[entry["id"]] = fallback_reason
     else:
         for entry in catalog["checks"]:
             matched_files = pipeline_checks.matching_changed_files(resolved_changed_files, entry["path_globs"])
@@ -212,6 +218,7 @@ def run_recommended_pipeline_finish_gate(
     total_budget_ms: float,
     fail_on_drift: bool,
     fail_on_budget: bool,
+    pytest_workers: str | None = None,
 ) -> dict[str, Any]:
     from sattlint.devtools import pipeline as pipeline_module
 
@@ -223,6 +230,12 @@ def run_recommended_pipeline_finish_gate(
     proof_requirements = recommendation.get("proof_requirements") or pipeline_module.build_change_proof_requirements(
         changed_files=recommendation.get("changed_files", []),
         recommended_checks=recommendation.get("recommended_checks", []),
+    )
+    selected_pipeline_checks = _finish_gate_pipeline_check_ids(
+        recommended_check_ids=recommendation["recommended_check_ids"],
+        changed_files=recommendation["changed_files"],
+        recommended_checks=recommendation["recommended_checks"],
+        pytest_workers=pytest_workers,
     )
     summary = pipeline_module._run_pipeline(
         output_dir,
@@ -238,7 +251,8 @@ def run_recommended_pipeline_finish_gate(
         total_budget_ms=total_budget_ms,
         fail_on_drift=fail_on_drift,
         fail_on_budget=fail_on_budget,
-        selected_checks=recommendation["recommended_check_ids"],
+        selected_checks=selected_pipeline_checks,
+        pytest_workers=pytest_workers,
     )
     finish_gate_steps = _build_finish_gate_commands(
         profile=profile,
@@ -248,29 +262,23 @@ def run_recommended_pipeline_finish_gate(
         ruff_command=[pipeline_module._resolve_venv_tool("ruff") or "ruff"],
         pyright_command=[pipeline_module._resolve_venv_tool("pyright") or "pyright"],
         python_command=[pipeline_module._resolve_python_executable()],
+        pytest_workers=pytest_workers,
     )[1:]
-    step_reports: list[dict[str, Any]] = []
+    step_reports = execute_finish_gate_steps(
+        steps=finish_gate_steps,
+        run_command=pipeline_module._run_command,
+        pipeline_summary=summary,
+    )
     finish_gate_status = "pass"
     coverage_proof: dict[str, Any] = {
         "status": "not-required",
         "mode": "skipped",
         "coverage_path": None,
     }
-    for step in finish_gate_steps:
-        result = pipeline_module._run_command(step["id"], step["argv"])
-        step_status = "pass" if result.exit_code == 0 else "fail"
+    for step_report in step_reports:
+        step_status = str(step_report.get("status", "pass"))
         if step_status == "fail":
             finish_gate_status = "fail"
-        step_reports.append(
-            {
-                "id": step["id"],
-                "label": step["label"],
-                "command": step["command"],
-                "exit_code": result.exit_code,
-                "duration_seconds": result.duration_seconds,
-                "status": step_status,
-            }
-        )
     if proof_requirements["focused_behavior_test"]["status"] == "missing":
         finish_gate_status = "fail"
         step_reports.append(
@@ -307,9 +315,11 @@ def run_recommended_pipeline_finish_gate(
         "status": finish_gate_status,
         "commands": step_reports,
         "changed_files": recommendation["changed_files"],
+        "selected_pipeline_checks": selected_pipeline_checks,
         "owner_test_targets": _owner_test_targets_for_checks(recommendation["recommended_checks"]),
         "proof_requirements": proof_requirements,
         "coverage_proof": coverage_proof,
+        "timing": summarize_finish_gate_timing(step_reports),
     }
     pipeline_module.write_json_artifact(output_dir / "finish_gate.json", finish_gate_report)
     return {

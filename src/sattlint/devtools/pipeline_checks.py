@@ -156,11 +156,13 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
     },
 )
 PIPELINE_CHECK_IDS = tuple(str(definition["id"]) for definition in PIPELINE_CHECK_DEFINITIONS)
-PIPELINE_RECOMMENDATION_FALLBACK_GLOBS = (
+PIPELINE_RECOMMENDATION_CONTROL_SURFACE_GLOBS = (
     "pyproject.toml",
     "src/sattlint/devtools/pipeline.py",
     "src/sattlint/devtools/pipeline_checks.py",
 )
+PIPELINE_RECOMMENDATION_CONTROL_SURFACE_CHECK_IDS = ("ruff", "pyright", "pytest")
+PIPELINE_RECOMMENDATION_FALLBACK_GLOBS = PIPELINE_RECOMMENDATION_CONTROL_SURFACE_GLOBS
 RECOMMENDATION_VERIFY_SKIP_DIRS = {
     ".git",
     ".mypy_cache",

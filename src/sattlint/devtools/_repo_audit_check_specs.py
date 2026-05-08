@@ -245,13 +245,18 @@ def build_repo_audit_check_recommendations(
         fallback_reason = (
             "No changed files were provided or detected, so the full supported repo-audit profile is recommended."
         )
-    elif matching_changed_files(changed_file_list, entrypoints_module.REPO_AUDIT_RECOMMENDATION_FALLBACK_GLOBS):
+    elif matching_changed_files(changed_file_list, entrypoints_module.REPO_AUDIT_RECOMMENDATION_CONTROL_SURFACE_GLOBS):
         fallback_required = True
-        fallback_reason = "Changed files touch the repo-audit control surface, so the full supported repo-audit profile is recommended."
+        fallback_reason = "Changed files touch the repo-audit control surface, so targeted Python proof and recommendation verification are recommended instead of widening to the full supported repo-audit profile."
+        for entry in catalog["checks"]:
+            if entry["id"] not in set(entrypoints_module.REPO_AUDIT_RECOMMENDATION_CONTROL_SURFACE_CHECK_IDS):
+                continue
+            recommendation_reasons[entry["id"]] = fallback_reason
 
     if fallback_required and fallback_reason is not None:
-        for entry in catalog["checks"]:
-            recommendation_reasons[entry["id"]] = fallback_reason
+        if not recommendation_reasons:
+            for entry in catalog["checks"]:
+                recommendation_reasons[entry["id"]] = fallback_reason
     else:
         for entry in catalog["checks"]:
             matched_files = matching_changed_files(changed_file_list, entry["path_globs"])

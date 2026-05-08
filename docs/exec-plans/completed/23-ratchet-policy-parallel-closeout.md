@@ -54,7 +54,7 @@ Observable outcome: lane A, lane B, and lane C are archived under `docs/exec-pla
 
 Run all commands from the repository root.
 
-The live blocker list from `& ".venv/Scripts/python.exe" scripts/check_ratchet_policy.py` currently says four things:
+The live blocker list from `python scripts/run_repo_python.py scripts/check_ratchet_policy.py` currently says four things:
 
 - Uncovered typing inventory files: `src/sattlint/analyzers/_registry_delivery.py`, `src/sattlint/analyzers/_registry_specs.py`, `src/sattlint/analyzers/state_inference.py`, `src/sattlint/devtools/_ai_work_map_freshness.py`, `src/sattlint/devtools/_pipeline_cli.py`, `src/sattlint/devtools/_repo_audit_check_specs.py`, `src/sattlint/devtools/_repo_audit_entrypoint_runs.py`, `src/sattlint/devtools/_repo_audit_full_run.py`, `src/sattlint/devtools/_repo_audit_reporting.py`, `src/sattlint/devtools/_structural_report_impact.py`, `src/sattlint/devtools/coordination_lock_state.py`, `src/sattlint/devtools/fault_injection.py`, `src/sattlint/devtools/fuzzer.py`, `src/sattlint/devtools/impact_analyzer.py`, `src/sattlint/devtools/property_tests.py`, `src/sattlint/simulation/__init__.py`, `src/sattlint/simulation/_runtime_models.py`, and `src/sattlint/simulation/runtime.py`.
 - Touched files that must leave the typing debt allowlist: `src/sattlint/analyzers/_variables_execution.py`, `src/sattlint/analyzers/registry.py`, `src/sattlint/analyzers/variable_issue_collection.py`, `src/sattlint/devtools/ai_work_map.py`, `src/sattlint/devtools/coverage_reports.py`, `src/sattlint/devtools/pipeline.py`, `src/sattlint/devtools/repo_audit.py`, `src/sattlint/devtools/repo_audit_entrypoints.py`, `src/sattlint/devtools/structural_reports.py`, and `src/sattlint/reporting/variables_report.py`.
@@ -93,15 +93,15 @@ Use these task ids when bootstrapping the work:
 
 Before opening the executor worktrees, rerun the live blocker command once so every lane starts from the same inventory snapshot:
 
-    & ".venv/Scripts/python.exe" scripts/check_ratchet_policy.py
+    python scripts/run_repo_python.py scripts/check_ratchet_policy.py
 
 Then bootstrap one executor worktree per lane using `scripts/bootstrap_ai_slice.py` and the claimed file lists and first validation command from each lane document.
 
 After lanes A through C land, lane D should run these shared closeout commands in order:
 
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_ratchet_policy.py tests/test_ratchet_policy_typing.py -x -q --tb=short
-    & ".venv/Scripts/python.exe" scripts/check_ratchet_policy.py
-    & ".venv/Scripts/sattlint-repo-audit.exe" --profile full --check-my-changes --output-dir artifacts/audit
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_ratchet_policy.py tests/test_ratchet_policy_typing.py -x -q --tb=short
+    python scripts/run_repo_python.py scripts/check_ratchet_policy.py
+    python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile full --check-my-changes --output-dir artifacts/audit
 
 ## Validation and Acceptance
 

@@ -164,9 +164,9 @@ Then validate with **BOTH syntax and semantic checks**:
 
 ```powershell
 # Phase 1: Syntax validity (necessary but not sufficient)
-.venv/Scripts/sattlint.exe syntax-check Libs/HA/ProjectLib/KaHANewUnitLib.s
-.venv/Scripts/sattlint.exe syntax-check Libs/HA/ProjectLib/KaHANewUnitSupportLib.s
-.venv/Scripts/sattlint.exe syntax-check Libs/HA/UnitLib/KaHANewUnitZ5.s
+python scripts/run_repo_python.py -m sattlint syntax-check Libs/HA/ProjectLib/KaHANewUnitLib.s
+python scripts/run_repo_python.py -m sattlint syntax-check Libs/HA/ProjectLib/KaHANewUnitSupportLib.s
+python scripts/run_repo_python.py -m sattlint syntax-check Libs/HA/UnitLib/KaHANewUnitZ5.s
 
 # Phase 2: Semantic completeness (verify module substance and references)
 # - Read main lib .s file; verify unit moduletype has MODULEPARAMETERS, LOCALVARIABLES, and SUBMODULES

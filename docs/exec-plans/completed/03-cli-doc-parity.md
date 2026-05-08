@@ -46,8 +46,8 @@ Start by comparing documented commands against the installed console scripts and
 Run from repository root:
 
     rg -n "sattlint|sattlint-repo-audit|sattlint-corpus-runner|sattlint-lsp" README.md docs src/sattlint tests/test_repo_audit.py
-    & ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_repo_audit.py -x -q --tb=short -k "documented_command or command_gaps"
-    & ".venv/Scripts/python.exe" -m sattlint.devtools.doc_gardener
+    python scripts/run_repo_python.py -m pytest --no-cov tests/test_repo_audit.py -x -q --tb=short -k "documented_command or command_gaps"
+    python scripts/run_repo_python.py -m sattlint.devtools.doc_gardener
 
 ## Validation and Acceptance
 

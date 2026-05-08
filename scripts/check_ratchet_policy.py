@@ -15,6 +15,12 @@ from typing import Any
 from defusedxml import ElementTree  # type: ignore[import-untyped]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_PATH = REPO_ROOT / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
+
+from sattlint.devtools._portable_command_text import pytest_command  # noqa: E402
+
 STRUCTURAL_RATCHET_PATH = "artifacts/analysis/structural_budget_ratchet.json"
 COVERAGE_RATCHET_PATH = "artifacts/analysis/coverage_ratchet.json"
 FILE_DEBT_RATCHET_PATH = "artifacts/analysis/file_debt_ratchet.json"
@@ -41,8 +47,8 @@ FILE_DEBT_TOUCH_RULE_RANKS = {
     "structural": {"must_meet_target": 0, "must_shrink": 1, "must_not_grow": 2},
     "typing": {"must_exit_on_touch": 0},
 }
-FIRST_STRUCTURAL_DEBT_PROOF_COMMAND = (
-    '& ".venv/Scripts/python.exe" -m pytest --no-cov tests/test_ratchet_policy.py -x -q --tb=short'
+FIRST_STRUCTURAL_DEBT_PROOF_COMMAND = pytest_command(
+    "--no-cov", "tests/test_ratchet_policy.py", "-x", "-q", "--tb=short"
 )
 
 

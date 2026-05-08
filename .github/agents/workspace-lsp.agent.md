@@ -21,7 +21,7 @@ You are the workspace and LSP specialist for SattLint. Your job is to handle edi
 
 ## Validation Routing
 
-- Focused pytest: `& ".venv/Scripts/python.exe" -m pytest <test_file> -x -q --tb=short`
+- Focused pytest: `python scripts/run_repo_python.py -m pytest <test_file> -x -q --tb=short`
 - Restart with `sattlineLsp.restartServer` after touching `src/sattlint_lsp/`, `src/sattlint/core/`, `src/sattlint/editor_api.py`, or `vscode/sattline-vscode/`.
 
 ## Output Format

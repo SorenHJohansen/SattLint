@@ -248,7 +248,7 @@ generate_docx(bp, "output.docx", documentation_config=get_documentation_config()
 ### Run Tests From The Repo Venv
 
 ```powershell
-& ".venv/Scripts/python.exe" -m pytest
+python scripts/run_repo_python.py -m pytest
 ```
 
 ### Trace A Concrete File
