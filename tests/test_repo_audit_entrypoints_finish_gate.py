@@ -248,7 +248,7 @@ def test_run_recommended_repo_audit_slice_filters_custom_findings_outside_change
 
 def test_find_public_readiness_findings_assigns_change_scope_paths(tmp_path):
     pyproject = tmp_path / "pyproject.toml"
-    tracked_generated_path = "/".join(("artifacts", "audit", "status.json"))
+    tracked_generated_path = "/".join(("build", "status.json"))
     pyproject.write_text(
         '[project]\nname = "demo"\nversion = "0.1.0"\n[project.urls]\nRepository = "https://example.invalid/demo"\n',
         encoding="utf-8",
@@ -269,8 +269,8 @@ def test_find_public_readiness_findings_assigns_change_scope_paths(tmp_path):
     findings_by_id = {finding.id: finding for finding in findings}
 
     assert findings_by_id["missing-ci-workflow"].path == ".github/workflows"
-    assert findings_by_id["tracked-generated-artifacts"].path == "artifacts"
-    assert findings_by_id["unexpected-tracked-root-entry"].path == "artifacts"
+    assert findings_by_id["tracked-generated-artifacts"].path == "build"
+    assert findings_by_id["unexpected-tracked-root-entry"].path == "build"
 
 
 def test_repo_audit_entrypoints_cover_delegate_and_default_manifest_branches(monkeypatch, tmp_path):

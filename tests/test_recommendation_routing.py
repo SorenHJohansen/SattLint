@@ -121,7 +121,7 @@ def test_repo_audit_helper_filters_findings_to_changed_scope():
 
 
 def test_find_public_readiness_findings_assigns_scope_paths_for_finish_gate_coverage(tmp_path):
-    tracked_generated_path = "/".join(("artifacts", "audit", "status.json"))
+    tracked_generated_path = "/".join(("build", "status.json"))
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
         '[project]\nname = "demo"\nversion = "0.1.0"\n[project.urls]\nRepository = "https://example.invalid/demo"\n',
@@ -142,8 +142,8 @@ def test_find_public_readiness_findings_assigns_scope_paths_for_finish_gate_cove
 
     assert findings_by_id["missing-public-file"].path == "README.md"
     assert findings_by_id["missing-ci-workflow"].path == ".github/workflows"
-    assert findings_by_id["tracked-generated-artifacts"].path == "artifacts"
-    assert findings_by_id["unexpected-tracked-root-entry"].path == "artifacts"
+    assert findings_by_id["tracked-generated-artifacts"].path == "build"
+    assert findings_by_id["unexpected-tracked-root-entry"].path == "build"
 
 
 def test_run_recommended_repo_audit_slice_filters_findings_in_owner_covered_suite(monkeypatch, tmp_path):

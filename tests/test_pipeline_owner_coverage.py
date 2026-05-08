@@ -14,7 +14,9 @@ def test_check_core_invariants_returns_empty_without_finding_collection():
 
 
 def test_pipeline_helper_wrappers_cover_remaining_collection_branches(monkeypatch, tmp_path, capsys):
-    monkeypatch.setattr(pipeline, "_read_pyproject", lambda: {"project": {"name": "sattlint", "optional-dependencies": {}}})
+    monkeypatch.setattr(
+        pipeline, "_read_pyproject", lambda: {"project": {"name": "sattlint", "optional-dependencies": {}}}
+    )
     monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
     monkeypatch.setattr(pipeline, "_tool_version", lambda _name: "1.0")
     monkeypatch.setattr(
@@ -111,13 +113,13 @@ def test_pipeline_helper_wrappers_cover_remaining_collection_branches(monkeypatc
             "profile": "full",
             "overall_status": "pass",
             "tool_statuses": {},
-            "status_report": "artifacts/analysis/status.json",
-            "summary_report": "artifacts/analysis/summary.json",
-            "corpus_results_report": "artifacts/analysis/corpus_results.json",
+            "status_report": "reports/status.json",
+            "summary_report": "reports/summary.json",
+            "corpus_results_report": "reports/corpus_results.json",
         }
     )
     output = capsys.readouterr().out
-    assert "Corpus results report: artifacts/analysis/corpus_results.json" in output
+    assert "Corpus results report: reports/corpus_results.json" in output
 
 
 def test_run_stage_helpers_cover_fallback_and_missing_junit_branches(monkeypatch, tmp_path):
@@ -140,7 +142,9 @@ def test_run_stage_helpers_cover_fallback_and_missing_junit_branches(monkeypatch
     def fake_run_command(name, command, cwd=pipeline.REPO_ROOT):
         commands.append(command)
         if name == "ruff":
-            return pipeline.CommandResult(name=name, command=command, exit_code=0, duration_seconds=0.0, stdout="[]", stderr="")
+            return pipeline.CommandResult(
+                name=name, command=command, exit_code=0, duration_seconds=0.0, stdout="[]", stderr=""
+            )
         if name == "pyright":
             return pipeline.CommandResult(
                 name=name,
@@ -150,14 +154,18 @@ def test_run_stage_helpers_cover_fallback_and_missing_junit_branches(monkeypatch
                 stdout=json.dumps({"generalDiagnostics": [], "summary": {"errorCount": 1, "warningCount": 2}}),
                 stderr="",
             )
-        return pipeline.CommandResult(name=name, command=command, exit_code=1, duration_seconds=0.0, stdout="", stderr="missing junit")
+        return pipeline.CommandResult(
+            name=name, command=command, exit_code=1, duration_seconds=0.0, stdout="", stderr="missing junit"
+        )
 
     monkeypatch.setattr(pipeline, "_run_command", fake_run_command)
     monkeypatch.setattr(pipeline, "_parse_pytest_junit", lambda _path: (_ for _ in ()).throw(FileNotFoundError()))
 
     ruff_report, _ = pipeline._run_ruff_stage(typed_progress, python_cmd=["python"])
     pyright_report, _ = pipeline._run_pyright_stage(typed_progress, python_cmd=["python"])
-    pytest_report = pipeline._run_pytest_stage(typed_progress, output_dir=tmp_path, python_cmd=["python"], profile="quick")
+    pytest_report = pipeline._run_pytest_stage(
+        typed_progress, output_dir=tmp_path, python_cmd=["python"], profile="quick"
+    )
 
     assert commands[0][:3] == ["python", "-m", "ruff"]
     assert commands[1][:3] == ["python", "-m", "pyright"]

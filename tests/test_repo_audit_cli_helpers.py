@@ -83,7 +83,7 @@ def test_main_apply_ai_gc_calls_apply_helper(monkeypatch, tmp_path, capsys):
         "status": "pass",
         "summary": {"candidate_count": 1, "applied_count": 1, "failure_count": 0},
         "candidates": [],
-        "applied_actions": [{"path": "artifacts/audit-review-old", "action": "delete"}],
+        "applied_actions": [{"path": "scratch/audit-review-old", "action": "delete"}],
         "failures": [],
     }
 

@@ -19,7 +19,15 @@ SRC_PATH = REPO_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from sattlint.devtools._portable_command_text import pytest_command  # noqa: E402
+
+def _repo_python_command(*args: str) -> str:
+    parts = ["python", "scripts/run_repo_python.py", *args]
+    return " ".join(part for part in parts if part)
+
+
+def _pytest_command(*args: str) -> str:
+    return _repo_python_command("-m", "pytest", *args)
+
 
 STRUCTURAL_RATCHET_PATH = "artifacts/analysis/structural_budget_ratchet.json"
 COVERAGE_RATCHET_PATH = "artifacts/analysis/coverage_ratchet.json"
@@ -47,7 +55,7 @@ FILE_DEBT_TOUCH_RULE_RANKS = {
     "structural": {"must_meet_target": 0, "must_shrink": 1, "must_not_grow": 2},
     "typing": {"must_exit_on_touch": 0},
 }
-FIRST_STRUCTURAL_DEBT_PROOF_COMMAND = pytest_command(
+FIRST_STRUCTURAL_DEBT_PROOF_COMMAND = _pytest_command(
     "--no-cov", "tests/test_ratchet_policy.py", "-x", "-q", "--tb=short"
 )
 
