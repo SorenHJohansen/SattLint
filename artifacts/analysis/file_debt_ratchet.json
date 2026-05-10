@@ -33,7 +33,7 @@
         "current_baseline": 522,
         "reason": "Parser AST schema owner remains centralized pending model decomposition.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattline_parser/transformer/_modules_mixin.py": {
@@ -42,7 +42,7 @@
         "current_baseline": 835,
         "reason": "Parser transformer owner surface still centralizes grammar-to-AST normalization.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattline_parser/utils/text_processing.py": {
@@ -85,7 +85,7 @@
         "current_baseline": 679,
         "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/_sfc_guard_logic.py": {
@@ -137,7 +137,7 @@
         "current_baseline": 509,
         "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/_variables_execution.py": {
@@ -180,7 +180,7 @@
         "current_baseline": 745,
         "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/comment_code.py": {
@@ -214,7 +214,7 @@
         "current_baseline": 1677,
         "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/icf.py": {
@@ -230,7 +230,7 @@
         "current_baseline": 928,
         "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/initial_values.py": {
@@ -273,7 +273,7 @@
         "current_baseline": 835,
         "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/modules.py": {
@@ -289,7 +289,7 @@
         "current_baseline": 1387,
         "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/naming.py": {
@@ -323,7 +323,7 @@
         "current_baseline": 823,
         "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/reset_contamination.py": {
@@ -339,7 +339,7 @@
         "current_baseline": 1551,
         "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/rule_profiles.py": {
@@ -366,7 +366,7 @@
         "current_baseline": 2095,
         "reason": "Builtin analyzer catalog is intentionally centralized as a generated owner surface.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/sattline_semantics.py": {
@@ -382,7 +382,7 @@
         "current_baseline": 1173,
         "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/scan_loop_resource_usage.py": {
@@ -470,7 +470,7 @@
         "current_baseline": 713,
         "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/variable_usage_reporting.py": {
@@ -486,7 +486,7 @@
         "current_baseline": 503,
         "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/variables.py": {
@@ -532,7 +532,7 @@
         "current_baseline": 1291,
         "reason": "Interactive analysis app owner surface still centralizes analysis menu orchestration.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/app_base.py": {
@@ -566,7 +566,7 @@
         "current_baseline": 907,
         "reason": "Interactive graphics app owner surface still centralizes graphics rule workflows.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/app_menus.py": {
@@ -618,7 +618,7 @@
         "current_baseline": 565,
         "reason": "Config owner surface still centralizes validation, defaults, and persistence flows.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/console.py": {
@@ -688,7 +688,7 @@
         "current_baseline": 1729,
         "reason": "Semantic core owner surface still centralizes workspace analysis behavior.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/core/taint_paths.py": {
@@ -749,7 +749,7 @@
         "current_baseline": 759,
         "reason": "Devtools owner surface still centralizes audit-support behavior.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/devtools/coverage_reports.py": {
@@ -783,7 +783,7 @@
         "current_baseline": 740,
         "reason": "Devtools owner surface still centralizes audit-support behavior.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/devtools/finding_exports.py": {
@@ -835,7 +835,7 @@
         "current_baseline": 2297,
         "reason": "Pipeline owner surface still centralizes shared audit and report orchestration.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/devtools/pipeline_artifacts.py": {
@@ -860,7 +860,7 @@
         "current_baseline": 2294,
         "reason": "Repo-audit owner surface still centralizes full-profile audit checks.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/devtools/repo_audit_cli.py": {
@@ -885,7 +885,7 @@
         "current_baseline": 1477,
         "reason": "Repo-audit entrypoint owner still centralizes runnable audit check wiring.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/devtools/review_tool.py": {
@@ -910,7 +910,7 @@
         "current_baseline": 1805,
         "reason": "Structural-report owner surface still centralizes shared architecture and ratchet reporting.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/docgenerator/analyzer_ref.py": {
@@ -928,7 +928,7 @@
         "current_baseline": 672,
         "reason": "Documentation generation owner surface still centralizes DOCX assembly behavior.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/docgenerator/configgen.py": {
@@ -944,7 +944,7 @@
         "current_baseline": 1127,
         "reason": "Documentation generation owner surface still centralizes DOCX assembly behavior.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/docgenerator/docgen.py": {
@@ -953,7 +953,7 @@
         "current_baseline": 1383,
         "reason": "Documentation generation owner surface still centralizes DOCX assembly behavior.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/engine.py": {
@@ -969,7 +969,7 @@
         "current_baseline": 1152,
         "reason": "Engine owner surface still centralizes program loading and merge semantics.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/graphics_validation.py": {
@@ -1030,7 +1030,7 @@
         "current_baseline": 672,
         "reason": "Reporting owner surface still centralizes variable report formatting and summaries.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/resolution/common.py": {
@@ -1046,7 +1046,7 @@
         "current_baseline": 534,
         "reason": "Resolution owner surface still centralizes shared semantic lookup behavior.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/resolution/context_builder.py": {
@@ -1098,7 +1098,7 @@
         "current_baseline": 658,
         "reason": "Shared utility owner surface still centralizes text-processing helpers.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/validation.py": {
@@ -1114,7 +1114,7 @@
         "current_baseline": 1259,
         "reason": "Validation owner surface still centralizes strict semantic checks.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint_gui/binding.py": {
@@ -1238,7 +1238,7 @@
         "current_baseline": 551,
         "reason": "LSP owner surface still centralizes editor protocol behavior.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint_lsp/_server_helpers.py": {
@@ -1254,7 +1254,7 @@
         "current_baseline": 823,
         "reason": "LSP owner surface still centralizes editor protocol behavior.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint_lsp/document_state.py": {
@@ -1279,7 +1279,7 @@
         "current_baseline": 555,
         "reason": "LSP owner surface still centralizes editor protocol behavior.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint_lsp/server.py": {
@@ -1306,7 +1306,7 @@
         "current_baseline": 2491,
         "reason": "Owner regression suite remains aggregated by analyzer surface pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_analyzers_suites.py": {
@@ -1315,7 +1315,7 @@
         "current_baseline": 2311,
         "reason": "Owner regression suite remains aggregated by analyzer surface pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_analyzers_variables.py": {
@@ -1324,7 +1324,7 @@
         "current_baseline": 2232,
         "reason": "Owner regression suite remains aggregated by analyzer surface pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_app_analysis.py": {
@@ -1333,7 +1333,7 @@
         "current_baseline": 1349,
         "reason": "Owner regression suite remains aggregated by app surface pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_app_menus.py": {
@@ -1342,7 +1342,7 @@
         "current_baseline": 1331,
         "reason": "Owner regression suite remains aggregated by app surface pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_builtin_record_semantics.py": {
@@ -1351,7 +1351,7 @@
         "current_baseline": 636,
         "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_comment_code.py": {
@@ -1360,7 +1360,7 @@
         "current_baseline": 544,
         "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_corpus.py": {
@@ -1369,7 +1369,7 @@
         "current_baseline": 586,
         "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_dataflow.py": {
@@ -1378,7 +1378,7 @@
         "current_baseline": 659,
         "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_docgen.py": {
@@ -1387,7 +1387,7 @@
         "current_baseline": 2212,
         "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_editor_api.py": {
@@ -1396,7 +1396,7 @@
         "current_baseline": 1310,
         "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_engine.py": {
@@ -1405,7 +1405,7 @@
         "current_baseline": 1413,
         "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_gui.py": {
@@ -1414,7 +1414,7 @@
         "current_baseline": 1638,
         "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_icf_validation.py": {
@@ -1423,7 +1423,7 @@
         "current_baseline": 1144,
         "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_lsp_diagnostics.py": {
@@ -1432,7 +1432,7 @@
         "current_baseline": 1657,
         "reason": "Owner regression suite remains aggregated by LSP surface pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_lsp_document.py": {
@@ -1441,7 +1441,7 @@
         "current_baseline": 1331,
         "reason": "Owner regression suite remains aggregated by LSP surface pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_parser_core.py": {
@@ -1450,7 +1450,7 @@
         "current_baseline": 2329,
         "reason": "Owner regression suite remains aggregated by parser surface pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_parser_validation.py": {
@@ -1459,7 +1459,7 @@
         "current_baseline": 2482,
         "reason": "Owner regression suite remains aggregated by parser surface pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_pipeline_collection.py": {
@@ -1468,7 +1468,7 @@
         "current_baseline": 2163,
         "reason": "Owner regression suite remains aggregated by pipeline surface pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_pipeline_run.py": {
@@ -1477,7 +1477,7 @@
         "current_baseline": 1466,
         "reason": "Owner regression suite remains aggregated by pipeline surface pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_repo_audit.py": {
@@ -1486,7 +1486,7 @@
         "current_baseline": 2605,
         "reason": "Owner regression suite remains aggregated by repo-audit surface pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_sattline_semantics.py": {
@@ -1495,7 +1495,7 @@
         "current_baseline": 1081,
         "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     },
     "tests/test_structural_reports.py": {
@@ -1504,7 +1504,7 @@
         "current_baseline": 1088,
         "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
         "target": 500,
-        "touch_rule": "must_not_grow"
+        "touch_rule": "must_shrink"
       }
     }
   },

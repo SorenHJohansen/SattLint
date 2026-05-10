@@ -15,7 +15,7 @@ This is the thin planning alias over `SattLint Orchestrator`. Keep work in one s
 - DO NOT broaden scope when one owning surface and one validation command are enough.
 - DO NOT choose a generic executor when a closer specialist agent exists.
 - DO NOT leave planning without exact file claims, first validation, and finish-gate intent.
-- DO use the `codegraph-routing` skill first for read-only owner, symbol, or call-flow exploration when `.codegraph/` is initialized.
+- DO use the `codegraph-routing` skill first for read-only owner, symbol, or call-flow exploration when `.codegraph/` is initialized. The main session must use `codegraph_explore` directly — subagents cannot access MCP tools.
 - DO NOT tell agents to hand-edit coordination ledger files to start a new slice.
 - DO use `python scripts/bootstrap_ai_slice.py ...` as the canonical slice-bootstrap path.
 - DO treat the shared orchestration lock as `.git/sattlint-ai-coordination/current_work_lock.json`.
@@ -24,7 +24,7 @@ This is the thin planning alias over `SattLint Orchestrator`. Keep work in one s
 
 1. Read `.git/sattlint-ai-coordination/current_work_lock.json` first.
 2. Use `codegraph-routing` for the lightest owner-surface lookup that can answer the routing question before widening to broad text search.
-3. If routing still needs broader read-only exploration, use the `Explore` agent and instruct it to use CodeGraph as its primary source.
+3. If routing still needs broader read-only exploration, use `codegraph_explore` in the main session to gather source sections, then pass them inline to any subagent.
 4. Identify the controlling file, symbol, or owner surface.
 5. Decide whether the task is one slice or multiple isolated workstreams.
 6. Route implementation to the closest specialist executor when parser, workspace, repo-audit, CLI, or docgen boundaries apply.

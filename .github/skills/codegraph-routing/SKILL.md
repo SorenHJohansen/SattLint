@@ -16,8 +16,8 @@ Use this skill when you need read-only codebase exploration before editing and `
 
 ## Procedure
 
-1. If CodeGraph tools are available, start with the lightest query that can answer the question: symbol lookup, single-node details, callers or callees, then impact.
-2. For broader exploration, run an `Explore` subagent and instruct it to use CodeGraph as its primary source.
+1. Start with the lightest query that can answer the question: symbol lookup, single-node details, callers/callees, then impact.
+2. For broader exploration, use `codegraph_explore` in the main session to gather source sections in one call, then pass them inline to any subagent. Do NOT tell subagents to use codegraph tools — they lack MCP access.
 3. Do not reread files that CodeGraph already returned unless you need one nearby detail or a file it did not include.
 4. Fall back to `rg`, semantic search, and targeted file reads only when CodeGraph is unavailable or the needed file is outside the index.
 5. If indexed results look stale after code changes, rebuild the index before concluding the symbol is missing.

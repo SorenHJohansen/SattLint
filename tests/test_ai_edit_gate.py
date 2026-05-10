@@ -68,6 +68,9 @@ def test_main_runs_ruff_fix_and_format_for_explicit_python_files(monkeypatch, tm
     assert commands == [
         ["python", "-m", "ruff", "check", "--fix", "--select", "E,F,W,I", "--ignore", "E501", "src/demo.py"],
         ["python", "-m", "ruff", "format", "src/demo.py"],
+        ["python", "-m", "pyright", "src/demo.py"],
+        ["python", "-m", "sattlint.devtools.doc_gardener", "--check-only"],
+        ["python", "-m", "sattlint.devtools.layer_linter"],
     ]
 
 
@@ -149,4 +152,7 @@ def test_main_uses_git_diff_when_no_explicit_paths(monkeypatch, tmp_path):
         ["git", "ls-files", "--others", "--exclude-standard"],
         ["python", "-m", "ruff", "check", "--fix", "--select", "E,F,W,I", "--ignore", "E501", "src/demo.py"],
         ["python", "-m", "ruff", "format", "src/demo.py"],
+        ["python", "-m", "pyright", "src/demo.py"],
+        ["python", "-m", "sattlint.devtools.doc_gardener", "--check-only"],
+        ["python", "-m", "sattlint.devtools.layer_linter"],
     ]

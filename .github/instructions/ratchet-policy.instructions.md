@@ -6,11 +6,11 @@ applyTo: ["scripts/check_ratchet_policy.py", "tests/test_ratchet_policy.py", "ar
 # Ratchet Policy
 
 - Treat `scripts/check_ratchet_policy.py` as the blocking policy seam. Keep report surfaces and workflow labels aligned, but do not introduce a second policy engine in docs, reports, or helper code.
-- Ratchet edits are not a substitute for fixing code or tests. Do not loosen baselines, debt allowlists, file-line exceptions, or touch rules just to make a failing change pass.
+- Ratchet is strictly monotonic and never loosens. No baseline inflation — ever. Fix code or tests to meet the existing ratchet; do not rebaseline upward to make a change pass.
 - Protected ratchet edits must carry a same-change approval record at `.github/approvals/ratchet-rebaseline-<date>.md` with both `Approved-by:` and `Reason:` lines.
 - Protected-path edits must verify approval-record discovery in both staged and worktree contexts before widening the change.
 - If a protected edit fails because the approval record is untracked or invisible to change-context detection, fix the change-detection seam first instead of broadening the protected edit.
-- Structural and typing ratchets stay monotonic. Coverage uses the baseline-plus-buffer rule: `summary.total_line_rate` must not decrease, `metrics.min_line_rate_basis_points` must equal the recorded baseline minus `1.00` percentage point, and `pyproject.toml` `--cov-fail-under` must stay aligned to that derived floor.
+- Structural and typing ratchets are strictly monotonic and never loosen. Coverage uses the baseline-plus-buffer rule: `summary.total_line_rate` must not decrease, `metrics.min_line_rate_basis_points` must equal the recorded baseline minus `1.00` percentage point, and `pyproject.toml` `--cov-fail-under` must stay aligned to that derived floor.
 - `artifacts/analysis/file_debt_ratchet.json` is sparse and shrink-only. Only debt-bearing files belong in it, and clearing debt should remove entries instead of leaving stale placeholders.
 - New per-file debt entries must mirror checked-in debt authorities instead of inventing new debt categories: structural entries mirror approved file-line exceptions, typing entries mirror `tool.sattlint.typing_ratchet.debt_allowlist`, and coverage entries mirror the current `coverage.xml` module rates.
 - Converging touch rules are required when debt remains above target. Structural debt above target should use `must_shrink` or `must_meet_target` as appropriate, typing debt must use `must_exit_on_touch`, and current coverage debt entries use `must_reach_target_on_touch` toward full proof.

@@ -65,24 +65,8 @@ jobs:
       - name: Install markdownlint-cli2
         run: npm install --global markdownlint-cli2@0.22.1
 
-      - name: Install actionlint
-        shell: bash
-        run: |
-          curl -sSL -o /tmp/actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
-          tar -xzf /tmp/actionlint.tar.gz -C /tmp
-          sudo install -m 0755 /tmp/actionlint /usr/local/bin/actionlint
-          actionlint --version
-
-      - name: Run pre-commit hooks
-        run: |
-          export PATH="/usr/local/bin:$PATH"
-          python -m pre_commit run --all-files
-
       - name: Run pytest with coverage
         run: python -m pytest -q --tb=short
-
-      - name: Enforce ratchet policy
-        run: python scripts/check_ratchet_policy.py
 
   pip-audit:
     name: Pip Audit

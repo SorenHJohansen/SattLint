@@ -168,6 +168,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         if format_exit_code != 0:
             return format_exit_code
 
+        pyright_command = [str(python_executable), "-m", "pyright", *python_files]
+        pyright_exit_code = _run_command(pyright_command, label="pyright on touched Python files")
+        if pyright_exit_code != 0:
+            return pyright_exit_code
+
     if run_exec_plan_sync:
         exec_plan_sync_command = [str(python_executable), "-m", "sattlint.devtools.ai_work_map", "--write"]
         exec_plan_sync_exit_code = _run_command(
@@ -179,7 +184,22 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if run_context_health:
         context_health_command = [str(python_executable), "scripts/context_health.py", "--check"]
-        return _run_command(context_health_command, label="context health on touched AI-control files")
+        context_health_exit_code = _run_command(
+            context_health_command, label="context health on touched AI-control files"
+        )
+        if context_health_exit_code != 0:
+            return context_health_exit_code
+
+    if python_files:
+        doc_gardener_command = [str(python_executable), "-m", "sattlint.devtools.doc_gardener", "--check-only"]
+        doc_gardener_exit_code = _run_command(doc_gardener_command, label="doc-gardener on repository docs")
+        if doc_gardener_exit_code != 0:
+            return doc_gardener_exit_code
+
+        layer_linter_command = [str(python_executable), "-m", "sattlint.devtools.layer_linter"]
+        layer_linter_exit_code = _run_command(layer_linter_command, label="layer-linter on repository architecture")
+        if layer_linter_exit_code != 0:
+            return layer_linter_exit_code
 
     return 0
 

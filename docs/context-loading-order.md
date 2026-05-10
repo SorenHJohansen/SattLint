@@ -1,6 +1,6 @@
 # Context Loading Order
 
-Controls prompt bloat for human-loaded context. Machine routing should start with `sattlint-repo-audit --profile full --planning-context --output-dir artifacts/audit`, then load only the instruction files and owner suites that report selects.
+Controls prompt bloat for human-loaded context. Machine routing should start with `sattlint-repo-audit --profile full --planning-context --output-dir artifacts/audit`, then load only the instruction files and owner suites that report selects. For quick symbol lookup before loading full context, use lightweight codegraph tools (`codegraph_search`, `codegraph_callers`, `codegraph_callees`, `codegraph_impact`, `codegraph_node`). For broader code exploration, delegate to an Explore agent using `codegraph_explore`.
 
 ## Loading Priority
 
