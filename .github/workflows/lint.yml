@@ -50,7 +50,7 @@ jobs:
           uv pip install --system "ruff==0.15.12"
 
       - name: Run Ruff
-        run: python -m ruff check src
+        run: python -m ruff check src tests
 
       - name: Run Ruff Format
         run: python -m ruff format --check src

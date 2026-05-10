@@ -8,6 +8,6 @@ applyTo: ["AGENTS.md", ".github/agents/**", ".github/prompts/**", ".github/skill
 - Prefer scoped instructions over growing global instructions.
 - Keep frontmatter concise and keyword-rich so discovery works.
 - Avoid broad `applyTo` unless the instruction truly applies everywhere.
-- When debt-slice prompts or agents touch oversized debt-bearing owner files, bias them toward extraction into sibling modules or explicit shrink/decomposition slices instead of appending more code into the owner file.
+- When debt-slice prompts or agents touch oversized debt-bearing owner files, shrink them below target; bias toward extraction into sibling modules or explicit shrink/decomposition slices.
 - Hook scripts must fail open unless blocking behavior is explicitly intended and safe.
 - Validate hook scripts with a compile or smoke test, and validate markdown or JSON files with workspace diagnostics.

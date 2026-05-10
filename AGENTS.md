@@ -30,6 +30,16 @@
 
 See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface map.
 
+## CodeGraph
+
+`.codegraph/` is initialized in this repo (347 files, 8926 nodes). Use the `codegraph-routing` skill (`.github/skills/codegraph-routing/SKILL.md`) for read-only exploration before editing.
+
+**Main session** — lightweight tools only: `codegraph_search`, `codegraph_callers`/`codegraph_callees`, `codegraph_impact`, `codegraph_node`. For broader exploration, use `codegraph_explore` directly (one call) to gather source sections, then pass them inline to subagents.
+
+**Subagents cannot use MCP tools.** Do not tell subagents to call codegraph tools — the main session must gather context and pass it in the prompt.
+
+**Health** — use `codegraph status` or the `CodeGraph Maintenance` prompt (`.github/prompts/codegraph-maintenance.prompt.md`). Rebuild with `codegraph init --index` if the index is stale.
+
 ## Critical Invariants (Auto-Loaded)
 
 - Reuse existing seams. No broad rewrites or duplicate tooling.
@@ -41,7 +51,7 @@ See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface
 - One task contract and one handoff per scoped slice when work moves between executor, test, and reviewer.
 - Use `@context-optimizer /audit` before growing AI control files.
 - Keep AGENTS small, scoped instructions rich, and handoffs machine-readable.
-- AI must fix code or tests before any ratchet rebaseline.
+- Ratchet is strictly monotonic and never loosens. No baseline inflation — ever. Fix code or tests to meet the existing ratchet; do not rebaseline upward to make a change pass.
 - Before editing a failing owner file, classify it as a safe owner, debt-controlled owner, protected config, or shared infra. If the owner is debt-controlled or protected, prefer the nearest helper, policy, or extraction seam instead of patching the owner directly.
 - If the first fix trips ratchet, approval, or finish-gate policy rather than behavior, stop and recut the slice around the controlling policy seam. Treat `artifacts/audit/` outputs as snapshots and refresh or mark them stale when newer focused validation contradicts them.
 - When a claimed owner file is already oversized in `artifacts/analysis/file_debt_ratchet.json`, default to extraction into sibling modules or an explicit shrink/decomposition slice instead of appending more code to that owner file.
@@ -62,7 +72,7 @@ See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface
 ## Forbidden Patterns
 
 - Broad rewrites without explicit justification.
-- Lowering ratchets instead of fixing root cause.
+- Lowering ratchets. Never loosen baselines, debt allowlists, file-line exceptions, or touch rules.
 - Empty handoffs, empty final answers, or path-dump outputs.
 - Expanding global instructions when scoped instructions or prompts fit.
 - Skipping focused validation when an executable local check exists.

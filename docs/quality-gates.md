@@ -34,11 +34,12 @@ Only debt-bearing files belong in it.
 - Typing entries mirror `tool.sattlint.typing_ratchet.debt_allowlist` and define which touched files must exit debt immediately.
 - Coverage entries now mirror the current per-file module rates in `coverage.xml` for the full checked-in source coverage debt inventory and currently use `must_reach_target_on_touch` toward 100% full-file proof. `scripts/check_ratchet_policy.py` remains the blocking policy seam, while `src/sattlint/devtools/coverage_reports.py` stays the reporting and recommendation surface for global, changed-line, and touched-file coverage proof rather than a second blocking policy engine.
 
-Normal work keeps the ledger shrink-only:
+The ratchet is strictly monotonic and never loosens. Normal work keeps the ledger shrink-only:
 
 - remove entries when debt is cleared
-- tighten targets or touch rules when real fixes land
+- tighten targets or touch rules when real fixes land — never widen them
 - do not add new debt entries without an approval record
+- do not increase baselines, targets, or exception limits — fix code or tests instead
 
 Protected ratchet edits must carry an approval record under `.github/approvals/ratchet-rebaseline-<date>.md`.
 For file-debt migrations, only add entries that already mirror existing checked-in debt authorities such as the structural ratchet exception list, the typing debt allowlist, or the current per-file module rates recorded in `coverage.xml`.
