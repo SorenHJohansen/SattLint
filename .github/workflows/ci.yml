@@ -73,7 +73,7 @@ jobs:
         run: python -m sattlint.devtools.repo_audit --profile full --output-dir artifacts/audit-ci --fail-on high
 
       - name: Build repo health dashboard
-        run: python scripts/repo_health.py --check --audit-dir artifacts/audit-ci --json-output artifacts/health/repo-health.json --markdown-output docs/generated/repo-health.md
+        run: python scripts/repo_health.py --check --audit-dir artifacts/audit-ci --json-output artifacts/health/repo-health.json --markdown-output docs/generated/repo-health.md --html-output artifacts/health/repo-health.html
 
       - name: Upload CI health artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -133,7 +133,7 @@ jobs:
         run: python -m sattlint.devtools.repo_audit --profile full --output-dir artifacts/audit-nightly --fail-on high
 
       - name: Build nightly repo health snapshot
-        run: python scripts/repo_health.py --check --audit-dir artifacts/audit-nightly --json-output artifacts/health/repo-health-nightly.json --markdown-output artifacts/health/repo-health-nightly.md --history-output artifacts/health/history/repo-health-nightly.json
+        run: python scripts/repo_health.py --check --audit-dir artifacts/audit-nightly --json-output artifacts/health/repo-health-nightly.json --markdown-output artifacts/health/repo-health-nightly.md --html-output artifacts/health/repo-health-nightly.html --history-output artifacts/health/history/repo-health-nightly.json
 
       - name: Upload nightly health artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

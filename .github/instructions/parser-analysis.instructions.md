@@ -1,7 +1,7 @@
 ---
 description: "Use when changing parser-core, strict validation, grammar, AST, transformer, parser fixtures, or parser tests in SattLint. Covers parser invariants and first validation routing."
 name: "Parser Analysis Instructions"
-applyTo: ["src/sattline_parser/**", "src/sattlint/grammar/**", "src/sattlint/models/ast_model.py", "src/sattlint/transformer/**", "tests/test_parser*.py", "tests/fixtures/corpus/**"]
+applyTo: ["src/sattline_parser/**", "src/sattlint/grammar/**", "src/sattlint/models/ast_model.py", "src/sattlint/transformer/**", "tests/parser/**", "tests/fixtures/corpus/**"]
 ---
 # Parser Analysis
 

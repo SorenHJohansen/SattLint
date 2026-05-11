@@ -321,3 +321,91 @@ def test_repo_audit_entrypoints_cover_delegate_and_default_manifest_branches(mon
 
     manifest_dir.mkdir(parents=True)
     assert repo_audit_entrypoints._default_corpus_manifest_dir() is None
+
+
+def test_run_repo_audit_findings_checks_writes_selected_check_reports(monkeypatch, tmp_path):
+    from sattlint.devtools import _repo_audit_full_run as full_run_helper
+
+    findings = [
+        repo_audit.Finding(
+            "cleanup-candidate",
+            "maintenance",
+            "high",
+            "high",
+            "Cleanup recommended.",
+            path="artifacts/old.json",
+            history_cleanup_recommended=True,
+        ),
+        repo_audit.Finding(
+            "cli-gap",
+            "architecture",
+            "medium",
+            "high",
+            "CLI gap.",
+            path="src/sattlint/app.py",
+            line=12,
+        ),
+    ]
+    ai_gc_report = {
+        "kind": "sattlint.ai_gc",
+        "schema_version": 1,
+        "generated_by": "sattlint.devtools.ai_gc",
+        "mode": "report",
+        "status": "needs-attention",
+        "summary": {"candidate_count": 1},
+        "candidates": [{"candidate_id": "stale-ai-artifact", "path": "artifacts/old.json"}],
+        "applied_actions": [],
+        "failures": [],
+    }
+    markdown_calls: list[tuple[object, ...]] = []
+    history_calls: list[tuple[object, ...]] = []
+
+    monkeypatch.setattr(repo_audit, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(repo_audit, "build_ai_gc_report", lambda _root: ai_gc_report)
+    monkeypatch.setattr(repo_audit, "_write_markdown", lambda *args, **kwargs: markdown_calls.append(args))
+    monkeypatch.setattr(
+        repo_audit,
+        "_write_audit_run_history",
+        lambda *args, **kwargs: history_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        full_run_helper,
+        "_entrypoints_module",
+        lambda: SimpleNamespace(
+            _repo_audit_module=lambda: repo_audit,
+            collect_custom_findings=lambda *args, **kwargs: findings,
+            _blocking_finding_count=lambda _findings, _fail_on: 1,
+            _severity_counts=lambda _findings: {"high": 1, "medium": 1},
+            _category_counts=lambda _findings: {"maintenance": 1, "architecture": 1},
+            _max_severity=lambda _findings: "high",
+        ),
+    )
+
+    latest_output_dir = tmp_path / "latest"
+    summary = full_run_helper._run_repo_audit_findings_checks(
+        tmp_path / "selected-checks",
+        profile="full",
+        check_ids=["ai-gc", "cli", "ai-gc"],
+        fail_on="high",
+        include_generated=False,
+        suspicious_identifiers=("SQHJ",),
+        latest_output_dir=latest_output_dir,
+    )
+
+    status_report = json.loads((tmp_path / "selected-checks" / "status.json").read_text(encoding="utf-8"))
+    findings_report = json.loads((tmp_path / "selected-checks" / "findings.json").read_text(encoding="utf-8"))
+
+    assert summary["selected_checks"] == ["ai-gc", "cli"]
+    assert summary["finding_count"] == 2
+    assert summary["history_cleanup_findings"] == [findings[0].to_dict()]
+    assert summary["reports"]["pipeline_status"] is None
+    assert summary["reports"]["pipeline_summary"] is None
+    assert status_report["overall_status"] == "fail"
+    assert status_report["blocking_finding_count"] == 1
+    assert status_report["latest_status_report"].endswith("latest/status.json")
+    assert status_report["top_findings"][0]["id"] == "cleanup-candidate"
+    assert findings_report["kind"] == "sattlint.findings"
+    assert [item["id"] for item in findings_report["findings"]] == ["cleanup-candidate", "cli-gap"]
+    assert (tmp_path / "selected-checks" / "ai_gc.json").exists()
+    assert markdown_calls
+    assert history_calls

@@ -7,6 +7,7 @@ from typing import Any, cast
 from sattline_parser.models.ast_model import BasePicture
 
 from . import app_support as app_support_module
+from . import cache as cache_module
 from . import console as console_module
 from . import engine as engine_module
 from .analyzers import variable_usage_reporting as variables_reporting_module
@@ -25,12 +26,21 @@ from .analyzers.rule_profiles import apply_rule_profile_to_report
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variable_usage_reporting import debug_variable_usage
 from .analyzers.variables import IssueKind, analyze_variables, filter_variable_report
-from .cache import ASTCache, compute_cache_key, get_cache_dir
+from .cache import ASTCache
 from .casefolding import casefold_equal, casefold_key
 from .models.project_graph import ProjectGraph
 from .reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, VariablesReport
 
-VARIABLE_ANALYSES = {
+ConfigDict = dict[str, Any]
+LoadedProject = tuple[str, BasePicture, ProjectGraph]
+VariableAnalysisSelection = set[IssueKind] | None
+VariableAnalysisMap = dict[str, tuple[str, VariableAnalysisSelection]]
+
+app_support = cast(Any, app_support_module)
+cache = cast(Any, cache_module)
+engine = cast(Any, engine_module)
+
+VARIABLE_ANALYSES: VariableAnalysisMap = {
     "1": ("All variable analyses (high confidence)", None),
     "2": ("Unused variables", {IssueKind.UNUSED}),
     "3": ("Unused fields in datatypes", {IssueKind.UNUSED_DATATYPE_FIELD}),
@@ -54,7 +64,7 @@ VARIABLE_ANALYSES = {
     "21": ("High fan-in or fan-out variables", {IssueKind.HIGH_FAN_IN_OUT}),
 }
 
-HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = (
+HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
     "2",
     "3",
     "4",
@@ -69,7 +79,7 @@ HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = (
     "13",
 )
 
-LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = (
+LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
     "14",
     "15",
     "16",
@@ -79,15 +89,17 @@ LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = (
     "20",
     "21",
 )
-emit_output = console_module.print_output  # type: ignore[assignment]
+emit_output: Callable[..., None] = console_module.print_output  # type: ignore[assignment]
+compute_cache_key: Callable[[ConfigDict], str] = cache.compute_cache_key
+get_cache_dir: Callable[[], Path] = cache.get_cache_dir
 
 
 def _extract_warning_name(item: str) -> str | None:
-    return app_support_module.extract_warning_name(item)
+    return cast(str | None, app_support.extract_warning_name(item))
 
 
 def _target_validation_warnings(target_name: str, warnings: list[str]) -> list[str]:
-    return app_support_module.target_validation_warnings(target_name, warnings)
+    return cast(list[str], app_support.target_validation_warnings(target_name, warnings))
 
 
 def _print_validation_warnings(warnings: list[str], *, limit: int = 12) -> None:
@@ -96,32 +108,33 @@ def _print_validation_warnings(warnings: list[str], *, limit: int = 12) -> None:
 
     emit_output(f"Validation warnings ({len(warnings)}):")
     for item in warnings[:limit]:
+        _extract_warning_name(item)
         emit_output(f"  - {item}")
     if len(warnings) > limit:
         emit_output(f"  - ... (+{len(warnings) - limit} more)")
 
 
-def _get_analyzed_targets(cfg: dict) -> list[str]:
-    return app_support_module.get_analyzed_targets(cfg)
+def _get_analyzed_targets(cfg: ConfigDict) -> list[str]:
+    return cast(list[str], app_support.get_analyzed_targets(cfg))
 
 
-def _require_analyzed_targets(cfg: dict) -> list[str]:
-    return app_support_module.require_analyzed_targets(cfg)
+def _require_analyzed_targets(cfg: ConfigDict) -> list[str]:
+    return cast(list[str], app_support.require_analyzed_targets(cfg))
 
 
-def _cache_key_for_target(cfg: dict, target_name: str) -> str:
+def _cache_key_for_target(cfg: ConfigDict, target_name: str) -> str:
     cache_cfg = cfg.copy()
     cache_cfg["analysis_target"] = target_name
     return compute_cache_key(cache_cfg)
 
 
 def _iter_loaded_projects(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     use_cache: bool = True,
-    require_analyzed_targets_fn: Callable[[dict], list[str]] = _require_analyzed_targets,
+    require_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _require_analyzed_targets,
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] | None = None,
-) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+) -> Iterator[LoadedProject]:
     loader = load_project if load_project_fn is None else load_project_fn
     for target_name in require_analyzed_targets_fn(cfg):
         try:
@@ -139,12 +152,12 @@ def _iter_loaded_projects(
 
 
 def iter_loaded_projects(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     use_cache: bool = True,
-    require_analyzed_targets_fn: Callable[[dict], list[str]] = _require_analyzed_targets,
+    require_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _require_analyzed_targets,
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] | None = None,
-) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+) -> Iterator[LoadedProject]:
     return _iter_loaded_projects(
         cfg,
         use_cache=use_cache,
@@ -153,7 +166,7 @@ def iter_loaded_projects(
     )
 
 
-def _source_paths_for_current_target(project_bp, graph) -> set[Path]:
+def _source_paths_for_current_target(project_bp: BasePicture, graph: ProjectGraph) -> set[Path]:
     source_files: set[Path] = getattr(graph, "source_files", set())
     origin_file = getattr(project_bp, "origin_file", None)
     if origin_file:
@@ -165,11 +178,11 @@ def _source_paths_for_current_target(project_bp, graph) -> set[Path]:
     return {path for path in source_files if casefold_key(path.stem) == target_name}
 
 
-def source_paths_for_current_target(project_bp, graph) -> set[Path]:
+def source_paths_for_current_target(project_bp: BasePicture, graph: ProjectGraph) -> set[Path]:
     return _source_paths_for_current_target(project_bp, graph)
 
 
-def _target_is_library(cfg: dict, project_bp, graph) -> bool:
+def _target_is_library(cfg: ConfigDict, project_bp: BasePicture, graph: ProjectGraph) -> bool:
     program_dir = cfg.get("program_dir")
     if not program_dir:
         return False
@@ -179,26 +192,27 @@ def _target_is_library(cfg: dict, project_bp, graph) -> bool:
         return False
 
     program_path = Path(program_dir)
-    return all(not engine_module._is_within_directory(path, program_path) for path in source_paths)
+    return all(not engine._is_within_directory(path, program_path) for path in source_paths)
 
 
-def target_is_library(cfg: dict, project_bp, graph) -> bool:
+def target_is_library(cfg: ConfigDict, project_bp: BasePicture, graph: ProjectGraph) -> bool:
     return _target_is_library(cfg, project_bp, graph)
 
 
 def load_project(
-    cfg: dict,
+    cfg: ConfigDict,
     target_name: str | None = None,
     *,
     use_cache: bool = True,
     use_file_ast_cache: bool = True,
-    require_analyzed_targets_fn: Callable[[dict], list[str]] = _require_analyzed_targets,
-    cache_key_for_target_fn: Callable[[dict, str], str] = _cache_key_for_target,
+    require_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _require_analyzed_targets,
+    cache_key_for_target_fn: Callable[[ConfigDict, str], str] = _cache_key_for_target,
     target_load_error_factory: Callable[..., Exception] | None = None,
-):
+    get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
+) -> tuple[BasePicture, ProjectGraph]:
     targets = require_analyzed_targets_fn(cfg)
     selected_target = target_name or targets[0]
-    cache_dir = get_cache_dir()
+    cache_dir = get_cache_dir_fn()
     cache = ASTCache(cache_dir)
 
     key = cache_key_for_target_fn(cfg, selected_target)
@@ -207,11 +221,11 @@ def load_project(
     if cached:
         return cast(tuple[BasePicture, ProjectGraph], cached["project"])
 
-    loader = engine_module.SattLineProjectLoader(
+    loader = engine.SattLineProjectLoader(
         program_dir=Path(cfg["program_dir"]),
         other_lib_dirs=[Path(p) for p in cfg["other_lib_dirs"]],
         abb_lib_dir=Path(cfg["ABB_lib_dir"]),
-        mode=engine_module.CodeMode(cfg["mode"]),
+        mode=engine.CodeMode(cfg["mode"]),
         scan_root_only=cfg["scan_root_only"],
         debug=cfg["debug"],
         use_file_ast_cache=use_file_ast_cache,
@@ -222,7 +236,7 @@ def load_project(
         selected_target,
         requester_dir=Path(cfg["program_dir"]),
     )
-    direct_dependencies = loader._read_deps(deps_path) if deps_path else []
+    direct_dependencies = cast(list[str], loader._read_deps(deps_path) if deps_path else [])
 
     root_bp = graph.ast_by_name.get(selected_target)
     if not root_bp:
@@ -236,9 +250,10 @@ def load_project(
             direct_dependencies=direct_dependencies,
         )
 
-    project_bp = engine_module.merge_project_basepicture(root_bp, graph)
+    project_bp = engine.merge_project_basepicture(root_bp, graph)
     used_files = set(graph.source_files)
-    cache.save(
+    cache_backend = cast(Any, cache)
+    cache_backend.save(
         key,
         project=(project_bp, graph),
         files=used_files,
@@ -246,12 +261,17 @@ def load_project(
     return project_bp, graph
 
 
-def load_program_ast(cfg: dict, program_name: str, *, force_dependency_resolution: bool = False):
-    loader = engine_module.SattLineProjectLoader(
+def load_program_ast(
+    cfg: ConfigDict,
+    program_name: str,
+    *,
+    force_dependency_resolution: bool = False,
+) -> tuple[BasePicture, ProjectGraph]:
+    loader = engine.SattLineProjectLoader(
         program_dir=Path(cfg["program_dir"]),
         other_lib_dirs=[Path(p) for p in cfg["other_lib_dirs"]],
         abb_lib_dir=Path(cfg["ABB_lib_dir"]),
-        mode=engine_module.CodeMode(cfg["mode"]),
+        mode=engine.CodeMode(cfg["mode"]),
         scan_root_only=False if force_dependency_resolution else cfg["scan_root_only"],
         debug=cfg["debug"],
     )
@@ -265,22 +285,23 @@ def load_program_ast(cfg: dict, program_name: str, *, force_dependency_resolutio
 
 
 def force_refresh_ast(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    get_analyzed_targets_fn: Callable[[dict], list[str]] = _get_analyzed_targets,
-    cache_key_for_target_fn: Callable[[dict, str], str] = _cache_key_for_target,
+    get_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _get_analyzed_targets,
+    cache_key_for_target_fn: Callable[[ConfigDict, str], str] = _cache_key_for_target,
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] = load_project,
     ast_cache_cls: type[ASTCache] = ASTCache,
     get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
-):
+) -> tuple[BasePicture, ProjectGraph] | None:
     targets = get_analyzed_targets_fn(cfg)
     if not targets:
         return None
 
     cache = ast_cache_cls(get_cache_dir_fn())
+    cache_backend = cast(Any, cache)
     result = None
     for target_name in targets:
-        cache.clear(cache_key_for_target_fn(cfg, target_name))
+        cache_backend.clear(cache_key_for_target_fn(cfg, target_name))
         result = load_project_fn(
             cfg,
             target_name=target_name,
@@ -291,10 +312,10 @@ def force_refresh_ast(
 
 
 def ensure_ast_cache(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    get_analyzed_targets_fn: Callable[[dict], list[str]] = _get_analyzed_targets,
-    cache_key_for_target_fn: Callable[[dict, str], str] = _cache_key_for_target,
+    get_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _get_analyzed_targets,
+    cache_key_for_target_fn: Callable[[ConfigDict, str], str] = _cache_key_for_target,
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] = load_project,
     ast_cache_cls: type[ASTCache] = ASTCache,
     get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
@@ -304,17 +325,18 @@ def ensure_ast_cache(
         return True
 
     cache = ast_cache_cls(get_cache_dir_fn())
+    cache_backend = cast(Any, cache)
     fast = cfg.get("fast_cache_validation", False)
     ok = True
     for target_name in targets:
         emit_output(f"\nChecking AST cache for {target_name}...")
-        cached = cache.load(cache_key_for_target_fn(cfg, target_name))
+        cached = cache_backend.load(cache_key_for_target_fn(cfg, target_name))
         if cached:
             has_manifest = bool(cached.get("files"))
             if fast and has_manifest:
-                is_valid = cache.validate(cached, fast=False)
+                is_valid = cast(bool, cache_backend.validate(cached, fast=False))
             else:
-                is_valid = cache.validate(cached, fast=fast)
+                is_valid = cast(bool, cache_backend.validate(cached, fast=fast))
             if is_valid:
                 emit_output("✔ AST cache OK")
                 continue
@@ -336,12 +358,20 @@ def ensure_ast_cache(
     return ok
 
 
+def _debug_enabled(cfg: ConfigDict) -> bool:
+    return bool(cfg.get("debug", False))
+
+
+def _unavailable_libraries(graph: ProjectGraph) -> set[str]:
+    return cast(set[str], getattr(graph, "unavailable_libraries", set[str]()))
+
+
 def run_variable_analysis(
-    cfg: dict,
+    cfg: ConfigDict,
     kinds: set[IssueKind] | None,
     *,
-    iter_loaded_projects_fn: Callable[..., Iterator[tuple[str, BasePicture, ProjectGraph]]] | None = None,
-    target_is_library_fn: Callable[[dict, Any, Any], bool] | None = None,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
+    target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] | None = None,
     analyze_variables_fn: Callable[..., VariablesReport] | None = None,
     analyze_shadowing_fn: Callable[..., VariablesReport] | None = None,
     filter_variable_report_fn: Callable[[VariablesReport, set[IssueKind]], VariablesReport] | None = None,
@@ -364,9 +394,9 @@ def run_variable_analysis(
     if target_validation_warnings_fn is None:
         target_validation_warnings_fn = _target_validation_warnings
 
-    def _merge_reports(*reports):
+    def _merge_reports(*reports: VariablesReport) -> VariablesReport:
         basepicture_name = reports[0].basepicture_name
-        issues = []
+        issues: list[Any] = []
         visible_kinds: set[IssueKind] = set()
         include_empty_sections = False
 
@@ -391,8 +421,8 @@ def run_variable_analysis(
         target_is_library = target_is_library_fn(cfg, project_bp, graph)
         report = analyze_variables_fn(
             project_bp,
-            debug=cfg.get("debug", False),
-            unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+            debug=_debug_enabled(cfg),
+            unavailable_libraries=_unavailable_libraries(graph),
             analyzed_target_is_library=target_is_library,
             config=cfg,
         )
@@ -413,8 +443,8 @@ def run_variable_analysis(
         if include_shadowing:
             shadowing_report = analyze_shadowing_fn(
                 project_bp,
-                debug=cfg.get("debug", False),
-                unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+                debug=_debug_enabled(cfg),
+                unavailable_libraries=_unavailable_libraries(graph),
             )
             if requested_kinds == {IssueKind.SHADOWING}:
                 report = shadowing_report
@@ -432,9 +462,9 @@ def run_variable_analysis(
 
 
 def run_datatype_usage_analysis(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    iter_loaded_projects_fn: Callable[..., Iterator[tuple[str, BasePicture, ProjectGraph]]] | None = None,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
     if iter_loaded_projects_fn is None:
@@ -455,8 +485,8 @@ def run_datatype_usage_analysis(
             report = variables_reporting_module.analyze_datatype_usage(
                 project_bp,
                 var_name,
-                debug=cfg.get("debug", False),
-                unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+                debug=_debug_enabled(cfg),
+                unavailable_libraries=_unavailable_libraries(graph),
             )
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report)
@@ -468,14 +498,14 @@ def run_datatype_usage_analysis(
 
 
 def variable_usage_submenu(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     clear_screen_fn: Callable[[], None],
     quit_app_fn: Callable[[], None],
-    run_variable_analysis_fn: Callable[[dict, set[IssueKind] | None], None],
-    run_datatype_usage_analysis_fn: Callable[[dict], None],
-    run_debug_variable_usage_fn: Callable[[dict], None],
-    run_module_localvar_analysis_fn: Callable[[dict], None],
+    run_variable_analysis_fn: Callable[[ConfigDict, set[IssueKind] | None], None],
+    run_datatype_usage_analysis_fn: Callable[[ConfigDict], None],
+    run_debug_variable_usage_fn: Callable[[ConfigDict], None],
+    run_module_localvar_analysis_fn: Callable[[ConfigDict], None],
     pause_fn: Callable[[], None],
 ) -> None:
     while True:
@@ -512,23 +542,23 @@ def variable_usage_submenu(
             run_module_localvar_analysis_fn(cfg)
         elif choice in VARIABLE_ANALYSES:
             _name, kinds = VARIABLE_ANALYSES[choice]
-            run_variable_analysis_fn(cfg, kinds if isinstance(kinds, set | type(None)) else None)
+            run_variable_analysis_fn(cfg, kinds)
         else:
             emit_output("Invalid choice.")
             pause_fn()
 
 
 def module_analysis_submenu(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     clear_screen_fn: Callable[[], None],
     print_menu_fn: Callable[..., None],
     menu_option_factory: Callable[[str, str, str], Any],
     quit_app_fn: Callable[[], None],
-    run_module_duplicates_analysis_fn: Callable[[dict], None],
-    run_module_find_by_name_fn: Callable[[dict], None],
-    run_module_tree_debug_fn: Callable[[dict], None],
-    run_graphics_rules_validation_fn: Callable[[dict], None],
+    run_module_duplicates_analysis_fn: Callable[[ConfigDict], None],
+    run_module_find_by_name_fn: Callable[[ConfigDict], None],
+    run_module_tree_debug_fn: Callable[[ConfigDict], None],
+    run_graphics_rules_validation_fn: Callable[[ConfigDict], None],
     pause_fn: Callable[[], None],
 ) -> None:
     while True:
@@ -568,15 +598,15 @@ def module_analysis_submenu(
 
 
 def interface_communication_submenu(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     clear_screen_fn: Callable[[], None],
     print_menu_fn: Callable[..., None],
     menu_option_factory: Callable[[str, str, str], Any],
     quit_app_fn: Callable[[], None],
-    run_mms_interface_analysis_fn: Callable[[dict], None],
-    run_icf_validation_fn: Callable[[dict], None],
-    run_icf_formatter_fn: Callable[[dict], None],
+    run_mms_interface_analysis_fn: Callable[[ConfigDict], None],
+    run_icf_validation_fn: Callable[[ConfigDict], None],
+    run_icf_formatter_fn: Callable[[ConfigDict], None],
     pause_fn: Callable[[], None],
 ) -> None:
     while True:
@@ -617,13 +647,13 @@ def interface_communication_submenu(
 
 
 def code_quality_submenu(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     clear_screen_fn: Callable[[], None],
     print_menu_fn: Callable[..., None],
     menu_option_factory: Callable[[str, str, str], Any],
     quit_app_fn: Callable[[], None],
-    run_comment_code_analysis_fn: Callable[[dict], None],
+    run_comment_code_analysis_fn: Callable[[ConfigDict], None],
     pause_fn: Callable[[], None],
 ) -> None:
     while True:
@@ -652,14 +682,14 @@ def code_quality_submenu(
 
 
 def analyzer_catalog_menu(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     clear_screen_fn: Callable[[], None],
     print_menu_fn: Callable[..., None],
     menu_option_factory: Callable[[str, str, str], Any],
     quit_app_fn: Callable[[], None],
     get_enabled_analyzers_fn: Callable[[], list[Any]],
-    run_checks_fn: Callable[[dict, list[str] | None], None],
+    run_checks_fn: Callable[[ConfigDict, list[str] | None], None],
     pause_fn: Callable[[], None],
 ) -> None:
     while True:
@@ -704,15 +734,15 @@ def analyzer_catalog_menu(
 
 
 def advanced_analysis_menu(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     clear_screen_fn: Callable[[], None],
     print_menu_fn: Callable[..., None],
     menu_option_factory: Callable[[str, str, str], Any],
     quit_app_fn: Callable[[], None],
-    run_datatype_usage_analysis_fn: Callable[[dict], None],
-    run_debug_variable_usage_fn: Callable[[dict], None],
-    run_module_localvar_analysis_fn: Callable[[dict], None],
+    run_datatype_usage_analysis_fn: Callable[[ConfigDict], None],
+    run_debug_variable_usage_fn: Callable[[ConfigDict], None],
+    run_module_localvar_analysis_fn: Callable[[ConfigDict], None],
     pause_fn: Callable[[], None],
 ) -> None:
     while True:
@@ -753,20 +783,20 @@ def advanced_analysis_menu(
 
 
 def analysis_menu(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     clear_screen_fn: Callable[[], None],
     print_menu_fn: Callable[..., None],
     menu_option_factory: Callable[[str, str, str], Any],
     quit_app_fn: Callable[[], None],
-    run_checks_fn: Callable[[dict, list[str] | None], None],
-    variable_usage_submenu_fn: Callable[[dict], None],
-    module_analysis_submenu_fn: Callable[[dict], None],
-    interface_communication_submenu_fn: Callable[[dict], None],
-    code_quality_submenu_fn: Callable[[dict], None],
-    analyzer_catalog_menu_fn: Callable[[dict], None],
-    advanced_analysis_menu_fn: Callable[[dict], None],
-    summarize_targets_fn: Callable[[dict], str],
+    run_checks_fn: Callable[[ConfigDict, list[str] | None], None],
+    variable_usage_submenu_fn: Callable[[ConfigDict], None],
+    module_analysis_submenu_fn: Callable[[ConfigDict], None],
+    interface_communication_submenu_fn: Callable[[ConfigDict], None],
+    code_quality_submenu_fn: Callable[[ConfigDict], None],
+    analyzer_catalog_menu_fn: Callable[[ConfigDict], None],
+    advanced_analysis_menu_fn: Callable[[ConfigDict], None],
+    summarize_targets_fn: Callable[[ConfigDict], str],
     pause_fn: Callable[[], None],
 ) -> None:
     while True:
@@ -845,9 +875,9 @@ def _parse_index_selection(selection: str, max_index: int) -> list[int]:
 
 
 def run_module_duplicates_analysis(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    iter_loaded_projects_fn: Callable[..., Iterator[tuple[str, BasePicture, ProjectGraph]]] = _iter_loaded_projects,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
     emit_output("\n--- Compare Module Variants ---")
@@ -865,7 +895,7 @@ def run_module_duplicates_analysis(
         emit_output(f"\n=== Target: {target_name} ===")
         for module_name in module_names:
             try:
-                matches = find_modules_by_name(project_bp, module_name, debug=cfg.get("debug", False))
+                matches = find_modules_by_name(project_bp, module_name, debug=_debug_enabled(cfg))
                 if not matches:
                     emit_output(f"\n⚠ No modules found with name {module_name!r}.")
                     continue
@@ -888,7 +918,7 @@ def run_module_duplicates_analysis(
                     selected = [matches[i - 1] for i in indices]
                     result = compare_modules(selected)
                 else:
-                    result = analyze_module_duplicates(project_bp, module_name, debug=cfg.get("debug", False))
+                    result = analyze_module_duplicates(project_bp, module_name, debug=_debug_enabled(cfg))
 
                 emit_output("\n" + result.summary())
             except Exception as exc:
@@ -899,9 +929,9 @@ def run_module_duplicates_analysis(
 
 
 def run_module_find_by_name(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    iter_loaded_projects_fn: Callable[..., Iterator[tuple[str, BasePicture, ProjectGraph]]] = _iter_loaded_projects,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
     emit_output("\n--- Find Module Instances ---")
@@ -919,7 +949,7 @@ def run_module_find_by_name(
         for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
             emit_output(f"\n=== Target: {target_name} ===")
             for module_name in module_names:
-                matches = find_modules_by_name(project_bp, module_name, debug=cfg.get("debug", False))
+                matches = find_modules_by_name(project_bp, module_name, debug=_debug_enabled(cfg))
                 if not matches:
                     emit_output(f"\nNo modules found with name {module_name!r}.")
                     continue
@@ -936,10 +966,10 @@ def run_module_find_by_name(
 
 
 def run_module_tree_debug(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     prompt_fn: Callable[[str, str | None], str],
-    iter_loaded_projects_fn: Callable[..., Iterator[tuple[str, BasePicture, ProjectGraph]]] = _iter_loaded_projects,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
     emit_output("\n--- Debug Module Tree Structure ---")
@@ -961,19 +991,19 @@ def run_module_tree_debug(
         pause_fn()
 
 
-def run_analysis_menu(cfg: dict, *, analysis_menu_fn: Callable[[dict], None]) -> None:
+def run_analysis_menu(cfg: ConfigDict, *, analysis_menu_fn: Callable[[ConfigDict], None]) -> None:
     analysis_menu_fn(cfg)
 
 
-def variable_analysis_menu(cfg: dict, *, analysis_menu_fn: Callable[[dict], None]) -> None:
+def variable_analysis_menu(cfg: ConfigDict, *, analysis_menu_fn: Callable[[ConfigDict], None]) -> None:
     analysis_menu_fn(cfg)
 
 
 def run_module_localvar_analysis(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    load_project_fn: Callable[[dict], tuple[BasePicture, ProjectGraph]],
-    iter_loaded_projects_fn: Callable[..., Iterator[tuple[str, BasePicture, ProjectGraph]]] = _iter_loaded_projects,
+    load_project_fn: Callable[[ConfigDict], tuple[BasePicture, ProjectGraph]],
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
     emit_output("\n--- Module Local Variable Analysis ---")
@@ -1005,7 +1035,7 @@ def run_module_localvar_analysis(
                 project_bp,
                 module_path,
                 var_name,
-                debug=cfg.get("debug", False),
+                debug=_debug_enabled(cfg),
             )
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report)
@@ -1016,17 +1046,17 @@ def run_module_localvar_analysis(
         pause_fn()
 
 
-def _get_enabled_analyzers():
-    return get_default_cli_analyzers()
+def _get_enabled_analyzers() -> list[Any]:
+    return cast(list[Any], get_default_cli_analyzers())
 
 
 def _run_checks(
-    cfg: dict,
+    cfg: ConfigDict,
     selected_keys: list[str] | None,
     *,
-    iter_loaded_projects_fn: Callable[..., Iterator[tuple[str, BasePicture, ProjectGraph]]] = _iter_loaded_projects,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     get_enabled_analyzers_fn: Callable[[], list[Any]] = _get_enabled_analyzers,
-    target_is_library_fn: Callable[[dict, Any, Any], bool] = _target_is_library,
+    target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] = _target_is_library,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
     analyzers = get_enabled_analyzers_fn()
@@ -1045,7 +1075,7 @@ def _run_checks(
         context = AnalysisContext(
             base_picture=project_bp,
             graph=graph,
-            debug=cfg.get("debug", False),
+            debug=_debug_enabled(cfg),
             target_is_library=target_is_library_fn(cfg, project_bp, graph),
             config=cfg,
         )
@@ -1061,12 +1091,12 @@ def _run_checks(
 
 
 def run_checks(
-    cfg: dict,
+    cfg: ConfigDict,
     selected_keys: list[str] | None,
     *,
-    iter_loaded_projects_fn: Callable[..., Iterator[tuple[str, BasePicture, ProjectGraph]]] = _iter_loaded_projects,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     get_enabled_analyzers_fn: Callable[[], list[Any]] = _get_enabled_analyzers,
-    target_is_library_fn: Callable[[dict, Any, Any], bool] = _target_is_library,
+    target_is_library_fn: Callable[[ConfigDict, BasePicture, ProjectGraph], bool] = _target_is_library,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
     _run_checks(
@@ -1079,7 +1109,7 @@ def run_checks(
     )
 
 
-def run_checks_menu(cfg: dict, *, run_checks_fn: Callable[[dict, list[str] | None], None]) -> None:
+def run_checks_menu(cfg: ConfigDict, *, run_checks_fn: Callable[[ConfigDict, list[str] | None], None]) -> None:
     run_checks_fn(cfg, None)
 
 
@@ -1088,9 +1118,9 @@ def parse_index_selection(selection: str, max_index: int) -> list[int]:
 
 
 def run_mms_interface_analysis(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    iter_loaded_projects_fn: Callable[..., Iterator[tuple[str, BasePicture, ProjectGraph]]] = _iter_loaded_projects,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
     emit_output("\n--- MMS Interface Variables ---")
@@ -1099,7 +1129,7 @@ def run_mms_interface_analysis(
         try:
             report = analyze_mms_interface_variables(
                 project_bp,
-                debug=cfg.get("debug", False),
+                debug=_debug_enabled(cfg),
                 config=cfg,
             )
             emit_output(f"\n=== Target: {target_name} ===")
@@ -1112,10 +1142,10 @@ def run_mms_interface_analysis(
 
 
 def run_icf_validation(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    configured_icf_files_fn: Callable[[dict], tuple[Path | None, list[Path]]],
-    load_program_ast_fn: Callable[[dict, str], tuple[BasePicture, ProjectGraph]],
+    configured_icf_files_fn: Callable[[ConfigDict], tuple[Path | None, list[Path]]],
+    load_program_ast_fn: Callable[[ConfigDict, str], tuple[BasePicture, ProjectGraph]],
     validate_icf_entries_against_program_fn: Callable[..., Any] = validate_icf_entries_against_program,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
@@ -1195,9 +1225,9 @@ def run_icf_validation(
 
 
 def run_debug_variable_usage(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    iter_loaded_projects_fn: Callable[..., Iterator[tuple[str, BasePicture, ProjectGraph]]] = _iter_loaded_projects,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
     emit_output("\n--- Variable Usage (Fields + Locations) ---")
@@ -1212,7 +1242,7 @@ def run_debug_variable_usage(
 
     for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
         try:
-            report = debug_variable_usage(project_bp, var_name, debug=cfg.get("debug", False))
+            report = debug_variable_usage(project_bp, var_name, debug=_debug_enabled(cfg))
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report)
         except Exception as exc:
@@ -1223,10 +1253,12 @@ def run_debug_variable_usage(
 
 
 def run_comment_code_analysis(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    iter_loaded_projects_fn: Callable[..., Iterator[tuple[str, BasePicture, ProjectGraph]]] = _iter_loaded_projects,
-    source_paths_for_current_target_fn: Callable[[Any, Any], set[Path]] = _source_paths_for_current_target,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] = _iter_loaded_projects,
+    source_paths_for_current_target_fn: Callable[
+        [BasePicture, ProjectGraph], set[Path]
+    ] = _source_paths_for_current_target,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
     emit_output("\n--- Commented-out Code ---")
@@ -1241,9 +1273,9 @@ def run_comment_code_analysis(
 
 
 def run_advanced_datatype_analysis(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    iter_loaded_projects_fn: Callable[..., Iterator[tuple[str, BasePicture, ProjectGraph]]] | None = None,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]] | None = None,
     pause_fn: Callable[[], None] | None = None,
 ) -> None:
     if iter_loaded_projects_fn is None:
@@ -1264,8 +1296,8 @@ def run_advanced_datatype_analysis(
                 report = variables_reporting_module.analyze_datatype_usage(
                     project_bp,
                     var_name,
-                    debug=cfg.get("debug", False),
-                    unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+                    debug=_debug_enabled(cfg),
+                    unavailable_libraries=_unavailable_libraries(graph),
                 )
                 emit_output(f"\n=== Target: {target_name} ===")
                 emit_output(report)
@@ -1282,7 +1314,7 @@ def run_advanced_datatype_analysis(
                 report = variables_reporting_module.debug_variable_usage(
                     project_bp,
                     var_name,
-                    debug=cfg.get("debug", False),
+                    debug=_debug_enabled(cfg),
                 )
                 emit_output(f"\n=== Target: {target_name} ===")
                 emit_output(report)

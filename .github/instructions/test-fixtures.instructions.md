@@ -1,7 +1,7 @@
 ---
 description: "Use when changing SattLint test fixtures, corpus manifests, sample SattLine files, or golden analysis artifacts. Covers fixture shape, corpus layout, and minimal SattLine validity rules."
 name: "Test Fixture Instructions"
-applyTo: ["tests/fixtures/**", "tests/test_corpus.py", "tests/test_phase0_guardrails.py"]
+applyTo: ["tests/fixtures/**", "tests/parser/test_corpus.py", "tests/test_phase0_guardrails.py"]
 ---
 # Test Fixtures
 

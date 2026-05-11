@@ -99,11 +99,11 @@ def _mutation_guidance(changed_files: Iterable[str]) -> dict[str, Any]:
     rules = (
         (
             "parser",
-            ("src/sattline_parser/", "tests/test_parser", "src/sattlint/grammar/"),
+            ("src/sattline_parser/", "tests/parser/", "src/sattlint/grammar/"),
             pytest_command(
                 "--no-cov",
-                "tests/test_parser_core.py",
-                "tests/test_parser_validation.py",
+                "tests/parser/test_parser_core.py",
+                "tests/parser/test_parser_validation.py",
                 "-x",
                 "-q",
                 "--tb=short",
@@ -111,8 +111,12 @@ def _mutation_guidance(changed_files: Iterable[str]) -> dict[str, Any]:
         ),
         (
             "validation",
-            ("src/sattlint/validation.py", "src/sattlint/_validation", "tests/test_parser_validation.py"),
-            pytest_command("--no-cov", "tests/test_parser_validation.py", "-x", "-q", "--tb=short"),
+            (
+                "src/sattlint/validation.py",
+                "src/sattlint/_validation",
+                "tests/parser/test_parser_validation.py",
+            ),
+            pytest_command("--no-cov", "tests/parser/test_parser_validation.py", "-x", "-q", "--tb=short"),
         ),
         (
             "routing",

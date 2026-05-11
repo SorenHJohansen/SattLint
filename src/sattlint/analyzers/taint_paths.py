@@ -20,11 +20,19 @@ _SOURCE_LABELS = {
 }
 
 
+def _empty_issues() -> list[Issue]:
+    return []
+
+
+def _empty_taint_traces() -> list[TaintPathTrace]:
+    return []
+
+
 @dataclass
 class TaintPathReport:
     basepicture_name: str
-    issues: list[Issue] = field(default_factory=list)
-    traces: list[TaintPathTrace] = field(default_factory=list)
+    issues: list[Issue] = field(default_factory=_empty_issues)
+    traces: list[TaintPathTrace] = field(default_factory=_empty_taint_traces)
 
     @property
     def name(self) -> str:

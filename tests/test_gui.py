@@ -5,6 +5,8 @@ from typing import Any, cast
 
 import pytest
 
+pytest.importorskip("tkinter", exc_type=ImportError)
+
 from sattlint_gui import binding, main
 from sattlint_gui import gui as package_gui
 from sattlint_gui.frames.config_frame import ConfigFrame, apply_editable_config, extract_editable_config
@@ -468,6 +470,109 @@ def test_analyzer_list_selection():
     # deselect_all clears
     al.deselect_all()
     assert al.get_selected_keys() == []
+
+
+def test_analyzer_list_headless_init(monkeypatch):
+    import tkinter.ttk as real_ttk
+
+    class FakeWidget:
+        def __init__(self, *args, **kwargs) -> None:
+            self.args = args
+            self.kwargs = kwargs
+            self.grid_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+            self.columnconfigure_calls: list[tuple[int, int]] = []
+            self.rowconfigure_calls: list[tuple[int, int]] = []
+            self.bind_calls: list[tuple[str, Any]] = []
+
+        def grid(self, *args, **kwargs) -> None:
+            self.grid_calls.append((args, kwargs))
+
+        def columnconfigure(self, index: int, weight: int) -> None:
+            self.columnconfigure_calls.append((index, weight))
+
+        def rowconfigure(self, index: int, weight: int) -> None:
+            self.rowconfigure_calls.append((index, weight))
+
+        def bind(self, event: str, callback: Any) -> None:
+            self.bind_calls.append((event, callback))
+
+    scrollbars: list[Any] = []
+
+    class FakeScrollbar(FakeWidget):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            scrollbars.append(self)
+
+        def set(self, *_args) -> None:
+            return None
+
+    class FakeCanvas:
+        def __init__(self, parent, **kwargs) -> None:
+            self.parent = parent
+            self.kwargs = kwargs
+            self.configure_calls: list[dict[str, Any]] = []
+            self.grid_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+            self.bind_calls: list[tuple[str, Any]] = []
+            self.create_window_calls: list[tuple[tuple[int, int], Any, str]] = []
+
+        def yview(self, *_args) -> None:
+            return None
+
+        def configure(self, **kwargs) -> None:
+            self.configure_calls.append(kwargs)
+
+        def grid(self, *args, **kwargs) -> None:
+            self.grid_calls.append((args, kwargs))
+
+        def create_window(self, coords: tuple[int, int], *, window, anchor: str) -> str:
+            self.create_window_calls.append((coords, window, anchor))
+            return "inner-window"
+
+        def bind(self, event: str, callback: Any) -> None:
+            self.bind_calls.append((event, callback))
+
+    def fake_frame_init(self, parent=None, **kwargs) -> None:
+        self._frame_init = (parent, kwargs)
+        self._columnconfigure_calls = []
+        self._rowconfigure_calls = []
+
+    def fake_frame_columnconfigure(self, index: int, weight: int) -> None:
+        self._columnconfigure_calls.append((index, weight))
+
+    def fake_frame_rowconfigure(self, index: int, weight: int) -> None:
+        self._rowconfigure_calls.append((index, weight))
+
+    monkeypatch.setattr(real_ttk.Frame, "__init__", fake_frame_init)
+    monkeypatch.setattr(real_ttk.Frame, "columnconfigure", fake_frame_columnconfigure)
+    monkeypatch.setattr(real_ttk.Frame, "rowconfigure", fake_frame_rowconfigure)
+    monkeypatch.setattr("sattlint_gui.widgets.analyzer_list.ttk.Frame", FakeWidget)
+    monkeypatch.setattr("sattlint_gui.widgets.analyzer_list.ttk.Label", FakeWidget)
+    monkeypatch.setattr("sattlint_gui.widgets.analyzer_list.ttk.Button", FakeWidget)
+    monkeypatch.setattr("sattlint_gui.widgets.analyzer_list.ttk.Scrollbar", FakeScrollbar)
+    monkeypatch.setattr("sattlint_gui.widgets.analyzer_list.tk.Canvas", FakeCanvas)
+    monkeypatch.setattr(
+        "sattlint_gui.widgets.analyzer_list.resolve_theme",
+        lambda _parent: SimpleNamespace(bg_panel="#123456"),
+    )
+
+    parent = SimpleNamespace()
+    analyzer_list = cast(Any, AnalyzerList(parent, title="Analyzers"))
+    canvas = cast(Any, analyzer_list._canvas)
+    inner = cast(Any, analyzer_list._inner)
+
+    assert analyzer_list._frame_init == (
+        parent,
+        {"style": "Panel.TFrame", "padding": 12},
+    )
+    assert analyzer_list._columnconfigure_calls == [(0, 1)]
+    assert analyzer_list._rowconfigure_calls == [(1, 1)]
+    assert canvas.kwargs == {"bg": "#123456", "highlightthickness": 0}
+    assert canvas.configure_calls == [{"yscrollcommand": scrollbars[0].set}]
+    assert analyzer_list._inner_id == "inner-window"
+    assert canvas.create_window_calls == [((0, 0), analyzer_list._inner, "nw")]
+    assert inner.bind_calls[0][0] == "<Configure>"
+    assert canvas.bind_calls[0][0] == "<Configure>"
+    assert analyzer_list._vars == []
 
 
 def test_binding_run_checks_filters_by_selected_keys(monkeypatch):

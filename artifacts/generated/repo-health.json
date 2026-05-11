@@ -1,294 +1,2606 @@
 {
   "audit_dir": "artifacts/audit",
   "audit_status": {
-    "finding_count": 9,
-    "max_severity": "medium",
+    "finding_count": 0,
+    "max_severity": null,
     "overall_status": "pass",
     "severity_counts": {
       "critical": 0,
       "high": 0,
-      "low": 3,
-      "medium": 6
+      "low": 0,
+      "medium": 0
     }
   },
   "branch_health": {
     "ahead_by": 0,
     "behind_by": 0,
     "branch": "main",
-    "dirty_files": 66,
-    "tracked_worktrees": 1
+    "dirty_files": 187,
+    "tracked_worktrees": 2
   },
   "context_status": {
     "issue_count": 0,
     "status": "pass"
   },
-  "generated_at": "2026-05-03T20:25:02.305938+00:00",
+  "generated_at": "2026-05-11T11:51:06.098679+00:00",
   "handoffs": {
-    "ai_task_throughput": 0,
-    "handoff_count": 0,
+    "ai_task_throughput": 4,
+    "handoff_count": 4,
     "merge_success_rate": null,
-    "statuses": {},
-    "validation_states": {}
+    "statuses": {
+      "draft": 2,
+      "validated": 2
+    },
+    "validation_states": {
+      "passed": 2,
+      "pending": 2
+    }
   },
   "kind": "sattlint.repo_health",
   "largest_files": [
     {
       "kind": "test",
-      "lines": 3117,
-      "path": "tests/test_repo_audit.py"
-    },
-    {
-      "kind": "source",
-      "lines": 2630,
-      "path": "src/sattlint/devtools/repo_audit.py"
-    },
-    {
-      "kind": "source",
-      "lines": 2492,
-      "path": "src/sattlint/devtools/pipeline.py"
-    },
-    {
-      "kind": "test",
-      "lines": 2491,
-      "path": "tests/test_analyzers_state.py"
-    },
-    {
-      "kind": "test",
-      "lines": 2482,
-      "path": "tests/test_parser_validation.py"
-    },
-    {
-      "kind": "test",
-      "lines": 2329,
-      "path": "tests/test_parser_core.py"
-    },
-    {
-      "kind": "test",
-      "lines": 2327,
+      "lines": 2549,
       "path": "tests/test_pipeline_collection.py"
     },
     {
       "kind": "test",
-      "lines": 2311,
+      "lines": 2519,
+      "path": "tests/test_analyzers_state.py"
+    },
+    {
+      "kind": "test",
+      "lines": 2447,
       "path": "tests/test_analyzers_suites.py"
     },
     {
       "kind": "test",
-      "lines": 2232,
-      "path": "tests/test_analyzers_variables.py"
+      "lines": 2278,
+      "path": "tests/test_docgen.py"
     },
     {
       "kind": "test",
-      "lines": 2212,
-      "path": "tests/test_docgen.py"
+      "lines": 2124,
+      "path": "tests/test_analyzers_variables.py"
+    },
+    {
+      "kind": "source",
+      "lines": 2095,
+      "path": "src/sattlint/analyzers/sattline_builtins.py"
+    },
+    {
+      "kind": "test",
+      "lines": 1873,
+      "path": "tests/test_app_analysis.py"
+    },
+    {
+      "kind": "source",
+      "lines": 1799,
+      "path": "src/sattlint/devtools/structural_reports.py"
+    },
+    {
+      "kind": "source",
+      "lines": 1748,
+      "path": "src/sattlint/devtools/pipeline.py"
+    },
+    {
+      "kind": "test",
+      "lines": 1657,
+      "path": "tests/test_lsp_diagnostics.py"
     }
   ],
   "metrics": {
-    "ai_task_throughput": 0,
-    "auto_loaded_context_lines": 118,
+    "ai_task_throughput": 4,
+    "auto_loaded_context_lines": 112,
     "blocking_finding_count": 0,
     "class_over_budget_count": 3,
     "context_auto_loaded_budget": 180,
     "coverage_min_line_rate": 0.8726,
     "coverage_total_line_rate": 0.8826,
-    "dirty_files": 66,
-    "finding_count": 9,
+    "dirty_files": 187,
+    "finding_count": 0,
     "function_over_budget_count": 22,
-    "largest_file_lines": 3117,
-    "largest_file_path": "tests/test_repo_audit.py",
-    "markdown_file_max_lines": 1453,
+    "largest_file_lines": 2549,
+    "largest_file_path": "tests/test_pipeline_collection.py",
     "merge_success_rate": null,
     "pre_commit_runtime_seconds": null,
     "pyright_error_count": 0,
     "pyright_warning_count": 0,
+    "root_junk_file_count": 0,
     "ruff_issue_count": 0,
-    "scoped_context_file_count": 37,
+    "scoped_context_file_count": 42,
     "source_file_max_lines": 2297,
-    "test_runtime_seconds": 128.841
+    "test_runtime_seconds": 27.777
+  },
+  "ratchet_inventory": {
+    "allow_lists": {
+      "structural_file_exceptions": [],
+      "typing_debt_allowlist": [
+        {
+          "path": "src/sattline_parser/fuzz_harness.py"
+        },
+        {
+          "path": "src/sattline_parser/grammar/parser_decode.py"
+        },
+        {
+          "path": "src/sattline_parser/models/ast_model.py"
+        },
+        {
+          "path": "src/sattline_parser/transformer/_expressions_mixin.py"
+        },
+        {
+          "path": "src/sattline_parser/transformer/_graphics_interact_mixin.py"
+        },
+        {
+          "path": "src/sattline_parser/transformer/_modules_mixin.py"
+        },
+        {
+          "path": "src/sattline_parser/transformer/_sfc_mixin.py"
+        },
+        {
+          "path": "src/sattline_parser/transformer/_tokens_mixin.py"
+        },
+        {
+          "path": "src/sattline_parser/transformer/sl_transformer.py"
+        },
+        {
+          "path": "src/sattline_parser/utils/formatter.py"
+        },
+        {
+          "path": "src/sattlint/__main__.py"
+        },
+        {
+          "path": "src/sattlint/__version__.py"
+        },
+        {
+          "path": "src/sattlint/_validation_expression.py"
+        },
+        {
+          "path": "src/sattlint/_validation_type_helpers.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/__init__.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/_sfc_guard_logic.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/_variables_access.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/_variables_contracts.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/_variables_status.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/_variables_submodules.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/alarm_integrity.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/comment_code.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/cyclomatic_complexity.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/issue.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/layout_geometry.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/loop_output_refactor.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/mms.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/modules.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/naming.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/rule_profiles.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/sattline_builtins.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/scan_loop_resource_usage.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/sfc.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/unsafe_defaults.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/usage_tracker.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/validators.py"
+        },
+        {
+          "path": "src/sattlint/analyzers/variables.py"
+        },
+        {
+          "path": "src/sattlint/app.py"
+        },
+        {
+          "path": "src/sattlint/app_analysis.py"
+        },
+        {
+          "path": "src/sattlint/app_base.py"
+        },
+        {
+          "path": "src/sattlint/app_cli_commands.py"
+        },
+        {
+          "path": "src/sattlint/app_docs.py"
+        },
+        {
+          "path": "src/sattlint/app_graphics.py"
+        },
+        {
+          "path": "src/sattlint/app_menus.py"
+        },
+        {
+          "path": "src/sattlint/app_support.py"
+        },
+        {
+          "path": "src/sattlint/cache.py"
+        },
+        {
+          "path": "src/sattlint/call_signatures.py"
+        },
+        {
+          "path": "src/sattlint/casefolding.py"
+        },
+        {
+          "path": "src/sattlint/cli/__init__.py"
+        },
+        {
+          "path": "src/sattlint/cli/entry.py"
+        },
+        {
+          "path": "src/sattlint/config.py"
+        },
+        {
+          "path": "src/sattlint/console.py"
+        },
+        {
+          "path": "src/sattlint/contracts/__init__.py"
+        },
+        {
+          "path": "src/sattlint/contracts/findings.py"
+        },
+        {
+          "path": "src/sattlint/core/ast_tools.py"
+        },
+        {
+          "path": "src/sattlint/devtools/corpus.py"
+        },
+        {
+          "path": "src/sattlint/devtools/derived_reports.py"
+        },
+        {
+          "path": "src/sattlint/devtools/doc_gardener.py"
+        },
+        {
+          "path": "src/sattlint/devtools/finding_exports.py"
+        },
+        {
+          "path": "src/sattlint/devtools/layer_linter.py"
+        },
+        {
+          "path": "src/sattlint/devtools/mutation_engine.py"
+        },
+        {
+          "path": "src/sattlint/devtools/review_tool.py"
+        },
+        {
+          "path": "src/sattlint/devtools/semantic_reports.py"
+        },
+        {
+          "path": "src/sattlint/devtools/structural_reports.py"
+        },
+        {
+          "path": "src/sattlint/docgenerator/analyzer_ref.py"
+        },
+        {
+          "path": "src/sattlint/docgenerator/classification.py"
+        },
+        {
+          "path": "src/sattlint/docgenerator/configgen.py"
+        },
+        {
+          "path": "src/sattlint/docgenerator/docgen.py"
+        },
+        {
+          "path": "src/sattlint/editor_api.py"
+        },
+        {
+          "path": "src/sattlint/engine.py"
+        },
+        {
+          "path": "src/sattlint/grammar/constants.py"
+        },
+        {
+          "path": "src/sattlint/grammar/parser_decode.py"
+        },
+        {
+          "path": "src/sattlint/graphics_rules.py"
+        },
+        {
+          "path": "src/sattlint/graphics_validation.py"
+        },
+        {
+          "path": "src/sattlint/models/__init__.py"
+        },
+        {
+          "path": "src/sattlint/models/ast_model.py"
+        },
+        {
+          "path": "src/sattlint/models/project_graph.py"
+        },
+        {
+          "path": "src/sattlint/path_sanitizer.py"
+        },
+        {
+          "path": "src/sattlint/reporting/__init__.py"
+        },
+        {
+          "path": "src/sattlint/reporting/mms_report.py"
+        },
+        {
+          "path": "src/sattlint/resolution/__init__.py"
+        },
+        {
+          "path": "src/sattlint/resolution/context_builder.py"
+        },
+        {
+          "path": "src/sattlint/resolution/paths.py"
+        },
+        {
+          "path": "src/sattlint/resolution/scope.py"
+        },
+        {
+          "path": "src/sattlint/resolution/type_graph.py"
+        },
+        {
+          "path": "src/sattlint/transformer/__init__.py"
+        },
+        {
+          "path": "src/sattlint/transformer/sl_transformer.py"
+        },
+        {
+          "path": "src/sattlint/utils/__init__.py"
+        },
+        {
+          "path": "src/sattlint/utils/text_processing.py"
+        },
+        {
+          "path": "src/sattlint/validation.py"
+        },
+        {
+          "path": "src/sattlint_lsp/__init__.py"
+        },
+        {
+          "path": "src/sattlint_lsp/_server_document.py"
+        },
+        {
+          "path": "src/sattlint_lsp/_server_helpers.py"
+        },
+        {
+          "path": "src/sattlint_lsp/document_state.py"
+        },
+        {
+          "path": "src/sattlint_lsp/local_parser.py"
+        },
+        {
+          "path": "src/sattlint_lsp/server.py"
+        },
+        {
+          "path": "src/sattlint_lsp/workspace_store.py"
+        }
+      ]
+    },
+    "ratcheted_file_statuses": [
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8056,
+        "current_display": "80.56%",
+        "gap_display": "19.44 pp short",
+        "kind": "coverage",
+        "path": "src/sattline_parser/grammar/parser_decode.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 522,
+        "current_display": "522",
+        "gap_display": "22 over target",
+        "kind": "structural",
+        "path": "src/sattline_parser/models/ast_model.py",
+        "reason": "Parser AST schema owner remains centralized pending model decomposition.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 835,
+        "current_display": "835",
+        "gap_display": "335 over target",
+        "kind": "structural",
+        "path": "src/sattline_parser/transformer/_modules_mixin.py",
+        "reason": "Parser transformer owner surface still centralizes grammar-to-AST normalization.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8750,
+        "current_display": "87.50%",
+        "gap_display": "12.50 pp short",
+        "kind": "coverage",
+        "path": "src/sattline_parser/utils/text_processing.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8519,
+        "current_display": "85.19%",
+        "gap_display": "14.81 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/_validation_expression.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8700,
+        "current_display": "87.00%",
+        "gap_display": "13.00 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/_validation_type_helpers.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7750,
+        "current_display": "77.50%",
+        "gap_display": "22.50 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/_sfc_collectors.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 679,
+        "current_display": "679",
+        "gap_display": "179 over target",
+        "kind": "structural",
+        "path": "src/sattlint/analyzers/_sfc_collectors.py",
+        "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7476,
+        "current_display": "74.76%",
+        "gap_display": "25.24 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/_sfc_guard_logic.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8571,
+        "current_display": "85.71%",
+        "gap_display": "14.29 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/_sfc_module_walk.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7018,
+        "current_display": "70.18%",
+        "gap_display": "29.82 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/_variables_access.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9504,
+        "current_display": "95.04%",
+        "gap_display": "4.96 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/_variables_contracts.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7310,
+        "current_display": "73.10%",
+        "gap_display": "26.90 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/_variables_effect_flow.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8636,
+        "current_display": "86.36%",
+        "gap_display": "13.64 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/_variables_execution.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8450,
+        "current_display": "84.50%",
+        "gap_display": "15.50 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/_variables_status.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9405,
+        "current_display": "94.05%",
+        "gap_display": "5.95 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/_variables_submodules.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8550,
+        "current_display": "85.50%",
+        "gap_display": "14.50 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/alarm_integrity.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 745,
+        "current_display": "745",
+        "gap_display": "245 over target",
+        "kind": "structural",
+        "path": "src/sattlint/analyzers/alarm_integrity.py",
+        "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7872,
+        "current_display": "78.72%",
+        "gap_display": "21.28 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/comment_code.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 6636,
+        "current_display": "66.36%",
+        "gap_display": "33.64 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/cyclomatic_complexity.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8814,
+        "current_display": "88.14%",
+        "gap_display": "11.86 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/dataflow.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8219,
+        "current_display": "82.19%",
+        "gap_display": "17.81 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/icf.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 928,
+        "current_display": "928",
+        "gap_display": "428 over target",
+        "kind": "structural",
+        "path": "src/sattlint/analyzers/icf.py",
+        "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7868,
+        "current_display": "78.68%",
+        "gap_display": "21.32 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/initial_values.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9626,
+        "current_display": "96.26%",
+        "gap_display": "3.74 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/layout_geometry.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8128,
+        "current_display": "81.28%",
+        "gap_display": "18.72 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/loop_output_refactor.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7536,
+        "current_display": "75.36%",
+        "gap_display": "24.64 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/mms.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 835,
+        "current_display": "835",
+        "gap_display": "335 over target",
+        "kind": "structural",
+        "path": "src/sattlint/analyzers/mms.py",
+        "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7175,
+        "current_display": "71.75%",
+        "gap_display": "28.25 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/modules.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1387,
+        "current_display": "1387",
+        "gap_display": "887 over target",
+        "kind": "structural",
+        "path": "src/sattlint/analyzers/modules.py",
+        "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7330,
+        "current_display": "73.30%",
+        "gap_display": "26.70 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/naming.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7971,
+        "current_display": "79.71%",
+        "gap_display": "20.29 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/parameter_drift.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9278,
+        "current_display": "92.78%",
+        "gap_display": "7.22 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/registry.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8810,
+        "current_display": "88.10%",
+        "gap_display": "11.90 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/reset_contamination.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1551,
+        "current_display": "1551",
+        "gap_display": "1051 over target",
+        "kind": "structural",
+        "path": "src/sattlint/analyzers/reset_contamination.py",
+        "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9231,
+        "current_display": "92.31%",
+        "gap_display": "7.69 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/rule_profiles.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 6615,
+        "current_display": "66.15%",
+        "gap_display": "33.85 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/safety_paths.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 2095,
+        "current_display": "2095",
+        "gap_display": "1595 over target",
+        "kind": "structural",
+        "path": "src/sattlint/analyzers/sattline_builtins.py",
+        "reason": "Builtin analyzer catalog is intentionally centralized as a generated owner surface.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8608,
+        "current_display": "86.08%",
+        "gap_display": "13.92 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/sattline_semantics.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1173,
+        "current_display": "1173",
+        "gap_display": "673 over target",
+        "kind": "structural",
+        "path": "src/sattlint/analyzers/sattline_semantics.py",
+        "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 6622,
+        "current_display": "66.22%",
+        "gap_display": "33.78 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/scan_loop_resource_usage.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8390,
+        "current_display": "83.90%",
+        "gap_display": "16.10 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/sfc.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9178,
+        "current_display": "91.78%",
+        "gap_display": "8.22 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/shadowing.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9508,
+        "current_display": "95.08%",
+        "gap_display": "4.92 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/spec_compliance.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 6714,
+        "current_display": "67.14%",
+        "gap_display": "32.86 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/taint_paths.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8111,
+        "current_display": "81.11%",
+        "gap_display": "18.89 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/unsafe_defaults.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8654,
+        "current_display": "86.54%",
+        "gap_display": "13.46 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/validators.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9447,
+        "current_display": "94.47%",
+        "gap_display": "5.53 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/variable_issue_collection.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9328,
+        "current_display": "93.28%",
+        "gap_display": "6.72 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/variable_usage_reporting.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9895,
+        "current_display": "98.95%",
+        "gap_display": "1.05 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/analyzers/variables.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8153,
+        "current_display": "81.53%",
+        "gap_display": "18.47 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/app.py",
+        "reason": "Touched app entry coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 891,
+        "current_display": "891",
+        "gap_display": "391 over target",
+        "kind": "structural",
+        "path": "src/sattlint/app.py",
+        "reason": "Interactive app entry owner still centralizes CLI and menu routing.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_shrink"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": null,
+        "current_display": "n/a",
+        "gap_display": "allowlisted typing debt",
+        "kind": "typing",
+        "path": "src/sattlint/app.py",
+        "reason": "Touched app facade typing debt must leave the Pyright debt allowlist.",
+        "status": "allowlisted",
+        "target": null,
+        "target_display": "n/a",
+        "touch_rule": "must_exit_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9134,
+        "current_display": "91.34%",
+        "gap_display": "8.66 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/app_analysis.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1291,
+        "current_display": "1291",
+        "gap_display": "791 over target",
+        "kind": "structural",
+        "path": "src/sattlint/app_analysis.py",
+        "reason": "Interactive analysis app owner surface still centralizes analysis menu orchestration.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7464,
+        "current_display": "74.64%",
+        "gap_display": "25.36 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/app_base.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9286,
+        "current_display": "92.86%",
+        "gap_display": "7.14 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/app_docs.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7882,
+        "current_display": "78.82%",
+        "gap_display": "21.18 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/app_graphics.py",
+        "reason": "Touched graphics app coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 907,
+        "current_display": "907",
+        "gap_display": "407 over target",
+        "kind": "structural",
+        "path": "src/sattlint/app_graphics.py",
+        "reason": "Interactive graphics app owner surface still centralizes graphics rule workflows.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7842,
+        "current_display": "78.42%",
+        "gap_display": "21.58 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/app_menus.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8146,
+        "current_display": "81.46%",
+        "gap_display": "18.54 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/app_support.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7372,
+        "current_display": "73.72%",
+        "gap_display": "26.28 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/cache.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9405,
+        "current_display": "94.05%",
+        "gap_display": "5.95 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/cli/entry.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9786,
+        "current_display": "97.86%",
+        "gap_display": "2.14 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/config.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 565,
+        "current_display": "565",
+        "gap_display": "65 over target",
+        "kind": "structural",
+        "path": "src/sattlint/config.py",
+        "reason": "Config owner surface still centralizes validation, defaults, and persistence flows.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 6329,
+        "current_display": "63.29%",
+        "gap_display": "36.71 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/console.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9250,
+        "current_display": "92.50%",
+        "gap_display": "7.50 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/contracts/findings.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7101,
+        "current_display": "71.01%",
+        "gap_display": "28.99 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/core/ast_tools.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9640,
+        "current_display": "96.40%",
+        "gap_display": "3.60 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/core/diagnostics.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9808,
+        "current_display": "98.08%",
+        "gap_display": "1.92 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/core/document.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9474,
+        "current_display": "94.74%",
+        "gap_display": "5.26 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/core/safety_paths.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9394,
+        "current_display": "93.94%",
+        "gap_display": "6.06 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/core/taint_paths.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8571,
+        "current_display": "85.71%",
+        "gap_display": "14.29 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/_structural_budget_inventory.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8732,
+        "current_display": "87.32%",
+        "gap_display": "12.68 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/ai_gc.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9548,
+        "current_display": "95.48%",
+        "gap_display": "4.52 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/ai_work_map.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9851,
+        "current_display": "98.51%",
+        "gap_display": "1.49 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/baselines.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8551,
+        "current_display": "85.51%",
+        "gap_display": "14.49 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/corpus.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 759,
+        "current_display": "759",
+        "gap_display": "259 over target",
+        "kind": "structural",
+        "path": "src/sattlint/devtools/corpus.py",
+        "reason": "Devtools owner surface still centralizes audit-support behavior.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7557,
+        "current_display": "75.57%",
+        "gap_display": "24.43 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/coverage_reports.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9565,
+        "current_display": "95.65%",
+        "gap_display": "4.35 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/derived_reports.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7277,
+        "current_display": "72.77%",
+        "gap_display": "27.23 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/doc_gardener.py",
+        "reason": "Touched doc-gardener coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 740,
+        "current_display": "740",
+        "gap_display": "240 over target",
+        "kind": "structural",
+        "path": "src/sattlint/devtools/doc_gardener.py",
+        "reason": "Devtools owner surface still centralizes audit-support behavior.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7762,
+        "current_display": "77.62%",
+        "gap_display": "22.38 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/finding_exports.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8000,
+        "current_display": "80.00%",
+        "gap_display": "20.00 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/layer_linter.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8219,
+        "current_display": "82.19%",
+        "gap_display": "17.81 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/observability.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9630,
+        "current_display": "96.30%",
+        "gap_display": "3.70 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/parser_properties.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8604,
+        "current_display": "86.04%",
+        "gap_display": "13.96 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/pipeline.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 2297,
+        "current_display": "2297",
+        "gap_display": "1797 over target",
+        "kind": "structural",
+        "path": "src/sattlint/devtools/pipeline.py",
+        "reason": "Pipeline owner surface still centralizes shared audit and report orchestration.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9259,
+        "current_display": "92.59%",
+        "gap_display": "7.41 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/pipeline_artifacts.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8422,
+        "current_display": "84.22%",
+        "gap_display": "15.78 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/repo_audit.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 2294,
+        "current_display": "2294",
+        "gap_display": "1794 over target",
+        "kind": "structural",
+        "path": "src/sattlint/devtools/repo_audit.py",
+        "reason": "Repo-audit owner surface still centralizes full-profile audit checks.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9580,
+        "current_display": "95.80%",
+        "gap_display": "4.20 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/repo_audit_cli.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8807,
+        "current_display": "88.07%",
+        "gap_display": "11.93 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/repo_audit_entrypoints.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1477,
+        "current_display": "1477",
+        "gap_display": "977 over target",
+        "kind": "structural",
+        "path": "src/sattlint/devtools/repo_audit_entrypoints.py",
+        "reason": "Repo-audit entrypoint owner still centralizes runnable audit check wiring.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9048,
+        "current_display": "90.48%",
+        "gap_display": "9.52 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/review_tool.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9781,
+        "current_display": "97.81%",
+        "gap_display": "2.19 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/devtools/structural_reports.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1805,
+        "current_display": "1805",
+        "gap_display": "1305 over target",
+        "kind": "structural",
+        "path": "src/sattlint/devtools/structural_reports.py",
+        "reason": "Structural-report owner surface still centralizes shared architecture and ratchet reporting.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9684,
+        "current_display": "96.84%",
+        "gap_display": "3.16 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/docgenerator/analyzer_ref.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 672,
+        "current_display": "672",
+        "gap_display": "172 over target",
+        "kind": "structural",
+        "path": "src/sattlint/docgenerator/classification.py",
+        "reason": "Documentation generation owner surface still centralizes DOCX assembly behavior.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9811,
+        "current_display": "98.11%",
+        "gap_display": "1.89 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/docgenerator/configgen.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1127,
+        "current_display": "1127",
+        "gap_display": "627 over target",
+        "kind": "structural",
+        "path": "src/sattlint/docgenerator/configgen.py",
+        "reason": "Documentation generation owner surface still centralizes DOCX assembly behavior.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1383,
+        "current_display": "1383",
+        "gap_display": "883 over target",
+        "kind": "structural",
+        "path": "src/sattlint/docgenerator/docgen.py",
+        "reason": "Documentation generation owner surface still centralizes DOCX assembly behavior.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9532,
+        "current_display": "95.32%",
+        "gap_display": "4.68 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/engine.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1152,
+        "current_display": "1152",
+        "gap_display": "652 over target",
+        "kind": "structural",
+        "path": "src/sattlint/engine.py",
+        "reason": "Engine owner surface still centralizes program loading and merge semantics.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8491,
+        "current_display": "84.91%",
+        "gap_display": "15.09 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/graphics_validation.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8704,
+        "current_display": "87.04%",
+        "gap_display": "12.96 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/path_sanitizer.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9792,
+        "current_display": "97.92%",
+        "gap_display": "2.08 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/reporting/comment_code_report.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9527,
+        "current_display": "95.27%",
+        "gap_display": "4.73 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/reporting/icf_report.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9907,
+        "current_display": "99.07%",
+        "gap_display": "0.93 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/reporting/mms_report.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9653,
+        "current_display": "96.53%",
+        "gap_display": "3.47 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/reporting/variables_report.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8655,
+        "current_display": "86.55%",
+        "gap_display": "13.45 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/resolution/common.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9192,
+        "current_display": "91.92%",
+        "gap_display": "8.08 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/resolution/context_builder.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9706,
+        "current_display": "97.06%",
+        "gap_display": "2.94 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/resolution/type_graph.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9744,
+        "current_display": "97.44%",
+        "gap_display": "2.56 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/semantic_analysis.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9778,
+        "current_display": "97.78%",
+        "gap_display": "2.22 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/tracing.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9071,
+        "current_display": "90.71%",
+        "gap_display": "9.29 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/utils/text_processing.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 658,
+        "current_display": "658",
+        "gap_display": "158 over target",
+        "kind": "structural",
+        "path": "src/sattlint/utils/text_processing.py",
+        "reason": "Shared utility owner surface still centralizes text-processing helpers.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9922,
+        "current_display": "99.22%",
+        "gap_display": "0.78 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint/validation.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1259,
+        "current_display": "1259",
+        "gap_display": "759 over target",
+        "kind": "structural",
+        "path": "src/sattlint/validation.py",
+        "reason": "Validation owner surface still centralizes strict semantic checks.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8938,
+        "current_display": "89.38%",
+        "gap_display": "10.62 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_gui/binding.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 6364,
+        "current_display": "63.64%",
+        "gap_display": "36.36 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_gui/frames/analyze_frame.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9870,
+        "current_display": "98.70%",
+        "gap_display": "1.30 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_gui/frames/config_frame.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 6316,
+        "current_display": "63.16%",
+        "gap_display": "36.84 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_gui/frames/docs_frame.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 5517,
+        "current_display": "55.17%",
+        "gap_display": "44.83 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_gui/frames/results_frame.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 6000,
+        "current_display": "60.00%",
+        "gap_display": "40.00 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_gui/frames/sidebar.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 6500,
+        "current_display": "65.00%",
+        "gap_display": "35.00 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_gui/frames/tools_frame.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 9000,
+        "current_display": "90.00%",
+        "gap_display": "10.00 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_gui/main.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 5472,
+        "current_display": "54.72%",
+        "gap_display": "45.28 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_gui/widgets/analyzer_list.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 6800,
+        "current_display": "68.00%",
+        "gap_display": "32.00 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_gui/widgets/console.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7907,
+        "current_display": "79.07%",
+        "gap_display": "20.93 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_gui/widgets/report_view.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 6667,
+        "current_display": "66.67%",
+        "gap_display": "33.33 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_gui/widgets/target_list.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 6681,
+        "current_display": "66.81%",
+        "gap_display": "33.19 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_lsp/_server_document.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 551,
+        "current_display": "551",
+        "gap_display": "51 over target",
+        "kind": "structural",
+        "path": "src/sattlint_lsp/_server_document.py",
+        "reason": "LSP owner surface still centralizes editor protocol behavior.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8998,
+        "current_display": "89.98%",
+        "gap_display": "10.02 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_lsp/_server_helpers.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 823,
+        "current_display": "823",
+        "gap_display": "323 over target",
+        "kind": "structural",
+        "path": "src/sattlint_lsp/_server_helpers.py",
+        "reason": "LSP owner surface still centralizes editor protocol behavior.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8793,
+        "current_display": "87.93%",
+        "gap_display": "12.07 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_lsp/document_state.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 7898,
+        "current_display": "78.98%",
+        "gap_display": "21.02 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_lsp/local_parser.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 555,
+        "current_display": "555",
+        "gap_display": "55 over target",
+        "kind": "structural",
+        "path": "src/sattlint_lsp/local_parser.py",
+        "reason": "LSP owner surface still centralizes editor protocol behavior.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8198,
+        "current_display": "81.98%",
+        "gap_display": "18.02 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_lsp/server.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 8566,
+        "current_display": "85.66%",
+        "gap_display": "14.34 pp short",
+        "kind": "coverage",
+        "path": "src/sattlint_lsp/workspace_store.py",
+        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
+        "status": "below_target",
+        "target": 10000,
+        "target_display": "100.00%",
+        "touch_rule": "must_reach_target_on_touch"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 2491,
+        "current_display": "2491",
+        "gap_display": "1991 over target",
+        "kind": "structural",
+        "path": "tests/test_analyzers_state.py",
+        "reason": "Owner regression suite remains aggregated by analyzer surface pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 2311,
+        "current_display": "2311",
+        "gap_display": "1811 over target",
+        "kind": "structural",
+        "path": "tests/test_analyzers_suites.py",
+        "reason": "Owner regression suite remains aggregated by analyzer surface pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 2232,
+        "current_display": "2232",
+        "gap_display": "1732 over target",
+        "kind": "structural",
+        "path": "tests/test_analyzers_variables.py",
+        "reason": "Owner regression suite remains aggregated by analyzer surface pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1349,
+        "current_display": "1349",
+        "gap_display": "849 over target",
+        "kind": "structural",
+        "path": "tests/test_app_analysis.py",
+        "reason": "Owner regression suite remains aggregated by app surface pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1331,
+        "current_display": "1331",
+        "gap_display": "831 over target",
+        "kind": "structural",
+        "path": "tests/test_app_menus.py",
+        "reason": "Owner regression suite remains aggregated by app surface pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 636,
+        "current_display": "636",
+        "gap_display": "136 over target",
+        "kind": "structural",
+        "path": "tests/test_builtin_record_semantics.py",
+        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 544,
+        "current_display": "544",
+        "gap_display": "44 over target",
+        "kind": "structural",
+        "path": "tests/test_comment_code.py",
+        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 586,
+        "current_display": "586",
+        "gap_display": "86 over target",
+        "kind": "structural",
+        "path": "tests/test_corpus.py",
+        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 659,
+        "current_display": "659",
+        "gap_display": "159 over target",
+        "kind": "structural",
+        "path": "tests/test_dataflow.py",
+        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 2212,
+        "current_display": "2212",
+        "gap_display": "1712 over target",
+        "kind": "structural",
+        "path": "tests/test_docgen.py",
+        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1310,
+        "current_display": "1310",
+        "gap_display": "810 over target",
+        "kind": "structural",
+        "path": "tests/test_editor_api.py",
+        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1413,
+        "current_display": "1413",
+        "gap_display": "913 over target",
+        "kind": "structural",
+        "path": "tests/test_engine.py",
+        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1638,
+        "current_display": "1638",
+        "gap_display": "1138 over target",
+        "kind": "structural",
+        "path": "tests/test_gui.py",
+        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1144,
+        "current_display": "1144",
+        "gap_display": "644 over target",
+        "kind": "structural",
+        "path": "tests/test_icf_validation.py",
+        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1657,
+        "current_display": "1657",
+        "gap_display": "1157 over target",
+        "kind": "structural",
+        "path": "tests/test_lsp_diagnostics.py",
+        "reason": "Owner regression suite remains aggregated by LSP surface pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1331,
+        "current_display": "1331",
+        "gap_display": "831 over target",
+        "kind": "structural",
+        "path": "tests/test_lsp_document.py",
+        "reason": "Owner regression suite remains aggregated by LSP surface pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 2329,
+        "current_display": "2329",
+        "gap_display": "1829 over target",
+        "kind": "structural",
+        "path": "tests/test_parser_core.py",
+        "reason": "Owner regression suite remains aggregated by parser surface pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 2482,
+        "current_display": "2482",
+        "gap_display": "1982 over target",
+        "kind": "structural",
+        "path": "tests/test_parser_validation.py",
+        "reason": "Owner regression suite remains aggregated by parser surface pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 2163,
+        "current_display": "2163",
+        "gap_display": "1663 over target",
+        "kind": "structural",
+        "path": "tests/test_pipeline_collection.py",
+        "reason": "Owner regression suite remains aggregated by pipeline surface pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1466,
+        "current_display": "1466",
+        "gap_display": "966 over target",
+        "kind": "structural",
+        "path": "tests/test_pipeline_run.py",
+        "reason": "Owner regression suite remains aggregated by pipeline surface pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1081,
+        "current_display": "1081",
+        "gap_display": "581 over target",
+        "kind": "structural",
+        "path": "tests/test_sattline_semantics.py",
+        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      },
+      {
+        "allow_rebaseline": false,
+        "current_baseline": 1088,
+        "current_display": "1088",
+        "gap_display": "588 over target",
+        "kind": "structural",
+        "path": "tests/test_structural_reports.py",
+        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
+        "status": "over_target",
+        "target": 500,
+        "target_display": "500",
+        "touch_rule": "must_not_grow"
+      }
+    ]
+  },
+  "ratchet_status": {
+    "coverage": {
+      "current_line_rate": 0.8826,
+      "minimum_changed_line_rate": 1.0,
+      "minimum_line_rate": 0.8726,
+      "minimum_touched_file_line_rate": 0.9,
+      "status": "pass"
+    },
+    "overall_status": "pass_with_findings",
+    "structural": {
+      "class_over_budget_count": 3,
+      "file_exception_count": 0,
+      "function_over_budget_count": 22,
+      "status": "pass_with_findings",
+      "structural_budget_regression": false
+    }
   },
   "schema_version": 1,
   "slowest_tests": [
     {
-      "name": "tests.test_repo_audit.test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_source",
+      "name": "tests.test_pipeline_collection.test_collect_architecture_report_includes_shadowing_cli_filter",
       "outcome": "passed",
-      "time_seconds": 12.426
-    },
-    {
-      "name": "tests.test_repo_audit.test_audit_repository_run_history_keeps_last_ten_runs_and_marks_older_entries_stale",
-      "outcome": "passed",
-      "time_seconds": 10.635
-    },
-    {
-      "name": "tests.test_recommendation_routing.test_verify_check_catalog_passes_for_repo_audit_catalog",
-      "outcome": "passed",
-      "time_seconds": 6.963
-    },
-    {
-      "name": "tests.test_recommendation_routing.test_verify_check_catalog_passes_for_pipeline_catalog",
-      "outcome": "passed",
-      "time_seconds": 5.494
-    },
-    {
-      "name": "tests.test_corpus.test_checked_in_corpus_manifests_pass_against_repo_fixtures",
-      "outcome": "passed",
-      "time_seconds": 5.035
-    },
-    {
-      "name": "tests.test_repo_audit.test_audit_repository_writes_status_file_and_forwards_profile",
-      "outcome": "passed",
-      "time_seconds": 3.449
+      "time_seconds": 1.226
     },
     {
       "name": "tests.test_pipeline.test_collect_architecture_report_includes_shadowing_cli_filter",
       "outcome": "passed",
-      "time_seconds": 2.815
+      "time_seconds": 1.186
     },
     {
-      "name": "tests.test_pipeline_collection.test_collect_architecture_report_includes_shadowing_cli_filter",
+      "name": "tests.parser.test_corpus.test_checked_in_corpus_manifests_pass_against_repo_fixtures",
       "outcome": "passed",
-      "time_seconds": 2.695
+      "time_seconds": 0.89
     },
     {
-      "name": "tests.test_repo_audit.test_audit_repository_collects_custom_findings_from_tracked_files",
+      "name": "tests.parser.test_parser_core.test_internal_modules_do_not_import_parser_compat_wrappers",
       "outcome": "passed",
-      "time_seconds": 1.524
+      "time_seconds": 0.524
     },
     {
-      "name": "tests.test_parser_core.test_internal_modules_do_not_import_editor_api_compat_facade",
+      "name": "tests.test_recommendation_routing.test_verify_check_catalog_passes_for_repo_audit_catalog",
       "outcome": "passed",
-      "time_seconds": 1.268
+      "time_seconds": 0.514
+    },
+    {
+      "name": "tests.parser.test_parser_core.test_internal_modules_do_not_import_editor_api_compat_facade",
+      "outcome": "passed",
+      "time_seconds": 0.502
+    },
+    {
+      "name": "tests.test_recommendation_routing.test_verify_check_catalog_passes_for_pipeline_catalog",
+      "outcome": "passed",
+      "time_seconds": 0.432
+    },
+    {
+      "name": "tests.test_docgen.test_docgen_private_helpers_cover_scalar_and_renderer_fallback_paths",
+      "outcome": "passed",
+      "time_seconds": 0.13
+    },
+    {
+      "name": "tests.test_docgen.test_generate_docx_renders_fs_style_sections",
+      "outcome": "passed",
+      "time_seconds": 0.122
+    },
+    {
+      "name": "tests.test_docgen.test_generate_docx_renders_appendix_for_uncategorized_modules",
+      "outcome": "passed",
+      "time_seconds": 0.12
     }
   ],
-  "status": "pass_with_findings",
+  "status": "pass",
   "technical_debt_indicators": {
-    "file_exception_count": 62,
-    "medium_or_higher_findings": 9,
-    "structural_budget_regression": true
+    "file_exception_count": 0,
+    "medium_or_higher_findings": 0,
+    "structural_budget_regression": false
   },
-  "top_findings": [
-    {
-      "category": "architecture",
-      "confidence": "high",
-      "detail": null,
-      "history_cleanup_recommended": false,
-      "id": "structural-budget-ratchet-regression",
-      "line": null,
-      "message": "Structural debt regressed beyond the checked-in ratchet baseline.",
-      "path": null,
-      "severity": "medium",
-      "source": "pipeline",
-      "suggestion": null
-    },
-    {
-      "category": "architecture",
-      "confidence": "high",
-      "detail": null,
-      "history_cleanup_recommended": false,
-      "id": "structural-markdown-file-budget",
-      "line": null,
-      "message": "Some tracked Markdown files exceed the structural line budget and should be split or reorganized.",
-      "path": null,
-      "severity": "medium",
-      "source": "pipeline",
-      "suggestion": null
-    },
-    {
-      "category": "architecture",
-      "confidence": "high",
-      "detail": "2302 non-empty lines",
-      "history_cleanup_recommended": false,
-      "id": "oversized-module",
-      "line": null,
-      "message": "Large module with high maintenance cost.",
-      "path": "src/sattlint/devtools/pipeline.py",
-      "severity": "medium",
-      "source": "custom",
-      "suggestion": "Split unrelated responsibilities into smaller modules."
-    },
-    {
-      "category": "architecture",
-      "confidence": "high",
-      "detail": "2371 non-empty lines",
-      "history_cleanup_recommended": false,
-      "id": "oversized-module",
-      "line": null,
-      "message": "Large module with high maintenance cost.",
-      "path": "src/sattlint/devtools/repo_audit.py",
-      "severity": "medium",
-      "source": "custom",
-      "suggestion": "Split unrelated responsibilities into smaller modules."
-    },
-    {
-      "category": "maintenance",
-      "confidence": "high",
-      "detail": "Generated output drifted from its source-digest manifest (changed sources: src/sattlint/devtools/repo_audit_entrypoints.py).",
-      "history_cleanup_recommended": false,
-      "id": "stale-generated-output-manifest",
-      "line": null,
-      "message": "Generated output drifted from its source-digest manifest.",
-      "path": "artifacts/audit-harness-freshness",
-      "severity": "medium",
-      "source": "ai-gc",
-      "suggestion": "Run sattlint-repo-audit --apply-ai-gc to delete safe stale artifacts and compact the local ledger."
-    },
-    {
-      "category": "maintenance",
-      "confidence": "high",
-      "detail": "Generated output drifted from its source-digest manifest (changed sources: src/sattlint/devtools/repo_audit_entrypoints.py).",
-      "history_cleanup_recommended": false,
-      "id": "stale-generated-output-manifest",
-      "line": null,
-      "message": "Generated output drifted from its source-digest manifest.",
-      "path": "artifacts/audit-local-ci-parity",
-      "severity": "medium",
-      "source": "ai-gc",
-      "suggestion": "Run sattlint-repo-audit --apply-ai-gc to delete safe stale artifacts and compact the local ledger."
-    },
-    {
-      "category": "maintenance",
-      "confidence": "high",
-      "detail": "line_count=739 removable_done_blocks=24",
-      "history_cleanup_recommended": false,
-      "id": "oversized-ai-ledger",
-      "line": null,
-      "message": "Local AI coordination ledger can be compacted.",
-      "path": ".github/coordination/current-work.md",
-      "severity": "low",
-      "source": "ai-gc",
-      "suggestion": "Run sattlint-repo-audit --apply-ai-gc to delete safe stale artifacts and compact the local ledger."
-    },
-    {
-      "category": "security",
-      "confidence": "high",
-      "detail": null,
-      "history_cleanup_recommended": false,
-      "id": "bandit-b404",
-      "line": 8,
-      "message": "Consider possible security implications associated with the subprocess module.",
-      "path": "src/sattlint/devtools/coverage_reports.py",
-      "severity": "low",
-      "source": "bandit",
-      "suggestion": null
-    },
-    {
-      "category": "security",
-      "confidence": "high",
-      "detail": null,
-      "history_cleanup_recommended": false,
-      "id": "bandit-b603",
-      "line": 104,
-      "message": "subprocess call - check for execution of untrusted input.",
-      "path": "src/sattlint/devtools/coverage_reports.py",
-      "severity": "low",
-      "source": "bandit",
-      "suggestion": null
-    }
-  ],
+  "top_findings": [],
   "trend_summary": {
-    "context_delta": 0,
+    "context_delta": -6,
     "coverage_delta": 0.0,
-    "finding_delta": 1,
+    "finding_delta": -8,
     "history_count": 1,
-    "largest_file_delta": 0
-  }
+    "largest_file_delta": -568
+  },
+  "warnings": []
 }

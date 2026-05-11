@@ -12,7 +12,7 @@ applyTo: ["src/**", "tests/**", "scripts/**", ".github/**", ".ai/**", "docs/**",
 | `src/sattlint/core/` | Shared semantic and document helpers |
 | `src/sattlint/devtools/` | Repo audit, pipeline, ratchets, health reporting |
 | `src/sattlint_lsp/` | Language server and workspace loading |
-| `vscode/sattline-vscode/` | No-build VS Code client |
+| `vscode/sattline-vscode/` | No-build VS Code client for SattLine editing in external workspaces; not the default owner for this repo's Python-side health or audit UX |
 | `tests/` | Owner suites and regression coverage |
 | `.github/` | CI, instructions, prompts, agents, coordination |
 | `.ai/` | Task contracts and handoffs |

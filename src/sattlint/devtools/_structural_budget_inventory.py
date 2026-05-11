@@ -75,8 +75,6 @@ def summarize_structural_budget_metrics(report: dict[str, Any]) -> dict[str, int
         "source_file_max_lines": summary["source_file_max_lines"],
         "test_file_over_budget_count": len(report["test_files_over_budget"]),
         "test_file_max_lines": summary["test_file_max_lines"],
-        "markdown_file_over_budget_count": len(report.get("markdown_files_over_budget", [])),
-        "markdown_file_max_lines": summary.get("markdown_file_max_lines", 0),
         "function_over_budget_count": len(report["functions_over_budget"]),
         "function_max_lines": max((item["line_span"] for item in report["functions_over_budget"]), default=0),
         "class_over_budget_count": len(report["classes_over_budget"]),

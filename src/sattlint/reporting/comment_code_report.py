@@ -6,6 +6,10 @@ from pathlib import Path
 from ..analyzers.framework import Issue, format_report_header
 
 
+def _empty_issues() -> list[Issue]:
+    return []
+
+
 @dataclass(frozen=True)
 class CommentCodeHit:
     file_path: Path
@@ -21,7 +25,7 @@ class CommentCodeHit:
 class CommentCodeReport:
     basepicture_name: str
     hits: list[CommentCodeHit]
-    issues: list[Issue] = field(default_factory=list)
+    issues: list[Issue] = field(default_factory=_empty_issues)
     files_scanned: int = 0
 
     @property

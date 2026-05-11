@@ -337,3 +337,77 @@ def test_ai_work_map_parsers_skip_blank_and_non_command_lines_before_collecting(
         }
     ]
     assert commands == ["pytest tests/test_alpha.py -x -q --tb=short"]
+
+
+def test_ai_work_map_parsing_collectors_and_wrappers_cover_remaining_branches(tmp_path, monkeypatch):
+    instructions_dir = tmp_path / ".github" / "instructions"
+    agents_dir = tmp_path / ".github" / "agents"
+    exec_plans_dir = tmp_path / "docs" / "exec-plans"
+    instructions_dir.mkdir(parents=True)
+    agents_dir.mkdir(parents=True)
+    exec_plans_dir.mkdir(parents=True)
+
+    instruction = instructions_dir / "demo.instructions.md"
+    instruction.write_text(
+        '---\nname: Demo Instruction\ndescription: Route demo work\napplyTo: ["src/demo.py"]\n---\n',
+        encoding="utf-8",
+    )
+    agent = agents_dir / "demo.agent.md"
+    agent.write_text(
+        "---\nname: Demo Agent\ndescription: Handles demo work\nuser-invocable: true\n---\n",
+        encoding="utf-8",
+    )
+
+    skipped_plan = exec_plans_dir / "skip.md"
+    skipped_plan.write_text("No owner heading here\n- `tests/test_skip.py`\n", encoding="utf-8")
+    collected_plan = exec_plans_dir / "collect.md"
+    collected_plan.write_text(
+        "\n".join(
+            [
+                "Existing owner suites that this plan may reuse instead of creating new suites when the fit is real:",
+                "- `tests/test_collect.py` -> `src/demo.py`",
+                "Per-slice first validations:",
+                "    pytest tests/test_collect.py -x -q --tb=short",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(ai_work_map, "REPO_ROOT", tmp_path)
+
+    assert ai_work_map._render_json({"b": 2, "a": 1}) == '{\n  "a": 1,\n  "b": 2\n}\n'
+    assert ai_work_map._read_lines(skipped_plan) == ["No owner heading here", "- `tests/test_skip.py`"]
+    assert ai_work_map._extract_backtick_items("run `cmd one` then `cmd two`") == ["cmd one", "cmd two"]
+    assert ai_work_map._strip_quotes('"quoted"') == "quoted"
+
+    assert ai_work_map._collect_instruction_metadata(instructions_dir) == [
+        {
+            "file_path": ".github/instructions/demo.instructions.md",
+            "name": "Demo Instruction",
+            "description": "Route demo work",
+            "apply_to": ["src/demo.py"],
+        }
+    ]
+    assert ai_work_map._collect_agent_metadata(agents_dir) == [
+        {
+            "file_path": ".github/agents/demo.agent.md",
+            "name": "Demo Agent",
+            "description": "Handles demo work",
+            "user_invocable": True,
+        }
+    ]
+    assert ai_work_map._parse_owner_suites(skipped_plan) == []
+    assert ai_work_map._collect_owner_suite_plans(exec_plans_dir) == [
+        {
+            "plan_path": "docs/exec-plans/collect.md",
+            "owner_heading": "Existing owner suites that this plan may reuse instead of creating new suites when the fit is real:",
+            "suites": [
+                {
+                    "tests": ["tests/test_collect.py"],
+                    "targets": ["src/demo.py"],
+                    "target_summary": "`src/demo.py`",
+                }
+            ],
+            "first_validation_commands": ["pytest tests/test_collect.py -x -q --tb=short"],
+        }
+    ]

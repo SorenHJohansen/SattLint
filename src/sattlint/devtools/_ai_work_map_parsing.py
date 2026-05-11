@@ -302,3 +302,43 @@ def collect_agent_metadata(agents_dir: Path, *, repo_root: Path) -> list[dict[st
 
 def render_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def read_lines(path: Path) -> list[str]:
+    return _read_lines(path)
+
+
+def extract_backtick_items(text: str) -> list[str]:
+    return _extract_backtick_items(text)
+
+
+def strip_quotes(value: str) -> str:
+    return _strip_quotes(value)
+
+
+def parse_progress_checkbox_states(plan_path: Path) -> list[bool]:
+    return _parse_progress_checkbox_states(plan_path)
+
+
+def is_completed_exec_plan(plan_path: Path) -> bool:
+    return _is_completed_exec_plan(plan_path)
+
+
+def iter_reference_update_files(repo_root: Path) -> list[Path]:
+    return _iter_reference_update_files(repo_root)
+
+
+def parse_frontmatter(path: Path) -> dict[str, Any]:
+    return _parse_frontmatter(path)
+
+
+def parse_validation_routes(path: Path) -> list[dict[str, Any]]:
+    return _parse_validation_routes(path)
+
+
+def parse_owner_suites(path: Path) -> list[dict[str, Any]]:
+    return _parse_owner_suites(path)
+
+
+def parse_first_validation_commands(path: Path) -> list[str]:
+    return _parse_first_validation_commands(path)

@@ -17,10 +17,12 @@ def test_collect_structural_budget_report_detects_markdown_budget_offenders(tmp_
 
     report = structural_reports.collect_structural_budget_report(tmp_path)
 
-    assert report["markdown_files_over_budget"] == [{"path": "docs/guide.md", "line_count": 520}]
-    assert report["summary"]["markdown_file_max_lines"] == 520
-    assert report["metrics"]["markdown_file_over_budget_count"] == 1
-    assert report["metrics"]["markdown_file_max_lines"] == 520
+    assert report["source_files_over_budget"] == []
+    assert report["test_files_over_budget"] == []
+    assert report["summary"] == {
+        "source_file_max_lines": 0,
+        "test_file_max_lines": 0,
+    }
 
 
 def test_collect_architecture_report_includes_markdown_budget_findings(monkeypatch):
@@ -32,7 +34,6 @@ def test_collect_architecture_report_includes_markdown_budget_findings(monkeypat
             "thresholds": dict(structural_reports.STRUCTURAL_BUDGET_THRESHOLDS),
             "source_files_over_budget": [],
             "test_files_over_budget": [],
-            "markdown_files_over_budget": [{"path": "docs/guide.md", "line_count": 600}],
             "functions_over_budget": [],
             "classes_over_budget": [],
             "repeated_private_names": [],
@@ -57,7 +58,7 @@ def test_collect_architecture_report_includes_markdown_budget_findings(monkeypat
 
     report = structural_reports.collect_architecture_report()
 
-    assert any(finding["id"] == "structural-markdown-file-budget" for finding in report["findings"])
+    assert all(finding["id"] != "structural-markdown-file-budget" for finding in report["findings"])
 
 
 def test_collect_structural_budget_report_tracks_markdown_max_lines_under_threshold(tmp_path):
@@ -65,9 +66,10 @@ def test_collect_structural_budget_report_tracks_markdown_max_lines_under_thresh
 
     report = structural_reports.collect_structural_budget_report(tmp_path)
 
-    assert report["markdown_files_over_budget"] == []
-    assert report["summary"]["markdown_file_max_lines"] == 2
-    assert report["metrics"]["markdown_file_max_lines"] == 2
+    assert report["summary"] == {
+        "source_file_max_lines": 0,
+        "test_file_max_lines": 0,
+    }
 
 
 def test_collect_structural_budget_report_allows_documented_markdown_file_exception(tmp_path):
@@ -92,14 +94,5 @@ def test_collect_structural_budget_report_allows_documented_markdown_file_except
 
     report = structural_reports.collect_structural_budget_report(tmp_path)
 
-    assert report["markdown_files_over_budget"] == []
+    assert report["line_limit_exceptions"] == []
     assert report["ratchet"]["status"] == "pass"
-    assert report["line_limit_exceptions"] == [
-        {
-            "path": "docs/roadmap.md",
-            "line_count": 530,
-            "max_lines": 530,
-            "reason": "Roadmap owner document remains centralized pending breakdown into smaller plans.",
-            "status": "pass",
-        }
-    ]

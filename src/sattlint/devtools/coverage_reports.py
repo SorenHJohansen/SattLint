@@ -8,7 +8,7 @@ import shutil
 import subprocess  # nosec B404
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from defusedxml import ElementTree  # type: ignore[import-untyped]
 
@@ -139,7 +139,7 @@ def _load_coverage_ratchet(root: Path) -> dict[str, Any]:
         }
 
     metrics = payload.get("metrics")
-    if not isinstance(metrics, dict) or any(not isinstance(value, int) for value in metrics.values()):
+    if not isinstance(metrics, dict):
         return {
             "status": "invalid",
             "path": sanitized_path,
@@ -148,12 +148,24 @@ def _load_coverage_ratchet(root: Path) -> dict[str, Any]:
             "error_type": "ValueError",
         }
 
+    normalized_metrics: dict[str, int] = {}
+    for raw_key, raw_value in cast(dict[object, object], metrics).items():
+        if not isinstance(raw_key, str) or not isinstance(raw_value, int):
+            return {
+                "status": "invalid",
+                "path": sanitized_path,
+                "metrics": {},
+                "error": "ratchet metrics must be a JSON object with integer values",
+                "error_type": "ValueError",
+            }
+        normalized_metrics[raw_key] = raw_value
+
     return {
         "status": "loaded",
         "path": sanitized_path,
         "kind": payload.get("kind"),
         "schema_version": payload.get("schema_version"),
-        "metrics": {key: int(value) for key, value in metrics.items()},
+        "metrics": normalized_metrics,
     }
 
 

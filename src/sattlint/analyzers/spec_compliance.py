@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from sattline_parser.models.ast_model import (
@@ -157,7 +158,7 @@ class SpecComplianceAnalyzer:
                 )
                 continue
 
-            if isinstance(child, ModuleTypeInstance):
+            else:
                 self._check_instance_contracts(
                     child,
                     module_path=child_path,
@@ -209,7 +210,7 @@ class SpecComplianceAnalyzer:
                         )
                     )
 
-    def _iter_sequence_nodes(self, nodes: list[object]):
+    def _iter_sequence_nodes(self, nodes: list[object]) -> Iterator[object]:
         for node in nodes:
             yield node
             if isinstance(node, SFCAlternative | SFCParallel):
@@ -414,10 +415,13 @@ class SpecComplianceAnalyzer:
     ) -> ParameterMapping | None:
         wanted = parameter_name.casefold()
         for mapping in mappings or []:
-            target_name = varname_base(mapping.target)
+            target_name = self._mapping_target_name(mapping)
             if target_name == wanted:
                 return mapping
         return None
+
+    def _mapping_target_name(self, mapping: ParameterMapping) -> str | None:
+        return varname_base(getattr(mapping, "target", None))
 
     def _resolve_mapping_value(
         self,
@@ -434,7 +438,7 @@ class SpecComplianceAnalyzer:
                 source="literal parameter mapping",
             )
 
-        full_ref = varname_full(mapping.source)
+        full_ref = self._mapping_source_name(mapping)
         if not full_ref:
             return None
         if "." in full_ref or ":" in full_ref:
@@ -443,11 +447,15 @@ class SpecComplianceAnalyzer:
         variable = env.get(full_ref.casefold())
         if variable is None or variable.init_value is None:
             return None
+
         return _ParameterValue(
             status="resolved",
             value=variable.init_value,
             source=f"init value of variable {variable.name}",
         )
+
+    def _mapping_source_name(self, mapping: ParameterMapping) -> str | None:
+        return varname_full(getattr(mapping, "source", None))
 
     def _find_variable(
         self,

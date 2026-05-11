@@ -1,7 +1,7 @@
 ---
 description: "Use when changing Python tests in SattLint. Covers focused pytest routing, fixture reuse, and stable assertion patterns for repo-venv workflows."
 name: "Python Test Instructions"
-applyTo: ["tests/test_*.py", "tests/helpers/**"]
+applyTo: ["tests/**/*.py", "tests/helpers/**"]
 ---
 # Python Tests
 

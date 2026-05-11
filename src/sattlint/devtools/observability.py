@@ -2,7 +2,7 @@
 
 import json
 import subprocess  # nosec B404 - internal devtool wrapper runs trusted local commands only
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -108,7 +108,7 @@ def get_build_metrics() -> dict[str, Any]:
 def collect_all_metrics() -> dict[str, Any]:
     """Collect all observability metrics."""
     return {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "test": get_test_metrics(),
         "coverage": get_coverage_metrics(),
         "lint": get_lint_metrics(),

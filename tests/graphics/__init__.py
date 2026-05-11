@@ -1,0 +1,1 @@
+"""Graphics-focused test package."""

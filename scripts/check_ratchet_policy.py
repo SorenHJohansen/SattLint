@@ -45,6 +45,7 @@ COVERAGE_FLOOR_BUFFER_BASIS_POINTS = 100
 FILE_DEBT_RATCHET_SCHEMA_KIND = "sattlint.file_debt_ratchet"
 FILE_DEBT_RATCHET_SCHEMA_VERSION = 1
 FILE_DEBT_ALLOWED_PREFIXES = ("src/", "tests/", "docs/", "scripts/")
+LEGACY_MARKDOWN_STRUCTURAL_METRICS = frozenset({"markdown_file_max_lines", "markdown_file_over_budget_count"})
 FILE_DEBT_TOUCH_RULES = {
     "coverage": frozenset({"must_not_drop", "must_reach_target_on_touch"}),
     "structural": frozenset({"must_meet_target", "must_not_grow", "must_shrink"}),
@@ -663,6 +664,14 @@ def _file_debt_ratchet_backslide_errors(
     return errors
 
 
+def _file_debt_surface_errors(file_debt_state: Mapping[str, dict[str, dict[str, Any]]]) -> list[str]:
+    errors: list[str] = []
+    for rel_path, dimensions in sorted(file_debt_state.items()):
+        if rel_path.endswith(".md") and "structural" in dimensions:
+            errors.append(f"Per-file structural debt must not target Markdown paths: {rel_path}.")
+    return errors
+
+
 def _file_debt_ratchet_addition_errors(
     base_state: dict[str, dict[str, dict[str, Any]]],
     head_state: dict[str, dict[str, dict[str, Any]]],
@@ -901,6 +910,48 @@ def _file_debt_runtime_errors(
     return errors
 
 
+def _file_debt_stale_entry_errors(
+    *,
+    repo_root: Path,
+    file_debt_state: Mapping[str, dict[str, dict[str, Any]]],
+) -> list[str]:
+    errors: list[str] = []
+    structural_paths = tuple(
+        rel_path for rel_path, dimensions in sorted(file_debt_state.items()) if "structural" in dimensions
+    )
+    if structural_paths:
+        current_text_by_path = _load_current_texts(repo_root, structural_paths)
+        for rel_path in structural_paths:
+            current_text = current_text_by_path.get(rel_path)
+            if current_text is None:
+                continue
+            target = int(file_debt_state[rel_path]["structural"]["target"])
+            current_lines = _line_count(current_text)
+            if current_lines <= target:
+                errors.append(
+                    f"Per-file structural debt entry is stale for {rel_path}: current line count {current_lines} "
+                    f"is at or below target {target}. Remove the structural entry from {FILE_DEBT_RATCHET_PATH}."
+                )
+
+    coverage_paths = tuple(
+        rel_path for rel_path, dimensions in sorted(file_debt_state.items()) if "coverage" in dimensions
+    )
+    if coverage_paths:
+        coverage_by_path = _coverage_basis_points_by_path(repo_root)
+        for rel_path in coverage_paths:
+            current_basis_points = coverage_by_path.get(rel_path)
+            if current_basis_points is None:
+                continue
+            target = int(file_debt_state[rel_path]["coverage"]["target"])
+            if current_basis_points >= target:
+                errors.append(
+                    f"Per-file coverage debt entry is stale for {rel_path}: current coverage {current_basis_points / 100:.2f}% "
+                    f"meets or exceeds target {target / 100:.2f}%. Remove the coverage entry from {FILE_DEBT_RATCHET_PATH}."
+                )
+
+    return errors
+
+
 def _new_python_file_paths(added_files: Sequence[str]) -> tuple[str, ...]:
     return tuple(
         path for path in added_files if path.endswith(".py") and path.startswith(("src/", "tests/", "scripts/"))
@@ -1002,12 +1053,20 @@ def evaluate_policy_change(
             head_metrics = _metric_mapping(head_payload, STRUCTURAL_RATCHET_PATH)
             base_exceptions = _structural_file_line_exception_mapping(base_payload, STRUCTURAL_RATCHET_PATH)
             head_exceptions = _structural_file_line_exception_mapping(head_payload, STRUCTURAL_RATCHET_PATH)
-            markdown_scope_migration = (
-                "markdown_file_max_lines" not in base_metrics and "markdown_file_max_lines" in head_metrics
+            markdown_head_metrics = sorted(
+                metric for metric in head_metrics if metric in LEGACY_MARKDOWN_STRUCTURAL_METRICS
             )
+            if markdown_head_metrics:
+                errors.append(
+                    "Structural ratchet must not track Markdown file metrics: " + ", ".join(markdown_head_metrics) + "."
+                )
+            for rel_path in sorted(path for path in head_exceptions if path.endswith(".md")):
+                errors.append(f"Structural file-line exceptions must not target Markdown paths: {rel_path}.")
             for metric_name, base_value in sorted(base_metrics.items()):
                 head_value = head_metrics.get(metric_name)
                 if head_value is None:
+                    if metric_name in LEGACY_MARKDOWN_STRUCTURAL_METRICS:
+                        continue
                     errors.append(
                         f"Structural ratchet changed without metric {metric_name!r}; keep the ratchet schema stable."
                     )
@@ -1030,8 +1089,6 @@ def evaluate_policy_change(
                         )
 
                 for rel_path in sorted(set(head_exceptions) - set(base_exceptions)):
-                    if markdown_scope_migration and rel_path.endswith(".md"):
-                        continue
                     errors.append(
                         "Structural file-line exception added: "
                         f"{rel_path} @ {head_exceptions[rel_path]['max_lines']} lines. "
@@ -1115,6 +1172,7 @@ def evaluate_policy_change(
         head_text = current_text_by_path.get(FILE_DEBT_RATCHET_PATH)
         if head_text is not None:
             head_state = _file_debt_ratchet_state(head_text, FILE_DEBT_RATCHET_PATH)
+            errors.extend(_file_debt_surface_errors(head_state))
             structural_text = current_text_by_path.get(STRUCTURAL_RATCHET_PATH)
             if structural_text is None:
                 raise ValueError(f"{STRUCTURAL_RATCHET_PATH} is missing.")
@@ -1179,6 +1237,13 @@ def run_policy_check(repo_root: Path = REPO_ROOT, env: Mapping[str, str] | None 
     file_debt_text = current_text_by_path.get(FILE_DEBT_RATCHET_PATH)
     current_file_debt_state = (
         _file_debt_ratchet_state(file_debt_text, FILE_DEBT_RATCHET_PATH) if file_debt_text is not None else {}
+    )
+    errors.extend(_file_debt_surface_errors(current_file_debt_state))
+    errors.extend(
+        _file_debt_stale_entry_errors(
+            repo_root=repo_root,
+            file_debt_state=current_file_debt_state,
+        )
     )
     base_pyproject_text = None
     if context.base_ref is not None:

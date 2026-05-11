@@ -1,0 +1,18 @@
+{
+  "command": [
+    ".venv/bin/pyright",
+    "--outputjson",
+    "src",
+    "tests"
+  ],
+  "duration_seconds": 17.268,
+  "effective_exit_code": 0,
+  "error_count": 0,
+  "exit_code": 0,
+  "finding_count": 0,
+  "findings": [],
+  "stderr": "",
+  "stdout": "{\n    \"version\": \"1.1.409\",\n    \"time\": \"1778494810883\",\n    \"generalDiagnostics\": [],\n    \"summary\": {\n        \"filesAnalyzed\": 353,\n        \"errorCount\": 0,\n        \"warningCount\": 0,\n        \"informationCount\": 0,\n        \"timeInSec\": 16.91\n    }\n}\n\n",
+  "tool": "pyright",
+  "warning_count": 0
+}

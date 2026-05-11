@@ -11,17 +11,18 @@ from sattlint import app_analysis
 
 def test_load_project_returns_cached_project_without_building_loader(monkeypatch):
     cached_project = ("bp-cached", SimpleNamespace())
+    seen_cache_dirs: list[Path] = []
 
     class FakeCache:
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
+            seen_cache_dirs.append(cache_dir)
 
         def load(self, key):
             assert key == "cache-key"
             return {"project": cached_project}
 
     monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
-    monkeypatch.setattr(app_analysis, "get_cache_dir", lambda: Path("cache-dir"))
     monkeypatch.setattr(
         app_analysis.engine_module,
         "SattLineProjectLoader",
@@ -39,9 +40,11 @@ def test_load_project_returns_cached_project_without_building_loader(monkeypatch
             "analyzed_programs_and_libraries": ["TargetA"],
         },
         cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
+        get_cache_dir_fn=lambda: Path("custom-cache-dir"),
     )
 
     assert result == cached_project
+    assert seen_cache_dirs == [Path("custom-cache-dir")]
 
 
 def test_load_project_raises_target_load_error_when_root_program_missing(monkeypatch):

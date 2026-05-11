@@ -234,3 +234,69 @@ def test_verify_ai_harness_freshness_allows_virtual_git_lock_glob(tmp_path):
 
     assert report["status"] == "pass"
     assert report["issues"] == []
+
+
+def test_verify_ai_harness_freshness_covers_missing_outputs_and_backslash_metadata(tmp_path):
+    (tmp_path / "src" / "sattlint").mkdir(parents=True)
+    (tmp_path / "src" / "sattlint" / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    output_path = tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-work-map.json"
+    session_output_path = (
+        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-session-context-map.json"
+    )
+    check_catalog_output_path = (
+        tmp_path / ".github" / "skills" / "validation-routing" / "references" / "ai-check-catalog.md"
+    )
+
+    work_map = {
+        "instructions": [
+            {
+                "name": "Windows Style Instruction",
+                "file_path": ".github/instructions/windows.instructions.md",
+                "apply_to": [r"src\\sattlint\\app.py"],
+            }
+        ],
+        "agents": [
+            {
+                "name": "Live Agent",
+                "file_path": ".github/agents/live.agent.md",
+                "user_invocable": True,
+            }
+        ],
+        "agent_routing": [
+            "ignored",
+            {"agent_name": "   ", "path_globs": ["src/sattlint/app.py"]},
+            {"agent_name": "Live Agent", "path_globs": []},
+            {"agent_name": "Live Agent", "path_globs": [r"src\\sattlint\\app.py"]},
+        ],
+        "pipeline_checks": [
+            "ignored",
+            {"id": "   ", "ai_summary": "ignored", "ai_instruction_files": [".github/instructions/live.md"]},
+            {
+                "id": "ruff",
+                "source": "pipeline",
+                "ai_summary": "lint summary",
+                "ai_instruction_files": [r".github\\instructions\\windows.instructions.md"],
+            },
+        ],
+        "repo_audit_checks": [],
+    }
+
+    report = verify_ai_harness_freshness(
+        work_map=work_map,
+        session_context_map={"kind": "session-map", "instructions": [], "agents": []},
+        repo_root=tmp_path,
+        output_path=output_path,
+        session_output_path=session_output_path,
+        check_catalog_output_path=check_catalog_output_path,
+    )
+
+    assert report["status"] == "fail"
+    assert {issue["issue_id"] for issue in report["issues"]} == {
+        "missing-generated-ai-work-map",
+        "missing-generated-ai-session-context-map",
+        "missing-generated-ai-check-catalog",
+        "backslash-instruction-applyto-glob",
+        "orphaned-agent-routing",
+        "backslash-agent-routing-glob",
+        "backslash-check-instruction-path",
+    }

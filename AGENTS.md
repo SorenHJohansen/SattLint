@@ -46,6 +46,7 @@ See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface
 - Start from the owning file or symbol. Run focused validation before widening.
 - `sattlint syntax-check` stays strict. No silent fallback behavior.
 - Use repo venv commands, not the VS Code test runner, for executable proof.
+- Treat `vscode/sattline-vscode/` as the SattLine editor client for external workspaces, not as the default host for this repo.
 - Bootstrap new slices with `python scripts/bootstrap_ai_slice.py ...` instead of hand-editing coordination state.
 - Treat the shared active-claim lock as `.git/sattlint-ai-coordination/current_work_lock.json`; the deprecated markdown coordination ledger should not be used.
 - One task contract and one handoff per scoped slice when work moves between executor, test, and reviewer.

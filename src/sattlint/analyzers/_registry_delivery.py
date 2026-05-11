@@ -55,7 +55,7 @@ def _base_delivery_metadata_by_analyzer(
             implementation_bucket="shared-semantic-core",
             lsp_exposed=True,
             acceptance_tests=(
-                "tests/test_sattline_semantics.py",
+                "tests/analyzers/test_sattline_semantics.py",
                 "tests/test_pipeline.py",
             ),
             min_fixture_set=shared_fixtures,
@@ -64,8 +64,8 @@ def _base_delivery_metadata_by_analyzer(
             scope="cross-module",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=(
-                "tests/test_dataflow.py",
-                "tests/test_sattline_semantics.py",
+                "tests/analyzers/test_dataflow.py",
+                "tests/analyzers/test_sattline_semantics.py",
             ),
             depends_on_analyzers=(semantic_layer_analyzer_key,),
             min_fixture_set=shared_fixtures,
@@ -78,7 +78,7 @@ def _base_delivery_metadata_by_analyzer(
             lsp_exposed=True,
             acceptance_tests=(
                 "tests/test_analyzers.py",
-                "tests/test_sattline_semantics.py",
+                "tests/analyzers/test_sattline_semantics.py",
                 "tests/test_app.py",
             ),
             supports_incremental=True,
@@ -101,9 +101,9 @@ def _base_delivery_metadata_by_analyzer(
             cli_exposed=True,
             lsp_exposed=True,
             acceptance_tests=(
-                "tests/test_sfc.py",
+                "tests/analyzers/test_sfc.py",
                 "tests/test_analyzers.py",
-                "tests/test_sattline_semantics.py",
+                "tests/analyzers/test_sattline_semantics.py",
             ),
             depends_on_analyzers=(semantic_layer_analyzer_key,),
             min_fixture_set=shared_fixtures,
@@ -114,7 +114,7 @@ def _base_delivery_metadata_by_analyzer(
             implementation_bucket="comment-scan",
             cli_exposed=True,
             acceptance_tests=(
-                "tests/test_comment_code.py",
+                "tests/analyzers/test_comment_code.py",
                 "tests/test_app.py",
             ),
         ),
@@ -135,7 +135,7 @@ def _base_delivery_metadata_by_analyzer(
             cli_exposed=True,
             lsp_exposed=True,
             acceptance_tests=(
-                "tests/test_spec_compliance.py",
+                "tests/analyzers/test_spec_compliance.py",
                 "tests/test_app.py",
             ),
             min_fixture_set=shared_fixtures,
@@ -156,7 +156,7 @@ def _base_delivery_metadata_by_analyzer(
             lsp_exposed=True,
             acceptance_tests=(
                 "tests/test_analyzers.py",
-                "tests/test_sattline_semantics.py",
+                "tests/analyzers/test_sattline_semantics.py",
             ),
             depends_on_analyzers=(semantic_layer_analyzer_key,),
             min_fixture_set=shared_fixtures,
@@ -248,7 +248,7 @@ def _base_delivery_metadata_by_analyzer(
             implementation_bucket="shared-semantic-core",
             lsp_exposed=True,
             acceptance_tests=(
-                "tests/test_dataflow.py",
+                "tests/analyzers/test_dataflow.py",
                 "tests/test_analyzers.py",
                 "tests/test_sattline_semantics.py",
             ),
@@ -260,8 +260,8 @@ def _base_delivery_metadata_by_analyzer(
             scope="workspace",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=(
-                "tests/test_state_inference.py",
-                "tests/test_dataflow.py",
+                "tests/analyzers/test_state_inference.py",
+                "tests/analyzers/test_dataflow.py",
                 "tests/test_cli.py",
             ),
             depends_on_analyzers=(semantic_layer_analyzer_key, "dataflow"),

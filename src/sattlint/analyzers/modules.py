@@ -2,9 +2,11 @@
 
 import logging
 from collections import Counter, defaultdict
+from collections.abc import Mapping
+from collections.abc import Sequence as CollectionSequence
 from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
-from typing import Any, cast
+from typing import Any, Literal, TypeGuard, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -35,6 +37,69 @@ _IGNORED_AST_FIELDS = {
 }
 _MISSING_AST_VALUE = object()
 _DEFAULT_DEBUG_MAX_DEPTH = 10
+
+type SubmoduleNode = SingleModule | FrameModule | ModuleTypeInstance
+type SubmoduleTreeEntry = tuple[int, str, str]
+type NormalizedScalar = None | bool | int | float | str
+type NormalizedEnumValue = tuple[str, NormalizedScalar]
+type NormalizedFields = tuple[tuple[str, NormalizedValue], ...]
+type NormalizedListValue = tuple[Literal["list"], tuple[NormalizedValue, ...]]
+type NormalizedTupleValue = tuple[Literal["tuple"], tuple[NormalizedValue, ...]]
+type NormalizedDictValue = tuple[Literal["dict"], NormalizedFields]
+type NormalizedObjectValue = tuple[str, NormalizedFields]
+type NormalizedTreeValue = tuple[str, object | None, tuple[NormalizedValue, ...]]
+type NormalizedEntryMap = dict[str, NormalizedValue]
+type NormalizedValue = (
+    NormalizedScalar
+    | NormalizedEnumValue
+    | NormalizedListValue
+    | NormalizedTupleValue
+    | NormalizedDictValue
+    | NormalizedObjectValue
+    | NormalizedTreeValue
+)
+type NamedNormalizedValue = tuple[str, NormalizedValue]
+type CodeEntryMap = dict[str, NamedNormalizedValue]
+type VariantFingerprintKey = tuple[int, int, int, int, int, int, int, int, int, int]
+
+
+def _empty_ast_diff_map() -> dict[str, list["AstDiffDetail"]]:
+    return {}
+
+
+def _empty_fingerprints() -> list["ModuleFingerprint"]:
+    return []
+
+
+def _empty_instance_fingerprints() -> list[tuple[list[str], "ModuleFingerprint"]]:
+    return []
+
+
+def _empty_str_list() -> list[str]:
+    return []
+
+
+def _empty_issues() -> list[Issue]:
+    return []
+
+
+def _sorted_object_items(mapping: dict[object, object]) -> list[tuple[str, object]]:
+    return [(str(key), item) for key, item in sorted(mapping.items(), key=lambda pair: str(pair[0]))]
+
+
+def _sorted_normalized_items(mapping: Mapping[str, NormalizedValue]) -> tuple[tuple[str, NormalizedValue], ...]:
+    items = list(mapping.items())
+    items.sort(key=lambda entry: entry[0])
+    return tuple(items)
+
+
+def _mapping_var_name(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        raw_name = cast(dict[object, object], value).get("var_name")
+        return "" if raw_name is None else str(raw_name)
+    return str(value)
 
 
 def debug_module_structure(base_picture: BasePicture, max_depth: int = _DEFAULT_DEBUG_MAX_DEPTH) -> None:
@@ -163,7 +228,7 @@ class ModuleFingerprint:
 
     # Store the actual module for access
     module: SingleModule
-    module_path: list[str] = field(default_factory=list)
+    module_path: list[str] = field(default_factory=_empty_str_list)
 
 
 @dataclass
@@ -172,14 +237,14 @@ class VariableDiff:
 
     common: list[str]  # case-insensitive common names
     only_in_variant: dict[int, list[str]]  # variant_id -> list of names
-    modified: dict[str, list["AstDiffDetail"]] = field(default_factory=dict)
+    modified: dict[str, list["AstDiffDetail"]] = field(default_factory=_empty_ast_diff_map)
 
 
 def _get_submodule_tree_structure(
-    submodules: list[SingleModule | FrameModule | ModuleTypeInstance],
+    submodules: list[SubmoduleNode],
     depth: int = 0,
     max_depth: int = 10,
-) -> set[tuple]:
+) -> set[SubmoduleTreeEntry]:
     """
     Recursively extract the complete tree structure of submodules.
     Returns a set of tuples representing the full hierarchy.
@@ -187,7 +252,7 @@ def _get_submodule_tree_structure(
     if depth > max_depth:
         return set()
 
-    structure = set()
+    structure: set[SubmoduleTreeEntry] = set()
 
     for sm in submodules:
         name = _normalize_name(sm.header.name)
@@ -208,7 +273,7 @@ def _get_submodule_tree_structure(
             child_structure = _get_submodule_tree_structure(sm.submodules, depth + 1, max_depth)
             structure.update(child_structure)
 
-        elif isinstance(sm, ModuleTypeInstance):
+        else:
             typ = f"Instance:{_normalize_name(sm.moduletype_name)}"
             # Add this node (instances have no submodules)
             structure.add((depth, name, typ))
@@ -232,8 +297,8 @@ class CodeDiff:
     sequences_only_in_variant: dict[int, list[str]]
     equations_common: list[str]
     equations_only_in_variant: dict[int, list[str]]
-    modified_sequences: dict[str, list["AstDiffDetail"]] = field(default_factory=dict)
-    modified_equations: dict[str, list["AstDiffDetail"]] = field(default_factory=dict)
+    modified_sequences: dict[str, list["AstDiffDetail"]] = field(default_factory=_empty_ast_diff_map)
+    modified_equations: dict[str, list["AstDiffDetail"]] = field(default_factory=_empty_ast_diff_map)
 
 
 @dataclass(frozen=True)
@@ -257,8 +322,8 @@ class ComparisonResult:
     module_name: str
     total_found: int
     unique_variants: int
-    fingerprints: list[ModuleFingerprint] = field(default_factory=list)
-    all_instances: list[tuple[list[str], ModuleFingerprint]] = field(default_factory=list)
+    fingerprints: list[ModuleFingerprint] = field(default_factory=_empty_fingerprints)
+    all_instances: list[tuple[list[str], ModuleFingerprint]] = field(default_factory=_empty_instance_fingerprints)
 
     # Detailed diffs
     parameter_diff: VariableDiff | None = None
@@ -348,7 +413,7 @@ class ComparisonResult:
                 lines.append("=== Submodules Differences (Recursive Tree) ===")
 
                 # Group common by depth for better readability
-                common_by_depth = defaultdict(list)
+                common_by_depth: defaultdict[int, list[tuple[str, str]]] = defaultdict(list)
                 for depth, name, typ in self.submodule_diff.common:
                     common_by_depth[depth].append((name, typ))
 
@@ -364,7 +429,7 @@ class ComparisonResult:
                     if unique_subs:
                         lines.append(f"Only in Variant {var_id} ({len(unique_subs)} nodes):")
                         # Group by depth
-                        by_depth = defaultdict(list)
+                        by_depth: defaultdict[int, list[tuple[str, str]]] = defaultdict(list)
                         for depth, name, typ in unique_subs:
                             by_depth[depth].append((name, typ))
 
@@ -401,7 +466,7 @@ class VersionDriftReport:
     """Analyzer-facing report for module version drift findings."""
 
     name: str
-    issues: list[Issue] = field(default_factory=list)
+    issues: list[Issue] = field(default_factory=_empty_issues)
 
     def summary(self) -> str:
         if not self.issues:
@@ -428,7 +493,7 @@ def _normalize_name(name: str) -> str:
     return name.lower().strip()
 
 
-def _normalize_ast_value(value: Any) -> object:
+def _normalize_ast_value(value: Any) -> NormalizedValue:
     """Normalize AST-like values into stable, hashable tuples."""
     if value is None or isinstance(value, bool | int | float | str):
         return value
@@ -437,27 +502,32 @@ def _normalize_ast_value(value: Any) -> object:
         enum_value = value.value
         if isinstance(enum_value, str):
             enum_value = enum_value.casefold()
-        return (type(value).__name__, enum_value)
+        if enum_value is None or isinstance(enum_value, bool | int | float | str):
+            return (type(value).__name__, enum_value)
+        return (type(value).__name__, repr(enum_value))
 
     if isinstance(value, dict):
-        items = []
-        for key, item in sorted(value.items(), key=lambda pair: str(pair[0])):
+        mapping = cast(dict[object, object], value)
+        items: list[NamedNormalizedValue] = []
+        for key, item in _sorted_object_items(mapping):
             if key in _IGNORED_AST_FIELDS:
                 continue
             normalized = _normalize_ast_value(item)
             if key in {"state", "var_name"} and isinstance(normalized, str):
                 normalized = normalized.casefold()
-            items.append((str(key), normalized))
+            items.append((key, normalized))
         return ("dict", tuple(items))
 
     if isinstance(value, tuple):
-        return ("tuple", tuple(_normalize_ast_value(item) for item in value))
+        tuple_items = cast(tuple[object, ...], value)
+        return ("tuple", tuple(_normalize_ast_value(item) for item in tuple_items))
 
     if isinstance(value, list):
-        return ("list", tuple(_normalize_ast_value(item) for item in value))
+        list_items = cast(list[object], value)
+        return ("list", tuple(_normalize_ast_value(item) for item in list_items))
 
     if is_dataclass(value):
-        items = []
+        items: list[NamedNormalizedValue] = []
         for field_info in fields(value):
             if field_info.name in _IGNORED_AST_FIELDS:
                 continue
@@ -468,15 +538,22 @@ def _normalize_ast_value(value: Any) -> object:
         return (type(value).__name__, tuple(items))
 
     if hasattr(value, "data") and hasattr(value, "children"):
+        raw_children = cast(object, getattr(value, "children", []))
+        children: tuple[NormalizedValue, ...] = ()
+        if isinstance(raw_children, list | tuple):
+            children = tuple(
+                _normalize_ast_value(child) for child in cast(list[object] | tuple[object, ...], raw_children)
+            )
         return (
             type(value).__name__,
-            getattr(value, "data", None),
-            tuple(_normalize_ast_value(child) for child in getattr(value, "children", [])),
+            cast(object | None, getattr(value, "data", None)),
+            children,
         )
 
     if hasattr(value, "__dict__"):
-        items = []
-        for key, item in sorted(vars(value).items()):
+        items: list[NamedNormalizedValue] = []
+        attrs = cast(dict[str, object], vars(value))
+        for key, item in sorted(attrs.items()):
             if key.startswith("_") or key in _IGNORED_AST_FIELDS:
                 continue
             items.append((key, _normalize_ast_value(item)))
@@ -485,24 +562,28 @@ def _normalize_ast_value(value: Any) -> object:
     return repr(value)
 
 
-def _is_named_field_collection(value: object) -> bool:
-    return isinstance(value, tuple) and all(
-        isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str) for item in value
-    )
+def _is_named_field_collection(value: object) -> TypeGuard[NormalizedFields]:
+    if not isinstance(value, tuple):
+        return False
+    items = cast(tuple[object, ...], value)
+    for item in items:
+        if not isinstance(item, tuple):
+            return False
+        parts = cast(tuple[object, ...], item)
+        if len(parts) != 2 or not isinstance(parts[0], str):
+            return False
+    return True
 
 
 def _normalized_value_kind(value: object) -> str:
     if value is _MISSING_AST_VALUE:
         return "missing"
-    if isinstance(value, tuple) and len(value) == 2 and value[0] in {"dict", "list", "tuple"}:
-        return cast(str, value[0])
-    if (
-        isinstance(value, tuple)
-        and len(value) == 2
-        and isinstance(value[0], str)
-        and _is_named_field_collection(value[1])
-    ):
-        return f"object:{value[0]}"
+    if isinstance(value, tuple):
+        parts = cast(tuple[object, ...], value)
+        if len(parts) == 2 and parts[0] in {"dict", "list", "tuple"}:
+            return cast(str, parts[0])
+        if len(parts) == 2 and isinstance(parts[0], str) and _is_named_field_collection(parts[1]):
+            return f"object:{parts[0]}"
     return "scalar"
 
 
@@ -524,7 +605,7 @@ def _join_diff_path(base: str, segment: str) -> str:
 
 
 def _diff_normalized_variants(
-    variants: dict[int, object],
+    variants: Mapping[int, object],
     path: str = "",
 ) -> list[AstDiffDetail]:
     if len({_stringify_normalized_value(value) for value in variants.values()}) <= 1:
@@ -543,9 +624,8 @@ def _diff_normalized_variants(
 
     kind = next(iter(kinds.values()))
     if kind == "list":
-        list_values = {
-            variant_id: cast(tuple[Any, ...], cast(tuple[object, tuple[Any, ...]], value)[1])
-            for variant_id, value in variants.items()
+        list_values: dict[int, tuple[NormalizedValue, ...]] = {
+            variant_id: cast(NormalizedListValue, value)[1] for variant_id, value in variants.items()
         }
         max_len = max(len(items) for items in list_values.values())
         details: list[AstDiffDetail] = []
@@ -563,12 +643,11 @@ def _diff_normalized_variants(
         return details
 
     if kind == "tuple":
-        tuple_values = {
-            variant_id: cast(tuple[Any, ...], cast(tuple[object, tuple[Any, ...]], value)[1])
-            for variant_id, value in variants.items()
+        tuple_values: dict[int, tuple[NormalizedValue, ...]] = {
+            variant_id: cast(NormalizedTupleValue, value)[1] for variant_id, value in variants.items()
         }
         max_len = max(len(items) for items in tuple_values.values())
-        details = []
+        details: list[AstDiffDetail] = []
         for index in range(max_len):
             child_variants = {
                 variant_id: items[index] if index < len(items) else _MISSING_AST_VALUE
@@ -583,17 +662,11 @@ def _diff_normalized_variants(
         return details
 
     if kind == "dict":
-        dict_values: dict[int, dict[str, object]] = {
-            variant_id: dict(
-                cast(
-                    tuple[tuple[str, object], ...],
-                    cast(tuple[object, tuple[tuple[str, object], ...]], value)[1],
-                )
-            )
-            for variant_id, value in variants.items()
+        dict_values: dict[int, dict[str, NormalizedValue]] = {
+            variant_id: dict(cast(NormalizedDictValue, value)[1]) for variant_id, value in variants.items()
         }
         keys = sorted({key for mapping in dict_values.values() for key in mapping})
-        details = []
+        details: list[AstDiffDetail] = []
         for key in keys:
             child_variants = {
                 variant_id: mapping.get(key, _MISSING_AST_VALUE) for variant_id, mapping in dict_values.items()
@@ -607,17 +680,11 @@ def _diff_normalized_variants(
         return details
 
     if kind.startswith("object:"):
-        object_values: dict[int, dict[str, object]] = {
-            variant_id: dict(
-                cast(
-                    tuple[tuple[str, object], ...],
-                    cast(tuple[object, tuple[tuple[str, object], ...]], value)[1],
-                )
-            )
-            for variant_id, value in variants.items()
+        object_values: dict[int, dict[str, NormalizedValue]] = {
+            variant_id: dict(cast(NormalizedObjectValue, value)[1]) for variant_id, value in variants.items()
         }
         keys = sorted({key for mapping in object_values.values() for key in mapping})
-        details = []
+        details: list[AstDiffDetail] = []
         for key in keys:
             child_variants = {
                 variant_id: mapping.get(key, _MISSING_AST_VALUE) for variant_id, mapping in object_values.items()
@@ -639,7 +706,7 @@ def _diff_normalized_variants(
 
 
 def _collect_named_item_diffs(
-    variant_items: list[dict[str, tuple[str, object]]],
+    variant_items: CollectionSequence[Mapping[str, NamedNormalizedValue]],
 ) -> tuple[list[str], dict[int, list[str]], dict[str, list[AstDiffDetail]]]:
     common_normalized: set[str] = set()
     if variant_items:
@@ -663,14 +730,17 @@ def _collect_named_item_diffs(
     return common, only_in_variant, modified
 
 
-def _code_entry_map(items: list[Sequence] | list[Equation]) -> dict[str, object]:
+def _code_entry_map(items: list[Sequence] | list[Equation]) -> NormalizedEntryMap:
     """Map case-insensitive names to normalized structural signatures."""
-    return {_normalize_name(item.name): _normalize_ast_value(item) for item in items}
+    entries: NormalizedEntryMap = {}
+    for item in items:
+        entries[_normalize_name(item.name)] = _normalize_ast_value(item)
+    return entries
 
 
 def _compare_variable_lists(fingerprints: list[ModuleFingerprint], attr: str = "moduleparameters") -> VariableDiff:
     """Compare a named variable list (moduleparameters or localvariables) across variants."""
-    variant_names = []
+    variant_names: list[dict[str, NamedNormalizedValue]] = []
     for fp in fingerprints:
         names = {
             _normalize_name(variable.name): (
@@ -691,7 +761,7 @@ def _compare_variable_lists(fingerprints: list[ModuleFingerprint], attr: str = "
 
 def _compare_submodules(fingerprints: list[ModuleFingerprint]) -> SubmoduleDiff:
     """Compare complete submodule tree structures across variants (recursive)."""
-    variant_structures = []
+    variant_structures: list[set[SubmoduleTreeEntry]] = []
 
     for fp in fingerprints:
         # Get the full recursive tree structure
@@ -709,7 +779,7 @@ def _compare_submodules(fingerprints: list[ModuleFingerprint]) -> SubmoduleDiff:
         common = []
 
     # Find unique elements in each variant
-    only_in_variant = {}
+    only_in_variant: dict[int, list[SubmoduleTreeEntry]] = {}
     for i, structure in enumerate(variant_structures, 1):
         unique = structure - common_set
         only_in_variant[i] = sorted(unique)
@@ -719,8 +789,8 @@ def _compare_submodules(fingerprints: list[ModuleFingerprint]) -> SubmoduleDiff:
 
 def _compare_code(fingerprints: list[ModuleFingerprint]) -> CodeDiff:
     """Compare module code (sequences and equations) across variants."""
-    variant_seqs = []
-    variant_eqs = []
+    variant_seqs: list[CodeEntryMap] = []
+    variant_eqs: list[CodeEntryMap] = []
 
     for fp in fingerprints:
         seqs = {
@@ -746,40 +816,40 @@ def _compare_code(fingerprints: list[ModuleFingerprint]) -> CodeDiff:
         variant_seqs.append(seqs)
         variant_eqs.append(eqs)
 
-    seq_presence = set(variant_seqs[0].keys()) if variant_seqs else set()
+    seq_presence: set[str] = set(variant_seqs[0].keys()) if variant_seqs else set()
     for seqs in variant_seqs[1:]:
         seq_presence &= set(seqs.keys())
 
     modified_sequences: dict[str, list[AstDiffDetail]] = {}
     common_seqs: list[str] = []
     for name in sorted(seq_presence):
-        signatures = {index: seqs[name][1] for index, seqs in enumerate(variant_seqs, 1)}
+        signatures: dict[int, NormalizedValue] = {index: seqs[name][1] for index, seqs in enumerate(variant_seqs, 1)}
         details = _diff_normalized_variants(signatures)
         if details:
             modified_sequences[variant_seqs[0][name][0]] = details
             continue
         common_seqs.append(variant_seqs[0][name][0])
 
-    only_seqs = {
+    only_seqs: dict[int, list[str]] = {
         index: [seqs[name][0] for name in sorted(set(seqs.keys()) - seq_presence)]
         for index, seqs in enumerate(variant_seqs, 1)
     }
 
-    eq_presence = set(variant_eqs[0].keys()) if variant_eqs else set()
+    eq_presence: set[str] = set(variant_eqs[0].keys()) if variant_eqs else set()
     for eqs in variant_eqs[1:]:
         eq_presence &= set(eqs.keys())
 
     modified_equations: dict[str, list[AstDiffDetail]] = {}
     common_eqs: list[str] = []
     for name in sorted(eq_presence):
-        signatures = {index: eqs[name][1] for index, eqs in enumerate(variant_eqs, 1)}
+        signatures: dict[int, NormalizedValue] = {index: eqs[name][1] for index, eqs in enumerate(variant_eqs, 1)}
         details = _diff_normalized_variants(signatures)
         if details:
             modified_equations[variant_eqs[0][name][0]] = details
             continue
         common_eqs.append(variant_eqs[0][name][0])
 
-    only_eqs = {
+    only_eqs: dict[int, list[str]] = {
         index: [eqs[name][0] for name in sorted(set(eqs.keys()) - eq_presence)]
         for index, eqs in enumerate(variant_eqs, 1)
     }
@@ -796,7 +866,7 @@ def _compare_code(fingerprints: list[ModuleFingerprint]) -> CodeDiff:
 
 def _hash_variable_list(variables: list[Variable]) -> int:
     """Create a hash representing the structure of a variable list."""
-    parts = []
+    parts: list[tuple[object, ...]] = []
     for variable in variables:
         parts.append(
             (
@@ -815,18 +885,13 @@ def _hash_variable_list(variables: list[Variable]) -> int:
 
 def _hash_parameter_mappings(mappings: list[ParameterMapping]) -> int:
     """Create a hash representing parameter mappings."""
-    parts = []
+    parts: list[tuple[object, ...]] = []
     for mapping in mappings:
-        target_str = (
-            cast(str, mapping.target.get("var_name", "")) if isinstance(mapping.target, dict) else str(mapping.target)
-        )
-        source_str = None
-        if mapping.source:
-            source_str = (
-                cast(str, mapping.source.get("var_name", ""))
-                if isinstance(mapping.source, dict)
-                else str(mapping.source)
-            )
+        mapping_obj = cast(Any, mapping)
+        target = cast(object, mapping_obj.target)
+        source = cast(object, mapping_obj.source)
+        target_str = _mapping_var_name(target) or ""
+        source_str = _mapping_var_name(source)
         parts.append(
             (
                 _normalize_name(target_str),
@@ -850,18 +915,8 @@ def _hash_submodules(
 
 def _hash_code(sequences: list[Sequence], equations: list[Equation]) -> int:
     """Create a hash representing code structure."""
-    seq_parts = tuple(
-        sorted(
-            _code_entry_map(sequences).items(),
-            key=lambda item: item[0],
-        )
-    )
-    eq_parts = tuple(
-        sorted(
-            _code_entry_map(equations).items(),
-            key=lambda item: item[0],
-        )
-    )
+    seq_parts = _sorted_normalized_items(_code_entry_map(sequences))
+    eq_parts = _sorted_normalized_items(_code_entry_map(equations))
     return hash((seq_parts, eq_parts))
 
 
@@ -1029,7 +1084,7 @@ def compare_modules(
     instances_with_fps = [(path, create_fingerprint(m, path)) for path, m in modules_with_paths]
 
     # Group by structural similarity (EXCLUDE datecode from key)
-    variant_groups: dict[tuple, list[tuple[list[str], ModuleFingerprint]]] = defaultdict(list)
+    variant_groups: defaultdict[VariantFingerprintKey, list[tuple[list[str], ModuleFingerprint]]] = defaultdict(list)
     for path, fp in instances_with_fps:
         key = (
             # REMOVED: fp.datecode
@@ -1196,30 +1251,24 @@ def _compact_diff(diff: VariableDiff | SubmoduleDiff | CodeDiff | None) -> dict[
             "common": [list(item) for item in diff.common],
             "only_in_variant": only_paths,
         }
-    if isinstance(diff, CodeDiff):
-        sequences_only = {variant_id: names for variant_id, names in diff.sequences_only_in_variant.items() if names}
-        equations_only = {variant_id: names for variant_id, names in diff.equations_only_in_variant.items() if names}
-        modified_sequences = {
-            name: [detail.to_dict() for detail in details]
-            for name, details in diff.modified_sequences.items()
-            if details
-        }
-        modified_equations = {
-            name: [detail.to_dict() for detail in details]
-            for name, details in diff.modified_equations.items()
-            if details
-        }
-        if not sequences_only and not equations_only and not modified_sequences and not modified_equations:
-            return None
-        return {
-            "sequences_common": diff.sequences_common,
-            "sequences_only_in_variant": sequences_only,
-            "modified_sequences": modified_sequences,
-            "equations_common": diff.equations_common,
-            "equations_only_in_variant": equations_only,
-            "modified_equations": modified_equations,
-        }
-    return None
+    sequences_only = {variant_id: names for variant_id, names in diff.sequences_only_in_variant.items() if names}
+    equations_only = {variant_id: names for variant_id, names in diff.equations_only_in_variant.items() if names}
+    modified_sequences = {
+        name: [detail.to_dict() for detail in details] for name, details in diff.modified_sequences.items() if details
+    }
+    modified_equations = {
+        name: [detail.to_dict() for detail in details] for name, details in diff.modified_equations.items() if details
+    }
+    if not sequences_only and not equations_only and not modified_sequences and not modified_equations:
+        return None
+    return {
+        "sequences_common": diff.sequences_common,
+        "sequences_only_in_variant": sequences_only,
+        "modified_sequences": modified_sequences,
+        "equations_common": diff.equations_common,
+        "equations_only_in_variant": equations_only,
+        "modified_equations": modified_equations,
+    }
 
 
 def _format_variant_list(variant_ids: set[int]) -> str:
@@ -1315,7 +1364,7 @@ def _material_differences(comparison: ComparisonResult) -> dict[str, Any]:
 
 
 def _material_difference_labels(differences: dict[str, Any]) -> list[str]:
-    labels = []
+    labels: list[str] = []
     if "moduleparameters" in differences:
         labels.append("module parameters")
     if "localvariables" in differences:

@@ -9,7 +9,6 @@ from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
     ModuleCode,
-    ModuleTypeDef,
     SingleModule,
 )
 
@@ -23,8 +22,7 @@ def iter_sfc_modulecodes(base_picture: BasePicture) -> Iterator[tuple[list[str],
     yield from _iter_nested_modulecodes(base_picture.submodules, root_path)
 
     for moduletype in base_picture.moduletype_defs or ():
-        if isinstance(moduletype, ModuleTypeDef):
-            yield [base_picture.header.name, f"TypeDef:{moduletype.name}"], moduletype.modulecode
+        yield [base_picture.header.name, f"TypeDef:{moduletype.name}"], moduletype.modulecode
 
 
 def _iter_nested_modulecodes(

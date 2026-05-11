@@ -14,7 +14,14 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from ..grammar import constants as const
+from . import _alias_utils as alias_utils
+
+ResolvableModule = SingleModule | FrameModule | ModuleTypeInstance
+ModuleLookupResult = ModuleTypeDef | ResolvableModule
+find_all_aliases = alias_utils.find_all_aliases
+find_all_aliases_upstream = alias_utils.find_all_aliases_upstream
+varname_base = alias_utils.varname_base
+varname_full = alias_utils.varname_full
 
 
 @dataclass(frozen=True)
@@ -291,21 +298,21 @@ def resolve_module_by_strict_path(
     )
 
 
-def find_module_by_name(bp: BasePicture, name: str):
+def find_module_by_name(bp: BasePicture, name: str) -> ModuleLookupResult | None:
     """Recursively find a module by name in the AST."""
-    name_lower = name.lower()
+    name_lower = name.casefold()
 
     # First check if it's a ModuleTypeDef
     for mt in bp.moduletype_defs or []:
-        if mt.name.lower() == name_lower:
+        if mt.name.casefold() == name_lower:
             return mt
 
     # Then search in submodules (instances)
-    def search(modules):
+    def search(modules: list[ResolvableModule] | None) -> ModuleLookupResult | None:
         for mod in modules or []:
-            if hasattr(mod, "header") and mod.header.name.lower() == name_lower:
+            if mod.header.name.casefold() == name_lower:
                 return mod
-            if hasattr(mod, "submodules"):
+            if isinstance(mod, SingleModule | FrameModule):
                 result = search(mod.submodules)
                 if result:
                     return result
@@ -314,7 +321,7 @@ def find_module_by_name(bp: BasePicture, name: str):
     return search(bp.submodules)
 
 
-def get_module_path(bp: BasePicture, target_module) -> list[str]:
+def get_module_path(bp: BasePicture, target_module: ModuleLookupResult) -> list[str]:
     """Get the full path to a module."""
 
     # Check if it's a ModuleTypeDef
@@ -322,12 +329,12 @@ def get_module_path(bp: BasePicture, target_module) -> list[str]:
         return [bp.header.name, f"TypeDef:{target_module.name}"]
 
     # Otherwise search in submodules
-    def search(modules, path):
+    def search(modules: list[ResolvableModule] | None, path: list[str]) -> list[str] | None:
         for mod in modules or []:
             current_path = [*path, mod.header.name]
             if mod is target_module:
                 return current_path
-            if hasattr(mod, "submodules"):
+            if isinstance(mod, SingleModule | FrameModule):
                 result = search(mod.submodules, current_path)
                 if result:
                     return result
@@ -436,99 +443,3 @@ def find_var_in_scope(bp: BasePicture, instance_path: list[str], var_name: str) 
 
     # Not found anywhere in the hierarchy
     return None
-
-
-def varname_base(var_dict_or_str: Any) -> str | None:
-    """Extract base variable name from a variable_name dict or string."""
-    if isinstance(var_dict_or_str, dict) and const.KEY_VAR_NAME in var_dict_or_str:
-        full = var_dict_or_str[const.KEY_VAR_NAME]
-    elif isinstance(var_dict_or_str, str):
-        full = var_dict_or_str
-    else:
-        return None
-    base = full.split(".", 1)[0] if full else None
-    return base.lower() if base else None
-
-
-def varname_full(var_dict_or_str: Any) -> str | None:
-    """Extract full variable name from a variable_name dict or string."""
-    if isinstance(var_dict_or_str, dict) and const.KEY_VAR_NAME in var_dict_or_str:
-        return var_dict_or_str[const.KEY_VAR_NAME]
-    if isinstance(var_dict_or_str, str):
-        return var_dict_or_str
-    return None
-
-
-def find_all_aliases(
-    target_var: Variable,
-    alias_links: list[tuple[Variable, Variable, str]],
-    debug: bool = False,
-) -> list[tuple[Variable, str]]:
-    """
-    Given a target variable and the analyzer's alias links, find all variables
-    that are transitively connected to it through parameter mappings.
-    Returns list of (Variable, field_prefix_to_prepend) tuples.
-    """
-    aliases: list[tuple[Variable, str]] = []
-    to_visit: list[tuple[Variable, str]] = [(target_var, "")]
-    visited: list[tuple[Variable, str]] = []
-
-    while to_visit:
-        current, current_prefix = to_visit.pop()
-
-        # Check if already visited using identity
-        if any(current is v for v, _ in visited):
-            continue
-
-        visited.append((current, current_prefix))
-        aliases.append((current, current_prefix))
-
-        # Find all variables linked FROM current (only parent->child direction)
-        for parent, child, mapping_name in alias_links:
-            if parent is current and not any(child is v for v, _ in visited):
-                # When following parent->child link, accumulate the prefix
-                if current_prefix and mapping_name:
-                    new_prefix = f"{current_prefix}.{mapping_name}"
-                elif current_prefix:
-                    new_prefix = current_prefix
-                else:
-                    new_prefix = mapping_name
-                to_visit.append((child, new_prefix))
-
-    # Remove the original
-    aliases = [(v, p) for v, p in aliases if v is not target_var]
-    return aliases
-
-
-def find_all_aliases_upstream(
-    target_var: Variable,
-    alias_links: list[tuple[Variable, Variable, str]],
-) -> list[tuple[Variable, str]]:
-    """
-    Find alias sources by walking parent links (child -> parent).
-    Returns (parent_var, field_prefix_to_strip) tuples.
-    """
-    aliases: list[tuple[Variable, str]] = []
-    to_visit: list[tuple[Variable, str]] = [(target_var, "")]
-    visited: list[tuple[Variable, str]] = []
-
-    while to_visit:
-        current, current_prefix = to_visit.pop()
-
-        if any(current is v and current_prefix == p for v, p in visited):
-            continue
-
-        visited.append((current, current_prefix))
-
-        for parent, child, mapping_name in alias_links:
-            if child is current:
-                if current_prefix and mapping_name:
-                    new_prefix = f"{mapping_name}.{current_prefix}"
-                elif mapping_name:
-                    new_prefix = mapping_name
-                else:
-                    new_prefix = current_prefix
-                to_visit.append((parent, new_prefix))
-
-    aliases = [(v, p) for v, p in visited if v is not target_var]
-    return aliases

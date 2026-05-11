@@ -86,7 +86,7 @@ class ProgressReporter:
         if self._active_stage_key == key:
             self._active_stage_key = None
         if self._emit_stdout:
-            duration = f" in {stage.duration_seconds:.3f}s" if stage.duration_seconds is not None else ""
+            duration = f" in {stage.duration_seconds:.3f}s"
             suffix = f" ({stage.detail})" if stage.detail else ""
             print(f"    completed {stage.label}{duration}{suffix}", flush=True)
         self._write()

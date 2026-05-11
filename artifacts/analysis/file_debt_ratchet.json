@@ -1,23 +1,5 @@
 {
   "files": {
-    "docs/exec-plans/feature-roadmap.md": {
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 1453,
-        "reason": "Roadmap owner document remains centralized pending breakdown into smaller planning documents.",
-        "target": 500,
-        "touch_rule": "must_shrink"
-      }
-    },
-    "docs/exec-plans/tech-debt-tracker.md": {
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 877,
-        "reason": "Tech-debt tracker remains centralized pending breakdown into smaller backlog documents.",
-        "target": 500,
-        "touch_rule": "must_shrink"
-      }
-    },
     "src/sattline_parser/grammar/parser_decode.py": {
       "coverage": {
         "allow_rebaseline": false,
@@ -218,13 +200,6 @@
       }
     },
     "src/sattlint/analyzers/icf.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 8219,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      },
       "structural": {
         "allow_rebaseline": false,
         "current_baseline": 928,
@@ -327,13 +302,6 @@
       }
     },
     "src/sattlint/analyzers/reset_contamination.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 8810,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      },
       "structural": {
         "allow_rebaseline": false,
         "current_baseline": 1551,
@@ -520,13 +488,6 @@
       }
     },
     "src/sattlint/app_analysis.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 9134,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      },
       "structural": {
         "allow_rebaseline": false,
         "current_baseline": 1291,
@@ -700,28 +661,10 @@
         "touch_rule": "must_reach_target_on_touch"
       }
     },
-    "src/sattlint/devtools/_structural_budget_inventory.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 8571,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
     "src/sattlint/devtools/ai_gc.py": {
       "coverage": {
         "allow_rebaseline": false,
         "current_baseline": 8732,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
-    "src/sattlint/devtools/ai_work_map.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 9548,
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
@@ -848,16 +791,9 @@
       }
     },
     "src/sattlint/devtools/repo_audit.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 8422,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      },
       "structural": {
         "allow_rebaseline": false,
-        "current_baseline": 2294,
+        "current_baseline": 556,
         "reason": "Repo-audit owner surface still centralizes full-profile audit checks.",
         "target": 500,
         "touch_rule": "must_shrink"
@@ -932,13 +868,6 @@
       }
     },
     "src/sattlint/docgenerator/configgen.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 9811,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      },
       "structural": {
         "allow_rebaseline": false,
         "current_baseline": 1127,
@@ -976,15 +905,6 @@
       "coverage": {
         "allow_rebaseline": false,
         "current_baseline": 8491,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
-    "src/sattlint/path_sanitizer.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 8704,
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"

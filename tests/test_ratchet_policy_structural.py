@@ -107,7 +107,7 @@ def test_evaluate_policy_change_rejects_new_structural_debt_entry_without_conver
     )
     structural_payload = """
 {
-    "metrics": {"source_file_max_lines": 2297, "markdown_file_max_lines": 1453},
+    "metrics": {"source_file_max_lines": 2297},
     "file_line_exceptions": {
         "src/sattlint/app.py": {
             "max_lines": 891,
@@ -414,9 +414,24 @@ def test_evaluate_policy_change_rejects_new_structural_file_exception_after_sche
     assert any("Structural file-line exception added" in error for error in errors)
 
 
-def test_evaluate_policy_change_allows_markdown_scope_exception_migration_with_approval():
+def test_evaluate_policy_change_allows_markdown_scope_retirement_with_approval():
     approval_path = ".github/approvals/ratchet-rebaseline-2026-05-01.md"
     base_structural = """
+{
+    "metrics": {"source_file_max_lines": 500, "test_file_max_lines": 500, "markdown_file_max_lines": 1453},
+    "file_line_exceptions": {
+        "docs/roadmap.md": {
+            "max_lines": 530,
+            "reason": "Roadmap owner document remains centralized pending breakdown into smaller plans."
+        },
+        "src/pkg/legacy.py": {
+            "max_lines": 520,
+            "reason": "Legacy owner module remains centralized pending extraction."
+        }
+    }
+}
+""".strip()
+    head_structural = """
 {
     "metrics": {"source_file_max_lines": 500, "test_file_max_lines": 500},
     "file_line_exceptions": {
@@ -427,27 +442,12 @@ def test_evaluate_policy_change_allows_markdown_scope_exception_migration_with_a
     }
 }
 """.strip()
-    head_structural = """
-{
-    "metrics": {"source_file_max_lines": 500, "test_file_max_lines": 500, "markdown_file_max_lines": 1453},
-    "file_line_exceptions": {
-        "docs/roadmap.md": {
-            "max_lines": 530,
-            "reason": "Roadmap owner document remains centralized pending breakdown into smaller plans."
-        },
-        "src/pkg/legacy.py": {
-            "max_lines": 520,
-            "reason": "Legacy owner module remains centralized pending extraction."
-        }
-    }
-}
-""".strip()
 
     errors = ratchet_policy.evaluate_policy_change(
         changed_files=(ratchet_policy.STRUCTURAL_RATCHET_PATH, approval_path),
         current_text_by_path={
             ratchet_policy.STRUCTURAL_RATCHET_PATH: head_structural,
-            approval_path: "Approved-by: Human Reviewer\nReason: add Markdown ratchet scope and temporary exceptions\n",
+            approval_path: "Approved-by: Human Reviewer\nReason: retire Markdown ratchet scope and temporary exceptions\n",
         },
         base_text_by_path={
             ratchet_policy.STRUCTURAL_RATCHET_PATH: base_structural,
@@ -458,19 +458,9 @@ def test_evaluate_policy_change_allows_markdown_scope_exception_migration_with_a
     assert errors == []
 
 
-def test_evaluate_policy_change_rejects_new_markdown_exception_after_markdown_scope_migration():
+def test_evaluate_policy_change_rejects_markdown_scope_in_structural_ratchet():
     approval_path = ".github/approvals/ratchet-rebaseline-2026-05-01.md"
-    base_structural = """
-{
-    "metrics": {"source_file_max_lines": 500, "test_file_max_lines": 500, "markdown_file_max_lines": 1453},
-    "file_line_exceptions": {
-        "docs/roadmap.md": {
-            "max_lines": 530,
-            "reason": "Roadmap owner document remains centralized pending breakdown into smaller plans."
-        }
-    }
-}
-""".strip()
+    base_structural = '{"metrics": {"source_file_max_lines": 500, "test_file_max_lines": 500}}'
     head_structural = """
 {
     "metrics": {"source_file_max_lines": 500, "test_file_max_lines": 500, "markdown_file_max_lines": 1453},
@@ -478,10 +468,6 @@ def test_evaluate_policy_change_rejects_new_markdown_exception_after_markdown_sc
         "docs/roadmap.md": {
             "max_lines": 530,
             "reason": "Roadmap owner document remains centralized pending breakdown into smaller plans."
-        },
-        "docs/tech-debt.md": {
-            "max_lines": 510,
-            "reason": "Tech debt tracker remains centralized pending decomposition."
         }
     }
 }
@@ -491,7 +477,7 @@ def test_evaluate_policy_change_rejects_new_markdown_exception_after_markdown_sc
         changed_files=(ratchet_policy.STRUCTURAL_RATCHET_PATH, approval_path),
         current_text_by_path={
             ratchet_policy.STRUCTURAL_RATCHET_PATH: head_structural,
-            approval_path: "Approved-by: Human Reviewer\nReason: attempted Markdown exception growth\n",
+            approval_path: "Approved-by: Human Reviewer\nReason: attempted Markdown ratchet reintroduction\n",
         },
         base_text_by_path={
             ratchet_policy.STRUCTURAL_RATCHET_PATH: base_structural,
@@ -499,7 +485,8 @@ def test_evaluate_policy_change_rejects_new_markdown_exception_after_markdown_sc
         },
     )
 
-    assert any("Structural file-line exception added" in error for error in errors)
+    assert any("must not track Markdown file metrics" in error for error in errors)
+    assert any("must not target Markdown paths" in error for error in errors)
 
 
 def test_evaluate_policy_change_rejects_invalid_approval_record():

@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from typing import cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
-    ModuleTypeDef,
     ModuleTypeInstance,
     SingleModule,
+    Variable,
 )
 
+from ..models.usage import VariableUsage
 from ..resolution.common import (
     find_all_aliases,
     format_moduletype_label,
@@ -22,6 +25,54 @@ from ..resolution.common import (
 from .variables import VariablesAnalyzer
 
 log = logging.getLogger("SattLint")
+
+_ANY_VAR_INDEX_ATTR = "_any_var_index"
+_ALIAS_LINKS_ATTR = "_alias_links"
+_GET_USAGE_ATTR = "_get_usage"
+
+
+def _analyzer_any_var_index(analyzer: VariablesAnalyzer) -> dict[str, list[Variable]]:
+    return cast(dict[str, list[Variable]], getattr(analyzer, _ANY_VAR_INDEX_ATTR))
+
+
+def _analyzer_alias_links(analyzer: VariablesAnalyzer) -> list[tuple[Variable, Variable, str]]:
+    return cast(list[tuple[Variable, Variable, str]], getattr(analyzer, _ALIAS_LINKS_ATTR))
+
+
+def _analyzer_usage(analyzer: VariablesAnalyzer, variable: Variable) -> VariableUsage:
+    usage_fn = cast(Callable[[Variable], VariableUsage], getattr(analyzer, _GET_USAGE_ATTR))
+    return usage_fn(variable)
+
+
+def _find_module_instances(
+    base_picture: BasePicture,
+    moduletype_name: str,
+) -> list[tuple[ModuleTypeInstance, list[str]]]:
+    target_name = moduletype_name.casefold()
+    matches: list[tuple[ModuleTypeInstance, list[str]]] = []
+
+    def walk_modules(
+        modules: list[SingleModule | FrameModule | ModuleTypeInstance] | None,
+        path: list[str],
+    ) -> None:
+        for module in modules or []:
+            next_path = [*path, module.header.name]
+            if isinstance(module, ModuleTypeInstance):
+                if module.moduletype_name.casefold() == target_name:
+                    matches.append((module, next_path))
+                try:
+                    moduletype_def = resolve_moduletype_def_strict(base_picture, module.moduletype_name)
+                except ValueError:
+                    continue
+                walk_modules(moduletype_def.submodules, next_path)
+                continue
+            walk_modules(module.submodules, next_path)
+
+    walk_modules(base_picture.submodules, [base_picture.header.name])
+    return matches
+
+
+find_module_instances = _find_module_instances
 
 
 def debug_variable_usage(
@@ -42,7 +93,7 @@ def debug_variable_usage(
     )
     _ = analyzer.run()
 
-    matches = analyzer._any_var_index.get(var_name.lower(), [])
+    matches = _analyzer_any_var_index(analyzer).get(var_name.lower(), [])
     if not matches:
         return f"No variables named {var_name!r} found."
 
@@ -50,7 +101,7 @@ def debug_variable_usage(
     lines.append(f"Usage report for variable name {var_name!r} ({len(matches)} declaration(s)):")
 
     for idx, v in enumerate(matches, start=1):
-        usage = analyzer._get_usage(v)
+        usage = _analyzer_usage(analyzer, v)
         dt = v.datatype_text
         lines.append(f"[{idx}] {dt} | R:{bool(usage.read)} W:{bool(usage.written)}")
 
@@ -98,7 +149,7 @@ def debug_variable_usage(
             for path_label, kinds in sorted(path_kinds.items()):
                 r_count = kinds["read"]
                 w_count = kinds["write"]
-                access = []
+                access: list[str] = []
                 if r_count > 0:
                     access.append(f"R:{r_count}")
                 if w_count > 0:
@@ -125,14 +176,14 @@ def analyze_datatype_usage(
     )
     _ = analyzer.run()
 
-    matches = analyzer._any_var_index.get(var_name.lower(), [])
+    matches = _analyzer_any_var_index(analyzer).get(var_name.lower(), [])
     if not matches:
         return f"Variable {var_name!r} not found."
 
-    lines = [f"Field usage analysis for variable {var_name!r}:"]
+    lines: list[str] = [f"Field usage analysis for variable {var_name!r}:"]
 
     for idx, var in enumerate(matches, 1):
-        usage = analyzer._get_usage(var)
+        usage = _analyzer_usage(analyzer, var)
         lines.append(f"\n[{idx}] Declaration: {var.datatype_text}")
         lines.append(
             f"    Location: {' -> '.join(usage.usage_locations[0][0]) if usage.usage_locations else 'Unknown'}"
@@ -196,7 +247,7 @@ def analyze_module_localvar_fields(
     )
 
     if debug:
-        log.debug("Analysis complete. Alias links=%d", len(analyzer._alias_links))
+        log.debug("Analysis complete. Alias links=%d", len(_analyzer_alias_links(analyzer)))
 
     # Find the specific local variable instance:
     # - SingleModule: variable is declared on the module node.
@@ -234,14 +285,14 @@ def analyze_module_localvar_fields(
         log.debug("Target variable id=%d", id(local_var))
 
     # Find only the Variable objects connected through alias links with field paths.
-    aliased_vars_with_paths = find_all_aliases(local_var, analyzer._alias_links, debug=debug)
+    aliased_vars_with_paths = find_all_aliases(local_var, _analyzer_alias_links(analyzer), debug=debug)
     # Include the local variable itself (direct field/whole-variable accesses).
     aliased_vars_with_paths.insert(0, (local_var, ""))
 
     # Build the report header.
     header = f"Field usage analysis for local variable {var_name!r}"
     header += f" in module path {resolved.display_path_str!r}"
-    lines = [
+    lines: list[str] = [
         header,
         f"Variable location: {module_path_str}",
         f"Variable datatype: {local_var.datatype_text}",
@@ -265,7 +316,7 @@ def analyze_module_localvar_fields(
     if debug:
         log.debug("Aggregating usages from connected aliases")
     for var, field_prefix in aliased_vars_with_paths:
-        usage = analyzer._get_usage(var)
+        usage = _analyzer_usage(analyzer, var)
         # field_prefix may be empty for the root variable itself.
 
         # Merge field reads and reconstruct the full field path (case-insensitive).
@@ -348,7 +399,7 @@ def analyze_module_localvar_fields(
                 loc_str = " -> ".join(loc)
                 unique_write_locs[loc_str] = unique_write_locs.get(loc_str, 0) + 1
 
-            access_type = []
+            access_type: list[str] = []
             if reads:
                 access_type.append("READ")
             if writes:
@@ -417,87 +468,3 @@ def analyze_module_localvar_fields(
     lines.append(f"  Whole variable writes: {len(internal_whole_writes)}")
 
     return "\n".join(lines)
-
-
-def _find_module_instances(bp: BasePicture, typedef_name: str):
-    """
-    Find all instances of a module (by name) in the project.
-    This handles both direct ModuleTypeInstances and modules defined within typedefs.
-
-    Returns list of (module, full_path) tuples.
-    """
-    typedef_name_lower = typedef_name.lower()
-    results = []
-
-    # Helper: find where a typedef is used within another typedef's structure
-    def find_in_typedef_tree(typedef: ModuleTypeDef, path: list[str]):
-        """Search within a typedef's submodules for our target."""
-
-        def search_subs(modules, current_path):
-            for mod in modules or []:
-                mod_path = [*current_path, mod.header.name]
-
-                # Check if this matches our target
-                if isinstance(mod, ModuleTypeInstance) and mod.moduletype_name.lower() == typedef_name_lower:
-                    results.append((mod, mod_path, typedef.name))  # Also track parent typedef
-                elif isinstance(mod, SingleModule | FrameModule) and mod.header.name.lower() == typedef_name_lower:
-                    results.append((mod, mod_path, typedef.name))
-
-                # Recurse
-                if isinstance(mod, SingleModule | FrameModule):
-                    search_subs(mod.submodules or [], mod_path)
-
-        search_subs(typedef.submodules or [], path)
-
-    # First pass: find the module in all typedef definitions
-    for mt in bp.moduletype_defs or []:
-        find_in_typedef_tree(mt, [f"TypeDef:{mt.name}"])
-
-    # results now contains (module, path_within_typedef, parent_typedef_name)
-    # We need to find instances of the parent typedef and build full paths
-
-    # Second pass: find direct instances in the project tree
-    direct_instances = []
-
-    def search_project_tree(modules, path):
-        for mod in modules or []:
-            current_path = [*path, mod.header.name]
-
-            if isinstance(mod, ModuleTypeInstance) and mod.moduletype_name.lower() == typedef_name_lower:
-                direct_instances.append((mod, current_path))
-
-            if isinstance(mod, SingleModule | FrameModule):
-                search_project_tree(mod.submodules or [], current_path)
-
-    search_project_tree(bp.submodules, [bp.header.name])
-
-    # Third pass: for each occurrence in a typedef, find instances of that parent typedef
-    final_results = []
-    for mod, typedef_path, parent_typedef_name in results:
-        # Find instances of the parent typedef
-        parent_instances = []
-        parent_typedef_name_lower = parent_typedef_name.lower()
-
-        def find_parent_instances(
-            modules,
-            path,
-            expected_typedef_name=parent_typedef_name_lower,
-            collected_paths=parent_instances,
-        ):
-            for module in modules or []:
-                module_path = [*path, module.header.name]
-                if isinstance(module, ModuleTypeInstance) and module.moduletype_name.lower() == expected_typedef_name:
-                    collected_paths.append(module_path)
-                if isinstance(module, SingleModule | FrameModule):
-                    find_parent_instances(module.submodules or [], module_path, expected_typedef_name, collected_paths)
-
-        find_parent_instances(bp.submodules, [bp.header.name])
-
-        # Build full paths
-        relative_path = typedef_path[1:]  # Remove "TypeDef:X" prefix
-        for parent_path in parent_instances:
-            full_path = parent_path + relative_path
-            final_results.append((mod, full_path))
-
-    # Combine direct instances and typedef-based instances
-    return direct_instances + final_results

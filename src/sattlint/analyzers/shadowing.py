@@ -85,7 +85,7 @@ class ShadowingAnalyzer:
                     parent_locals=parent_locals,
                     current_library=current_library,
                 )
-            elif isinstance(child, ModuleTypeInstance):
+            else:
                 mt = self._resolve_moduletype(child, current_library)
                 if mt is None:
                     continue

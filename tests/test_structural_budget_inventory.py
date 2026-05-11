@@ -38,6 +38,18 @@ def test_tracked_markdown_paths_handles_missing_git_and_failures(monkeypatch) ->
 
     monkeypatch.setattr(inventory.shutil, "which", lambda _name: "git")
 
+    monkeypatch.setattr(
+        inventory.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["git", "ls-files", "*.md"],
+            returncode=1,
+            stdout="",
+            stderr="fatal",
+        ),
+    )
+    assert inventory._tracked_markdown_paths(Path(".")) == ()
+
     def raise_oserror(*_args, **_kwargs):
         raise OSError("git unavailable")
 
@@ -143,7 +155,6 @@ def test_summarize_structural_budget_metrics_reads_report_fields() -> None:
     report = {
         "source_files_over_budget": [{"path": "src/demo.py", "line_count": 10}],
         "test_files_over_budget": [],
-        "markdown_files_over_budget": [{"path": "docs/guide.md", "line_count": 12}],
         "functions_over_budget": [{"line_span": 7}, {"line_span": 9}],
         "classes_over_budget": [{"method_count": 4}],
         "repeated_private_names": [{"file_count": 3}],
@@ -151,7 +162,6 @@ def test_summarize_structural_budget_metrics_reads_report_fields() -> None:
         "summary": {
             "source_file_max_lines": 10,
             "test_file_max_lines": 0,
-            "markdown_file_max_lines": 12,
         },
     }
 
@@ -160,8 +170,6 @@ def test_summarize_structural_budget_metrics_reads_report_fields() -> None:
         "source_file_max_lines": 10,
         "test_file_over_budget_count": 0,
         "test_file_max_lines": 0,
-        "markdown_file_over_budget_count": 1,
-        "markdown_file_max_lines": 12,
         "function_over_budget_count": 2,
         "function_max_lines": 9,
         "class_over_budget_count": 1,

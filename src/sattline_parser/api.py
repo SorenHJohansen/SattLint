@@ -8,6 +8,7 @@ from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
 from tempfile import gettempdir
+from typing import Any, cast
 
 from lark import Lark
 from lark import __version__ as lark_version
@@ -187,12 +188,16 @@ def parse_source_text(
     cleaned = strip_sl_comments(src)
     active_parser = parser if parser is not None else _default_parser()
     active_transformer = transformer if transformer is not None else SLTransformer()
-    tree = active_parser.parse(cleaned)
+    tree = cast(Any, active_parser).parse(cleaned)
 
     if debug is not None:
         debug("Parse OK, transforming with SLTransformer")
 
-    basepic = active_transformer.transform(tree)
+    transformed = cast(Any, active_transformer).transform(tree)
+    if not isinstance(transformed, BasePicture):
+        raise RuntimeError("Transform result is not BasePicture; check transformer.start()")
+
+    basepic = transformed
     try:
         basepic.parse_tree = tree
     except AttributeError:
@@ -201,9 +206,6 @@ def parse_source_text(
 
     if debug is not None:
         debug(f"Transform result type: {type(basepic).__name__}")
-
-    if not isinstance(basepic, BasePicture):
-        raise RuntimeError("Transform result is not BasePicture; check transformer.start()")
 
     return basepic
 

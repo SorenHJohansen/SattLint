@@ -174,6 +174,15 @@ PIPELINE_ARTIFACTS: tuple[ArtifactDefinition, ...] = (
         depends_on=(),
     ),
     ArtifactDefinition(
+        "current_debt_snapshot",
+        "current_debt_snapshot.json",
+        "current_debt_snapshot",
+        "sattlint.current_debt_snapshot",
+        1,
+        profiles=("full",),
+        optional=True,
+    ),
+    ArtifactDefinition(
         "sattline_semantic",
         "sattline_semantic.json",
         "sattline_semantic",

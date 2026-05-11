@@ -185,6 +185,7 @@ DEFAULT_PIPELINE_ARTIFACT_PRODUCERS: tuple[PipelineArtifactProducer, ...] = (
     PipelineArtifactProducer("recommendation_drift", payload_from_context("recommendation_drift")),
     PipelineArtifactProducer("corpus_results", payload_from_context("corpus_results")),
     PipelineArtifactProducer("coverage_summary", payload_from_context("coverage_summary")),
+    PipelineArtifactProducer("current_debt_snapshot", payload_from_context("current_debt_snapshot")),
     PipelineArtifactProducer("sattline_semantic", payload_from_context("sattline_semantic")),
     PipelineArtifactProducer("rule_metrics", payload_from_context("rule_metrics")),
     PipelineArtifactProducer("profiling_summary", payload_from_context("profiling_summary")),

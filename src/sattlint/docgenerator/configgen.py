@@ -806,10 +806,10 @@ class ExcelGenerator:
         """Determine station type from station ID."""
         if station_id.startswith("LOP"):
             return "Local Operator Panel"
-        elif station_id.startswith("OP"):
-            return "Operator Station"
         elif station_id.startswith("OPC"):
             return "OPC Server"
+        elif station_id.startswith("OP"):
+            return "Operator Station"
         elif station_id.startswith("PRG"):
             return "Programmer Station"
         elif "Journal" in station_id:

@@ -15,5 +15,12 @@
     "question": "allow",
     "lsp": "allow",
     "skill": "allow"
+  },
+  "mcp": {
+    "codegraph": {
+      "type": "local",
+      "command": ["/home/sqhj/.config/nvm/versions/node/v24.15.0/bin/node", "/usr/sbin/codegraph", "serve", "--mcp"],
+      "enabled": true
+    }
   }
 }

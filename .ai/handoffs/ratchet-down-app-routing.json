@@ -1,0 +1,25 @@
+{
+  "task_id": "ratchet-down-app-routing",
+  "stage": "executor",
+  "branch": "ai/task-ratchet-down-app-routing",
+  "commit": "a0f8256",
+  "files_changed": [
+    "src/sattlint/app.py"
+  ],
+  "summary": "Scoped executor handoff stub for shrink app wrapper facade.",
+  "known_risks": [],
+  "required_tests": [
+    "python scripts/run_repo_python.py -m pytest --no-cov tests/test_cli.py tests/test_app_cli_commands.py tests/test_app_config_validation.py -x -q --tb=short"
+  ],
+  "validation_status": {
+    "state": "pending",
+    "commands": [
+      "python scripts/run_repo_python.py -m pytest --no-cov tests/test_cli.py tests/test_app_cli_commands.py tests/test_app_config_validation.py -x -q --tb=short"
+    ],
+    "notes": [
+      "Replace placeholder scope, files_changed, and validation commands before handing off to Test Agent or Reviewer Agent."
+    ]
+  },
+  "reviewer_notes": [],
+  "status": "draft"
+}

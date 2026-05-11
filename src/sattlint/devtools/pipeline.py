@@ -87,11 +87,7 @@ DEFAULT_TRACE_TARGET = REPO_ROOT / "tests" / "fixtures" / "sample_sattline_files
 DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 PIPELINE_PROFILE_CHOICES = ("quick", "full")
 DEFAULT_PIPELINE_PROFILE = "full"
-DEFAULT_QUICK_PYTEST_TARGETS = (
-    "tests/test_pipeline.py",
-    "tests/test_repo_audit.py",
-    "tests/test_corpus.py",
-)
+DEFAULT_QUICK_PYTEST_TARGETS = ("tests/test_pipeline.py", "tests/test_repo_audit.py", "tests/parser/test_corpus.py")
 _VULTURE_LINE_RE = re.compile(r"^(?P<file>.*?):(?P<line>\d+): (?P<message>.*) \((?P<confidence>\d+)% confidence\)$")
 
 CommandResult = pipeline_execution_helpers.CommandResult
@@ -615,6 +611,7 @@ def _prepare_pipeline_run(
                 "analyzer_registry",
                 "dependency_graph",
                 "call_graph",
+                "current_debt_snapshot",
                 "graphics_layout",
                 "impact_analysis",
                 "sattline_semantic",
@@ -1340,6 +1337,7 @@ def _finalize_pipeline_outputs(
             "recommendation_drift": recommendation_drift,
             "corpus_results": optional_reports["corpus_results_report"],
             "coverage_summary": derived_reports["coverage_summary_report"],
+            "current_debt_snapshot": derived_reports["current_debt_snapshot_report"],
             "sattline_semantic": derived_reports["sattline_semantic_report"],
             "rule_metrics": derived_reports["rule_metrics_report"],
             "profiling_summary": derived_reports["profiling_summary_report"],

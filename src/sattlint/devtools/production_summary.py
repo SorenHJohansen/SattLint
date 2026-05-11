@@ -22,13 +22,21 @@ KNOWN_REPO_PATTERNS = (
 )
 
 
+def _empty_counts() -> dict[str, int]:
+    return {}
+
+
+def _empty_strings() -> list[str]:
+    return []
+
+
 @dataclass
 class ProductionSummary:
     repo_name: str
     findings_per_kloc: float
-    rule_frequency: dict[str, int] = field(default_factory=dict)
-    ignored_vs_fixed: dict[str, int] = field(default_factory=dict)
-    path_redactions: list[str] = field(default_factory=list)
+    rule_frequency: dict[str, int] = field(default_factory=_empty_counts)
+    ignored_vs_fixed: dict[str, int] = field(default_factory=_empty_counts)
+    path_redactions: list[str] = field(default_factory=_empty_strings)
     trend_available: bool = False
 
     def to_dict(self) -> dict[str, Any]:

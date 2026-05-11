@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from typing import cast
 
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
 from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
@@ -95,7 +96,7 @@ class AnalyzerMetadata:
         return f"{self.spec.key}.summary"
 
     def to_dict(self) -> dict[str, object]:
-        data = {
+        data: dict[str, object] = {
             "key": self.spec.key,
             "name": self.spec.name,
             "description": self.spec.description,
@@ -221,8 +222,14 @@ def _rule_corpus_cases_by_rule_id() -> dict[str, tuple[str, ...]]:
 
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
         case_id = str(payload.get("case_id") or manifest_path.stem)
-        expectation = payload.get("expectation") or {}
-        for rule_id in expectation.get("expected_finding_ids", []):
+        expectation_payload = payload.get("expectation")
+        expectation: dict[str, object] = (
+            cast(dict[str, object], expectation_payload) if isinstance(expectation_payload, dict) else {}
+        )
+        expected_finding_ids = expectation.get("expected_finding_ids", [])
+        if not isinstance(expected_finding_ids, list):
+            continue
+        for rule_id in cast(list[object], expected_finding_ids):
             linked_cases.setdefault(str(rule_id), set()).add(case_id)
 
     return {rule_id: tuple(sorted(case_ids)) for rule_id, case_ids in linked_cases.items()}

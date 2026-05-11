@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sattline_parser.models.ast_model import (
     FrameModule,
@@ -18,18 +18,32 @@ from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution import AccessKind
 from ..resolution.common import resolve_moduletype_def_strict
 
+if TYPE_CHECKING:
+    from .variables import VariablesAnalyzer
+
+__all__ = [
+    "_add_global_scope_minimization_issues",
+    "_add_hidden_global_coupling_issues",
+    "_add_high_fan_in_out_issues",
+    "_add_issue",
+    "_add_magic_number_issue",
+    "_add_unused_datatype_field_issues",
+    "_collect_issues_from_module",
+    "_iter_variables_for_datatype_field_analysis",
+]
+
 _HIGH_FAN_IN_OUT_THRESHOLD = 3
 
 
 def _add_issue(
-    self,
+    self: VariablesAnalyzer,
     kind: IssueKind,
     path: list[str],
     variable: Variable,
     role: str,
     field_path: str | None = None,
 ) -> None:
-    self._append_issue(
+    self.append_issue(
         VariableIssue(
             kind=kind,
             module_path=path.copy(),
@@ -41,7 +55,7 @@ def _add_issue(
 
 
 def _iter_variables_for_datatype_field_analysis(
-    self,
+    self: VariablesAnalyzer,
 ) -> list[tuple[list[str], Variable, str]]:
     variables: list[tuple[list[str], Variable, str]] = []
 
@@ -69,9 +83,9 @@ def _iter_variables_for_datatype_field_analysis(
     for mod in self.bp.submodules or []:
         _collect_from_module(mod, bp_path)
 
-    if self._limit_to_module_path is None:
+    if self.limit_to_module_path is None:
         for mt in self.bp.moduletype_defs or []:
-            if not self._is_from_root_origin(
+            if not self.is_from_root_origin(
                 getattr(mt, "origin_file", None),
                 getattr(mt, "origin_lib", None),
             ):
@@ -85,11 +99,11 @@ def _iter_variables_for_datatype_field_analysis(
     return variables
 
 
-def _add_unused_datatype_field_issues(self) -> None:
+def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
     datatype_state: dict[str, dict[str, Any]] = {}
 
     for datatype in self.bp.datatype_defs or []:
-        if not self._is_from_root_origin(
+        if not self.is_from_root_origin(
             getattr(datatype, "origin_file", None),
             getattr(datatype, "origin_lib", None),
         ):
@@ -114,7 +128,7 @@ def _add_unused_datatype_field_issues(self) -> None:
     if not datatype_state:
         return
 
-    for path, variable, role in self._iter_variables_for_datatype_field_analysis():
+    for path, variable, role in _iter_variables_for_datatype_field_analysis(self):
         if isinstance(variable.datatype, Simple_DataType):
             continue
 
@@ -123,13 +137,13 @@ def _add_unused_datatype_field_issues(self) -> None:
             continue
 
         if (
-            self._analyzed_target_is_library
+            self.analyzed_target_is_library
             and role == "moduleparameter"
             and any(segment.startswith("TypeDef:") for segment in path)
         ):
             state["externally_open"] = True
 
-        usage = self._get_usage(variable)
+        usage = self.get_usage(variable)
         if usage.usage_locations:
             state["has_whole_access"] = True
 
@@ -154,7 +168,7 @@ def _add_unused_datatype_field_issues(self) -> None:
             ):
                 continue
 
-            self._append_issue(
+            self.append_issue(
                 VariableIssue(
                     kind=IssueKind.UNUSED_DATATYPE_FIELD,
                     module_path=list(state["module_path"]),
@@ -166,9 +180,9 @@ def _add_unused_datatype_field_issues(self) -> None:
             )
 
 
-def _add_hidden_global_coupling_issues(self) -> None:
-    if self._analyzed_target_is_library:
-        self._trace("hidden-global-coupling-scan", added_issue_count=0)
+def _add_hidden_global_coupling_issues(self: VariablesAnalyzer) -> None:
+    if self.analyzed_target_is_library:
+        self.trace("hidden-global-coupling-scan", added_issue_count=0)
         return
 
     root_prefix = (self.bp.header.name.casefold(),)
@@ -205,7 +219,7 @@ def _add_hidden_global_coupling_issues(self) -> None:
             display_path = display_paths.get(module_key, module_key)
             module_summaries.append(f"{'.'.join(display_path[1:])} ({labels})")
 
-        self._append_issue(
+        self.append_issue(
             VariableIssue(
                 kind=IssueKind.HIDDEN_GLOBAL_COUPLING,
                 module_path=[self.bp.header.name],
@@ -215,12 +229,12 @@ def _add_hidden_global_coupling_issues(self) -> None:
         )
         added_issue_count += 1
 
-    self._trace("hidden-global-coupling-scan", added_issue_count=added_issue_count)
+    self.trace("hidden-global-coupling-scan", added_issue_count=added_issue_count)
 
 
-def _add_high_fan_in_out_issues(self) -> None:
-    if self._analyzed_target_is_library:
-        self._trace("high-fan-in-out-scan", added_issue_count=0)
+def _add_high_fan_in_out_issues(self: VariablesAnalyzer) -> None:
+    if self.analyzed_target_is_library:
+        self.trace("high-fan-in-out-scan", added_issue_count=0)
         return
 
     root_prefix = (self.bp.header.name.casefold(),)
@@ -263,7 +277,7 @@ def _add_high_fan_in_out_issues(self) -> None:
             ]
             role_parts.append(f"high fan-out with {len(writer_modules)} writers: " + ", ".join(writer_labels))
 
-        self._append_issue(
+        self.append_issue(
             VariableIssue(
                 kind=IssueKind.HIGH_FAN_IN_OUT,
                 module_path=[self.bp.header.name],
@@ -273,12 +287,12 @@ def _add_high_fan_in_out_issues(self) -> None:
         )
         added_issue_count += 1
 
-    self._trace("high-fan-in-out-scan", added_issue_count=added_issue_count)
+    self.trace("high-fan-in-out-scan", added_issue_count=added_issue_count)
 
 
-def _add_global_scope_minimization_issues(self) -> None:
-    if self._analyzed_target_is_library:
-        self._trace("global-scope-minimization-scan", added_issue_count=0)
+def _add_global_scope_minimization_issues(self: VariablesAnalyzer) -> None:
+    if self.analyzed_target_is_library:
+        self.trace("global-scope-minimization-scan", added_issue_count=0)
         return
 
     root_prefix = (self.bp.header.name.casefold(),)
@@ -333,7 +347,7 @@ def _add_global_scope_minimization_issues(self) -> None:
             ".".join(display_paths.get(module_key, module_key)[1:]) for module_key in sorted(access_module_keys)
         ]
 
-        self._append_issue(
+        self.append_issue(
             VariableIssue(
                 kind=IssueKind.GLOBAL_SCOPE_MINIMIZATION,
                 module_path=[self.bp.header.name],
@@ -345,14 +359,14 @@ def _add_global_scope_minimization_issues(self) -> None:
         )
         added_issue_count += 1
 
-    self._trace(
+    self.trace(
         "global-scope-minimization-scan",
         added_issue_count=added_issue_count,
     )
 
 
 def _add_magic_number_issue(
-    self,
+    self: VariablesAnalyzer,
     path: list[str],
     value: int | float,
     span: SourceSpan | None,
@@ -360,7 +374,7 @@ def _add_magic_number_issue(
     if value == 0:
         return
 
-    self._append_issue(
+    self.append_issue(
         VariableIssue(
             kind=IssueKind.MAGIC_NUMBER,
             module_path=path.copy(),
@@ -368,13 +382,13 @@ def _add_magic_number_issue(
             role="literal",
             literal_value=value,
             literal_span=span,
-            site=self._site_str(),
+            site=self.site_str(),
         )
     )
 
 
 def _collect_issues_from_module(
-    self,
+    self: VariablesAnalyzer,
     mod: SingleModule | FrameModule | ModuleTypeInstance,
     path: list[str],
     current_library: str | None = None,
@@ -382,14 +396,15 @@ def _collect_issues_from_module(
     if isinstance(mod, SingleModule):
         my_path = [*path, mod.header.name]
         for variable in mod.moduleparameters or []:
-            usage = self._get_usage(variable)
+            usage = self.get_usage(variable)
             if usage.is_unused:
-                self._add_issue(IssueKind.UNUSED, my_path, variable, role="moduleparameter")
+                _add_issue(self, IssueKind.UNUSED, my_path, variable, role="moduleparameter")
                 continue
-            procedure_status = self._procedure_status_issue(variable, usage)
+            procedure_status = self.procedure_status_issue(variable, usage)
             if procedure_status is not None:
                 status_role, field_path = procedure_status
-                self._add_issue(
+                _add_issue(
+                    self,
                     IssueKind.PROCEDURE_STATUS,
                     my_path,
                     variable,
@@ -398,28 +413,30 @@ def _collect_issues_from_module(
                 )
                 continue
             elif usage.is_display_only:
-                self._add_issue(IssueKind.UI_ONLY, my_path, variable, role="moduleparameter")
+                _add_issue(self, IssueKind.UI_ONLY, my_path, variable, role="moduleparameter")
             elif (
                 usage.read
                 and usage.written
-                and not self._has_output_effect(variable, my_path)
-                and not self._has_procedure_status_binding(variable)
+                and not self.has_output_effect(variable, my_path)
+                and not self.has_procedure_status_binding(variable)
             ):
-                self._add_issue(
+                _add_issue(
+                    self,
                     IssueKind.WRITE_WITHOUT_EFFECT,
                     my_path,
                     variable,
                     role="moduleparameter",
                 )
         for variable in mod.localvariables or []:
-            usage = self._get_usage(variable)
+            usage = self.get_usage(variable)
             if usage.is_unused:
-                self._add_issue(IssueKind.UNUSED, my_path, variable, role="localvariable")
+                _add_issue(self, IssueKind.UNUSED, my_path, variable, role="localvariable")
                 continue
-            procedure_status = self._procedure_status_issue(variable, usage)
+            procedure_status = self.procedure_status_issue(variable, usage)
             if procedure_status is not None:
                 status_role, field_path = procedure_status
-                self._add_issue(
+                _add_issue(
+                    self,
                     IssueKind.PROCEDURE_STATUS,
                     my_path,
                     variable,
@@ -428,44 +445,45 @@ def _collect_issues_from_module(
                 )
                 continue
             elif usage.is_display_only:
-                self._add_issue(IssueKind.UI_ONLY, my_path, variable, role="localvariable")
-            elif usage.is_read_only and not bool(variable.const) and self._is_const_candidate(variable):
-                self._add_issue(IssueKind.READ_ONLY_NON_CONST, my_path, variable, role="localvariable")
+                _add_issue(self, IssueKind.UI_ONLY, my_path, variable, role="localvariable")
+            elif usage.is_read_only and not bool(variable.const) and self.is_const_candidate(variable):
+                _add_issue(self, IssueKind.READ_ONLY_NON_CONST, my_path, variable, role="localvariable")
             elif usage.written and not usage.read:
-                self._add_issue(IssueKind.NEVER_READ, my_path, variable, role="localvariable")
+                _add_issue(self, IssueKind.NEVER_READ, my_path, variable, role="localvariable")
             elif (
                 usage.read
                 and usage.written
-                and not self._has_output_effect(variable, my_path)
-                and not self._has_procedure_status_binding(variable)
+                and not self.has_output_effect(variable, my_path)
+                and not self.has_procedure_status_binding(variable)
             ):
-                self._add_issue(
+                _add_issue(
+                    self,
                     IssueKind.WRITE_WITHOUT_EFFECT,
                     my_path,
                     variable,
                     role="localvariable",
                 )
         for child in mod.submodules or []:
-            self._collect_issues_from_module(child, my_path, current_library=current_library)
+            _collect_issues_from_module(self, child, my_path, current_library=current_library)
 
     elif isinstance(mod, FrameModule):
         my_path = [*path, mod.header.name]
         for child in mod.submodules or []:
-            self._collect_issues_from_module(child, my_path, current_library=current_library)
+            _collect_issues_from_module(self, child, my_path, current_library=current_library)
 
-    elif isinstance(mod, ModuleTypeInstance):
+    else:
         my_path = [*path, mod.header.name]
         try:
             moduletype = resolve_moduletype_def_strict(
                 self.bp,
                 mod.moduletype_name,
                 current_library=current_library,
-                unavailable_libraries=self._unavailable_libraries,
+                unavailable_libraries=self.unavailable_libraries,
             )
         except ValueError:
             return
 
-        if not self._is_from_root_origin(
+        if not self.is_from_root_origin(
             getattr(moduletype, "origin_file", None),
             getattr(moduletype, "origin_lib", None),
         ):
@@ -473,18 +491,19 @@ def _collect_issues_from_module(
 
         # Library-wide reports should surface root-owned moduletype findings once
         # under their TypeDef path rather than once per instance path.
-        if self._analyzed_target_is_library and self._limit_to_module_path is None:
+        if self.analyzed_target_is_library and self.limit_to_module_path is None:
             return
 
         for variable in moduletype.moduleparameters or []:
-            usage = self._get_usage(variable)
+            usage = self.get_usage(variable)
             if usage.is_unused:
-                self._add_issue(IssueKind.UNUSED, my_path, variable, role="moduleparameter")
+                _add_issue(self, IssueKind.UNUSED, my_path, variable, role="moduleparameter")
                 continue
-            procedure_status = self._procedure_status_issue(variable, usage)
+            procedure_status = self.procedure_status_issue(variable, usage)
             if procedure_status is not None:
                 status_role, field_path = procedure_status
-                self._add_issue(
+                _add_issue(
+                    self,
                     IssueKind.PROCEDURE_STATUS,
                     my_path,
                     variable,
@@ -493,14 +512,15 @@ def _collect_issues_from_module(
                 )
                 continue
             elif usage.is_display_only:
-                self._add_issue(IssueKind.UI_ONLY, my_path, variable, role="moduleparameter")
+                _add_issue(self, IssueKind.UI_ONLY, my_path, variable, role="moduleparameter")
             elif (
                 usage.read
                 and usage.written
-                and not self._has_output_effect(variable, my_path)
-                and not self._has_procedure_status_binding(variable)
+                and not self.has_output_effect(variable, my_path)
+                and not self.has_procedure_status_binding(variable)
             ):
-                self._add_issue(
+                _add_issue(
+                    self,
                     IssueKind.WRITE_WITHOUT_EFFECT,
                     my_path,
                     variable,
@@ -508,14 +528,15 @@ def _collect_issues_from_module(
                 )
 
         for variable in moduletype.localvariables or []:
-            usage = self._get_usage(variable)
+            usage = self.get_usage(variable)
             if usage.is_unused:
-                self._add_issue(IssueKind.UNUSED, my_path, variable, role="localvariable")
+                _add_issue(self, IssueKind.UNUSED, my_path, variable, role="localvariable")
                 continue
-            procedure_status = self._procedure_status_issue(variable, usage)
+            procedure_status = self.procedure_status_issue(variable, usage)
             if procedure_status is not None:
                 status_role, field_path = procedure_status
-                self._add_issue(
+                _add_issue(
+                    self,
                     IssueKind.PROCEDURE_STATUS,
                     my_path,
                     variable,
@@ -524,18 +545,19 @@ def _collect_issues_from_module(
                 )
                 continue
             elif usage.is_display_only:
-                self._add_issue(IssueKind.UI_ONLY, my_path, variable, role="localvariable")
-            elif usage.is_read_only and not bool(variable.const) and self._is_const_candidate(variable):
-                self._add_issue(IssueKind.READ_ONLY_NON_CONST, my_path, variable, role="localvariable")
+                _add_issue(self, IssueKind.UI_ONLY, my_path, variable, role="localvariable")
+            elif usage.is_read_only and not bool(variable.const) and self.is_const_candidate(variable):
+                _add_issue(self, IssueKind.READ_ONLY_NON_CONST, my_path, variable, role="localvariable")
             elif usage.written and not usage.read:
-                self._add_issue(IssueKind.NEVER_READ, my_path, variable, role="localvariable")
+                _add_issue(self, IssueKind.NEVER_READ, my_path, variable, role="localvariable")
             elif (
                 usage.read
                 and usage.written
-                and not self._has_output_effect(variable, my_path)
-                and not self._has_procedure_status_binding(variable)
+                and not self.has_output_effect(variable, my_path)
+                and not self.has_procedure_status_binding(variable)
             ):
-                self._add_issue(
+                _add_issue(
+                    self,
                     IssueKind.WRITE_WITHOUT_EFFECT,
                     my_path,
                     variable,
@@ -544,4 +566,4 @@ def _collect_issues_from_module(
 
         child_library = moduletype.origin_lib or current_library
         for child in moduletype.submodules or []:
-            self._collect_issues_from_module(child, my_path, current_library=child_library)
+            _collect_issues_from_module(self, child, my_path, current_library=child_library)

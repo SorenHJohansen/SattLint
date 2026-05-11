@@ -16,6 +16,10 @@ ACCURACY_SCHEMA_VERSION = 1
 VALIDATION_ANNOTATIONS_FILENAME = "finding_validation_annotations.json"
 
 
+def _empty_validation_annotations() -> list[ValidationAnnotation]:
+    return []
+
+
 @dataclass
 class ValidationAnnotation:
     finding_fingerprint: str
@@ -27,7 +31,7 @@ class ValidationAnnotation:
 
 @dataclass
 class AccuracyMetrics:
-    annotations: list[ValidationAnnotation] = field(default_factory=list)
+    annotations: list[ValidationAnnotation] = field(default_factory=_empty_validation_annotations)
 
     def to_dict(self) -> dict[str, Any]:
         total = len(self.annotations)
