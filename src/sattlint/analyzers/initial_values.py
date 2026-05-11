@@ -67,6 +67,10 @@ _CATEGORY_LABELS = {
 }
 
 
+def _empty_issues() -> list[Issue]:
+    return []
+
+
 @dataclass(frozen=True)
 class _ParameterValue:
     status: str
@@ -77,7 +81,7 @@ class _ParameterValue:
 @dataclass
 class InitialValueReport:
     name: str
-    issues: list[Issue] = field(default_factory=list)
+    issues: list[Issue] = field(default_factory=_empty_issues)
 
     def summary(self) -> str:
         if not self.issues:
@@ -311,7 +315,7 @@ class InitialValueAnalyzer:
             seen.add(normalized)
 
         for mapping in inst.parametermappings or []:
-            target_name = varname_base(mapping.target)
+            target_name = self._mapping_target_name(mapping)
             if not target_name:
                 continue
             normalized = target_name.casefold()
@@ -378,10 +382,13 @@ class InitialValueAnalyzer:
     ) -> ParameterMapping | None:
         wanted = parameter_name.casefold()
         for mapping in mappings or []:
-            target_name = varname_base(mapping.target)
+            target_name = self._mapping_target_name(mapping)
             if target_name == wanted:
                 return mapping
         return None
+
+    def _mapping_target_name(self, mapping: ParameterMapping) -> str | None:
+        return varname_base(getattr(mapping, "target", None))
 
     def _resolve_mapping_value(
         self,
@@ -397,7 +404,7 @@ class InitialValueAnalyzer:
                 source="literal parameter mapping",
             )
 
-        full_ref = varname_full(mapping.source)
+        full_ref = self._mapping_source_name(mapping)
         if not full_ref:
             return _ParameterValue(status="unknown")
         if "." in full_ref or ":" in full_ref:
@@ -418,6 +425,9 @@ class InitialValueAnalyzer:
             value=variable.init_value,
             source=f"init value of variable {variable.name}",
         )
+
+    def _mapping_source_name(self, mapping: ParameterMapping) -> str | None:
+        return varname_full(getattr(mapping, "source", None))
 
     def _find_variable(
         self,

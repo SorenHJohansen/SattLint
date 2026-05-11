@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from sattlint.devtools.baselines import build_analysis_diff_report, load_finding_collection
+from sattlint.devtools.current_debt_snapshot import build_current_debt_snapshot_report
 from sattlint.devtools.derived_reports import (
     build_incremental_analysis_report,
     build_performance_budget_report,
@@ -28,6 +29,7 @@ def collect_optional_reports(
     run_corpus_suite_fn: Any,
 ) -> dict[str, Any]:
     progress = context["progress"]
+    structural_budget_report: dict[str, Any] = {"skipped": not context["run_structural_reports"]}
     architecture_report: dict[str, Any] = {"findings": [], "skipped": not context["run_structural_reports"]}
     analyzer_registry_report: dict[str, Any] = {"rules": [], "skipped": not context["run_structural_reports"]}
     dependency_graph_report: dict[str, Any] = {"edges": [], "skipped": not context["run_structural_reports"]}
@@ -48,6 +50,7 @@ def collect_optional_reports(
     if context["run_structural_reports"]:
         progress.start_stage("structural_reports")
         structural_reports = collect_structural_report_bundle(progress_callback=progress.log)
+        structural_budget_report = structural_reports.structural_budget_report
         architecture_report = structural_reports.architecture_report
         analyzer_registry_report = structural_reports.analyzer_registry_report
         workspace_graph_inputs = structural_reports.graph_inputs
@@ -103,6 +106,7 @@ def collect_optional_reports(
         "dependency_graph_report": dependency_graph_report,
         "graphics_layout_report": graphics_layout_report,
         "impact_analysis_report": impact_analysis_report,
+        "structural_budget_report": structural_budget_report,
         "trace_report": trace_report,
         "workspace_graph_inputs": workspace_graph_inputs,
     }
@@ -131,6 +135,11 @@ def build_derived_reports(
     coverage_summary_report: dict[str, Any] | None = None
     if context["run_coverage_summary"]:
         coverage_summary_report = build_coverage_summary_report_fn(repo_root)
+    current_debt_snapshot_report = build_current_debt_snapshot_report(
+        repo_root,
+        structural_budget_report=optional_reports["structural_budget_report"],
+        coverage_summary_report=coverage_summary_report,
+    )
 
     profiling_summary_report = build_profiling_summary_report(
         optional_reports["trace_report"],
@@ -222,6 +231,7 @@ def build_derived_reports(
 
     return {
         "analysis_diff_report": analysis_diff_report,
+        "current_debt_snapshot_report": current_debt_snapshot_report,
         "coverage_summary_report": coverage_summary_report,
         "differential_report": differential_report,
         "finding_collection": finding_collection,

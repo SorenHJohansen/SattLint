@@ -1,0 +1,451 @@
+# ruff: noqa: F403, F405
+from ._docgen_test_support import *
+
+
+def _build_documentation_fixture() -> BasePicture:
+    mes_state_control = ModuleTypeDef(name="MES_StateControl", origin_lib="NNEMESIFLib")
+    equip_marker = ModuleTypeDef(name="EquipModCoordinate", origin_lib="nnestruct")
+    recipe_param = ModuleTypeDef(name="RecParReal", origin_lib="NNELib")
+    engineering_param = ModuleTypeDef(name="EngParReal", origin_lib="NNELib")
+    user_param = ModuleTypeDef(name="UsrParReal", origin_lib="NNELib")
+
+    operation_wrapper = ModuleTypeDef(
+        name="OperationWrapper",
+        origin_lib="ProjectLib",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("MESInfo"), moduletype_name="MES_StateControl"),
+            ModuleTypeInstance(header=_hdr("RecipeSP"), moduletype_name="RecParReal"),
+            ModuleTypeInstance(header=_hdr("EngineeringLimit"), moduletype_name="EngParReal"),
+            ModuleTypeInstance(header=_hdr("UserTarget"), moduletype_name="UsrParReal"),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=["Ready = True"],
+                )
+            ]
+        ),
+    )
+
+    equipment_wrapper = ModuleTypeDef(
+        name="TankEM",
+        origin_lib="ProjectLib",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("Coordinate"), moduletype_name="EquipModCoordinate"),
+            ModuleTypeInstance(header=_hdr("SpeedLimit"), moduletype_name="EngParReal"),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Physical",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=["ValveOpen = True"],
+                )
+            ]
+        ),
+    )
+
+    appl_tank = ModuleTypeDef(
+        name="ApplTank",
+        origin_lib="ProjectLib",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("Prepare"), moduletype_name="OperationWrapper"),
+            ModuleTypeInstance(header=_hdr("Tank"), moduletype_name="TankEM"),
+        ],
+    )
+
+    dilute_unit = ModuleTypeDef(
+        name="XDilute_221X251XY",
+        origin_lib="ProjectLib",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("DiluteTank"), moduletype_name="TankEM"),
+        ],
+    )
+
+    return BasePicture(
+        header=_hdr("BasePicture"),
+        origin_lib="ProjectLib",
+        moduletype_defs=[
+            mes_state_control,
+            equip_marker,
+            recipe_param,
+            engineering_param,
+            user_param,
+            operation_wrapper,
+            equipment_wrapper,
+            appl_tank,
+            dilute_unit,
+        ],
+        submodules=[
+            ModuleTypeInstance(header=_hdr("UnitA"), moduletype_name="ApplTank"),
+            ModuleTypeInstance(header=_hdr("DilutionTrain"), moduletype_name="XDilute_221X251XY"),
+            ModuleTypeInstance(header=_hdr("GlobalLimit"), moduletype_name="EngParReal"),
+        ],
+        library_dependencies={"projectlib": ["nnemesiflib", "nnestruct", "nnelib"]},
+    )
+
+
+def _build_wrapper_documentation_fixture() -> BasePicture:
+    mes_state_control = ModuleTypeDef(name="MES_StateControl")
+    equip_marker = ModuleTypeDef(name="EquipModCoordinate")
+    state_logic = ModuleTypeDef(name="StateLogic")
+    analog_input = ModuleTypeDef(name="AnalogInput")
+    recipe_param = ModuleTypeDef(name="RecParReal")
+    engineering_param = ModuleTypeDef(name="EngParReal")
+
+    operation_l2 = ModuleTypeDef(
+        name="OperationL2",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("MES_StateControl"), moduletype_name="MES_StateControl"),
+        ],
+    )
+    operation_l1 = ModuleTypeDef(
+        name="OperationL1",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("L2"), moduletype_name="OperationL2"),
+        ],
+    )
+    operation_wrapper = ModuleTypeDef(
+        name="OperationWrapper",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("L1"), moduletype_name="OperationL1"),
+            ModuleTypeInstance(header=_hdr("RecipeSP"), moduletype_name="RecParReal"),
+            ModuleTypeInstance(header=_hdr("EngineeringLimit"), moduletype_name="EngParReal"),
+        ],
+    )
+    opr_frame = ModuleTypeDef(
+        name="OprFrameWrapper",
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("Prepare"),
+                moduletype_name="OperationWrapper",
+                parametermappings=[_literal_mapping("Name", "Prepare")],
+            ),
+        ],
+    )
+    operations = ModuleTypeDef(
+        name="OperationsWrapper",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("OprFrame"), moduletype_name="OprFrameWrapper"),
+        ],
+    )
+    unit_control = ModuleTypeDef(
+        name="UnitControlWrapper",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("Operations"), moduletype_name="OperationsWrapper"),
+        ],
+    )
+
+    equip_panel = ModuleTypeDef(
+        name="EquipPanel",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("Coordinate"), moduletype_name="EquipModCoordinate"),
+            ModuleTypeInstance(header=_hdr("Stop"), moduletype_name="StateLogic"),
+        ],
+    )
+    equip_display = ModuleTypeDef(
+        name="EquipDisplay",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("Panel"), moduletype_name="EquipPanel"),
+        ],
+    )
+    equip_l2 = ModuleTypeDef(
+        name="EquipL2",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("Display"), moduletype_name="EquipDisplay"),
+        ],
+    )
+    equip_l1 = ModuleTypeDef(
+        name="EquipL1",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("L2"), moduletype_name="EquipL2"),
+        ],
+    )
+    tank_em = ModuleTypeDef(
+        name="TankEM",
+        moduleparameters=[Variable(name="Name", datatype="STRING")],
+        submodules=[
+            ModuleTypeInstance(header=_hdr("L1"), moduletype_name="EquipL1"),
+            ModuleTypeInstance(header=_hdr("SpeedLimit"), moduletype_name="EngParReal"),
+        ],
+    )
+
+    unit_type = ModuleTypeDef(
+        name="UnitType",
+        moduleparameters=[
+            Variable(name="Name", datatype="STRING"),
+            Variable(name="HeaderName", datatype="STRING"),
+            Variable(name="SectionName", datatype="STRING"),
+            Variable(name="InletPW", datatype="STRING"),
+        ],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("EM_FILL"),
+                moduletype_name="TankEM",
+                parametermappings=[_literal_mapping("Name", "Fill")],
+            ),
+            ModuleTypeInstance(header=_hdr("TT100"), moduletype_name="AnalogInput"),
+            ModuleTypeInstance(header=_hdr("UnitControl"), moduletype_name="UnitControlWrapper"),
+        ],
+    )
+
+    return BasePicture(
+        header=_hdr("BasePicture"),
+        moduletype_defs=[
+            mes_state_control,
+            equip_marker,
+            state_logic,
+            analog_input,
+            recipe_param,
+            engineering_param,
+            operation_l2,
+            operation_l1,
+            operation_wrapper,
+            opr_frame,
+            operations,
+            unit_control,
+            equip_panel,
+            equip_display,
+            equip_l2,
+            equip_l1,
+            tank_em,
+            unit_type,
+        ],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("UnitA"),
+                moduletype_name="UnitType",
+                parametermappings=[
+                    _literal_mapping("Name", "238A"),
+                    _literal_mapping("HeaderName", "UF/DF Tank"),
+                    _literal_mapping("SectionName", "UF/DF"),
+                    _literal_mapping("InletPW", "PWTransfer"),
+                ],
+            ),
+        ],
+    )
+
+
+def _build_sequence_doc_fixture() -> BasePicture:
+    mes_state_control = ModuleTypeDef(name="MES_StateControl")
+    recipe_param = ModuleTypeDef(name="RecParReal")
+    engineering_param = ModuleTypeDef(name="EngParReal")
+
+    operation_wrapper = ModuleTypeDef(
+        name="OperationWrapper",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("MESInfo"), moduletype_name="MES_StateControl"),
+            ModuleTypeInstance(header=_hdr("RecipeSP"), moduletype_name="RecParReal"),
+            ModuleTypeInstance(header=_hdr("EngineeringLimit"), moduletype_name="EngParReal"),
+        ],
+        modulecode=ModuleCode(
+            sequences=[
+                Sequence(
+                    name="MainSequence",
+                    type="sequence",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        SFCStep(
+                            kind="init",
+                            name="Init",
+                            code=SFCCodeBlocks(exit=[("assign", {"var_name": "p.GotoRunDone"}, True)]),
+                        ),
+                        SFCTransition(
+                            name="Tr1",
+                            condition=(
+                                "OR",
+                                [
+                                    {"var_name": "p.GotoRun"},
+                                    {"var_name": "p.Run"},
+                                ],
+                            ),
+                        ),
+                        SFCStep(
+                            kind="step",
+                            name="Tarering",
+                            code=SFCCodeBlocks(
+                                enter=[
+                                    (
+                                        "FunctionCall",
+                                        "CopyString",
+                                        [
+                                            {"var_name": "StepText.Tarering"},
+                                            {"var_name": "Step"},
+                                            {"var_name": "si"},
+                                        ],
+                                    )
+                                ],
+                                exit=[("assign", {"var_name": "Dv.Tara_execute"}, True)],
+                            ),
+                        ),
+                        SFCTransition(
+                            name="Tr2",
+                            condition=(
+                                "AND",
+                                [
+                                    ("NOT", {"var_name": "Dv.Tara_execute"}),
+                                    ("NOT", {"var_name": "ProfibusError"}),
+                                ],
+                            ),
+                        ),
+                    ],
+                )
+            ]
+        ),
+    )
+
+    unit_type = ModuleTypeDef(
+        name="UnitType",
+        moduleparameters=[
+            Variable(name="Name", datatype="STRING"),
+            Variable(name="HeaderName", datatype="STRING"),
+            Variable(name="SectionName", datatype="STRING"),
+        ],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("Prepare"),
+                moduletype_name="OperationWrapper",
+                parametermappings=[_literal_mapping("Name", "Prepare")],
+            ),
+        ],
+    )
+
+    return BasePicture(
+        header=_hdr("BasePicture"),
+        moduletype_defs=[
+            mes_state_control,
+            recipe_param,
+            engineering_param,
+            operation_wrapper,
+            unit_type,
+        ],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("UnitA"),
+                moduletype_name="UnitType",
+                parametermappings=[
+                    _literal_mapping("Name", "238A"),
+                    _literal_mapping("HeaderName", "UF/DF Tank"),
+                    _literal_mapping("SectionName", "UF/DF"),
+                ],
+            ),
+        ],
+    )
+
+
+def _build_empty_sequence_doc_fixture() -> BasePicture:
+    mes_state_control = ModuleTypeDef(name="MES_StateControl")
+
+    operation_wrapper = ModuleTypeDef(
+        name="OperationWrapper",
+        submodules=[
+            ModuleTypeInstance(header=_hdr("MESInfo"), moduletype_name="MES_StateControl"),
+        ],
+        modulecode=ModuleCode(
+            sequences=[
+                Sequence(
+                    name="EmptySequence",
+                    type="sequence",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[],
+                )
+            ]
+        ),
+    )
+
+    unit_type = ModuleTypeDef(
+        name="UnitType",
+        moduleparameters=[
+            Variable(name="Name", datatype="STRING"),
+            Variable(name="HeaderName", datatype="STRING"),
+            Variable(name="SectionName", datatype="STRING"),
+        ],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("Prepare"),
+                moduletype_name="OperationWrapper",
+                parametermappings=[_literal_mapping("Name", "Prepare")],
+            ),
+        ],
+    )
+
+    return BasePicture(
+        header=_hdr("BasePicture"),
+        moduletype_defs=[mes_state_control, operation_wrapper, unit_type],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("UnitA"),
+                moduletype_name="UnitType",
+                parametermappings=[
+                    _literal_mapping("Name", "238A"),
+                    _literal_mapping("HeaderName", "UF/DF Tank"),
+                    _literal_mapping("SectionName", "UF/DF"),
+                ],
+            ),
+        ],
+    )
+
+
+def _build_version_drift_doc_fixture() -> BasePicture:
+    variant_a = SingleModule(
+        header=_hdr("Mixer"),
+        datecode=100,
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[Variable(name="Output", datatype="INTEGER")],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Logic",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[("assign", {"var_name": "Output"}, 1)],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+    )
+    variant_b = SingleModule(
+        header=_hdr("Mixer"),
+        datecode=200,
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[Variable(name="Output", datatype="INTEGER")],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Logic",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[("assign", {"var_name": "Output"}, 2)],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+    )
+    cast(Any, variant_a).origin_file = "BasePicture.s"
+    cast(Any, variant_b).origin_file = "BasePicture.s"
+    return BasePicture(
+        header=_hdr("BasePicture"),
+        origin_file="BasePicture.s",
+        submodules=[variant_a, variant_b],
+    )
+
+
+__all__ = [
+    "_build_documentation_fixture",
+    "_build_empty_sequence_doc_fixture",
+    "_build_sequence_doc_fixture",
+    "_build_version_drift_doc_fixture",
+    "_build_wrapper_documentation_fixture",
+]

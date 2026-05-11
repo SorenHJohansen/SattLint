@@ -20,7 +20,6 @@
     "**/*.egg-info/**",
     "**/.eggs/**",
     "**/node_modules/**",
-    "**/artifacts/**",
     "**/build/**",
     "**/dist/**",
     "**/htmlcov/**",
@@ -28,7 +27,10 @@
     "**/.idea/**",
     "**/logs/**",
     "**/tmp/**",
-    "**/temp/**"
+    "**/temp/**",
+    "**/_build/**",
+    "**/docs/_build/**",
+    "**/site/**"
   ],
   "languages": ["python", "javascript"],
   "frameworks": [],

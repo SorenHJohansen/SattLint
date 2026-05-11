@@ -145,9 +145,9 @@ PIPELINE_CHECK_DEFINITIONS: tuple[dict[str, Any], ...] = (
             "src/sattline_parser/**",
             "src/sattlint/analyzers/**",
             "tests/fixtures/corpus/**",
-            "tests/test_corpus.py",
+            "tests/parser/test_corpus.py",
         ),
-        "owner_test_targets": ("tests/test_corpus.py",),
+        "owner_test_targets": ("tests/parser/test_corpus.py",),
         **_ai_metadata(
             "Use when parser or analyzer changes need corpus-level regression proof.",
             ".github/instructions/parser-analysis.instructions.md",

@@ -5,6 +5,7 @@ from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleHeader,
 )
+from sattlint.devtools import _portable_command_text as portable_command_text
 from sattlint.devtools import corpus, mutation_engine, pipeline
 from sattlint.devtools.artifact_registry import ArtifactDefinition
 from sattlint.devtools.pipeline_artifacts import (
@@ -31,6 +32,15 @@ def test_run_pipeline_serializes_structural_graph_reports(monkeypatch, tmp_path)
         pipeline,
         "_collect_structural_report_bundle",
         lambda workspace_root=pipeline.REPO_ROOT, progress_callback=None: pipeline.StructuralReportsBundle(
+            structural_budget_report={
+                "source_files_over_budget": [],
+                "test_files_over_budget": [],
+                "functions_over_budget": [],
+                "classes_over_budget": [],
+                "repeated_private_names": [],
+                "facade_private_entrypoints": [],
+                "summary": {"source_file_max_lines": 0, "test_file_max_lines": 0},
+            },
             architecture_report={"findings": []},
             analyzer_registry_report={"rules": []},
             graph_inputs=pipeline.WorkspaceGraphInputs(
@@ -134,6 +144,15 @@ def test_run_pipeline_fails_when_enforced_rule_metadata_is_missing(monkeypatch, 
         pipeline,
         "_collect_structural_report_bundle",
         lambda workspace_root=pipeline.REPO_ROOT, progress_callback=None: pipeline.StructuralReportsBundle(
+            structural_budget_report={
+                "source_files_over_budget": [],
+                "test_files_over_budget": [],
+                "functions_over_budget": [],
+                "classes_over_budget": [],
+                "repeated_private_names": [],
+                "facade_private_entrypoints": [],
+                "summary": {"source_file_max_lines": 0, "test_file_max_lines": 0},
+            },
             architecture_report={
                 "findings": [
                     {
@@ -538,6 +557,34 @@ def test_build_pipeline_check_catalog_lists_full_checks_and_commands(tmp_path):
     assert "src/**/*.py" in ruff_entry["path_globs"]
 
 
+def test_portable_command_text_builds_expected_repo_commands():
+    assert portable_command_text.repo_python_command() == "python scripts/run_repo_python.py"
+    assert (
+        portable_command_text.repo_python_command("", "-m", "pytest", "tests/test_pipeline_run.py")
+        == "python scripts/run_repo_python.py -m pytest tests/test_pipeline_run.py"
+    )
+    assert (
+        portable_command_text.pytest_command("--no-cov", "tests/test_pipeline_run.py")
+        == "python scripts/run_repo_python.py -m pytest --no-cov tests/test_pipeline_run.py"
+    )
+    assert (
+        portable_command_text.pyright_command("src/sattlint/devtools/_portable_command_text.py")
+        == "python scripts/run_repo_python.py -m pyright src/sattlint/devtools/_portable_command_text.py"
+    )
+    assert (
+        portable_command_text.ruff_command("check", "tests/test_pipeline_run.py")
+        == "python scripts/run_repo_python.py -m ruff check tests/test_pipeline_run.py"
+    )
+    assert (
+        portable_command_text.sattlint_command("syntax-check", "sample.s")
+        == "python scripts/run_repo_python.py -m sattlint syntax-check sample.s"
+    )
+    assert (
+        portable_command_text.repo_audit_command("--profile", "quick")
+        == "python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick"
+    )
+
+
 def test_run_pytest_stage_uses_isolated_coverage_file_and_restores_environment(monkeypatch, tmp_path):
     observed_coverage_files: list[str | None] = []
 
@@ -915,6 +962,15 @@ def test_main_fail_on_drift_exits_nonzero_when_new_findings(monkeypatch, tmp_pat
 
 def _minimal_structural_bundle() -> pipeline.StructuralReportsBundle:
     return pipeline.StructuralReportsBundle(
+        structural_budget_report={
+            "source_files_over_budget": [],
+            "test_files_over_budget": [],
+            "functions_over_budget": [],
+            "classes_over_budget": [],
+            "repeated_private_names": [],
+            "facade_private_entrypoints": [],
+            "summary": {"source_file_max_lines": 0, "test_file_max_lines": 0},
+        },
         architecture_report={"findings": []},
         analyzer_registry_report=pipeline._collect_analyzer_registry_report(),
         graph_inputs=pipeline.WorkspaceGraphInputs(
@@ -1103,6 +1159,15 @@ def test_run_pipeline_emits_coverage_summary_when_coverage_xml_exists(monkeypatc
         pipeline,
         "_collect_structural_report_bundle",
         lambda workspace_root=pipeline.REPO_ROOT, progress_callback=None: pipeline.StructuralReportsBundle(
+            structural_budget_report={
+                "source_files_over_budget": [],
+                "test_files_over_budget": [],
+                "functions_over_budget": [],
+                "classes_over_budget": [],
+                "repeated_private_names": [],
+                "facade_private_entrypoints": [],
+                "summary": {"source_file_max_lines": 0, "test_file_max_lines": 0},
+            },
             architecture_report={"findings": []},
             analyzer_registry_report={"rules": []},
             graph_inputs=pipeline.WorkspaceGraphInputs(

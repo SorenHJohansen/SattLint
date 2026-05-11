@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
+from pathlib import Path
+
+from sattlint.devtools import repo_audit
 from tests import test_repo_audit as repo_audit_tests
 
 
@@ -33,3 +37,23 @@ def test_doc_gardener_main_reports_findings_without_opening_pr_by_default(monkey
 
 def test_run_harness_freshness_check_translates_ai_and_doc_findings(monkeypatch, tmp_path):
     repo_audit_tests.test_run_harness_freshness_check_translates_ai_and_doc_findings(monkeypatch, tmp_path)
+
+
+def test_patch_doc_gardener_paths_delegates_to_compat(monkeypatch, tmp_path):
+    sentinel = nullcontext()
+    observed: dict[str, object] = {}
+
+    def fake_patch(root: Path, *, doc_gardener_module: object):
+        observed["root"] = root
+        observed["doc_gardener_module"] = doc_gardener_module
+        return sentinel
+
+    monkeypatch.setattr(repo_audit._repo_audit_compat_module, "patch_doc_gardener_paths", fake_patch)
+
+    result = repo_audit._patch_doc_gardener_paths(tmp_path)
+
+    assert result is sentinel
+    assert observed == {
+        "root": tmp_path,
+        "doc_gardener_module": repo_audit._doc_gardener_module,
+    }

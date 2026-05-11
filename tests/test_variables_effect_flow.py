@@ -460,6 +460,26 @@ def test_effect_flow_tracker_record_function_call_effect_flow_ignores_unresolved
     assert dict(edges) == {}
 
 
+def test_effect_flow_tracker_special_function_paths_ignore_unreadable_var_refs(monkeypatch) -> None:
+    source = Variable(name="Source", datatype=Simple_DataType.INTEGER)
+    target = Variable(name="Target", datatype=Simple_DataType.INTEGER)
+    tracker, edges, _external, _usage, _access = _build_tracker()
+    context = _context(env={"source": source, "target": target})
+
+    monkeypatch.setattr(
+        effect_flow_module,
+        "_var_ref_text",
+        lambda raw: (
+            None if isinstance(raw, dict) and raw.get(const.KEY_VAR_NAME) == "Missing" else str(raw[const.KEY_VAR_NAME])
+        ),
+    )
+
+    tracker.record_function_call_effect_flow("CopyVariable", [_varref("Missing"), _varref("Target")], context)
+    tracker.record_function_call_effect_flow("InitVariable", [_varref("Target"), _varref("Missing")], context)
+
+    assert dict(edges) == {}
+
+
 def test_effect_flow_tracker_collects_program_and_library_sink_keys() -> None:
     tracker, _edges, external_sinks, _usage, _access = _build_tracker()
     external_sinks.add(("external", "sink"))
@@ -650,6 +670,60 @@ def test_effect_flow_tracker_propagates_lookup_global_fallbacks_and_field_extern
     assert usage_by_name["FallbackGlobal"].field_reads == [("Field", ("Root", "Parent"))]
     assert usage_by_name["FallbackGlobal"].field_writes == [("Field", ("Root", "Parent"))]
     assert len(access_calls) == 4
+
+
+def test_effect_flow_tracker_external_global_mapping_records_external_sink() -> None:
+    global_source = Variable(name="GlobalSource", datatype=Simple_DataType.INTEGER)
+    tracker, _edges, external_sinks, _usage, _access = _build_tracker()
+    parent_context = _context(env={"globalsource": global_source}, module_path=["Root", "Parent"])
+
+    external_global_mapping = ParameterMapping(
+        target=_varref("input"),
+        source_type=const.TREE_TAG_VARIABLE_NAME,
+        is_duration=False,
+        is_source_global=True,
+        source=_varref("GlobalSource.Field"),
+        source_literal=None,
+    )
+
+    tracker.propagate_mapping_to_parent(
+        external_global_mapping,
+        {"input"},
+        {"input"},
+        {"globalsource": global_source},
+        ["Root", "Parent"],
+        "ExternalType",
+        parent_context=parent_context,
+    )
+
+    assert ("root", "parent", "globalsource") in external_sinks
+
+
+def test_effect_flow_tracker_external_local_mapping_records_external_sink() -> None:
+    local_source = Variable(name="LocalSource", datatype=Simple_DataType.INTEGER)
+    tracker, _edges, external_sinks, _usage, _access = _build_tracker()
+    parent_context = _context(env={"localsource": local_source}, module_path=["Root", "Parent"])
+
+    external_local_mapping = ParameterMapping(
+        target=_varref("input"),
+        source_type=const.TREE_TAG_VARIABLE_NAME,
+        is_duration=False,
+        is_source_global=False,
+        source=_varref("LocalSource"),
+        source_literal=None,
+    )
+
+    tracker.propagate_mapping_to_parent(
+        external_local_mapping,
+        {"input"},
+        {"input"},
+        {"localsource": local_source},
+        ["Root", "Parent"],
+        "ExternalType",
+        parent_context=parent_context,
+    )
+
+    assert ("root", "parent", "localsource") in external_sinks
 
 
 def test_effect_flow_tracker_propagates_global_and_external_mappings() -> None:

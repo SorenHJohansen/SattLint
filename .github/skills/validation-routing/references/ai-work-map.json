@@ -47,7 +47,7 @@
       "path_globs": [
         "src/sattline_parser/**",
         "src/sattlint/validation.py",
-        "tests/test_parser*.py",
+        "tests/parser/**",
         "tests/fixtures/sample_sattline_files/**"
       ],
       "selected_surfaces": [
@@ -341,7 +341,7 @@
         "src/sattlint/grammar/**",
         "src/sattlint/models/ast_model.py",
         "src/sattlint/transformer/**",
-        "tests/test_parser*.py",
+        "tests/parser/**",
         "tests/fixtures/corpus/**"
       ],
       "description": "Use when changing parser-core, strict validation, grammar, AST, transformer, parser fixtures, or parser tests in SattLint. Covers parser invariants and first validation routing.",
@@ -350,7 +350,7 @@
     },
     {
       "apply_to": [
-        "tests/test_*.py",
+        "tests/**/*.py",
         "tests/helpers/**"
       ],
       "description": "Use when changing Python tests in SattLint. Covers focused pytest routing, fixture reuse, and stable assertion patterns for repo-venv workflows.",
@@ -412,7 +412,7 @@
     {
       "apply_to": [
         "tests/fixtures/**",
-        "tests/test_corpus.py",
+        "tests/parser/test_corpus.py",
         "tests/test_phase0_guardrails.py"
       ],
       "description": "Use when changing SattLint test fixtures, corpus manifests, sample SattLine files, or golden analysis artifacts. Covers fixture shape, corpus layout, and minimal SattLine validity rules.",
@@ -598,13 +598,13 @@
       "label": "Run corpus suite",
       "owner_surface": "corpus",
       "owner_test_targets": [
-        "tests/test_corpus.py"
+        "tests/parser/test_corpus.py"
       ],
       "path_globs": [
         "src/sattline_parser/**",
         "src/sattlint/analyzers/**",
         "tests/fixtures/corpus/**",
-        "tests/test_corpus.py"
+        "tests/parser/test_corpus.py"
       ],
       "source": "pipeline"
     }

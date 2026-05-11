@@ -17,7 +17,6 @@ from ..grammar import constants as const
 from ..resolution.common import (
     format_moduletype_label,
     resolve_moduletype_def_strict,
-    varname_base,
     varname_full,
 )
 from .framework import Issue, SimpleReport
@@ -75,7 +74,7 @@ class ParameterDriftAnalyzer:
                 nested_env = self._merge_env(nested_env, module.localvariables)
                 self._walk_modules(module.submodules or [], parent_path=module_path, env=nested_env)
                 continue
-            if isinstance(module, FrameModule):
+            else:
                 self._walk_modules(module.submodules or [], parent_path=module_path, env=env)
 
     def _collect_instance_parameter_values(
@@ -159,13 +158,13 @@ class ParameterDriftAnalyzer:
     ) -> ParameterMapping | None:
         wanted = parameter_name.casefold()
         for mapping in mappings or []:
-            target_name = varname_base(mapping.target)
-            if target_name == wanted:
+            target_name = self._mapping_parameter_name(mapping)
+            if target_name and target_name.casefold() == wanted:
                 return mapping
         return None
 
     def _mapping_parameter_name(self, mapping: ParameterMapping) -> str | None:
-        target_name = varname_full(mapping.target)
+        target_name = varname_full(getattr(mapping, "target", None))
         if not target_name:
             return None
         return target_name.split(".", 1)[0]
@@ -183,7 +182,7 @@ class ParameterDriftAnalyzer:
                 signature=self._literal_signature(mapping.source_literal),
             )
 
-        full_ref = varname_full(mapping.source)
+        full_ref = varname_full(getattr(mapping, "source", None))
         if not full_ref or mapping.is_source_global:
             return None
         if "." in full_ref or ":" in full_ref:

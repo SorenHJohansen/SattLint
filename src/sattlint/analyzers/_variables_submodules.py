@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sattline_parser.models.ast_model import (
     FrameModule,
     ModuleTypeDef,
     ModuleTypeInstance,
+    ParameterMapping,
     Simple_DataType,
     SingleModule,
+    Variable,
 )
 
 from ..casefolding import is_anytype_name
@@ -23,11 +25,26 @@ if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
 
 
+def _mapping_target_name(mapping: ParameterMapping) -> str | None:
+    return varname_base(cast(Any, mapping).target)
+
+
+def _mapping_source_full_ref(mapping: ParameterMapping) -> str | None:
+    source = cast(Any, mapping).source
+    if isinstance(source, str):
+        return source
+    if not isinstance(source, dict):
+        return None
+    source_dict = cast(dict[str, object], source)
+    full_source_name = source_dict.get(const.KEY_VAR_NAME)
+    return full_source_name if isinstance(full_source_name, str) else None
+
+
 def _should_walk_submodule_path(self: VariablesAnalyzer, child_path: list[str]) -> bool:
-    if self._limit_to_module_path is None:
+    if self.limit_to_module_path is None:
         return True
-    return path_startswith_casefold(self._limit_to_module_path, child_path) or path_startswith_casefold(
-        child_path, self._limit_to_module_path
+    return path_startswith_casefold(self.limit_to_module_path, child_path) or path_startswith_casefold(
+        child_path, self.limit_to_module_path
     )
 
 
@@ -41,12 +58,10 @@ def _display_path_for_child(
         return [*parent_context.display_module_path, decorate_segment(child_name, "SM")]
     if isinstance(child, FrameModule):
         return [*parent_context.display_module_path, decorate_segment(child_name, "FM")]
-    if isinstance(child, ModuleTypeInstance):
-        return [
-            *parent_context.display_module_path,
-            decorate_segment(child_name, "MT", moduletype_name=child.moduletype_name),
-        ]
-    return [*parent_context.display_module_path, child_name]
+    return [
+        *parent_context.display_module_path,
+        decorate_segment(child_name, "MT", moduletype_name=child.moduletype_name),
+    ]
 
 
 def _walk_submodule_headers(
@@ -55,9 +70,9 @@ def _walk_submodule_headers(
     inst_context: ScopeContext,
     child_path: list[str],
 ) -> None:
-    self._walk_header_enable(child.header, inst_context, path=child_path)
-    self._walk_header_invoke_tails(child.header, inst_context, path=child_path)
-    self._walk_header_groupconn(child.header, inst_context, path=child_path)
+    self.walk_header_enable(child.header, inst_context, path=child_path)
+    self.walk_header_invoke_tails(child.header, inst_context, path=child_path)
+    self.walk_header_groupconn(child.header, inst_context, path=child_path)
 
 
 def _walk_singlemodule_subtree(
@@ -75,38 +90,33 @@ def _walk_singlemodule_subtree(
         display_module_path=child_display_path,
     )
 
-    self._walk_moduledef(child.moduledef, child_context, child_path)
-    self._walk_module_code(child.modulecode, child_context, child_path)
-    self._walk_submodules(child.submodules or [], child_context, child_path)
+    self.walk_moduledef(child.moduledef, child_context, child_path)
+    self.walk_module_code(child.modulecode, child_context, child_path)
+    _walk_submodules(self, child.submodules or [], child_context, child_path)
 
-    used_reads = {
-        variable.name.lower() for variable in (child.moduleparameters or []) if self._get_usage(variable).read
-    }
+    used_reads = {variable.name.lower() for variable in (child.moduleparameters or []) if self.get_usage(variable).read}
     used_writes = {
-        variable.name.lower() for variable in (child.moduleparameters or []) if self._get_usage(variable).written
+        variable.name.lower() for variable in (child.moduleparameters or []) if self.get_usage(variable).written
     }
 
     for mapping in child.parametermappings or []:
-        source_name = varname_base(mapping.source)
-        target_name = varname_base(mapping.target)
+        full_source_name = _mapping_source_full_ref(mapping)
+        source_name = varname_base(full_source_name) if full_source_name is not None else None
+        target_name = _mapping_target_name(mapping)
 
+        if full_source_name is None:
+            continue
         if source_name and target_name and not mapping.is_source_global:
-            if isinstance(mapping.source, dict) and const.KEY_VAR_NAME in mapping.source:
-                full_source_name = mapping.source[const.KEY_VAR_NAME]
-            elif isinstance(mapping.source, str):
-                full_source_name = mapping.source
-            else:
-                continue
-
             source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(full_source_name)
             target_var = child_context.env.get(target_name.casefold())
 
             if source_var and target_var:
                 mapping_name = source_field_prefix or ""
-                self._alias_links.append((source_var, target_var, mapping_name))
+                self.alias_links.append((source_var, target_var, mapping_name))
 
     for mapping in child.parametermappings or []:
-        self._propagate_mapping_to_parent(
+        _propagate_mapping_to_parent(
+            self,
             mapping,
             child_used_reads=used_reads,
             child_used_writes=used_writes,
@@ -117,7 +127,7 @@ def _walk_singlemodule_subtree(
             child_context=child_context,
         )
 
-    self._check_param_mappings_for_single(
+    self.check_param_mappings_for_single(
         child,
         child_env=child_context.env,
         parent_env=parent_context.env,
@@ -132,14 +142,14 @@ def _walk_framemodule_subtree(
     child_path: list[str],
     child_display_path: list[str],
 ) -> None:
-    frame_context = self._repath_context(
+    frame_context = self.repath_context(
         parent_context,
         module_path=child_path,
         display_module_path=child_display_path,
     )
-    self._walk_moduledef(child.moduledef, frame_context, child_path)
-    self._walk_module_code(child.modulecode, frame_context, child_path)
-    self._walk_submodules(child.submodules or [], frame_context, child_path)
+    self.walk_moduledef(child.moduledef, frame_context, child_path)
+    self.walk_module_code(child.modulecode, frame_context, child_path)
+    _walk_submodules(self, child.submodules or [], frame_context, child_path)
 
 
 def _walk_moduletype_instance_subtree(
@@ -151,7 +161,7 @@ def _walk_moduletype_instance_subtree(
     child_display_path: list[str],
 ) -> None:
     child_name = child.header.name
-    external = self._is_external_typename(child.moduletype_name)
+    external = self.is_external_typename(child.moduletype_name)
     moduletype: ModuleTypeDef | None = None
 
     if not external:
@@ -160,28 +170,28 @@ def _walk_moduletype_instance_subtree(
                 self.bp,
                 child.moduletype_name,
                 current_library=parent_context.current_library,
-                unavailable_libraries=self._unavailable_libraries,
+                unavailable_libraries=self.unavailable_libraries,
             )
         except ValueError:
             moduletype = None
             external = True
 
-    if external and not self._analyzed_target_is_library:
+    if external and not self.analyzed_target_is_library:
         return
 
-    if moduletype is not None and not self._is_from_root_origin(
+    if moduletype is not None and not self.is_from_root_origin(
         getattr(moduletype, "origin_file", None),
         getattr(moduletype, "origin_lib", None),
     ):
-        if not self._analyzed_target_is_library and not self._include_dependency_moduletype_usage:
-            self._check_param_mappings_for_type_instance(
+        if not self.analyzed_target_is_library and not self.include_dependency_moduletype_usage:
+            self.check_param_mappings_for_type_instance(
                 child,
                 parent_env=parent_context.env,
                 parent_path=[*parent_path, child_name],
                 current_library=parent_context.current_library,
             )
             return
-        if self._analyzed_target_is_library and not self._include_dependency_moduletype_usage:
+        if self.analyzed_target_is_library and not self.include_dependency_moduletype_usage:
             moduletype = None
             external = True
 
@@ -199,21 +209,17 @@ def _walk_moduletype_instance_subtree(
             display_module_path=child_display_path,
         )
 
-        if mt_key not in self.param_reads_by_typedef and mt_key not in self._analyzing_typedefs:
-            self._analyze_typedef_with_context(moduletype, typedef_context, path=child_path)
+        if mt_key not in self.param_reads_by_typedef and mt_key not in self.analyzing_typedefs:
+            self.analyze_typedef_with_context(moduletype, typedef_context, path=child_path)
 
         for mapping in child.parametermappings or []:
-            source_name = varname_base(mapping.source)
-            target_name = varname_base(mapping.target)
+            full_source_name = _mapping_source_full_ref(mapping)
+            source_name = varname_base(full_source_name) if full_source_name is not None else None
+            target_name = _mapping_target_name(mapping)
 
+            if full_source_name is None:
+                continue
             if source_name and target_name and not mapping.is_source_global:
-                if isinstance(mapping.source, dict) and const.KEY_VAR_NAME in mapping.source:
-                    full_source_name = mapping.source[const.KEY_VAR_NAME]
-                elif isinstance(mapping.source, str):
-                    full_source_name = mapping.source
-                else:
-                    continue
-
                 source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(
                     full_source_name
                 )
@@ -221,13 +227,14 @@ def _walk_moduletype_instance_subtree(
 
                 if source_var and target_var:
                     mapping_name = source_field_prefix or ""
-                    self._alias_links.append((source_var, target_var, mapping_name))
+                    self.alias_links.append((source_var, target_var, mapping_name))
 
         reads = self.param_reads_by_typedef.get(mt_key, set())
         writes = self.param_writes_by_typedef.get(mt_key, set())
 
     for mapping in child.parametermappings or []:
-        self._propagate_mapping_to_parent(
+        _propagate_mapping_to_parent(
+            self,
             mapping,
             child_used_reads=reads,
             child_used_writes=writes,
@@ -239,7 +246,7 @@ def _walk_moduletype_instance_subtree(
         )
 
     if moduletype is not None:
-        self._check_param_mappings_for_type_instance(
+        self.check_param_mappings_for_type_instance(
             child,
             parent_env=parent_context.env,
             parent_path=[*parent_path, child_name],
@@ -256,37 +263,37 @@ def _walk_submodules(
     for child in children:
         child_name = child.header.name
         child_path = [*parent_path, child_name]
-        if not self._should_walk_submodule_path(child_path):
+        if not _should_walk_submodule_path(self, child_path):
             continue
 
-        child_display_path = self._display_path_for_child(child, parent_context)
-        inst_context = self._repath_context(
+        child_display_path = _display_path_for_child(self, child, parent_context)
+        inst_context = self.repath_context(
             parent_context,
             module_path=child_path,
             display_module_path=child_display_path,
         )
-        self._walk_submodule_headers(child, inst_context, child_path)
+        _walk_submodule_headers(self, child, inst_context, child_path)
 
         if isinstance(child, SingleModule):
-            self._walk_singlemodule_subtree(child, parent_context, parent_path, child_path, child_display_path)
+            _walk_singlemodule_subtree(self, child, parent_context, parent_path, child_path, child_display_path)
         elif isinstance(child, FrameModule):
-            self._walk_framemodule_subtree(child, parent_context, child_path, child_display_path)
-        elif isinstance(child, ModuleTypeInstance):
-            self._walk_moduletype_instance_subtree(child, parent_context, parent_path, child_path, child_display_path)
+            _walk_framemodule_subtree(self, child, parent_context, child_path, child_display_path)
+        else:
+            _walk_moduletype_instance_subtree(self, child, parent_context, parent_path, child_path, child_display_path)
 
 
 def _propagate_mapping_to_parent(
     self: VariablesAnalyzer,
-    pm,
+    pm: ParameterMapping,
     child_used_reads: set[str] | None,
     child_used_writes: set[str] | None,
-    parent_env,
-    parent_path,
-    external_typename,
+    parent_env: dict[str, Variable],
+    parent_path: list[str],
+    external_typename: str | None,
     parent_context: ScopeContext | None = None,
     child_context: ScopeContext | None = None,
 ) -> None:
-    self._effect_flow_tracker.propagate_mapping_to_parent(
+    self.effect_flow_tracker.propagate_mapping_to_parent(
         pm,
         child_used_reads,
         child_used_writes,
@@ -301,8 +308,8 @@ def _propagate_mapping_to_parent(
 def _lookup_env_var_from_varname_dict(
     self: VariablesAnalyzer,
     var_dict_or_other: Any,
-    env,
-):
+    env: dict[str, Variable],
+) -> Variable | None:
     if isinstance(var_dict_or_other, dict) and const.KEY_VAR_NAME in var_dict_or_other:
         base = varname_base(var_dict_or_other)
         if base is not None:
@@ -335,7 +342,7 @@ def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
         _collect_from_module(module, bp_path)
 
     for moduletype in self.bp.moduletype_defs or []:
-        if not self._is_from_root_origin(
+        if not self.is_from_root_origin(
             getattr(moduletype, "origin_file", None),
             getattr(moduletype, "origin_lib", None),
         ):
@@ -368,7 +375,7 @@ def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
         first_var, first_path, first_role = occurrences[0]
         duplicate_locs = [(path, role, variable.name) for variable, path, role in occurrences[1:]]
 
-        self._append_issue(
+        self.append_issue(
             VariableIssue(
                 kind=IssueKind.DATATYPE_DUPLICATION,
                 module_path=first_path,
@@ -378,3 +385,28 @@ def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
                 duplicate_locations=duplicate_locs,
             )
         )
+
+
+detect_datatype_duplications = _detect_datatype_duplications
+display_path_for_child = _display_path_for_child
+lookup_env_var_from_varname_dict = _lookup_env_var_from_varname_dict
+propagate_mapping_to_parent = _propagate_mapping_to_parent
+should_walk_submodule_path = _should_walk_submodule_path
+walk_framemodule_subtree = _walk_framemodule_subtree
+walk_moduletype_instance_subtree = _walk_moduletype_instance_subtree
+walk_singlemodule_subtree = _walk_singlemodule_subtree
+walk_submodule_headers = _walk_submodule_headers
+walk_submodules = _walk_submodules
+
+__all__ = [
+    "detect_datatype_duplications",
+    "display_path_for_child",
+    "lookup_env_var_from_varname_dict",
+    "propagate_mapping_to_parent",
+    "should_walk_submodule_path",
+    "walk_framemodule_subtree",
+    "walk_moduletype_instance_subtree",
+    "walk_singlemodule_subtree",
+    "walk_submodule_headers",
+    "walk_submodules",
+]

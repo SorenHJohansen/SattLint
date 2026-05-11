@@ -21,7 +21,7 @@ PIPELINE_ROUTE_CASES = {
     "bandit": ("src/sattlint/devtools/pipeline.py", "docs/references/cli-commands.md"),
     "structural-reports": ("src/sattlint/devtools/repo_audit.py", "docs/references/cli-commands.md"),
     "trace": ("src/sattlint_lsp/server.py", "docs/references/cli-commands.md"),
-    "corpus": ("tests/test_corpus.py", "docs/references/cli-commands.md"),
+    "corpus": ("tests/parser/test_corpus.py", "docs/references/cli-commands.md"),
 }
 
 REPO_AUDIT_ROUTE_CASES = {
@@ -289,6 +289,26 @@ def test_verify_check_catalog_reports_metadata_issues(tmp_path):
                 "estimated_cost": "low",
                 "path_globs": ["src/**/*.py"],
                 "owner_test_targets": ["tests/test_missing.py"],
+                "ai_summary": "summary",
+                "ai_instruction_files": [".github/instructions/missing.instructions.md"],
+            },
+            {
+                "id": "backslash-ai-instruction-file",
+                "owner_surface": "cli",
+                "estimated_cost": "low",
+                "path_globs": ["src/**/*.py"],
+                "owner_test_targets": ["tests/test_owner.py"],
+                "ai_summary": "summary",
+                "ai_instruction_files": [r".github\instructions\cli.instructions.md"],
+            },
+            {
+                "id": "missing-ai-instruction-targets",
+                "owner_surface": "cli",
+                "estimated_cost": "low",
+                "path_globs": ["src/**/*.py"],
+                "owner_test_targets": ["tests/test_owner.py"],
+                "ai_summary": "summary",
+                "ai_instruction_files": [".github/instructions/missing.instructions.md"],
             },
         ]
     }
@@ -306,6 +326,8 @@ def test_verify_check_catalog_reports_metadata_issues(tmp_path):
         "overbroad-path-globs",
         "missing-owner-tests",
         "missing-owner-test-targets",
+        "backslash-ai-instruction-file",
+        "missing-ai-instruction-targets",
         "missing-ai-summary",
         "missing-ai-instruction-files",
     } <= issue_ids
@@ -317,11 +339,15 @@ def test_normalizers_and_skipped_stage_reports_cover_selection_helpers():
         "src/main.py",
         "tests/test_main.py",
     ]
+    assert normalize_selected_checks("full", None, validate_profile=lambda _profile: None) is None
     assert normalize_selected_checks("full", ["ruff", "ruff"], validate_profile=lambda _profile: None) == ("ruff",)
     with pytest.raises(ValueError):
         normalize_selected_checks("full", ["ghost"], validate_profile=lambda _profile: None)
     with pytest.raises(ValueError):
         normalize_selected_checks("full", ["   "], validate_profile=lambda _profile: None)
+
+    quick_catalog = pipeline.build_pipeline_check_catalog(profile="quick", output_dir=Path("artifacts/audit"))
+    assert {entry["id"] for entry in quick_catalog["checks"]}.isdisjoint({"vulture", "bandit", "trace", "corpus"})
 
     assert skipped_stage_report("ruff") == {
         "tool": "ruff",

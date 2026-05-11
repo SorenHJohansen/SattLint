@@ -15,6 +15,14 @@ _AGGREGATED_REASONS = {
 _SUMMARY_WRAP_WIDTH = 120
 
 
+def _empty_resolved_entries() -> list[ICFResolvedEntry]:
+    return []
+
+
+def _empty_skipped_entries() -> list[ICFSkippedEntry]:
+    return []
+
+
 def _wrap_text(prefix: str, text: str, subsequent_prefix: str) -> list[str]:
     wrapped = textwrap.wrap(
         text,
@@ -137,8 +145,8 @@ class ICFValidationReport:
     valid_entries: int
     skipped_entries: int
     issues: list[ICFValidationIssue]
-    resolved_entries: list[ICFResolvedEntry] = field(default_factory=list)
-    skipped_details: list[ICFSkippedEntry] = field(default_factory=list)
+    resolved_entries: list[ICFResolvedEntry] = field(default_factory=_empty_resolved_entries)
+    skipped_details: list[ICFSkippedEntry] = field(default_factory=_empty_skipped_entries)
 
     @property
     def name(self) -> str:

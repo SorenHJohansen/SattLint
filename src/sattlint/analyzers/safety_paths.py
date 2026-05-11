@@ -14,11 +14,19 @@ _ISSUE_LABELS = {
 }
 
 
+def _empty_issues() -> list[Issue]:
+    return []
+
+
+def _empty_safety_traces() -> list[SafetyPathTrace]:
+    return []
+
+
 @dataclass
 class SafetyPathReport:
     basepicture_name: str
-    issues: list[Issue] = field(default_factory=list)
-    traces: list[SafetyPathTrace] = field(default_factory=list)
+    issues: list[Issue] = field(default_factory=_empty_issues)
+    traces: list[SafetyPathTrace] = field(default_factory=_empty_safety_traces)
 
     @property
     def name(self) -> str:

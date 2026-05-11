@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import importlib
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
@@ -22,6 +23,10 @@ __all__ = [
 ]
 
 
+def _empty_issues() -> list[Issue]:
+    return []
+
+
 class Report(Protocol):
     issues: list[Any]
 
@@ -37,7 +42,7 @@ class Analyzer(Protocol):
 @dataclass
 class SimpleReport:
     name: str
-    issues: list[Issue] = field(default_factory=list)
+    issues: list[Issue] = field(default_factory=_empty_issues)
     note: str | None = None
 
     def summary(self) -> str:
@@ -53,16 +58,18 @@ class SimpleReport:
         lines.append(f"Issues: {len(self.issues)}")
         lines.append("")
         lines.append("Findings:")
-        materialize_issue_metadata = importlib.import_module(
-            "sattlint.analyzers.rule_profiles"
-        ).materialize_issue_metadata
+        materialize_issue_metadata = cast(
+            Callable[[Issue], Issue],
+            importlib.import_module("sattlint.analyzers.rule_profiles").materialize_issue_metadata,
+        )
+        materialized_issues: list[Issue] = [materialize_issue_metadata(issue) for issue in self.issues]
 
         for issue in sorted(
-            [materialize_issue_metadata(issue) for issue in self.issues],
+            materialized_issues,
             key=lambda item: (
                 item.severity or "",
                 item.kind,
-                item.module_path or [],
+                tuple(item.module_path or ()),
                 item.message,
             ),
         ):

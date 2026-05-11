@@ -103,7 +103,7 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
   - `.github/instructions/parser-analysis.instructions.md`
   - `.github/instructions/test-fixtures.instructions.md`
 - Owner tests:
-  - `tests/test_corpus.py`
+  - `tests/parser/test_corpus.py`
 - Command: `sattlint-analysis-pipeline --profile full --check corpus --output-dir artifacts/generated/ai-work-map/pipeline`
 
 ## Repo Audit Checks

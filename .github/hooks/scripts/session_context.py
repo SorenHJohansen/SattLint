@@ -289,6 +289,7 @@ def _write_summary(
     planning: PlanningContextPayload | None,
 ) -> None:
     summary_path = _summary_path(repo_root)
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
     top_items = ranked[:3]
     payload = {
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),

@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleCode,
-    ModuleTypeDef,
     Sequence,
     SFCAlternative,
     SFCBreak,
@@ -26,6 +25,8 @@ from ..resolution import AccessKind
 from ..resolution.paths import CanonicalPath, decorate_segment
 from .framework import Issue
 from .variables import ScopeContext, VariablesAnalyzer
+
+__all__ = ["StepContract", "_SfcAccessCollector", "_SfcStepContractCollector"]
 
 type ParallelKey = tuple[tuple[str, ...], str, int]
 
@@ -375,8 +376,7 @@ class _SfcStepContractCollector(VariablesAnalyzer):
         if modulecode is None:
             return
         for sequence in modulecode.sequences or []:
-            if isinstance(sequence, Sequence):
-                self._walk_sequence_contracts(sequence, context, module_path)
+            self._walk_sequence_contracts(sequence, context, module_path)
 
     def _walk_sequence_contracts(
         self,
@@ -613,48 +613,43 @@ class _SfcStepContractCollector(VariablesAnalyzer):
             child_display_path = [*parent_context.display_module_path, child_name]
 
             if hasattr(module_obj, "moduleparameters") and hasattr(module_obj, "localvariables"):
-                single_module = cast(Any, module_obj)
                 child_context = self.context_builder.build_for_single(
-                    single_module,
+                    module_obj,
                     parent_context,
                     module_path=child_path,
                     display_module_path=child_display_path,
                 )
                 self._walk_modulecode_contracts(
-                    single_module.modulecode,
+                    module_obj.modulecode,
                     child_context,
                     child_path,
                 )
                 self._walk_submodule_contracts(
-                    single_module.submodules or [],
+                    module_obj.submodules or [],
                     child_context,
                     child_path,
                 )
                 continue
 
             if hasattr(module_obj, "submodules"):
-                frame_module = cast(Any, module_obj)
                 frame_context = self._repath_context(
                     parent_context,
                     module_path=child_path,
                     display_module_path=child_display_path,
                 )
                 self._walk_modulecode_contracts(
-                    getattr(frame_module, "modulecode", None),
+                    getattr(module_obj, "modulecode", None),
                     frame_context,
                     child_path,
                 )
                 self._walk_submodule_contracts(
-                    frame_module.submodules or [],
+                    module_obj.submodules or [],
                     frame_context,
                     child_path,
                 )
 
     def _walk_typedef_contracts(self, root_context: ScopeContext) -> None:
         for moduletype in self.bp.moduletype_defs or []:
-            if not isinstance(moduletype, ModuleTypeDef):
-                continue
-
             module_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
             display_path = [*root_context.display_module_path, f"TypeDef:{moduletype.name}"]
             env: dict[str, Variable] = {}

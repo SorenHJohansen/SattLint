@@ -3,6 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+def _empty_usage_locations() -> list[tuple[list[str], str]]:
+    return []
+
+
+def _empty_field_locations() -> dict[str, list[list[str]]]:
+    return {}
+
+
+def _empty_module_paths() -> list[list[str]]:
+    return []
+
+
 def _distinct_location_count(paths: list[list[str]]) -> int:
     return len({tuple(path) for path in paths})
 
@@ -15,10 +27,10 @@ class VariableUsage:
     written: bool = False
     ui_read: bool = False
     non_ui_read: bool = False
-    usage_locations: list[tuple[list[str], str]] = field(default_factory=list)
-    field_reads: dict[str, list[list[str]]] = field(default_factory=dict)
-    field_writes: dict[str, list[list[str]]] = field(default_factory=dict)
-    ui_usage_locations: list[list[str]] = field(default_factory=list)
+    usage_locations: list[tuple[list[str], str]] = field(default_factory=_empty_usage_locations)
+    field_reads: dict[str, list[list[str]]] = field(default_factory=_empty_field_locations)
+    field_writes: dict[str, list[list[str]]] = field(default_factory=_empty_field_locations)
+    ui_usage_locations: list[list[str]] = field(default_factory=_empty_module_paths)
 
     @property
     def is_unused(self) -> bool:

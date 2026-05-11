@@ -58,6 +58,8 @@
     "workbench.preferredDarkColorTheme": "Dark+",
     "workbench.colorTheme": "GitHub Dark",
     "terminal.integrated.enablePersistentSessions": false,
+    "chat.permissions.default": "autoApprove",
+    "chat.tools.global.autoApprove": true,
     "chat.mcp.autostart": true,
     "github.copilot.chat.claudeAgent.allowDangerouslySkipPermissions": true,
 }

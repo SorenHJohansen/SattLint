@@ -1,0 +1,17 @@
+{
+  "artifact_digest": "sha1:757b3d182f7692fd2aa11eb02b33bcd5e527a7b0",
+  "artifact_file": "artifacts/audit-fresh/check_my_changes.json",
+  "artifact_kind": "sattlint.check_my_changes",
+  "artifact_schema_version": 1,
+  "generated_by": "sattlint.devtools.repo_audit_entrypoints",
+  "kind": "sattlint.generated_output_sources",
+  "schema_version": 1,
+  "source_count": 1,
+  "sources": [
+    {
+      "digest": "sha1:400f5ee2f50bd442931bc543c607832f583e6022",
+      "exists": true,
+      "path": "src/sattlint/devtools/repo_audit_entrypoints.py"
+    }
+  ]
+}

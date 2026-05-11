@@ -11,6 +11,10 @@ DIFFERENTIAL_SCHEMA_KIND = "sattlint.differential"
 DIFFERENTIAL_SCHEMA_VERSION = 1
 
 
+def _empty_strings() -> list[str]:
+    return []
+
+
 @dataclass
 class DifferentialResult:
     baseline_label: str
@@ -18,7 +22,7 @@ class DifferentialResult:
     added: list[FindingRecord]
     removed: list[FindingRecord]
     surviving: list[FindingRecord]
-    config_drift: list[str] = field(default_factory=list)
+    config_drift: list[str] = field(default_factory=_empty_strings)
 
     def to_dict(self) -> dict[str, Any]:
         return {

@@ -27,16 +27,20 @@ from .path_sanitizer import sanitize_path_for_report
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _empty_trace_events() -> list[dict[str, Any]]:
+    return []
+
+
 @dataclass(slots=True)
 class AnalysisTraceRecorder:
     """Collects timestamped trace events for a single analysis run."""
 
     source_file: Path | None = None
     _start_time: float = field(default_factory=time.perf_counter)
-    events: list[dict[str, Any]] = field(default_factory=list)
+    events: list[dict[str, Any]] = field(default_factory=_empty_trace_events)
 
     def event(self, phase: str, action: str, **data: Any) -> None:
-        payload = {
+        payload: dict[str, Any] = {
             "phase": phase,
             "action": action,
             "time_offset_ms": round((time.perf_counter() - self._start_time) * 1000, 3),

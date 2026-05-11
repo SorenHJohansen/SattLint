@@ -422,3 +422,27 @@ def _analyze_typedef_with_context(
         self.param_writes_by_typedef[mt_key] = used_writes
     finally:
         self._analyzing_typedefs.discard(mt_key)
+
+
+analyze_root_scope = _analyze_root_scope
+analyze_single_module_with_context = _analyze_single_module_with_context
+analyze_typedef = _analyze_typedef
+analyze_typedef_with_context = _analyze_typedef_with_context
+apply_alias_back_propagation = _apply_alias_back_propagation
+collect_basepicture_issues = _collect_basepicture_issues
+collect_typedef_issues = _collect_typedef_issues
+is_external_typename = _is_external_typename
+run_post_traversal_analyses = _run_post_traversal_analyses
+
+__all__ = [
+    "analyze_root_scope",
+    "analyze_single_module_with_context",
+    "analyze_typedef",
+    "analyze_typedef_with_context",
+    "apply_alias_back_propagation",
+    "collect_basepicture_issues",
+    "collect_typedef_issues",
+    "is_external_typename",
+    "run",
+    "run_post_traversal_analyses",
+]

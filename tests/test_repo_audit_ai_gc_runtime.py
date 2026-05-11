@@ -1,6 +1,8 @@
 import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from sattlint.devtools import _repo_audit_ai_gc as repo_audit_ai_gc
 from sattlint.devtools import repo_audit
 
 
@@ -83,3 +85,129 @@ def test_audit_repository_ignores_active_output_dir_ai_gc_manifest_drift(tmp_pat
     ai_gc_payload = json.loads((output_dir / "ai_gc.json").read_text(encoding="utf-8"))
     assert ai_gc_payload["status"] == "pass"
     assert ai_gc_payload["summary"]["candidate_count"] == 0
+
+
+def test_ai_gc_helpers_build_findings_and_filter_reports():
+    assert repo_audit_ai_gc._repo_audit_ai_gc_module().Finding is repo_audit.Finding
+
+    findings = repo_audit_ai_gc._ai_gc_report_findings(
+        {
+            "candidates": [
+                {"candidate_id": "skip-me", "applied": True},
+                {
+                    "candidate_id": "stale-generated-output-manifest",
+                    "path": "artifacts/audit",
+                    "reason": "digest drift",
+                    "applied": False,
+                },
+                {
+                    "candidate_id": "stale-ai-artifact",
+                    "path": "artifacts/tmp.json",
+                    "age_days": 45,
+                    "size_bytes": 128,
+                    "applied": False,
+                },
+                {
+                    "path": "artifacts/other.json",
+                    "reason": "manual cleanup",
+                    "applied": False,
+                },
+            ]
+        }
+    )
+
+    assert [(finding.id, finding.severity) for finding in findings] == [
+        ("stale-generated-output-manifest", "medium"),
+        ("stale-ai-artifact", "medium"),
+        ("ai-gc", "low"),
+    ]
+    assert findings[0].detail == "digest drift"
+    assert findings[1].detail == "age_days=45 size_bytes=128"
+    assert findings[2].detail == "manual cleanup"
+    assert all(finding.source == "ai-gc" for finding in findings)
+
+    output_path = "artifacts/audit"
+    report = {
+        "mode": "report",
+        "summary": {
+            "candidate_count": 2,
+            "artifact_candidate_count": 2,
+            "manifest_drift_candidate_count": 1,
+        },
+        "candidates": [
+            {"candidate_id": "stale-generated-output-manifest", "path": output_path},
+            {"candidate_id": "stale-ai-artifact", "path": "artifacts/old.json"},
+        ],
+        "failures": [],
+    }
+
+    filtered = repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(report, output_dir_path=output_path)
+
+    assert filtered["candidates"] == [{"candidate_id": "stale-ai-artifact", "path": "artifacts/old.json"}]
+    assert filtered["summary"] == {
+        "candidate_count": 1,
+        "artifact_candidate_count": 1,
+        "manifest_drift_candidate_count": 0,
+    }
+    assert filtered["status"] == "needs-attention"
+
+    failed = repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(
+        {**report, "failures": ["still broken"]},
+        output_dir_path=output_path,
+    )
+    assert failed["status"] == "fail"
+
+    applied = repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(
+        {
+            **report,
+            "mode": "apply",
+            "candidates": [{"candidate_id": "stale-generated-output-manifest", "path": output_path}],
+        },
+        output_dir_path=output_path,
+    )
+    assert applied["status"] == "pass"
+
+
+def test_ai_gc_helpers_passthrough_path_matching_and_findings_filtering():
+    assert repo_audit_ai_gc._is_active_output_ai_gc_path(None, output_dir_path="artifacts/audit") is False
+    assert repo_audit_ai_gc._is_active_output_ai_gc_path("artifacts/audit/", output_dir_path="artifacts/audit") is True
+
+    passthrough = {"candidates": "not-a-list"}
+    assert (
+        repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(passthrough, output_dir_path="artifacts/audit")
+        is passthrough
+    )
+
+    unchanged = {"candidates": [{"candidate_id": "stale-ai-artifact", "path": "artifacts/old.json"}]}
+    assert (
+        repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(unchanged, output_dir_path="artifacts/audit") is unchanged
+    )
+
+    findings = [
+        repo_audit.Finding(
+            id="stale-generated-output-manifest",
+            category="maintenance",
+            severity="medium",
+            confidence="high",
+            message="Generated output drifted from its source-digest manifest.",
+            path="artifacts/audit",
+            source="ai-gc",
+        ),
+        repo_audit.Finding(
+            id="stale-ai-artifact",
+            category="maintenance",
+            severity="low",
+            confidence="high",
+            message="Stale AI-generated artifact can be collected.",
+            path="artifacts/old.json",
+            source="ai-gc",
+        ),
+        SimpleNamespace(id="other", path="artifacts/audit", source="custom"),
+    ]
+
+    filtered_findings = repo_audit_ai_gc._filter_ai_gc_findings_for_output_dir(
+        findings,
+        output_dir_path="artifacts/audit",
+    )
+
+    assert [finding.id for finding in filtered_findings] == ["stale-ai-artifact", "other"]

@@ -89,7 +89,7 @@ def _effect_key_for_variable(
     variable: Variable,
     decl_module_path: list[str],
 ) -> tuple[str, ...]:
-    return self._effect_flow_tracker.effect_key_for_variable(variable, decl_module_path)
+    return self.effect_flow_tracker.effect_key_for_variable(variable, decl_module_path)
 
 
 def _resolve_effect_key(
@@ -97,7 +97,7 @@ def _resolve_effect_key(
     full_ref: str,
     context: ScopeContext,
 ) -> tuple[str, ...] | None:
-    return self._effect_flow_tracker.resolve_effect_key(full_ref, context)
+    return self.effect_flow_tracker.resolve_effect_key(full_ref, context)
 
 
 def _mapping_source_effect_key(
@@ -107,7 +107,7 @@ def _mapping_source_effect_key(
     parent_env: dict[str, Variable],
     parent_context: ScopeContext | None,
 ) -> tuple[str, ...] | None:
-    return self._effect_flow_tracker.mapping_source_effect_key(
+    return self.effect_flow_tracker.mapping_source_effect_key(
         pm,
         parent_env=parent_env,
         parent_context=parent_context,
@@ -119,7 +119,7 @@ def _resolve_local_effect_key(
     full_ref: str,
     context: ScopeContext,
 ) -> tuple[str, ...] | None:
-    return self._effect_flow_tracker.resolve_local_effect_key(full_ref, context)
+    return self.effect_flow_tracker.resolve_local_effect_key(full_ref, context)
 
 
 def _resolve_mapped_effect_source_key(
@@ -127,7 +127,7 @@ def _resolve_mapped_effect_source_key(
     full_ref: str,
     context: ScopeContext,
 ) -> tuple[str, ...] | None:
-    return self._effect_flow_tracker.resolve_mapped_effect_source_key(full_ref, context)
+    return self.effect_flow_tracker.resolve_mapped_effect_source_key(full_ref, context)
 
 
 def _record_effect_flow(
@@ -135,7 +135,7 @@ def _record_effect_flow(
     source_key: tuple[str, ...] | None,
     target_key: tuple[str, ...] | None,
 ) -> None:
-    self._effect_flow_tracker.record_effect_flow(source_key, target_key)
+    self.effect_flow_tracker.record_effect_flow(source_key, target_key)
 
 
 def _collect_function_input_effect_keys(
@@ -144,7 +144,7 @@ def _collect_function_input_effect_keys(
     args: list[Any],
     context: ScopeContext,
 ) -> set[tuple[str, ...]]:
-    return self._effect_flow_tracker.collect_function_input_effect_keys(fn_name, args, context)
+    return self.effect_flow_tracker.collect_function_input_effect_keys(fn_name, args, context)
 
 
 def _collect_expression_effect_sources(
@@ -152,7 +152,7 @@ def _collect_expression_effect_sources(
     obj: Any,
     context: ScopeContext,
 ) -> set[tuple[str, ...]]:
-    return self._effect_flow_tracker.collect_expression_effect_sources(obj, context)
+    return self.effect_flow_tracker.collect_expression_effect_sources(obj, context)
 
 
 def _record_assignment_effect_flow(
@@ -161,7 +161,7 @@ def _record_assignment_effect_flow(
     expr: Any,
     context: ScopeContext,
 ) -> None:
-    self._effect_flow_tracker.record_assignment_effect_flow(target_ref, expr, context)
+    self.effect_flow_tracker.record_assignment_effect_flow(target_ref, expr, context)
 
 
 def _record_function_call_effect_flow(
@@ -170,40 +170,40 @@ def _record_function_call_effect_flow(
     args: list[Any],
     context: ScopeContext,
 ) -> None:
-    self._effect_flow_tracker.record_function_call_effect_flow(fn_name, args, context)
+    self.effect_flow_tracker.record_function_call_effect_flow(fn_name, args, context)
 
 
 def _collect_effect_sink_keys(self: VariablesAnalyzer) -> set[tuple[str, ...]]:
-    return self._effect_flow_tracker.collect_effect_sink_keys(
+    return self.effect_flow_tracker.collect_effect_sink_keys(
         self.bp,
-        self._analyzed_target_is_library,
-        self._is_from_root_origin,
+        self.analyzed_target_is_library,
+        self.is_from_root_origin,
     )
 
 
 def _compute_effective_output_keys(self: VariablesAnalyzer) -> set[tuple[str, ...]]:
-    sink_keys = self._collect_effect_sink_keys()
-    return self._effect_flow_tracker.compute_effective_output_keys(sink_keys)
+    sink_keys = _collect_effect_sink_keys(self)
+    return self.effect_flow_tracker.compute_effective_output_keys(sink_keys)
 
 
 def _has_output_effect(self: VariablesAnalyzer, variable: Variable, decl_path: list[str]) -> bool:
-    return self._effect_flow_tracker.effect_key_for_variable(variable, decl_path) in self._effective_output_keys
+    return self.effect_flow_tracker.effect_key_for_variable(variable, decl_path) in self.effective_output_keys
 
 
 def _site_str(self: VariablesAnalyzer) -> str:
-    if not self._site_stack:
+    if not self.site_stack:
         return ""
-    return " > ".join(self._site_stack)
+    return " > ".join(self.site_stack)
 
 
 def _push_site(self: VariablesAnalyzer, label: str) -> None:
     if label:
-        self._site_stack.append(label)
+        self.site_stack.append(label)
 
 
 def _pop_site(self: VariablesAnalyzer) -> None:
-    if self._site_stack:
-        self._site_stack.pop()
+    if self.site_stack:
+        self.site_stack.pop()
 
 
 def _strict_datatype_at_field_prefix(
@@ -221,28 +221,28 @@ def _strict_datatype_at_field_prefix(
 
     for segment in segments:
         if isinstance(current, Simple_DataType):
-            site = self._site_str()
+            site = _site_str(self)
             if self.fail_loudly:
                 raise ValueError(
                     f"{fn_name}: at {' -> '.join(use_path)}"
                     f"{(' [' + site + ']') if site else ''}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
                     f"cannot access field {segment!r} on scalar datatype {current.value!r}."
                 )
-            self._warn(
+            self.warn(
                 f"{fn_name}: at {' -> '.join(use_path)}"
                 f"{(' [' + site + ']') if site else ''}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
                 f"cannot access field {segment!r} on scalar datatype {current.value!r}. Treating as leaf."
             )
             return current
 
-        if isinstance(current, str) and current.casefold() in self._OPAQUE_BUILTIN_TYPES:
+        if current.casefold() in self.opaque_builtin_types:
             return current
 
         record_type = self.type_graph.record(str(current))
         if record_type is None:
-            site = self._site_str()
-            if self._unavailable_libraries or not self.fail_loudly:
-                self._warn(
+            site = _site_str(self)
+            if self.unavailable_libraries or not self.fail_loudly:
+                self.warn(
                     f"{fn_name}: at {' -> '.join(use_path)}"
                     f"{(' [' + site + ']') if site else ''}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
                     f"uses unknown record datatype {str(current)!r}. Treating as leaf."
@@ -258,9 +258,9 @@ def _strict_datatype_at_field_prefix(
         if field_def is None:
             available = sorted({field.name for field in record_type.fields_by_key.values()})
             close = difflib.get_close_matches(segment, available, n=5, cutoff=0.6)
-            site = self._site_str()
-            if self._unavailable_libraries or not self.fail_loudly:
-                self._warn(
+            site = _site_str(self)
+            if self.unavailable_libraries or not self.fail_loudly:
+                self.warn(
                     f"{fn_name}: at {' -> '.join(use_path)}"
                     f"{(' [' + site + ']') if site else ''}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
                     f"uses unknown field {segment!r} in record datatype {record_type.name!r}. "
@@ -310,11 +310,11 @@ def _iter_leaf_field_paths_strict(
 
         record_type = self.type_graph.record(type_name)
         if record_type is None:
-            if key in self._OPAQUE_BUILTIN_TYPES:
+            if key in self.opaque_builtin_types:
                 results.append(prefix)
                 continue
-            if self._unavailable_libraries:
-                self._warn(
+            if self.unavailable_libraries:
+                self.warn(
                     f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
                     f"uses unknown record datatype {type_name!r}. Treating as leaf due to unavailable libraries."
                 )
@@ -328,7 +328,7 @@ def _iter_leaf_field_paths_strict(
                     f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
                     f"uses unknown record datatype {type_name!r}."
                 )
-            self._warn(
+            self.warn(
                 f"{fn_name}: reference {syntactic_ref!r} resolves to {resolved_var_name!r} and "
                 f"uses unknown record datatype {type_name!r}. Treating as leaf."
             )
@@ -358,13 +358,14 @@ def _mark_record_wide_builtin_access(
 ) -> None:
     resolved_var, resolved_field_prefix, _decl_path, _decl_display = context.resolve_variable(syntactic_ref)
     if resolved_var is None:
-        site = self._site_str()
+        site = _site_str(self)
         raise ValueError(
             f"{fn_name}: at {' -> '.join(path)}"
             f"{(' [' + site + ']') if site else ''}: cannot resolve variable reference {syntactic_ref!r} for record-wide access."
         )
 
-    dtype_at_prefix = self._strict_datatype_at_field_prefix(
+    dtype_at_prefix = _strict_datatype_at_field_prefix(
+        self,
         resolved_var.datatype,
         resolved_field_prefix,
         fn_name=fn_name,
@@ -373,7 +374,8 @@ def _mark_record_wide_builtin_access(
         use_path=path,
     )
 
-    leaf_paths = self._iter_leaf_field_paths_strict(
+    leaf_paths = _iter_leaf_field_paths_strict(
+        self,
         dtype_at_prefix,
         fn_name=fn_name,
         syntactic_ref=syntactic_ref,
@@ -382,7 +384,8 @@ def _mark_record_wide_builtin_access(
 
     for leaf in leaf_paths:
         if not leaf:
-            self._mark_ref_access(
+            _mark_ref_access(
+                self,
                 syntactic_ref,
                 context,
                 path,
@@ -390,7 +393,8 @@ def _mark_record_wide_builtin_access(
                 is_ui_read=is_ui_read,
             )
             continue
-        self._mark_ref_access(
+        _mark_ref_access(
+            self,
             f"{syntactic_ref}.{'.'.join(leaf)}",
             context,
             path,
@@ -403,10 +407,10 @@ def _lookup_global_variable(self: VariablesAnalyzer, base_name: str | None) -> V
     if not base_name:
         return None
     normalized = base_name.lower()
-    variable = self._root_env.get(normalized)
+    variable = self.root_env.get(normalized)
     if variable:
         return variable
-    variables = self._any_var_index.get(normalized)
+    variables = self.any_var_index.get(normalized)
     return variables[0] if variables else None
 
 
@@ -415,7 +419,7 @@ def _is_from_root_origin(
     origin_file: str | None,
     origin_lib: str | None = None,
 ) -> bool:
-    if self._analyzed_target_is_library:
+    if self.analyzed_target_is_library:
         root_origin_lib = getattr(self.bp, "origin_lib", None)
         if root_origin_lib and origin_lib:
             return origin_lib.casefold() == root_origin_lib.casefold()
@@ -433,14 +437,71 @@ def _is_from_root_origin(
 
 
 def _extract_field_path(self: VariablesAnalyzer, var_dict: dict[str, Any]) -> tuple[str | None, str | None]:
-    if not isinstance(var_dict, dict) or const.KEY_VAR_NAME not in var_dict:
+    if const.KEY_VAR_NAME not in var_dict:
         return None, None
 
     full_name = var_dict[const.KEY_VAR_NAME]
-    if not full_name or "." not in full_name:
-        return full_name.lower() if full_name else None, None
+    if not isinstance(full_name, str) or not full_name:
+        return None, None
+    if "." not in full_name:
+        return full_name.lower(), None
 
     parts = full_name.split(".", 1)
     base = parts[0].lower()
     field_path = parts[1] if len(parts) > 1 else None
     return base, field_path
+
+
+canonical_path = _canonical_path
+collect_effect_sink_keys = _collect_effect_sink_keys
+collect_expression_effect_sources = _collect_expression_effect_sources
+collect_function_input_effect_keys = _collect_function_input_effect_keys
+compute_effective_output_keys = _compute_effective_output_keys
+effect_key_for_variable = _effect_key_for_variable
+extract_field_path = _extract_field_path
+has_output_effect = _has_output_effect
+is_from_root_origin = _is_from_root_origin
+iter_leaf_field_paths_strict = _iter_leaf_field_paths_strict
+lookup_global_variable = _lookup_global_variable
+mapping_source_effect_key = _mapping_source_effect_key
+mark_record_wide_builtin_access = _mark_record_wide_builtin_access
+mark_ref_access = _mark_ref_access
+pop_site = _pop_site
+push_site = _push_site
+record_access = _record_access
+record_assignment_effect_flow = _record_assignment_effect_flow
+record_effect_flow = _record_effect_flow
+record_function_call_effect_flow = _record_function_call_effect_flow
+resolve_effect_key = _resolve_effect_key
+resolve_local_effect_key = _resolve_local_effect_key
+resolve_mapped_effect_source_key = _resolve_mapped_effect_source_key
+site_str = _site_str
+strict_datatype_at_field_prefix = _strict_datatype_at_field_prefix
+
+__all__ = [
+    "canonical_path",
+    "collect_effect_sink_keys",
+    "collect_expression_effect_sources",
+    "collect_function_input_effect_keys",
+    "compute_effective_output_keys",
+    "effect_key_for_variable",
+    "extract_field_path",
+    "has_output_effect",
+    "is_from_root_origin",
+    "iter_leaf_field_paths_strict",
+    "lookup_global_variable",
+    "mapping_source_effect_key",
+    "mark_record_wide_builtin_access",
+    "mark_ref_access",
+    "pop_site",
+    "push_site",
+    "record_access",
+    "record_assignment_effect_flow",
+    "record_effect_flow",
+    "record_function_call_effect_flow",
+    "resolve_effect_key",
+    "resolve_local_effect_key",
+    "resolve_mapped_effect_source_key",
+    "site_str",
+    "strict_datatype_at_field_prefix",
+]

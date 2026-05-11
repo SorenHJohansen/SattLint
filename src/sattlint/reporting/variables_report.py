@@ -16,13 +16,6 @@ from ._variables_report_rendering import (
 )
 
 
-def _format_report_header(report_type: str, target: str, status: str | None = None) -> list[str]:
-    lines = [f"Report: {report_type}", f"Target: {target}"]
-    if status:
-        lines.append(f"Status: {status}")
-    return lines
-
-
 class IssueKind(Enum):
     UNUSED = "unused"
     UNUSED_DATATYPE_FIELD = "unused_datatype_field"
@@ -158,7 +151,7 @@ class VariableIssue:
 class VariablesReport:
     basepicture_name: str
     issues: list[VariableIssue]
-    visible_kinds: frozenset[IssueKind] | None = None
+    visible_kinds: frozenset[IssueKind] | set[IssueKind] | tuple[IssueKind, ...] | list[IssueKind] | None = None
     include_empty_sections: bool = False
 
     def __post_init__(self) -> None:
@@ -264,9 +257,7 @@ class VariablesReport:
     def _summary_kinds(self) -> tuple[IssueKind, ...]:
         if self.visible_kinds is not None:
             return tuple(kind for kind in SUMMARY_SECTION_ORDER if kind in self.visible_kinds)
-
-        present_kinds = {issue.kind for issue in self.issues}
-        return tuple(kind for kind in SUMMARY_SECTION_ORDER if kind in present_kinds)
+        return tuple(kind for kind in SUMMARY_SECTION_ORDER if kind in {issue.kind for issue in self.issues})
 
     def _issues_for_kind(self, kind: IssueKind) -> list[VariableIssue]:
         if kind is IssueKind.UNUSED:
@@ -317,44 +308,6 @@ class VariablesReport:
             return self.implicit_latches
         return []
 
-    def _section_counts(self, summary_kinds: tuple[IssueKind, ...]) -> list[str]:
-        return [f"  - {SECTION_TITLES[kind]}: {len(self._issues_for_kind(kind))}" for kind in summary_kinds]
-
-    def _append_unknown_parameter_targets(self, lines: list[str]) -> None:
-        append_variable_issue_list(
-            lines,
-            SECTION_TITLES[IssueKind.UNKNOWN_PARAMETER_TARGET],
-            self.unknown_parameter_targets,
-        )
-
-    def _append_required_parameter_connections(self, lines: list[str]) -> None:
-        append_variable_issue_list(
-            lines,
-            SECTION_TITLES[IssueKind.REQUIRED_PARAMETER_CONNECTION],
-            self.required_parameter_connections,
-        )
-
-    def _append_procedure_status(self, lines: list[str]) -> None:
-        append_variable_issue_list(
-            lines,
-            SECTION_TITLES[IssueKind.PROCEDURE_STATUS],
-            self.procedure_status,
-        )
-
-    def _append_contract_mismatches(self, lines: list[str]) -> None:
-        append_variable_issue_list(
-            lines,
-            SECTION_TITLES[IssueKind.CONTRACT_MISMATCH],
-            self.contract_mismatches,
-        )
-
-    def _append_high_fan_in_out(self, lines: list[str]) -> None:
-        append_variable_issue_list(
-            lines,
-            SECTION_TITLES[IssueKind.HIGH_FAN_IN_OUT],
-            self.high_fan_in_out,
-        )
-
     def _append_section(self, lines: list[str], kind: IssueKind) -> None:
         if kind is IssueKind.UNUSED:
             append_unused_variable_issue_list(
@@ -392,7 +345,11 @@ class VariablesReport:
             )
             return
         if kind is IssueKind.PROCEDURE_STATUS:
-            self._append_procedure_status(lines)
+            append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.PROCEDURE_STATUS],
+                self.procedure_status,
+            )
             return
         if kind is IssueKind.NEVER_READ:
             append_variable_issue_list(
@@ -423,16 +380,32 @@ class VariablesReport:
             )
             return
         if kind is IssueKind.HIGH_FAN_IN_OUT:
-            self._append_high_fan_in_out(lines)
+            append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.HIGH_FAN_IN_OUT],
+                self.high_fan_in_out,
+            )
             return
         if kind is IssueKind.UNKNOWN_PARAMETER_TARGET:
-            self._append_unknown_parameter_targets(lines)
+            append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.UNKNOWN_PARAMETER_TARGET],
+                self.unknown_parameter_targets,
+            )
             return
         if kind is IssueKind.REQUIRED_PARAMETER_CONNECTION:
-            self._append_required_parameter_connections(lines)
+            append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.REQUIRED_PARAMETER_CONNECTION],
+                self.required_parameter_connections,
+            )
             return
         if kind is IssueKind.CONTRACT_MISMATCH:
-            self._append_contract_mismatches(lines)
+            append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.CONTRACT_MISMATCH],
+                self.contract_mismatches,
+            )
             return
         if kind is IssueKind.STRING_MAPPING_MISMATCH:
             append_string_mapping_mismatch(
@@ -501,16 +474,24 @@ class VariablesReport:
     def summary(self) -> str:
         summary_kinds = self._summary_kinds()
         if not self.issues and not summary_kinds:
-            lines = _format_report_header("Variable issues", self.basepicture_name, status="ok")
+            lines = [
+                "Report: Variable issues",
+                f"Target: {self.basepicture_name}",
+                "Status: ok",
+            ]
             lines.append("No issues found.")
             return "\n".join(lines)
 
         status = "issues" if self.issues else "ok"
-        lines = _format_report_header("Variable issues", self.basepicture_name, status=status)
+        lines = [
+            "Report: Variable issues",
+            f"Target: {self.basepicture_name}",
+            f"Status: {status}",
+        ]
         lines.append(f"Issues: {len(self.issues)}")
         if summary_kinds:
             lines.append("Sections:")
-            lines.extend(self._section_counts(summary_kinds))
+            lines.extend(f"  - {SECTION_TITLES[kind]}: {len(self._issues_for_kind(kind))}" for kind in summary_kinds)
         for kind in summary_kinds:
             lines.append("")
             self._append_section(lines, kind)

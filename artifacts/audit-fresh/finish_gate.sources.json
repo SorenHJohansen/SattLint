@@ -1,0 +1,17 @@
+{
+  "artifact_digest": "sha1:66e44883132cef7f54cb71c7612e184ee09ee993",
+  "artifact_file": "artifacts/audit-fresh/finish_gate.json",
+  "artifact_kind": "sattlint.repo_audit.finish_gate",
+  "artifact_schema_version": 1,
+  "generated_by": "sattlint.devtools.repo_audit_entrypoints",
+  "kind": "sattlint.generated_output_sources",
+  "schema_version": 1,
+  "source_count": 1,
+  "sources": [
+    {
+      "digest": "sha1:400f5ee2f50bd442931bc543c607832f583e6022",
+      "exists": true,
+      "path": "src/sattlint/devtools/repo_audit_entrypoints.py"
+    }
+  ]
+}

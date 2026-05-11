@@ -1,0 +1,117 @@
+{
+  "canonical_command": "sattlint-analysis-pipeline --profile full --output-dir artifacts/audit-fresh/pipeline",
+  "failing_tools": [],
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.pipeline.status",
+  "non_blocking_tools": [],
+  "overall_status": "pass",
+  "profile": "full",
+  "progress_report": "artifacts/audit-fresh/pipeline/progress.json",
+  "selected_checks": [
+    "ruff",
+    "pyright",
+    "pytest"
+  ],
+  "status_report": "artifacts/audit-fresh/pipeline/status.json",
+  "summary_report": "artifacts/audit-fresh/pipeline/summary.json",
+  "timing": {
+    "check_durations_seconds": {
+      "pyright": 17.286,
+      "pytest": 28.119,
+      "ruff": 0.082,
+      "structural-reports": 0.0,
+      "trace": 0.0
+    },
+    "stage_durations_seconds": {
+      "bandit": 0.0,
+      "corpus": 0.0,
+      "environment": 0.242,
+      "findings": 0.001,
+      "pyright": 17.286,
+      "pytest": 28.119,
+      "ruff": 0.082,
+      "structural_reports": 0.0,
+      "trace": 0.0,
+      "vulture": 0.0,
+      "write_artifacts": 0.004
+    },
+    "total_duration_seconds": 45.734
+  },
+  "tool_statuses": {
+    "bandit": {
+      "detail": "skipped by profile",
+      "finding_count": 0,
+      "normalized_exit_code": 0,
+      "raw_exit_code": null,
+      "report": null,
+      "status": "skipped"
+    },
+    "baseline_drift": {
+      "detail": "skipped: no baseline supplied",
+      "finding_count": 0,
+      "normalized_exit_code": null,
+      "raw_exit_code": null,
+      "report": null,
+      "status": "skipped"
+    },
+    "corpus": {
+      "detail": "skipped because no manifest directory was provided",
+      "finding_count": 0,
+      "normalized_exit_code": null,
+      "raw_exit_code": null,
+      "report": null,
+      "status": "skipped"
+    },
+    "performance_budget": {
+      "detail": "skipped because trace profiling is unavailable",
+      "finding_count": 0,
+      "normalized_exit_code": null,
+      "raw_exit_code": null,
+      "report": null,
+      "status": "skipped"
+    },
+    "pyright": {
+      "detail": "0 errors, 0 warnings",
+      "finding_count": 0,
+      "normalized_exit_code": 0,
+      "raw_exit_code": 0,
+      "report": "pyright.json",
+      "status": "pass"
+    },
+    "pytest": {
+      "detail": "1744 tests, 0 failures, 0 errors",
+      "finding_count": 0,
+      "normalized_exit_code": 0,
+      "raw_exit_code": 0,
+      "report": "pytest.json",
+      "status": "pass"
+    },
+    "ruff": {
+      "detail": "0 findings",
+      "finding_count": 0,
+      "normalized_exit_code": 0,
+      "raw_exit_code": 0,
+      "report": "ruff.json",
+      "status": "pass"
+    },
+    "rule_metadata": {
+      "detail": "skipped by profile",
+      "finding_count": 0,
+      "normalized_exit_code": null,
+      "raw_exit_code": null,
+      "report": null,
+      "status": "skipped"
+    },
+    "vulture": {
+      "detail": "skipped by profile",
+      "finding_count": 0,
+      "normalized_exit_code": 0,
+      "raw_exit_code": null,
+      "report": null,
+      "status": "skipped"
+    }
+  }
+}

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, cast
 
+from sattline_parser.models.ast_model import BasePicture
 from sattlint.analyzers.initial_values import analyze_initial_values
 
 from ..reporting.variables_report import IssueKind, VariableIssue
@@ -54,7 +55,7 @@ class SemanticIssue:
     rule: SemanticRule
     message: str
     module_path: list[str] | None = None
-    data: dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=lambda: {})
     source_kind: str | None = None
 
 
@@ -108,30 +109,24 @@ def _attach_rule_contract(
     )
 
 
-_SEMANTIC_LAYER_ACCEPTANCE_TESTS = (
-    "tests/test_pipeline.py",
-    "tests/test_sattline_semantics.py",
-)
+_SEMANTIC_LAYER_ACCEPTANCE_TESTS = ("tests/test_pipeline.py", "tests/analyzers/test_sattline_semantics.py")
 _VARIABLE_SOURCE_ACCEPTANCE_TESTS = (
     "tests/test_analyzers.py",
     "tests/test_app.py",
     "tests/test_editor_api.py",
-    "tests/test_sattline_semantics.py",
+    "tests/analyzers/test_sattline_semantics.py",
 )
 _SFC_SOURCE_ACCEPTANCE_TESTS = (
     "tests/test_analyzers.py",
-    "tests/test_sattline_semantics.py",
-    "tests/test_sfc.py",
+    "tests/analyzers/test_sattline_semantics.py",
+    "tests/analyzers/test_sfc.py",
 )
-_ALARM_SOURCE_ACCEPTANCE_TESTS = (
-    "tests/test_analyzers.py",
-    "tests/test_sattline_semantics.py",
-)
+_ALARM_SOURCE_ACCEPTANCE_TESTS = ("tests/test_analyzers.py", "tests/analyzers/test_sattline_semantics.py")
 _INITIAL_VALUES_SOURCE_ACCEPTANCE_TESTS = ("tests/test_analyzers.py",)
 _SAFETY_SOURCE_ACCEPTANCE_TESTS = (
     "tests/test_analyzers.py",
     "tests/test_editor_api.py",
-    "tests/test_sattline_semantics.py",
+    "tests/analyzers/test_sattline_semantics.py",
 )
 _TAINT_SOURCE_ACCEPTANCE_TESTS = (
     "tests/test_analyzers.py",
@@ -139,17 +134,14 @@ _TAINT_SOURCE_ACCEPTANCE_TESTS = (
 )
 _DATAFLOW_SOURCE_ACCEPTANCE_TESTS = (
     "tests/test_analyzers.py",
-    "tests/test_dataflow.py",
-    "tests/test_sattline_semantics.py",
+    "tests/analyzers/test_dataflow.py",
+    "tests/analyzers/test_sattline_semantics.py",
 )
-_UNSAFE_DEFAULTS_SOURCE_ACCEPTANCE_TESTS = (
-    "tests/test_pipeline.py",
-    "tests/test_sattline_semantics.py",
-)
+_UNSAFE_DEFAULTS_SOURCE_ACCEPTANCE_TESTS = ("tests/test_pipeline.py", "tests/analyzers/test_sattline_semantics.py")
 _SPEC_SOURCE_ACCEPTANCE_TESTS = (
     "tests/test_app.py",
-    "tests/test_spec_compliance.py",
-    "tests/test_sattline_semantics.py",
+    "tests/analyzers/test_spec_compliance.py",
+    "tests/analyzers/test_sattline_semantics.py",
 )
 _WORKSPACE_CORPUS_CASES = ("workspace-common-quality-issues",)
 
@@ -798,34 +790,24 @@ _RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
     **_rule_contract_entries(_SPEC_RULE_CONTRACT, *_SPEC_RULE_DESCRIPTIONS.keys()),
 }
 
-_VARIABLE_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _VARIABLE_RULES.items()
-}
-_SFC_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _SFC_RULES.items()
-}
-_ALARM_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _ALARM_RULES.items()
-}
-_INITIAL_VALUE_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _INITIAL_VALUE_RULES.items()
-}
-_SAFETY_PATH_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _SAFETY_PATH_RULES.items()
-}
-_TRACE_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _TRACE_RULES.items()
-}
-_DATAFLOW_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _DATAFLOW_RULES.items()
-}
-_TAINT_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id)) for kind, rule in _TAINT_RULES.items()
-}
-_UNSAFE_DEFAULT_RULES = {
-    kind: _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
-    for kind, rule in _UNSAFE_DEFAULT_RULES.items()
-}
+for kind, rule in list(_VARIABLE_RULES.items()):
+    _VARIABLE_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(_SFC_RULES.items()):
+    _SFC_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(_ALARM_RULES.items()):
+    _ALARM_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(_INITIAL_VALUE_RULES.items()):
+    _INITIAL_VALUE_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(_SAFETY_PATH_RULES.items()):
+    _SAFETY_PATH_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(_TRACE_RULES.items()):
+    _TRACE_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(_DATAFLOW_RULES.items()):
+    _DATAFLOW_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(_TAINT_RULES.items()):
+    _TAINT_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(_UNSAFE_DEFAULT_RULES.items()):
+    _UNSAFE_DEFAULT_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
 _SPEC_FRAMEWORK_RULES = {
     rule_id: _attach_rule_contract(
         SemanticRule(
@@ -920,7 +902,7 @@ class SattLineSemanticsReport:
 
 
 def analyze_sattline_semantics(
-    base_picture,
+    base_picture: BasePicture,
     debug: bool = False,
     unavailable_libraries: set[str] | None = None,
     analyzed_target_is_library: bool = False,
@@ -1139,10 +1121,14 @@ def _describe_trace_finding(finding: dict[str, Any]) -> str:
     if kind == "unexpected_submodule_type":
         return f"Unexpected submodule node {finding.get('node_label')!r} appeared in the module tree."
     if kind == "unreachable_sequence_node":
-        terminated_by = finding.get("terminated_by") or {}
-        terminator = terminated_by.get("kind", "an earlier terminating node")
-        if terminated_by.get("target"):
-            terminator = f"{terminator} targeting {terminated_by['target']!r}"
+        terminated_by = finding.get("terminated_by")
+        terminated_by_dict = cast(dict[str, Any], terminated_by) if isinstance(terminated_by, dict) else None
+        if terminated_by_dict is None:
+            terminated_by_dict = {}
+        raw_terminator = terminated_by_dict.get("kind")
+        terminator = raw_terminator if isinstance(raw_terminator, str) else "an earlier terminating node"
+        if terminated_by_dict.get("target"):
+            terminator = f"{terminator} targeting {terminated_by_dict['target']!r}"
         node_label = finding.get("node_label", "<unknown node>")
         sequence_name = finding.get("sequence_name", "<unnamed>")
         return f"Sequence {sequence_name!r} contains unreachable node {node_label!r} after {terminator}."

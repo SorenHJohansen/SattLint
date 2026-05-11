@@ -1,0 +1,29 @@
+{
+  "task_id": "ratchet-down-app-routing",
+  "title": "shrink app wrapper facade",
+  "owner": "GitHub Copilot",
+  "stage": "executor",
+  "branch": "ai/task-ratchet-down-app-routing",
+  "worktree": "../SattLint-ai-ratchet-down-app-routing",
+  "summary": "Reduce src/sattlint/app.py by collapsing safe pass-through wrappers and removing touched typing debt without changing CLI entrypoints.",
+  "files": [
+    "src/sattlint/app.py",
+    "src/sattlint/app_facade_bindings.py",
+    "tests/test_app_coverage.py",
+    "pyproject.toml",
+    "artifacts/analysis/file_debt_ratchet.json"
+  ],
+  "acceptance_criteria": [],
+  "risks": [],
+  "validation": [
+    "python -m pytest --no-cov tests/test_cli.py tests/test_app_cli_commands.py tests/test_app_config_validation.py tests/test_app_menus.py -x -q --tb=short",
+    "python -m pytest --no-cov tests/test_app_coverage.py -x -q --tb=short",
+    "python -m coverage run -m pytest --no-cov tests/test_cli.py tests/test_app_cli_commands.py tests/test_app_config_validation.py tests/test_app_menus.py tests/test_app_analysis.py tests/test_app_coverage.py -q && python -m coverage report -m --include='*/src/sattlint/app.py'",
+    "python -m pyright src/sattlint/app.py",
+    "python -m ruff check src/sattlint/app.py",
+    "python -m pytest --no-cov tests/test_ratchet_policy.py -x -q --tb=short",
+    "python scripts/run_ai_edit_gate.py src/sattlint/app.py pyproject.toml"
+  ],
+  "status": "done",
+  "handoff_path": ".ai/handoffs/ratchet-down-app-routing.json"
+}

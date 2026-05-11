@@ -110,13 +110,7 @@
 				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
 			},
 			"args": [
-				"-m",
-				"sattlint.devtools.repo_audit",
-				"--profile",
-				"full",
-				"--check-my-changes",
-				"--output-dir",
-				"artifacts/audit"
+				"scripts/run_pre_push_gate.py"
 			],
 			"group": "build",
 			"problemMatcher": []
@@ -134,7 +128,7 @@
 				"--profile",
 				"quick",
 				"--output-dir",
-				"artifacts/audit"
+				"artifacts/audit-quick"
 			],
 			"problemMatcher": []
 		},
@@ -150,9 +144,23 @@
 				"--audit-dir",
 				"artifacts/audit",
 				"--json-output",
-				"artifacts/generated/repo-health.json",
+				"artifacts/health/repo-health.json",
 				"--markdown-output",
-				"docs/generated/repo-health.md"
+				"docs/generated/repo-health.md",
+				"--html-output",
+				"artifacts/health/repo-health.html"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Metrics: Refresh Repo Health Dashboard",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"scripts/refresh_repo_health_dashboard.py"
 			],
 			"problemMatcher": []
 		},
@@ -169,7 +177,7 @@
 				"--no-cov",
 				"tests/test_analyzers_variables.py",
 				"-k",
-				"unused_parameter_reported_for_nested_moduletype_instance or unused_parameter_reported_for_nested_singlemodule or unused_parameter_reported_for_nested_singlemodule_in_typedef or unused_parameter_reported_for_nested_moduletype_instance_in_typedef",
+				"library_target_report_shows_typedef_for_same_lib_different_file_moduletype or unused_summary_splits_moduletype_and_singlemodule_groups",
 				"-x",
 				"-q",
 				"--tb=short"
@@ -191,7 +199,7 @@
 				"--no-cov",
 				"tests/test_analyzers_variables.py",
 				"-k",
-				"variables_report_dedupes_unused_moduletype_instance_findings_to_typedef or unused_parameter_reported_for_nested_moduletype_instance_in_typedef or unused_parameter_reported_for_nested_singlemodule_in_typedef",
+				"library_typedef_moduleparameter_unused_fields_are_suppressed or library_target_report_shows_typedef_for_same_lib_different_file_moduletype or unused_summary_splits_moduletype_and_singlemodule_groups",
 				"-x",
 				"-q",
 				"--tb=short"
@@ -213,7 +221,7 @@
 				"--no-cov",
 				"tests/test_analyzers_variables.py",
 				"-k",
-				"variables_report_dedupes_unused_moduletype_instance_findings_to_typedef or unused_parameter_reported_for_nested_moduletype_instance_in_typedef or unused_parameter_reported_for_nested_singlemodule_in_typedef",
+				"library_typedef_moduleparameter_unused_fields_are_suppressed or library_target_report_shows_typedef_for_same_lib_different_file_moduletype or unused_summary_splits_moduletype_and_singlemodule_groups",
 				"-x",
 				"-q",
 				"--tb=short"

@@ -334,14 +334,6 @@ def test_evaluate_policy_change_allows_approved_migration_of_existing_structural
     approval_path = ".github/approvals/ratchet-rebaseline-2026-05-04.md"
     head_payload = _file_debt_ratchet_payload(
         {
-            "docs/exec-plans/feature-roadmap.md": {
-                "structural": {
-                    "current_baseline": 1453,
-                    "target": 500,
-                    "touch_rule": "must_shrink",
-                    "reason": "Roadmap owner document remains centralized pending breakdown into smaller planning documents.",
-                }
-            },
             "src/sattlint/app.py": {
                 "structural": {
                     "current_baseline": 891,
@@ -358,12 +350,8 @@ def test_evaluate_policy_change_allows_approved_migration_of_existing_structural
     )
     structural_payload = """
 {
-    "metrics": {"source_file_max_lines": 2297, "markdown_file_max_lines": 1453},
+    "metrics": {"source_file_max_lines": 2297},
     "file_line_exceptions": {
-        "docs/exec-plans/feature-roadmap.md": {
-            "max_lines": 1453,
-            "reason": "Roadmap owner document remains centralized pending breakdown into smaller planning documents."
-        },
         "src/sattlint/app.py": {
             "max_lines": 891,
             "reason": "Interactive app entry owner still centralizes CLI and menu routing."
@@ -393,3 +381,77 @@ def test_evaluate_policy_change_allows_approved_migration_of_existing_structural
     )
 
     assert errors == []
+
+
+def test_evaluate_policy_change_rejects_markdown_structural_debt_entry():
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-04.md"
+    head_payload = _file_debt_ratchet_payload(
+        {
+            "docs/exec-plans/feature-roadmap.md": {
+                "structural": {
+                    "current_baseline": 1453,
+                    "target": 500,
+                    "touch_rule": "must_shrink",
+                    "reason": "Roadmap owner document remains centralized pending breakdown into smaller planning documents.",
+                }
+            }
+        }
+    )
+
+    errors = ratchet_policy.evaluate_policy_change(
+        changed_files=(ratchet_policy.FILE_DEBT_RATCHET_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: head_payload,
+            ratchet_policy.STRUCTURAL_RATCHET_PATH: '{"metrics": {"source_file_max_lines": 500}}',
+            ratchet_policy.PYPROJECT_PATH: _pyproject_with_typing_ratchet("87.26"),
+            approval_path: "Approved-by: Human Reviewer\nReason: attempted markdown structural debt entry\n",
+        },
+        base_text_by_path={
+            ratchet_policy.FILE_DEBT_RATCHET_PATH: _file_debt_ratchet_payload(),
+            approval_path: None,
+        },
+    )
+
+    assert any("must not target Markdown paths" in error for error in errors)
+
+
+def test_file_debt_stale_entry_errors_flags_structural_and_coverage_entries(tmp_path):
+    stale_structural = tmp_path / "src" / "pkg" / "stale_structural.py"
+    stale_structural.parent.mkdir(parents=True)
+    stale_structural.write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "coverage.xml").write_text(
+        """<?xml version=\"1.0\" ?>
+<coverage>
+    <packages><package><classes>
+        <class filename=\"src/pkg/stale_coverage.py\" line-rate=\"1.0\" lines-valid=\"10\" lines-covered=\"10\">
+            <lines/>
+        </class>
+    </classes></package></packages>
+</coverage>""",
+        encoding="utf-8",
+    )
+
+    errors = ratchet_policy._file_debt_stale_entry_errors(
+        repo_root=tmp_path,
+        file_debt_state={
+            "src/pkg/stale_structural.py": {
+                "structural": {
+                    "current_baseline": 620,
+                    "target": 500,
+                    "touch_rule": "must_shrink",
+                    "reason": "Already shrunk.",
+                }
+            },
+            "src/pkg/stale_coverage.py": {
+                "coverage": {
+                    "current_baseline": 9000,
+                    "target": 10000,
+                    "touch_rule": "must_reach_target_on_touch",
+                    "reason": "Already at full proof.",
+                }
+            },
+        },
+    )
+
+    assert any("stale for src/pkg/stale_structural.py" in error for error in errors)
+    assert any("stale for src/pkg/stale_coverage.py" in error for error in errors)

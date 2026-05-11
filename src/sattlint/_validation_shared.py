@@ -6,6 +6,14 @@ from collections.abc import Callable
 
 from sattline_parser.models.ast_model import SourceSpan
 
+__all__ = [
+    "RawSourceValidationError",
+    "StructuralValidationError",
+    "_ref_span",
+    "_span_kwargs",
+    "_warn_or_raise",
+]
+
 
 class StructuralValidationError(ValueError):
     def __init__(

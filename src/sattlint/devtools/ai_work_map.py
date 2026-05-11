@@ -8,7 +8,6 @@ from typing import Any
 
 from sattlint.devtools import _ai_work_map_parsing as parsing_helpers
 from sattlint.devtools import _ai_work_map_planning as planning_helpers
-from sattlint.devtools import pipeline
 from sattlint.devtools._ai_work_map_freshness import verify_ai_harness_freshness as verify_ai_harness_freshness
 from sattlint.devtools.pipeline_checks import normalize_changed_files, path_matches_globs
 
@@ -58,7 +57,7 @@ AGENT_ROUTING_RULES: tuple[dict[str, Any], ...] = (
         "path_globs": (
             "src/sattline_parser/**",
             "src/sattlint/validation.py",
-            "tests/test_parser*.py",
+            "tests/parser/**",
             "tests/fixtures/sample_sattline_files/**",
         ),
     },
@@ -199,15 +198,15 @@ BLOCKING_INVARIANT_RULES: tuple[dict[str, Any], ...] = (
 )
 
 
-_read_lines = parsing_helpers._read_lines
-_extract_backtick_items = parsing_helpers._extract_backtick_items
-_strip_quotes = parsing_helpers._strip_quotes
-_parse_progress_checkbox_states = parsing_helpers._parse_progress_checkbox_states
-_is_completed_exec_plan = parsing_helpers._is_completed_exec_plan
-_parse_frontmatter = parsing_helpers._parse_frontmatter
-_parse_validation_routes = parsing_helpers._parse_validation_routes
-_parse_owner_suites = parsing_helpers._parse_owner_suites
-_parse_first_validation_commands = parsing_helpers._parse_first_validation_commands
+_read_lines = parsing_helpers.read_lines
+_extract_backtick_items = parsing_helpers.extract_backtick_items
+_strip_quotes = parsing_helpers.strip_quotes
+_parse_progress_checkbox_states = parsing_helpers.parse_progress_checkbox_states
+_is_completed_exec_plan = parsing_helpers.is_completed_exec_plan
+_parse_frontmatter = parsing_helpers.parse_frontmatter
+_parse_validation_routes = parsing_helpers.parse_validation_routes
+_parse_owner_suites = parsing_helpers.parse_owner_suites
+_parse_first_validation_commands = parsing_helpers.parse_first_validation_commands
 _render_json = parsing_helpers.render_json
 _instruction_lookup = planning_helpers.instruction_lookup
 _simplify_check_catalog = planning_helpers.simplify_check_catalog
@@ -222,7 +221,7 @@ _match_blocking_invariants = partial(planning_helpers.match_blocking_invariants,
 
 
 def _iter_reference_update_files(repo_root: Path) -> list[Path]:
-    return parsing_helpers._iter_reference_update_files(repo_root)
+    return parsing_helpers.iter_reference_update_files(repo_root)
 
 
 def _rewrite_exec_plan_references(archived: list[dict[str, str]], *, repo_root: Path) -> None:
@@ -275,8 +274,12 @@ def _merge_instruction_files_for_planning(
 
 def render_ai_check_catalog(work_map: dict[str, Any] | None = None) -> str:
     resolved_work_map = build_ai_work_map() if work_map is None else work_map
-    pipeline_checks = [entry for entry in resolved_work_map.get("pipeline_checks", []) if isinstance(entry, dict)]
-    repo_audit_checks = [entry for entry in resolved_work_map.get("repo_audit_checks", []) if isinstance(entry, dict)]
+    pipeline_checks: list[dict[str, Any]] = [
+        entry for entry in resolved_work_map.get("pipeline_checks", []) if isinstance(entry, dict)
+    ]
+    repo_audit_checks: list[dict[str, Any]] = [
+        entry for entry in resolved_work_map.get("repo_audit_checks", []) if isinstance(entry, dict)
+    ]
     lines = [
         "# AI Check Catalog",
         "",
@@ -290,7 +293,7 @@ def render_ai_check_catalog(work_map: dict[str, Any] | None = None) -> str:
 
 
 def build_ai_work_map() -> dict[str, Any]:
-    from sattlint.devtools import repo_audit_entrypoints
+    from sattlint.devtools import pipeline, repo_audit_entrypoints
 
     pipeline_catalog = pipeline.build_pipeline_check_catalog(
         profile="full",

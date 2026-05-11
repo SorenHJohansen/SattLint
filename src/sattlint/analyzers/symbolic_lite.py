@@ -15,11 +15,15 @@ class PathState:
     is_true: bool | None = None  # None = unknown
 
 
+def _empty_path_states() -> dict[str, PathState]:
+    return {}
+
+
 @dataclass
 class PathStateLattice:
     """Explicit path-state lattice for symbolic reasoning."""
 
-    states: dict[str, PathState] = field(default_factory=dict)
+    states: dict[str, PathState] = field(default_factory=_empty_path_states)
 
     def join(self, other: "PathStateLattice") -> "PathStateLattice":
         """Merge two lattices (union of knowledge)."""

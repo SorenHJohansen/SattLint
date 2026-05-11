@@ -6,15 +6,19 @@ layout specifications (coordinates, sizes, grid), and related module-level const
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from typing import Any, Literal, cast
 
-from lark import Token, Tree, v_args
+import lark.visitors as lark_visitors
+from lark import Token, Tree
 
 from sattline_parser.grammar import constants as const
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
     FrameModule,
+    GraphObject,
+    InteractObject,
     ModuleCode,
     ModuleDef,
     ModuleHeader,
@@ -26,6 +30,59 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
+TransformerTree = Tree[Any]
+TransformerItem = object
+ModuleInvocation = SingleModule | FrameModule | ModuleTypeInstance
+_LARK_VISITORS_ANY = cast(Any, lark_visitors)
+
+
+def _v_args(*args: Any, **kwargs: Any) -> Any:
+    v_args_factory = _LARK_VISITORS_ANY.v_args
+    return v_args_factory(*args, **kwargs)
+
+
+def _tree_children(tree: TransformerTree) -> list[TransformerItem]:
+    return cast(list[TransformerItem], tree.children)
+
+
+def _submodule_children(children: Iterable[TransformerItem]) -> list[ModuleInvocation]:
+    submodules: list[ModuleInvocation] = []
+    for child in children:
+        if isinstance(child, list):
+            nested = cast(list[TransformerItem], child)
+            submodules.extend(
+                [item for item in nested if isinstance(item, (SingleModule, FrameModule, ModuleTypeInstance))]
+            )
+        elif isinstance(child, (SingleModule, FrameModule, ModuleTypeInstance)):
+            submodules.append(child)
+    return submodules
+
+
+def _float_tuple(raw: object, size: Literal[2, 5]) -> tuple[float, ...] | None:
+    if not isinstance(raw, tuple):
+        return None
+    raw_values = cast(tuple[object, ...], raw)
+    if len(raw_values) < size:
+        return None
+    values = raw_values[:size]
+    if not all(isinstance(value, int | float) for value in values):
+        return None
+    return tuple(float(cast(int | float, value)) for value in values)
+
+
+def _groupconn_value(info: dict[str, object] | None) -> dict[Any, Any] | None:
+    if info is None:
+        return None
+    groupconn = info.get("groupconn")
+    return cast(dict[Any, Any] | None, groupconn)
+
+
+def _coord_pair(raw: object) -> tuple[float, float] | None:
+    values = _float_tuple(raw, 2)
+    if values is None:
+        return None
+    return cast(tuple[float, float], values)
+
 
 def _meta_span(meta: Any) -> SourceSpan | None:
     """Extract source span from Lark meta."""
@@ -36,22 +93,17 @@ def _meta_span(meta: Any) -> SourceSpan | None:
     return SourceSpan(line=int(line), column=int(column))
 
 
-def _is_tree(node: Any) -> bool:
-    """Check if node is a Lark Tree."""
-    return hasattr(node, "data") and hasattr(node, "children")
-
-
-def _flatten_items(items):
+def _flatten_items(items: Iterable[TransformerItem]) -> Iterator[TransformerItem]:
     """Yield flat stream of items from possibly nested lists and Trees."""
     for it in items:
         if isinstance(it, list):
-            yield from _flatten_items(it)
+            yield from _flatten_items(cast(list[TransformerItem], it))
         elif isinstance(it, Tree) and it.data in (
             const.TREE_TAG_BASE_MODULE_BODY,
             const.TREE_TAG_MODULE_BODY,
         ):
-            tree = cast(Tree, it)
-            yield from _flatten_items(tree.children)
+            tree = cast(TransformerTree, it)
+            yield from _flatten_items(cast(list[TransformerItem], tree.children))
         else:
             yield it
 
@@ -61,71 +113,68 @@ class _ModulesMixin:
 
     # ---- Module body and structure ----
 
-    def module_body(self, items):
+    def module_body(self, items: list[TransformerItem]) -> TransformerTree:
         """Grammar module_body -> Tree (keep structure for collectors)."""
-        return Tree(const.TREE_TAG_MODULE_BODY, items)
+        return Tree(const.TREE_TAG_MODULE_BODY, cast(list[Any], items))
 
-    def base_module_body(self, items):
+    def base_module_body(self, items: list[TransformerItem]) -> TransformerTree:
         """Grammar base_module_body -> Tree (keep structure for collectors)."""
-        return Tree(const.TREE_TAG_BASE_MODULE_BODY, items)
+        return Tree(const.TREE_TAG_BASE_MODULE_BODY, cast(list[Any], items))
 
-    def IGNOREMAXMODULE(self, _):
+    def IGNOREMAXMODULE(self, _: object) -> str:
         """Grammar IGNOREMAXMODULE terminal -> string marker."""
         return const.GRAMMAR_VALUE_IGNOREMAXMODULE
 
-    def LAYERMODULE(self, _):
+    def LAYERMODULE(self, _: object) -> str:
         """Grammar LAYERMODULE terminal -> string marker."""
         return const.GRAMMAR_VALUE_LAYERMODULE
 
-    def argument(self, items):
+    def argument(self, items: list[TransformerItem]) -> TransformerItem | None:
         """Grammar argument rule -> pass through single non-Token child."""
         for it in items:
             if not isinstance(it, Token):
                 return it
         return None
 
-    def arguments(self, items):
+    def arguments(self, items: list[TransformerItem]) -> TransformerTree:
         """Grammar arguments -> Tree of non-Token argument items."""
-        return Tree(const.TREE_TAG_ARGUMENTS, [it for it in items if not isinstance(it, Token)])
+        return Tree(
+            const.TREE_TAG_ARGUMENTS,
+            cast(list[Any], [it for it in items if not isinstance(it, Token)]),
+        )
 
-    @v_args(meta=True)
-    def module_header(self, meta, items) -> ModuleHeader:
+    @_v_args(meta=True)
+    def module_header(self, meta: Any, items: list[TransformerItem]) -> ModuleHeader:
         """Grammar module_header -> ModuleHeader with position, arguments, layer, enable."""
         name = None
         coords5: tuple[float, float, float, float, float] | None = None
         coord_tails: list[Any] = []
-        args_trees: list[Tree] = []
+        args_trees: list[TransformerTree] = []
         invocation_arguments: list[str] = []
         layer = None
         enable_val = True
         zoom_limits = None
         zoomable = False
-        enable_tail = None
+        enable_tail: object | None = None
 
         for it in items:
             if isinstance(it, str) and name is None:
                 name = it
             elif isinstance(it, dict) and const.TREE_TAG_INVOKE_COORD in it:
-                raw = it[const.TREE_TAG_INVOKE_COORD]
-                if isinstance(raw, tuple) and len(raw) >= 5 and all(isinstance(x, int | float) for x in raw):
-                    coords5 = (
-                        float(raw[0]),
-                        float(raw[1]),
-                        float(raw[2]),
-                        float(raw[3]),
-                        float(raw[4]),
-                    )
-                    coord_tails = list(it.get(const.KEY_TAILS) or [])
-            elif isinstance(it, tuple) and len(it) >= 5 and all(isinstance(x, int | float) for x in it):
-                coords5 = (
-                    float(it[0]),
-                    float(it[1]),
-                    float(it[2]),
-                    float(it[3]),
-                    float(it[4]),
-                )
-            elif isinstance(it, Tree) and it.data == const.TREE_TAG_ARGUMENTS:
-                args_trees.append(cast(Tree, it))
+                mapping = cast(dict[str, object], it)
+                raw = mapping[const.TREE_TAG_INVOKE_COORD]
+                coords = _float_tuple(raw, 5)
+                if coords is not None:
+                    coords5 = cast(tuple[float, float, float, float, float], coords)
+                    tails = mapping.get(const.KEY_TAILS)
+                    if isinstance(tails, list):
+                        coord_tails = list(cast(list[Any], tails))
+            elif isinstance(it, tuple):
+                coords = _float_tuple(cast(tuple[object, ...], it), 5)
+                if coords is not None:
+                    coords5 = cast(tuple[float, float, float, float, float], coords)
+            if isinstance(it, Tree) and it.data == const.TREE_TAG_ARGUMENTS:
+                args_trees.append(cast(TransformerTree, it))
 
         if coords5 is None:
             raise ValueError("module_header missing invoke_coord")
@@ -136,13 +185,19 @@ class _ModulesMixin:
                 if isinstance(ch, int) and layer is None:
                     layer = ch
                 elif isinstance(ch, dict):
-                    d = cast(dict, ch)
+                    d = cast(dict[str, object], ch)
                     if const.TREE_TAG_ENABLE in d:
-                        enable_val = cast(bool, d[const.TREE_TAG_ENABLE])
-                        if const.KEY_TAIL in d and d[const.KEY_TAIL] is not None:
-                            enable_tail = d[const.KEY_TAIL]
+                        enable_obj = d[const.TREE_TAG_ENABLE]
+                        if isinstance(enable_obj, bool):
+                            enable_val = enable_obj
+                        tail_obj = d.get(const.KEY_TAIL)
+                        if tail_obj is not None:
+                            enable_tail = tail_obj
                     elif const.GRAMMAR_VALUE_ZOOMLIMITS in d:
-                        zoom_limits = cast(tuple[float, float], d[const.GRAMMAR_VALUE_ZOOMLIMITS])
+                        zoom_limits_obj = d[const.GRAMMAR_VALUE_ZOOMLIMITS]
+                        zoom_limits_pair = _float_tuple(zoom_limits_obj, 2)
+                        if zoom_limits_pair is not None:
+                            zoom_limits = cast(tuple[float, float], zoom_limits_pair)
                     elif const.GRAMMAR_VALUE_ZOOMABLE in d:
                         zoomable = True
                 elif isinstance(ch, str):
@@ -164,19 +219,22 @@ class _ModulesMixin:
 
     # ---- BasePicture module ----
 
-    def base_picture_module(self, items) -> BasePicture:
+    def base_picture_module(self, items: list[TransformerItem]) -> BasePicture:
         """Grammar base_picture_module -> BasePicture (root module with header + definitions)."""
         if not items:
             raise ValueError("No items in base_picture_module")
 
-        header: ModuleHeader = items[0]
+        header_item = items[0]
+        if not isinstance(header_item, ModuleHeader):
+            raise ValueError("base_picture_module missing ModuleHeader")
+        header = header_item
         datatype_defs: list[DataType] = []
         moduletype_defs: list[ModuleTypeDef] = []
         localvariables: list[Variable] = []
-        submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = []
+        submodules: list[ModuleInvocation] = []
         moduledef: ModuleDef | None = None
         modulecode: ModuleCode | None = None
-        scan_group_info: dict | None = None
+        scan_group_info: dict[str, object] | None = None
 
         for it in _flatten_items(items[1:]):
             if isinstance(it, DataType):
@@ -188,26 +246,20 @@ class _ModulesMixin:
             elif isinstance(it, ModuleCode):
                 modulecode = it
             elif isinstance(it, dict) and "groupconn" in it:
-                scan_group_info = it
+                scan_group_info = cast(dict[str, object], it)
             elif isinstance(it, Tree):
-                tree = cast(Tree, it)
+                tree = cast(TransformerTree, it)
                 if tree.data == const.TREE_TAG_DATATYPE_LIST:
-                    datatype_defs.extend([x for x in tree.children if isinstance(x, DataType)])
+                    datatype_defs.extend([x for x in _tree_children(tree) if isinstance(x, DataType)])
                 elif tree.data == const.TREE_TAG_MODULETYPE_LIST:
-                    moduletype_defs.extend([x for x in tree.children if isinstance(x, ModuleTypeDef)])
+                    moduletype_defs.extend([x for x in _tree_children(tree) if isinstance(x, ModuleTypeDef)])
                 elif tree.data == const.GRAMMAR_VALUE_LOCALVARIABLES:
-                    localvariables.extend([x for x in tree.children if isinstance(x, Variable)])
+                    localvariables.extend([x for x in _tree_children(tree) if isinstance(x, Variable)])
                 elif tree.data == const.TREE_TAG_SUBMODULES:
-                    for ch in tree.children:
-                        if isinstance(ch, list):
-                            submodules.extend(
-                                [x for x in ch if isinstance(x, SingleModule | FrameModule | ModuleTypeInstance)]
-                            )
-                        elif isinstance(ch, SingleModule | FrameModule | ModuleTypeInstance):
-                            submodules.append(ch)
+                    submodules.extend(_submodule_children(_tree_children(tree)))
 
         if scan_group_info:
-            header.groupconn = scan_group_info.get("groupconn")
+            header.groupconn = _groupconn_value(scan_group_info)
             header.groupconn_global = bool(scan_group_info.get("global", False))
 
         return BasePicture(
@@ -224,17 +276,17 @@ class _ModulesMixin:
 
     # ---- Module invocation (new module) ----
 
-    def invocation_new_module(self, items) -> FrameModule | SingleModule:
+    def invocation_new_module(self, items: list[TransformerItem]) -> FrameModule | SingleModule:
         """Grammar invocation_new_module -> FrameModule or SingleModule."""
         header: ModuleHeader | None = None
-        datecode = None
-        moduleparameters = []
-        localvariables = []
-        submodules = []
-        moduledef = None
-        modulecode = None
+        datecode: int | None = None
+        moduleparameters: list[Variable] = []
+        localvariables: list[Variable] = []
+        submodules: list[ModuleInvocation] = []
+        moduledef: ModuleDef | None = None
+        modulecode: ModuleCode | None = None
         param_mappings: list[ParameterMapping] = []
-        scan_group_info: dict | None = None
+        scan_group_info: dict[str, object] | None = None
         is_frame_module = any(it is True for it in items)
 
         for item in _flatten_items(items):
@@ -247,29 +299,23 @@ class _ModulesMixin:
             elif isinstance(item, ModuleCode):
                 modulecode = item
             elif isinstance(item, dict) and "groupconn" in item:
-                scan_group_info = item
+                scan_group_info = cast(dict[str, object], item)
             elif isinstance(item, Tree):
-                tree = cast(Tree, item)
+                tree = cast(TransformerTree, item)
                 if tree.data == const.GRAMMAR_VALUE_MODULEPARAMETERS:
-                    moduleparameters.extend([x for x in tree.children if isinstance(x, Variable)])
+                    moduleparameters.extend([x for x in _tree_children(tree) if isinstance(x, Variable)])
                 elif tree.data == const.GRAMMAR_VALUE_LOCALVARIABLES:
-                    localvariables.extend([x for x in tree.children if isinstance(x, Variable)])
+                    localvariables.extend([x for x in _tree_children(tree) if isinstance(x, Variable)])
                 elif tree.data == const.TREE_TAG_SUBMODULES:
-                    for ch in tree.children:
-                        if isinstance(ch, list):
-                            submodules.extend(
-                                [x for x in ch if isinstance(x, SingleModule | FrameModule | ModuleTypeInstance)]
-                            )
-                        elif isinstance(ch, SingleModule | FrameModule | ModuleTypeInstance):
-                            submodules.append(ch)
+                    submodules.extend(_submodule_children(_tree_children(tree)))
                 elif tree.data == const.TREE_TAG_MODULETYPE_PAR_LIST:
-                    param_mappings.extend([x for x in tree.children if isinstance(x, ParameterMapping)])
+                    param_mappings.extend([x for x in _tree_children(tree) if isinstance(x, ParameterMapping)])
 
         if not header:
             raise ValueError("Missing module header")
 
         if scan_group_info:
-            header.groupconn = scan_group_info.get("groupconn")
+            header.groupconn = _groupconn_value(scan_group_info)
             header.groupconn_global = bool(scan_group_info.get("global", False))
 
         if is_frame_module:
@@ -292,13 +338,13 @@ class _ModulesMixin:
                 parametermappings=param_mappings,
             )
 
-    def frame_module(self, _items) -> Literal[True]:
+    def frame_module(self, _items: list[TransformerItem]) -> Literal[True]:
         """Grammar frame_module -> True marker for frame module."""
         return True
 
     # ---- Module type invocation ----
 
-    def invocation_module_type(self, items) -> ModuleTypeInstance:
+    def invocation_module_type(self, items: list[TransformerItem]) -> ModuleTypeInstance:
         """Grammar invocation_module_type -> ModuleTypeInstance (invocation of a module type)."""
         header: ModuleHeader | None = None
         param_mappings: list[ParameterMapping] = []
@@ -310,8 +356,8 @@ class _ModulesMixin:
             elif isinstance(item, str) and moduletype_name is None:
                 moduletype_name = item
             elif isinstance(item, Tree) and item.data == const.TREE_TAG_MODULETYPE_PAR_LIST:
-                tree = cast(Tree, item)
-                param_mappings.extend([x for x in tree.children if isinstance(x, ParameterMapping)])
+                tree = cast(TransformerTree, item)
+                param_mappings.extend([x for x in _tree_children(tree) if isinstance(x, ParameterMapping)])
 
         if not header:
             raise ValueError("Missing module header")
@@ -326,8 +372,8 @@ class _ModulesMixin:
 
     # ---- Variable names and references ----
 
-    @v_args(meta=True)
-    def variable_name(self, meta, children):
+    @_v_args(meta=True)
+    def variable_name(self, meta: Any, children: list[TransformerItem]) -> dict[str, object | None]:
         """Grammar variable_name -> dict with full dotted path and optional state suffix."""
         parts: list[str] = []
         state: str | None = None
@@ -359,17 +405,17 @@ class _ModulesMixin:
 
     # ---- Module types ----
 
-    @v_args(meta=True)
-    def moduletype_definition(self, meta, items) -> ModuleTypeDef:
+    @_v_args(meta=True)
+    def moduletype_definition(self, meta: Any, items: list[TransformerItem]) -> ModuleTypeDef:
         """Grammar moduletype_definition -> ModuleTypeDef (named module type with datecode)."""
         datecode: int | None = None
         moduleparameters: list[Variable] = []
         localvariables: list[Variable] = []
-        submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = []
+        submodules: list[ModuleInvocation] = []
         moduledef: ModuleDef | None = None
         modulecode: ModuleCode | None = None
         name: str | None = None
-        scan_group_info: dict | None = None
+        scan_group_info: dict[str, object] | None = None
 
         for it in _flatten_items(items):
             if isinstance(it, str) and name is None:
@@ -381,20 +427,18 @@ class _ModulesMixin:
             elif isinstance(it, ModuleCode):
                 modulecode = it
             elif isinstance(it, dict) and "groupconn" in it:
-                scan_group_info = it
+                scan_group_info = cast(dict[str, object], it)
             elif isinstance(it, Tree):
                 if it.data == const.GRAMMAR_VALUE_MODULEPARAMETERS:
-                    moduleparameters.extend([x for x in it.children if isinstance(x, Variable)])
+                    moduleparameters.extend(
+                        [x for x in _tree_children(cast(TransformerTree, it)) if isinstance(x, Variable)]
+                    )
                 elif it.data == const.GRAMMAR_VALUE_LOCALVARIABLES:
-                    localvariables.extend([x for x in it.children if isinstance(x, Variable)])
+                    localvariables.extend(
+                        [x for x in _tree_children(cast(TransformerTree, it)) if isinstance(x, Variable)]
+                    )
                 elif it.data == const.TREE_TAG_SUBMODULES:
-                    for ch in it.children:
-                        if isinstance(ch, list):
-                            submodules.extend(
-                                [x for x in ch if isinstance(x, SingleModule | FrameModule | ModuleTypeInstance)]
-                            )
-                        elif isinstance(ch, SingleModule | FrameModule | ModuleTypeInstance):
-                            submodules.append(ch)
+                    submodules.extend(_submodule_children(_tree_children(cast(TransformerTree, it))))
 
         if name is None:
             raise Exception("Name cannot be none")
@@ -410,24 +454,24 @@ class _ModulesMixin:
             declaration_span=_meta_span(meta),
         )
         if scan_group_info:
-            mtd.groupconn = scan_group_info.get("groupconn")
+            mtd.groupconn = _groupconn_value(scan_group_info)
             mtd.groupconn_global = bool(scan_group_info.get("global", False))
         return mtd
 
-    def moduletype_definitions(self, items) -> Tree:
+    def moduletype_definitions(self, items: list[TransformerItem]) -> TransformerTree:
         """Grammar moduletype_definitions -> Tree of ModuleTypeDefs."""
         out: list[Any] = []
         for it in items:
             if isinstance(it, ModuleTypeDef):
                 out.append(it)
             elif isinstance(it, Tree) and it.data == const.TREE_TAG_MODULETYPE_DEFINITION:
-                tree = cast(Tree, it)
-                for ch in tree.children:
+                tree = cast(TransformerTree, it)
+                for ch in _tree_children(tree):
                     if isinstance(ch, ModuleTypeDef):
                         out.append(ch)
         return Tree(const.TREE_TAG_MODULETYPE_LIST, out)
 
-    def moduletype_par_transfer(self, items) -> ParameterMapping:
+    def moduletype_par_transfer(self, items: list[TransformerItem]) -> ParameterMapping:
         """Grammar moduletype_par_transfer -> ParameterMapping (variable => value)."""
 
         if not items:
@@ -441,16 +485,18 @@ class _ModulesMixin:
             raise ValueError("moduletype_par_transfer missing target variable_name")
 
         if isinstance(target_raw, dict):
-            target_val: dict | str = cast(dict, target_raw)
+            target_val: dict[str, object] | str = cast(dict[str, object], target_raw)
         elif isinstance(target_raw, str):
             target_val = target_raw
         else:
             target_val = str(target_raw)
 
         is_global = False
-        if idx < len(items) and isinstance(items[idx], bool):
-            is_global = items[idx]
-            idx += 1
+        if idx < len(items):
+            global_raw = items[idx]
+            if isinstance(global_raw, bool):
+                is_global = global_raw
+                idx += 1
 
         is_duration = False
         if idx < len(items) and items[idx] == const.GRAMMAR_VALUE_DURATION_VALUE:
@@ -458,18 +504,19 @@ class _ModulesMixin:
             idx += 1
 
         source_literal: Any | None = None
-        source_var: dict | None = None
+        source_var: dict[str, object] | None = None
         source_type: str = const.KEY_VALUE
 
         if idx < len(items):
             src = items[idx]
-            if isinstance(src, int | float | str | bool) or (
-                isinstance(src, dict) and const.GRAMMAR_VALUE_TIME_VALUE in src
-            ):
+            if isinstance(src, int | float | str | bool):
                 source_literal = src
                 source_type = const.KEY_VALUE
+            elif isinstance(src, dict) and const.GRAMMAR_VALUE_TIME_VALUE in src:
+                source_literal = cast(dict[str, object], src)
+                source_type = const.KEY_VALUE
             elif isinstance(src, dict):
-                source_var = cast(dict, src)
+                source_var = cast(dict[str, object], src)
                 source_type = const.TREE_TAG_VARIABLE_NAME
             else:
                 source_literal = str(src)
@@ -484,49 +531,50 @@ class _ModulesMixin:
             source_literal=source_literal,
         )
 
-    def moduletype_par_list(self, items) -> Tree:
+    def moduletype_par_list(self, items: list[TransformerItem]) -> TransformerTree:
         """Grammar moduletype_par_list -> Tree of ParameterMappings."""
         return Tree(
             const.TREE_TAG_MODULETYPE_PAR_LIST,
-            cast(list, [x for x in items if isinstance(x, ParameterMapping)]),
+            cast(list[Any], [x for x in items if isinstance(x, ParameterMapping)]),
         )
 
-    def invocation_tail(self, items) -> Tree | None:
+    def invocation_tail(self, items: list[TransformerItem]) -> TransformerTree | None:
         """Grammar invocation_tail -> optional parameter list Tree."""
         for it in items:
             if isinstance(it, Tree) and it.data == const.TREE_TAG_MODULETYPE_PAR_LIST:
-                tree = cast(Tree, it)
-                return tree
+                return cast(TransformerTree, it)
         return None
 
-    def scan_group(self, items):
+    def scan_group(self, items: list[TransformerItem]) -> dict[str, object]:
         """Grammar scan_group -> dict with groupconn variable and global flag."""
         is_global = any(isinstance(it, bool) and it for it in items)
-        var = None
+        var: dict[str, object] | None = None
         for it in items:
             if isinstance(it, dict) and const.KEY_VAR_NAME in it:
-                var = it
+                var = cast(dict[str, object], it)
         return {"groupconn": var, "global": is_global}
 
     # ---- Variables and parameters ----
 
-    @v_args(meta=True)
-    def variable_item(self, meta, items):
+    @_v_args(meta=True)
+    def variable_item(self, meta: Any, items: list[TransformerItem]) -> tuple[str, str | None, SourceSpan | None]:
         """Grammar variable_item -> (name, description, span) tuple."""
+        if not items or not isinstance(items[0], str):
+            raise ValueError("variable_item missing variable name")
         name = items[0]
         desc = None
         if len(items) > 1 and isinstance(items[1], str):
             desc = items[1]
         return (name, desc, _meta_span(meta))
 
-    def opt_var_init(self, items):
+    def opt_var_init(self, items: list[TransformerItem]) -> tuple[TransformerItem, bool] | None:
         """Grammar opt_var_init -> (value, is_duration) tuple or None."""
         if not items:
             return None
         is_duration = any(item == const.GRAMMAR_VALUE_DURATION_VALUE for item in items[:-1])
         return (items[-1], is_duration)
 
-    def time_value(self, items):
+    def time_value(self, items: list[TransformerItem]) -> dict[str, str | None]:
         """Grammar time_value -> dict with time string."""
         time_string = None
         for it in items:
@@ -534,16 +582,16 @@ class _ModulesMixin:
                 time_string = it
         return {const.GRAMMAR_VALUE_TIME_VALUE: time_string}
 
-    def variable_group(self, items):
+    def variable_group(self, items: list[TransformerItem]) -> list[Variable]:
         """Grammar variable_group -> list of Variables with common datatype and modifiers."""
         from sattline_parser.transformer._tokens_mixin import DEFAULT_INIT
 
         items = [x for x in items if x is not None]
 
-        var_items = []
+        var_items: list[tuple[str, str | None, SourceSpan | None]] = []
         idx = 0
         while idx < len(items) and isinstance(items[idx], tuple):
-            var_items.append(items[idx])
+            var_items.append(cast(tuple[str, str | None, SourceSpan | None], items[idx]))
             idx += 1
         if not var_items:
             return []
@@ -556,7 +604,7 @@ class _ModulesMixin:
         if idx >= len(items) or not isinstance(items[idx], str):
             raise ValueError("Expected datatype NAME in variable_group")
         else:
-            datatype = items[idx]
+            datatype = cast(str, items[idx])
             idx += 1
 
         is_const = False
@@ -586,16 +634,23 @@ class _ModulesMixin:
                 is_secure = True
             idx += 1
 
-        init_value = None
+        init_value: object | None = None
         init_is_duration = False
         if idx < len(items):
             init_raw = items[idx]
-            if isinstance(init_raw, tuple) and len(init_raw) == 2:
-                init_value, init_is_duration = init_raw
+            if isinstance(init_raw, tuple):
+                init_tuple = cast(tuple[object, ...], init_raw)
+                if len(init_tuple) == 2:
+                    init_value = init_tuple[0]
+                    init_is_duration = isinstance(init_tuple[1], bool) and init_tuple[1]
+                else:
+                    init_value = cast(object, init_raw)
             else:
                 init_value = init_raw
 
-        variables = []
+        resolved_init_value: Any | None = None if init_value is DEFAULT_INIT else init_value
+
+        variables: list[Variable] = []
         for name, desc, declaration_span in var_items:
             v = Variable(
                 name=name,
@@ -605,50 +660,50 @@ class _ModulesMixin:
                 state=is_state,
                 opsave=is_opsave,
                 secure=is_secure,
-                init_value=(None if init_value is DEFAULT_INIT else init_value),
+                init_value=resolved_init_value,
                 description=desc,
                 declaration_span=declaration_span,
-                init_is_duration=(init_is_duration and init_value is not DEFAULT_INIT),
+                init_is_duration=(init_is_duration and resolved_init_value is not None),
             )
             variables.append(v)
         return variables
 
-    def variable_list(self, items):
+    def variable_list(self, items: list[TransformerItem]) -> TransformerTree:
         """Grammar variable_list -> Tree of all Variables in group."""
-        out = []
+        out: list[Any] = []
         for grp in items:
             if isinstance(grp, list):
-                out.extend(grp)
+                out.extend(cast(list[Any], grp))
         return Tree(const.TREE_TAG_VAR_LIST, out)
 
-    def moduleparameters(self, items):
+    def moduleparameters(self, items: list[TransformerItem]) -> TransformerTree:
         """Grammar moduleparameters -> Tree of module parameter Variables."""
-        parameters = []
+        parameters: list[Any] = []
         for it in items:
             if isinstance(it, Tree) and it.data == const.TREE_TAG_VAR_LIST:
-                tree = cast(Tree, it)
-                parameters = tree.children
+                tree = cast(TransformerTree, it)
+                parameters = cast(list[Any], _tree_children(tree))
         return Tree(const.GRAMMAR_VALUE_MODULEPARAMETERS, parameters)
 
-    def localvariables(self, items):
+    def localvariables(self, items: list[TransformerItem]) -> TransformerTree:
         """Grammar localvariables -> Tree of local Variables."""
-        variables = []
+        variables: list[Any] = []
         for it in items:
             if isinstance(it, Tree) and it.data == const.TREE_TAG_VAR_LIST:
-                tree = cast(Tree, it)
-                variables = tree.children
+                tree = cast(TransformerTree, it)
+                variables = cast(list[Any], _tree_children(tree))
         return Tree(const.GRAMMAR_VALUE_LOCALVARIABLES, variables)
 
-    def submodules(self, items):
+    def submodules(self, items: list[TransformerItem]) -> TransformerTree:
         """Grammar submodules -> Tree of module invocation nodes."""
-        submodule_items: list[SingleModule | FrameModule | ModuleTypeInstance] = []
+        submodule_items: list[ModuleInvocation] = []
         for item in _flatten_items(items):
-            if isinstance(item, SingleModule | FrameModule | ModuleTypeInstance):
+            if isinstance(item, (SingleModule, FrameModule, ModuleTypeInstance)):
                 submodule_items.append(item)
-        return Tree(const.TREE_TAG_SUBMODULES, submodule_items)  # type: ignore[arg-type]
+        return Tree(const.TREE_TAG_SUBMODULES, cast(list[Any], submodule_items))
 
-    @v_args(meta=True)
-    def record(self, meta, items) -> DataType:
+    @_v_args(meta=True)
+    def record(self, meta: Any, items: list[TransformerItem]) -> DataType:
         """Grammar record -> DataType definition with optional description and fields."""
         name: str | None = None
         description: str | None = None
@@ -664,7 +719,7 @@ class _ModulesMixin:
             elif isinstance(item, int) and datecode is None:
                 datecode = item
             elif isinstance(item, Tree) and item.data == const.TREE_TAG_VAR_LIST:
-                fields = [child for child in item.children if isinstance(child, Variable)]
+                fields = [child for child in _tree_children(cast(TransformerTree, item)) if isinstance(child, Variable)]
 
         if name is None:
             raise ValueError("record is missing datatype name")
@@ -677,56 +732,63 @@ class _ModulesMixin:
             declaration_span=_meta_span(meta),
         )
 
-    def datatype_typedefinitions(self, items) -> Tree:
+    def datatype_typedefinitions(self, items: list[TransformerItem]) -> TransformerTree:
         """Grammar datatype_typedefinitions -> Tree of DataType records."""
         records: list[DataType] = []
         for item in items:
             if isinstance(item, DataType):
                 records.append(item)
             elif isinstance(item, Tree):
-                records.extend([child for child in item.children if isinstance(child, DataType)])
-        return Tree(const.TREE_TAG_DATATYPE_LIST, records)  # type: ignore[arg-type]  # type: ignore[arg-type]
+                records.extend(
+                    [child for child in _tree_children(cast(TransformerTree, item)) if isinstance(child, DataType)]
+                )
+        return Tree(const.TREE_TAG_DATATYPE_LIST, cast(list[Any], records))
 
     # ---- Module definitions and layout ----
 
-    def origo_coord(self, items):
+    def origo_coord(self, items: list[TransformerItem]) -> list[TransformerItem]:
         """Grammar origo_coord -> coordinate values list."""
         return items
 
-    def size(self, items):
+    def size(self, items: list[TransformerItem]) -> list[TransformerItem]:
         """Grammar size -> size values list."""
         return items
 
-    def coordinates(self, items):
+    def coordinates(self, items: list[TransformerItem]) -> dict[str, object]:
         """Grammar coordinates -> dict with (x,y) and optional coordinate tails."""
         # Filter out all Tokens first
         items_filtered = [v for v in items if not isinstance(v, Token)]
         nums = [float(v) for v in items_filtered if isinstance(v, int | float)]
         if len(nums) < 2:
             raise ValueError(f"coordinates missing REAL values (got {len(nums)})")
-        tails = self._extract_coord_tails(items)  # type: ignore[attr-defined]
+        tails = self._extract_coord_tails(cast(list[Any], items))  # type: ignore[attr-defined]
         return {
             const.KEY_COORDS: (nums[0], nums[1]),
             const.KEY_TAILS: tails or None,
         }
 
-    def origo_size_pair(self, items):
+    def origo_size_pair(self, items: list[TransformerItem]) -> dict[str, object]:
         """Grammar origo_size_pair -> dict with two coordinate pairs and tails."""
         coords: list[tuple[float, float]] = []
         tails: list[Any] = []
         for it in items:
             if isinstance(it, dict) and const.KEY_COORDS in it:
-                coord = it[const.KEY_COORDS]
-                if isinstance(coord, tuple) and len(coord) == 2 and all(isinstance(x, int | float) for x in coord):
-                    coords.append((float(coord[0]), float(coord[1])))
-                    tails.extend(it.get(const.KEY_TAILS) or [])
-            elif isinstance(it, tuple) and len(it) == 2 and all(isinstance(x, int | float) for x in it):
-                coords.append((float(it[0]), float(it[1])))
+                payload = cast(dict[str, object], it)
+                coord = _coord_pair(payload[const.KEY_COORDS])
+                if coord is not None:
+                    coords.append(coord)
+                    raw_tails = payload.get(const.KEY_TAILS)
+                    if isinstance(raw_tails, list):
+                        tails.extend(cast(list[Any], raw_tails))
             elif isinstance(it, Tree) and it.data == const.TREE_TAG_COORDINATES:
-                tree = cast(Tree, it)
-                nums = [float(x) for x in tree.children if isinstance(x, int | float)]
+                tree = cast(TransformerTree, it)
+                nums = [float(x) for x in _tree_children(tree) if isinstance(x, int | float)]
                 if len(nums) >= 2:
                     coords.append((nums[0], nums[1]))
+            elif isinstance(it, tuple):
+                coord = _coord_pair(cast(tuple[object, ...], it))
+                if coord is not None:
+                    coords.append(coord)
         if len(coords) != 2:
             raise ValueError(f"origo_size_pair expected 2 coordinate pairs, found {len(coords)}")
         return {
@@ -734,62 +796,66 @@ class _ModulesMixin:
             const.KEY_TAILS: tails or None,
         }
 
-    def invoke_coord(self, items):
+    def invoke_coord(self, items: list[TransformerItem]) -> dict[str, object]:
         """Grammar invoke_coord -> dict with 5-tuple and coordinate tails."""
         # Filter out all Tokens first
         items_filtered = [v for v in items if not isinstance(v, Token)]
         nums = [float(v) for v in items_filtered if isinstance(v, int | float)]
         if len(nums) < 5:
             raise ValueError(f"invoke_coord expected 5 REALs, found {len(nums)}")
-        tails = self._extract_coord_tails(items)  # type: ignore[attr-defined]
+        tails = self._extract_coord_tails(cast(list[Any], items))  # type: ignore[attr-defined]
         return {
             const.TREE_TAG_INVOKE_COORD: tuple(nums[:5]),
             const.KEY_TAILS: tails or None,
         }
 
-    def coord_invar_tail(self, items):
+    def coord_invar_tail(self, items: list[TransformerItem]) -> TransformerItem:
         """Grammar coord_invar_tail -> connected variable value."""
         for it in items:
             if not isinstance(it, Token):
                 return it
         raise ValueError("coord_invar_tail expected connected variable or value")
 
-    def coord_clippingbounds(self, items):
+    def coord_clippingbounds(self, items: list[TransformerItem]) -> TransformerTree:
         """Grammar coord_clippingbounds -> Tree of clipping specification."""
-        return Tree(const.GRAMMAR_VALUE_CLIPPINGBOUNDS, items)
+        return Tree(const.GRAMMAR_VALUE_CLIPPINGBOUNDS, cast(list[Any], items))
 
-    def clippingbounds(self, items):
+    def clippingbounds(self, items: list[TransformerItem]) -> dict[str, object]:
         """Grammar clippingbounds -> dict with clipping values and tails."""
         payload = items[-1]
         if isinstance(payload, dict) and const.KEY_COORDS in payload:
+            payload_dict = cast(dict[str, object], payload)
             return {
-                const.GRAMMAR_VALUE_CLIPPINGBOUNDS: payload[const.KEY_COORDS],
-                const.KEY_TAILS: payload.get(const.KEY_TAILS) or None,
+                const.GRAMMAR_VALUE_CLIPPINGBOUNDS: payload_dict[const.KEY_COORDS],
+                const.KEY_TAILS: payload_dict.get(const.KEY_TAILS) or None,
             }
         return {const.GRAMMAR_VALUE_CLIPPINGBOUNDS: payload}
 
-    def seq_layers(self, items) -> dict[str, Any]:
+    def seq_layers(self, items: list[TransformerItem]) -> dict[str, object]:
         """Grammar seq_layers -> dict with sequence layer mapping."""
         return {const.KEY_SEQ_LAYERS: items[-1]}
 
-    def zoomlimits(self, items) -> dict[str, tuple[Any, Any]]:
+    def zoomlimits(self, items: list[TransformerItem]) -> dict[str, tuple[TransformerItem, TransformerItem]]:
         """Grammar zoomlimits -> dict with min/max zoom values."""
         return {const.GRAMMAR_VALUE_ZOOMLIMITS: (items[-2], items[-1])}
 
-    def ZOOMABLE(self, _) -> dict[str, bool]:
+    def ZOOMABLE(self, _: object) -> dict[str, bool]:
         """Grammar ZOOMABLE -> dict marking module as zoomable."""
         return {const.GRAMMAR_VALUE_ZOOMABLE: True}
 
-    def grid(self, items) -> float:
+    def grid(self, items: list[TransformerItem]) -> float:
         """Grammar grid -> float grid spacing value."""
         nums: list[float] = []
         for v in items:
             if isinstance(v, Token):
                 continue
-            try:
-                nums.append(float(v))
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"grid expected a numeric value; got {type(v).__name__}: {v!r}") from exc
+            if isinstance(v, int | float | str):
+                try:
+                    nums.append(float(v))
+                except ValueError as exc:
+                    raise ValueError(f"grid expected a numeric value; got {type(v).__name__}: {v!r}") from exc
+                continue
+            raise ValueError(f"grid expected a numeric value; got {type(v).__name__}: {v!r}")
 
         if not nums:
             types = ", ".join(type(x).__name__ for x in items)
@@ -797,39 +863,57 @@ class _ModulesMixin:
 
         return nums[-1]
 
-    def moduledef_opts_seq(self, items) -> Tree:
+    def moduledef_opts_seq(self, items: list[TransformerItem]) -> TransformerTree:
         """Grammar moduledef_opts_seq -> Tree with merged option dict."""
-        merged: dict[str, Any] = {}
+        merged: dict[str, object] = {}
         for d in items:
-            merged.update(d)
-        return Tree(const.TREE_TAG_MODULEDEF_OPTS_SEQ, cast(list, [merged]))
+            if isinstance(d, dict):
+                merged.update(cast(dict[str, object], d))
+        return Tree(const.TREE_TAG_MODULEDEF_OPTS_SEQ, cast(list[Any], [merged]))
 
-    def moduledef(self, items) -> ModuleDef:
+    def moduledef(self, items: list[TransformerItem]) -> ModuleDef:
         """Grammar moduledef -> ModuleDef with graphics, layout, and interact objects."""
         m = ModuleDef()
         for it in items:
             if isinstance(it, dict) and const.GRAMMAR_VALUE_CLIPPINGBOUNDS in it:
-                m.clipping_bounds = it[const.GRAMMAR_VALUE_CLIPPINGBOUNDS]
-                tails = it.get(const.KEY_TAILS) or []
-                if tails:
-                    m.properties.setdefault(const.KEY_TAILS, []).extend(tails)
-            elif isinstance(it, tuple) and len(it) == 2 and all(isinstance(t, tuple) for t in it):
-                m.clipping_bounds = it
+                payload = cast(dict[str, object], it)
+                clipping_bounds = payload[const.GRAMMAR_VALUE_CLIPPINGBOUNDS]
+                if isinstance(clipping_bounds, tuple):
+                    clipping_tuple = cast(tuple[object, ...], clipping_bounds)
+                    if len(clipping_tuple) == 2:
+                        m.clipping_bounds = cast(tuple[tuple[float, float], tuple[float, float]], clipping_tuple)
+                tails = payload.get(const.KEY_TAILS)
+                if isinstance(tails, list) and tails:
+                    module_def_any = cast(Any, m)
+                    properties = cast(dict[str, list[Any]], module_def_any.properties)
+                    property_tails = properties.setdefault(const.KEY_TAILS, [])
+                    property_tails.extend(cast(list[Any], tails))
+            elif isinstance(it, tuple):
+                clipping_tuple = cast(tuple[object, ...], it)
+                if len(clipping_tuple) == 2 and all(isinstance(t, tuple) for t in clipping_tuple):
+                    m.clipping_bounds = cast(tuple[tuple[float, float], tuple[float, float]], clipping_tuple)
             elif isinstance(it, list) and it:
-                # Check what kind of list it is (GraphObjects or InteractObjects)
-                from sattline_parser.models.ast_model import GraphObject, InteractObject
-
                 if isinstance(it[0], GraphObject):
-                    m.graph_objects = it
+                    m.graph_objects = cast(list[GraphObject], it)
                 elif isinstance(it[0], InteractObject):
-                    m.interact_objects = it
+                    m.interact_objects = cast(list[InteractObject], it)
             elif isinstance(it, dict):
-                if const.GRAMMAR_VALUE_ZOOMLIMITS in it:
-                    m.zoom_limits = it[const.GRAMMAR_VALUE_ZOOMLIMITS]
-                if const.GRAMMAR_VALUE_ZOOMABLE in it:
-                    m.zoomable = it[const.GRAMMAR_VALUE_ZOOMABLE]
-                if const.GRAMMAR_VALUE_GRID in it and it[const.GRAMMAR_VALUE_GRID] is not None:
-                    m.grid = float(it[const.GRAMMAR_VALUE_GRID])
-                if const.KEY_SEQ_LAYERS in it:
-                    m.seq_layers = it[const.KEY_SEQ_LAYERS]
+                payload = cast(dict[str, object], it)
+                if const.GRAMMAR_VALUE_ZOOMLIMITS in payload:
+                    zoom_limits = _coord_pair(payload[const.GRAMMAR_VALUE_ZOOMLIMITS])
+                    if zoom_limits is not None:
+                        m.zoom_limits = zoom_limits
+                if const.GRAMMAR_VALUE_ZOOMABLE in payload:
+                    zoomable = payload[const.GRAMMAR_VALUE_ZOOMABLE]
+                    if isinstance(zoomable, bool):
+                        m.zoomable = zoomable
+                if const.GRAMMAR_VALUE_GRID in payload and payload[const.GRAMMAR_VALUE_GRID] is not None:
+                    grid_value = payload[const.GRAMMAR_VALUE_GRID]
+                    if isinstance(grid_value, int | float | str):
+                        m.grid = float(grid_value)
+                if const.KEY_SEQ_LAYERS in payload:
+                    m.seq_layers = payload[const.KEY_SEQ_LAYERS]
         return m
+
+
+ModulesMixin = _ModulesMixin

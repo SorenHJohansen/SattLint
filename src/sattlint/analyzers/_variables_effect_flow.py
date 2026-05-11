@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import Any, Protocol, cast
 
 from sattline_parser.models.ast_model import BasePicture, ParameterMapping, Variable
 from sattlint.resolution import AccessKind, decorate_segment
@@ -18,11 +18,14 @@ from ._variables_effect_sources import (
 from ._variables_effect_sources import (
     collect_function_input_effect_keys as _collect_function_input_effect_keys,
 )
+from ._variables_mapping_refs import (
+    mapping_source_ref as _mapping_source_ref,
+)
+from ._variables_mapping_refs import (
+    mapping_target_ref as _mapping_target_ref,
+)
+from ._variables_mapping_refs import var_ref_text as _var_ref_text
 from .sattline_builtins import get_function_signature
-
-if TYPE_CHECKING:
-    pass
-
 
 type EffectKey = tuple[str, ...]
 type LookupGlobalVariableFn = Callable[[str], Variable | None]
@@ -39,32 +42,6 @@ class UsageRecorder(Protocol):
     def mark_field_read(self, field_path: str, path: list[str]) -> None: ...
 
     def mark_field_written(self, field_path: str, path: list[str]) -> None: ...
-
-
-class _ParameterMappingPayloads(Protocol):
-    source: object
-    target: object
-
-
-def _var_ref_text(value: object) -> str | None:
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        value_dict = cast(dict[str, object], value)
-        ref_text = value_dict.get(const.KEY_VAR_NAME)
-        if isinstance(ref_text, str):
-            return ref_text
-    return None
-
-
-def _mapping_source_ref(pm: ParameterMapping) -> str | None:
-    typed_pm = cast(_ParameterMappingPayloads, pm)
-    return _var_ref_text(typed_pm.source)
-
-
-def _mapping_target_ref(pm: ParameterMapping) -> str | None:
-    typed_pm = cast(_ParameterMappingPayloads, pm)
-    return _var_ref_text(typed_pm.target)
 
 
 class EffectFlowTracker:

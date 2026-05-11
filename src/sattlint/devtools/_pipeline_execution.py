@@ -26,9 +26,11 @@ class CommandResult:
 def _resolve_python_executable() -> str:
     candidates: list[Path] = []
 
-    venv_python = Path(".venv") / "Scripts" / "python.exe" if os.name == "nt" else Path(".venv") / "bin" / "python"
+    venv_python = (
+        REPO_ROOT / ".venv" / "Scripts" / "python.exe" if os.name == "nt" else REPO_ROOT / ".venv" / "bin" / "python"
+    )
     if venv_python.exists():
-        return str(venv_python.resolve())
+        return str(venv_python)
 
     override = os.environ.get("SATTLINT_PYTHON")
     if override:

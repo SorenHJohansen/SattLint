@@ -11,6 +11,10 @@ from .paths import CanonicalPath
 from .type_graph import TypeGraph
 
 
+def _empty_symbols_by_key() -> dict[tuple[str, ...], SymbolDef]:
+    return {}
+
+
 class SymbolKind(Enum):
     LOCAL = "local"
     PARAMETER = "parameter"
@@ -27,7 +31,7 @@ class SymbolDef:
 class CanonicalSymbolTable:
     """Global-ish index of addressable symbols (case-insensitive canonical paths)."""
 
-    symbols_by_key: dict[tuple[str, ...], SymbolDef] = field(default_factory=dict)
+    symbols_by_key: dict[tuple[str, ...], SymbolDef] = field(default_factory=_empty_symbols_by_key)
 
     def add(self, sym: SymbolDef) -> None:
         self.symbols_by_key[sym.canonical_path.key()] = sym

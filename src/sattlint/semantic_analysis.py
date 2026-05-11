@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
@@ -46,7 +46,12 @@ def _project_lsp_report_diagnostics(
         if not isinstance(issues, list):
             continue
 
-        report_issues = tuple(issue for issue in issues if isinstance(issue, Issue))
+        typed_issues = cast(list[object], issues)
+        report_issues_list: list[Issue] = []
+        for issue in typed_issues:
+            if isinstance(issue, Issue):
+                report_issues_list.append(issue)
+        report_issues = tuple(report_issues_list)
         if not report_issues:
             continue
 

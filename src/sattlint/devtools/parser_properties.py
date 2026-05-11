@@ -137,8 +137,7 @@ def check_parser_property(
 ) -> list[tuple[str, Exception | None]]:
     """Run a property against generated programs; return failures."""
     failures: list[tuple[str, Exception | None]] = []
-    if seed is not None:
-        random.seed(seed)
+    random.seed(seed)
 
     for _ in range(count):
         source = generate_simple_program()

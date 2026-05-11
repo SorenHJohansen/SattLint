@@ -13,18 +13,26 @@ AI_TEMPLATE_SCHEMA_KIND = "sattlint.ai_templates"
 AI_TEMPLATE_SCHEMA_VERSION = 1
 
 
+def _empty_strings() -> list[str]:
+    return []
+
+
+def _empty_templates() -> list[TaskTemplate]:
+    return []
+
+
 @dataclass
 class TaskTemplate:
     template_id: str
     description: str
     prompt: str
-    example_findings: list[str] = field(default_factory=list)
-    related_rules: list[str] = field(default_factory=list)
+    example_findings: list[str] = field(default_factory=_empty_strings)
+    related_rules: list[str] = field(default_factory=_empty_strings)
 
 
 @dataclass
 class AITemplateSummary:
-    templates: list[TaskTemplate] = field(default_factory=list)
+    templates: list[TaskTemplate] = field(default_factory=_empty_templates)
 
     def to_dict(self) -> dict[str, Any]:
         return {
