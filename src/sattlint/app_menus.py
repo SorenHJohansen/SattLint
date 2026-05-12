@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable, Iterator
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
@@ -12,6 +13,9 @@ from .casefolding import casefold_equal
 from .models.project_graph import ProjectGraph
 
 emit_output = console_module.print_output  # type: ignore[assignment]
+
+ConfigDict = dict[str, Any]
+LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
 
 def _build_config_menu_options(menu_option_factory: Callable[[str, str, str], Any]) -> list[Any]:
@@ -34,30 +38,31 @@ def _build_config_menu_options(menu_option_factory: Callable[[str, str, str], An
 
 
 def _add_analysis_target(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     prompt_fn: Callable[..., str],
-    target_exists_fn: Callable[[str, dict], bool],
+    target_exists_fn: Callable[[str, ConfigDict], bool],
     confirm_fn: Callable[[str], bool],
     pause_fn: Callable[[], None],
 ) -> bool:
+    targets = cfg["analyzed_programs_and_libraries"]
     new = prompt_fn("Program/library name to add", None)
     if not target_exists_fn(new, cfg):
         emit_output("❌ Target not found in configured directories")
         pause_fn()
         return False
-    if any(casefold_equal(existing, new) for existing in cfg["analyzed_programs_and_libraries"]):
+    if any(casefold_equal(existing, new) for existing in targets):
         emit_output("⚠ Target already listed")
         pause_fn()
         return False
     if not confirm_fn(f"Add '{new}' to analyzed_programs_and_libraries?"):
         return False
-    cfg["analyzed_programs_and_libraries"].append(new)
+    targets.append(new)
     return True
 
 
 def _remove_analysis_target(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     prompt_fn: Callable[..., str],
     confirm_fn: Callable[[str], bool],
@@ -88,12 +93,12 @@ def _remove_analysis_target(
 
 
 def _toggle_config_value(
-    cfg: dict,
+    cfg: ConfigDict,
     key: str,
     *,
     confirm_message: str,
     confirm_fn: Callable[[str], bool],
-    on_change_fn: Callable[[dict], None] | None = None,
+    on_change_fn: Callable[[ConfigDict], None] | None = None,
 ) -> bool:
     if not confirm_fn(confirm_message):
         return False
@@ -104,7 +109,7 @@ def _toggle_config_value(
 
 
 def _update_config_value(
-    cfg: dict,
+    cfg: ConfigDict,
     key: str,
     *,
     prompt_message: str,
@@ -120,7 +125,7 @@ def _update_config_value(
 
 
 def _edit_other_lib_dirs(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     prompt_fn: Callable[..., str],
     confirm_fn: Callable[[str], bool],
@@ -141,11 +146,11 @@ def _edit_other_lib_dirs(
 
 
 def _save_configuration(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     dirty: bool,
-    config_path,
-    save_config_fn: Callable[[Any, dict], None],
+    config_path: Path,
+    save_config_fn: Callable[[Path, ConfigDict], None],
     confirm_fn: Callable[[str], bool],
 ) -> bool:
     if confirm_fn("Save config to disk?"):
@@ -155,14 +160,14 @@ def _save_configuration(
 
 
 def dump_menu(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     clear_screen_fn: Callable[[], None],
     print_menu_fn: Callable[..., None],
     menu_option_factory: Callable[[str, str, str], Any],
     quit_app_fn: Callable[[], None],
     confirm_fn: Callable[[str], bool],
-    iter_loaded_projects_fn: Callable[..., Iterator[tuple[str, BasePicture, ProjectGraph]]],
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]],
     analyze_variables_fn: Callable[..., Any],
 ) -> None:
     while True:
@@ -200,12 +205,13 @@ def dump_menu(
                 engine_module.dump_dependency_graph((project_bp, graph))
         elif choice == "4" and confirm_fn("Dump variable report?"):
             for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
+                unavailable_libraries = cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set())))
                 emit_output(f"\n=== Target: {target_name} ===")
                 emit_output(
                     analyze_variables_fn(
                         project_bp,
                         debug=cfg.get("debug", False),
-                        unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+                        unavailable_libraries=unavailable_libraries,
                         config=cfg,
                     ).summary()
                 )
@@ -214,20 +220,20 @@ def dump_menu(
 
 
 def config_menu(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    config_path,
+    config_path: Path,
     clear_screen_fn: Callable[[], None],
-    show_config_fn: Callable[[dict], None],
+    show_config_fn: Callable[[ConfigDict], None],
     print_menu_fn: Callable[..., None],
     menu_option_factory: Callable[[str, str, str], Any],
     prompt_fn: Callable[..., str],
     pause_fn: Callable[[], None],
     confirm_fn: Callable[[str], bool],
-    target_exists_fn: Callable[[str, dict], bool],
-    save_config_fn: Callable[[Any, dict], None],
-    apply_debug_fn: Callable[[dict], None],
-    graphics_rules_menu_fn: Callable[[dict], None],
+    target_exists_fn: Callable[[str, ConfigDict], bool],
+    save_config_fn: Callable[[Path, ConfigDict], None],
+    apply_debug_fn: Callable[[ConfigDict], None],
+    graphics_rules_menu_fn: Callable[[ConfigDict], None],
     quit_app_fn: Callable[[], None],
 ) -> bool:
     dirty = False
@@ -377,18 +383,18 @@ def config_menu(
 
 
 def tools_menu(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     clear_screen_fn: Callable[[], None],
     print_menu_fn: Callable[..., None],
     menu_option_factory: Callable[[str, str, str], Any],
     quit_app_fn: Callable[[], None],
-    self_check_fn: Callable[[dict], bool],
+    self_check_fn: Callable[[ConfigDict], bool],
     pause_fn: Callable[[], None],
-    require_targets_for_menu_action_fn: Callable[[dict, str], bool],
-    dump_menu_fn: Callable[[dict], None],
+    require_targets_for_menu_action_fn: Callable[[ConfigDict, str], bool],
+    dump_menu_fn: Callable[[ConfigDict], None],
     confirm_fn: Callable[[str], bool],
-    force_refresh_ast_fn: Callable[[dict], Any],
+    force_refresh_ast_fn: Callable[[ConfigDict], Any],
 ) -> None:
     while True:
         clear_screen_fn()
@@ -433,21 +439,21 @@ def tools_menu(
 
 
 def run_main_loop(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     clear_screen_fn: Callable[[], None],
     print_menu_fn: Callable[..., None],
     menu_option_factory: Callable[[str, str, str], Any],
-    summarize_targets_fn: Callable[[dict], str],
-    require_targets_for_menu_action_fn: Callable[[dict, str], bool],
-    analysis_menu_fn: Callable[[dict], None],
-    documentation_menu_fn: Callable[[dict], bool],
-    config_menu_fn: Callable[[dict], bool],
-    tools_menu_fn: Callable[[dict], None],
-    show_help_fn: Callable[[dict], None],
+    summarize_targets_fn: Callable[[ConfigDict], str],
+    require_targets_for_menu_action_fn: Callable[[ConfigDict, str], bool],
+    analysis_menu_fn: Callable[[ConfigDict], None],
+    documentation_menu_fn: Callable[[ConfigDict], bool],
+    config_menu_fn: Callable[[ConfigDict], bool],
+    tools_menu_fn: Callable[[ConfigDict], None],
+    show_help_fn: Callable[[ConfigDict], None],
     confirm_fn: Callable[[str], bool],
-    save_config_fn: Callable[[Any, dict], None],
-    config_path,
+    save_config_fn: Callable[[Path, ConfigDict], None],
+    config_path: Path,
     quit_app_fn: Callable[[], None],
 ) -> None:
     dirty = False

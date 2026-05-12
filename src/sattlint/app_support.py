@@ -3,10 +3,12 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .analyzers.icf import format_icf_file
 from .casefolding import casefold_equal, casefold_key, dedupe_casefolded_strings
+
+ConfigDict = dict[str, Any]
 
 
 class TargetLoadError(RuntimeError):
@@ -157,7 +159,7 @@ def target_validation_warnings(target_name: str, warnings: list[str]) -> list[st
     ]
 
 
-def configured_icf_files(cfg: dict) -> tuple[Path | None, list[Path]]:
+def configured_icf_files(cfg: ConfigDict) -> tuple[Path | None, list[Path]]:
     icf_dir_raw = str(cfg.get("icf_dir", "") or "").strip()
     if not icf_dir_raw:
         return None, []
@@ -171,7 +173,7 @@ def configured_icf_files(cfg: dict) -> tuple[Path | None, list[Path]]:
 
 
 def run_format_icf_command(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     check: bool,
     print_fn: Callable[..., None],
@@ -241,11 +243,14 @@ def print_menu(
         print_fn(note.strip())
 
 
-def get_analyzed_targets(cfg: dict) -> list[str]:
-    return dedupe_casefolded_strings(cfg.get("analyzed_programs_and_libraries", []))
+def get_analyzed_targets(cfg: ConfigDict) -> list[str]:
+    raw_targets = cfg.get("analyzed_programs_and_libraries", [])
+    if not isinstance(raw_targets, list):
+        return []
+    return dedupe_casefolded_strings(cast(list[str], raw_targets))
 
 
-def require_analyzed_targets(cfg: dict) -> list[str]:
+def require_analyzed_targets(cfg: ConfigDict) -> list[str]:
     targets = get_analyzed_targets(cfg)
     if not targets:
         raise RuntimeError(
@@ -254,7 +259,11 @@ def require_analyzed_targets(cfg: dict) -> list[str]:
     return targets
 
 
-def summarize_targets(cfg: dict, *, get_analyzed_targets_fn: Callable[[dict], list[str]] = get_analyzed_targets) -> str:
+def summarize_targets(
+    cfg: ConfigDict,
+    *,
+    get_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = get_analyzed_targets,
+) -> str:
     targets = get_analyzed_targets_fn(cfg)
     if not targets:
         return "No analysis targets configured yet. Open Setup first."
@@ -267,16 +276,18 @@ def summarize_targets(cfg: dict, *, get_analyzed_targets_fn: Callable[[dict], li
 
 
 def has_analyzed_targets(
-    cfg: dict, *, get_analyzed_targets_fn: Callable[[dict], list[str]] = get_analyzed_targets
+    cfg: ConfigDict,
+    *,
+    get_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = get_analyzed_targets,
 ) -> bool:
     return bool(get_analyzed_targets_fn(cfg))
 
 
 def require_targets_for_menu_action(
-    cfg: dict,
+    cfg: ConfigDict,
     action: str,
     *,
-    has_analyzed_targets_fn: Callable[[dict], bool],
+    has_analyzed_targets_fn: Callable[[ConfigDict], bool],
     print_fn: Callable[..., None],
     pause_fn: Callable[[], None],
 ) -> bool:
@@ -288,12 +299,12 @@ def require_targets_for_menu_action(
 
 
 def cache_key_for_target(
-    cfg: dict,
+    cfg: ConfigDict,
     target_name: str,
     *,
-    compute_cache_key_fn: Callable[[dict], str],
+    compute_cache_key_fn: Callable[[ConfigDict], str],
 ) -> str:
-    cache_cfg = cfg.copy()
+    cache_cfg: ConfigDict = dict(cfg)
     cache_cfg["analysis_target"] = target_name
     return compute_cache_key_fn(cache_cfg)
 
@@ -303,11 +314,11 @@ def split_csv_values(raw: str) -> list[str]:
 
 
 def show_help(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     clear_screen_fn: Callable[[], None],
-    get_analyzed_targets_fn: Callable[[dict], list[str]],
-    summarize_targets_fn: Callable[[dict], str],
+    get_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
+    summarize_targets_fn: Callable[[ConfigDict], str],
     print_fn: Callable[..., None],
     pause_fn: Callable[[], None],
 ) -> None:

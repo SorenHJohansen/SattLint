@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
@@ -14,13 +14,17 @@ from .models.project_graph import ProjectGraph
 
 emit_output = console_module.print_output  # type: ignore[assignment]
 
+ConfigDict = dict[str, Any]
+DocumentationSelection = dict[str, Any]
+LoadedProject = tuple[str, BasePicture, ProjectGraph]
+
 
 def run_validate_config_command(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     config_path: Path,
     default_used: bool,
-    self_check_fn: Callable[[dict], bool],
+    self_check_fn: Callable[[ConfigDict], bool],
     exit_success: int,
     exit_usage_error: int,
 ) -> int:
@@ -31,11 +35,11 @@ def run_validate_config_command(
 
 
 def run_analyze_command(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     selected_keys: list[str] | None,
     use_cache: bool,
-    run_checks_fn: Callable[[dict, list[str] | None, bool], None],
+    run_checks_fn: Callable[[ConfigDict, list[str] | None, bool], None],
     exit_success: int,
 ) -> int:
     run_checks_fn(cfg, selected_keys, use_cache)
@@ -43,7 +47,7 @@ def run_analyze_command(
 
 
 def run_simulate_command(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     target_path: str,
     module_name: str,
@@ -95,13 +99,13 @@ def run_simulate_command(
 
 
 def run_docgen_command(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     use_cache: bool,
     output_dir: str | None,
     output_path: str | None,
-    iter_loaded_projects_fn: Callable[[dict, bool], Iterator[tuple[str, BasePicture, ProjectGraph]]],
-    documentation_unit_selection_fn: Callable[[], dict[str, Any]],
+    iter_loaded_projects_fn: Callable[[ConfigDict, bool], Iterator[LoadedProject]],
+    documentation_unit_selection_fn: Callable[[], DocumentationSelection],
     exit_success: int,
     exit_usage_error: int,
 ) -> int:
@@ -134,7 +138,7 @@ def run_docgen_command(
             project_bp,
             str(destination),
             documentation_config=documentation_cfg,
-            unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+            unavailable_libraries=cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set()))),
         )
         emit_output(f"Generated {destination}")
 

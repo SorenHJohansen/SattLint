@@ -26,6 +26,10 @@ _PROGRAM_SUFFIXES = {".s", ".x"}
 log = logging.getLogger("SattLint")
 
 
+def _empty_semantic_diagnostics_by_path() -> dict[Path, tuple[Diagnostic, ...]]:
+    return {}
+
+
 def _path_key(path: Path) -> str:
     return path.as_posix().casefold()
 
@@ -77,7 +81,7 @@ class SnapshotBundle:
     cache_key: str
     source_files: tuple[Path, ...]
     semantic_diagnostics_by_path: dict[Path, tuple[Diagnostic, ...]] = field(
-        default_factory=dict, repr=False, compare=False
+        default_factory=_empty_semantic_diagnostics_by_path, repr=False, compare=False
     )
     semantic_diagnostics_lock: threading.RLock = field(default_factory=threading.RLock, repr=False, compare=False)
 

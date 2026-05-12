@@ -9,12 +9,14 @@ import argparse
 import logging
 import re
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import Cell
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -24,6 +26,35 @@ from openpyxl.worksheet.worksheet import Worksheet
 from sattline_parser.api import read_text_with_fallback
 
 log = logging.getLogger("SattLint")
+
+
+class ProgramConfigEntry(TypedDict):
+    name: str
+    directory: str
+    main_program: bool
+
+
+class LibraryConfigEntry(TypedDict):
+    name: str
+    directory: str
+
+
+class ConfigurationContents(TypedDict):
+    programs: list[str]
+    libraries: list[str]
+
+
+class StationConfiguration(TypedDict):
+    config_file: str
+    type: str
+    programs: list[str]
+    libraries: list[str]
+    units: str | None
+    ip_address: str | None
+    slc: str | None
+
+
+type DependencyRow = tuple[str, str]
 
 
 @dataclass
@@ -46,8 +77,8 @@ class ConfigurationFileInfo:
     version: str
     date: str
     main_program: str  # Original case preserved.
-    programs: list[dict]  # Names in original case.
-    libraries: list[dict]  # Names in original case.
+    programs: list[ProgramConfigEntry]  # Names in original case.
+    libraries: list[LibraryConfigEntry]  # Names in original case.
 
 
 class ExcelConfig:
@@ -91,7 +122,7 @@ class ConfigurationFileParser:
             config_name = config_file.stem  # This gets filename without extension
 
             # Extract all programs (remove .z extension if present, keep original case)
-            programs = []
+            programs: list[ProgramConfigEntry] = []
             for match in self.program_pattern.finditer(text):
                 program_name_raw = match.group(1)
                 # Only remove .z extension if it exists
@@ -103,7 +134,7 @@ class ConfigurationFileParser:
                 programs.append({"name": program_name, "directory": directory, "main_program": main_program})
 
             # Extract all libraries (remove .z extension if present, keep original case)
-            libraries = []
+            libraries: list[LibraryConfigEntry] = []
             for match in self.library_pattern.finditer(text):
                 library_name_raw = match.group(1)
                 # Only remove .z extension if it exists
@@ -405,7 +436,7 @@ class StyleManager:
             bottom=Side(style="thin", color="000000"),
         )
 
-    def apply_header_style(self, cell):
+    def apply_header_style(self, cell: Cell) -> None:
         """Apply header styling to a cell."""
         cell.font = self.header_font
         cell.fill = self.header_fill
@@ -511,7 +542,7 @@ class ExcelGenerator:
     def _collect_slc_programs(self) -> dict[str, str]:
         """Collect SLC programs for IP mapping (preserve original case)."""
         log.info("📡 Collecting SLC programs...")
-        slc_programs = {}
+        slc_programs: dict[str, str] = {}
 
         for z_file in self.extractor.get_z_files(self.extractor.unitlib_dir):
             file_stem = z_file.stem  # Preserve original case
@@ -522,7 +553,7 @@ class ExcelGenerator:
         log.info(f"✓ Found {len(slc_programs)} SLC programs")
         return slc_programs
 
-    def _process_all_components(self, slc_programs: dict[str, str]) -> tuple[list[ComponentInfo], list[tuple]]:
+    def _process_all_components(self, slc_programs: dict[str, str]) -> tuple[list[ComponentInfo], list[DependencyRow]]:
         """Process all components and their dependencies."""
         sections = [
             ("Program", self.extractor.unitlib_dir, True),
@@ -531,8 +562,8 @@ class ExcelGenerator:
             ("SG Library", self.extractor.sglib_dir, False),
         ]
 
-        component_data = []
-        dependency_data = []
+        component_data: list[ComponentInfo] = []
+        dependency_data: list[DependencyRow] = []
 
         for component_type, directory, has_ip in sections:
             log.info(f"📦 Processing {component_type}s from {directory.name}...")
@@ -566,13 +597,13 @@ class ExcelGenerator:
 
         return len(component_data) + 1
 
-    def _populate_dependencies_sheet(self, dependency_data: list[tuple]) -> int:
+    def _populate_dependencies_sheet(self, dependency_data: list[DependencyRow]) -> int:
         """Populate Library Dependencies worksheet."""
         headers = ["Dependency_ID", "Component_ID", "Component_Type", "Library_Name", "Library_Type"]
         WorksheetHelper.setup_headers(self.dependencies_ws, headers, self.style_manager)
 
         # Build component type lookup for faster access (case-insensitive key, original name as value)
-        component_type_map = {}
+        component_type_map: dict[str, str] = {}
         for comp_data in self.all_component_data:
             component_type_map[comp_data.name.lower()] = comp_data.type
 
@@ -692,11 +723,12 @@ class ExcelGenerator:
 
         log.info(f"✓ Station Configuration sheet created with {current_row - header_row - 1} stations")
 
-    def _aggregate_slc_numbers(self, config: dict, component_data: list[ComponentInfo]) -> str:
+    def _aggregate_slc_numbers(self, config: Mapping[str, object], component_data: list[ComponentInfo]) -> str:
         """Aggregate unique SLC numbers from all programs in the configuration (case-insensitive matching)."""
-        slc_set = set()
+        slc_set: set[str] = set()
+        programs = cast(list[str], config["programs"])
 
-        for program_name in config["programs"]:
+        for program_name in programs:
             # Case-insensitive comparison
             comp = next((c for c in component_data if c.name.lower() == program_name.lower()), None)
             if comp and comp.slc and comp.slc not in ["N/A", "No SLC"]:
@@ -707,11 +739,12 @@ class ExcelGenerator:
 
         return ", ".join(sorted(slc_set))
 
-    def _aggregate_units(self, config: dict, component_data: list[ComponentInfo]) -> str:
+    def _aggregate_units(self, config: Mapping[str, object], component_data: list[ComponentInfo]) -> str:
         """Aggregate unique units from all programs in the configuration (case-insensitive matching)."""
-        units_set = set()
+        units_set: set[str] = set()
+        programs = cast(list[str], config["programs"])
 
-        for program_name in config["programs"]:
+        for program_name in programs:
             # Case-insensitive comparison
             comp = next((c for c in component_data if c.name.lower() == program_name.lower()), None)
             if comp and comp.units:
@@ -741,9 +774,9 @@ class ExcelGenerator:
 
         return units_text
 
-    def _build_station_configurations(self, component_data: list[ComponentInfo]) -> dict[str, dict[str, Any]]:
+    def _build_station_configurations(self, component_data: list[ComponentInfo]) -> dict[str, StationConfiguration]:
         """Build comprehensive configuration data for each station (case-insensitive matching)."""
-        station_configs = {}
+        station_configs: dict[str, StationConfiguration] = {}
 
         # Initialize stations from mapper
         for config_file, workstations in self.workstation_mapper.workstation_map.items():
@@ -763,7 +796,7 @@ class ExcelGenerator:
 
         # Parse configuration files to get programs/libraries for each config
         configurations = self.extractor.parse_all_configuration_files()
-        config_contents = {}
+        config_contents: dict[str, ConfigurationContents] = {}
 
         for config in configurations:
             # Store with original case name, but create lowercase key for lookup
@@ -781,7 +814,7 @@ class ExcelGenerator:
                 station_config["libraries"] = config_contents[config_file_lower]["libraries"].copy()
 
                 # Add transitive dependencies
-                additional_libraries = set()
+                additional_libraries: set[str] = set()
                 for program_name in station_config["programs"]:
                     # Case-insensitive comparison
                     comp = next((c for c in component_data if c.name.lower() == program_name.lower()), None)
@@ -987,13 +1020,13 @@ class ExcelGenerator:
             ws[f"A{row}"].alignment = Alignment(horizontal="right")
 
             ws.merge_cells(f"B{row}:D{row}")
-            sel_cell = ws[f"B{row}"]
+            sel_cell = cast(Cell, ws[f"B{row}"])
             sel_cell.fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
             sel_cell.border = self.style_manager.border
 
             # Data validation
             dv = DataValidation(type="list", formula1="'System Components'!$B$2:$B$1000", allow_blank=True)
-            dv.add(sel_cell)
+            cast(Any, dv).add(sel_cell)
             ws.add_data_validation(dv)
 
             # Show component type
@@ -1058,7 +1091,7 @@ class ExcelGenerator:
             lookup_row += 1
 
         # Create formula that concatenates unique workstations using TEXTJOIN and VLOOKUPs
-        vlookup_formulas = []
+        vlookup_formulas: list[str] = []
         for i in range(10):
             row_ref = 7 + i
             # Case-insensitive VLOOKUP - match against exact values in lookup table

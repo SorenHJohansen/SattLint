@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TypeGuard
+
 from lark import Tree
 
 from sattline_parser.models.ast_model import (
@@ -32,7 +34,7 @@ from .resolution.type_graph import TypeGraph
 _EQUALITY_COMPARISON_OPERATORS = {"==", "=", "!=", "<>"}
 
 
-def _is_variable_ref_node(node: object) -> bool:
+def _is_variable_ref_node(node: object) -> TypeGuard[dict[str, object]]:
     return isinstance(node, dict) and const.KEY_VAR_NAME in node
 
 
@@ -408,3 +410,10 @@ def _validate_builtin_call_types(
 
         for item in node:
             _validate_builtin_call_types(item, env, type_graph, context)
+
+
+infer_expression_datatype = _infer_expression_datatype
+is_variable_ref_node = _is_variable_ref_node
+validate_builtin_call_types = _validate_builtin_call_types
+validate_expression_semantics = _validate_expression_semantics
+validate_no_string_literals_in_calls = _validate_no_string_literals_in_calls

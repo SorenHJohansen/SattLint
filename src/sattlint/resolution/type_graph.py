@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture, Simple_DataType, Variable
 
@@ -36,17 +37,21 @@ class TypeGraph:
         self._records_by_key = records_by_key
 
     @classmethod
-    def from_datatypes(cls, datatypes: Iterable) -> TypeGraph:
+    def from_datatypes(cls, datatypes: Iterable[object]) -> TypeGraph:
         records: dict[str, RecordDef] = {}
         for dt in datatypes or []:
+            datatype = cast(Any, dt)
+            datatype_name = cast(str, datatype.name)
             fields: dict[str, FieldDef] = {}
-            for v in dt.var_list or []:
-                fields[_cf(v.name)] = FieldDef(
-                    name=v.name,
-                    datatype=v.datatype,
-                    state=v.state,
+            for v in cast(Iterable[object], datatype.var_list or ()):
+                field = cast(Any, v)
+                field_name = cast(str, field.name)
+                fields[_cf(field_name)] = FieldDef(
+                    name=field_name,
+                    datatype=cast(Simple_DataType | str, field.datatype),
+                    state=cast(bool | None, field.state),
                 )
-            records[_cf(dt.name)] = RecordDef(name=dt.name, fields_by_key=fields)
+            records[_cf(datatype_name)] = RecordDef(name=datatype_name, fields_by_key=fields)
         return cls(records)
 
     @classmethod

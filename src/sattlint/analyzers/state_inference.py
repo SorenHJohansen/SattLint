@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
-from ._dataflow_common import _OLD_PREFIX, _is_scalar_value
+from ._dataflow_common import OLD_PREFIX, StateMap, is_scalar_value
 from .dataflow import DataflowAnalyzer
 from .framework import Issue
 
@@ -14,13 +15,13 @@ def _build_state_inference_summary(analyzer: DataflowAnalyzer) -> dict[str, Any]
     boolean_states: list[dict[str, Any]] = []
     numeric_ranges: list[dict[str, Any]] = []
     string_states: list[dict[str, Any]] = []
+    final_root_state = cast(StateMap, analyzer._final_root_state)
+    is_pending_state_key = cast(Callable[[tuple[str, ...]], bool], analyzer._is_pending_state_key)
 
     current_scalars = {
         key: value
-        for key, value in analyzer._final_root_state.items()
-        if not analyzer._is_pending_state_key(key)
-        and key[: len(_OLD_PREFIX)] != _OLD_PREFIX
-        and _is_scalar_value(value)
+        for key, value in final_root_state.items()
+        if not is_pending_state_key(key) and key[: len(OLD_PREFIX)] != OLD_PREFIX and is_scalar_value(value)
     }
     for key, value in sorted(current_scalars.items()):
         path = ".".join(key)

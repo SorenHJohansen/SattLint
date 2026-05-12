@@ -6,6 +6,7 @@ import re
 from collections.abc import Callable, Iterator
 from collections.abc import Sequence as AbcSequence
 from dataclasses import dataclass
+from typing import Any, cast
 
 from lark import Tree
 
@@ -33,11 +34,19 @@ from sattline_parser.models.ast_model import (
 )
 
 from ._validation_expression import (
-    _infer_expression_datatype,
-    _is_variable_ref_node,
-    _validate_builtin_call_types,
-    _validate_expression_semantics,
-    _validate_no_string_literals_in_calls,
+    infer_expression_datatype as _infer_expression_datatype,
+)
+from ._validation_expression import (
+    is_variable_ref_node as _is_variable_ref_node,
+)
+from ._validation_expression import (
+    validate_builtin_call_types as _validate_builtin_call_types,
+)
+from ._validation_expression import (
+    validate_expression_semantics as _validate_expression_semantics,
+)
+from ._validation_expression import (
+    validate_no_string_literals_in_calls as _validate_no_string_literals_in_calls,
 )
 from ._validation_shared import (
     RawSourceValidationError,
@@ -47,22 +56,52 @@ from ._validation_shared import (
     _warn_or_raise,
 )
 from ._validation_type_helpers import (
-    _BUILTIN_DATATYPE_NAMES,
-    _assignment_type_matches,
-    _extract_time_literal,
-    _format_datatype,
-    _has_time_literal_marker,
-    _infer_literal_datatype,
-    _is_anytype_datatype,
-    _is_string_simple_type,
-    _is_valid_duration_literal,
-    _is_valid_time_literal,
-    _literal_matches_expected_datatype,
-    _resolve_ref_datatype,
-    _resolve_root_variable,
-    _resolve_variable_field_datatype,
-    _split_dotted_name,
-    _suggest_datatype_name,
+    BUILTIN_DATATYPE_NAMES as _BUILTIN_DATATYPE_NAMES,
+)
+from ._validation_type_helpers import (
+    assignment_type_matches as _assignment_type_matches,
+)
+from ._validation_type_helpers import (
+    extract_time_literal as _extract_time_literal,
+)
+from ._validation_type_helpers import (
+    format_datatype as _format_datatype,
+)
+from ._validation_type_helpers import (
+    has_time_literal_marker as _has_time_literal_marker,
+)
+from ._validation_type_helpers import (
+    infer_literal_datatype as _infer_literal_datatype,
+)
+from ._validation_type_helpers import (
+    is_anytype_datatype as _is_anytype_datatype,
+)
+from ._validation_type_helpers import (
+    is_string_simple_type as _is_string_simple_type,
+)
+from ._validation_type_helpers import (
+    is_valid_duration_literal as _is_valid_duration_literal,
+)
+from ._validation_type_helpers import (
+    is_valid_time_literal as _is_valid_time_literal,
+)
+from ._validation_type_helpers import (
+    literal_matches_expected_datatype as _literal_matches_expected_datatype,
+)
+from ._validation_type_helpers import (
+    resolve_ref_datatype as _resolve_ref_datatype,
+)
+from ._validation_type_helpers import (
+    resolve_root_variable as _resolve_root_variable,
+)
+from ._validation_type_helpers import (
+    resolve_variable_field_datatype as _resolve_variable_field_datatype,
+)
+from ._validation_type_helpers import (
+    split_dotted_name as _split_dotted_name,
+)
+from ._validation_type_helpers import (
+    suggest_datatype_name as _suggest_datatype_name,
 )
 from .grammar import constants as const
 from .resolution.type_graph import TypeGraph
@@ -85,6 +124,8 @@ _ALLOWED_IDENTIFIER_KEYWORDS = frozenset(
         const.GRAMMAR_VALUE_NEWWINDOW.casefold(),
     }
 )
+
+type VariableRef = dict[str, object]
 
 
 def _build_reserved_identifier_keywords() -> frozenset[str]:
@@ -296,14 +337,12 @@ def _iter_sequence_node_refs(nodes: list[object]) -> AbcSequence[dict[str, objec
             for statements in (node.code.enter, node.code.active, node.code.exit):
                 for statement in statements or []:
                     for ref in _iter_variable_refs(statement):
-                        if isinstance(ref, dict):
-                            refs.append(ref)
+                        refs.append(ref)
             continue
 
         if isinstance(node, SFCTransition):
             for ref in _iter_variable_refs(node.condition):
-                if isinstance(ref, dict):
-                    refs.append(ref)
+                refs.append(ref)
 
     return refs
 
@@ -321,7 +360,7 @@ def _validate_step_auto_variable_refs(
     known_sequences: dict[str, str] = {}
     available_sequence_features: dict[str, set[str]] = {}
 
-    for sequence in modulecode.sequences or []:
+    for sequence in cast(list[object], modulecode.sequences or []):
         if not isinstance(sequence, Sequence):
             continue
         _collect_sequence_scope_features(
@@ -341,15 +380,16 @@ def _validate_step_auto_variable_refs(
         return
 
     refs: list[dict[str, object]] = []
-    for equation in modulecode.equations or []:
-        if isinstance(equation, Equation):
-            for statement in equation.code or []:
-                for ref in _iter_variable_refs(statement):
-                    if isinstance(ref, dict):
-                        refs.append(ref)
-    for sequence in modulecode.sequences or []:
-        if isinstance(sequence, Sequence):
-            refs.extend(_iter_sequence_node_refs(sequence.code or []))
+    for equation in cast(list[object], modulecode.equations or []):
+        if not isinstance(equation, Equation):
+            continue
+        for statement in equation.code or []:
+            for ref in _iter_variable_refs(statement):
+                refs.append(ref)
+    for sequence in cast(list[object], modulecode.sequences or []):
+        if not isinstance(sequence, Sequence):
+            continue
+        refs.extend(_iter_sequence_node_refs(sequence.code or []))
 
     for ref in refs:
         full_name = ref.get(const.KEY_VAR_NAME)
@@ -429,23 +469,23 @@ def _parallel_branch_trailer(node: object) -> str | None:
     return None
 
 
-def _iter_variable_refs(node: object):
-    if isinstance(node, dict) and const.KEY_VAR_NAME in node:
+def _iter_variable_refs(node: object) -> Iterator[VariableRef]:
+    if _is_variable_ref_node(node):
         yield node
         return
 
     if isinstance(node, Tree):
-        for child in node.children:
+        for child in cast(list[object], cast(Any, node).children):
             yield from _iter_variable_refs(child)
         return
 
     if isinstance(node, tuple):
-        for item in node:
+        for item in cast(tuple[object, ...], node):
             yield from _iter_variable_refs(item)
         return
 
     if isinstance(node, list):
-        for item in node:
+        for item in cast(list[object], node):
             yield from _iter_variable_refs(item)
 
 
@@ -457,7 +497,7 @@ def _validate_variable_refs(
 ) -> None:
     for ref in _iter_variable_refs(node):
         state = ref.get("state")
-        if not state:
+        if not isinstance(state, str) or not state:
             continue
 
         full_name = ref[const.KEY_VAR_NAME]
@@ -497,59 +537,62 @@ def _validate_statement_list(
 ) -> None:
     for statement in statements:
         _validate_expression_semantics(statement, env, type_graph, context)
-        if (
-            isinstance(statement, tuple)
-            and len(statement) == 3
-            and statement[0] == const.KEY_ASSIGN
-            and _is_variable_ref_node(statement[1])
-        ):
-            target_ref = statement[1]
-            target_name = str(target_ref.get(const.KEY_VAR_NAME, "<unknown>"))
-            target_state = target_ref.get("state")
+        if isinstance(statement, tuple):
+            tuple_statement = cast(tuple[object, ...], statement)
             if (
-                not allow_old_state_assignment
-                and isinstance(target_state, str)
-                and target_state.casefold() == const.GRAMMAR_VALUE_OLD.casefold()
+                len(tuple_statement) == 3
+                and tuple_statement[0] == const.KEY_ASSIGN
+                and _is_variable_ref_node(tuple_statement[1])
             ):
-                raise StructuralValidationError(
-                    f"{context} assignment target {target_name!r} must not use OLD state access",
-                    **_span_kwargs(_ref_span(target_ref)),
-                    length=max(len(target_name), 1),
-                )
-            variable = _resolve_root_variable(statement[1], env)
-            if variable is not None and variable.const:
-                raise StructuralValidationError(
-                    f"{context} assignment writes to CONST variable {variable.name!r}",
-                    **_span_kwargs(_ref_span(statement[1])),
-                )
-            if variable is not None and _is_string_simple_type(variable.datatype):
-                raise StructuralValidationError(
-                    f"{context} assignment to string variable {variable.name!r} is not allowed;"
-                    " use CopyString() or CopyVar() to copy strings",
-                    **_span_kwargs(_ref_span(statement[1])),
-                )
-            target_datatype = _resolve_ref_datatype(statement[1], env, type_graph)
-            actual_datatype = _infer_expression_datatype(statement[2], env, type_graph)
-            if (
-                target_datatype is not None
-                and actual_datatype is not None
-                and not _assignment_type_matches(actual_datatype, target_datatype)
-            ):
-                source_description = "expression"
-                if isinstance(statement[2], dict) and const.KEY_VAR_NAME in statement[2]:
-                    source_description = str(statement[2][const.KEY_VAR_NAME])
-                raise StructuralValidationError(
-                    f"{context} assigns {source_description!r} with datatype {_format_datatype(actual_datatype)!r} "
-                    f"to target {str(statement[1][const.KEY_VAR_NAME])!r} with datatype {_format_datatype(target_datatype)!r}",
-                    **_span_kwargs(_ref_span(statement[1])),
-                )
-        _validate_variable_refs(statement, env, type_graph, context)
-        _validate_no_string_literals_in_calls(statement, context)
-        _validate_builtin_call_types(statement, env, type_graph, context)
+                assign_statement = cast(tuple[str, VariableRef, object], tuple_statement)
+                target_ref = assign_statement[1]
+                target_name = str(target_ref.get(const.KEY_VAR_NAME, "<unknown>"))
+                target_state = target_ref.get("state")
+                if (
+                    not allow_old_state_assignment
+                    and isinstance(target_state, str)
+                    and target_state.casefold() == const.GRAMMAR_VALUE_OLD.casefold()
+                ):
+                    raise StructuralValidationError(
+                        f"{context} assignment target {target_name!r} must not use OLD state access",
+                        **_span_kwargs(_ref_span(target_ref)),
+                        length=max(len(target_name), 1),
+                    )
+                variable = _resolve_root_variable(target_ref, env)
+                if variable is not None and variable.const:
+                    raise StructuralValidationError(
+                        f"{context} assignment writes to CONST variable {variable.name!r}",
+                        **_span_kwargs(_ref_span(target_ref)),
+                    )
+                if variable is not None and _is_string_simple_type(variable.datatype):
+                    raise StructuralValidationError(
+                        f"{context} assignment to string variable {variable.name!r} is not allowed;"
+                        " use CopyString() or CopyVar() to copy strings",
+                        **_span_kwargs(_ref_span(target_ref)),
+                    )
+                target_datatype = _resolve_ref_datatype(target_ref, env, type_graph)
+                actual_datatype = _infer_expression_datatype(assign_statement[2], env, type_graph)
+                if (
+                    target_datatype is not None
+                    and actual_datatype is not None
+                    and not _assignment_type_matches(actual_datatype, target_datatype)
+                ):
+                    source_description = "expression"
+                    if _is_variable_ref_node(assign_statement[2]):
+                        source_description = str(assign_statement[2][const.KEY_VAR_NAME])
+                    raise StructuralValidationError(
+                        f"{context} assigns {source_description!r} with datatype {_format_datatype(actual_datatype)!r} "
+                        f"to target {str(target_ref[const.KEY_VAR_NAME])!r} with datatype {_format_datatype(target_datatype)!r}",
+                        **_span_kwargs(_ref_span(target_ref)),
+                    )
+        statement_node = cast(object, statement)
+        _validate_variable_refs(statement_node, env, type_graph, context)
+        _validate_no_string_literals_in_calls(statement_node, context)
+        _validate_builtin_call_types(statement_node, env, type_graph, context)
 
 
 def _validate_code_blocks(
-    code,
+    code: Any,
     env: dict[str, Variable],
     type_graph: TypeGraph,
     context: str,
@@ -758,45 +801,48 @@ def _validate_module_code(
 
     _validate_step_auto_variable_refs(modulecode, env, context)
 
-    for equation in modulecode.equations or []:
-        if isinstance(equation, Equation):
-            _validate_identifier(equation.name, f"{context} equation")
-            _validate_statement_list(
-                equation.code or [],
-                env,
-                type_graph,
-                f"{context} equation {equation.name!r}",
-                allow_old_state_assignment=allow_old_state_assignment,
-            )
+    for equation in cast(list[object], modulecode.equations or []):
+        if not isinstance(equation, Equation):
+            continue
+        _validate_identifier(equation.name, f"{context} equation")
+        _validate_statement_list(
+            equation.code or [],
+            env,
+            type_graph,
+            f"{context} equation {equation.name!r}",
+            allow_old_state_assignment=allow_old_state_assignment,
+        )
 
     module_label_set: set[str] = set()
     module_label_counts: dict[str, int] = {}
-    for sequence in modulecode.sequences or []:
-        if isinstance(sequence, Sequence):
-            _collect_label_names(sequence.code or [], module_label_set)
-            _collect_sequence_label_counts(sequence.code or [], module_label_counts)
+    for sequence in cast(list[object], modulecode.sequences or []):
+        if not isinstance(sequence, Sequence):
+            continue
+        _collect_label_names(sequence.code or [], module_label_set)
+        _collect_sequence_label_counts(sequence.code or [], module_label_counts)
     module_labels = frozenset(module_label_set)
 
-    for sequence in modulecode.sequences or []:
-        if isinstance(sequence, Sequence):
-            _validate_identifier(sequence.name, f"{context} sequence")
-            labels: dict[str, str] = {}
-            label_counts: dict[str, int] = {}
-            _collect_sequence_labels(sequence.code or [], labels, f"{context} sequence {sequence.name!r}")
-            _collect_sequence_label_counts(sequence.code or [], label_counts)
-            _validate_sequence_nodes(
-                sequence.code or [],
-                f"{context} sequence {sequence.name!r}",
-                labels=labels,
-                label_counts=label_counts,
-                module_labels=module_labels,
-                module_label_counts=module_label_counts,
-                env=env,
-                type_graph=type_graph,
-                require_init_step=True,
-                warning_sink=warning_sink,
-                allow_old_state_assignment=allow_old_state_assignment,
-            )
+    for sequence in cast(list[object], modulecode.sequences or []):
+        if not isinstance(sequence, Sequence):
+            continue
+        _validate_identifier(sequence.name, f"{context} sequence")
+        labels: dict[str, str] = {}
+        label_counts: dict[str, int] = {}
+        _collect_sequence_labels(sequence.code or [], labels, f"{context} sequence {sequence.name!r}")
+        _collect_sequence_label_counts(sequence.code or [], label_counts)
+        _validate_sequence_nodes(
+            sequence.code or [],
+            f"{context} sequence {sequence.name!r}",
+            labels=labels,
+            label_counts=label_counts,
+            module_labels=module_labels,
+            module_label_counts=module_label_counts,
+            env=env,
+            type_graph=type_graph,
+            require_init_step=True,
+            warning_sink=warning_sink,
+            allow_old_state_assignment=allow_old_state_assignment,
+        )
 
 
 def _validate_variable_list(
@@ -892,13 +938,10 @@ def _validate_parameter_mappings(
         if not hasattr(mapping, "target"):
             continue
 
-        target = mapping.target
-        target_name = (
-            str(target.get(const.KEY_VAR_NAME))
-            if isinstance(target, dict) and const.KEY_VAR_NAME in target
-            else str(target)
-        )
-        target_span = _ref_span(target)
+        target = cast(VariableRef | str | None, getattr(mapping, "target", None))
+        target_ref = target if _is_variable_ref_node(target) else None
+        target_name = str(target_ref.get(const.KEY_VAR_NAME)) if target_ref is not None else str(target)
+        target_span = _ref_span(target_ref if target_ref is not None else (target if isinstance(target, str) else None))
         target_key = target_name.casefold()
         if target_key in seen:
             raise StructuralValidationError(
@@ -940,7 +983,7 @@ def _validate_parameter_mappings(
         actual_datatype: Simple_DataType | str | None = None
         source_description: str | None = None
         source_literal = getattr(mapping, "source_literal", None)
-        source = getattr(mapping, "source", None)
+        source = cast(object, getattr(mapping, "source", None))
         if source_literal is not None:
             if bool(getattr(mapping, "is_duration", False)) and not _is_valid_duration_literal(source_literal):
                 raise StructuralValidationError(
@@ -959,7 +1002,7 @@ def _validate_parameter_mappings(
                 is_duration=bool(getattr(mapping, "is_duration", False)),
             )
             source_description = repr(source_literal)
-        elif isinstance(source, dict) and source_env is not None:
+        elif _is_variable_ref_node(source) and source_env is not None:
             actual_datatype = _resolve_ref_datatype(source, source_env, type_graph)
             source_description = str(source.get(const.KEY_VAR_NAME))
 
@@ -1167,52 +1210,53 @@ def validate_transformed_basepicture(
 
     base_env = _merge_env({}, basepic.localvariables)
 
-    for moduletype in basepic.moduletype_defs or []:
-        if isinstance(moduletype, ModuleTypeDef):
-            _validate_identifier(moduletype.name, "BasePicture moduletype")
-            moduletype_context = f"BasePicture moduletype {moduletype.name!r}"
-            _validate_variable_list(
-                moduletype.moduleparameters,
-                moduletype_context,
-                type_graph=type_graph,
-                known_datatypes=known_datatypes,
-                allow_unresolved_external_datatypes=allow_unresolved_external_datatypes,
-                is_parameter=True,
-            )
-            _validate_variable_list(
-                moduletype.localvariables,
-                moduletype_context,
-                type_graph=type_graph,
-                known_datatypes=known_datatypes,
-                allow_unresolved_external_datatypes=allow_unresolved_external_datatypes,
-            )
-            env = _merge_env(base_env, moduletype.moduleparameters)
-            env = _merge_env(env, moduletype.localvariables)
-            _validate_module_code(
-                moduletype.modulecode,
+    for moduletype in cast(list[object], basepic.moduletype_defs or []):
+        if not isinstance(moduletype, ModuleTypeDef):
+            continue
+        _validate_identifier(moduletype.name, "BasePicture moduletype")
+        moduletype_context = f"BasePicture moduletype {moduletype.name!r}"
+        _validate_variable_list(
+            moduletype.moduleparameters,
+            moduletype_context,
+            type_graph=type_graph,
+            known_datatypes=known_datatypes,
+            allow_unresolved_external_datatypes=allow_unresolved_external_datatypes,
+            is_parameter=True,
+        )
+        _validate_variable_list(
+            moduletype.localvariables,
+            moduletype_context,
+            type_graph=type_graph,
+            known_datatypes=known_datatypes,
+            allow_unresolved_external_datatypes=allow_unresolved_external_datatypes,
+        )
+        env = _merge_env(base_env, moduletype.moduleparameters)
+        env = _merge_env(env, moduletype.localvariables)
+        _validate_module_code(
+            moduletype.modulecode,
+            moduletype_context,
+            env,
+            type_graph,
+            warning_sink=policy.warning_sink,
+            allow_old_state_assignment=policy.allow_old_state_assignment,
+        )
+        _validate_unique_submodule_names(
+            moduletype.submodules,
+            moduletype_context,
+            enforce_unique_names=enforce_unique_submodule_names,
+        )
+        for submodule in moduletype.submodules or []:
+            _validate_module(
+                submodule,
                 moduletype_context,
                 env,
                 type_graph,
-                warning_sink=policy.warning_sink,
-                allow_old_state_assignment=policy.allow_old_state_assignment,
+                known_datatypes,
+                moduletype_index,
+                allow_unresolved_external_datatypes,
+                enforce_unique_submodule_names,
+                policy=policy,
             )
-            _validate_unique_submodule_names(
-                moduletype.submodules,
-                moduletype_context,
-                enforce_unique_names=enforce_unique_submodule_names,
-            )
-            for submodule in moduletype.submodules or []:
-                _validate_module(
-                    submodule,
-                    moduletype_context,
-                    env,
-                    type_graph,
-                    known_datatypes,
-                    moduletype_index,
-                    allow_unresolved_external_datatypes,
-                    enforce_unique_submodule_names,
-                    policy=policy,
-                )
 
     _validate_module_code(
         basepic.modulecode,

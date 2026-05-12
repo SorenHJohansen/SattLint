@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TypeGuard
+from typing import Any, TypeGuard, cast
 
 from lsprotocol.types import (
     CompletionItem as LspCompletionItem,
@@ -196,8 +196,10 @@ def _validated_change_request(params: Any) -> tuple[str, int, list[Any]] | None:
         return None
     if content_changes is None:
         normalized_changes: list[Any] = []
-    elif isinstance(content_changes, list | tuple):
-        normalized_changes = list(content_changes)
+    elif isinstance(content_changes, list):
+        normalized_changes = cast(list[Any], content_changes)
+    elif isinstance(content_changes, tuple):
+        normalized_changes = list(cast(tuple[Any, ...], content_changes))
     else:
         return None
     return uri, version, normalized_changes
@@ -227,22 +229,23 @@ class LspSettings:
 
     @classmethod
     def from_initialization_options(cls, data: Any) -> LspSettings:
-        if not isinstance(data, dict):
+        if not isinstance(data, Mapping):
             return cls()
-        raw_entry = str(data.get("entryFile", "")).strip()
-        raw_mode = str(data.get("mode", CodeMode.DRAFT.value)).strip().lower() or CodeMode.DRAFT.value
-        raw_limit = data.get("maxCompletionItems", _DEFAULT_MAX_COMPLETION_ITEMS)
+        settings_data = cast(Mapping[str, object], data)
+        raw_entry = str(settings_data.get("entryFile", "")).strip()
+        raw_mode = str(settings_data.get("mode", CodeMode.DRAFT.value)).strip().lower() or CodeMode.DRAFT.value
+        raw_limit = settings_data.get("maxCompletionItems", _DEFAULT_MAX_COMPLETION_ITEMS)
         try:
-            limit = max(1, int(raw_limit))
+            limit = max(1, int(cast(Any, raw_limit)))
         except (TypeError, ValueError):
             limit = _DEFAULT_MAX_COMPLETION_ITEMS
         return cls(
             entry_file=raw_entry or None,
             mode=raw_mode,
-            scan_root_only=bool(data.get("scanRootOnly", False)),
-            enable_variable_diagnostics=bool(data.get("enableVariableDiagnostics", True)),
+            scan_root_only=bool(settings_data.get("scanRootOnly", False)),
+            enable_variable_diagnostics=bool(settings_data.get("enableVariableDiagnostics", True)),
             workspace_diagnostics_mode=_normalize_workspace_diagnostics_mode(
-                data.get("workspaceDiagnosticsMode", "off")
+                settings_data.get("workspaceDiagnosticsMode", "off")
             ),
             max_completion_items=limit,
         )
@@ -821,3 +824,37 @@ def _build_hover(definition: SymbolDefinition) -> Hover | None:
     if definition.display_module_path:
         lines.append(f"Scope: {' -> '.join(definition.display_module_path)}")
     return Hover(contents=MarkupContent(kind=MarkupKind.Markdown, value="\n\n".join(lines)))
+
+
+DEFAULT_LOCAL_PARSER = _DEFAULT_LOCAL_PARSER
+INTERACTIVE_SNAPSHOT_WAIT_S = _INTERACTIVE_SNAPSHOT_WAIT_S
+DIAGNOSTIC_SNAPSHOT_WAIT_S = _DIAGNOSTIC_SNAPSHOT_WAIT_S
+RECOVERABLE_LSP_EXCEPTIONS = _RECOVERABLE_LSP_EXCEPTIONS
+append_workspace_edit = _append_workspace_edit
+build_hover = _build_hover
+collect_reference_matches = _collect_reference_matches
+definition_locations_from_candidates = _definition_locations_from_candidates
+definition_uri = _definition_uri
+diagnostic_from_message = _diagnostic_from_message
+diagnostic_signature = _diagnostic_signature
+document_path = _document_path
+document_uri_for_path = _document_uri_for_path
+is_diagnostic_path = _is_diagnostic_path
+is_program_path = _is_program_path
+local_definition_candidates = _local_definition_candidates
+merge_completion_items = _merge_completion_items
+merge_locations = _merge_locations
+merge_unique_diagnostics = _merge_unique_diagnostics
+overlay_definition_candidates = _overlay_definition_candidates
+range_for_definition = _range_for_definition
+range_from_position = _range_from_position
+reference_locations_from_matches = _reference_locations_from_matches
+resolve_reference_path = _resolve_reference_path
+root_workspace_failure_message = _root_workspace_failure_message
+semantic_diagnostics_for_path = _semantic_diagnostics_for_path
+validate_rename_target = _validate_rename_target
+validated_change_request = _validated_change_request
+validated_open_request = _validated_open_request
+validated_rename_request = _validated_rename_request
+validated_text_document_position = _validated_text_document_position
+validated_text_document_uri = _validated_text_document_uri

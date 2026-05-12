@@ -158,6 +158,12 @@ strict = [
     "src/sattlint/__version__.py",
     "src/sattlint/app.py",
     "src/sattlint/app_analysis.py",
+    "src/sattlint/app_base.py",
+    "src/sattlint/app_cli_commands.py",
+    "src/sattlint/app_docs.py",
+    "src/sattlint/app_graphics.py",
+    "src/sattlint/app_menus.py",
+    "src/sattlint/app_support.py",
     "src/sattlint/analyzers/__init__.py",
     "src/sattlint/analyzers/dataflow.py",
     "src/sattlint/analyzers/comment_code.py",
@@ -260,8 +266,11 @@ strict = [
     "src/sattlint/validation.py",
     "src/sattlint_lsp/__init__.py",
     "src/sattlint_lsp/_server_document.py",
+    "src/sattlint_lsp/_server_helpers.py",
     "src/sattlint_lsp/document_state.py",
     "src/sattlint_lsp/local_parser.py",
+    "src/sattlint_lsp/server.py",
+    "src/sattlint_lsp/workspace_store.py",
 ]
 
 [tool.sattlint.typing_ratchet]
@@ -292,12 +301,6 @@ debt_allowlist = [
     "src/sattlint/analyzers/scan_loop_resource_usage.py",
     "src/sattlint/analyzers/sfc.py",
     "src/sattlint/analyzers/validators.py",
-    "src/sattlint/app_base.py",
-    "src/sattlint/app_cli_commands.py",
-    "src/sattlint/app_docs.py",
-    "src/sattlint/app_graphics.py",
-    "src/sattlint/app_menus.py",
-    "src/sattlint/app_support.py",
     "src/sattlint/cache.py",
     "src/sattlint/cli/entry.py",
     "src/sattlint/config.py",
@@ -315,9 +318,6 @@ debt_allowlist = [
     "src/sattlint/docgenerator/docgen.py",
     "src/sattlint/engine.py",
     "src/sattlint/resolution/context_builder.py",
-    "src/sattlint_lsp/_server_helpers.py",
-    "src/sattlint_lsp/server.py",
-    "src/sattlint_lsp/workspace_store.py",
 ]
 
 [tool.setuptools.packages.find]

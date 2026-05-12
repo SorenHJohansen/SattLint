@@ -1,29 +1,47 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
 from . import config as config_module
 from . import console as console_module
+from .docgenerator import classification as documentation_classification_module
 from .docgenerator import generate_docx
-from .docgenerator.classification import (
-    classify_documentation_structure,
-    discover_documentation_unit_candidates,
-    document_scope_summary,
-)
 from .models.project_graph import ProjectGraph
 
-_DOCUMENTATION_SCOPE_STATE = {
+ConfigDict = dict[str, Any]
+DocumentationSelection = dict[str, Any]
+LoadedProject = tuple[str, BasePicture, ProjectGraph]
+
+
+class _DocumentationScopeState(TypedDict):
+    mode: str
+    instance_paths: list[str]
+    moduletype_names: list[str]
+
+
+_DOCUMENTATION_SCOPE_STATE: _DocumentationScopeState = {
     "mode": "all",
     "instance_paths": [],
     "moduletype_names": [],
 }
+_documentation_classification_module = cast(Any, documentation_classification_module)
+
+classify_documentation_structure = cast(
+    Callable[..., Any], _documentation_classification_module.classify_documentation_structure
+)
+discover_documentation_unit_candidates = cast(
+    Callable[[Any], list[Any]], _documentation_classification_module.discover_documentation_unit_candidates
+)
+document_scope_summary = cast(
+    Callable[[Any, Any], dict[str, Any]], _documentation_classification_module.document_scope_summary
+)
 emit_output = console_module.print_output  # type: ignore[assignment]
 
 
-def get_documentation_unit_selection() -> dict:
+def get_documentation_unit_selection() -> DocumentationSelection:
     return {
         "mode": _DOCUMENTATION_SCOPE_STATE["mode"],
         "instance_paths": list(_DOCUMENTATION_SCOPE_STATE["instance_paths"]),
@@ -42,7 +60,7 @@ def set_documentation_unit_selection(
     _DOCUMENTATION_SCOPE_STATE["moduletype_names"] = list(moduletype_names or [])
 
 
-def documentation_config_without_scope(cfg: dict) -> dict:
+def documentation_config_without_scope(cfg: ConfigDict) -> dict[str, Any]:
     documentation_cfg = config_module.get_documentation_config(cfg)
     documentation_cfg["units"] = {
         "mode": "all",
@@ -56,12 +74,13 @@ def preview_documentation_candidates_for_target(
     target_name: str,
     project_bp: BasePicture,
     graph: ProjectGraph,
-    cfg: dict,
+    cfg: ConfigDict,
 ) -> None:
+    unavailable_libraries = cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set())))
     classification = classify_documentation_structure(
         project_bp,
         documentation_config=documentation_config_without_scope(cfg),
-        unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+        unavailable_libraries=unavailable_libraries,
     )
     candidates = discover_documentation_unit_candidates(classification)
     emit_output(f"\n=== Target: {target_name} ===")
@@ -79,9 +98,9 @@ def preview_documentation_candidates_for_target(
 
 
 def preview_documentation_unit_candidates(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    iter_loaded_projects_fn: Callable[[dict], Iterator[tuple[str, BasePicture, ProjectGraph]]],
+    iter_loaded_projects_fn: Callable[[ConfigDict], Iterator[LoadedProject]],
     pause_fn: Callable[[], None],
 ) -> None:
     emit_output("\n--- Documentation Unit Candidates ---")
@@ -144,9 +163,9 @@ def reset_documentation_scope(*, pause_fn: Callable[[], None]) -> bool:
 
 
 def run_generate_documentation(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
-    iter_loaded_projects_fn: Callable[[dict], Iterator[tuple[str, BasePicture, ProjectGraph]]],
+    iter_loaded_projects_fn: Callable[[ConfigDict], Iterator[LoadedProject]],
     prompt_fn: Callable[[str, str | None], str],
     pause_fn: Callable[[], None],
 ) -> None:
@@ -155,10 +174,11 @@ def run_generate_documentation(
     documentation_cfg["units"] = get_documentation_unit_selection()
 
     for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
+        unavailable_libraries = cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set())))
         classification = classify_documentation_structure(
             project_bp,
             documentation_config=documentation_cfg,
-            unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+            unavailable_libraries=unavailable_libraries,
         )
         scope = classification.scope
         if scope and scope.mode != "all" and not (scope.roots or []):
@@ -176,14 +196,14 @@ def run_generate_documentation(
             project_bp,
             out_name,
             documentation_config=documentation_cfg,
-            unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+            unavailable_libraries=unavailable_libraries,
         )
 
     pause_fn()
 
 
 def documentation_menu(
-    cfg: dict,
+    cfg: ConfigDict,
     *,
     clear_screen_fn: Callable[[], None],
     print_menu_fn: Callable[..., None],
@@ -191,7 +211,7 @@ def documentation_menu(
     quit_app_fn: Callable[[], None],
     pause_fn: Callable[[], None],
     split_csv_values_fn: Callable[[str], list[str]],
-    iter_loaded_projects_fn: Callable[[dict], Iterator[tuple[str, BasePicture, ProjectGraph]]],
+    iter_loaded_projects_fn: Callable[[ConfigDict], Iterator[LoadedProject]],
     prompt_fn: Callable[[str, str | None], str],
 ) -> bool:
     dirty = False

@@ -1,0 +1,1 @@
+{"include": ["src"], "typeCheckingMode": "basic", "pythonVersion": "3.13", "venvPath": ".", "venv": ".venv", "extraPaths": ["src"], "reportMissingTypeStubs": false, "strict": ["src/sattlint/analyzers/_dataflow_common.py", "src/sattlint/analyzers/_dataflow_conditions.py", "src/sattlint/analyzers/_dataflow_state.py", "src/sattlint/analyzers/state_inference.py"]}
