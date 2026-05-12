@@ -10,26 +10,39 @@ from sattline_parser.models.ast_model import BasePicture
 from . import config as config_module
 from . import console as console_module
 from . import graphics_rules as graphics_rules_module
-from .docgenerator.classification import (
-    classify_documentation_structure,
-    discover_documentation_unit_candidates,
-)
+from .docgenerator import classification as documentation_classification_module
 from .models.project_graph import ProjectGraph
 
 emit_output = console_module.print_output  # type: ignore[assignment]
 
-LoadedProjectIterator = Callable[[dict[str, Any]], Iterator[tuple[str, BasePicture, ProjectGraph]]]
+ConfigDict = dict[str, Any]
+GraphicsRule = dict[str, Any]
+GraphicsRulesConfig = dict[str, Any]
+LoadedProject = tuple[str, BasePicture, ProjectGraph]
+LoadedProjectIterator = Callable[[ConfigDict], Iterator[LoadedProject]]
+CollectGraphicsLayoutEntriesForTargetFn = Callable[[str, BasePicture, ProjectGraph], list[GraphicsRule]]
+ClassifyDocumentationStructureFn = Callable[..., Any]
+DiscoverDocumentationUnitCandidatesFn = Callable[[Any], Sequence[Any]]
+
+DEFAULT_CLASSIFY_DOCUMENTATION_STRUCTURE_FN = cast(
+    ClassifyDocumentationStructureFn,
+    cast(Any, documentation_classification_module).classify_documentation_structure,
+)
+DEFAULT_DISCOVER_DOCUMENTATION_UNIT_CANDIDATES_FN = cast(
+    DiscoverDocumentationUnitCandidatesFn,
+    cast(Any, documentation_classification_module).discover_documentation_unit_candidates,
+)
 
 
 def get_graphics_rules_path(config_path: Path) -> Path:
     return graphics_rules_module.get_graphics_rules_path(config_path)
 
 
-def load_graphics_rules(config_path: Path, path: Path | None = None):
+def load_graphics_rules(config_path: Path, path: Path | None = None) -> tuple[GraphicsRulesConfig, bool]:
     return graphics_rules_module.load_graphics_rules(path or get_graphics_rules_path(config_path))
 
 
-def save_graphics_rules(path: Path, rules: dict[str, Any]) -> None:
+def save_graphics_rules(path: Path, rules: GraphicsRulesConfig) -> None:
     graphics_rules_module.save_graphics_rules(path, rules)
 
 
@@ -63,16 +76,16 @@ def _print_config_list(title: str, items: list[object]) -> None:
 
 
 def show_config(
-    cfg: dict[str, Any],
+    cfg: ConfigDict,
     *,
     get_graphics_rules_path_fn: Callable[[], Path],
-    load_graphics_rules_fn: Callable[..., tuple[dict[str, Any], bool]],
-    graphics_rule_config_line_fn: Callable[[dict[str, Any]], str],
+    load_graphics_rules_fn: Callable[..., tuple[GraphicsRulesConfig, bool]],
+    graphics_rule_config_line_fn: Callable[[GraphicsRule], str],
 ) -> None:
     documentation_cfg = config_module.get_documentation_config(cfg)
     graphics_rules_path = get_graphics_rules_path_fn()
     graphics_rule_count: object = 0
-    graphics_rules_payload: dict[str, Any] | None = None
+    graphics_rules_payload: GraphicsRulesConfig | None = None
     if graphics_rules_path.exists():
         try:
             graphics_rules, _created = load_graphics_rules_fn(graphics_rules_path)
@@ -116,11 +129,13 @@ def show_config(
     )
     if graphics_rules_payload and graphics_rules_payload.get("rules"):
         emit_output("Configured Graphics Rule Selectors")
-        for index, rule in enumerate(graphics_rules_payload.get("rules", []), start=1):
+        configured_rules = cast(list[GraphicsRule], list(graphics_rules_payload.get("rules", [])))
+        for index, rule in enumerate(configured_rules, start=1):
             emit_output(f"  [{index}] {graphics_rule_config_line_fn(rule)}")
     emit_output()
     emit_output("Documentation Classifications")
-    for category, rule in documentation_cfg.get("classifications", {}).items():
+    classifications = cast(dict[str, dict[str, list[object]]], documentation_cfg.get("classifications", {}))
+    for category, rule in classifications.items():
         active_rules = [(key, ", ".join(str(value) for value in values)) for key, values in rule.items() if values]
         emit_output(f"  {category}")
         if not active_rules:
@@ -141,7 +156,7 @@ def flatten_graphics_expected_fields(
     for key, value in payload.items():
         field_name = f"{prefix}.{key}" if prefix else key
         if isinstance(value, dict):
-            fields.extend(flatten_graphics_expected_fields(value, prefix=field_name))
+            fields.extend(flatten_graphics_expected_fields(cast(dict[str, Any], value), prefix=field_name))
         else:
             fields.append(field_name)
     return fields
@@ -222,16 +237,17 @@ def print_graphics_rules_summary(path: Path, rules: dict[str, Any], *, dirty: bo
     emit_output(f"Status: {'unsaved changes' if dirty else 'saved'}")
     emit_output()
 
-    configured_rules = list(rules.get("rules", []))
+    configured_rules = cast(list[GraphicsRule], list(rules.get("rules", [])))
     if not configured_rules:
         emit_output("No graphics rules configured yet.")
         return
 
     headers = ("#", "Kind", "Scope", "Selector", "Fields", "Description")
-    rows = []
+    rows: list[tuple[str, str, str, str, str, str]] = []
     for index, rule in enumerate(configured_rules, start=1):
         expected = rule.get("expected")
-        fields = ", ".join(flatten_graphics_expected_fields(expected)) if isinstance(expected, dict) else ""
+        expected_payload = cast(dict[str, Any], expected) if isinstance(expected, dict) else None
+        fields = ", ".join(flatten_graphics_expected_fields(expected_payload)) if expected_payload else ""
         rows.append(
             (
                 str(index),
@@ -243,7 +259,7 @@ def print_graphics_rules_summary(path: Path, rules: dict[str, Any], *, dirty: bo
             )
         )
 
-    widths = []
+    widths: list[int] = []
     max_widths = [4, 12, 12, 48, 36, 28]
     for column_index, header in enumerate(headers):
         content_width = max((len(row[column_index]) for row in rows), default=0)
@@ -358,14 +374,14 @@ def graphics_rule_target_kind_matches(module_kind: str, entry: dict[str, Any]) -
 
 
 def discover_graphics_rule_selector_options(
-    cfg: dict[str, Any] | None,
+    cfg: ConfigDict | None,
     *,
     selector_field: str,
     module_kind: str,
-    has_analyzed_targets_fn: Callable[[dict[str, Any]], bool],
+    has_analyzed_targets_fn: Callable[[ConfigDict], bool],
     iter_loaded_projects_fn: LoadedProjectIterator,
-    collect_graphics_layout_entries_for_target_fn: Callable[[str, BasePicture, ProjectGraph], list[dict[str, Any]]],
-) -> list[dict[str, Any]]:
+    collect_graphics_layout_entries_for_target_fn: CollectGraphicsLayoutEntriesForTargetFn,
+) -> list[GraphicsRule]:
     if cfg is None or not has_analyzed_targets_fn(cfg):
         return []
 
@@ -420,8 +436,8 @@ def pick_or_prompt_graphics_rule_selector_value(
     selector_field: str,
     module_kind: str,
     *,
-    cfg: dict[str, Any] | None = None,
-    discover_graphics_rule_selector_options_fn: Callable[..., list[dict[str, Any]]],
+    cfg: ConfigDict | None = None,
+    discover_graphics_rule_selector_options_fn: Callable[..., list[GraphicsRule]],
 ) -> str:
     options = discover_graphics_rule_selector_options_fn(
         cfg,
@@ -462,7 +478,7 @@ def pick_or_prompt_graphics_rule_selector_value(
 def prompt_graphics_rule_selector(
     module_kind: str,
     *,
-    cfg: dict[str, Any] | None = None,
+    cfg: ConfigDict | None = None,
     pick_or_prompt_graphics_rule_selector_value_fn: Callable[..., str],
 ) -> tuple[str, str]:
     if module_kind == "frame":
@@ -548,16 +564,17 @@ def looks_like_graphics_unit_root(
 
 
 def annotate_graphics_entries_with_structure_paths(
-    entries: list[dict[str, Any]],
+    entries: list[GraphicsRule],
     project_bp: BasePicture,
     graph: ProjectGraph,
     *,
-    classify_documentation_structure_fn: Callable[..., Any] = classify_documentation_structure,
-    discover_documentation_unit_candidates_fn: Callable[[Any], Sequence[Any]] = discover_documentation_unit_candidates,
-) -> list[dict[str, Any]]:
+    classify_documentation_structure_fn: ClassifyDocumentationStructureFn = DEFAULT_CLASSIFY_DOCUMENTATION_STRUCTURE_FN,
+    discover_documentation_unit_candidates_fn: DiscoverDocumentationUnitCandidatesFn = DEFAULT_DISCOVER_DOCUMENTATION_UNIT_CANDIDATES_FN,
+) -> list[GraphicsRule]:
+    unavailable_libraries = cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set())))
     classification = classify_documentation_structure_fn(
         project_bp,
-        unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
+        unavailable_libraries=unavailable_libraries,
     )
     unit_candidates = sorted(
         discover_documentation_unit_candidates_fn(classification),
@@ -611,18 +628,18 @@ def annotate_graphics_entries_with_structure_paths(
 
 def prompt_graphics_rule_definition(
     *,
-    prompt_graphics_rule_definition_with_config_fn: Callable[[dict[str, Any] | None], dict[str, Any] | None],
-) -> dict[str, Any] | None:
+    prompt_graphics_rule_definition_with_config_fn: Callable[[ConfigDict | None], GraphicsRule | None],
+) -> GraphicsRule | None:
     return prompt_graphics_rule_definition_with_config_fn(None)
 
 
 def prompt_graphics_rule_definition_with_config(
-    cfg: dict[str, Any] | None,
+    cfg: ConfigDict | None,
     *,
     prompt_fn: Callable[..., str],
     pause_fn: Callable[[], None],
     pick_or_prompt_graphics_rule_selector_value_fn: Callable[..., str],
-) -> dict[str, Any] | None:
+) -> GraphicsRule | None:
     emit_output("\nEnter graphics rule values. Leave optional fields blank to skip them.")
     module_kind = prompt_graphics_rule_kind()
 

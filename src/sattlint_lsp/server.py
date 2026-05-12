@@ -9,6 +9,7 @@ from lsprotocol.types import (
     CompletionList,
     CompletionOptions,
     DefinitionParams,
+    Diagnostic,
     DidChangeTextDocumentParams,
     DidCloseTextDocumentParams,
     DidOpenTextDocumentParams,
@@ -28,71 +29,145 @@ from pygls import uris
 from pygls.lsp.server import LanguageServer
 
 from ._server_document import (
-    _ensure_document_paths,
-    _ensure_snapshot_store_configured,
-    _get_or_build_local_snapshot,
-    _invalidate_cached_entries_for_path,
-    _load_snapshot_bundle,  # noqa: F401
-    _load_snapshot_bundle_compat,
-    _publish_closed_document_diagnostics,
-    _publish_diagnostics,
-    _publish_workspace_diagnostics_for_paths,  # noqa: F401
-    _record_document_change,
-    _record_document_open,
-    _resolve_symbol_context,
-    _schedule_workspace_scan,
-    _semantic_diagnostics_for_path,  # noqa: F401
-    _source_text_for_document,
+    ensure_document_paths as _ensure_document_paths,
+)
+from ._server_document import (
+    ensure_snapshot_store_configured as _ensure_snapshot_store_configured,
+)
+from ._server_document import (
+    get_or_build_local_snapshot as _get_or_build_local_snapshot,
+)
+from ._server_document import (
+    invalidate_cached_entries_for_path as _invalidate_cached_entries_for_path,
+)
+from ._server_document import (
+    load_snapshot_bundle as _load_snapshot_bundle,
+)
+from ._server_document import (
+    load_snapshot_bundle_compat as _load_snapshot_bundle_compat,
+)
+from ._server_document import (
+    publish_closed_document_diagnostics as _publish_closed_document_diagnostics,
+)
+from ._server_document import (
+    publish_diagnostics as _publish_diagnostics,
+)
+from ._server_document import (
+    publish_workspace_diagnostics_for_paths as _publish_workspace_diagnostics_for_paths,
+)
+from ._server_document import (
+    record_document_change as _record_document_change,
+)
+from ._server_document import (
+    record_document_open as _record_document_open,
+)
+from ._server_document import (
+    resolve_symbol_context as _resolve_symbol_context,
+)
+from ._server_document import (
+    schedule_workspace_scan as _schedule_workspace_scan,
+)
+from ._server_document import (
+    source_text_for_document as _source_text_for_document,
 )
 from ._server_helpers import (
-    _DEFAULT_LOCAL_PARSER,
-    _INTERACTIVE_SNAPSHOT_WAIT_S,
+    DEFAULT_LOCAL_PARSER as _DEFAULT_LOCAL_PARSER,
+)
+from ._server_helpers import (
+    INTERACTIVE_SNAPSHOT_WAIT_S as _INTERACTIVE_SNAPSHOT_WAIT_S,
+)
+from ._server_helpers import (
     LspSettings,
-    _append_workspace_edit,
-    _build_hover,
-    _collect_reference_matches,
-    _definition_locations_from_candidates,
-    _definition_uri,
-    _document_path,
-    _is_diagnostic_path,
-    _is_program_path,
-    _merge_completion_items,
-    _merge_locations,
-    _overlay_definition_candidates,  # noqa: F401
-    _range_for_definition,
-    _range_from_position,
-    _reference_locations_from_matches,
-    _resolve_reference_path,
-    _validate_rename_target,
-    _validated_change_request,
-    _validated_open_request,
-    _validated_rename_request,
-    _validated_text_document_position,
-    _validated_text_document_uri,
     build_source_path_index,
     collect_completion_candidates,
     collect_local_completion_candidates,
     collect_local_definition_locations,
-    collect_semantic_diagnostics,  # noqa: F401
+    collect_semantic_diagnostics,
     collect_syntax_diagnostics,
-    infer_module_path_from_source,  # noqa: F401
-    resolve_definition_path,  # noqa: F401
-    resolve_entry_file,  # noqa: F401
+    infer_module_path_from_source,
+    resolve_definition_path,
+    resolve_entry_file,
+)
+from ._server_helpers import (
+    append_workspace_edit as _append_workspace_edit,
+)
+from ._server_helpers import (
+    build_hover as _build_hover,
+)
+from ._server_helpers import (
+    collect_reference_matches as _collect_reference_matches,
+)
+from ._server_helpers import (
+    definition_locations_from_candidates as _definition_locations_from_candidates,
+)
+from ._server_helpers import (
+    definition_uri as _definition_uri,
+)
+from ._server_helpers import (
+    document_path as _document_path,
+)
+from ._server_helpers import (
+    is_diagnostic_path as _is_diagnostic_path,
+)
+from ._server_helpers import (
+    is_program_path as _is_program_path,
+)
+from ._server_helpers import (
+    merge_completion_items as _merge_completion_items,
+)
+from ._server_helpers import (
+    merge_locations as _merge_locations,
+)
+from ._server_helpers import (
+    overlay_definition_candidates as _overlay_definition_candidates,
+)
+from ._server_helpers import (
+    range_for_definition as _range_for_definition,
+)
+from ._server_helpers import (
+    range_from_position as _range_from_position,
+)
+from ._server_helpers import (
+    reference_locations_from_matches as _reference_locations_from_matches,
+)
+from ._server_helpers import (
+    resolve_reference_path as _resolve_reference_path,
+)
+from ._server_helpers import (
+    semantic_diagnostics_for_path as _semantic_diagnostics_for_path,
+)
+from ._server_helpers import (
+    validate_rename_target as _validate_rename_target,
+)
+from ._server_helpers import (
+    validated_change_request as _validated_change_request,
+)
+from ._server_helpers import (
+    validated_open_request as _validated_open_request,
+)
+from ._server_helpers import (
+    validated_rename_request as _validated_rename_request,
+)
+from ._server_helpers import (
+    validated_text_document_position as _validated_text_document_position,
+)
+from ._server_helpers import (
+    validated_text_document_uri as _validated_text_document_uri,
 )
 from .document_state import DocumentState
-from .workspace_store import SnapshotBundle, WorkspaceSnapshotStore  # noqa: F401
+from .workspace_store import SnapshotBundle, WorkspaceSnapshotStore
 
 
 class SattLineLanguageServer(LanguageServer):
     def __init__(self) -> None:
-        super().__init__(name="sattline-lsp", version="0.1.0")
+        super().__init__(name="sattline-lsp", version="0.1.0")  # pyright: ignore[reportUnknownMemberType]
         self.settings = LspSettings()
         self.workspace_root: Path | None = None
         self.snapshot_store = WorkspaceSnapshotStore()
         self.document_states: dict[str, DocumentState] = {}
         self.document_paths: dict[Path, str] = {}
-        self.entry_diagnostics: dict[str, dict[Path, tuple]] = {}
-        self.published_workspace_diagnostics: dict[Path, tuple] = {}
+        self.entry_diagnostics: dict[str, dict[Path, tuple[Diagnostic, ...]]] = {}
+        self.published_workspace_diagnostics: dict[Path, tuple[Diagnostic, ...]] = {}
         self.workspace_scan_condition = threading.Condition()
         self.workspace_scan_pending: set[Path] = set()
         self.workspace_scan_generation = 0
@@ -104,7 +179,19 @@ class SattLineLanguageServer(LanguageServer):
 server = SattLineLanguageServer()
 
 # Keep selected helper re-exports visible to external tests and tooling.
-_PUBLIC_SERVER_HELPERS = (build_source_path_index, collect_syntax_diagnostics)
+_PUBLIC_SERVER_HELPERS = (
+    SnapshotBundle,
+    build_source_path_index,
+    collect_semantic_diagnostics,
+    collect_syntax_diagnostics,
+    infer_module_path_from_source,
+    resolve_definition_path,
+    resolve_entry_file,
+    _load_snapshot_bundle,
+    _publish_workspace_diagnostics_for_paths,
+    _overlay_definition_candidates,
+    _semantic_diagnostics_for_path,
+)
 
 
 @server.feature("initialize")

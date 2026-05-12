@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from lsprotocol.types import (
     Diagnostic,
@@ -16,20 +16,46 @@ from pygls.workspace import TextDocument
 from sattlint.core.semantic import SemanticSnapshot, SymbolDefinition
 
 from ._server_helpers import (
-    _DIAGNOSTIC_SNAPSHOT_WAIT_S,
-    _INTERACTIVE_SNAPSHOT_WAIT_S,
-    _RECOVERABLE_LSP_EXCEPTIONS,
-    _diagnostic_from_message,
-    _diagnostic_signature,
-    _document_path,
-    _document_uri_for_path,
-    _is_diagnostic_path,
-    _is_program_path,
-    _local_definition_candidates,
-    _merge_unique_diagnostics,
-    _overlay_definition_candidates,
-    _root_workspace_failure_message,
-    _semantic_diagnostics_for_path,
+    DIAGNOSTIC_SNAPSHOT_WAIT_S as _DIAGNOSTIC_SNAPSHOT_WAIT_S,
+)
+from ._server_helpers import (
+    INTERACTIVE_SNAPSHOT_WAIT_S as _INTERACTIVE_SNAPSHOT_WAIT_S,
+)
+from ._server_helpers import (
+    RECOVERABLE_LSP_EXCEPTIONS as _RECOVERABLE_LSP_EXCEPTIONS,
+)
+from ._server_helpers import (
+    diagnostic_from_message as _diagnostic_from_message,
+)
+from ._server_helpers import (
+    diagnostic_signature as _diagnostic_signature,
+)
+from ._server_helpers import (
+    document_path as _document_path,
+)
+from ._server_helpers import (
+    document_uri_for_path as _document_uri_for_path,
+)
+from ._server_helpers import (
+    is_diagnostic_path as _is_diagnostic_path,
+)
+from ._server_helpers import (
+    is_program_path as _is_program_path,
+)
+from ._server_helpers import (
+    local_definition_candidates as _local_definition_candidates,
+)
+from ._server_helpers import (
+    merge_unique_diagnostics as _merge_unique_diagnostics,
+)
+from ._server_helpers import (
+    overlay_definition_candidates as _overlay_definition_candidates,
+)
+from ._server_helpers import (
+    root_workspace_failure_message as _root_workspace_failure_message,
+)
+from ._server_helpers import (
+    semantic_diagnostics_for_path as _semantic_diagnostics_for_path,
 )
 from .document_state import DocumentState
 from .workspace_store import SnapshotBundle
@@ -55,10 +81,12 @@ def _document_state_for_path(ls: SattLineLanguageServer, document_path: Path) ->
 
 
 def _ensure_document_paths(ls: SattLineLanguageServer) -> dict[Path, str]:
-    document_paths = getattr(ls, "document_paths", None)
-    if document_paths is None:
-        document_paths = {}
-        ls.document_paths = document_paths
+    document_paths_obj = getattr(ls, "document_paths", None)
+    if isinstance(document_paths_obj, dict):
+        return cast(dict[Path, str], document_paths_obj)
+
+    document_paths: dict[Path, str] = {}
+    ls.document_paths = document_paths
     return document_paths
 
 
@@ -410,14 +438,14 @@ def _schedule_workspace_scan(
             ls.workspace_scan_pending.add(entry)
             ls.entry_scan_generation[entry.as_posix().casefold()] = generation
         if ls.workspace_scan_thread is None or not ls.workspace_scan_thread.is_alive():
-            ls.workspace_scan_thread = threading.Thread(
+            thread = threading.Thread(
                 target=_workspace_scan_worker,
                 args=(ls,),
                 name="sattline-workspace-scan",
                 daemon=True,
             )
-            if ls.workspace_scan_thread is not None:
-                ls.workspace_scan_thread.start()
+            ls.workspace_scan_thread = thread
+            thread.start()
 
 
 def _invalidate_cached_entries_for_path(
@@ -549,3 +577,19 @@ def _resolve_symbol_context(
         local_snapshot=local_snapshot,
     )
     return document_path, source_text, local_snapshot, bundle, candidates
+
+
+ensure_document_paths = _ensure_document_paths
+ensure_snapshot_store_configured = _ensure_snapshot_store_configured
+get_or_build_local_snapshot = _get_or_build_local_snapshot
+invalidate_cached_entries_for_path = _invalidate_cached_entries_for_path
+load_snapshot_bundle = _load_snapshot_bundle
+load_snapshot_bundle_compat = _load_snapshot_bundle_compat
+publish_closed_document_diagnostics = _publish_closed_document_diagnostics
+publish_diagnostics = _publish_diagnostics
+publish_workspace_diagnostics_for_paths = _publish_workspace_diagnostics_for_paths
+record_document_change = _record_document_change
+record_document_open = _record_document_open
+resolve_symbol_context = _resolve_symbol_context
+schedule_workspace_scan = _schedule_workspace_scan
+source_text_for_document = _source_text_for_document

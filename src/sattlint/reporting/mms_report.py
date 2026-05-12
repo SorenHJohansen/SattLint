@@ -17,6 +17,10 @@ _ISSUE_LABELS = {
 }
 
 
+def _issues_factory() -> list[Issue]:
+    return []
+
+
 @dataclass(frozen=True)
 class MMSInterfaceHit:
     module_path: list[str]
@@ -31,7 +35,7 @@ class MMSInterfaceHit:
 class MMSInterfaceReport:
     basepicture_name: str
     hits: list[MMSInterfaceHit]
-    issues: list[Issue] = field(default_factory=list)
+    issues: list[Issue] = field(default_factory=_issues_factory)
 
     @property
     def name(self) -> str:
@@ -96,7 +100,7 @@ class MMSInterfaceReport:
         else:
             lines.append("")
 
-        ranked_vars = []
+        ranked_vars: list[tuple[int, str, dict[str, int]]] = []
         for _key, var_hits in hits_by_var.items():
             total, field_totals, _dedup = _merge_write_counts(var_hits)
             display_name = var_hits[0].source_variable
@@ -141,7 +145,7 @@ class MMSInterfaceReport:
                         grouped_paths.setdefault(field_label, []).append((path, count))
 
                     for field_label, locations in grouped_paths.items():
-                        write_parts = []
+                        write_parts: list[str] = []
                         for path, count in locations:
                             path_str = ".".join(path)
                             write_parts.append(f"{path_str} ({count}x)" if count > 1 else path_str)

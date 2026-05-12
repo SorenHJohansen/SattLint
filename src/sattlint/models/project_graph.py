@@ -1,9 +1,51 @@
 """Project graph and indexing helpers for SattLine projects."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .ast_model import BasePicture, DataType, ModuleTypeDef
+
+
+def _ast_by_name_factory() -> dict[str, BasePicture]:
+    return {}
+
+
+def _moduletype_defs_factory() -> dict[tuple[str, str, str], ModuleTypeDef]:
+    return {}
+
+
+def _datatype_defs_factory() -> dict[str, DataType]:
+    return {}
+
+
+def _library_dependencies_factory() -> dict[str, set[str]]:
+    return {}
+
+
+def _missing_factory() -> list[str]:
+    return []
+
+
+def _warnings_factory() -> list[str]:
+    return []
+
+
+def _failures_factory() -> dict[str, ProjectFailure]:
+    return {}
+
+
+def _ignored_vendor_factory() -> list[str]:
+    return []
+
+
+def _unavailable_libraries_factory() -> set[str]:
+    return set()
+
+
+def _source_files_factory() -> set[Path]:
+    return set()
 
 
 @dataclass(frozen=True)
@@ -17,20 +59,20 @@ class ProjectFailure:
 
 @dataclass
 class ProjectGraph:
-    ast_by_name: dict[str, BasePicture] = field(default_factory=dict)
+    ast_by_name: dict[str, BasePicture] = field(default_factory=_ast_by_name_factory)
     # Keyed by (origin_lib.casefold(), moduletype_name.casefold(), origin_file.casefold())
     # so same-name types from the same library but different files are preserved.
-    moduletype_defs: dict[tuple[str, str, str], ModuleTypeDef] = field(default_factory=dict)
-    datatype_defs: dict[str, DataType] = field(default_factory=dict)
+    moduletype_defs: dict[tuple[str, str, str], ModuleTypeDef] = field(default_factory=_moduletype_defs_factory)
+    datatype_defs: dict[str, DataType] = field(default_factory=_datatype_defs_factory)
     # library_name.casefold() -> set of dependency library names (casefolded)
-    library_dependencies: dict[str, set[str]] = field(default_factory=dict)
-    missing: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    failures: dict[str, ProjectFailure] = field(default_factory=dict)
-    ignored_vendor: list[str] = field(default_factory=list)
+    library_dependencies: dict[str, set[str]] = field(default_factory=_library_dependencies_factory)
+    missing: list[str] = field(default_factory=_missing_factory)
+    warnings: list[str] = field(default_factory=_warnings_factory)
+    failures: dict[str, ProjectFailure] = field(default_factory=_failures_factory)
+    ignored_vendor: list[str] = field(default_factory=_ignored_vendor_factory)
     # Track libraries that couldn't be loaded (e.g., proprietary ABB libraries)
-    unavailable_libraries: set[str] = field(default_factory=set)
-    source_files: set[Path] = field(default_factory=set)
+    unavailable_libraries: set[str] = field(default_factory=_unavailable_libraries_factory)
+    source_files: set[Path] = field(default_factory=_source_files_factory)
 
     def add_library_dependencies(self, library_name: str | None, dep_libs: list[str]) -> None:
         if not library_name:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from functools import cache
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from lark.exceptions import UnexpectedInput
 
@@ -80,7 +80,7 @@ def _is_valid_code_via_grammar(text: str) -> bool:
     statement_is_valid = False
     try:
         parser = _get_statement_parser()
-        parser.parse(text)
+        cast(Any, parser).parse(text)
         statement_is_valid = True
     except UnexpectedInput:
         statement_is_valid = False
@@ -92,7 +92,7 @@ def _is_valid_code_via_grammar(text: str) -> bool:
     expression_is_valid = False
     try:
         parser = _get_expression_parser()
-        parser.parse(text)
+        cast(Any, parser).parse(text)
         expression_is_valid = True
     except UnexpectedInput:
         expression_is_valid = False
@@ -580,7 +580,7 @@ def strip_sl_comments(text: str) -> str:
     depth = 0
     in_string = False
     string_quote = ""  # either '"' or "'"
-    out = []
+    out: list[str] = []
 
     while i < n:
         ch = text[i]

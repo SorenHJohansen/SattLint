@@ -8,7 +8,7 @@ from sattline_parser.models.ast_model import Variable
 
 from ..grammar import constants as const
 from ..resolution.scope import ScopeContext
-from ._dataflow_common import _INITIALIZED, _UNKNOWN, ScalarValue, StateMap, _PendingWrite, _ResolvedRef
+from ._dataflow_common import INITIALIZED, UNKNOWN, PendingWrite, ResolvedRef, ScalarValue, StateMap
 
 
 class _DataflowStateMixin:
@@ -16,8 +16,8 @@ class _DataflowStateMixin:
         self: Any,
         expr: Any,
         context: ScopeContext,
-    ) -> list[_ResolvedRef]:
-        collected: list[_ResolvedRef] = []
+    ) -> list[ResolvedRef]:
+        collected: list[ResolvedRef] = []
 
         def visit(node: Any) -> None:
             if isinstance(node, dict) and const.KEY_VAR_NAME in node:
@@ -27,7 +27,7 @@ class _DataflowStateMixin:
                 return
 
             if isinstance(node, Tree) and node.data == const.KEY_STATEMENT:
-                for child in node.children:
+                for child in cast(list[Any], node.children):
                     visit(child)
                 return
 
@@ -41,8 +41,9 @@ class _DataflowStateMixin:
                     visit(item)
                 return
 
-            if hasattr(node, "children"):
-                for child in getattr(node, "children", []):
+            children = getattr(node, "children", None)
+            if isinstance(children, list):
+                for child in cast(list[Any], children):
                     visit(child)
 
         visit(expr)
@@ -50,7 +51,7 @@ class _DataflowStateMixin:
 
     def _apply_write_target(
         self: Any,
-        resolved: _ResolvedRef,
+        resolved: ResolvedRef,
         value: ScalarValue | object,
         state: StateMap,
         *,
@@ -72,12 +73,12 @@ class _DataflowStateMixin:
             next_state.pop(self._pending_state_key(resolved.symbol_root_key), None)
             pending_key = self._pending_state_key(resolved.symbol_key)
             pending_write = next_state.pop(pending_key, None)
-            if isinstance(pending_write, _PendingWrite):
+            if isinstance(pending_write, PendingWrite):
                 self._report_dead_overwrite(pending_write, resolved, module_path)
 
         next_state = self._invalidate_symbol(next_state, resolved.symbol_root_key)
-        next_state[resolved.symbol_key] = _INITIALIZED if value is _UNKNOWN else value
-        next_state[self._pending_state_key(resolved.symbol_key)] = _PendingWrite(
+        next_state[resolved.symbol_key] = INITIALIZED if value is UNKNOWN else value
+        next_state[self._pending_state_key(resolved.symbol_key)] = PendingWrite(
             key=resolved.symbol_key,
             root_key=resolved.symbol_root_key,
             display_name=resolved.base_display_name,
@@ -88,10 +89,10 @@ class _DataflowStateMixin:
     def _has_pending_write_for_symbol(
         self: Any,
         state: StateMap,
-        resolved: _ResolvedRef,
+        resolved: ResolvedRef,
     ) -> bool:
         for pending in state.values():
-            if not isinstance(pending, _PendingWrite):
+            if not isinstance(pending, PendingWrite):
                 continue
             if pending.root_key != resolved.symbol_root_key:
                 continue
@@ -107,7 +108,7 @@ class _DataflowStateMixin:
         for pending_key in [
             key
             for key, pending in state.items()
-            if self._is_pending_state_key(key) and isinstance(pending, _PendingWrite) and pending.root_key == root_key
+            if self._is_pending_state_key(key) and isinstance(pending, PendingWrite) and pending.root_key == root_key
         ]:
             state.pop(pending_key, None)
 
@@ -115,15 +116,15 @@ class _DataflowStateMixin:
         self: Any,
         state: StateMap,
         root_key: tuple[str, ...],
-    ) -> list[_PendingWrite]:
-        popped: list[_PendingWrite] = []
+    ) -> list[PendingWrite]:
+        popped: list[PendingWrite] = []
         for pending_key in [
             key
             for key, pending in state.items()
-            if self._is_pending_state_key(key) and isinstance(pending, _PendingWrite) and pending.root_key == root_key
+            if self._is_pending_state_key(key) and isinstance(pending, PendingWrite) and pending.root_key == root_key
         ]:
             pending = state.pop(pending_key, None)
-            if isinstance(pending, _PendingWrite):
+            if isinstance(pending, PendingWrite):
                 popped.append(pending)
         return popped
 
@@ -138,11 +139,11 @@ class _DataflowStateMixin:
             current_key = self._state_key(module_path, variable.name, "")
             old_key = self._old_state_key(current_key)
             value = self._static_literal(variable.init_value)
-            if value is _UNKNOWN:
+            if value is UNKNOWN:
                 if variable.init_value is None:
                     continue
-                next_state[current_key] = _INITIALIZED
-                next_state[old_key] = _INITIALIZED
+                next_state[current_key] = INITIALIZED
+                next_state[old_key] = INITIALIZED
                 continue
             next_state[current_key] = value
             next_state[old_key] = value
@@ -163,34 +164,38 @@ class _DataflowStateMixin:
         if not states:
             return {}
         merged: StateMap = {}
-        value_keys: set[tuple[str, ...]] = set().union(
-            *({key for key in state if not self._is_pending_state_key(key)} for state in states)
-        )
-        pending_keys_per_state = [{key for key in state if self._is_pending_state_key(key)} for state in states]
+        value_keys: set[tuple[str, ...]] = set()
+        for state in states:
+            value_keys.update(key for key in state if not self._is_pending_state_key(key))
+        pending_keys_per_state: list[set[tuple[str, ...]]] = [
+            {key for key in state if self._is_pending_state_key(key)} for state in states
+        ]
         for key in value_keys:
-            values = [state.get(key, _UNKNOWN) for state in states]
+            values = [state.get(key, UNKNOWN) for state in states]
             first = values[0]
-            if first is _UNKNOWN:
+            if first is UNKNOWN:
                 continue
             if all(value == first for value in values[1:]):
                 merged[key] = first
                 continue
-            if all(value is not _UNKNOWN for value in values):
-                merged[key] = _INITIALIZED
+            if all(value is not UNKNOWN for value in values):
+                merged[key] = INITIALIZED
 
-        common_pending_keys = set.intersection(*pending_keys_per_state) if pending_keys_per_state else set()
+        common_pending_keys: set[tuple[str, ...]] = (
+            set.intersection(*pending_keys_per_state) if pending_keys_per_state else set()
+        )
         for pending_key in common_pending_keys:
             pending_values = [state.get(pending_key) for state in states]
-            if not all(isinstance(value, _PendingWrite) for value in pending_values):
+            if not all(isinstance(value, PendingWrite) for value in pending_values):
                 continue
-            first_pending = cast(_PendingWrite, pending_values[0])
-            merged[pending_key] = _PendingWrite(
+            first_pending = cast(PendingWrite, pending_values[0])
+            merged[pending_key] = PendingWrite(
                 key=first_pending.key,
                 root_key=first_pending.root_key,
                 display_name=first_pending.display_name,
                 sites=tuple(
                     sorted(
-                        {site for value in pending_values if isinstance(value, _PendingWrite) for site in value.sites}
+                        {site for value in pending_values if isinstance(value, PendingWrite) for site in value.sites}
                     )
                 ),
             )

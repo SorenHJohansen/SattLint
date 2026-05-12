@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 
 from lark.exceptions import UnexpectedInput, VisitError
 from lsprotocol.types import Diagnostic, DiagnosticSeverity, Position, Range
@@ -39,12 +40,59 @@ _CHECKPOINT_TOKEN_INTERVAL = 64
 _MAX_CHECKPOINTS = 10
 
 
+class _ImmutableCursor(Protocol):
+    def as_mutable(self) -> _ParserCursor: ...
+
+
+class _LineCounter(Protocol):
+    char_pos: int
+    line: int
+    column: int
+
+
+class _LexerState(Protocol):
+    line_ctr: _LineCounter
+    text: object
+
+
+class _CursorLexer(Protocol):
+    state: _LexerState
+
+    def lex(self, parser_state: object) -> Iterable[object]: ...
+
+
+class _ParserCursor(Protocol):
+    lexer_thread: _CursorLexer | None
+    lexer_state: _CursorLexer
+    parser_state: object
+
+    def as_immutable(self) -> _ImmutableCursor: ...
+
+    def feed_token(self, token: object) -> object: ...
+
+    def feed_eof(self) -> object: ...
+
+
+def _iter_variable_ref_mappings(modulecode: ModuleCode) -> Iterable[Mapping[str, object]]:
+    for raw_ref in cast(Iterable[object], iter_variable_refs(modulecode)):
+        if isinstance(raw_ref, Mapping):
+            yield cast(Mapping[str, object], raw_ref)
+
+
+def _coerce_lexer_text(existing_text: object, cleaned_text: str) -> object:
+    cast_from = getattr(type(existing_text), "cast_from", None)
+    if callable(cast_from):
+        return cast_from(cleaned_text)
+    return cleaned_text
+
+
 def _extract_error_position(exc: Exception) -> tuple[int | None, int | None]:
     line = getattr(exc, "line", None)
     column = getattr(exc, "column", None)
-    if isinstance(exc, VisitError) and exc.orig_exc is not None:
-        line = line if line is not None else getattr(exc.orig_exc, "line", None)
-        column = column if column is not None else getattr(exc.orig_exc, "column", None)
+    if isinstance(exc, VisitError):
+        nested_exc = exc.orig_exc
+        line = line if line is not None else getattr(nested_exc, "line", None)
+        column = column if column is not None else getattr(nested_exc, "column", None)
     return line, column
 
 
@@ -170,8 +218,6 @@ def _collect_step_auto_variable_diagnostics_for_modulecode(
     known_sequences: dict[str, str] = {}
     available_sequence_features: dict[str, set[str]] = {}
     for sequence in modulecode.sequences or []:
-        if not isinstance(sequence, Sequence):
-            continue
         _collect_sequence_scope_features(
             sequence,
             known_sequences=known_sequences,
@@ -188,7 +234,7 @@ def _collect_step_auto_variable_diagnostics_for_modulecode(
     if not known_steps and not known_sequences:
         return
 
-    for ref in iter_variable_refs(modulecode):
+    for ref in _iter_variable_ref_mappings(modulecode):
         full_name = ref.get("var_name")
         span = ref.get("span")
         if not isinstance(full_name, str) or not isinstance(span, SourceSpan):
@@ -314,7 +360,7 @@ class _ParseCheckpoint:
     char_pos: int
     line: int
     column: int
-    cursor: Any
+    cursor: _ImmutableCursor
 
 
 @dataclass(frozen=True, slots=True)
@@ -335,16 +381,16 @@ class DocumentParseResult:
 
 class IncrementalDocumentParserAdapter:
     def __init__(self, *, checkpoint_token_interval: int = _CHECKPOINT_TOKEN_INTERVAL) -> None:
-        self._parser = create_parser()
+        self._parser: Any = create_parser()
         self._checkpoint_token_interval = max(1, int(checkpoint_token_interval))
 
-    def _cursor_lexer(self, cursor):
+    def _cursor_lexer(self, cursor: _ParserCursor) -> _CursorLexer:
         lexer = getattr(cursor, "lexer_thread", None)
         if lexer is not None:
             return lexer
         return cursor.lexer_state
 
-    def _capture_checkpoint(self, cursor) -> _ParseCheckpoint:
+    def _capture_checkpoint(self, cursor: _ParserCursor) -> _ParseCheckpoint:
         line_counter = self._cursor_lexer(cursor).state.line_ctr
         return _ParseCheckpoint(
             char_pos=int(line_counter.char_pos),
@@ -378,14 +424,13 @@ class IncrementalDocumentParserAdapter:
             selected = checkpoint
         return selected_index, selected
 
-    def _resume_cursor(self, checkpoint: _ParseCheckpoint, cleaned_text: str):
+    def _resume_cursor(self, checkpoint: _ParseCheckpoint, cleaned_text: str) -> _ParserCursor:
         cursor = checkpoint.cursor.as_mutable()
         lexer = self._cursor_lexer(cursor)
-        text_slice_type = type(lexer.state.text)
-        lexer.state.text = text_slice_type.cast_from(cleaned_text)
+        lexer.state.text = _coerce_lexer_text(lexer.state.text, cleaned_text)
         return cursor
 
-    def _append_checkpoint_if_advanced(self, checkpoints: list[_ParseCheckpoint], cursor) -> None:
+    def _append_checkpoint_if_advanced(self, checkpoints: list[_ParseCheckpoint], cursor: _ParserCursor) -> None:
         checkpoint = self._capture_checkpoint(cursor)
         previous = checkpoints[-1]
         if checkpoint.char_pos <= previous.char_pos:
@@ -408,7 +453,7 @@ class IncrementalDocumentParserAdapter:
             selected = None
 
         if selected is None:
-            cursor = self._parser.parse_interactive(cleaned_text)
+            cursor = cast(_ParserCursor, self._parser.parse_interactive(cleaned_text))
             checkpoints = [self._capture_checkpoint(cursor)]
         else:
             if previous_state is None:
@@ -432,9 +477,9 @@ class IncrementalDocumentParserAdapter:
             current_line = int(lexer.state.line_ctr.line)
             if current_line >= checkpoints[-1].line + checkpoint_line_interval:
                 self._append_checkpoint_if_advanced(checkpoints, cursor)
-
         parse_tree = cursor.feed_eof()
-        base_picture = SLTransformer().transform(parse_tree)
+        transformer: Any = SLTransformer()
+        base_picture = cast(BasePicture, transformer.transform(parse_tree))
         return IncrementalParseState(
             cleaned_text=cleaned_text,
             checkpoints=tuple(checkpoints),
@@ -505,7 +550,7 @@ class IncrementalDocumentParserAdapter:
             return DocumentParseResult(syntax_diagnostics=tuple(diagnostics), local_snapshot=None)
         except VisitError as exc:
             line, column = _extract_error_position(exc)
-            message = str(exc.orig_exc) if exc.orig_exc is not None else str(exc)
+            message = str(exc.orig_exc)
             _append_unique_diagnostic(diagnostics, seen, _diagnostic_from_message(message, line, column))
             return DocumentParseResult(syntax_diagnostics=tuple(diagnostics), local_snapshot=None)
         except Exception as exc:
@@ -537,7 +582,7 @@ class IncrementalDocumentParserAdapter:
             )
         except VisitError as exc:
             line, column = _extract_error_position(exc)
-            message = str(exc.orig_exc) if exc.orig_exc is not None else str(exc)
+            message = str(exc.orig_exc)
             _append_unique_diagnostic(diagnostics, seen, _diagnostic_from_message(message, line, column))
             return DocumentParseResult(syntax_diagnostics=tuple(diagnostics), local_snapshot=None)
         except Exception as exc:

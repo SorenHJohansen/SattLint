@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from . import config as config_module
 
@@ -145,12 +145,14 @@ def _normalize_rule(rule: Any) -> dict[str, Any]:
     if not isinstance(rule, dict):
         raise ValueError("Each graphics rule must be an object")
 
-    module_name = str(rule.get("module_name") or rule.get("name") or "").strip()
-    relative_module_path = str(rule.get("relative_module_path") or "").strip()
-    unit_structure_path = str(rule.get("unit_structure_path") or "").strip()
-    equipment_module_structure_path = str(rule.get("equipment_module_structure_path") or "").strip()
-    moduletype_name = str(rule.get("moduletype_name") or "").strip()
-    module_kind = _normalize_module_kind(rule.get("module_kind") or "any")
+    rule_obj = cast(dict[str, Any], rule)
+
+    module_name = str(rule_obj.get("module_name") or rule_obj.get("name") or "").strip()
+    relative_module_path = str(rule_obj.get("relative_module_path") or "").strip()
+    unit_structure_path = str(rule_obj.get("unit_structure_path") or "").strip()
+    equipment_module_structure_path = str(rule_obj.get("equipment_module_structure_path") or "").strip()
+    moduletype_name = str(rule_obj.get("moduletype_name") or "").strip()
+    module_kind = _normalize_module_kind(rule_obj.get("module_kind") or "any")
     populated_selectors = _populated_path_selectors(
         {
             "relative_module_path": relative_module_path,
@@ -173,11 +175,12 @@ def _normalize_rule(rule: Any) -> dict[str, Any]:
         if selector_value:
             module_name = selector_value.split(".")[-1].strip()
 
-    expected = rule.get("expected") or {}
-    if not isinstance(expected, dict) or not expected:
+    expected_raw: object = rule_obj.get("expected") or {}
+    if not isinstance(expected_raw, dict) or not expected_raw:
         raise ValueError(f"Graphics rule {module_name!r} must declare a non-empty expected object")
+    expected_obj = cast(dict[str, Any], expected_raw)
 
-    description = str(rule.get("description") or "").strip()
+    description = str(rule_obj.get("description") or "").strip()
     return {
         "module_name": module_name,
         "module_kind": module_kind,
@@ -186,7 +189,7 @@ def _normalize_rule(rule: Any) -> dict[str, Any]:
         "equipment_module_structure_path": equipment_module_structure_path,
         "moduletype_name": moduletype_name,
         "description": description,
-        "expected": expected,
+        "expected": expected_obj,
     }
 
 
@@ -199,14 +202,17 @@ def normalize_graphics_rules(raw_rules: Any) -> dict[str, Any]:
     if not isinstance(raw_rules, dict):
         raise ValueError("Graphics rules JSON must be an object")
 
-    schema_version = int(raw_rules.get("schema_version", _SCHEMA_VERSION))
-    raw_rule_list = raw_rules.get("rules", [])
+    raw_rules_obj = cast(dict[str, Any], raw_rules)
+
+    schema_version = int(raw_rules_obj.get("schema_version", _SCHEMA_VERSION))
+    raw_rule_list = raw_rules_obj.get("rules", [])
     if not isinstance(raw_rule_list, list):
         raise ValueError("Graphics rules JSON must contain a 'rules' array")
+    raw_rule_items = cast(list[Any], raw_rule_list)
 
     return {
         "schema_version": schema_version,
-        "rules": [_normalize_rule(rule) for rule in raw_rule_list],
+        "rules": [_normalize_rule(rule) for rule in raw_rule_items],
     }
 
 
@@ -290,9 +296,11 @@ def _rule_matches_entry(rule: dict[str, Any], entry: dict[str, Any]) -> bool:
         expected_moduletype = str(rule.get("moduletype_name") or "").strip()
         if not expected_moduletype:
             return False
-        actual_moduletype = str(
-            entry.get("moduletype_name") or entry.get("resolved_moduletype", {}).get("name") or ""
-        ).strip()
+        resolved_moduletype = entry.get("resolved_moduletype")
+        resolved_moduletype_name = (
+            cast(dict[str, Any], resolved_moduletype).get("name") if isinstance(resolved_moduletype, dict) else ""
+        )
+        actual_moduletype = str(entry.get("moduletype_name") or resolved_moduletype_name or "").strip()
         return actual_moduletype.casefold() == expected_moduletype.casefold()
 
     if _populated_path_selectors(rule):
@@ -311,6 +319,7 @@ def _collect_mismatches(
     mismatches: list[GraphicsRuleMismatch],
 ) -> None:
     if isinstance(expected, dict):
+        expected_dict = cast(dict[str, Any], expected)
         if not isinstance(actual, dict):
             mismatches.append(
                 GraphicsRuleMismatch(
@@ -320,10 +329,11 @@ def _collect_mismatches(
                 )
             )
             return
-        for key, expected_value in expected.items():
+        actual_dict = cast(dict[str, Any], actual)
+        for key, expected_value in expected_dict.items():
             next_path = f"{field_path}.{key}" if field_path else key
             _collect_mismatches(
-                actual.get(key),
+                actual_dict.get(key),
                 expected_value,
                 field_path=next_path,
                 mismatches=mismatches,

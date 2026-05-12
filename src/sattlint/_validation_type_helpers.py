@@ -366,3 +366,21 @@ def _assignment_type_matches(
         return False
 
     return str(actual).casefold() == str(expected).casefold()
+
+
+BUILTIN_DATATYPE_NAMES = _BUILTIN_DATATYPE_NAMES
+assignment_type_matches = _assignment_type_matches
+extract_time_literal = _extract_time_literal
+format_datatype = _format_datatype
+has_time_literal_marker = _has_time_literal_marker
+infer_literal_datatype = _infer_literal_datatype
+is_anytype_datatype = _is_anytype_datatype
+is_string_simple_type = _is_string_simple_type
+is_valid_duration_literal = _is_valid_duration_literal
+is_valid_time_literal = _is_valid_time_literal
+literal_matches_expected_datatype = _literal_matches_expected_datatype
+resolve_ref_datatype = _resolve_ref_datatype
+resolve_root_variable = _resolve_root_variable
+resolve_variable_field_datatype = _resolve_variable_field_datatype
+split_dotted_name = _split_dotted_name
+suggest_datatype_name = _suggest_datatype_name
