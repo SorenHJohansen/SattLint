@@ -1,7 +1,7 @@
 # Repository Health
 
 - Status: pass
-- Generated: 2026-05-11T15:42:51.679805+00:00
+- Generated: 2026-05-12T06:09:31.527106+00:00
 - Audit dir: artifacts/audit
 - Audit findings: 0 (blocking: 0)
 - Coverage: 88.26% minimum 87.26%
@@ -14,7 +14,7 @@
 
 - Ruff issues: 0
 - Pyright: 0 errors, 0 warnings
-- Pytest runtime: 32.711 seconds
+- Pytest runtime: 29.294 seconds
 - Structural budget: 22 functions, 3 classes over budget
 
 ## Largest Files
@@ -27,11 +27,11 @@
 
 ## Slowest Tests
 
-- tests.test_pipeline_collection.test_collect_architecture_report_includes_shadowing_cli_filter: 1.351s (passed)
-- tests.test_pipeline.test_collect_architecture_report_includes_shadowing_cli_filter: 1.237s (passed)
-- tests.parser.test_corpus.test_checked_in_corpus_manifests_pass_against_repo_fixtures: 1.127s (passed)
-- tests.test_recommendation_routing.test_verify_check_catalog_passes_for_repo_audit_catalog: 0.691s (passed)
-- tests.test_recommendation_routing.test_verify_check_catalog_passes_for_pipeline_catalog: 0.603s (passed)
+- tests.test_pipeline_collection.test_collect_architecture_report_includes_shadowing_cli_filter: 1.195s (passed)
+- tests.test_pipeline.test_collect_architecture_report_includes_shadowing_cli_filter: 1.135s (passed)
+- tests.parser.test_corpus.test_checked_in_corpus_manifests_pass_against_repo_fixtures: 0.973s (passed)
+- tests.test_recommendation_routing.test_verify_check_catalog_passes_for_pipeline_catalog: 0.726s (passed)
+- tests.test_recommendation_routing.test_verify_check_catalog_passes_for_repo_audit_catalog: 0.685s (passed)
 
 ## Trend Summary
 
