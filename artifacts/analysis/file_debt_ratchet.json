@@ -1,14 +1,5 @@
 {
   "files": {
-    "src/sattline_parser/models/ast_model.py": {
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 522,
-        "reason": "Parser AST schema owner remains centralized pending model decomposition.",
-        "target": 500,
-        "touch_rule": "must_shrink"
-      }
-    },
     "src/sattline_parser/transformer/_modules_mixin.py": {
       "structural": {
         "allow_rebaseline": false,

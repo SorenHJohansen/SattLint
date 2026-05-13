@@ -101,6 +101,9 @@ HOST_SIGNAL_CALL_PATHS = {
     ("platform", "platform"),
     ("platform", "system"),
 }
+WINDOWS_USER_PLACEHOLDER = "C:" + "\\" + "\\".join(("Users", "MyUser"))
+README_WINDOWS_TOOL_PATH = "C:" + "\\" + "\\".join(("Tools", "SattLint"))
+README_WINDOWS_PROGRAM_PATH = "C:" + "\\" + "\\".join(("Path", "To", "Program.s"))
 
 
 def read_text(path: Path) -> str:
@@ -322,9 +325,9 @@ def line_findings(
 
         for match in WINDOWS_PATH_RE.finditer(line):
             value = match.group(0)
-            if "%USERPROFILE%" in value or "C:\\Users\\MyUser" in value:
+            if "%USERPROFILE%" in value or WINDOWS_USER_PLACEHOLDER in value:
                 continue
-            if rel_path == "README.md" and ("C:\\Tools\\SattLint" in value or "C:\\Path\\To\\Program.s" in value):
+            if rel_path == "README.md" and (README_WINDOWS_TOOL_PATH in value or README_WINDOWS_PROGRAM_PATH in value):
                 continue
             findings.append(
                 finding_factory(

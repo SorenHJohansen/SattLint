@@ -15,16 +15,19 @@ from ._ast_model_support import (
     UsageLocation,
     any_list,
     datatype_def_list,
-    format_expr,
     format_list,
-    format_optional,
-    format_seq_nodes,
     graph_object_list,
     interact_object_list,
     library_dependency_map,
     moduletype_def_list,
     parameter_mapping_list,
     property_map,
+    render_base_picture,
+    render_frame_module,
+    render_module_code,
+    render_moduletype_def,
+    render_moduletype_instance,
+    render_single_module,
     submodule_list,
     usage_location_list,
     variable_list,
@@ -286,43 +289,7 @@ class ModuleCode:
     equations: list[Equation] | None = None
 
     def __str__(self) -> str:
-        def _unwrap_statement_node(x: Any) -> Any:
-            if hasattr(x, "data") and x.data == const.KEY_STATEMENT:
-                ch = getattr(x, "children", [])
-                return ch[0] if ch else x
-            return x
-
-        # Sequences (unchanged pretty SFC if you added it)
-        seq_lines: list[str] = []
-        if self.sequences:
-            for s in self.sequences:
-                size_str = f" with size {s.size}" if getattr(s, "size", None) is not None else ""
-                seq_lines.append(
-                    f"Sequence {s.name!r} at {s.position}{size_str} (type={s.type})\n"
-                    f"    Code:\n" + textwrap.indent(format_seq_nodes(s.code), "        ")
-                )
-        else:
-            seq_lines.append("No sequences")
-
-        eq_lines: list[str] = []
-        if self.equations:
-            for e in self.equations:
-                pretty_code: list[str] = []
-                for stmt in e.code:
-                    pretty_code.append(format_expr(_unwrap_statement_node(stmt)))
-                size_str = f" with size {e.size}" if getattr(e, "size", None) is not None else ""
-                eq_lines.append(
-                    f"EquationBlock name={e.name!r} at {e.position}{size_str}\n"
-                    f"    Code:\n" + textwrap.indent("\n".join(pretty_code), "        ")
-                )
-
-        return (
-            "ModuleCode{\n"
-            + textwrap.indent("Sequences:\n" + textwrap.indent("\n\n".join(seq_lines), "    "), "    ")
-            + "\n\n"
-            + textwrap.indent("Equations:\n" + textwrap.indent("\n\n".join(eq_lines), "    "), "    ")
-            + "\n}"
-        )
+        return render_module_code(self, statement_key=const.KEY_STATEMENT)
 
 
 @dataclass
@@ -353,19 +320,7 @@ class SingleModule:
     parametermappings: list[ParameterMapping] = field(default_factory=parameter_mapping_list)
 
     def __str__(self) -> str:
-        lines = [
-            f"Name            : {self.header.name!r}",
-            f"Enable          : {self.header.enable}",
-            f"Invoke_coord    : {self.header.invoke_coord!r}",
-            f"Datecode        : {self.datecode!r}",
-            f"Moduleparameters: {format_list(self.moduleparameters)}",
-            f"Localvariables  : {format_list(self.localvariables)}",
-            f"Submodules      : {format_list(self.submodules)}",
-            # f"ModuleDef       : {format_optional(self.moduledef)}",
-            f"ModuleCode      : {format_optional(self.modulecode)}",
-            f"ParameterMappings: {format_list(self.parametermappings)}",
-        ]
-        return "SingleModule{\n" + textwrap.indent("\n".join(lines), "    ") + "}"
+        return render_single_module(self)
 
 
 @dataclass
@@ -377,16 +332,7 @@ class FrameModule:
     modulecode: ModuleCode | None = None
 
     def __str__(self) -> str:
-        lines = [
-            f"Name         : {self.header.name!r}",
-            f"Enable       : {self.header.enable}",
-            f"Invoke_coord : {self.header.invoke_coord!r}",
-            f"Datecode     : {self.datecode!r}",
-            f"Submodules   : {format_list(self.submodules)}",
-            # f"ModuleDef    : {format_optional(self.moduledef)}",
-            f"ModuleCode   : {format_optional(self.modulecode)}",
-        ]
-        return "FrameModule{\n" + textwrap.indent("\n".join(lines), "    ") + "}"
+        return render_frame_module(self)
 
 
 @dataclass
@@ -396,15 +342,7 @@ class ModuleTypeInstance:
     parametermappings: list[ParameterMapping] = field(default_factory=parameter_mapping_list)
 
     def __str__(self) -> str:
-        lines = [
-            f"Name             : {self.header.name!r}",
-            f"Enable           : {self.header.enable}",
-            f"Enable_tail      : {self.header.enable_tail}",
-            f"Invoke_coord     : {self.header.invoke_coord!r}",
-            f"ModuleTypeName   : {self.moduletype_name!r}",
-            f"ParameterMappings: {format_list(self.parametermappings)}",
-        ]
-        return "ModuleTypeInstance{\n" + textwrap.indent("\n".join(lines), "    ") + "}"
+        return render_moduletype_instance(self)
 
 
 @dataclass
@@ -424,19 +362,7 @@ class ModuleTypeDef:
     declaration_span: SourceSpan | None = None
 
     def __str__(self) -> str:
-        lines = [
-            f"Name            : {self.name!r}",
-            f"Datecode        : {self.datecode!r}",
-            f"OriginFile      : {self.origin_file!r}",
-            f"OriginLib       : {self.origin_lib!r}",
-            f"Moduleparameters: {format_list(self.moduleparameters)}",
-            f"Localvariables  : {format_list(self.localvariables)}",
-            f"Submodules      : {format_list(self.submodules)}",
-            # f"ModuleDef       : {format_optional(self.moduledef)}",
-            f"ModuleCode      : {format_optional(self.modulecode)}",
-            f"ParameterMappings: {format_list(self.parametermappings)}",
-        ]
-        return "ModulType{\n" + textwrap.indent("\n".join(lines), "    ") + "}"
+        return render_moduletype_def(self)
 
 
 @dataclass
@@ -466,17 +392,7 @@ class BasePicture:
         self.__dict__.update(state)
 
     def __str__(self) -> str:
-        lines = [
-            f"Name: {self.name!r}\n"
-            f"Position: {self.position!r}\n\n"
-            f"TYPEDEFINITIONS (Records): {format_list(self.datatype_defs)}\n\n"
-            f"TYPEDEFINITIONS (Modules): {format_list(self.moduletype_defs)}\n"
-            f"Localvariables: {format_list(self.localvariables)}\n\n"
-            f"Submodules: {format_list(self.submodules)}\n\n"
-            # f"ModuleDef: {self.moduledef}\n\n"
-            f"ModuleCode: {self.modulecode}\n\n"
-        ]
-        return "BasePicture{\n" + textwrap.indent("\n  ".join(lines), "    ") + "}"
+        return render_base_picture(self)
 
 
 @dataclass
