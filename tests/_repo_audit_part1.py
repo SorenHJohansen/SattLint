@@ -173,6 +173,20 @@ def test_line_findings_skip_vendor_and_fixture_content(tmp_path):
     assert fixture_findings == []
 
 
+def test_line_findings_skip_repo_audit_self_scan_shards_and_scanner_sources(tmp_path):
+    shard_file = tmp_path / "tests" / "_repo_audit_part1.py"
+    shard_file.parent.mkdir(parents=True)
+    scanner_file = tmp_path / "src" / "sattlint" / "devtools" / "leak_detection.py"
+    scanner_file.parent.mkdir(parents=True)
+    text = 'HOST = "localhost:8080"\nROOT = r"C:/Users/SQHJ/Workspace"\nsecret_token = "super-secret-value"\n'
+
+    shard_findings = repo_audit._line_findings(shard_file, text, {"SQHJ"}, root=tmp_path)
+    scanner_findings = repo_audit._line_findings(scanner_file, text, {"SQHJ"}, root=tmp_path)
+
+    assert shard_findings == []
+    assert scanner_findings == []
+
+
 def test_iter_repo_text_files_skips_virtualenv_variants(tmp_path):
     venv_file = tmp_path / ".venv-py311-backup" / "Lib" / "site-packages" / "sample.py"
     venv_file.parent.mkdir(parents=True)

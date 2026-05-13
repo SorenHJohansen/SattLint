@@ -54,9 +54,15 @@ PLACEHOLDER_VALUES = {
 }
 SKIP_SELF_SCAN_PATHS = {
     "AGENTS.md",
+    "src/sattlint/devtools/leak_detection.py",
     "src/sattlint/devtools/repo_audit.py",
+    "src/sattlint/devtools/repo_audit_shared.py",
     "tests/test_repo_audit.py",
 }
+SKIP_SELF_SCAN_PREFIXES = (
+    "tests/_pipeline_collection_part",
+    "tests/_repo_audit_part",
+)
 SKIP_DIRS = {
     ".git",
     ".mypy_cache",
@@ -302,6 +308,10 @@ def severity_for_path(rel_path: str, default: str) -> str:
     return default
 
 
+def _should_skip_self_scan_path(rel_path: str) -> bool:
+    return rel_path in SKIP_SELF_SCAN_PATHS or rel_path.startswith(SKIP_SELF_SCAN_PREFIXES)
+
+
 def line_findings(
     path: Path,
     text: str,
@@ -316,7 +326,7 @@ def line_findings(
     if (
         rel_path == "coverage.xml"
         or rel_path.startswith(SKIP_CONTENT_SCAN_PREFIXES)
-        or rel_path in SKIP_SELF_SCAN_PATHS
+        or _should_skip_self_scan_path(rel_path)
     ):
         return findings
     for line_number, line in enumerate(text.splitlines(), 1):
@@ -504,7 +514,7 @@ def find_ignored_repo_path_references(
     seen: set[tuple[str, int, str]] = set()
     for path, tree in context.asts.items():
         rel_path = relative_path(path, root)
-        if rel_path in skip_self_scan_paths:
+        if rel_path in skip_self_scan_paths or rel_path.startswith(SKIP_SELF_SCAN_PREFIXES):
             continue
         if rel_path in allowlist_paths:
             continue
@@ -564,7 +574,7 @@ def find_hidden_local_dependency_findings(
     seen: set[tuple[str, int, str]] = set()
     for path, tree in context.asts.items():
         rel_path = relative_path(path, root)
-        if rel_path in skip_self_scan_paths:
+        if rel_path in skip_self_scan_paths or rel_path.startswith(SKIP_SELF_SCAN_PREFIXES):
             continue
         text = context.texts.get(path, "")
         for node in ast.walk(tree):
@@ -614,7 +624,7 @@ def find_host_specific_test_assumptions(
     seen: set[tuple[str, int]] = set()
     for path, tree in context.asts.items():
         rel_path = relative_path(path, root)
-        if rel_path in skip_self_scan_paths:
+        if rel_path in skip_self_scan_paths or rel_path.startswith(SKIP_SELF_SCAN_PREFIXES):
             continue
         text = context.texts.get(path, "")
         for node in ast.walk(tree):
