@@ -5,6 +5,11 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+AUDIT_DIR_PARTS = ("artifacts", "audit")
+
+
+def _repo_relative_text(*parts: str) -> str:
+    return Path(*parts).as_posix()
 
 
 def _run_pre_push_audit() -> int:
@@ -17,7 +22,7 @@ def _run_pre_push_audit() -> int:
             "full",
             "--check-my-changes",
             "--output-dir",
-            "artifacts/audit",
+            _repo_relative_text(*AUDIT_DIR_PARTS),
         ],
         cwd=REPO_ROOT,
         check=False,
