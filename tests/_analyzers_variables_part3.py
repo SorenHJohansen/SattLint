@@ -122,6 +122,35 @@ ENDDEF (*BasePicture*);
     assert issues[0].variable.name == "ButtonTypeSource"
 
 
+def test_ui_only_variable_detected_for_procedure_interact_windowcontent_invar_reads():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    PArea01Path: integer := 0;
+ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    InteractObjects :
+        ProcedureInteract ( -0.86 , 0.33 ) ( -0.55 , 0.6 )
+            WindowContent
+            "" : InVar_ "PArea01Path" 0
+            Variable = 0.0
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UI_ONLY]
+
+    assert len(issues) == 1
+    assert issues[0].variable is not None
+    assert issues[0].variable.name == "PArea01Path"
+
+
 def test_ui_only_variable_is_suppressed_by_non_ui_control_usage():
     code = """
 "SyntaxVersion"
@@ -377,3 +406,76 @@ def test_variable_analysis_treats_external_moduletype_usage_as_used_for_library_
     analyzer.run()
 
     assert not any(issue.variable is library_var for issue in analyzer.issues)
+
+
+def test_library_typedef_dependency_output_is_treated_as_effectful_for_library_target():
+    dependency_mt = ModuleTypeDef(
+        name="MES_JournalData",
+        moduleparameters=[
+            Variable(name="Name", datatype=Simple_DataType.STRING),
+            Variable(name="ValueAck", datatype=Simple_DataType.BOOLEAN),
+        ],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(equations=[], sequences=[]),
+        parametermappings=[],
+        origin_file="MES_JournalData.s",
+        origin_lib="MESLib",
+    )
+    root_typedef = ModuleTypeDef(
+        name="WorkerType",
+        moduleparameters=[Variable(name="Name", datatype=Simple_DataType.STRING)],
+        localvariables=[Variable(name="ValueAckOnce", datatype=Simple_DataType.BOOLEAN)],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("Journal"),
+                moduletype_name="MES_JournalData",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Name"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("Name"),
+                        source_literal=None,
+                    ),
+                    ParameterMapping(
+                        target=_varref("ValueAck"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("ValueAckOnce"),
+                        source_literal=None,
+                    ),
+                ],
+            )
+        ],
+        moduledef=None,
+        modulecode=ModuleCode(equations=[], sequences=[]),
+        parametermappings=[],
+        origin_file="Root.s",
+        origin_lib="ProjectLib",
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[root_typedef, dependency_mt],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="Root.s",
+        origin_lib="ProjectLib",
+    )
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.WRITE_WITHOUT_EFFECT
+        and issue.variable is not None
+        and issue.variable.name == "ValueAckOnce"
+        for issue in analyzer.issues
+    )

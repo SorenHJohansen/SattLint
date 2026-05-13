@@ -448,7 +448,7 @@ def _collect_issues_from_module(
                 _add_issue(self, IssueKind.UI_ONLY, my_path, variable, role="localvariable")
             elif usage.is_read_only and not bool(variable.const) and self.is_const_candidate(variable):
                 _add_issue(self, IssueKind.READ_ONLY_NON_CONST, my_path, variable, role="localvariable")
-            elif usage.written and not usage.read:
+            elif usage.written and not usage.read and not self.has_ignorable_output_binding(variable):
                 _add_issue(self, IssueKind.NEVER_READ, my_path, variable, role="localvariable")
             elif (
                 usage.read
@@ -548,7 +548,7 @@ def _collect_issues_from_module(
                 _add_issue(self, IssueKind.UI_ONLY, my_path, variable, role="localvariable")
             elif usage.is_read_only and not bool(variable.const) and self.is_const_candidate(variable):
                 _add_issue(self, IssueKind.READ_ONLY_NON_CONST, my_path, variable, role="localvariable")
-            elif usage.written and not usage.read:
+            elif usage.written and not usage.read and not self.has_ignorable_output_binding(variable):
                 _add_issue(self, IssueKind.NEVER_READ, my_path, variable, role="localvariable")
             elif (
                 usage.read

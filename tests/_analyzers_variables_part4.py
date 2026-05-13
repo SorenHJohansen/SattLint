@@ -164,6 +164,63 @@ def test_sample_fixture_contains_common_variable_quality_issues():
     assert ("QualityRecord", "UnusedField") in unused_fields
 
 
+def test_search_rec_component_found_record_output_is_not_flagged_never_read():
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[
+            Variable(name="CR", datatype=Simple_DataType.INTEGER),
+            Variable(name="Index", datatype=Simple_DataType.INTEGER),
+            Variable(name="SearchUnit", datatype=Simple_DataType.INTEGER),
+            Variable(name="FoundUnit", datatype=Simple_DataType.INTEGER),
+            Variable(name="srci", datatype=Simple_DataType.INTEGER),
+            Variable(name="SearchSucceeded", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Mirror", datatype=Simple_DataType.INTEGER),
+        ],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Search",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (
+                            const.KEY_ASSIGN,
+                            _varref("SearchSucceeded"),
+                            (
+                                const.KEY_FUNCTION_CALL,
+                                "SearchRecComponent",
+                                [
+                                    _varref("CR"),
+                                    _varref("Index"),
+                                    10,
+                                    _varref("SearchUnit"),
+                                    _varref("SearchUnit"),
+                                    _varref("FoundUnit"),
+                                    _varref("srci"),
+                                ],
+                            ),
+                        ),
+                        (const.KEY_ASSIGN, _varref("Mirror"), _varref("Index")),
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
+        moduledef=None,
+    )
+
+    issues = VariablesAnalyzer(bp).run()
+
+    never_read = {
+        issue.variable.name for issue in issues if issue.kind is IssueKind.NEVER_READ and issue.variable is not None
+    }
+
+    assert "FoundUnit" not in never_read
+
+
 def test_datatype_duplication_is_scoped_per_module_and_excludes_anytype():
     fyld = ModuleTypeDef(
         name="Fyld",
@@ -273,6 +330,57 @@ def test_library_target_report_shows_typedef_for_same_lib_different_file_modulet
     assert "BasePicture.X_Info_Panel :: moduleparameter EnableInteraktion (boolean)" not in summary
 
 
+def test_library_target_does_not_report_typedefs_from_sibling_projectlib_files():
+    foreign_local = Variable(name="FirstIndex", datatype=Simple_DataType.INTEGER)
+    foreign_typedef = ModuleTypeDef(
+        name="ListKernel",
+        moduleparameters=[],
+        localvariables=[foreign_local],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+        origin_file="KaHAListeLibX.x",
+        origin_lib="ProjectLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[foreign_typedef],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAMPCSøjleLib.x",
+        origin_lib="ProjectLib",
+    )
+    usage_by_id = {id(foreign_local): _UsageStub(read=True, is_read_only=True)}
+    issues: list[tuple[IssueKind, tuple[str, ...], str]] = []
+    helper: Any = SimpleNamespace(
+        bp=bp,
+        analyzed_target_is_library=True,
+        _limit_to_module_path=None,
+        _analyze_typedef=lambda *args, **kwargs: None,
+        _compute_effective_output_keys=lambda: set(),
+        _is_from_root_origin=lambda origin, origin_lib=None: VariablesAnalyzer._is_from_root_origin(
+            helper, origin, origin_lib
+        ),
+        _get_usage=lambda variable: usage_by_id[id(variable)],
+        _procedure_status_issue=lambda *_args, **_kwargs: None,
+        _add_issue=lambda kind, path, variable, role, field_path=None: issues.append(
+            (kind, tuple(path), variable.name)
+        ),
+        _has_output_effect=lambda *args, **kwargs: False,
+        _has_procedure_status_binding=lambda *args, **kwargs: False,
+        _is_const_candidate=lambda *args, **kwargs: True,
+        _collect_issues_from_module=lambda *args, **kwargs: None,
+    )
+
+    variables_execution_module._collect_typedef_issues(helper)
+
+    assert issues == []
+
+
 def test_unused_summary_splits_moduletype_and_singlemodule_groups():
     moduletype_var = Variable(name="EnableInteraktion", datatype=Simple_DataType.BOOLEAN)
     singlemodule_var = Variable(name="MinMax", datatype=Simple_DataType.INTEGER)
@@ -293,6 +401,34 @@ def test_unused_summary_splits_moduletype_and_singlemodule_groups():
 
     summary = VariablesReport(basepicture_name="BasePicture", issues=issues).summary()
 
+    assert "      Moduletype:" in summary
+    assert "BasePicture.TypeDef:InfoPanelType :: moduleparameter EnableInteraktion (boolean)" in summary
+    assert "      SingleModule:" in summary
+    assert "BasePicture.Soejle.L1.L2.RPDisp :: localvariable MinMax (integer)" in summary
+    assert "BasePicture.TypeDef:Soejle.L1.L2.RPDisp :: localvariable MinMax (integer)" not in summary
+
+
+def test_never_read_summary_splits_moduletype_and_singlemodule_groups():
+    moduletype_var = Variable(name="EnableInteraktion", datatype=Simple_DataType.BOOLEAN)
+    singlemodule_var = Variable(name="MinMax", datatype=Simple_DataType.INTEGER)
+    issues = [
+        VariableIssue(
+            kind=IssueKind.NEVER_READ,
+            module_path=["BasePicture", "TypeDef:InfoPanelType"],
+            variable=moduletype_var,
+            role="moduleparameter",
+        ),
+        VariableIssue(
+            kind=IssueKind.NEVER_READ,
+            module_path=["BasePicture", "TypeDef:Soejle", "L1", "L2", "RPDisp"],
+            variable=singlemodule_var,
+            role="localvariable",
+        ),
+    ]
+
+    summary = VariablesReport(basepicture_name="BasePicture", issues=issues).summary()
+
+    assert "Written but never read variables" in summary
     assert "      Moduletype:" in summary
     assert "BasePicture.TypeDef:InfoPanelType :: moduleparameter EnableInteraktion (boolean)" in summary
     assert "      SingleModule:" in summary
@@ -340,6 +476,7 @@ def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles
         bp=bp,
         _limit_to_module_path=None,
         _analyze_typedef=lambda *args, **kwargs: None,
+        _compute_effective_output_keys=lambda: set(),
         _is_from_root_origin=lambda origin, origin_lib=None: True,
         _get_usage=lambda variable: usage_by_id[id(variable)],
         _procedure_status_issue=lambda variable, usage: (
@@ -349,6 +486,7 @@ def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles
             (kind, tuple(path), variable.name, role, field_path)
         ),
         _has_output_effect=lambda *args, **kwargs: False,
+        _has_ignorable_output_binding=lambda *args, **kwargs: False,
         _has_procedure_status_binding=lambda *args, **kwargs: False,
         _is_const_candidate=lambda *args, **kwargs: True,
     )

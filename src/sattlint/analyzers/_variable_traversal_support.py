@@ -102,6 +102,7 @@ def _handle_function_call(
         return
 
     self._record_procedure_status_bindings(fn_name, args or [], context)
+    self._record_ignorable_output_bindings(fn_name, args or [], context)
     fn_key = fn_name.casefold()
     if fn_key in ("copyvariable", "copyvarnosort"):
         if len(args or []) < 2:
@@ -291,6 +292,8 @@ def _scan_for_varrefs(
             const.KEY_TAIL,
             const.KEY_ENABLE_EXPRESSION,
             const.GRAMMAR_VALUE_INVAR_PREFIX,
+            "plain_value",
+            "value_or_invar",
         }:
             self._walk_tail(obj, context, path, is_ui_read=is_ui_read)
             return

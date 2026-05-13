@@ -1,6 +1,7 @@
 """Engine tests for parser setup and project loading."""
 
 import logging
+import pickle
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -905,6 +906,21 @@ def test_dump_parse_tree_reports_missing_parse_tree(capsys: pytest.CaptureFixtur
     engine.dump_parse_tree(cast(Any, (_make_basepicture(parse_tree=None), SimpleNamespace())))
 
     assert "No parse tree available" in capsys.readouterr().out
+
+
+def test_basepicture_pickle_roundtrip_omits_parse_tree() -> None:
+    class _FakeParseTree:
+        def pretty(self) -> str:
+            return "TREE"
+
+    basepicture = _make_basepicture(parse_tree=_FakeParseTree())
+
+    restored = cast(engine.BasePicture, pickle.loads(pickle.dumps(basepicture)))
+
+    assert restored.header == basepicture.header
+    assert restored.origin_file == basepicture.origin_file
+    assert restored.origin_lib == basepicture.origin_lib
+    assert restored.parse_tree is None
 
 
 def test_dump_parse_tree_and_ast_write_dump_files(

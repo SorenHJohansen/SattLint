@@ -421,8 +421,18 @@ def _is_from_root_origin(
 ) -> bool:
     if self.analyzed_target_is_library:
         root_origin_lib = getattr(self.bp, "origin_lib", None)
+        root_origin_file = getattr(self.bp, "origin_file", None)
         if root_origin_lib and origin_lib:
-            return origin_lib.casefold() == root_origin_lib.casefold()
+            try:
+                root_stem = Path(root_origin_file).stem.casefold() if root_origin_file else None
+            except Exception:
+                root_stem = root_origin_file.rsplit(".", 1)[0].casefold() if root_origin_file else None
+
+            # Some real loads stamp origin_lib with the containing directory (for example
+            # ProjectLib) rather than the specific library file stem. Only use library-name
+            # equality when it is specific enough to identify the root library itself.
+            if root_stem and root_origin_lib.casefold() == root_stem:
+                return origin_lib.casefold() == root_origin_lib.casefold()
 
     if not origin_file:
         return True

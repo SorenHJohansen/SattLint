@@ -222,7 +222,7 @@ def is_compressed(text: str) -> bool:
 def decode_compressed(text: str, mapping: dict[str, str]) -> str:
     """Replace #markers using the mapping. Leaves unknown markers as-is."""
 
-    def _subst(m: re.Match) -> str:
+    def _subst(m: re.Match[str]) -> str:
         tok = m.group(0)
         if tok.startswith("#01") and len(tok) > 3:
             return "(" + tok[3:]
@@ -257,7 +257,7 @@ def decode_compressed(text: str, mapping: dict[str, str]) -> str:
     decoded = _TRUEVAR_RE.sub("TTrueVar", decoded)
 
     # Inject missing ModuleCode before EQUATIONBLOCK when none exists in the same module
-    def _ensure_modulecode(m: re.Match) -> str:
+    def _ensure_modulecode(m: re.Match[str]) -> str:
         last_enddef = decoded.rfind("ENDDEF", 0, m.start())
         last_modulecode = decoded.rfind("ModuleCode", 0, m.start())
         if last_modulecode > last_enddef:

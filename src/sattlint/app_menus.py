@@ -431,7 +431,6 @@ def tools_menu(
                 "Force refresh cached AST?"
             ):
                 force_refresh_ast_fn(cfg)
-                emit_output("? AST cache refreshed")
                 pause_fn()
         else:
             emit_output("Invalid choice.")

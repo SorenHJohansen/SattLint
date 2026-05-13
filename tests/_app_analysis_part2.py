@@ -157,7 +157,14 @@ def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch):
 
     monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
 
-    report = SimpleNamespace(summary=lambda: "state inference summary")
+    class MutableReport:
+        def __init__(self) -> None:
+            self.name = "BasePicture"
+
+        def summary(self) -> str:
+            return f"state inference summary for {self.name}"
+
+    report = MutableReport()
 
     app_analysis.run_checks(
         app.DEFAULT_CONFIG.copy(),
@@ -186,7 +193,8 @@ def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch):
     )
 
     assert any("State inference (state_inference)" in line for line in lines)
-    assert any("state inference summary" in line for line in lines)
+    assert any("state inference summary for TargetA" in line for line in lines)
+    assert not any("state inference summary for BasePicture" in line for line in lines)
 
 
 def test_run_icf_validation_covers_missing_dir_invalid_dir_and_empty_file_list(monkeypatch, tmp_path):
@@ -307,10 +315,17 @@ def test_run_mms_interface_analysis_reports_summary_and_errors(monkeypatch):
 
     monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
 
+    class MutableReport:
+        def __init__(self) -> None:
+            self.basepicture_name = "BasePicture"
+
+        def summary(self) -> str:
+            return f"mms summary for {self.basepicture_name}"
+
     def fake_mms(project_bp, debug=False, config=None):
         if project_bp == "bp-b":
             raise RuntimeError("boom")
-        return SimpleNamespace(summary=lambda: "mms summary")
+        return MutableReport()
 
     monkeypatch.setattr(app_analysis, "analyze_mms_interface_variables", fake_mms)
 
@@ -328,7 +343,8 @@ def test_run_mms_interface_analysis_reports_summary_and_errors(monkeypatch):
         pause_fn=lambda: pauses.append("pause"),
     )
 
-    assert any("mms summary" in line for line in lines)
+    assert any("mms summary for TargetA" in line for line in lines)
+    assert not any("mms summary for BasePicture" in line for line in lines)
     assert any("Error during analysis for TargetB: boom" in line for line in lines)
     assert pauses == ["pause"]
 
@@ -434,5 +450,5 @@ def test_run_debug_variable_usage_and_comment_code_analysis_cover_empty_success_
     assert any("No variable name provided" in line for line in lines)
     assert any("debug:bp-a:FlowVar" in line for line in lines)
     assert any("debug:bp-b:FlowVar" in line for line in lines)
-    assert any("comment:Root:['A.s', 'B.s']" in line for line in lines)
+    assert any("comment:TargetA:['A.s', 'B.s']" in line for line in lines)
     assert pauses == ["pause-empty", "pause-debug", "pause-comment"]

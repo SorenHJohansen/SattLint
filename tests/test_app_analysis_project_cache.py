@@ -136,6 +136,7 @@ def test_load_program_ast_raises_when_program_was_not_parsed(monkeypatch):
 def test_force_refresh_ast_clears_cache_entries_and_reloads_all_targets():
     cache_clears: list[str] = []
     load_calls: list[tuple[str, bool, bool]] = []
+    lines: list[str] = []
 
     class FakeCache:
         def __init__(self, cache_dir):
@@ -144,22 +145,32 @@ def test_force_refresh_ast_clears_cache_entries_and_reloads_all_targets():
         def clear(self, key):
             cache_clears.append(key)
 
-    result = app_analysis.force_refresh_ast(
-        {"analyzed_programs_and_libraries": ["TargetA", "TargetB"]},
-        cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
-        load_project_fn=cast(
-            Any,
-            lambda _cfg, target_name=None, use_cache=True, use_file_ast_cache=True: (
-                load_calls.append(((target_name or ""), use_cache, use_file_ast_cache))
-                or (f"bp-{target_name or ''}", SimpleNamespace())
+    original_emit_output = app_analysis.emit_output
+    app_analysis.emit_output = lambda message: lines.append(message)
+
+    try:
+        result = app_analysis.force_refresh_ast(
+            {"analyzed_programs_and_libraries": ["TargetA", "TargetB"]},
+            cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
+            load_project_fn=cast(
+                Any,
+                lambda _cfg, target_name=None, use_cache=True, use_file_ast_cache=True: (
+                    load_calls.append(((target_name or ""), use_cache, use_file_ast_cache))
+                    or (f"bp-{target_name or ''}", SimpleNamespace())
+                ),
             ),
-        ),
-        ast_cache_cls=cast(Any, FakeCache),
-        get_cache_dir_fn=lambda: Path("cache-dir"),
-    )
+            ast_cache_cls=cast(Any, FakeCache),
+            get_cache_dir_fn=lambda: Path("cache-dir"),
+        )
+    finally:
+        app_analysis.emit_output = original_emit_output
 
     assert cache_clears == ["key:TargetA", "key:TargetB"]
     assert load_calls == [("TargetA", False, False), ("TargetB", False, False)]
+    assert any("Refreshing AST caches for 2 target(s)..." in line for line in lines)
+    assert any("Refreshing AST cache for TargetA... (1/2)" in line for line in lines)
+    assert any("Refreshing AST cache for TargetB... (2/2)" in line for line in lines)
+    assert sum(1 for line in lines if line == "OK AST cache refreshed") == 2
     assert result == ("bp-TargetB", SimpleNamespace())
 
 
@@ -205,6 +216,11 @@ def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypa
 
     assert ok is False
     assert load_calls == ["Stale", "Old", "Broken"]
+    assert any("Refreshing AST caches for 4 target(s)..." in line for line in lines)
+    assert any("Checking AST cache for Fresh... (1/4)" in line for line in lines)
+    assert any("Checking AST cache for Stale... (2/4)" in line for line in lines)
+    assert any("Checking AST cache for Old... (3/4)" in line for line in lines)
+    assert any("Checking AST cache for Broken... (4/4)" in line for line in lines)
     assert any("Checking AST cache for Fresh..." in line for line in lines)
     assert any("AST cache OK" in line for line in lines)
     assert any("AST cache stale; rebuilding" in line for line in lines)

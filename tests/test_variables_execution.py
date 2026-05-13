@@ -118,6 +118,7 @@ def test_variables_execution_collect_typedef_issues_covers_moduleparameter_proce
         bp=bp,
         _limit_to_module_path=None,
         _analyze_typedef=lambda *args, **kwargs: None,
+        _compute_effective_output_keys=lambda: set(),
         _is_from_root_origin=lambda origin, origin_lib=None: True,
         _get_usage=lambda variable: _UsageStub(read=True) if variable is procedure_param else _UsageStub(),
         _procedure_status_issue=lambda variable, usage: (

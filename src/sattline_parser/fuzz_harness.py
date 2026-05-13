@@ -98,7 +98,7 @@ def collect_corpus_inputs(
 ) -> list[tuple[str, str]]:
     if corpus_dir is None:
         corpus_dir = CORPUS_DIR
-    subdirs = []
+    subdirs: list[pathlib.Path] = []
     if include_valid:
         subdirs.append(corpus_dir / "valid")
         subdirs.append(corpus_dir / "icf")
@@ -113,7 +113,7 @@ def collect_corpus_inputs(
     for subdir in subdirs:
         if not subdir.exists():
             continue
-        files = sorted(subdir.glob("*.s") or [])
+        files: list[pathlib.Path] = sorted(subdir.glob("*.s"))
         for file_path in files:
             try:
                 content = file_path.read_text(encoding="utf-8", errors="replace")
@@ -191,7 +191,7 @@ def generate_random_text(
         " ",
         "\t",
     ]
-    result = []
+    result: list[str] = []
     current_length = 0
     while current_length < length:
         # Fuzz harness intentionally uses non-cryptographic randomness.

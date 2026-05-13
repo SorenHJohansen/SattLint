@@ -145,10 +145,14 @@ reportMissingTypeStubs = false
 strict = [
     "src/sattline_parser/__init__.py",
     "src/sattline_parser/api.py",
+    "src/sattline_parser/fuzz_harness.py",
     "src/sattline_parser/grammar/__init__.py",
     "src/sattline_parser/grammar/constants.py",
+    "src/sattline_parser/grammar/parser_decode.py",
     "src/sattline_parser/models/__init__.py",
+    "src/sattline_parser/models/ast_model.py",
     "src/sattline_parser/transformer/__init__.py",
+    "src/sattline_parser/transformer/_expressions_mixin.py",
     "src/sattline_parser/transformer/_graphics_interact_mixin.py",
     "src/sattline_parser/transformer/_modules_mixin.py",
     "src/sattline_parser/utils/__init__.py",
@@ -280,10 +284,6 @@ strict_roots = [
     "src/sattlint_lsp",
 ]
 debt_allowlist = [
-    "src/sattline_parser/fuzz_harness.py",
-    "src/sattline_parser/grammar/parser_decode.py",
-    "src/sattline_parser/models/ast_model.py",
-    "src/sattline_parser/transformer/_expressions_mixin.py",
     "src/sattline_parser/transformer/_sfc_mixin.py",
     "src/sattline_parser/transformer/_tokens_mixin.py",
     "src/sattline_parser/transformer/sl_transformer.py",

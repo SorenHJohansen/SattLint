@@ -57,14 +57,17 @@ def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatc
             ]
         ),
     )
-    monkeypatch.setattr(app_analysis, "analyze_variables", lambda *_, **__: make_variable_report())
-    monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report())
+    monkeypatch.setattr(app_analysis, "analyze_variables", lambda *_, **__: make_variable_report("BasePicture"))
+    monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report("BasePicture"))
 
     app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
 
     out = capsys.readouterr().out
     assert "=== Target: ProgramA ===" in out
     assert "=== Target: LibB ===" in out
+    assert "Target: ProgramA" in out
+    assert "Target: LibB" in out
+    assert "Target: BasePicture" not in out
     assert out.count("Issues: 0") == 2
 
 
@@ -294,6 +297,27 @@ def test_run_variable_analysis_hides_dependency_validation_warnings(noop_screen,
     out = capsys.readouterr().out
     assert "Validation warnings (" not in out
     assert "dep_a: warning one" not in out
+    assert "Issues: 0" in out
+
+
+def test_run_variable_analysis_hides_expected_unavailable_dependency_warnings(noop_screen, monkeypatch, capsys):
+    graph = SimpleNamespace(
+        unavailable_libraries={"controllib"},
+        warnings=["KaHAMPCSøjleLib: dependency 'controllib' unavailable: expected proprietary dependency"],
+    )
+    monkeypatch.setattr(
+        app_analysis,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("KaHAMPCSøjleLib", "bp", graph)]),
+    )
+    monkeypatch.setattr(app_analysis, "analyze_variables", lambda *_, **__: make_variable_report())
+    monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report())
+
+    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+
+    out = capsys.readouterr().out
+    assert "Validation warnings (" not in out
+    assert "expected proprietary dependency" not in out
     assert "Issues: 0" in out
 
 

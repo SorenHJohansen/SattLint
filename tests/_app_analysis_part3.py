@@ -344,3 +344,14 @@ def test_app_analysis_wrappers_delegate_to_underlying_helpers(monkeypatch):
     assert app_analysis.source_paths_for_current_target(cast(Any, "bp"), cast(Any, "graph")) == {Path("TargetA.s")}
     assert app_analysis.target_is_library({}, cast(Any, "bp"), cast(Any, "graph")) is True
     assert app_analysis._get_enabled_analyzers() == ["variables"]
+
+
+def test_target_validation_warnings_suppresses_expected_unavailable_dependency_warning():
+    assert app_analysis._target_validation_warnings(
+        "KaHAMPCSøjleLib",
+        [
+            "KaHAMPCSøjleLib: dependency 'controllib' unavailable: expected proprietary dependency",
+            "KaHAMPCSøjleLib: warning one",
+            "dep_b: warning two",
+        ],
+    ) == ["KaHAMPCSøjleLib: warning one"]
