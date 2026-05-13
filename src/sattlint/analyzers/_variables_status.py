@@ -31,6 +31,13 @@ _DEFAULT_NAMING_ROLE_PATTERNS: dict[str, _NamingRolePatterns] = {
     "alarm": _NamingRolePatterns(suffixes=("alarm",)),
 }
 
+_IGNORABLE_OUTPUT_PARAMETERS: dict[str, frozenset[str]] = {
+    # SearchRecComponent returns the boolean success signal directly.
+    # The FoundRec out slot is required by the builtin signature, but callers
+    # commonly use it as a scratch sink when they only care whether a match exists.
+    "searchreccomponent": frozenset({"foundrec"}),
+}
+
 
 def _normalize_role_pattern_values(raw: object) -> tuple[str, ...]:
     if not isinstance(raw, list):
@@ -120,6 +127,19 @@ def _bind_procedure_status(
         bindings.append(binding)
 
 
+def _bind_ignorable_output(
+    self: VariablesAnalyzer,
+    full_ref: str,
+    *,
+    context: ScopeContext,
+) -> None:
+    resolved_var, _resolved_field_path, _decl_path, _decl_display = context.resolve_variable(full_ref)
+    if resolved_var is None:
+        return
+
+    self.ignorable_output_variable_ids.add(id(resolved_var))
+
+
 def _record_procedure_status_bindings(
     self: VariablesAnalyzer,
     fn_name: str,
@@ -146,6 +166,38 @@ def _record_procedure_status_bindings(
             parameter=parameter,
             context=context,
         )
+
+
+def _record_ignorable_output_bindings(
+    self: VariablesAnalyzer,
+    fn_name: str,
+    args: list[Any],
+    context: ScopeContext,
+) -> None:
+    signature = resolve_call_signature(fn_name)
+    if signature is None:
+        return
+
+    ignorable_parameters = _IGNORABLE_OUTPUT_PARAMETERS.get(fn_name.casefold())
+    if not ignorable_parameters:
+        return
+
+    for index, parameter in enumerate(signature.parameters):
+        if index >= len(args):
+            continue
+        if parameter.direction not in {"out", "inout"}:
+            continue
+        if parameter.name.casefold() not in ignorable_parameters:
+            continue
+
+        argument = args[index]
+        if not (isinstance(argument, dict) and const.KEY_VAR_NAME in argument):
+            continue
+        argument_dict = cast(dict[str, object], argument)
+        full_ref = argument_dict.get(const.KEY_VAR_NAME)
+        if not isinstance(full_ref, str):
+            continue
+        self.bind_ignorable_output(full_ref, context=context)
 
 
 def _propagate_procedure_status_bindings(self: VariablesAnalyzer) -> None:
@@ -205,6 +257,10 @@ def _has_procedure_status_binding(self: VariablesAnalyzer, variable: Variable) -
     return bool(self.procedure_status_bindings.get(id(variable)))
 
 
+def _has_ignorable_output_binding(self: VariablesAnalyzer, variable: Variable) -> bool:
+    return id(variable) in self.ignorable_output_variable_ids
+
+
 def _naming_role_mismatch_reason(
     self: VariablesAnalyzer,
     variable: Variable,
@@ -250,24 +306,30 @@ def _add_naming_role_mismatch_issues(self: VariablesAnalyzer) -> None:
 
 ProcedureStatusBinding = _ProcedureStatusBinding
 add_naming_role_mismatch_issues = _add_naming_role_mismatch_issues
+bind_ignorable_output = _bind_ignorable_output
 bind_procedure_status = _bind_procedure_status
 configured_naming_role_patterns = _configured_naming_role_patterns
+has_ignorable_output_binding = _has_ignorable_output_binding
 has_procedure_status_binding = _has_procedure_status_binding
 matches_naming_role = _matches_naming_role
 naming_role_mismatch_reason = _naming_role_mismatch_reason
 procedure_status_issue = _procedure_status_issue
 propagate_procedure_status_bindings = _propagate_procedure_status_bindings
+record_ignorable_output_bindings = _record_ignorable_output_bindings
 record_procedure_status_bindings = _record_procedure_status_bindings
 
 __all__ = [
     "ProcedureStatusBinding",
     "add_naming_role_mismatch_issues",
+    "bind_ignorable_output",
     "bind_procedure_status",
     "configured_naming_role_patterns",
+    "has_ignorable_output_binding",
     "has_procedure_status_binding",
     "matches_naming_role",
     "naming_role_mismatch_reason",
     "procedure_status_issue",
     "propagate_procedure_status_bindings",
+    "record_ignorable_output_bindings",
     "record_procedure_status_bindings",
 ]

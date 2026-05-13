@@ -10,6 +10,11 @@ from . import app_support as app_support_module
 from . import cache as cache_module
 from . import console as console_module
 from . import engine as engine_module
+from ._app_analysis_variable_analyses import (
+    HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS,
+    LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS,
+    VARIABLE_ANALYSES,
+)
 from .analyzers import variable_usage_reporting as variables_reporting_module
 from .analyzers.comment_code import analyze_comment_code_files
 from .analyzers.framework import AnalysisContext
@@ -33,62 +38,10 @@ from .reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, Variabl
 
 ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
-VariableAnalysisSelection = set[IssueKind] | None
-VariableAnalysisMap = dict[str, tuple[str, VariableAnalysisSelection]]
 
 app_support = cast(Any, app_support_module)
 cache = cast(Any, cache_module)
 engine = cast(Any, engine_module)
-
-VARIABLE_ANALYSES: VariableAnalysisMap = {
-    "1": ("All variable analyses (high confidence)", None),
-    "2": ("Unused variables", {IssueKind.UNUSED}),
-    "3": ("Unused fields in datatypes", {IssueKind.UNUSED_DATATYPE_FIELD}),
-    "4": ("Read-only but not CONST", {IssueKind.READ_ONLY_NON_CONST}),
-    "5": ("Written but never read", {IssueKind.NEVER_READ}),
-    "6": ("Unknown parameter mapping targets", {IssueKind.UNKNOWN_PARAMETER_TARGET}),
-    "7": ("String mapping type mismatches", {IssueKind.STRING_MAPPING_MISMATCH}),
-    "8": ("Duplicated complex datatypes", {IssueKind.DATATYPE_DUPLICATION}),
-    "9": ("Min/Max mapping name mismatches", {IssueKind.MIN_MAX_MAPPING_MISMATCH}),
-    "10": ("Magic numbers", {IssueKind.MAGIC_NUMBER}),
-    "11": ("Name collisions", {IssueKind.NAME_COLLISION}),
-    "12": ("Reset contamination", {IssueKind.RESET_CONTAMINATION}),
-    "13": ("Variable shadowing", {IssueKind.SHADOWING}),
-    "14": ("UI/display-only variables", {IssueKind.UI_ONLY}),
-    "15": ("Procedure status handling", {IssueKind.PROCEDURE_STATUS}),
-    "16": ("Write-without-effect variables", {IssueKind.WRITE_WITHOUT_EFFECT}),
-    "17": ("Cross-module contract mismatches", {IssueKind.CONTRACT_MISMATCH}),
-    "18": ("Implicit latching", {IssueKind.IMPLICIT_LATCH}),
-    "19": ("Global scope minimization", {IssueKind.GLOBAL_SCOPE_MINIMIZATION}),
-    "20": ("Hidden global coupling", {IssueKind.HIDDEN_GLOBAL_COUPLING}),
-    "21": ("High fan-in or fan-out variables", {IssueKind.HIGH_FAN_IN_OUT}),
-}
-
-HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
-    "2",
-    "3",
-    "4",
-    "5",
-    "6",
-    "7",
-    "8",
-    "9",
-    "10",
-    "11",
-    "12",
-    "13",
-)
-
-LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
-    "14",
-    "15",
-    "16",
-    "17",
-    "18",
-    "19",
-    "20",
-    "21",
-)
 emit_output: Callable[..., None] = console_module.print_output  # type: ignore[assignment]
 compute_cache_key: Callable[[ConfigDict], str] = cache.compute_cache_key
 get_cache_dir: Callable[[], Path] = cache.get_cache_dir
@@ -112,6 +65,20 @@ def _print_validation_warnings(warnings: list[str], *, limit: int = 12) -> None:
         emit_output(f"  - {item}")
     if len(warnings) > limit:
         emit_output(f"  - ... (+{len(warnings) - limit} more)")
+
+
+def _normalize_report_target_name(report: Any, target_name: str) -> Any:
+    if not target_name:
+        return report
+
+    for attr_name in ("basepicture_name", "name"):
+        if not hasattr(report, attr_name):
+            continue
+        try:
+            setattr(report, attr_name, target_name)
+        except AttributeError:
+            continue
+    return report
 
 
 def _get_analyzed_targets(cfg: ConfigDict) -> list[str]:
@@ -300,7 +267,10 @@ def force_refresh_ast(
     cache = ast_cache_cls(get_cache_dir_fn())
     cache_backend = cast(Any, cache)
     result = None
-    for target_name in targets:
+    total_targets = len(targets)
+    emit_output(f"Refreshing AST caches for {total_targets} target(s)...")
+    for index, target_name in enumerate(targets, start=1):
+        emit_output(f"\nRefreshing AST cache for {target_name}... ({index}/{total_targets})")
         cache_backend.clear(cache_key_for_target_fn(cfg, target_name))
         result = load_project_fn(
             cfg,
@@ -308,6 +278,7 @@ def force_refresh_ast(
             use_cache=False,
             use_file_ast_cache=False,
         )
+        emit_output("OK AST cache refreshed")
     return result
 
 
@@ -328,8 +299,10 @@ def ensure_ast_cache(
     cache_backend = cast(Any, cache)
     fast = cfg.get("fast_cache_validation", False)
     ok = True
-    for target_name in targets:
-        emit_output(f"\nChecking AST cache for {target_name}...")
+    total_targets = len(targets)
+    emit_output(f"Refreshing AST caches for {total_targets} target(s)...")
+    for index, target_name in enumerate(targets, start=1):
+        emit_output(f"\nChecking AST cache for {target_name}... ({index}/{total_targets})")
         cached = cache_backend.load(cache_key_for_target_fn(cfg, target_name))
         if cached:
             has_manifest = bool(cached.get("files"))
@@ -451,6 +424,7 @@ def run_variable_analysis(
             elif standard_kinds:
                 report = _merge_reports(report, shadowing_report)
 
+        report = _normalize_report_target_name(report, target_name)
         emit_output(f"\n=== Target: {target_name} ===")
         print_validation_warnings_fn(target_validation_warnings_fn(target_name, getattr(graph, "warnings", [])))
         emit_output(report.summary())
@@ -1084,6 +1058,7 @@ def _run_checks(
             emit_output(f"\n=== {spec.name} ({spec.key}) ===")
             report = spec.run(context)
             report = apply_rule_profile_to_report(spec.key, report, cfg)
+            report = _normalize_report_target_name(report, target_name)
             emit_output(report.summary())
 
     if pause_fn is not None:
@@ -1132,6 +1107,7 @@ def run_mms_interface_analysis(
                 debug=_debug_enabled(cfg),
                 config=cfg,
             )
+            report = _normalize_report_target_name(report, target_name)
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report.summary())
         except Exception as exc:
@@ -1264,7 +1240,8 @@ def run_comment_code_analysis(
     emit_output("\n--- Commented-out Code ---")
     for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
         paths = source_paths_for_current_target_fn(project_bp, graph)
-        report = analyze_comment_code_files(paths, project_bp.header.name)
+        report = analyze_comment_code_files(paths, target_name)
+        report = _normalize_report_target_name(report, target_name)
         emit_output(f"\n=== Target: {target_name} ===")
         emit_output(report.summary())
 

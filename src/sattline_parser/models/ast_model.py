@@ -8,7 +8,27 @@ from enum import Enum
 from typing import Any
 
 from ..grammar import constants as const
-from ..utils.formatter import format_expr, format_list, format_optional, format_seq_nodes
+from ._ast_model_support import (
+    AstNodeDict,
+    ModulePath,
+    PropertyMap,
+    UsageLocation,
+    any_list,
+    datatype_def_list,
+    format_expr,
+    format_list,
+    format_optional,
+    format_seq_nodes,
+    graph_object_list,
+    interact_object_list,
+    library_dependency_map,
+    moduletype_def_list,
+    parameter_mapping_list,
+    property_map,
+    submodule_list,
+    usage_location_list,
+    variable_list,
+)
 
 __all__ = [
     "BasePicture",
@@ -88,15 +108,14 @@ class Simple_DataType(Enum):
     REAL = "real"
 
     @classmethod
-    def from_any(cls, value: Simple_DataType | str) -> Simple_DataType:
+    def from_any(cls, value: object) -> Simple_DataType:
         # Use the concrete class in isinstance for proper type narrowing in type checkers.
         if isinstance(value, Simple_DataType):
             return value
-        if isinstance(value, str):
-            # Accept any-case string for built-ins; will raise ValueError if not valid.
-            return cls(value.lower())
-        # Fallback for unexpected inputs to satisfy static typing.
-        raise TypeError(f"Expected Simple_DataType or str, got {type(value).__name__}")
+        if not isinstance(value, str):
+            raise TypeError("Expected Simple_DataType or str")
+        # Accept any-case string for built-ins; will raise ValueError if not valid.
+        return cls(value.lower())
 
 
 @dataclass
@@ -123,11 +142,10 @@ class Variable:
         try:
             self.datatype = Simple_DataType.from_any(self.datatype)
         except ValueError:
-            # Keep user-defined datatypes (record names) as strings
-            if isinstance(self.datatype, str):
-                self.datatype = self.datatype
-            else:
+            if not isinstance(self.datatype, str):
                 raise
+            # Keep user-defined datatypes (record names) as strings
+            self.datatype = str(self.datatype)
 
     def __str__(self) -> str:
         return (
@@ -142,19 +160,19 @@ class DataType:
     name: str
     description: str | None
     datecode: int | None
-    var_list: list[Variable] = field(default_factory=list)
+    var_list: list[Variable] = field(default_factory=variable_list)
     read: bool | None = False
     written: bool | None = False
-    usage_locations: list[tuple] = field(default_factory=list)
+    usage_locations: list[UsageLocation] = field(default_factory=usage_location_list)
     origin_file: str | None = None
     origin_lib: str | None = None
     declaration_span: SourceSpan | None = None
 
-    def mark_read(self, module_path):
+    def mark_read(self, module_path: ModulePath) -> None:
         self.read = True
         self.usage_locations.append((module_path.copy(), "read"))
 
-    def mark_written(self, module_path):
+    def mark_written(self, module_path: ModulePath) -> None:
         self.written = True
         self.usage_locations.append((module_path.copy(), "write"))
 
@@ -174,24 +192,11 @@ class DataType:
 
 @dataclass
 class ParameterMapping:
-    # Left side of "=>" in a submodule call:
-    # This is the submodule's parameter name, represented by the variable_name dict
-    # returned from transformer.variable_name, or a plain string.
-    target: dict | str
-
-    # "value" vs "variable_name" (you set const.KEY_VALUE or const.TREE_TAG_VARIABLE_NAME)
+    target: AstNodeDict | str
     source_type: str
-
-    # Whether Duration_Value was present
     is_duration: bool
-
-    # Whether GLOBAL was present; if True, source is considered used
     is_source_global: bool
-
-    # Right side of "=>" can be a variable_name dict or a Variable; allow both, or None
-    source: dict | Variable | None = None
-
-    # Or a literal (int/float/bool/str), or None
+    source: AstNodeDict | Variable | None = None
     source_literal: Any | None = None
 
     def __str__(self) -> str:
@@ -213,13 +218,13 @@ class ParameterMapping:
 @dataclass
 class GraphObject:
     type: str
-    properties: dict = field(default_factory=dict)
+    properties: PropertyMap = field(default_factory=property_map)
 
 
 @dataclass
 class InteractObject:
     type: str
-    properties: dict = field(default_factory=dict)
+    properties: PropertyMap = field(default_factory=property_map)
 
 
 @dataclass
@@ -229,9 +234,9 @@ class ModuleDef:
     seq_layers: Any | None = None
     grid: float = 0.2
     zoomable: bool = False
-    graph_objects: list[GraphObject] = field(default_factory=list)
-    interact_objects: list[InteractObject] = field(default_factory=list)
-    properties: dict = field(default_factory=dict)
+    graph_objects: list[GraphObject] = field(default_factory=graph_object_list)
+    interact_objects: list[InteractObject] = field(default_factory=interact_object_list)
+    properties: PropertyMap = field(default_factory=property_map)
 
     def __str__(self) -> str:
         lines = [
@@ -254,7 +259,7 @@ class Sequence:
     size: tuple[float, float]
     seqcontrol: bool = False
     seqtimer: bool = False
-    code: list[Any] = field(default_factory=list)
+    code: list[Any] = field(default_factory=any_list)
 
     def __str__(self) -> str:
         return (
@@ -269,7 +274,7 @@ class Equation:
     name: str
     position: tuple[float, float]
     size: tuple[float, float]
-    code: list[Any] = field(default_factory=list)
+    code: list[Any] = field(default_factory=any_list)
 
     def __str__(self) -> str:
         return f"Equation(name={self.name}, pos={self.position},\n    code={format_list(self.code)})"
@@ -281,18 +286,17 @@ class ModuleCode:
     equations: list[Equation] | None = None
 
     def __str__(self) -> str:
-        def _unwrap_statement_node(x):
+        def _unwrap_statement_node(x: Any) -> Any:
             if hasattr(x, "data") and x.data == const.KEY_STATEMENT:
                 ch = getattr(x, "children", [])
                 return ch[0] if ch else x
             return x
 
         # Sequences (unchanged pretty SFC if you added it)
-        seq_lines = []
+        seq_lines: list[str] = []
         if self.sequences:
             for s in self.sequences:
                 size_str = f" with size {s.size}" if getattr(s, "size", None) is not None else ""
-                # If you implemented format_seq_nodes(s.code), use it here; otherwise keep existing
                 seq_lines.append(
                     f"Sequence {s.name!r} at {s.position}{size_str} (type={s.type})\n"
                     f"    Code:\n" + textwrap.indent(format_seq_nodes(s.code), "        ")
@@ -300,11 +304,10 @@ class ModuleCode:
         else:
             seq_lines.append("No sequences")
 
-        # Equations: rely on format_expr for everything (handles IF recursively)
-        eq_lines = []
+        eq_lines: list[str] = []
         if self.equations:
             for e in self.equations:
-                pretty_code = []
+                pretty_code: list[str] = []
                 for stmt in e.code:
                     pretty_code.append(format_expr(_unwrap_statement_node(stmt)))
                 size_str = f" with size {e.size}" if getattr(e, "size", None) is not None else ""
@@ -333,8 +336,8 @@ class ModuleHeader:
     zoom_limits: tuple[float, float] | None = None
     zoomable: bool = False
     enable_tail: object | None = None
-    invoke_coord_tails: list[Any] = field(default_factory=list)
-    groupconn: dict | None = None
+    invoke_coord_tails: list[Any] = field(default_factory=any_list)
+    groupconn: AstNodeDict | None = None
     groupconn_global: bool = False
 
 
@@ -343,11 +346,11 @@ class SingleModule:
     header: ModuleHeader
     moduledef: ModuleDef | None
     datecode: int | None = None
-    moduleparameters: list[Variable] = field(default_factory=list)
-    localvariables: list[Variable] = field(default_factory=list)
-    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(default_factory=list)
+    moduleparameters: list[Variable] = field(default_factory=variable_list)
+    localvariables: list[Variable] = field(default_factory=variable_list)
+    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(default_factory=submodule_list)
     modulecode: ModuleCode | None = None
-    parametermappings: list[ParameterMapping] = field(default_factory=list)
+    parametermappings: list[ParameterMapping] = field(default_factory=parameter_mapping_list)
 
     def __str__(self) -> str:
         lines = [
@@ -369,7 +372,7 @@ class SingleModule:
 class FrameModule:
     header: ModuleHeader
     datecode: int | None = None
-    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(default_factory=list)
+    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(default_factory=submodule_list)
     moduledef: ModuleDef | None = None
     modulecode: ModuleCode | None = None
 
@@ -390,7 +393,7 @@ class FrameModule:
 class ModuleTypeInstance:
     header: ModuleHeader
     moduletype_name: str
-    parametermappings: list[ParameterMapping] = field(default_factory=list)
+    parametermappings: list[ParameterMapping] = field(default_factory=parameter_mapping_list)
 
     def __str__(self) -> str:
         lines = [
@@ -408,15 +411,13 @@ class ModuleTypeInstance:
 class ModuleTypeDef:
     name: str
     datecode: int | None = None
-    moduleparameters: list[Variable] = field(default_factory=list)  # MODULEPARAMETERS declarations
-    localvariables: list[Variable] = field(default_factory=list)  # LOCALVARIABLES declarations
-    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(
-        default_factory=list
-    )  # nested ModuleInstance nodes
+    moduleparameters: list[Variable] = field(default_factory=variable_list)
+    localvariables: list[Variable] = field(default_factory=variable_list)
+    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(default_factory=submodule_list)
     moduledef: ModuleDef | None = None
     modulecode: ModuleCode | None = None
-    parametermappings: list[ParameterMapping] = field(default_factory=list)
-    groupconn: dict | None = None
+    parametermappings: list[ParameterMapping] = field(default_factory=parameter_mapping_list)
+    groupconn: AstNodeDict | None = None
     groupconn_global: bool = False
     origin_file: str | None = None
     origin_lib: str | None = None
@@ -444,17 +445,25 @@ class BasePicture:
     name: str = "BasePicture"
     program_name: str | None = None
     position: tuple[float, float, float, float, float] | None = None
-    datatype_defs: list[DataType] = field(default_factory=list)
-    moduletype_defs: list[ModuleTypeDef] = field(default_factory=list)
-    localvariables: list[Variable] = field(default_factory=list)
-    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(default_factory=list)
+    datatype_defs: list[DataType] = field(default_factory=datatype_def_list)
+    moduletype_defs: list[ModuleTypeDef] = field(default_factory=moduletype_def_list)
+    localvariables: list[Variable] = field(default_factory=variable_list)
+    submodules: list[SingleModule | FrameModule | ModuleTypeInstance] = field(default_factory=submodule_list)
     moduledef: ModuleDef | None = None
     modulecode: ModuleCode | None = None
     origin_file: str | None = None
     origin_lib: str | None = None
-    # library_name.casefold() -> list of dependency library names (casefolded)
-    library_dependencies: dict[str, list[str]] = field(default_factory=dict)
+    library_dependencies: dict[str, list[str]] = field(default_factory=library_dependency_map)
     parse_tree: Any | None = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__.copy()
+        # Cached AST payloads do not need the original Lark tree and it dominates pickle size.
+        state["parse_tree"] = None
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
 
     def __str__(self) -> str:
         lines = [
@@ -472,9 +481,9 @@ class BasePicture:
 
 @dataclass
 class SFCCodeBlocks:
-    enter: list[Any] = field(default_factory=list)
-    active: list[Any] = field(default_factory=list)
-    exit: list[Any] = field(default_factory=list)
+    enter: list[Any] = field(default_factory=any_list)
+    active: list[Any] = field(default_factory=any_list)
+    exit: list[Any] = field(default_factory=any_list)
 
 
 @dataclass

@@ -352,7 +352,7 @@ class VariablesReport:
             )
             return
         if kind is IssueKind.NEVER_READ:
-            append_variable_issue_list(
+            append_unused_variable_issue_list(
                 lines,
                 SECTION_TITLES[IssueKind.NEVER_READ],
                 self.never_read,
@@ -489,7 +489,8 @@ class VariablesReport:
             f"Status: {status}",
         ]
         lines.append(f"Issues: {len(self.issues)}")
-        if summary_kinds:
+        show_sections_overview = len(summary_kinds) > 1 or (self.visible_kinds is None and bool(summary_kinds))
+        if show_sections_overview:
             lines.append("Sections:")
             lines.extend(f"  - {SECTION_TITLES[kind]}: {len(self._issues_for_kind(kind))}" for kind in summary_kinds)
         for kind in summary_kinds:

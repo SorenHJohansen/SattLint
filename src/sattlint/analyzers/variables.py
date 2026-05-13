@@ -72,13 +72,16 @@ from ._variables_execution import (
 from ._variables_status import (
     ProcedureStatusBinding,
     add_naming_role_mismatch_issues,
+    bind_ignorable_output,
     bind_procedure_status,
     configured_naming_role_patterns,
+    has_ignorable_output_binding,
     has_procedure_status_binding,
     matches_naming_role,
     naming_role_mismatch_reason,
     procedure_status_issue,
     propagate_procedure_status_bindings,
+    record_ignorable_output_bindings,
     record_procedure_status_bindings,
 )
 from ._variables_submodules import (
@@ -241,6 +244,7 @@ class VariablesAnalyzer:
         self._external_effect_sinks: set[tuple[str, ...]] = set()
         self._effective_output_keys: set[tuple[str, ...]] = set()
         self._procedure_status_bindings: dict[int, list[ProcedureStatusBinding]] = defaultdict(list)
+        self._ignorable_output_variable_ids: set[int] = set()
 
         self._effect_flow_tracker = EffectFlowTracker(
             effect_flow_edges=self._effect_flow_edges,
@@ -298,9 +302,12 @@ class VariablesAnalyzer:
     _collect_issues_from_module = _collect_issues_from_module
 
     _bind_procedure_status = bind_procedure_status
+    _bind_ignorable_output = bind_ignorable_output
     _record_procedure_status_bindings = record_procedure_status_bindings
+    _record_ignorable_output_bindings = record_ignorable_output_bindings
     _propagate_procedure_status_bindings = propagate_procedure_status_bindings
     _procedure_status_issue = procedure_status_issue
+    _has_ignorable_output_binding = has_ignorable_output_binding
     _has_procedure_status_binding = has_procedure_status_binding
     _naming_role_mismatch_reason = naming_role_mismatch_reason
     _matches_naming_role = matches_naming_role
@@ -397,6 +404,10 @@ class VariablesAnalyzer:
     @property
     def procedure_status_bindings(self) -> dict[int, list[ProcedureStatusBinding]]:
         return self._procedure_status_bindings
+
+    @property
+    def ignorable_output_variable_ids(self) -> set[int]:
+        return self._ignorable_output_variable_ids
 
     @property
     def naming_role_patterns(self) -> dict[str, Any]:
@@ -514,6 +525,9 @@ class VariablesAnalyzer:
     def has_procedure_status_binding(self, variable: Variable) -> bool:
         return self._has_procedure_status_binding(variable)
 
+    def has_ignorable_output_binding(self, variable: Variable) -> bool:
+        return self._has_ignorable_output_binding(variable)
+
     def procedure_status_issue(self, variable: Variable, usage: VariableUsage) -> tuple[str, str | None] | None:
         return self._procedure_status_issue(variable, usage)
 
@@ -537,6 +551,14 @@ class VariablesAnalyzer:
             parameter=parameter,
             context=context,
         )
+
+    def bind_ignorable_output(
+        self,
+        full_ref: str,
+        *,
+        context: ScopeContext,
+    ) -> None:
+        self._bind_ignorable_output(full_ref, context=context)
 
     def matches_naming_role(self, name_key: str, role_name: str) -> bool:
         return self._matches_naming_role(name_key, role_name)

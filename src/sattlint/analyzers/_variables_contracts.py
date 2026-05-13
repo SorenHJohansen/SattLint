@@ -67,16 +67,7 @@ def _build_anytype_field_contracts(self: VariablesAnalyzer) -> dict[int, dict[st
     if not typedefs_with_anytype:
         return {}
 
-    extractor = type(self)(
-        self.bp,
-        debug=False,
-        fail_loudly=False,
-        unavailable_libraries=self.unavailable_libraries,
-        analyzed_target_is_library=self.analyzed_target_is_library,
-        include_dependency_moduletype_usage=self.include_dependency_moduletype_usage,
-        trace_recorder=None,
-        build_anytype_contracts=False,
-    )
+    extractor = _make_nested_contract_extractor(self)
     contracts: dict[int, dict[str, AnyTypeFieldContract]] = {}
 
     for typedef in typedefs_with_anytype:
@@ -108,16 +99,11 @@ def _get_required_parameter_names_for_typedef(
     if cached is not None:
         return cached
 
-    extractor = type(self)(
-        self.bp,
-        debug=False,
-        fail_loudly=False,
-        unavailable_libraries=self.unavailable_libraries,
-        analyzed_target_is_library=self.analyzed_target_is_library,
-        include_dependency_moduletype_usage=self.include_dependency_moduletype_usage,
-        trace_recorder=None,
-        build_anytype_contracts=False,
-    )
+    # Share recursion-sensitive state across nested extractors so typedef cycles
+    # short-circuit to an in-progress placeholder instead of expanding forever.
+    self.required_parameter_names_by_owner[owner_id] = {}
+
+    extractor = _make_nested_contract_extractor(self)
     extractor.analyze_typedef(
         moduletype,
         path=[self.bp.header.name, f"TypeDef:{moduletype.name}"],
@@ -134,6 +120,22 @@ def _get_required_parameter_names_for_typedef(
 
     self.required_parameter_names_by_owner[owner_id] = required_names
     return required_names
+
+
+def _make_nested_contract_extractor(self: VariablesAnalyzer) -> VariablesAnalyzer:
+    extractor = type(self)(
+        self.bp,
+        debug=False,
+        fail_loudly=False,
+        unavailable_libraries=self.unavailable_libraries,
+        analyzed_target_is_library=self.analyzed_target_is_library,
+        include_dependency_moduletype_usage=self.include_dependency_moduletype_usage,
+        trace_recorder=None,
+        build_anytype_contracts=False,
+    )
+    cast(Any, extractor)._required_parameter_names_by_owner = self.required_parameter_names_by_owner
+    cast(Any, extractor)._analyzing_typedefs = self.analyzing_typedefs
+    return extractor
 
 
 def _check_param_mappings_for_single(
@@ -288,6 +290,7 @@ get_required_parameter_names_for_typedef = _get_required_parameter_names_for_typ
 index_all_variables = _index_all_variables
 is_const_candidate = _is_const_candidate
 iter_anytype_typedefs = _iter_anytype_typedefs
+make_nested_contract_extractor = _make_nested_contract_extractor
 
 __all__ = [
     "build_anytype_field_contracts",
@@ -299,4 +302,5 @@ __all__ = [
     "index_all_variables",
     "is_const_candidate",
     "iter_anytype_typedefs",
+    "make_nested_contract_extractor",
 ]

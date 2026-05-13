@@ -118,7 +118,7 @@ def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> 
             self._add_issue(IssueKind.UI_ONLY, bp_path, variable, role=role)
         elif usage.is_read_only and not bool(variable.const) and self._is_const_candidate(variable):
             self._add_issue(IssueKind.READ_ONLY_NON_CONST, bp_path, variable, role=role)
-        elif usage.written and not usage.read:
+        elif usage.written and not usage.read and not self._has_ignorable_output_binding(variable):
             self._add_issue(IssueKind.NEVER_READ, bp_path, variable, role=role)
         elif (
             usage.read
@@ -147,6 +147,7 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
         current_library = moduletype.origin_lib or getattr(self.bp, "origin_lib", None)
 
         self._analyze_typedef(moduletype, path=td_path)
+        self._effective_output_keys = self._compute_effective_output_keys()
 
         for variable in moduletype.moduleparameters or []:
             role = "moduleparameter"
@@ -187,7 +188,7 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
                 self._add_issue(IssueKind.UI_ONLY, td_path, variable, role=role)
             elif usage.is_read_only and not bool(variable.const) and self._is_const_candidate(variable):
                 self._add_issue(IssueKind.READ_ONLY_NON_CONST, td_path, variable, role=role)
-            elif usage.written and not usage.read:
+            elif usage.written and not usage.read and not self._has_ignorable_output_binding(variable):
                 self._add_issue(IssueKind.NEVER_READ, td_path, variable, role=role)
             elif (
                 usage.read

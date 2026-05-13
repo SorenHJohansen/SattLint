@@ -7,6 +7,7 @@ from typing import Any, cast
 
 from .analyzers.icf import format_icf_file
 from .casefolding import casefold_equal, casefold_key, dedupe_casefolded_strings
+from .engine import expected_unavailable_library_reason
 
 ConfigDict = dict[str, Any]
 
@@ -151,11 +152,22 @@ def extract_warning_name(item: str) -> str | None:
     return item.split(": ", 1)[0]
 
 
+def is_expected_unavailable_warning(item: str) -> bool:
+    match = re.match(r"^[^:]+: dependency '([^']+)' unavailable: (.+)$", item)
+    if match is None:
+        return False
+
+    dependency_name, reason = match.groups()
+    expected_reason = expected_unavailable_library_reason(dependency_name)
+    return expected_reason is not None and reason == expected_reason
+
+
 def target_validation_warnings(target_name: str, warnings: list[str]) -> list[str]:
     return [
         item
         for item in warnings
-        if (warning_name := extract_warning_name(item)) is None or casefold_equal(warning_name, target_name)
+        if ((warning_name := extract_warning_name(item)) is None or casefold_equal(warning_name, target_name))
+        and not is_expected_unavailable_warning(item)
     ]
 
 

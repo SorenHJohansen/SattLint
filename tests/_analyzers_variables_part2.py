@@ -44,6 +44,94 @@ def test_required_parameter_name_helper_caches_only_runtime_used_parameters():
     assert analyzer._required_parameter_names_by_owner[id(typedef)] == first
 
 
+def test_required_parameter_name_helper_handles_cyclic_typedef_instances():
+    type_a = ModuleTypeDef(
+        name="TypeA",
+        moduleparameters=[Variable(name="AParam", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="AMirror", datatype=Simple_DataType.INTEGER)],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("UseB"),
+                moduletype_name="TypeB",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("BParam"),
+                        source_type=const.KEY_VALUE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("AParam"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="ReadAParam",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[(const.KEY_ASSIGN, _varref("AMirror"), _varref("AParam"))],
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+    type_b = ModuleTypeDef(
+        name="TypeB",
+        moduleparameters=[Variable(name="BParam", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="BMirror", datatype=Simple_DataType.INTEGER)],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("UseA"),
+                moduletype_name="TypeA",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("AParam"),
+                        source_type=const.KEY_VALUE,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("BParam"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="ReadBParam",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[(const.KEY_ASSIGN, _varref("BMirror"), _varref("BParam"))],
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[type_a, type_b],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+
+    required_a = analyzer._get_required_parameter_names_for_typedef(type_a)
+    required_b = analyzer._get_required_parameter_names_for_typedef(type_b)
+
+    assert required_a == {"aparam": "AParam"}
+    assert required_b == {"bparam": "BParam"}
+    assert analyzer._required_parameter_names_by_owner[id(type_a)] == required_a
+    assert analyzer._required_parameter_names_by_owner[id(type_b)] == required_b
+
+
 def test_anytype_contracts_collect_read_and_write_field_paths():
     typedef = ModuleTypeDef(
         name="ChildType",
