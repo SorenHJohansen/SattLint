@@ -204,6 +204,10 @@ def test_get_example_fixtures_for_analyzer_returns_expected_rule_ids():
     example = shadowing_examples[0]
     assert "semantic.shadowing" in example["expected_rule_ids"]
 
+    config_drift_examples = get_example_fixtures_for_analyzer("config_drift")
+    assert len(config_drift_examples) == 1
+    assert config_drift_examples[0]["expected_rule_ids"] == ["semantic.instance-configuration-drift"]
+
 
 def test_build_analyzer_reference_entry():
     from sattlint.analyzers.framework import AnalyzerSpec
@@ -246,6 +250,24 @@ def test_build_full_analyzer_reference():
     assert "total_rules" in reference
     assert reference["total_analyzers"] > 0
     assert reference["total_rules"] > 0
+
+
+def test_build_full_analyzer_reference_includes_wave2_analyzers_with_rules_and_examples():
+    from sattlint.docgenerator.analyzer_ref import build_full_analyzer_reference
+
+    reference = build_full_analyzer_reference()
+    analyzers = {entry["key"]: entry for entry in reference["analyzers"]}
+
+    for key in (
+        "signal_lifecycle",
+        "loop_stability",
+        "fault_handling",
+        "numeric_constraints",
+        "config_drift",
+    ):
+        assert key in analyzers
+        assert analyzers[key]["rules"]
+        assert analyzers[key]["examples"]
 
 
 def test_render_analyzer_reference_markdown():

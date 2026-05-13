@@ -84,6 +84,44 @@ def test_run_analyze_command_delegates_to_cli_owner(monkeypatch):
     assert seen["exit_success"] == app.EXIT_SUCCESS
 
 
+def test_run_analyze_command_allows_opt_in_analyzer_keys(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run_checks(
+        cfg: dict,
+        selected_keys: list[str] | None,
+        *,
+        iter_loaded_projects_fn,
+        get_enabled_analyzers_fn,
+        target_is_library_fn,
+        pause_fn,
+    ) -> None:
+        del cfg, iter_loaded_projects_fn, target_is_library_fn, pause_fn
+        seen["selected_keys"] = selected_keys
+        seen["analyzer_keys"] = [spec.key for spec in get_enabled_analyzers_fn()]
+
+    def fake_run_analyze_command(
+        cfg: dict,
+        *,
+        selected_keys: list[str] | None,
+        use_cache: bool,
+        run_checks_fn,
+        exit_success: int,
+    ) -> int:
+        del use_cache, exit_success
+        run_checks_fn(cfg, selected_keys, False)
+        return 0
+
+    monkeypatch.setattr(app.app_analysis, "run_checks", fake_run_checks)
+    monkeypatch.setattr(app.app_cli_commands_module, "run_analyze_command", fake_run_analyze_command)
+
+    result = app.run_analyze_command({"debug": False}, selected_keys=["timing"], use_cache=False)
+
+    assert result == 0
+    assert seen["selected_keys"] == ["timing"]
+    assert "timing" in cast(list[str], seen["analyzer_keys"])
+
+
 def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
     seen: dict[str, object] = {}
 

@@ -12,11 +12,16 @@ from ..tracing import (
     detect_transform_invariant_violations,
 )
 from .alarm_integrity import analyze_alarm_integrity
+from .config_drift import analyze_config_drift
 from .dataflow import analyze_dataflow
+from .fault_handling import analyze_fault_handling
 from .issue import Issue, format_report_header
+from .loop_stability import analyze_loop_stability
+from .numeric_constraints import analyze_numeric_constraints
 from .safety_paths import analyze_safety_paths
 from .sfc import analyze_sfc
 from .shadowing import analyze_shadowing
+from .signal_lifecycle import analyze_signal_lifecycle
 from .spec_compliance import analyze_spec_compliance
 from .taint_paths import analyze_taint_paths
 from .unsafe_defaults import analyze_unsafe_defaults
@@ -137,6 +142,26 @@ _DATAFLOW_SOURCE_ACCEPTANCE_TESTS = (
     "tests/analyzers/test_dataflow.py",
     "tests/analyzers/test_sattline_semantics.py",
 )
+_SIGNAL_LIFECYCLE_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/analyzers/test_signal_lifecycle.py",
+    "tests/analyzers/test_sattline_semantics.py",
+)
+_LOOP_STABILITY_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/analyzers/test_loop_stability.py",
+    "tests/analyzers/test_sattline_semantics.py",
+)
+_FAULT_HANDLING_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/analyzers/test_fault_handling.py",
+    "tests/analyzers/test_sattline_semantics.py",
+)
+_NUMERIC_CONSTRAINTS_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/analyzers/test_numeric_constraints.py",
+    "tests/analyzers/test_sattline_semantics.py",
+)
+_CONFIG_DRIFT_SOURCE_ACCEPTANCE_TESTS = (
+    "tests/analyzers/test_config_drift.py",
+    "tests/analyzers/test_sattline_semantics.py",
+)
 _UNSAFE_DEFAULTS_SOURCE_ACCEPTANCE_TESTS = ("tests/test_pipeline.py", "tests/analyzers/test_sattline_semantics.py")
 _SPEC_SOURCE_ACCEPTANCE_TESTS = (
     "tests/test_app.py",
@@ -228,6 +253,56 @@ _DATAFLOW_RULE_CONTRACT = SemanticRuleContract(
         _DATAFLOW_SOURCE_ACCEPTANCE_TESTS,
     ),
     corpus_cases=_WORKSPACE_CORPUS_CASES,
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_SIGNAL_LIFECYCLE_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _SIGNAL_LIFECYCLE_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    corpus_cases=(),
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_LOOP_STABILITY_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _LOOP_STABILITY_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    corpus_cases=(),
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_FAULT_HANDLING_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _FAULT_HANDLING_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    corpus_cases=(),
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_NUMERIC_CONSTRAINTS_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _NUMERIC_CONSTRAINTS_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    corpus_cases=(),
+    mutation_applicability="required",
+    suppression_modes=("baseline",),
+    incremental_safe=False,
+)
+_CONFIG_DRIFT_RULE_CONTRACT = SemanticRuleContract(
+    acceptance_tests=_merge_acceptance_tests(
+        _SEMANTIC_LAYER_ACCEPTANCE_TESTS,
+        _CONFIG_DRIFT_SOURCE_ACCEPTANCE_TESTS,
+    ),
+    corpus_cases=(),
     mutation_applicability="required",
     suppression_modes=("baseline",),
     incremental_safe=False,
@@ -674,6 +749,77 @@ _DATAFLOW_RULES: dict[str, SemanticRule] = {
     ),
 }
 
+_SIGNAL_LIFECYCLE_RULES: dict[str, SemanticRule] = {
+    "signal_lifecycle.read_before_write": SemanticRule(
+        id="semantic.signal-lifecycle-read-before-write",
+        source="signal_lifecycle",
+        category="variable-lifecycle",
+        severity="warning",
+        applies_to="signal",
+        description="Signals should not be consumed before any definite write in the current scope.",
+    ),
+    "signal_lifecycle.unconsumed_write": SemanticRule(
+        id="semantic.signal-lifecycle-unconsumed-write",
+        source="signal_lifecycle",
+        category="variable-lifecycle",
+        severity="warning",
+        applies_to="signal",
+        description="Signals that are written in a scope should be consumed later in that same scope.",
+    ),
+}
+
+_LOOP_STABILITY_RULES: dict[str, SemanticRule] = {
+    "loop_stability.conflicting_setpoint": SemanticRule(
+        id="semantic.loop-conflicting-setpoint",
+        source="loop_stability",
+        category="control-flow",
+        severity="warning",
+        applies_to="setpoint",
+        description="The same setpoint should not receive conflicting literal assignments in one scope.",
+    ),
+}
+
+_FAULT_HANDLING_RULES: dict[str, SemanticRule] = {
+    "fault_handling.missing_recovery": SemanticRule(
+        id="semantic.fault-missing-recovery",
+        source="fault_handling",
+        category="control-flow",
+        severity="warning",
+        applies_to="fault-path",
+        description="Fault paths that are raised should also be explicitly cleared or acknowledged in the same scope.",
+    ),
+    "fault_handling.unhandled_fault": SemanticRule(
+        id="semantic.fault-unhandled-path",
+        source="fault_handling",
+        category="control-flow",
+        severity="warning",
+        applies_to="fault-path",
+        description="Fault paths that are raised should be consumed by reachable handling logic in the same scope.",
+    ),
+}
+
+_NUMERIC_CONSTRAINT_RULES: dict[str, SemanticRule] = {
+    "numeric_constraints.limit_violation": SemanticRule(
+        id="semantic.numeric-limit-violation",
+        source="numeric_constraints",
+        category="engineering-spec",
+        severity="warning",
+        applies_to="numeric-variable",
+        description="Assignments should stay within the visible Min_/Max_ bounds declared for the target variable.",
+    ),
+}
+
+_CONFIG_DRIFT_RULES: dict[str, SemanticRule] = {
+    "config_drift.instance_configuration": SemanticRule(
+        id="semantic.instance-configuration-drift",
+        source="config_drift",
+        category="interface-contracts",
+        severity="warning",
+        applies_to="module-instance-group",
+        description="Instances of the same moduletype should not drift on mapped configuration parameter values without intent.",
+    ),
+}
+
 _TAINT_RULES: dict[str, SemanticRule] = {
     "taint-path.external_input_to_critical_sink": SemanticRule(
         id="semantic.external-input-to-critical-sink",
@@ -784,6 +930,28 @@ _RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
         "semantic.scan-cycle-temporal-misuse",
     ),
     **_rule_contract_entries(
+        _SIGNAL_LIFECYCLE_RULE_CONTRACT,
+        "semantic.signal-lifecycle-read-before-write",
+        "semantic.signal-lifecycle-unconsumed-write",
+    ),
+    **_rule_contract_entries(
+        _LOOP_STABILITY_RULE_CONTRACT,
+        "semantic.loop-conflicting-setpoint",
+    ),
+    **_rule_contract_entries(
+        _FAULT_HANDLING_RULE_CONTRACT,
+        "semantic.fault-missing-recovery",
+        "semantic.fault-unhandled-path",
+    ),
+    **_rule_contract_entries(
+        _NUMERIC_CONSTRAINTS_RULE_CONTRACT,
+        "semantic.numeric-limit-violation",
+    ),
+    **_rule_contract_entries(
+        _CONFIG_DRIFT_RULE_CONTRACT,
+        "semantic.instance-configuration-drift",
+    ),
+    **_rule_contract_entries(
         _UNSAFE_DEFAULTS_RULE_CONTRACT,
         "semantic.unsafe-default-true",
     ),
@@ -804,6 +972,16 @@ for kind, rule in list(_TRACE_RULES.items()):
     _TRACE_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
 for kind, rule in list(_DATAFLOW_RULES.items()):
     _DATAFLOW_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(_SIGNAL_LIFECYCLE_RULES.items()):
+    _SIGNAL_LIFECYCLE_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(_LOOP_STABILITY_RULES.items()):
+    _LOOP_STABILITY_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(_FAULT_HANDLING_RULES.items()):
+    _FAULT_HANDLING_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(_NUMERIC_CONSTRAINT_RULES.items()):
+    _NUMERIC_CONSTRAINT_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
+for kind, rule in list(_CONFIG_DRIFT_RULES.items()):
+    _CONFIG_DRIFT_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
 for kind, rule in list(_TAINT_RULES.items()):
     _TAINT_RULES[kind] = _attach_rule_contract(rule, _RULE_CONTRACTS_BY_ID.get(rule.id))
 for kind, rule in list(_UNSAFE_DEFAULT_RULES.items()):
@@ -832,6 +1010,11 @@ _FRAMEWORK_RULES_BY_KIND: dict[str, SemanticRule] = {
     **_SAFETY_PATH_RULES,
     **_TAINT_RULES,
     **_DATAFLOW_RULES,
+    **_SIGNAL_LIFECYCLE_RULES,
+    **_LOOP_STABILITY_RULES,
+    **_FAULT_HANDLING_RULES,
+    **_NUMERIC_CONSTRAINT_RULES,
+    **_CONFIG_DRIFT_RULES,
     **_UNSAFE_DEFAULT_RULES,
     **_SPEC_FRAMEWORK_RULES,
 }
@@ -849,6 +1032,11 @@ def get_sattline_semantic_rule_groups() -> tuple[SemanticRuleGroup, ...]:
         SemanticRuleGroup(source="taint-paths", rules=tuple(_TAINT_RULES.values())),
         SemanticRuleGroup(source="tracing", rules=tuple(_TRACE_RULES.values())),
         SemanticRuleGroup(source="dataflow", rules=tuple(_DATAFLOW_RULES.values())),
+        SemanticRuleGroup(source="signal_lifecycle", rules=tuple(_SIGNAL_LIFECYCLE_RULES.values())),
+        SemanticRuleGroup(source="loop_stability", rules=tuple(_LOOP_STABILITY_RULES.values())),
+        SemanticRuleGroup(source="fault_handling", rules=tuple(_FAULT_HANDLING_RULES.values())),
+        SemanticRuleGroup(source="numeric_constraints", rules=tuple(_NUMERIC_CONSTRAINT_RULES.values())),
+        SemanticRuleGroup(source="config_drift", rules=tuple(_CONFIG_DRIFT_RULES.values())),
         SemanticRuleGroup(source="unsafe-defaults", rules=tuple(_UNSAFE_DEFAULT_RULES.values())),
         SemanticRuleGroup(source="spec-compliance", rules=spec_rules),
     )
@@ -962,6 +1150,14 @@ def analyze_sattline_semantics(
         unavailable_libraries=unavailable_libraries,
         analyzed_target_is_library=analyzed_target_is_library,
     )
+    signal_lifecycle_report = analyze_signal_lifecycle(base_picture)
+    loop_stability_report = analyze_loop_stability(base_picture)
+    fault_handling_report = analyze_fault_handling(base_picture)
+    numeric_constraints_report = analyze_numeric_constraints(base_picture)
+    config_drift_report = analyze_config_drift(
+        base_picture,
+        unavailable_libraries=unavailable_libraries,
+    )
 
     issues.extend(_map_variable_issues(variable_report.issues))
     issues.extend(_map_variable_issues(shadowing_report.issues))
@@ -971,6 +1167,11 @@ def analyze_sattline_semantics(
     issues.extend(_map_framework_issues(safety_path_report.issues, _SAFETY_PATH_RULES))
     issues.extend(_map_framework_issues(taint_path_report.issues, _TAINT_RULES))
     issues.extend(_map_framework_issues(dataflow_report.issues, _DATAFLOW_RULES))
+    issues.extend(_map_framework_issues(signal_lifecycle_report.issues, _SIGNAL_LIFECYCLE_RULES))
+    issues.extend(_map_framework_issues(loop_stability_report.issues, _LOOP_STABILITY_RULES))
+    issues.extend(_map_framework_issues(fault_handling_report.issues, _FAULT_HANDLING_RULES))
+    issues.extend(_map_framework_issues(numeric_constraints_report.issues, _NUMERIC_CONSTRAINT_RULES))
+    issues.extend(_map_framework_issues(config_drift_report.issues, _CONFIG_DRIFT_RULES))
     issues.extend(_map_framework_issues(unsafe_defaults_report.issues, _UNSAFE_DEFAULT_RULES))
     issues.extend(_map_trace_findings(detect_transform_invariant_violations(base_picture)))
     issues.extend(_map_spec_issues(spec_report.issues))

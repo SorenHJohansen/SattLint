@@ -2,13 +2,17 @@
 
 Living document of known technical debt in SattLint.
 Updated by doc-gardening agent and human developers.
-Last updated: 2026-04-30
+Last updated: 2026-05-13
 
-Canonical consolidated register for active debt:
+Active work now lives in:
 
-- `docs/exec-plans/tech-debt-ai-first.md`
+- `docs/exec-plans/active/`
 
-This tracker remains valid for legacy TD-* entries and scan history.
+Completed debt closeouts live in:
+
+- `docs/exec-plans/completed/`
+
+This tracker remains valid for legacy TD-* entries, still-open tech debt, and scan history.
 
 ## Consolidation Source Ledger
 
@@ -25,45 +29,10 @@ This tracker remains valid for legacy TD-* entries and scan history.
 
 | ID | Area | Description | Severity | Planned Fix |
 |----|------|-------------|----------|-------------|
-| TD-001 | Analyzers | Remediation instructions not yet embedded in error messages | Medium | In progress: added to Issue, VariableIssue, shadowing analyzer |
 | TD-003 | LSP | No hot-reload when `WORKFLOW.md`-equivalent changes | Low | Add watch + restart mechanism |
 | TD-005 | Config | No validation that `analyzed_programs_and_libraries` paths exist | Low | Add startup validation |
 | TD-006 | DevTools | Pipeline outputs not yet consumed by doc-gardening agent | Low | Wire artifacts ? quality-score.md |
-| TD-007 | Parse/Validate | validation.py functions return bool instead of parsing to typed objects | Medium | Refactor *is_valid** to return parsed types |
 | TD-008 | Types | Semantic type names needed for discoverability (VariableId, ProjectPath) | Low | Add semantic type aliases |
-
-### T-001 Analyzer Remediation Instructions
-
-**Tech Debt ID:** T-001
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** Analyzer team
-
-**Target Window:** 2026-Q2
-
-**Wave:** T-Wave-1
-
-**Purpose:** Embed remediation instructions directly in error messages for better developer experience.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Error formatter | `src/sattlint/analyzers/base.py` | Add remediation field to error structures |
-| 2 | Message template | `src/sattlint/analyzers/issue_analyzer.py` | Update Issue analyzer with fix suggestions |
-| 3 | Message template | `src/sattlint/analyzers/variable_analyzer.py` | Update Variable analyzer with fix suggestions |
-| 4 | Message template | `src/sattlint/analyzers/shadowing_analyzer.py` | Update Shadowing analyzer with fix suggestions |
-
-**Input:** Validation errors from analyzers
-
-**Output:** Enhanced error messages with actionable remediation steps
-
-**Validation:** Manual verification of error messages contain remediation guidance
-
-**Reuses:** Existing analyzer infrastructure
 
 ---
 
@@ -169,40 +138,6 @@ This tracker remains valid for legacy TD-* entries and scan history.
 
 ---
 
-### T-007 Validation Function Refactor
-
-**Tech Debt ID:** T-007
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** Validation team
-
-**Target Window:** 2026-Q2
-
-**Wave:** T-Wave-1
-
-**Purpose:** Refactor validation.py functions to return parsed typed objects instead of booleans for better type safety and reuse.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Function signature update | `src/sattlint/validation.py` | Change *is_valid** functions to return Option[TypedObject] |
-| 2 | Caller updates | `src/sattlint/validation.py` | Update all callers to handle new return types |
-| 3 | Type safety improvement | `src/sattlint/validation.py` | Leverage returned types in downstream logic |
-
-**Input:** AST nodes to validate
-
-**Output:** Typed validation results (or None) instead of boolean
-
-**Validation:** Ensure all validation logic continues to work correctly with new return types
-
-**Reuses:** Existing validation logic
-
----
-
 ### T-008 Semantic Type Aliases
 
 **Tech Debt ID:** T-008
@@ -234,281 +169,6 @@ This tracker remains valid for legacy TD-* entries and scan history.
 **Validation:** Type checking passes with mypy; functionality unchanged
 
 **Reuses:** Existing type system
-
----
-
-### T-010 App Surface Logging Migration
-
-**Tech Debt ID:** T-010
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** App team
-
-**Target Window:** 2026-Q2
-
-**Wave:** T-Wave-3
-
-**Purpose:** Replace library-layer `print()` calls with structured console or return-value based reporting while keeping the public app facade stable.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Print replacement | `src/sattlint/app_analysis.py` | Replace print() with structured reporting |
-| 2 | Print replacement | `src/sattlint/app_cli_commands.py` | Replace print() with structured reporting |
-| 3 | Pattern normalization | `src/sattlint/app_*.py` | Normalize remaining app_* modules to same output contract |
-
-**Input:** App function calls that currently print
-
-**Output:** Structured logging or return values instead of stdout prints
-
-**Validation:** `pytest --no-cov tests/test_app.py tests/test_app_analysis.py tests/test_app_menus.py tests/test_cli.py -x -q --tb=short`
-
-**Reuses:** Existing console/reporting infrastructure
-
----
-
-### T-011 CLI/Console/GUI Output Cleanup
-
-**Tech Debt ID:** T-011
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** CLI team
-
-**Target Window:** 2026-Q2
-
-**Wave:** T-Wave-3
-
-**Purpose:** Make output routing consistent outside the app-owner modules without overlapping T-010.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Output boundary decision | `src/sattlint/cli/entry.py`, `src/sattlint/console.py`, `src/sattlint_gui/binding.py` | Define one output boundary for CLI and GUI paths |
-| 2 | Print migration | `src/sattlint/cli/entry.py`, `src/sattlint/console.py`, `src/sattlint_gui/binding.py` | Migrate print() uses to the defined boundary |
-| 3 | Behavior preservation | `src/sattlint/cli/entry.py`, `src/sattlint/console.py`, `src/sattlint_gui/binding.py` | Keep interactive behavior unchanged |
-
-**Input:** Print statements in CLI, console, and GUI binding code
-
-**Output:** Consistent output routing through defined boundary
-
-**Validation:** `pytest --no-cov tests/test_cli.py tests/test_gui.py tests/test_app.py tests/test_app_menus.py -x -q --tb=short`
-
-**Reuses:** Existing output infrastructure
-
----
-
-### T-012 Parser Structural Split: SLTransformer
-
-**Tech Debt ID:** T-012
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** Parser team
-
-**Target Window:** 2026-Q2
-
-**Wave:** T-Wave-4
-
-**Purpose:** Split SLTransformer by responsibility without changing parser behavior (currently defines 133 methods).
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Mixin extraction | `src/sattline_parser/transformer/` | Extract transformer mixins by domain (token coercion, expressions, SFC nodes, module structure, graphics/interact construction) |
-| 2 | Class simplification | `src/sattline_parser/transformer/sl_transformer.py` | Reduce SLTransformer to use mixins |
-| 3 | Interface preservation | `src/sattline_parser/transformer/sl_transformer.py` | Maintain existing public interface |
-
-**Input:** SLTransformer class
-
-**Output:** Modular transformer structure with same functionality
-
-**Validation:**
-
-- `sattlint syntax-check tests/fixtures/corpus/valid/VariableModifiers.s`
-- `pytest --no-cov tests/test_transformer.py tests/test_parser_core.py -x -q --tb=short`
-
-**Reuses:** Existing parser infrastructure
-
----
-
-### T-013 Analyzer Structural Split: variables.py
-
-**Tech Debt ID:** T-013
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** Analyzer team
-
-**Target Window:** 2026-Q2
-
-**Wave:** T-Wave-4
-
-**Purpose:** Split variables.py by responsibility before it grows further (currently 2303 lines).
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Effect flow extraction | `src/sattlint/analyzers/_variables_effect_flow.py` | Create EffectFlowTracker class with 13 effect-flow and mapping-propagation methods |
-| 2 | Analyzer update | `src/sattlint/analyzers/variables.py` | Update VariablesAnalyzer to delegate to tracker |
-| 3 | Line reduction | `src/sattlint/analyzers/variables.py` | Reduce from ~2011 lines to ~1729 lines (282 line reduction, 14% shrink) |
-
-**Input:** variables.py analyzer file
-
-**Output:** Modular analyzer structure with same functionality
-
-**Validation:** `pytest --no-cov tests/test_analyzers_variables.py -x -q --tb=short`
-
-**Blocker:** Waiting on T-012 (parser structural split) to restore missing v_args import
-
-**Reuses:** Existing analyzer infrastructure
-
----
-
-### T-014 Test Low-Severity Style Sweep
-
-**Tech Debt ID:** T-014
-
-**Status:** Open
-
-**Priority:** P2
-
-**Owner:** QA team
-
-**Target Window:** 2026-Q2
-
-**Wave:** T-Wave-5
-
-**Purpose:** Clear remaining formatting and small-expression noise in test files once blocking lanes stop moving the same files.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Style fixes | `src/sattlint/__init__.py`, `src/sattlint/casefolding.py`, `src/sattlint/engine.py` | Fix ruf-ruf005, ruf-c416, ruf-w292, and ruf-i001 |
-| 2 | Import sorting | Various test files | Apply consistent import sorting |
-| 3 | Whitespace normalization | Various test files | Fix trailing newlines and whitespace issues |
-
-**Input:** Test files with style issues
-
-**Output:** Clean test files with no style violations
-
-**Validation:** `ruff check src/sattlint/engine.py src/sattlint/casefolding.py src/sattlint/__init__.py` (pass)
-
-**Reuses:** Existing linting infrastructure
-
----
-
-### T-015 CLI Documentation Parity
-
-**Tech Debt ID:** T-015
-
-**Status:** Open
-
-**Priority:** P2
-
-**Owner:** Docs team
-
-**Target Window:** 2026-Q2
-
-**Wave:** T-Wave-5
-
-**Purpose:** Document missing script entry points so the consistency artifact is not hiding silent documentation drift.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Doc discovery | docs/ | Find canonical CLI docs surface |
-| 2 | Missing docs | docs/ | Add documentation for sattlint, sattlint-corpus-runner, and sattlint-lsp scripts |
-| 3 | Subcommand preservation | docs/ | Leave subcommand docs unchanged as they already pass |
-
-**Input:** CLI consistency report showing undocumented scripts
-
-**Output:** Complete CLI documentation for all scripts
-
-**Validation:** Markdown consistency review plus regeneration of artifacts/audit/cli_consistency.json
-
-**Reuses:** Existing documentation infrastructure
-
----
-
-### T-023 Weak SHA1 Hash Usage
-
-**Tech Debt ID:** T-023
-
-**Status:** Open
-
-**Priority:** P2
-
-**Owner:** Security team
-
-**Target Window:** 2026-Q2
-
-**Wave:** T-Wave-3
-
-**Purpose:** Replace weak SHA1 hash with secure alternative in doc_gardener.py.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Hash upgrade | `src/sattlint/devtools/doc_gardener.py` | Replace SHA1 with SHA256 or use `usedforsecurity=False` if hash is not security-critical |
-
-**Input:** bandit-b324 finding at line 181
-
-**Output:** Secure hash usage or explicit non-security intent
-
-**Validation:** `bandit -r src/sattlint/devtools/doc_gardener.py` passes with no high findings
-
-**Reuses:** Existing security tooling
-
----
-
-### T-024 Test App Structural Split
-
-**Tech Debt ID:** T-024
-
-**Status:** Open
-
-**Priority:** P1
-
-**Owner:** Test team
-
-**Target Window:** 2026-Q2
-
-**Wave:** T-Wave-4
-
-**Purpose:** Split test_app.py (2127 lines) by owning surface to improve maintainability.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Module analysis | `tests/test_app.py` | Identify natural split points by feature area |
-| 2 | Extract helpers | `tests/test_app_helpers.py` | Extract shared test helpers and fixtures |
-| 3 | Split by surface | `tests/test_app_*.py` | Create focused modules for each app surface |
-
-**Input:** test_app.py at 2127 lines
-
-**Output:** Multiple focused test modules under 500 lines each
-
-**Validation:** `pytest tests/test_app*.py -x -q --tb=short` all pass
-
-**Reuses:** Pattern from W8 (pipeline test split)
 
 ---
 
@@ -577,73 +237,6 @@ This tracker remains valid for legacy TD-* entries and scan history.
 **Validation:** `ruff check src/sattline_parser/` passes; review logs during parse failures
 
 **Reuses:** Existing logging patterns in sattlint/
-
----
-
-### T-027 Hardcoded Paths in Test Files
-
-**Tech Debt ID:** T-027
-
-**Status:** Open
-
-**Priority:** P2
-
-**Owner:** Test team
-
-**Target Window:** 2026-Q2
-
-**Wave:** T-Wave-5
-
-**Purpose:** Replace hardcoded Windows paths in test_comment_code.py with portable alternatives.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Path cleanup | `tests/test_comment_code.py` | Replace hardcoded C:\ paths with repo-relative or temp paths |
-| 2 | Pattern check | `tests/` | Search for remaining hardcoded paths in test files |
-
-**Input:** 3 hardcoded-windows-path findings in test_comment_code.py (lines 458, 475, 479)
-
-**Output:** Portable test code with no hardcoded paths
-
-**Validation:** Repo audit shows no portability findings in tests/
-
-**Reuses:** Pattern from W5 (Repo Metadata Portability Cleanup)
-
----
-
-### T-016 sattline_builtins.py Monolithic Refactor
-
-**Tech Debt ID:** T-016
-
-**Status:** Open
-
-**Priority:** P2
-
-**Owner:** Analyzer team
-
-**Target Window:** 2026-Q3
-
-**Wave:** T-Wave-4
-
-**Purpose:** Split 2095-line builtins file into data file (JSON/TOML) plus loader, or split by functional area for maintainability.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | Data extraction | `src/sattlint/analyzers/sattline_builtins.py` | Extract builtin function definitions to `data/builtins.json` or `data/builtins.toml` |
-| 2 | Loader creation | `src/sattlint/analyzers/builtins_loader.py` | Create loader that reads data file and constructs `BuiltinFunction` dataclasses |
-| 3 | Validation test | `tests/test_builtins.py` | Add test to validate builtin definitions (parameter counts, types) |
-
-**Input:** Builtin function definitions
-
-**Output:** Modular builtins with data separated from code
-
-**Validation:** `pytest --no-cov tests/test_builtins.py -x -q --tb=short`
-
-**Reuses:** Existing `BuiltinFunction` and `Parameter` dataclasses
 
 ---
 
@@ -747,41 +340,6 @@ This tracker remains valid for legacy TD-* entries and scan history.
 **Validation:** `pytest --no-cov tests/test_repo_audit.py -x -q --tb=short`
 
 **Reuses:** Existing devtools infrastructure
-
----
-
-### T-020 core/semantic.py Structural Split
-
-**Tech Debt ID:** T-020
-
-**Status:** Open
-
-**Priority:** P2
-
-**Owner:** Core team
-
-**Target Window:** 2026-Q3
-
-**Wave:** T-Wave-4
-
-**Purpose:** Split 1729-line semantic.py into `SymbolTable`, `CompletionProvider`, `ReferenceResolver` modules.
-
-**Implementation Guide:**
-
-| Order | Component | File | Description |
-|-------|-----------|------|-------------|
-| 1 | SymbolTable extraction | `src/sattlint/core/symbol_table.py` | Extract symbol table logic |
-| 2 | CompletionProvider extraction | `src/sattlint/core/completion_provider.py` | Extract completion logic |
-| 3 | ReferenceResolver extraction | `src/sattlint/core/reference_resolver.py` | Extract reference resolution logic |
-| 4 | Integration | `src/sattlint/core/semantic.py` | Update to use extracted modules |
-
-**Input:** semantic.py (1729 lines)
-
-**Output:** Modular semantic analysis with separated concerns
-
-**Validation:** `pytest --no-cov tests/test_editor_api.py -x -q --tb=short`
-
-**Reuses:** Existing core infrastructure
 
 ---
 

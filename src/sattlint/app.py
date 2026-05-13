@@ -24,7 +24,7 @@ from . import cache as cache_module
 from . import config as _config_module
 from . import console as console_module
 from . import engine as engine_module_impl
-from .analyzers.registry import get_declared_cli_analyzer_keys, get_default_analyzers, get_default_cli_analyzers
+from .analyzers.registry import get_default_analyzers, get_default_cli_analyzers
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variables import (
     IssueKind,
@@ -210,7 +210,7 @@ def run_analyze_command(cfg: ConfigDict, *, selected_keys: list[str] | None, use
             local_cfg,
             local_selected_keys,
             iter_loaded_projects_fn=_iter_nested_projects,
-            get_enabled_analyzers_fn=_get_enabled_analyzers,
+            get_enabled_analyzers_fn=_get_selectable_analyzers if local_selected_keys else _get_enabled_analyzers,
             target_is_library_fn=_target_is_library,
             pause_fn=None,
         )
@@ -859,8 +859,7 @@ def _get_enabled_analyzers() -> list[Any]:
 
 
 def _get_selectable_analyzers() -> list[Any]:
-    declared = {key.casefold() for key in get_declared_cli_analyzer_keys()}
-    return [spec for spec in get_default_analyzers() if spec.key.casefold() in declared]
+    return cast(list[Any], get_default_analyzers())
 
 
 def _run_checks(cfg: ConfigDict, selected_keys: list[str] | None) -> None:
