@@ -109,9 +109,15 @@ IGNORED_REPO_PATH_REFERENCE_EXACT = {
 }
 SKIP_SELF_SCAN_PATHS = {
     "AGENTS.md",
+    "src/sattlint/devtools/leak_detection.py",
     "src/sattlint/devtools/repo_audit.py",
+    "src/sattlint/devtools/repo_audit_shared.py",
     "tests/test_repo_audit.py",
 }
+SKIP_SELF_SCAN_PREFIXES = (
+    "tests/_pipeline_collection_part",
+    "tests/_repo_audit_part",
+)
 SKIP_DIRS = {
     ".git",
     ".mypy_cache",
