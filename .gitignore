@@ -37,6 +37,10 @@ build/
 # Project outputs (keep artifacts/analysis/ ratchet files)
 artifacts/audit/
 artifacts/health/
+artifacts/impact-analysis/
+artifacts/tmp/plan32-metrics/
+artifacts/tmp/plan32-profiler/
+artifacts/tmp/plan32-refactor/
 *.docx
 *.xlsx
 *.txt
