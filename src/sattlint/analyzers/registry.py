@@ -9,17 +9,28 @@ from pathlib import Path
 from typing import cast
 
 from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
+from sattlint.analyzers.config_drift import analyze_config_drift
 from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
+from sattlint.analyzers.data_dependency import analyze_data_dependency
+from sattlint.analyzers.fault_handling import analyze_fault_handling
 from sattlint.analyzers.initial_values import analyze_initial_values
+from sattlint.analyzers.interface_contracts import analyze_interface_contracts
 from sattlint.analyzers.loop_output_refactor import analyze_loop_output_refactor
+from sattlint.analyzers.loop_stability import analyze_loop_stability
 from sattlint.analyzers.modules import analyze_version_drift
 from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
+from sattlint.analyzers.numeric_constraints import analyze_numeric_constraints
 from sattlint.analyzers.parameter_drift import analyze_parameter_drift
+from sattlint.analyzers.powerup import analyze_powerup
+from sattlint.analyzers.resource_usage import analyze_resource_usage
 from sattlint.analyzers.safety_paths import analyze_safety_paths
+from sattlint.analyzers.scan_concurrency import analyze_scan_concurrency
 from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage
+from sattlint.analyzers.signal_lifecycle import analyze_signal_lifecycle
 from sattlint.analyzers.spec_compliance import analyze_spec_compliance
 from sattlint.analyzers.state_inference import analyze_state_inference
 from sattlint.analyzers.taint_paths import analyze_taint_paths
+from sattlint.analyzers.timing import analyze_timing
 
 from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadata, summary_output_for_analyzer
 from ._registry_specs import build_default_analyzers
@@ -48,29 +59,55 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "shadowing",
     "spec-compliance",
     "loop-output-refactor",
+    "powerup",
+    "timing",
 )
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
+
+_RULE_ANALYZER_ALIASES: dict[str, tuple[str, ...]] = {
+    "semantic.unknown-parameter-target": ("interface_contracts",),
+    "semantic.required-parameter-connection": ("interface_contracts",),
+    "semantic.cross-module-contract-mismatch": ("interface_contracts",),
+    "semantic.string-mapping-mismatch": ("interface_contracts",),
+    "semantic.missing-parameter-initial-value": ("powerup",),
+    "semantic.unsafe-default-true": ("powerup",),
+    "semantic.parallel-write-race": ("scan_concurrency",),
+    "semantic.scan-cycle-stale-read": ("timing",),
+    "semantic.scan-cycle-implicit-new": ("timing",),
+    "semantic.scan-cycle-temporal-misuse": ("timing",),
+}
 
 # Preserve the historical monkeypatch surface that tests and extracted helper modules use.
 _REGISTRY_MONKEYPATCH_SURFACE = (
     analyze_alarm_integrity,
     analyze_comment_code,
+    analyze_config_drift,
     analyze_cyclomatic_complexity,
+    analyze_data_dependency,
+    analyze_interface_contracts,
     analyze_dataflow,
+    analyze_fault_handling,
     analyze_initial_values,
+    analyze_loop_stability,
     analyze_loop_output_refactor,
     analyze_mms_interface_variables,
     analyze_naming_consistency,
+    analyze_numeric_constraints,
     analyze_parameter_drift,
+    analyze_powerup,
+    analyze_resource_usage,
     analyze_safety_paths,
+    analyze_scan_concurrency,
     analyze_sattline_semantics,
     analyze_scan_loop_resource_usage,
     analyze_sfc,
     analyze_shadowing,
+    analyze_signal_lifecycle,
     analyze_spec_compliance,
     analyze_state_inference,
     analyze_taint_paths,
+    analyze_timing,
     analyze_unsafe_defaults,
     analyze_variables,
     analyze_version_drift,
@@ -275,6 +312,22 @@ def _build_delivery_metadata(spec: AnalyzerSpec, rule_ids: tuple[str, ...]) -> A
     )
 
 
+def _mapped_analyzers_for_rule(
+    rule: SemanticRule,
+    *,
+    registered_keys: set[str],
+) -> tuple[str, ...]:
+    mapped_analyzers: list[str] = [SEMANTIC_LAYER_ANALYZER_KEY]
+    if rule.source in registered_keys and rule.source not in mapped_analyzers:
+        mapped_analyzers.append(rule.source)
+
+    for analyzer_key in _RULE_ANALYZER_ALIASES.get(rule.id, ()):
+        if analyzer_key in registered_keys and analyzer_key not in mapped_analyzers:
+            mapped_analyzers.append(analyzer_key)
+
+    return tuple(mapped_analyzers)
+
+
 def get_default_analyzer_catalog() -> AnalyzerCatalog:
     analyzer_specs = tuple(get_default_analyzers())
     semantic_rule_groups = get_sattline_semantic_rule_groups()
@@ -284,13 +337,11 @@ def get_default_analyzer_catalog() -> AnalyzerCatalog:
 
     mapped_rules: list[tuple[SemanticRule, tuple[str, ...]]] = []
     for rule in sorted(_iter_semantic_rules(semantic_rule_groups), key=lambda item: item.id):
-        mapped_analyzers = [SEMANTIC_LAYER_ANALYZER_KEY]
-        if rule.source in registered_keys and rule.source not in mapped_analyzers:
-            mapped_analyzers.append(rule.source)
+        mapped_analyzers = _mapped_analyzers_for_rule(rule, registered_keys=registered_keys)
 
         for analyzer_key in mapped_analyzers:
             rule_ids_by_analyzer.setdefault(analyzer_key, []).append(rule.id)
-        mapped_rules.append((rule, tuple(mapped_analyzers)))
+        mapped_rules.append((rule, mapped_analyzers))
 
     analyzers = tuple(
         AnalyzerMetadata(

@@ -116,15 +116,26 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
     dataflow = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "dataflow")
     mms_interface = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "mms-interface")
     naming_consistency = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "naming-consistency")
+    timing = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "timing")
+    powerup = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "powerup")
+    scan_concurrency = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "scan_concurrency")
+    interface_contracts = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "interface_contracts")
 
     duplicate_alarm_tag = next(rule for rule in report["rules"] if rule["id"] == "semantic.duplicate-alarm-tag")
     read_before_write = next(rule for rule in report["rules"] if rule["id"] == "semantic.read-before-write")
     dead_overwrite = next(rule for rule in report["rules"] if rule["id"] == "semantic.dead-overwrite")
     scan_cycle_stale_read = next(rule for rule in report["rules"] if rule["id"] == "semantic.scan-cycle-stale-read")
+    parallel_write_race = next(rule for rule in report["rules"] if rule["id"] == "semantic.parallel-write-race")
+    cross_module_contract_mismatch = next(
+        rule for rule in report["rules"] if rule["id"] == "semantic.cross-module-contract-mismatch"
+    )
     unconsumed_safety_signal = next(
         rule for rule in report["rules"] if rule["id"] == "semantic.unconsumed-safety-signal"
     )
     unsafe_default = next(rule for rule in report["rules"] if rule["id"] == "semantic.unsafe-default-true")
+    missing_parameter_initial_value = next(
+        rule for rule in report["rules"] if rule["id"] == "semantic.missing-parameter-initial-value"
+    )
 
     assert report["generated_by"] == "sattlint.devtools.pipeline"
     assert sattline_semantics["summary_output"] == "sattline-semantics.summary"
@@ -143,6 +154,19 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
     assert mms_interface["rule_ids"] == []
     assert naming_consistency["acceptance_tests"] == ["tests/test_analyzers.py"]
     assert naming_consistency["exposed_via"] == ["pipeline"]
+    assert timing["cli_exposed"] is True
+    assert "semantic.scan-cycle-stale-read" in timing["rule_ids"]
+    assert powerup["cli_exposed"] is True
+    assert {"semantic.missing-parameter-initial-value", "semantic.unsafe-default-true"} <= set(powerup["rule_ids"])
+    assert scan_concurrency["cli_exposed"] is False
+    assert scan_concurrency["rule_ids"] == ["semantic.parallel-write-race"]
+    assert interface_contracts["cli_exposed"] is False
+    assert {
+        "semantic.unknown-parameter-target",
+        "semantic.required-parameter-connection",
+        "semantic.cross-module-contract-mismatch",
+        "semantic.string-mapping-mismatch",
+    } <= set(interface_contracts["rule_ids"])
     assert set(duplicate_alarm_tag) == {
         "id",
         "source",
@@ -181,14 +205,27 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
     assert "dataflow.summary" in dead_overwrite["outputs"]
     assert scan_cycle_stale_read["source"] == "dataflow"
     assert "sattline-semantics" in scan_cycle_stale_read["analyzers"]
+    assert "timing" in scan_cycle_stale_read["analyzers"]
+    assert "timing.summary" in scan_cycle_stale_read["outputs"]
+    assert parallel_write_race["source"] == "sfc"
+    assert "scan_concurrency" in parallel_write_race["analyzers"]
+    assert "scan_concurrency.summary" in parallel_write_race["outputs"]
+    assert cross_module_contract_mismatch["source"] == "variables"
+    assert "interface_contracts" in cross_module_contract_mismatch["analyzers"]
+    assert "interface_contracts.summary" in cross_module_contract_mismatch["outputs"]
     assert unconsumed_safety_signal["source"] == "safety-paths"
     assert "safety-paths" in unconsumed_safety_signal["analyzers"]
     assert "safety-paths.summary" in unconsumed_safety_signal["outputs"]
     assert unconsumed_safety_signal["mutation_applicability"] == "required"
     assert unsafe_default["source"] == "unsafe-defaults"
     assert "unsafe-defaults" in unsafe_default["analyzers"]
+    assert "powerup" in unsafe_default["analyzers"]
     assert "unsafe-defaults.summary" in unsafe_default["outputs"]
+    assert "powerup.summary" in unsafe_default["outputs"]
     assert unsafe_default["mutation_applicability"] == "required"
+    assert missing_parameter_initial_value["source"] == "initial-values"
+    assert "powerup" in missing_parameter_initial_value["analyzers"]
+    assert "powerup.summary" in missing_parameter_initial_value["outputs"]
     assert report["rule_profiles"]["active"] == "default"
     assert [profile["name"] for profile in report["rule_profiles"]["profiles"]] == [
         "default",

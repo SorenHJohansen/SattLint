@@ -255,13 +255,24 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     monkeypatch.setattr(registry_module, "analyze_loop_output_refactor", _record("loop-output-refactor"))
     monkeypatch.setattr(registry_module, "analyze_alarm_integrity", _record("alarm-integrity"))
     monkeypatch.setattr(registry_module, "analyze_initial_values", _record("initial-values"))
+    monkeypatch.setattr(registry_module, "analyze_interface_contracts", _record("interface_contracts"))
     monkeypatch.setattr(registry_module, "analyze_naming_consistency", _record("naming-consistency"))
     monkeypatch.setattr(registry_module, "analyze_cyclomatic_complexity", _record("cyclomatic-complexity"))
     monkeypatch.setattr(registry_module, "analyze_parameter_drift", _record("parameter-drift"))
+    monkeypatch.setattr(registry_module, "analyze_signal_lifecycle", _record("signal_lifecycle"))
+    monkeypatch.setattr(registry_module, "analyze_loop_stability", _record("loop_stability"))
+    monkeypatch.setattr(registry_module, "analyze_fault_handling", _record("fault_handling"))
+    monkeypatch.setattr(registry_module, "analyze_numeric_constraints", _record("numeric_constraints"))
+    monkeypatch.setattr(registry_module, "analyze_data_dependency", _record("data_dependency"))
+    monkeypatch.setattr(registry_module, "analyze_config_drift", _record("config_drift"))
+    monkeypatch.setattr(registry_module, "analyze_powerup", _record("powerup"))
+    monkeypatch.setattr(registry_module, "analyze_scan_concurrency", _record("scan_concurrency"))
     monkeypatch.setattr(registry_module, "analyze_scan_loop_resource_usage", _record("scan-loop-resource-usage"))
+    monkeypatch.setattr(registry_module, "analyze_resource_usage", _record("resource_usage"))
     monkeypatch.setattr(registry_module, "analyze_version_drift", _record("version-drift"))
     monkeypatch.setattr(registry_module, "analyze_safety_paths", _record("safety-paths"))
     monkeypatch.setattr(registry_module, "analyze_taint_paths", _record("taint-paths"))
+    monkeypatch.setattr(registry_module, "analyze_timing", _record("timing"))
     monkeypatch.setattr(registry_module, "analyze_unsafe_defaults", _record("unsafe-defaults"))
     monkeypatch.setattr(registry_module, "analyze_dataflow", _record("dataflow"))
     monkeypatch.setattr(registry_module, "analyze_state_inference", _record("state_inference"))
@@ -288,10 +299,21 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
         "loop-output-refactor",
         "alarm-integrity",
         "initial-values",
+        "interface_contracts",
         "naming-consistency",
         "cyclomatic-complexity",
         "parameter-drift",
+        "signal_lifecycle",
+        "loop_stability",
+        "fault_handling",
+        "numeric_constraints",
+        "data_dependency",
+        "config_drift",
+        "powerup",
+        "scan_concurrency",
         "scan-loop-resource-usage",
+        "resource_usage",
+        "timing",
         "version-drift",
         "safety-paths",
         "taint-paths",

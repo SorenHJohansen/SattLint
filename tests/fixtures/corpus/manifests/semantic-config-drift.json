@@ -1,0 +1,30 @@
+{
+    "case_id": "semantic-config-drift",
+    "target_file": "../semantic/ConfigDrift.s",
+    "mode": "workspace",
+    "expectation": {
+        "expected_finding_ids": [
+            "semantic.instance-configuration-drift"
+        ],
+        "artifact_fragments": {
+            "status.json": {
+                "execution_status": "ok",
+                "missing_dependency_count": 0
+            },
+            "summary.json": {
+                "rule_counts": {
+                    "semantic.instance-configuration-drift": 1
+                }
+            }
+        },
+        "forbidden_finding_ids": [
+            "corpus.execution-error",
+            "syntax.parse"
+        ]
+    },
+    "required_artifacts": [
+        "findings.json",
+        "status.json",
+        "summary.json"
+    ]
+}

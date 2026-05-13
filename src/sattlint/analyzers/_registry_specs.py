@@ -73,6 +73,21 @@ def build_default_analyzers(*, semantic_layer_analyzer_key: str) -> list[Analyze
             unavailable_libraries=context.unavailable_libraries,
         )
 
+    def _run_interface_contracts(context: AnalysisContext):
+        return registry_module.analyze_interface_contracts(
+            context.base_picture,
+            debug=context.debug,
+            unavailable_libraries=context.unavailable_libraries,
+            analyzed_target_is_library=context.target_is_library,
+        )
+
+    def _run_powerup(context: AnalysisContext):
+        return registry_module.analyze_powerup(
+            context.base_picture,
+            debug=context.debug,
+            unavailable_libraries=context.unavailable_libraries,
+        )
+
     def _run_naming_consistency(context: AnalysisContext):
         return registry_module.analyze_naming_consistency(
             context.base_picture,
@@ -88,8 +103,53 @@ def build_default_analyzers(*, semantic_layer_analyzer_key: str) -> list[Analyze
             unavailable_libraries=context.unavailable_libraries,
         )
 
+    def _run_signal_lifecycle(context: AnalysisContext):
+        return registry_module.analyze_signal_lifecycle(context.base_picture)
+
+    def _run_loop_stability(context: AnalysisContext):
+        return registry_module.analyze_loop_stability(context.base_picture)
+
+    def _run_fault_handling(context: AnalysisContext):
+        return registry_module.analyze_fault_handling(context.base_picture)
+
+    def _run_numeric_constraints(context: AnalysisContext):
+        return registry_module.analyze_numeric_constraints(context.base_picture)
+
+    def _run_data_dependency(context: AnalysisContext):
+        return registry_module.analyze_data_dependency(
+            context.base_picture,
+            unavailable_libraries=context.unavailable_libraries,
+            analyzed_target_is_library=context.target_is_library,
+        )
+
+    def _run_config_drift(context: AnalysisContext):
+        return registry_module.analyze_config_drift(
+            context.base_picture,
+            unavailable_libraries=context.unavailable_libraries,
+        )
+
     def _run_scan_loop_resource_usage(context: AnalysisContext):
         return registry_module.analyze_scan_loop_resource_usage(context.base_picture)
+
+    def _run_resource_usage(context: AnalysisContext):
+        return registry_module.analyze_resource_usage(
+            context.base_picture,
+            unavailable_libraries=context.unavailable_libraries,
+            analyzed_target_is_library=context.target_is_library,
+        )
+
+    def _run_scan_concurrency(context: AnalysisContext):
+        return registry_module.analyze_scan_concurrency(
+            context.base_picture,
+            config=context.config,
+        )
+
+    def _run_timing(context: AnalysisContext):
+        return registry_module.analyze_timing(
+            context.base_picture,
+            unavailable_libraries=context.unavailable_libraries,
+            analyzed_target_is_library=context.target_is_library,
+        )
 
     def _run_version_drift(context: AnalysisContext):
         return registry_module.analyze_version_drift(
@@ -204,6 +264,20 @@ def build_default_analyzers(*, semantic_layer_analyzer_key: str) -> list[Analyze
             enabled=True,
         ),
         AnalyzerSpec(
+            key="interface_contracts",
+            name="Interface contracts",
+            description="Detect missing required parameter mappings, unknown targets, and cross-module contract mismatches",
+            run=_run_interface_contracts,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="powerup",
+            name="Power-up",
+            description="Detect startup-value gaps and unsafe startup defaults that affect power-up behavior",
+            run=_run_powerup,
+            enabled=True,
+        ),
+        AnalyzerSpec(
             key="naming-consistency",
             name="Naming consistency",
             description="Detect inconsistent naming styles for variables, modules, and instances across the analyzed target",
@@ -225,10 +299,73 @@ def build_default_analyzers(*, semantic_layer_analyzer_key: str) -> list[Analyze
             enabled=True,
         ),
         AnalyzerSpec(
+            key="signal_lifecycle",
+            name="Signal lifecycle",
+            description="Track reads before writes and signals that are written but never consumed",
+            run=_run_signal_lifecycle,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="loop_stability",
+            name="Loop stability",
+            description="Detect contradictory literal setpoint writes that can destabilize scan-loop behavior",
+            run=_run_loop_stability,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="fault_handling",
+            name="Fault handling",
+            description="Detect raised alarm or fault paths that are never cleared or never consumed",
+            run=_run_fault_handling,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="numeric_constraints",
+            name="Numeric constraints",
+            description="Validate literal assignments against visible Min/Max style bounds",
+            run=_run_numeric_constraints,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="data_dependency",
+            name="Data dependency",
+            description="Report deterministic dependency chains and initialization-order hazards",
+            run=_run_data_dependency,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="config_drift",
+            name="Config drift",
+            description="Detect moduletype instances whose visible configuration signatures drift across the analyzed target",
+            run=_run_config_drift,
+            enabled=True,
+        ),
+        AnalyzerSpec(
             key="scan-loop-resource-usage",
             name="Scan-loop resource usage",
             description="Detect non precision-scan-safe builtin calls inside equation blocks and SFC active code",
             run=_run_scan_loop_resource_usage,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="resource_usage",
+            name="Resource usage",
+            description="Detect unreleased or prematurely released resource handles and scan-loop resource hazards",
+            run=_run_resource_usage,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="scan_concurrency",
+            name="Scan concurrency",
+            description="Detect parallel scan or sequence branches that write the same variable without arbitration",
+            run=_run_scan_concurrency,
+            enabled=True,
+        ),
+        AnalyzerSpec(
+            key="timing",
+            name="Timing",
+            description="Detect scan-cycle temporal hazards and non precision-scan-safe resource usage",
+            run=_run_timing,
             enabled=True,
         ),
         AnalyzerSpec(
