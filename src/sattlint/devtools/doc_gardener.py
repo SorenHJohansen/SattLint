@@ -10,6 +10,7 @@ and opens fix-up pull requests."
 
 import argparse
 import hashlib
+import json
 import re
 import shutil
 
@@ -30,6 +31,7 @@ DOCS_DIR = REPO_ROOT / "docs"
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
 QUALITY_SCORE = DOCS_DIR / "quality-score.md"
 TECH_DEBT = DOCS_DIR / "exec-plans" / "tech-debt-tracker.md"
+DEFAULT_PIPELINE_OUTPUT_DIR = REPO_ROOT / "artifacts" / "analysis"
 CURRENT_WORK = REPO_ROOT / ".github" / "coordination" / coordination_lock_state.LOCK_STATE_FILE_NAME
 CURRENT_WORK_TEMPLATE = REPO_ROOT / ".github" / "coordination" / "current-work.template.md"
 AI_FIRST_PLAN = DOCS_DIR / "exec-plans" / "completed" / "ai-first-repo-hardening.md"
@@ -92,6 +94,14 @@ class DocFinding(NamedTuple):
     message: str
 
 
+class PipelineSnapshot(NamedTuple):
+    output_dir: Path
+    profile: str | None
+    overall_status: str
+    normalized_findings: int | None
+    coverage_total_line_rate: float | None
+
+
 def _relative_path(path: Path) -> str:
     try:
         return path.relative_to(REPO_ROOT).as_posix()
@@ -107,6 +117,166 @@ def _read_text(path: Path) -> str:
         except UnicodeDecodeError:
             continue
     return raw.decode("utf-8", errors="replace")
+
+
+def _load_json_mapping(path: Path) -> dict[str, Any]:
+    payload = json.loads(_read_text(path))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Expected JSON object in {path.as_posix()}")
+    return payload
+
+
+def _load_pipeline_finding_count(output_dir: Path) -> int | None:
+    findings_path = output_dir / "findings.json"
+    if not findings_path.exists():
+        return None
+    try:
+        findings_payload = _load_json_mapping(findings_path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return None
+    finding_count = findings_payload.get("finding_count")
+    return finding_count if isinstance(finding_count, int) else None
+
+
+def load_pipeline_snapshot(output_dir: Path) -> tuple[PipelineSnapshot | None, str | None]:
+    summary_path = output_dir / "summary.json"
+    status_path = output_dir / "status.json"
+    missing_paths = [path.name for path in (summary_path, status_path) if not path.exists()]
+    if missing_paths:
+        missing = ", ".join(sorted(missing_paths))
+        return None, f"missing pipeline artifacts: {missing}"
+
+    try:
+        summary_payload = _load_json_mapping(summary_path)
+        status_payload = _load_json_mapping(status_path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        return None, f"unable to read pipeline artifacts from {output_dir.as_posix()}: {exc}"
+
+    overall_status = status_payload.get("overall_status")
+    if not isinstance(overall_status, str) or not overall_status:
+        return None, f"invalid pipeline status in {status_path.as_posix()}"
+
+    counts = summary_payload.get("counts")
+    normalized_findings = counts.get("normalized_findings") if isinstance(counts, dict) else None
+    if not isinstance(normalized_findings, int):
+        normalized_findings = _load_pipeline_finding_count(output_dir)
+
+    reports = summary_payload.get("reports")
+    coverage_total_line_rate: float | None = None
+    coverage_report = reports.get("coverage_summary") if isinstance(reports, dict) else None
+    if isinstance(coverage_report, str) and coverage_report:
+        coverage_path = output_dir / coverage_report
+        if coverage_path.exists():
+            try:
+                coverage_payload = _load_json_mapping(coverage_path)
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+                coverage_payload = {}
+            coverage_summary = coverage_payload.get("summary")
+            total_line_rate = coverage_summary.get("total_line_rate") if isinstance(coverage_summary, dict) else None
+            if isinstance(total_line_rate, int | float):
+                coverage_total_line_rate = float(total_line_rate)
+
+    profile = summary_payload.get("profile")
+    return (
+        PipelineSnapshot(
+            output_dir=output_dir,
+            profile=profile if isinstance(profile, str) and profile else None,
+            overall_status=overall_status,
+            normalized_findings=normalized_findings,
+            coverage_total_line_rate=coverage_total_line_rate,
+        ),
+        None,
+    )
+
+
+def _format_coverage_percent(line_rate: float | None) -> str:
+    if line_rate is None:
+        return "coverage n/a"
+    return f"{line_rate * 100:.1f}% coverage"
+
+
+def _grade_from_pipeline_snapshot(snapshot: PipelineSnapshot) -> str:
+    if snapshot.overall_status == "fail":
+        return "D"
+
+    coverage = snapshot.coverage_total_line_rate
+    if coverage is None:
+        return "C" if snapshot.overall_status == "pass_with_notes" else "B"
+
+    if coverage >= 0.80:
+        grade = "A"
+    elif coverage >= 0.30:
+        grade = "B"
+    elif coverage >= 0.15:
+        grade = "C"
+    else:
+        grade = "D"
+
+    if snapshot.overall_status == "pass_with_notes":
+        return {"A": "B", "B": "C", "C": "D", "D": "D"}[grade]
+    return grade
+
+
+def _build_quality_trend_entry(
+    findings: Sequence[DocFinding],
+    *,
+    pipeline_snapshot: PipelineSnapshot | None,
+) -> tuple[str, str, str, str]:
+    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
+    if pipeline_snapshot is None:
+        return date_str, "B", f"{len(findings)} findings", "Scan"
+
+    pipeline_findings = pipeline_snapshot.normalized_findings
+    findings_summary = (
+        f"{pipeline_findings} pipeline findings" if pipeline_findings is not None else "pipeline findings n/a"
+    )
+    notes = "; ".join(
+        (
+            pipeline_snapshot.overall_status,
+            findings_summary,
+            f"{len(findings)} doc findings",
+            _format_coverage_percent(pipeline_snapshot.coverage_total_line_rate),
+        )
+    )
+    return date_str, _grade_from_pipeline_snapshot(pipeline_snapshot), notes, "Pipeline"
+
+
+def _upsert_trend_section(content: str, *, row: str) -> str:
+    header = "## Trend\n\n| Date | Grade | Notes | Source |\n|---|---|---|---|"
+    section_re = re.compile(r"(?ms)^## Trend\n.*?(?=^## |\Z)")
+    row_cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
+
+    def build_section(existing_section: str | None) -> str:
+        existing_rows: list[str] = []
+        if existing_section is not None:
+            for line in existing_section.splitlines():
+                stripped = line.strip()
+                if not stripped.startswith("|"):
+                    continue
+                if stripped.startswith("| Date ") or stripped.startswith("|---"):
+                    continue
+                cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+                if len(cells) != 4:
+                    continue
+                if cells[0] == row_cells[0] and cells[3] == row_cells[3]:
+                    continue
+                existing_rows.append(stripped)
+        lines = [header, row, *existing_rows, ""]
+        return "\n".join(lines)
+
+    existing_match = section_re.search(content)
+    if existing_match is not None:
+        return (
+            content[: existing_match.start()] + build_section(existing_match.group(0)) + content[existing_match.end() :]
+        )
+
+    new_section = build_section(None)
+    grading_scale_heading = "## Grading Scale"
+    if grading_scale_heading in content:
+        before, after = content.split(grading_scale_heading, 1)
+        before = before.rstrip() + "\n\n"
+        return before + new_section + grading_scale_heading + after
+    return content.rstrip() + "\n\n" + new_section
 
 
 def _should_skip_path(path: Path) -> bool:
@@ -583,123 +753,41 @@ def run_scan() -> dict[str, Any]:
     }
 
 
-def update_quality_score(findings: Sequence[DocFinding]) -> None:
+def update_quality_score(
+    findings: Sequence[DocFinding],
+    pipeline_snapshot: PipelineSnapshot | None = None,
+) -> None:
     """Update docs/quality-score.md with latest scan results."""
     if not QUALITY_SCORE.exists():
         return
 
-    # Simple update: append scan log entry
     content = _read_text(QUALITY_SCORE)
-
-    # Add trend entry
-    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
-    total = len(findings)
-
-    if "## Trend" in content:
-        parts = content.split("## Trend")
-        parts[1] = parts[1].replace("|---", f"| {date_str} | B | {total} findings | Scan |\n|---")
-        QUALITY_SCORE.write_text(parts[0] + "## Trend" + parts[1], encoding="utf-8")
+    date_str, grade, notes, source = _build_quality_trend_entry(
+        findings,
+        pipeline_snapshot=pipeline_snapshot,
+    )
+    row = f"| {date_str} | {grade} | {notes} | {source} |"
+    updated = _upsert_trend_section(content, row=row)
+    QUALITY_SCORE.write_text(updated, encoding="utf-8")
 
 
 def update_tech_debt_scan_log(findings: Sequence[DocFinding]) -> None:
     """Update docs/exec-plans/tech-debt-tracker.md scan log."""
-    if not TECH_DEBT.exists():
-        return
+    from ._doc_gardener_fixup import update_tech_debt_scan_log as _update_tech_debt_scan_log
 
-    content = _read_text(TECH_DEBT)
-
-    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
-    finding_summary = f"{len(findings)} findings"
-    new_log = f"| {date_str} | {finding_summary} | Doc-gardening scan |"
-
-    if "## Scan Log" in content:
-        parts = content.split("## Scan Log")
-        if "|---" in parts[1]:
-            lines = parts[1].split("\n")
-            # Insert after header row
-            for i, line in enumerate(lines):
-                if "|---" in line and i + 1 < len(lines):
-                    lines.insert(i + 1, new_log)
-                    break
-            parts[1] = "\n".join(lines)
-            TECH_DEBT.write_text(parts[0] + "## Scan Log" + parts[1], encoding="utf-8")
+    _update_tech_debt_scan_log(
+        findings,
+        tech_debt_path=TECH_DEBT,
+        read_text=_read_text,
+        date_str=datetime.now(UTC).strftime("%Y-%m-%d"),
+    )
 
 
 def open_fixup_pr(findings: Sequence[DocFinding]) -> bool:
     """Open a fix-up PR with doc-gardening changes. Returns True if PR opened."""
-    if not findings:
-        return False
+    from ._doc_gardener_fixup import open_fixup_pr as _open_fixup_pr
 
-    # Check if gh CLI is available
-    try:
-        result = _run_repo_cli("gh", ["--version"])
-        if result.returncode != 0:
-            print("  gh CLI not available, skipping PR creation")
-            return False
-    except Exception:
-        print("  gh CLI not available, skipping PR creation")
-        return False
-
-    branch = f"doc-gardener-fixup-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
-
-    # Create branch and commit changes
-    _run_repo_cli("git", ["checkout", "-b", branch])
-    _run_repo_cli("git", ["add", "docs/", "AGENTS.md"])
-
-    commit_msg = f"docs: doc-gardener fixup ({len(findings)} findings)\n\n"
-    for f in findings[:5]:
-        commit_msg += f"- [{f.severity}] {f.file}: {f.message}\n"
-    if len(findings) > 5:
-        commit_msg += f"- ... and {len(findings) - 5} more\n"
-
-    result = _run_repo_cli("git", ["commit", "-m", commit_msg])
-
-    if result.returncode != 0:
-        print(f"  No changes to commit: {result.stderr}")
-        _run_repo_cli("git", ["checkout", "main"])
-        _run_repo_cli("git", ["branch", "-D", branch])
-        return False
-
-    # Push and create PR
-    _run_repo_cli("git", ["push", "-u", "origin", branch])
-
-    pr_body = f"""## Doc-Gardening Fix-Up PR
-
-Automated PR from doc-gardening scan.
-
-### Findings ({len(findings)} total)
-
-| File | Line | Severity | Category | Message |
-|------|------|----------|----------|---------|
-"""
-    for f in findings[:10]:
-        pr_body += f"| {f.file} | {f.line} | {f.severity} | {f.category} | {f.message} |\n"
-    if len(findings) > 10:
-        pr_body += f"\n... and {len(findings) - 10} more findings.\n"
-
-    result = _run_repo_cli(
-        "gh",
-        [
-            "pr",
-            "create",
-            "--title",
-            f"docs: doc-gardener fixup ({len(findings)} findings)",
-            "--body",
-            pr_body,
-            "--label",
-            "automated,documentation",
-        ],
-    )
-
-    if result.returncode == 0:
-        print(f"  Created PR: {result.stdout.strip()}")
-        # Go back to main
-        _run_repo_cli("git", ["checkout", "main"])
-        return True
-    else:
-        print(f"  Failed to create PR: {result.stderr}")
-        _run_repo_cli("git", ["checkout", "main"])
-        return False
+    return _open_fixup_pr(findings, run_repo_cli=_run_repo_cli)
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -713,6 +801,12 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "--open-fixup-pr",
         action="store_true",
         help="Attempt to open a fix-up PR when findings exist.",
+    )
+    parser.add_argument(
+        "--pipeline-output-dir",
+        type=Path,
+        default=DEFAULT_PIPELINE_OUTPUT_DIR,
+        help="Pipeline artifact directory to read for quality-score trend updates.",
     )
     return parser.parse_args(list(argv) if argv is not None else [])
 
@@ -735,7 +829,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.check_only:
         print("\nCheck-only mode: tracking files not updated.")
     else:
-        update_quality_score(findings)
+        pipeline_snapshot, pipeline_message = load_pipeline_snapshot(args.pipeline_output_dir)
+        if pipeline_message is not None:
+            print(f"\nPipeline snapshot unavailable: {pipeline_message}")
+        update_quality_score(findings, pipeline_snapshot)
         update_tech_debt_scan_log(findings)
         print("\nTracking files updated.")
 

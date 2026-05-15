@@ -26,7 +26,7 @@ def test_render_html_contains_dashboard_sections() -> None:
     report = {
         "status": "pass_with_findings",
         "generated_at": "2026-05-11T12:00:00+00:00",
-        "audit_dir": "artifacts/audit-sample",
+        "audit_dir": "tests/fixtures/repo_health/audit-sample",
         "audit_status": {"overall_status": "pass", "max_severity": "medium"},
         "context_status": {"status": "pass", "issue_count": 0},
         "metrics": {
@@ -180,7 +180,7 @@ def test_main_writes_html_output(monkeypatch, tmp_path, capsys):
         lambda _audit_dir: {
             "status": "pass",
             "generated_at": "2026-05-11T12:00:00+00:00",
-            "audit_dir": "artifacts/audit",
+            "audit_dir": "tests/fixtures/repo_health/audit-sample",
             "audit_status": {"overall_status": "pass", "max_severity": None},
             "context_status": {"status": "pass", "issue_count": 0},
             "metrics": {
@@ -260,7 +260,9 @@ def test_main_writes_html_output(monkeypatch, tmp_path, capsys):
         },
     )
 
-    exit_code = repo_health.main(["--audit-dir", "artifacts/audit", "--html-output", str(html_output)])
+    exit_code = repo_health.main(
+        ["--audit-dir", "tests/fixtures/repo_health/audit-sample", "--html-output", str(html_output)]
+    )
 
     assert exit_code == 0
     html = html_output.read_text(encoding="utf-8")

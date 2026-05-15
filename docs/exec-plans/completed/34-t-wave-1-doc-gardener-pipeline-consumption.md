@@ -9,9 +9,9 @@ This plan closes T-006. After this work lands, `sattlint.devtools.doc_gardener` 
 ## Progress
 
 - [x] (2026-05-13) Create the ExecPlan and confirm `src/sattlint/devtools/pipeline.py` already writes `status.json`, `summary.json`, and registry-backed artifacts, while `src/sattlint/devtools/doc_gardener.py` still ignores those outputs and `docs/quality-score.md` has no `## Trend` section, so the current `update_quality_score` path mostly no-ops.
-- [ ] Add a small pipeline-artifact reader to `src/sattlint/devtools/doc_gardener.py` and expose an optional output-dir override.
-- [ ] Update `docs/quality-score.md` from real pipeline summaries while preserving current scan-log updates.
-- [ ] Add focused tests and run narrow pytest plus touched-file quality gates.
+- [x] (2026-05-15) Add a pipeline snapshot loader in `src/sattlint/devtools/doc_gardener.py`, including a `--pipeline-output-dir` override and non-fatal handling for missing or malformed artifacts.
+- [x] (2026-05-15) Update `docs/quality-score.md` from pipeline facts by creating or replacing a deterministic `## Trend` section row while preserving the existing tech-debt scan log updates.
+- [x] (2026-05-15) Add focused regression tests for missing artifacts, missing Trend insertion, `findings.json` fallback, and CLI wiring; validate with narrow pytest, Ruff, and Pyright.
 
 ## Surprises & Discoveries
 
@@ -23,6 +23,9 @@ Evidence: `src/sattlint/devtools/doc_gardener.py` only edits `docs/quality-score
 
 Observation: the repository already has stable doc-gardener path-patching tests.
 Evidence: `tests/_repo_audit_test_support.py` and `tests/test_repo_audit_doc_gardener.py` already patch doc-gardener paths for temp-repo tests.
+
+Observation: quick-profile pipeline summaries do not always populate every score-friendly field directly.
+Evidence: the live `artifacts/analysis/summary.json` used for proof carried `counts: {}` and `reports.coverage_summary: null`, so doc-gardener needed a fallback to `findings.json` and a graceful `coverage n/a` note instead of assuming those fields were present.
 
 ## Decision Log
 
@@ -38,9 +41,17 @@ Decision: make the pipeline output directory configurable, with `artifacts/analy
 Rationale: CI and developers already use different output directories at times, and doc-gardener should be able to consume either without rewriting files by hand.
 Date/Author: 2026-05-13 / Copilot (GPT-5.4)
 
+Decision: fall back to `findings.json` when `summary.json` omits `counts.normalized_findings`.
+Rationale: quick-profile artifacts already provide a stable machine-readable finding count through `findings.json`, and doc-gardener should keep reporting real pipeline facts instead of degrading to `n/a` when summary counts are sparse.
+Date/Author: 2026-05-15 / Copilot (GPT-5.4)
+
 ## Outcomes & Retrospective
 
-Planning baseline only. The current repository already has the pipeline data this debt item needs, but doc-gardener still behaves like an isolated markdown scanner rather than a consumer of the broader devtools artifact set.
+Implemented. `src/sattlint/devtools/doc_gardener.py` now loads pipeline snapshots from a configurable output directory, uses `status.json` for overall pipeline state, uses `summary.json` plus a `findings.json` fallback for pipeline finding counts, and creates or replaces a `## Trend` section in `docs/quality-score.md` deterministically.
+
+Focused proof passed with `python scripts/run_repo_python.py -m pytest --no-cov tests/test_repo_audit_doc_gardener.py tests/test_artifact_contracts.py -x -q --tb=short`, `python scripts/run_repo_python.py -m ruff check src/sattlint/devtools/doc_gardener.py tests/_repo_audit_part6.py tests/test_repo_audit_doc_gardener.py`, and `python scripts/run_repo_python.py -m pyright src/sattlint/devtools/doc_gardener.py tests/_repo_audit_part6.py tests/test_repo_audit_doc_gardener.py`.
+
+Live repo proof also landed: running `python scripts/run_repo_python.py -m sattlint.devtools.doc_gardener --pipeline-output-dir artifacts/analysis` created a `## Trend` section in `docs/quality-score.md` with the row `| 2026-05-15 | D | fail; 0 pipeline findings; 0 doc findings; coverage n/a | Pipeline |`, showing that doc-gardener consumed the existing machine-readable pipeline artifacts instead of the old scan-only placeholder behavior.
 
 ## Context and Orientation
 
@@ -91,7 +102,17 @@ This plan is safe to run repeatedly. Reading pipeline JSON is side-effect free, 
 
 ## Artifacts and Notes
 
-Record one short before-and-after excerpt from `docs/quality-score.md`, plus the exact `summary.json` fields that drove the update. The important proof is that doc-gardener consumed real pipeline data, not that it reformatted the entire document.
+Before excerpt: `docs/quality-score.md` had `## Domain Scores`, `## Layer Scores`, and `## Grading Scale`, with no `## Trend` section at all.
+
+After excerpt: `docs/quality-score.md` now contains:
+
+    ## Trend
+
+    | Date | Grade | Notes | Source |
+    |---|---|---|---|
+    | 2026-05-15 | D | fail; 0 pipeline findings; 0 doc findings; coverage n/a | Pipeline |
+
+Pipeline fields used for the live update: `status.json.overall_status = "fail"`, `summary.json.counts = {}`, `summary.json.reports.coverage_summary = null`, and `findings.json.finding_count = 0`.
 
 ## Interfaces and Dependencies
 

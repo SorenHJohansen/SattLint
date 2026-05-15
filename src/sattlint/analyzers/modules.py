@@ -21,6 +21,7 @@ from sattline_parser.models.ast_model import (
 )
 
 from .framework import Issue, empty_issues, format_report_header
+from .variable_utils import same_origin_file_stem
 
 log = logging.getLogger("SattLint")
 
@@ -1131,14 +1132,6 @@ def analyze_module_duplicates(base_picture: BasePicture, module_name: str, debug
     return compare_modules(modules_with_paths)
 
 
-def _is_from_root_origin(origin_file: str | None, root_origin: str | None) -> bool:
-    if not origin_file:
-        return True
-    if not root_origin:
-        return False
-    return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
-
-
 def _group_modules_by_name(
     base_picture: BasePicture,
 ) -> dict[str, list[tuple[list[str], SingleModule]]]:
@@ -1151,7 +1144,7 @@ def _group_modules_by_name(
     ) -> None:
         if isinstance(node, SingleModule):
             module_path = [*current_path, node.header.name]
-            if _is_from_root_origin(getattr(node, "origin_file", None), root_origin):
+            if same_origin_file_stem(getattr(node, "origin_file", None), root_origin):
                 grouped[_normalize_name(node.header.name)].append((module_path, node))
             for child in node.submodules or []:
                 walk(child, module_path)
@@ -1164,7 +1157,7 @@ def _group_modules_by_name(
             return
 
         if isinstance(node, ModuleTypeDef):
-            if not _is_from_root_origin(getattr(node, "origin_file", None), root_origin):
+            if not same_origin_file_stem(getattr(node, "origin_file", None), root_origin):
                 return
             typedef_path = [*current_path, f"TypeDef:{node.name}"]
             for child in node.submodules or []:

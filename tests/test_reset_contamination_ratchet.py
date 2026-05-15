@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -206,15 +206,17 @@ def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: A
     )
     assert sorted(env) == ["counter", "flag", "param", "resetvalue", "seqresetold"]
     assert reset_contamination_module._should_analyze_path(["Root", "Unit"], ["Other"]) is False
-    assert reset_contamination_module._is_from_root_origin(None, "root.s") is True
-    assert reset_contamination_module._is_from_root_origin("root.s", None) is False
+    assert reset_contamination_module.is_from_root_origin(None, "root.s") is True
+    assert reset_contamination_module.is_from_root_origin("root.s", None) is False
 
-    class ExplodingPath:
-        def __init__(self, _value: str) -> None:
-            raise ValueError("boom")
+    class BrokenPath:
+        def __init__(self, value: str) -> None:
+            self.value = value
 
-    monkeypatch.setattr(reset_contamination_module, "Path", ExplodingPath)
-    assert reset_contamination_module._is_from_root_origin("root.s", "root.s") is True
+        def rsplit(self, sep: str, maxsplit: int) -> list[str]:
+            return self.value.rsplit(sep, maxsplit)
+
+    assert reset_contamination_module.is_from_root_origin(cast(Any, BrokenPath("root.s")), "root.s") is True
 
     calls: list[str] = []
     reset_contamination_module._check_for_single(

@@ -35,6 +35,22 @@ def test_doc_gardener_main_reports_findings_without_opening_pr_by_default(monkey
     repo_audit_tests.test_doc_gardener_main_reports_findings_without_opening_pr_by_default(monkeypatch, capsys)
 
 
+def test_update_quality_score_creates_trend_section_from_pipeline_snapshot(tmp_path):
+    repo_audit_tests.test_update_quality_score_creates_trend_section_from_pipeline_snapshot(tmp_path)
+
+
+def test_load_pipeline_snapshot_returns_message_when_artifacts_missing(tmp_path):
+    repo_audit_tests.test_load_pipeline_snapshot_returns_message_when_artifacts_missing(tmp_path)
+
+
+def test_load_pipeline_snapshot_falls_back_to_findings_json_count(tmp_path):
+    repo_audit_tests.test_load_pipeline_snapshot_falls_back_to_findings_json_count(tmp_path)
+
+
+def test_doc_gardener_main_uses_pipeline_output_dir(monkeypatch, capsys, tmp_path):
+    repo_audit_tests.test_doc_gardener_main_uses_pipeline_output_dir(monkeypatch, capsys, tmp_path)
+
+
 def test_run_harness_freshness_check_translates_ai_and_doc_findings(monkeypatch, tmp_path):
     repo_audit_tests.test_run_harness_freshness_check_translates_ai_and_doc_findings(monkeypatch, tmp_path)
 

@@ -2,9 +2,8 @@
     "servers": {
         "codegraph": {
             "type": "stdio",
-            "command": "node",
+            "command": "codegraph",
             "args": [
-                "codegraph",
                 "serve",
                 "--mcp",
                 "--path",

@@ -9,10 +9,10 @@ This plan closes T-003 for the actual control files the current LSP server uses.
 ## Progress
 
 - [x] (2026-05-13) Create the ExecPlan and confirm `src/sattlint_lsp/workspace_store.py` already tracks `_config_version` and invalidates cached bundles for saved source files, but `src/sattlint_lsp/server.py` has no `workspace/didChangeConfiguration` handler and still returns early on non-diagnostic saves, so `.l` and `.z` dependency lists never trigger workspace rescans.
-- [ ] Add a configuration-change handler that reconfigures the snapshot store and schedules a workspace scan when `entry_file`, `mode`, or other workspace settings change.
-- [ ] Treat `.l` and `.z` dependency-name lists inside the workspace root as workspace-affecting saves that invalidate cached entries and trigger rescans.
-- [ ] Add focused LSP tests and rerun the narrow workspace or diagnostics slice.
-- [ ] Restart the LSP server after the code change as required by repository policy.
+- [x] (2026-05-15) Add `workspace/didChangeConfiguration` handling in `src/sattlint_lsp/server.py`, reconfigure the snapshot store only for workspace-affecting settings, clear stale workspace diagnostics, and reschedule background scans through the existing queue.
+- [x] (2026-05-15) Treat workspace-root `.l` and `.z` dependency-name lists as workspace-affecting saves, refresh workspace discovery in `src/sattlint_lsp/workspace_store.py`, clear stale cached diagnostics, and reschedule the existing background scan path without widening document diagnostics to list files.
+- [x] (2026-05-15) Add focused LSP tests in `tests/test_lsp_document.py` for `didChangeConfiguration` and `.l` or `.z` save rescans, then rerun `python scripts/run_repo_python.py -m pytest --no-cov tests/test_lsp_document.py tests/test_lsp_diagnostics.py -x -q --tb=short`, plus touched-file Ruff and Pyright checks.
+- [ ] Restart the LSP server after the code change as required by repository policy. Attempted via `sattlineLsp.restartServer`, but the command was unavailable in the current editor session.
 
 ## Surprises & Discoveries
 
@@ -24,6 +24,9 @@ Evidence: `WorkspaceSnapshotStore.invalidate_path` already marks affected entrie
 
 Observation: the real non-program control files are `.l` and `.z` dependency-name lists, not arbitrary docs.
 Evidence: repository invariants define `.l` and `.z` as dependency-name lists for workspace resolution, while `on_did_save` currently clears diagnostics and returns before any rescan for those files.
+
+Observation: the custom VS Code bridge was still restarting the server for every `sattlineLsp` setting change instead of forwarding `workspace/didChangeConfiguration`.
+Evidence: `vscode/sattline-vscode/extension.js` handled `onDidChangeConfiguration` by calling `bridge.restart()` for both `sattlineLsp` and `python.defaultInterpreterPath`, so the new server-side handler would never receive configuration notifications in the real editor flow.
 
 ## Decision Log
 
@@ -39,9 +42,17 @@ Decision: keep arbitrary markdown files out of the diagnostics path.
 Rationale: this debt item is about workspace semantics and dependency resolution, not about every document in the workspace.
 Date/Author: 2026-05-13 / Copilot (GPT-5.4)
 
+Decision: forward `workspace/didChangeConfiguration` from the VS Code bridge for `sattlineLsp` settings, but keep interpreter-path changes on the existing restart path.
+Rationale: workspace settings should hot-reload through the new server handler, while interpreter changes still require a new server process.
+Date/Author: 2026-05-15 / Copilot (GPT-5.4)
+
 ## Outcomes & Retrospective
 
-Planning baseline only. The repository already has the cache invalidation primitives needed for hot reload, but it still relies on initialization and source-file saves instead of explicit configuration changes and dependency-list saves.
+Implemented in `src/sattlint_lsp/server.py`, `src/sattlint_lsp/workspace_store.py`, `tests/test_lsp_document.py`, and `vscode/sattline-vscode/extension.js`. The server now hot-reloads workspace-affecting settings through `workspace/didChangeConfiguration`, dependency-list saves refresh workspace discovery before reusing the existing background scan queue, and the VS Code bridge now forwards config changes instead of restarting for normal `sattlineLsp` setting edits.
+
+Validation passed with `python scripts/run_repo_python.py -m pytest --no-cov tests/test_lsp_document.py tests/test_lsp_diagnostics.py -x -q --tb=short`, `python scripts/run_repo_python.py -m ruff check src/sattlint_lsp/server.py src/sattlint_lsp/workspace_store.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py`, and `python scripts/run_repo_python.py -m pyright src/sattlint_lsp/server.py src/sattlint_lsp/workspace_store.py tests/test_lsp_document.py tests/test_lsp_diagnostics.py`.
+
+The only remaining gap is operational: the required `sattlineLsp.restartServer` command was not available in this editor session, so the post-edit restart could not be executed from here.
 
 ## Context and Orientation
 
@@ -94,4 +105,4 @@ Record one short test artifact for each hot-reload path: a `didChangeConfigurati
 
 ## Interfaces and Dependencies
 
-The implementation surface is `src/sattlint_lsp/server.py` and `src/sattlint_lsp/workspace_store.py`. Reuse the current settings parsing, cache invalidation, and background scan scheduling already present in this package. Do not introduce a second cache or a second background-scan subsystem.
+The implementation surface is `src/sattlint_lsp/server.py`, `src/sattlint_lsp/workspace_store.py`, and the custom VS Code bridge in `vscode/sattline-vscode/extension.js`. Reuse the current settings parsing, cache invalidation, and background scan scheduling already present in this package. Do not introduce a second cache or a second background-scan subsystem.

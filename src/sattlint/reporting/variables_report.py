@@ -5,6 +5,7 @@ from enum import Enum
 
 from sattline_parser.models.ast_model import Simple_DataType, SourceSpan, Variable
 
+from ..types import VariableId
 from ._variables_report_rendering import (
     append_datatype_duplication,
     append_magic_numbers,
@@ -116,13 +117,13 @@ class VariableIssue:
     role: str | None = None
     source_variable: Variable | None = None
     duplicate_count: int | None = None
-    duplicate_locations: list[tuple[list[str], str, str]] | None = None
+    duplicate_locations: list[tuple[list[str], str, VariableId]] | None = None
     literal_value: int | float | None = None
     literal_span: SourceSpan | None = None
     site: str | None = None
     field_path: str | None = None
     sequence_name: str | None = None
-    reset_variable: str | None = None
+    reset_variable: VariableId | None = None
 
     def __str__(self) -> str:
         mp = ".".join(self.module_path)

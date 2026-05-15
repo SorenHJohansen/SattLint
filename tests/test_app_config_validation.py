@@ -133,6 +133,31 @@ def test_target_exists_honors_mode_and_available_directories(tmp_path):
     assert config_module.target_exists("Shared", official_cfg) is True
 
 
+def test_validate_effective_config_reports_unresolved_targets_after_defaults_merge(tmp_path):
+    for directory_name in ("programs", "abb", "lib"):
+        (tmp_path / directory_name).mkdir()
+
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    cfg.update(
+        {
+            "program_dir": str(tmp_path / "programs"),
+            "ABB_lib_dir": str(tmp_path / "abb"),
+            "other_lib_dirs": [str(tmp_path / "lib")],
+            "analyzed_programs_and_libraries": ["MissingTarget"],
+        }
+    )
+
+    result = config_module.validate_effective_config(cfg)
+
+    assert result.passed is False
+    assert result.errors == (
+        config_module.ConfigValidationError(
+            key_path="analyzed_programs_and_libraries[0]",
+            message="MissingTarget (not found)",
+        ),
+    )
+
+
 def test_config_helpers_normalize_legacy_conflicts_and_serialize_paths(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))

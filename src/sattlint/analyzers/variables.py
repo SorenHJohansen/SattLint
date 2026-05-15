@@ -53,7 +53,6 @@ from ._variables_contracts import (
     check_param_mappings_for_type_instance,
     get_required_parameter_names_for_typedef,
     index_all_variables,
-    is_const_candidate,
     iter_anytype_typedefs,
 )
 from ._variables_effect_flow import EffectFlowTracker
@@ -127,6 +126,7 @@ from .variable_traversal import (
     _walk_tail,
     _walk_typedef_groupconn,
 )
+from .variable_utils import is_const_candidate
 
 if TYPE_CHECKING:
     from ..tracing import AnalysisTraceRecorder

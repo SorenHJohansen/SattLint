@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
@@ -35,6 +36,7 @@ from .utils.text_processing import strip_sl_comments
 
 GRAMMAR_PATH = Path(__file__).resolve().parent / "grammar" / "sattline.lark"
 _PARSER_CACHE_DIR = Path(gettempdir()) / "sattlint" / "lark-cache"
+log = logging.getLogger("SattLint")
 
 if not GRAMMAR_PATH.exists():
     raise RuntimeError(f"Grammar file missing: {GRAMMAR_PATH}")
@@ -146,15 +148,59 @@ def describe_parse_error(exc: Exception, source_text: str) -> ParseErrorDetails:
     return ParseErrorDetails(message=str(exc), line=line, column=column)
 
 
+def _failure_details(exc: Exception, source_text: str | None = None) -> ParseErrorDetails:
+    if source_text is not None:
+        return describe_parse_error(exc, source_text)
+    return ParseErrorDetails(
+        message=str(exc),
+        line=getattr(exc, "line", None),
+        column=getattr(exc, "column", None),
+    )
+
+
+def _log_parser_failure(
+    *,
+    stage: str,
+    exc: Exception,
+    source_text: str | None = None,
+    source_path: Path | None = None,
+) -> None:
+    details = _failure_details(exc, source_text)
+    path_text = str(source_path) if source_path is not None else None
+    location_text = ""
+    if details.line is not None and details.column is not None:
+        location_text = f" (line {details.line}, column {details.column})"
+    elif details.line is not None:
+        location_text = f" (line {details.line})"
+    path_suffix = f" for {path_text}" if path_text is not None else ""
+    log.error(
+        "Parser %s failure%s%s: %s",
+        stage,
+        path_suffix,
+        location_text,
+        details.message,
+        extra={
+            "parser_stage": stage,
+            "parser_path": path_text,
+            "parser_line": details.line,
+            "parser_column": details.column,
+            "parser_context": details.message,
+        },
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+
+
 def read_text_with_fallback(path: Path) -> str:
     """Read a text file trying utf-8, then cp1252, then latin-1."""
-    try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
+    for encoding in ("utf-8", "cp1252", "latin-1"):
         try:
-            return path.read_text(encoding="cp1252")
+            return path.read_text(encoding=encoding)
         except UnicodeDecodeError:
-            return path.read_text(encoding="latin-1")
+            continue
+        except OSError as exc:
+            _log_parser_failure(stage="read", exc=exc, source_path=path)
+            raise
+    return path.read_text(encoding="latin-1")
 
 
 # Internal alias kept for callers that import the private name.
@@ -174,7 +220,11 @@ def load_source_text(
     if is_compressed(src):
         if debug is not None:
             debug("Compressed format detected; decoding before parsing")
-        src, _ = preprocess_sl_text(src)
+        try:
+            src, _ = preprocess_sl_text(src)
+        except Exception as exc:
+            _log_parser_failure(stage="decode", exc=exc, source_text=src, source_path=source_path)
+            raise
     return src
 
 
@@ -184,18 +234,27 @@ def parse_source_text(
     parser: Lark | None = None,
     transformer: SLTransformer | None = None,
     debug: Callable[[str], None] | None = None,
+    source_path: Path | None = None,
 ) -> BasePicture:
     cleaned = strip_sl_comments(src)
     active_parser = parser if parser is not None else _default_parser()
     active_transformer = transformer if transformer is not None else SLTransformer()
-    tree = cast(Any, active_parser).parse(cleaned)
+    try:
+        tree = cast(Any, active_parser).parse(cleaned)
+    except Exception as exc:
+        _log_parser_failure(stage="parse", exc=exc, source_text=cleaned, source_path=source_path)
+        raise
 
     if debug is not None:
         debug("Parse OK, transforming with SLTransformer")
 
-    transformed = cast(Any, active_transformer).transform(tree)
-    if not isinstance(transformed, BasePicture):
-        raise RuntimeError("Transform result is not BasePicture; check transformer.start()")
+    try:
+        transformed = cast(Any, active_transformer).transform(tree)
+        if not isinstance(transformed, BasePicture):
+            raise RuntimeError("Transform result is not BasePicture; check transformer.start()")
+    except Exception as exc:
+        _log_parser_failure(stage="transform", exc=exc, source_text=cleaned, source_path=source_path)
+        raise
 
     basepic = transformed
     try:
@@ -218,4 +277,4 @@ def parse_source_file(
     debug: Callable[[str], None] | None = None,
 ) -> BasePicture:
     src = load_source_text(code_path, debug=debug)
-    return parse_source_text(src, parser=parser, transformer=transformer, debug=debug)
+    return parse_source_text(src, parser=parser, transformer=transformer, debug=debug, source_path=code_path)

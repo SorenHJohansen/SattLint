@@ -118,7 +118,7 @@
       "artifact_id": "environment",
       "blocking": false,
       "depends_on": [],
-      "enabled": true,
+      "enabled": false,
       "filename": "environment.json",
       "optional": false,
       "producer": "environment",
@@ -179,126 +179,22 @@
       "used_by": []
     },
     {
-      "artifact_id": "vulture",
+      "artifact_id": "incremental_analysis",
       "blocking": false,
       "depends_on": [],
       "enabled": true,
-      "filename": "vulture.json",
+      "filename": "incremental_analysis.json",
       "optional": true,
-      "producer": "vulture",
+      "producer": "incremental_analysis",
       "profiles": [
+        "quick",
         "full"
       ],
-      "schema_kind": "sattlint.tool_report",
-      "schema_version": 1,
-      "used_by": []
-    },
-    {
-      "artifact_id": "bandit",
-      "blocking": false,
-      "depends_on": [],
-      "enabled": true,
-      "filename": "bandit.json",
-      "optional": true,
-      "producer": "bandit",
-      "profiles": [
-        "full"
-      ],
-      "schema_kind": "sattlint.tool_report",
-      "schema_version": 1,
-      "used_by": []
-    },
-    {
-      "artifact_id": "architecture",
-      "blocking": false,
-      "depends_on": [],
-      "enabled": true,
-      "filename": "architecture.json",
-      "optional": true,
-      "producer": "architecture",
-      "profiles": [
-        "full"
-      ],
-      "schema_kind": "sattlint.architecture",
-      "schema_version": 1,
-      "used_by": []
-    },
-    {
-      "artifact_id": "analyzer_registry",
-      "blocking": false,
-      "depends_on": [],
-      "enabled": true,
-      "filename": "analyzer_registry.json",
-      "optional": true,
-      "producer": "analyzer_registry",
-      "profiles": [
-        "full"
-      ],
-      "schema_kind": "sattlint.analyzer_registry",
-      "schema_version": 1,
-      "used_by": []
-    },
-    {
-      "artifact_id": "dependency_graph",
-      "blocking": false,
-      "depends_on": [],
-      "enabled": true,
-      "filename": "dependency_graph.json",
-      "optional": true,
-      "producer": "dependency_graph",
-      "profiles": [
-        "full"
-      ],
-      "schema_kind": "sattlint.graph",
-      "schema_version": 1,
-      "used_by": []
-    },
-    {
-      "artifact_id": "call_graph",
-      "blocking": false,
-      "depends_on": [],
-      "enabled": true,
-      "filename": "call_graph.json",
-      "optional": true,
-      "producer": "call_graph",
-      "profiles": [
-        "full"
-      ],
-      "schema_kind": "sattlint.graph",
-      "schema_version": 1,
-      "used_by": []
-    },
-    {
-      "artifact_id": "impact_analysis",
-      "blocking": false,
-      "depends_on": [],
-      "enabled": true,
-      "filename": "impact_analysis.json",
-      "optional": true,
-      "producer": "impact_analysis",
-      "profiles": [
-        "full"
-      ],
-      "schema_kind": "sattlint.impact_analysis",
-      "schema_version": 1,
-      "used_by": []
-    },
-    {
-      "artifact_id": "trace",
-      "blocking": false,
-      "depends_on": [],
-      "enabled": true,
-      "filename": "trace.json",
-      "optional": true,
-      "producer": "trace",
-      "profiles": [
-        "full"
-      ],
-      "schema_kind": "sattlint.trace",
+      "schema_kind": "sattlint.incremental_analysis",
       "schema_version": 1,
       "used_by": []
     }
   ],
   "generated_by": "sattlint.devtools.pipeline",
-  "profile": "full"
+  "profile": "quick"
 }

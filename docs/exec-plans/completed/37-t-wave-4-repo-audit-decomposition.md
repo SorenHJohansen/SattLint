@@ -9,9 +9,9 @@ This plan closes the remaining structural work in T-019. The first phase of the 
 ## Progress
 
 - [x] (2026-05-13) Create the ExecPlan and confirm `audit_core.py`, `ledger.py`, and `leak_detection.py` already exist, while `src/sattlint/devtools/repo_audit.py` is still 556 lines and ratcheted `must_shrink`, and the repository already has an existing `src/sattlint/devtools/audit_orchestration.py` seam that owns part of the full-run flow.
-- [ ] Move the remaining orchestration and compatibility wiring out of `repo_audit.py` into the closest existing helper modules.
-- [ ] Reduce `repo_audit.py` below the structural target without changing `sattlint-repo-audit` behavior or artifact formats.
-- [ ] Add or adjust focused tests if exports or helper ownership move, then rerun the narrow repo-audit slice.
+- [x] (2026-05-15) Move the remaining report-writing and run-history composition out of `repo_audit.py` into `src/sattlint/devtools/ledger.py`, leaving `repo_audit.py` with thin compatibility wrappers for public patch points such as `_write_markdown`, `_write_audit_run_history`, and `_run_harness_freshness_check`.
+- [x] (2026-05-15) Reduce `repo_audit.py` below the structural target without changing `sattlint-repo-audit` behavior or artifact formats. The owner file now measures 490 lines.
+- [x] (2026-05-15) Reuse the existing focused repo-audit tests instead of widening scope: `bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_repo_audit.py tests/test_repo_audit_cli.py tests/test_repo_audit_entrypoints_verify.py -x -q --tb=short` passed with `115 passed in 1.81s`.
 
 ## Surprises & Discoveries
 
@@ -23,6 +23,9 @@ Evidence: the tail of `repo_audit.py` is now mostly compatibility constants and 
 
 Observation: the repo already has an orchestration seam that should be reused before any new file is added.
 Evidence: `src/sattlint/devtools/audit_orchestration.py` already owns harness-freshness conversion and the main `audit_repository(...)` flow.
+
+Observation: the structural target was reachable without moving the public monkeypatch seam out of `repo_audit.py`.
+Evidence: tests patch `_write_markdown`, `_write_audit_run_history`, `_patch_doc_gardener_paths`, and `_run_harness_freshness_check` on the public module, so the landed change kept those names as thin wrappers while moving the heavier report-writing logic into `ledger.py`.
 
 ## Decision Log
 
@@ -40,7 +43,9 @@ Date/Author: 2026-05-13 / Copilot (GPT-5.4)
 
 ## Outcomes & Retrospective
 
-Planning baseline only. T-019 is no longer a full monolith split from scratch; it is now a second-phase shrink and ownership pass that must finish without reopening artifact drift.
+T-019 phase-two shrink landed as a compatibility-shell refactor instead of a wider API move. `src/sattlint/devtools/repo_audit.py` is now 490 lines, with markdown rendering and repo-audit run-history composition delegated to `src/sattlint/devtools/ledger.py`. The public compatibility names remain in `repo_audit.py`, so the existing entrypoint helpers and tests still patch the same module surface.
+
+Focused validation was sufficient for this slice. The targeted pytest command passed, then Ruff passed on the repo-audit slice, and Pyright reported `0 errors, 0 warnings, 0 informations` for the touched devtools files.
 
 ## Context and Orientation
 
@@ -86,7 +91,11 @@ This plan is safe to land as a shrink-only refactor. Move one helper cluster at 
 
 ## Artifacts and Notes
 
-Record one short before-and-after line-count artifact for `repo_audit.py`, plus a focused pytest summary. If any compatibility re-exports are kept intentionally, note them here so future cleanups do not remove them blindly.
+Before/after owner line count: `src/sattlint/devtools/repo_audit.py` went from 535 lines at execution time to 490 lines after the refactor.
+
+Focused pytest summary: `bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_repo_audit.py tests/test_repo_audit_cli.py tests/test_repo_audit_entrypoints_verify.py -x -q --tb=short` -> `115 passed in 1.81s`.
+
+Intentional compatibility wrappers kept in `repo_audit.py`: `_write_markdown`, `_write_audit_run_history`, `_patch_doc_gardener_paths`, and `_run_harness_freshness_check`. Future cleanup should move callers first before deleting those public patch points.
 
 ## Interfaces and Dependencies
 

@@ -63,8 +63,8 @@ def test_variables_report_summary_formats_duplication_magic_numbers_and_sequence
                 role="localvariable",
                 duplicate_count=3,
                 duplicate_locations=[
-                    (["BasePicture", "UnitA"], "moduleparameter", "ValueB"),
-                    (["BasePicture", "UnitB"], "localvariable", "ValueC"),
+                    (["BasePicture", "UnitA"], "moduleparameter", VariableId("ValueB")),
+                    (["BasePicture", "UnitB"], "localvariable", VariableId("ValueC")),
                 ],
             ),
             VariableIssue(
@@ -81,7 +81,7 @@ def test_variables_report_summary_formats_duplication_magic_numbers_and_sequence
                 variable=implicit,
                 role="localvariable",
                 sequence_name="MainSeq",
-                reset_variable="ResetCmd",
+                reset_variable=VariableId("ResetCmd"),
             ),
         ],
     )
@@ -240,7 +240,7 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
             variable=Variable("LocalA", "Payload"),
             role="localvariable",
             duplicate_count=2,
-            duplicate_locations=[(["BasePicture", "Dup"], "moduleparameter", "ParamA")],
+            duplicate_locations=[(["BasePicture", "Dup"], "moduleparameter", VariableId("ParamA"))],
         ),
         VariableIssue(
             kind=IssueKind.MIN_MAX_MAPPING_MISMATCH,
@@ -273,7 +273,7 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
             variable=Variable("State", Simple_DataType.BOOLEAN),
             role="localvariable",
             sequence_name="SeqA",
-            reset_variable="ResetCmd",
+            reset_variable=VariableId("ResetCmd"),
         ),
     ]
     report = VariablesReport(

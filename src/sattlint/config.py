@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sys
 import tomllib
 from copy import deepcopy
 from dataclasses import dataclass
@@ -11,6 +10,8 @@ from pathlib import Path
 from typing import Any, cast
 
 import tomli_w
+
+from .types import TargetName
 
 _DOCUMENTATION_RULE_LIST_KEYS = (
     "name_contains",
@@ -263,6 +264,41 @@ class ConfigValidationResult:
         }
 
 
+def _build_validation_result(errors: list[ConfigValidationError]) -> ConfigValidationResult:
+    return ConfigValidationResult(
+        passed=len(errors) == 0,
+        errors=tuple(errors),
+    )
+
+
+def _merge_validation_results(*results: ConfigValidationResult) -> ConfigValidationResult:
+    merged_errors: list[ConfigValidationError] = []
+    seen: set[tuple[str, str]] = set()
+    for result in results:
+        for error in result.errors:
+            marker = (error.key_path, error.message)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            merged_errors.append(error)
+    return _build_validation_result(merged_errors)
+
+
+def _configured_targets(cfg: dict[str, Any]) -> tuple[TargetName, ...]:
+    return tuple(
+        TargetName(normalized)
+        for raw_target in cfg.get("analyzed_programs_and_libraries", [])
+        if (normalized := str(raw_target).strip())
+    )
+
+
+def _validation_errors_by_key(validation: ConfigValidationResult) -> dict[str, tuple[str, ...]]:
+    errors_by_key: dict[str, list[str]] = {}
+    for error in validation.errors:
+        errors_by_key.setdefault(error.key_path, []).append(error.message)
+    return {key: tuple(messages) for key, messages in errors_by_key.items()}
+
+
 def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
     errors: list[ConfigValidationError] = []
 
@@ -312,17 +348,98 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                             message=f"Unknown naming target '{target}'. Expected one of: {', '.join(sorted(VALID_NAMING_TARGETS))}",
                         )
                     )
-                else:
-                    target_rule = naming[target]
-                    if isinstance(target_rule, dict):
-                        style = target_rule.get("style")
-                        if style is not None and style not in VALID_NAMING_STYLES:
+            for target in _NAMING_RULE_TARGETS:
+                target_rule = naming.get(target, {})
+                if not isinstance(target_rule, dict):
+                    errors.append(
+                        ConfigValidationError(
+                            key_path=f"analysis.naming.{target}",
+                            message=f"analysis.naming.{target} must be a table/object",
+                        )
+                    )
+                    continue
+
+                style = str(target_rule.get("style", "infer")).strip().lower()
+                if style not in _NAMING_STYLE_KEYS:
+                    errors.append(
+                        ConfigValidationError(
+                            key_path=f"analysis.naming.{target}.style",
+                            message=f"analysis.naming.{target}.style must be one of: {', '.join(_NAMING_STYLE_KEYS)}",
+                        )
+                    )
+
+                allow = target_rule.get("allow", [])
+                if not isinstance(allow, list) or not all(isinstance(item, str) for item in allow):
+                    errors.append(
+                        ConfigValidationError(
+                            key_path=f"analysis.naming.{target}.allow",
+                            message=f"analysis.naming.{target}.allow must be a list of strings",
+                        )
+                    )
+
+        sfc = analysis.get("sfc")
+        if sfc is not None and not isinstance(sfc, dict):
+            errors.append(
+                ConfigValidationError(
+                    key_path="analysis.sfc",
+                    message="analysis.sfc must be a table/object",
+                )
+            )
+        elif isinstance(sfc, dict):
+            step_groups = sfc.get("mutually_exclusive_steps", [])
+            if not isinstance(step_groups, list):
+                errors.append(
+                    ConfigValidationError(
+                        key_path="analysis.sfc.mutually_exclusive_steps",
+                        message="analysis.sfc.mutually_exclusive_steps must be a list",
+                    )
+                )
+
+            step_contracts = sfc.get("step_contracts", {})
+            if not isinstance(step_contracts, dict):
+                errors.append(
+                    ConfigValidationError(
+                        key_path="analysis.sfc.step_contracts",
+                        message="analysis.sfc.step_contracts must be a table/object",
+                    )
+                )
+            else:
+                for step_name, contract in step_contracts.items():
+                    if not isinstance(step_name, str) or not step_name.strip():
+                        errors.append(
+                            ConfigValidationError(
+                                key_path="analysis.sfc.step_contracts",
+                                message="analysis.sfc.step_contracts keys must be non-empty strings",
+                            )
+                        )
+                        continue
+                    if not isinstance(contract, dict):
+                        errors.append(
+                            ConfigValidationError(
+                                key_path=f"analysis.sfc.step_contracts.{step_name}",
+                                message=f"analysis.sfc.step_contracts.{step_name} must be a table/object",
+                            )
+                        )
+                        continue
+                    for key in ("required_enter_writes", "required_exit_writes"):
+                        values = contract.get(key, [])
+                        if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
                             errors.append(
                                 ConfigValidationError(
-                                    key_path=f"analysis.naming.{target}.style",
-                                    message=f"Invalid style '{style}'. Expected one of: {', '.join(sorted(VALID_NAMING_STYLES))}",
+                                    key_path=f"analysis.sfc.step_contracts.{step_name}.{key}",
+                                    message=(
+                                        f"analysis.sfc.step_contracts.{step_name}.{key} must be a list of strings"
+                                    ),
                                 )
                             )
+
+        if naming is not None and not isinstance(naming, dict):
+            errors.append(
+                ConfigValidationError(
+                    key_path="analysis.naming",
+                    message="analysis.naming must be a table/object",
+                )
+            )
 
     documentation = cfg.get("documentation")
     if documentation is not None and not isinstance(documentation, dict):
@@ -332,11 +449,110 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                 message="documentation must be a table/object.",
             )
         )
+    elif isinstance(documentation, dict):
+        classifications = documentation.get("classifications", {})
+        if not isinstance(classifications, dict) or not classifications:
+            errors.append(
+                ConfigValidationError(
+                    key_path="documentation.classifications",
+                    message="documentation.classifications must be a non-empty table/object",
+                )
+            )
+        else:
+            for category, rule in classifications.items():
+                if category not in _DOCUMENTATION_CATEGORY_KEYS:
+                    errors.append(
+                        ConfigValidationError(
+                            key_path=f"documentation.classifications.{category}",
+                            message=(f"documentation.classifications.{category} is not a supported category"),
+                        )
+                    )
+                    continue
+                if not isinstance(rule, dict):
+                    errors.append(
+                        ConfigValidationError(
+                            key_path=f"documentation.classifications.{category}",
+                            message=f"documentation.classifications.{category} must be a table/object",
+                        )
+                    )
+                    continue
+                for key in _DOCUMENTATION_RULE_LIST_KEYS:
+                    values = rule.get(key, [])
+                    if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+                        errors.append(
+                            ConfigValidationError(
+                                key_path=f"documentation.classifications.{category}.{key}",
+                                message=(f"documentation.classifications.{category}.{key} must be a list of strings"),
+                            )
+                        )
 
-    return ConfigValidationResult(
-        passed=len(errors) == 0,
-        errors=tuple(errors),
-    )
+    return _build_validation_result(errors)
+
+
+def validate_loaded_config(cfg: dict[str, Any]) -> ConfigValidationResult:
+    errors: list[ConfigValidationError] = []
+
+    for name in ("program_dir", "ABB_lib_dir", "icf_dir"):
+        raw = str(cfg.get(name, "")).strip()
+        if not raw:
+            continue
+        path = Path(raw)
+        if not path.exists():
+            errors.append(
+                ConfigValidationError(
+                    key_path=name,
+                    message=f"{name} does not exist: {path}",
+                )
+            )
+            continue
+        if not os.access(path, os.R_OK):
+            errors.append(
+                ConfigValidationError(
+                    key_path=name,
+                    message=f"{name} not readable: {path}",
+                )
+            )
+
+    for index, raw_path in enumerate(cfg.get("other_lib_dirs", [])):
+        path = Path(str(raw_path))
+        if path.exists():
+            continue
+        errors.append(
+            ConfigValidationError(
+                key_path=f"other_lib_dirs[{index}]",
+                message=f"other_lib_dirs entry missing: {path}",
+            )
+        )
+
+    for index, target in enumerate(_configured_targets(cfg)):
+        if target_exists(target, cfg):
+            continue
+        errors.append(
+            ConfigValidationError(
+                key_path=f"analyzed_programs_and_libraries[{index}]",
+                message=f"{target} (not found)",
+            )
+        )
+
+    graphics_rules_path = get_graphics_rules_path()
+    if graphics_rules_path.exists():
+        from . import graphics_rules as graphics_rules_module
+
+        try:
+            graphics_rules_module.load_graphics_rules(graphics_rules_path)
+        except Exception as exc:
+            errors.append(
+                ConfigValidationError(
+                    key_path="graphics_rules_path",
+                    message=f"graphics_rules_path invalid: {graphics_rules_path} ({exc})",
+                )
+            )
+
+    return _build_validation_result(errors)
+
+
+def validate_effective_config(cfg: dict[str, Any]) -> ConfigValidationResult:
+    return _merge_validation_results(validate_config(cfg), validate_loaded_config(cfg))
 
 
 def load_config(path: Path) -> tuple[dict, bool]:
@@ -396,198 +612,7 @@ def target_exists(target: str, cfg: dict) -> bool:
     return False
 
 
-def _self_check_directories(cfg: dict) -> bool:
-    ok = True
-
-    for name in ("program_dir", "ABB_lib_dir", "icf_dir"):
-        raw = cfg.get(name, "")
-        if not raw:
-            print(f"⚠ {name} not set")
-            continue
-        p = Path(raw)
-        if not p.exists():
-            print(f"❌ {name} does not exist: {p}")
-            ok = False
-        elif not os.access(p, os.R_OK):
-            print(f"❌ {name} not readable: {p}")
-            ok = False
-        else:
-            print(f"✔ {name}: {p}")
-
-    for p in cfg.get("other_lib_dirs", []):
-        path = Path(p)
-        if not path.exists():
-            print(f"⚠ other_lib_dirs entry missing: {path}")
-        else:
-            print(f"✔ other_lib_dirs: {path}")
-
-    return ok
-
-
-def _self_check_targets(cfg: dict) -> bool:
-    ok = True
-    targets = [str(target).strip() for target in cfg.get("analyzed_programs_and_libraries", []) if str(target).strip()]
-    if not targets:
-        print("WARNING analyzed_programs_and_libraries is empty")
-        print("Configure targets before running analyses, documentation, or AST cache refresh.")
-        return ok
-
-    print("Analyzed programs/libraries:")
-    for target in targets:
-        if target_exists(target, cfg):
-            print(f"✔ {target}")
-        else:
-            print(f"❌ {target} (not found)")
-            ok = False
-    return ok
-
-
-def _self_check_documentation(cfg: dict) -> bool:
-    ok = True
-    documentation = cfg.get("documentation", {})
-    if not isinstance(documentation, dict):
-        print("❌ documentation must be a table/object")
-        return False
-
-    classifications = documentation.get("classifications", {})
-    if not isinstance(classifications, dict) or not classifications:
-        print("❌ documentation.classifications must be a non-empty table/object")
-        return False
-
-    for category, rule in classifications.items():
-        if category not in _DOCUMENTATION_CATEGORY_KEYS:
-            print(f"❌ documentation.classifications.{category} is not a supported category")
-            ok = False
-            continue
-        if not isinstance(rule, dict):
-            print(f"❌ documentation.classifications.{category} must be a table/object")
-            ok = False
-            continue
-        for key in _DOCUMENTATION_RULE_LIST_KEYS:
-            values = rule.get(key, [])
-            if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
-                print(f"❌ documentation.classifications.{category}.{key} must be a list of strings")
-                ok = False
-        for key in _DOCUMENTATION_RULE_LIST_KEYS:
-            values = [str(item) for item in rule.get(key, []) if str(item).strip()]
-            if values:
-                print(f"✔ documentation.classifications.{category}.{key}: " + ", ".join(values))
-
-    return ok
-
-
-def _self_check_analysis(cfg: dict) -> bool:
-    ok = True
-    analysis = cfg.get("analysis", {})
-    if not isinstance(analysis, dict):
-        print("❌ analysis must be a table/object")
-        return False
-
-    sfc = analysis.get("sfc", {})
-    if not isinstance(sfc, dict):
-        print("❌ analysis.sfc must be a table/object")
-        ok = False
-    else:
-        step_groups = sfc.get("mutually_exclusive_steps", [])
-        if not isinstance(step_groups, list):
-            print("❌ analysis.sfc.mutually_exclusive_steps must be a list")
-            ok = False
-        else:
-            for index, group in enumerate(step_groups, start=1):
-                if not isinstance(group, list) or not all(isinstance(item, str) for item in group):
-                    print(f"❌ analysis.sfc.mutually_exclusive_steps[{index}] must be a list of strings")
-                    ok = False
-
-        step_contracts = sfc.get("step_contracts", {})
-        if not isinstance(step_contracts, dict):
-            print("❌ analysis.sfc.step_contracts must be a table/object")
-            ok = False
-        else:
-            for step_name, contract in step_contracts.items():
-                if not isinstance(step_name, str) or not step_name.strip():
-                    print("❌ analysis.sfc.step_contracts keys must be non-empty strings")
-                    ok = False
-                    continue
-                if not isinstance(contract, dict):
-                    print(f"❌ analysis.sfc.step_contracts.{step_name} must be a table/object")
-                    ok = False
-                    continue
-                for key in ("required_enter_writes", "required_exit_writes"):
-                    values = contract.get(key, [])
-                    if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
-                        print(f"❌ analysis.sfc.step_contracts.{step_name}.{key} must be a list of strings")
-                        ok = False
-
-    naming = analysis.get("naming", {})
-    if not isinstance(naming, dict):
-        print("❌ analysis.naming must be a table/object")
-        return False if ok else False
-
-    for target in _NAMING_RULE_TARGETS:
-        rule = naming.get(target, {})
-        if not isinstance(rule, dict):
-            print(f"❌ analysis.naming.{target} must be a table/object")
-            ok = False
-            continue
-        style = str(rule.get("style", "infer")).strip().lower()
-        if style not in _NAMING_STYLE_KEYS:
-            print(f"❌ analysis.naming.{target}.style must be one of: " + ", ".join(_NAMING_STYLE_KEYS))
-            ok = False
-        allow = rule.get("allow", [])
-        if not isinstance(allow, list) or not all(isinstance(item, str) for item in allow):
-            print(f"❌ analysis.naming.{target}.allow must be a list of strings")
-            ok = False
-
-    return ok
-
-
-def _self_check_graphics_rules() -> bool:
-    graphics_rules_path = get_graphics_rules_path()
-    if graphics_rules_path.exists():
-        from . import graphics_rules as graphics_rules_module
-
-        try:
-            graphics_rules, _created = graphics_rules_module.load_graphics_rules(graphics_rules_path)
-        except Exception as exc:
-            print(f"? graphics_rules_path invalid: {graphics_rules_path} ({exc})")
-            return False
-        print(f"? graphics_rules_path: {graphics_rules_path} ({len(graphics_rules.get('rules', []))} rules)")
-        return True
-
-    print(f"? graphics_rules_path not created yet: {graphics_rules_path}")
-    return True
-
-
 def self_check(cfg: dict) -> bool:
-    print("\n--- Self-check diagnostics ---")
-    ok = True
+    from ._config_self_check import self_check as _self_check
 
-    # Python version
-    print(f"✔ Python {sys.version.split()[0]}")
-
-    # Required keys
-    required_keys = [
-        "analyzed_programs_and_libraries",
-        "mode",
-        "scan_root_only",
-        "fast_cache_validation",
-        "debug",
-        "program_dir",
-        "ABB_lib_dir",
-        "icf_dir",
-        "other_lib_dirs",
-        "documentation",
-    ]
-    for k in required_keys:
-        if k not in cfg:
-            print(f"❌ Missing config key: {k}")
-            ok = False
-
-    ok = _self_check_directories(cfg) and ok
-    ok = _self_check_targets(cfg) and ok
-    ok = _self_check_documentation(cfg) and ok
-    ok = _self_check_analysis(cfg) and ok
-    ok = _self_check_graphics_rules() and ok
-
-    print("------------------------------\n")
-    return ok
+    return _self_check(cfg)

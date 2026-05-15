@@ -331,7 +331,7 @@ def test_variables_access_record_wide_access_and_origin_helpers() -> None:
         analyzed_target_is_library=True,
         bp=_ns(origin_lib="RootLib", origin_file="RootLib.s"),
     )
-    assert variables_access_module._is_from_root_origin(library_helper, "Other.s", "rootlib") is True
+    assert variables_access_module.is_from_root_origin(library_helper, "Other.s", "rootlib") is True
 
     class BrokenPath:
         def __init__(self, value: str) -> None:
@@ -344,16 +344,16 @@ def test_variables_access_record_wide_access_and_origin_helpers() -> None:
         analyzed_target_is_library=False,
         bp=_ns(origin_file=BrokenPath("Root.s")),
     )
-    assert variables_access_module._is_from_root_origin(fallback_helper, cast(Any, BrokenPath("Root.x"))) is True
+    assert variables_access_module.is_from_root_origin(fallback_helper, cast(Any, BrokenPath("Root.x"))) is True
     assert (
-        variables_access_module._is_from_root_origin(_ns(analyzed_target_is_library=False, bp=_ns()), "Root.x") is False
+        variables_access_module.is_from_root_origin(_ns(analyzed_target_is_library=False, bp=_ns()), "Root.x") is False
     )
 
     broken_library_helper: Any = _ns(
         analyzed_target_is_library=True,
         bp=_ns(origin_lib="Root", origin_file=BrokenPath("Root.s")),
     )
-    assert variables_access_module._is_from_root_origin(broken_library_helper, "Other.s", "root") is True
+    assert variables_access_module.is_from_root_origin(broken_library_helper, "Other.s", "root") is True
 
 
 def test_variables_contracts_cover_guard_branches(monkeypatch: pytest.MonkeyPatch) -> None:

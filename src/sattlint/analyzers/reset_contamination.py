@@ -11,7 +11,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial
 from itertools import product
-from pathlib import Path
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
@@ -33,9 +32,11 @@ from sattline_parser.models.ast_model import (
 from ..grammar import constants as const
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution.common import path_startswith_casefold
+from ..types import VariableId
 from . import _reset_path_collection as _reset_path_collection_module
 from . import _reset_path_state as _reset_path_state_module
 from ._reset_path_state import WriteKey, WriteMap
+from .variable_utils import same_origin_file_stem
 
 _PathCollectionDebug = _reset_path_state_module.PathCollectionDebug
 _PathState = _reset_path_state_module.PathState
@@ -112,7 +113,7 @@ def detect_reset_contamination(
         return
 
     for mt in bp.moduletype_defs or []:
-        if not _is_from_root_origin(getattr(mt, "origin_file", None), root_origin):
+        if not same_origin_file_stem(getattr(mt, "origin_file", None), root_origin):
             continue
         td_path = [bp.header.name, f"TypeDef:{mt.name}"]
         _check_for_typedef(mt, td_path, issues, check_fn=reset_check)
@@ -138,21 +139,14 @@ def detect_implicit_latching(
         return
 
     for mt in bp.moduletype_defs or []:
-        if not _is_from_root_origin(getattr(mt, "origin_file", None), root_origin):
+        if not same_origin_file_stem(getattr(mt, "origin_file", None), root_origin):
             continue
         td_path = [bp.header.name, f"TypeDef:{mt.name}"]
         _check_for_typedef(mt, td_path, issues, check_fn=_check_for_modulecode_latching)
 
 
-def _is_from_root_origin(origin_file: str | None, root_origin: str | None) -> bool:
-    if not origin_file:
-        return True
-    if not root_origin:
-        return False
-    try:
-        return Path(origin_file).stem.lower() == Path(root_origin).stem.lower()
-    except (ValueError, TypeError):
-        return origin_file.rsplit(".", 1)[0].lower() == root_origin.rsplit(".", 1)[0].lower()
+def is_from_root_origin(origin_file: str | None, root_origin: str | None) -> bool:
+    return same_origin_file_stem(origin_file, root_origin)
 
 
 def _should_analyze_path(path: list[str], limit_to_module_path: list[str] | None) -> bool:
@@ -276,7 +270,7 @@ def _check_for_modulecode(
                     role="localvariable",
                     field_path=field_path or None,
                     sequence_name=seq_name,
-                    reset_variable=reset_ref,
+                    reset_variable=VariableId(reset_ref),
                 )
             )
 

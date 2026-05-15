@@ -62,6 +62,30 @@ def write_text_artifact(
     raise RuntimeError(f"Failed to write {path}")
 
 
+def write_markdown(
+    path: Path,
+    findings: list[Any],
+    summary: dict[str, Any],
+    *,
+    write_text_artifact_fn: Callable[[Path, str], None] = write_text_artifact,
+) -> None:
+    lines = ["# Repository Audit", "", "## Summary", ""]
+    for severity in ("critical", "high", "medium", "low"):
+        lines.append(f"- {severity.title()}: {summary['severity_counts'].get(severity, 0)}")
+    lines.extend(["", "## Findings", ""])
+    if not findings:
+        lines.append("- No findings.")
+    else:
+        for finding in findings:
+            location = finding.path or "<repo>"
+            if finding.line is not None:
+                location = f"{location}:{finding.line}"
+            lines.append(f"- [{finding.severity.upper()}] {finding.category}: {finding.message} ({location})")
+            if finding.detail:
+                lines.append(f"  Detail: {finding.detail}")
+    write_text_artifact_fn(path, "\n".join(lines) + "\n")
+
+
 def mirror_latest_reports(
     source_dir: Path,
     latest_output_dir: Path | None,
@@ -455,3 +479,57 @@ def write_audit_run_history(
     write_json(history_base / history_filename, payload)
     write_json(source_dir / history_filename, payload)
     return payload
+
+
+def write_repo_audit_run_history(
+    source_dir: Path,
+    *,
+    latest_output_dir: Path | None,
+    report_kind: str,
+    primary_payload: dict[str, Any],
+    status_payload: dict[str, Any] | None,
+    summary_payload: dict[str, Any] | None,
+    history_filename: str,
+    history_dirname: str,
+    history_limit: int,
+    schema_kind: str,
+    schema_version: int,
+    build_run_id: Callable[[], str],
+    copy_snapshot: Callable[[Path, Path], None],
+    load_history_fn: Callable[[Path], list[dict[str, Any]]],
+    collect_git_state_fn: Callable[[], dict[str, Any]],
+    history_stale_reasons: Callable[..., list[str]],
+    build_failure_patterns: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
+    sanitize_report_path_fn: Callable[[Path], str],
+    repo_root: Path,
+    write_json: Callable[[Path, dict[str, Any]], Any] = write_json_artifact,
+) -> dict[str, Any]:
+    def _build_entry(**kwargs: Any) -> dict[str, Any]:
+        return build_audit_run_entry(
+            **kwargs,
+            collect_git_state=collect_git_state_fn,
+            sanitize_report_path=sanitize_report_path_fn,
+        )
+
+    return write_audit_run_history(
+        source_dir,
+        latest_output_dir=latest_output_dir,
+        report_kind=report_kind,
+        primary_payload=primary_payload,
+        status_payload=status_payload,
+        summary_payload=summary_payload,
+        history_filename=history_filename,
+        history_dirname=history_dirname,
+        history_limit=history_limit,
+        schema_kind=schema_kind,
+        schema_version=schema_version,
+        build_run_id=build_run_id,
+        copy_snapshot=copy_snapshot,
+        load_history=load_history_fn,
+        build_entry=_build_entry,
+        history_stale_reasons=history_stale_reasons,
+        build_failure_patterns=build_failure_patterns,
+        sanitize_report_path=sanitize_report_path_fn,
+        write_json=write_json,
+        repo_root=repo_root,
+    )

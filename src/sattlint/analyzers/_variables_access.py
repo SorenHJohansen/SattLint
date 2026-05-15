@@ -12,6 +12,7 @@ from ..casefolding import is_anytype_name
 from ..grammar import constants as const
 from ..resolution import AccessKind, CanonicalPath
 from ..resolution.scope import ScopeContext
+from .variable_utils import same_origin_file_stem
 
 if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
@@ -414,7 +415,7 @@ def _lookup_global_variable(self: VariablesAnalyzer, base_name: str | None) -> V
     return variables[0] if variables else None
 
 
-def _is_from_root_origin(
+def is_from_root_origin(
     self: VariablesAnalyzer,
     origin_file: str | None,
     origin_lib: str | None = None,
@@ -436,14 +437,7 @@ def _is_from_root_origin(
 
     if not origin_file:
         return True
-    root_origin = getattr(self.bp, "origin_file", None)
-    if not root_origin:
-        return False
-
-    try:
-        return Path(origin_file).stem.lower() == Path(root_origin).stem.lower()
-    except Exception:
-        return origin_file.rsplit(".", 1)[0].lower() == root_origin.rsplit(".", 1)[0].lower()
+    return same_origin_file_stem(origin_file, getattr(self.bp, "origin_file", None))
 
 
 def _extract_field_path(self: VariablesAnalyzer, var_dict: dict[str, Any]) -> tuple[str | None, str | None]:
@@ -470,7 +464,6 @@ compute_effective_output_keys = _compute_effective_output_keys
 effect_key_for_variable = _effect_key_for_variable
 extract_field_path = _extract_field_path
 has_output_effect = _has_output_effect
-is_from_root_origin = _is_from_root_origin
 iter_leaf_field_paths_strict = _iter_leaf_field_paths_strict
 lookup_global_variable = _lookup_global_variable
 mapping_source_effect_key = _mapping_source_effect_key

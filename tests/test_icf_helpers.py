@@ -266,8 +266,12 @@ def test_icf_helper_validation_edges_and_case_only_regression(monkeypatch):
     assert "not found" in str(field_detail)
 
     assert (
-        icf_module._validate_entry_key_case(
-            _entry("LogTag", "Program:KaHA221A.HSSetLogData.LogTag"), variable_name="LogTag", field_segments=[]
+        icf_module._validate_entry_reference_case(
+            _entry("LogTag", "Program:KaHA221A.HSSetLogData.LogTag"),
+            type_graph=type_graph,
+            root_var=unit.localvariables[0],
+            variable_name="HSSetLogData",
+            field_segments=["LogTag"],
         )
         is None
     )
@@ -301,9 +305,28 @@ def test_icf_helper_validation_edges_and_case_only_regression(monkeypatch):
         ),
     ]
     report = icf_module.validate_icf_entries_against_program(bp, entries, expected_program="Program")
-    assert report.valid_entries == 1
-    assert len(report.issues) == 1
-    assert report.issues[0].reason == "key case mismatch"
+    assert report.valid_entries == 2
+    assert not report.issues
+
+    case_mismatch_report = icf_module.validate_icf_entries_against_program(
+        bp,
+        [
+            _entry(
+                "logtag",
+                "Program:KaHA221A.HSSetLogData.logTag",
+                unit="KaHA221A",
+                journal="HSSignOffLog",
+                group="JournalData_Parameters",
+            )
+        ],
+        expected_program="Program",
+    )
+    assert case_mismatch_report.valid_entries == 0
+    assert len(case_mismatch_report.issues) == 1
+    assert case_mismatch_report.issues[0].reason == "reference case mismatch"
+    assert case_mismatch_report.issues[0].detail == (
+        "resolved SattLine name is 'LogTag', but ICF reference uses 'logTag'"
+    )
 
     placeholder = _entry("A", "H::.")
     unparseable = _entry("B", "not a path", line_no=2)
