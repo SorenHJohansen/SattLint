@@ -301,18 +301,18 @@ def build_impact_analysis_selection(
     return report
 
 
-def _write_report(output_dir: Path, report: dict[str, Any]) -> Path:
+def _write_impact_report(output_dir: Path, report: dict[str, Any]) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / DEFAULT_OUTPUT_FILENAME
     output_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     return output_path
 
 
-def _stderr_progress(message: str) -> None:
+def _emit_impact_progress(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
-def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+def _parse_impact_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="sattlint-impact-analyzer",
         description="Select impacted libraries, modules, and entry files from the structural impact report.",
@@ -365,9 +365,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parse_args(argv)
+    args = _parse_impact_args(argv)
     workspace_root = Path(args.workspace_root).resolve()
-    progress_callback = None if args.no_progress else _stderr_progress
+    progress_callback = None if args.no_progress else _emit_impact_progress
     report = build_impact_analysis_selection(
         workspace_root,
         libraries=list(args.library),
@@ -378,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.output_dir:
-        _write_report(Path(args.output_dir).resolve(), report)
+        _write_impact_report(Path(args.output_dir).resolve(), report)
 
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["status"] == "ok" else 2

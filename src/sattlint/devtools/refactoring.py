@@ -21,7 +21,7 @@ DEFAULT_OUTPUT_FILENAME = "refactoring_preview.json"
 DEFAULT_REFACTORING_KIND = "normalize-layout"
 
 
-def _stderr_progress(message: str) -> None:
+def _emit_refactoring_progress(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
@@ -261,7 +261,8 @@ def build_refactoring_report(
             and candidate["changed"]
             and candidate["safety_contract"]["safe_to_apply"]
         ):
-            assert transformed_text is not None
+            if transformed_text is None:
+                raise RuntimeError("Refactoring candidate was marked safe to apply without transformed text.")
             source_file.write_text(transformed_text, encoding="utf-8")
             candidate["applied"] = True
             applied_change_count += 1
@@ -316,14 +317,14 @@ def _render_text_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _write_report(output_dir: Path, report: dict[str, Any]) -> Path:
+def _write_refactoring_report(output_dir: Path, report: dict[str, Any]) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / DEFAULT_OUTPUT_FILENAME
     output_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     return output_path
 
 
-def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+def _parse_refactoring_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="sattlint-refactoring",
         description="Preview and optionally apply explicitly safe workspace refactorings.",
@@ -374,9 +375,9 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parse_args(argv)
+    args = _parse_refactoring_args(argv)
     apply = bool(args.apply and not args.dry_run)
-    progress_callback = None if args.no_progress else _stderr_progress
+    progress_callback = None if args.no_progress else _emit_refactoring_progress
     report = build_refactoring_report(
         Path(args.workspace_root).resolve(),
         entry_files=list(args.entry_file),
@@ -385,7 +386,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         progress_callback=progress_callback,
     )
     if args.output_dir:
-        _write_report(Path(args.output_dir).resolve(), report)
+        _write_refactoring_report(Path(args.output_dir).resolve(), report)
 
     if args.format == "text":
         print(_render_text_report(report))

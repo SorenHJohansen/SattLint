@@ -32,7 +32,7 @@ def _sanitize_repo_path(path: Path, *, workspace_root: Path) -> str:
     return sanitize_path_for_report(path, repo_root=workspace_root) or path.as_posix()
 
 
-def _stderr_progress(message: str) -> None:
+def _emit_profiler_progress(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
@@ -283,14 +283,14 @@ def _render_text_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _write_report(output_dir: Path, report: dict[str, Any]) -> Path:
+def _write_profiler_report(output_dir: Path, report: dict[str, Any]) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / DEFAULT_OUTPUT_FILENAME
     output_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     return output_path
 
 
-def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+def _parse_profiler_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="sattlint-profiler",
         description="Profile workspace snapshot loading and analyzer execution for SattLine entry files.",
@@ -332,8 +332,8 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parse_args(argv)
-    progress_callback = None if args.no_progress else _stderr_progress
+    args = _parse_profiler_args(argv)
+    progress_callback = None if args.no_progress else _emit_profiler_progress
     report = profile_workspace(
         Path(args.workspace_root).resolve(),
         max_files=args.max_files,
@@ -341,7 +341,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         progress_callback=progress_callback,
     )
     if args.output_dir:
-        _write_report(Path(args.output_dir).resolve(), report)
+        _write_profiler_report(Path(args.output_dir).resolve(), report)
 
     if args.format == "text":
         print(_render_text_report(report))

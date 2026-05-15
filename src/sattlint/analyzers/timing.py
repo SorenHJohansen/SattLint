@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from sattline_parser.models.ast_model import BasePicture
 
 from .dataflow import analyze_dataflow
-from .framework import Issue, format_report_header
+from .framework import Issue, empty_issues, format_report_header
 from .scan_loop_resource_usage import analyze_scan_loop_resource_usage
 
 _TIMING_SECTION_ORDER: tuple[str, ...] = (
@@ -23,14 +23,10 @@ _TIMING_SECTION_TITLES: dict[str, str] = {
 }
 
 
-def _empty_issues() -> list[Issue]:
-    return []
-
-
 @dataclass
 class TimingReport:
     name: str
-    issues: list[Issue] = field(default_factory=_empty_issues)
+    issues: list[Issue] = field(default_factory=empty_issues)
 
     def summary(self) -> str:
         if not self.issues:

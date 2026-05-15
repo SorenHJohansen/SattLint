@@ -1,6 +1,8 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleHeader,
@@ -228,6 +230,49 @@ def test_run_pipeline_fails_when_enforced_rule_metadata_is_missing(monkeypatch, 
     }
     assert summary["counts"]["phase2_rule_metadata_blocking_gaps"] == 1
     assert summary["counts"]["phase2_rule_metadata_advisory_gaps"] == 0
+
+
+def test_run_pipeline_marks_pytest_stage_failed_and_writes_failure_status(monkeypatch, tmp_path):
+    monkeypatch.setattr(pipeline, "_collect_environment_report", lambda: {"python": {"executable": "python"}})
+    _patch_skipped_coverage_summary(monkeypatch)
+    monkeypatch.setattr(pipeline, "_resolve_python_executable", lambda: "python")
+
+    def fake_run_command(name, command, cwd=pipeline.REPO_ROOT):
+        if name == "pytest":
+            raise KeyboardInterrupt("terminal interrupted")
+        return pipeline.CommandResult(
+            name=name,
+            command=command,
+            exit_code=0,
+            duration_seconds=0.0,
+            stdout="[]" if name == "ruff" else "{}",
+            stderr="",
+        )
+
+    monkeypatch.setattr(pipeline, "_run_command", fake_run_command)
+
+    with pytest.raises(KeyboardInterrupt):
+        pipeline._run_pipeline(
+            tmp_path,
+            trace_target=None,
+            profile="quick",
+        )
+
+    progress_report = json.loads((tmp_path / "progress.json").read_text(encoding="utf-8"))
+    status_report = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    summary_report = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    findings_report = json.loads((tmp_path / "findings.json").read_text(encoding="utf-8"))
+
+    assert progress_report["overall_status"] == "failed"
+    pytest_stage = next(stage for stage in progress_report["stages"] if stage["key"] == "pytest")
+    assert pytest_stage["status"] == "failed"
+    assert "KeyboardInterrupt" in pytest_stage["detail"]
+    assert status_report["overall_status"] == "fail"
+    assert status_report["error"]["stage"] == "pytest"
+    assert status_report["tool_statuses"]["pytest"]["status"] == "fail"
+    assert summary_report["status"]["overall_status"] == "fail"
+    assert summary_report["error"]["type"] == "KeyboardInterrupt"
+    assert findings_report["finding_count"] == 0
 
 
 def test_run_pipeline_writes_analysis_diff_when_baseline_is_supplied(monkeypatch, tmp_path):

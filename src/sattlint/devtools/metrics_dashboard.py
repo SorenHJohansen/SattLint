@@ -18,7 +18,7 @@ from sattlint.tracing import collect_ast_summary
 DEFAULT_OUTPUT_FILENAME = "metrics_dashboard.json"
 
 
-def _stderr_progress(message: str) -> None:
+def _emit_metrics_progress(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
@@ -228,14 +228,14 @@ def _render_text_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _write_report(output_dir: Path, report: dict[str, Any]) -> Path:
+def _write_metrics_report(output_dir: Path, report: dict[str, Any]) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / DEFAULT_OUTPUT_FILENAME
     output_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     return output_path
 
 
-def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+def _parse_metrics_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="sattlint-metrics-dashboard",
         description="Build a stable JSON and text dashboard from existing SattLint analyzer metrics.",
@@ -265,14 +265,14 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parse_args(argv)
-    progress_callback = None if args.no_progress else _stderr_progress
+    args = _parse_metrics_args(argv)
+    progress_callback = None if args.no_progress else _emit_metrics_progress
     report = build_metrics_dashboard(
         Path(args.workspace_root).resolve(),
         progress_callback=progress_callback,
     )
     if args.output_dir:
-        _write_report(Path(args.output_dir).resolve(), report)
+        _write_metrics_report(Path(args.output_dir).resolve(), report)
 
     if args.format == "text":
         print(_render_text_report(report))

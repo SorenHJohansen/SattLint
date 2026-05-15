@@ -6,6 +6,10 @@ from types import SimpleNamespace
 from sattlint.devtools import repo_audit, repo_audit_entrypoints
 
 
+def _artifact_path(*parts: str) -> str:
+    return "/".join(("<external>", *parts))
+
+
 def test_run_recommended_repo_audit_finish_gate_writes_failed_step_report(monkeypatch, tmp_path):
     recommendation = {
         "changed_files": ["src/sattlint/app.py"],
@@ -333,7 +337,7 @@ def test_run_repo_audit_findings_checks_writes_selected_check_reports(monkeypatc
             "high",
             "high",
             "Cleanup recommended.",
-            path="artifacts/old.json",
+            path=_artifact_path("old.json"),
             history_cleanup_recommended=True,
         ),
         repo_audit.Finding(
@@ -353,7 +357,7 @@ def test_run_repo_audit_findings_checks_writes_selected_check_reports(monkeypatc
         "mode": "report",
         "status": "needs-attention",
         "summary": {"candidate_count": 1},
-        "candidates": [{"candidate_id": "stale-ai-artifact", "path": "artifacts/old.json"}],
+        "candidates": [{"candidate_id": "stale-ai-artifact", "path": _artifact_path("old.json")}],
         "applied_actions": [],
         "failures": [],
     }

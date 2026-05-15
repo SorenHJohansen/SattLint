@@ -979,7 +979,7 @@
         "touch_rule": "must_shrink"
       }
     },
-    "tests/test_builtin_record_semantics.py": {
+    "tests/analyzers/test_builtin_record_semantics.py": {
       "structural": {
         "allow_rebaseline": false,
         "current_baseline": 636,
@@ -1024,7 +1024,7 @@
         "touch_rule": "must_shrink"
       }
     },
-    "tests/test_engine.py": {
+    "tests/parser/test_engine.py": {
       "structural": {
         "allow_rebaseline": false,
         "current_baseline": 1413,
@@ -1096,7 +1096,7 @@
         "touch_rule": "must_shrink"
       }
     },
-    "tests/test_sattline_semantics.py": {
+    "tests/analyzers/test_sattline_semantics.py": {
       "structural": {
         "allow_rebaseline": false,
         "current_baseline": 1081,

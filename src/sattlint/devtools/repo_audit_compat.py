@@ -17,7 +17,9 @@ from sattlint import app as app_module
 from sattlint.devtools import _repo_audit_reporting as _reporting_module
 from sattlint.devtools import ai_gc as _ai_gc_module
 from sattlint.devtools import audit_core as _audit_core_module
+from sattlint.devtools import audit_core_discovery as _audit_core_discovery_module
 from sattlint.devtools import leak_detection as _leak_detection_module
+from sattlint.devtools import leak_detection_scan_paths as _leak_detection_scan_paths_module
 from sattlint.devtools import ledger as _ledger_module
 from sattlint.devtools import repo_audit_shared as _shared
 
@@ -170,15 +172,15 @@ def _copy_audit_snapshot(source_dir: Path, snapshot_dir: Path) -> None:
 
 
 def _read_text(path: Path) -> str:
-    return _leak_detection_module.read_text(path)
+    return _leak_detection_scan_paths_module.read_text(path)
 
 
 def _should_skip_dir(dirname: str) -> bool:
-    return _leak_detection_module.should_skip_dir(dirname)
+    return _leak_detection_scan_paths_module.should_skip_dir(dirname)
 
 
 def _list_tracked_repo_paths(root: Path) -> tuple[str, ...] | None:
-    return _leak_detection_module.list_tracked_repo_paths(
+    return _leak_detection_scan_paths_module.list_tracked_repo_paths(
         root,
         git_which=shutil.which,
         run_command=subprocess.run,
@@ -186,7 +188,7 @@ def _list_tracked_repo_paths(root: Path) -> tuple[str, ...] | None:
 
 
 def _iter_repo_file_candidates(root: Path, *, include_generated: bool) -> Iterable[Path]:
-    yield from _leak_detection_module.iter_repo_file_candidates(
+    yield from _leak_detection_scan_paths_module.iter_repo_file_candidates(
         root,
         include_generated=include_generated,
         relative_path=_relative_path,
@@ -196,7 +198,7 @@ def _iter_repo_file_candidates(root: Path, *, include_generated: bool) -> Iterab
 
 
 def _iter_tracked_repo_file_candidates(root: Path, *, include_generated: bool) -> Iterable[Path]:
-    yield from _leak_detection_module.iter_tracked_repo_file_candidates(
+    yield from _leak_detection_scan_paths_module.iter_tracked_repo_file_candidates(
         root,
         include_generated=include_generated,
         list_tracked_repo_paths_fn=_list_tracked_repo_paths,
@@ -206,7 +208,7 @@ def _iter_tracked_repo_file_candidates(root: Path, *, include_generated: bool) -
 
 
 def _iter_repo_text_files(root: Path, *, include_generated: bool) -> Iterable[Path]:
-    yield from _leak_detection_module.iter_repo_text_files(
+    yield from _leak_detection_scan_paths_module.iter_repo_text_files(
         root,
         include_generated=include_generated,
         iter_repo_file_candidates_fn=lambda current_root, generated: _iter_repo_file_candidates(
@@ -218,7 +220,7 @@ def _iter_repo_text_files(root: Path, *, include_generated: bool) -> Iterable[Pa
 
 
 def _iter_tracked_repo_text_files(root: Path, *, include_generated: bool) -> Iterable[Path]:
-    yield from _leak_detection_module.iter_tracked_repo_text_files(
+    yield from _leak_detection_scan_paths_module.iter_tracked_repo_text_files(
         root,
         include_generated=include_generated,
         iter_tracked_repo_file_candidates_fn=lambda current_root, generated: _iter_tracked_repo_file_candidates(
@@ -235,7 +237,7 @@ def _iter_repo_text_entries(
     include_generated: bool,
     tracked_only: bool,
 ) -> Iterable[tuple[Path, str]]:
-    yield from _leak_detection_module.iter_repo_text_entries(
+    yield from _leak_detection_scan_paths_module.iter_repo_text_entries(
         root,
         include_generated=include_generated,
         tracked_only=tracked_only,
@@ -281,11 +283,11 @@ def _line_findings(
 
 
 def _load_pyproject(root: Path) -> dict[str, Any]:
-    return _audit_core_module.load_pyproject(root)
+    return _audit_core_discovery_module.load_pyproject(root)
 
 
 def _extract_documented_commands(paths: Iterable[Path], *, root: Path = REPO_ROOT) -> list[DocumentedCommand]:
-    return _audit_core_module.extract_documented_commands(
+    return _audit_core_discovery_module.extract_documented_commands(
         paths,
         root=root,
         read_text_fn=_read_text,
@@ -296,7 +298,7 @@ def _extract_documented_commands(paths: Iterable[Path], *, root: Path = REPO_ROO
 
 
 def _collect_cli_metadata() -> tuple[set[str], set[str]]:
-    return _audit_core_module.collect_cli_metadata(
+    return _audit_core_discovery_module.collect_cli_metadata(
         repo_root=REPO_ROOT,
         load_pyproject_fn=_load_pyproject,
         build_cli_parser=app_module.build_cli_parser,
@@ -308,7 +310,7 @@ def _find_documentation_command_gaps(
     scripts: set[str],
     subcommands: set[str],
 ) -> list[Finding]:
-    return _audit_core_module.find_documentation_command_gaps(
+    return _audit_core_discovery_module.find_documentation_command_gaps(
         documented_commands,
         scripts,
         subcommands,
@@ -322,7 +324,7 @@ def _find_unused_config_keys(
     *,
     content_by_file: dict[Path, str] | None = None,
 ) -> list[Finding]:
-    return _audit_core_module.find_unused_config_keys(
+    return _audit_core_discovery_module.find_unused_config_keys(
         source_root,
         default_keys,
         read_text_fn=_read_text,
@@ -332,11 +334,11 @@ def _find_unused_config_keys(
 
 
 def _module_name_from_path(path: Path, root: Path) -> str:
-    return _audit_core_module.module_name_from_path(path, root)
+    return _audit_core_discovery_module.module_name_from_path(path, root)
 
 
 def _resolve_import(module_name: str, imported: str | None, level: int) -> str | None:
-    return _audit_core_module.resolve_import(module_name, imported, level)
+    return _audit_core_discovery_module.resolve_import(module_name, imported, level)
 
 
 def _build_local_import_graph(
@@ -345,7 +347,7 @@ def _build_local_import_graph(
     content_by_file: dict[Path, str] | None = None,
     ast_by_file: dict[Path, ast.AST] | None = None,
 ) -> dict[str, set[str]]:
-    return _audit_core_module.build_local_import_graph(
+    return _audit_core_discovery_module.build_local_import_graph(
         source_root,
         read_text_fn=_read_text,
         content_by_file=content_by_file,
@@ -354,7 +356,7 @@ def _build_local_import_graph(
 
 
 def _find_import_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
-    return _audit_core_module.find_import_cycles(graph)
+    return _audit_core_discovery_module.find_import_cycles(graph)
 
 
 def _find_architecture_findings(
@@ -474,7 +476,7 @@ def _build_python_source_scan_context(
     root: Path = REPO_ROOT,
     tracked_paths: tuple[str, ...] | None = None,
 ) -> PythonSourceScanContext:
-    return _leak_detection_module.build_python_source_scan_context(
+    return _leak_detection_scan_paths_module.build_python_source_scan_context(
         source_root,
         root=root,
         tracked_paths=tracked_paths,

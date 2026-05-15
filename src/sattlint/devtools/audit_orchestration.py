@@ -67,6 +67,19 @@ def run_harness_freshness_check(
     return findings
 
 
+def _progress_active_stage_key(progress: Any) -> str | None:
+    active_stage = progress.to_dict().get("active_stage")
+    if not isinstance(active_stage, dict):
+        return None
+    key = active_stage.get("key")
+    return key if isinstance(key, str) and key else None
+
+
+def _exception_detail(error: BaseException) -> str:
+    message = str(error).strip()
+    return f"{type(error).__name__}: {message}" if message else type(error).__name__
+
+
 def audit_repository(
     output_dir: Path,
     *,
@@ -137,138 +150,224 @@ def audit_repository(
             leaks_only=leaks_only,
         ),
     )
-    if not skip_pipeline and not leaks_only:
-        pipeline_output_dir = output_dir / pipeline_output_dirname
-        corpus_manifest_dir = default_corpus_manifest_dir_fn()
-        progress.start_stage("pipeline")
-        pipeline_summary = pipeline_module._run_pipeline(
-            pipeline_output_dir,
-            trace_target=pipeline_module.DEFAULT_TRACE_TARGET
-            if pipeline_module.DEFAULT_TRACE_TARGET.exists()
-            else None,
-            profile=profile,
-            include_vulture=False if skip_vulture else None,
-            include_bandit=False if skip_bandit else None,
-            corpus_manifest_dir=corpus_manifest_dir,
-        )
-        pipeline_findings = find_pipeline_findings_fn(pipeline_output_dir)
-        progress.complete_stage("pipeline", detail=f"{len(pipeline_findings)} pipeline findings")
-    else:
-        progress.skip_stage("pipeline", detail="skipped by flags" if skip_pipeline or leaks_only else None)
+    pipeline_output_dir = output_dir / pipeline_output_dirname
+    try:
+        if not skip_pipeline and not leaks_only:
+            corpus_manifest_dir = default_corpus_manifest_dir_fn()
+            progress.start_stage("pipeline")
+            pipeline_summary = pipeline_module._run_pipeline(
+                pipeline_output_dir,
+                trace_target=pipeline_module.DEFAULT_TRACE_TARGET
+                if pipeline_module.DEFAULT_TRACE_TARGET.exists()
+                else None,
+                profile=profile,
+                include_vulture=False if skip_vulture else None,
+                include_bandit=False if skip_bandit else None,
+                corpus_manifest_dir=corpus_manifest_dir,
+            )
+            pipeline_findings = find_pipeline_findings_fn(pipeline_output_dir)
+            progress.complete_stage("pipeline", detail=f"{len(pipeline_findings)} pipeline findings")
+        else:
+            progress.skip_stage("pipeline", detail="skipped by flags" if skip_pipeline or leaks_only else None)
 
-    progress.start_stage("custom_scan")
-    custom_findings = collect_custom_findings_fn(
-        repo_root,
-        include_generated=(include_generated or leaks_only),
-        tracked_only=True,
-        suspicious_identifiers=suspicious_identifiers,
-    )
-    custom_findings = filter_ai_gc_findings_for_output_dir_fn(custom_findings, output_dir_path=sanitized_output_dir)
-    if not leaks_only:
-        ai_gc_report = filter_ai_gc_report_for_output_dir_fn(
-            build_ai_gc_report_fn(repo_root),
-            output_dir_path=sanitized_output_dir,
+        progress.start_stage("custom_scan")
+        custom_findings = collect_custom_findings_fn(
+            repo_root,
+            include_generated=(include_generated or leaks_only),
+            tracked_only=True,
+            suspicious_identifiers=suspicious_identifiers,
         )
-    progress.complete_stage("custom_scan", detail=f"{len(custom_findings)} custom findings")
-    progress.start_stage("merge_findings")
-    findings = dedupe_findings_fn([*pipeline_findings, *custom_findings])
-    if leaks_only:
-        findings = [finding for finding in findings if is_leak_finding_fn(finding)]
-    findings = sorted(
-        findings,
-        key=lambda item: (-severity_rank[item.severity], item.category, item.path or "", item.line or 0, item.id),
-    )
-    blocking_count = blocking_finding_count_fn(findings, fail_on)
-    enabled_audit_artifact_ids = {"progress", "status", "summary", "findings", "summary_markdown", "run_history"}
-    if audit_profile == "full":
-        enabled_audit_artifact_ids.add("cli_consistency")
-    if ai_gc_report is not None:
-        enabled_audit_artifact_ids.add("ai_gc")
-    reports = artifact_reports_map_fn(
-        audit_artifacts, profile=audit_profile, enabled_artifact_ids=enabled_audit_artifact_ids
-    )
-    progress.complete_stage("merge_findings", detail=f"{len(findings)} total findings")
-    reports["pipeline_status"] = None if pipeline_summary is None else f"{pipeline_output_dirname}/status.json"
-    reports["pipeline_summary"] = None if pipeline_summary is None else f"{pipeline_output_dirname}/summary.json"
-    finding_collection = finding_collection_factory(tuple(finding.to_record() for finding in findings))
-    overall_status_value = "fail" if blocking_count else "pass"
-    summary = {
-        "generated_by": "sattlint.devtools.repo_audit",
-        "output_dir": sanitized_output_dir,
-        "profile": audit_profile,
-        "entry_report": "status.json",
-        "canonical_command": recommended_command_fn(
-            output_dir=sanitized_output_dir,
-            profile=profile,
-            fail_on=fail_on,
-            leaks_only=leaks_only,
-        ),
-        "pipeline_ran": (not skip_pipeline and not leaks_only),
-        "pipeline_summary": pipeline_summary,
-        "reports": reports,
-        "finding_count": len(findings),
-        "severity_counts": severity_counts_fn(findings),
-        "category_counts": category_counts_fn(findings),
-        "max_severity": max_severity_fn(findings),
-        "findings_schema": finding_collection.schema_metadata,
-        "history_cleanup_findings": [finding.to_dict() for finding in findings if finding.history_cleanup_recommended],
-        "findings": [finding.to_dict() for finding in findings],
-    }
-    status_report = {
-        "kind": "sattlint.repo_audit.status",
-        "generated_by": "sattlint.devtools.repo_audit",
-        "profile": audit_profile,
-        "fail_on": fail_on,
-        "overall_status": overall_status_value,
-        "canonical_command": summary["canonical_command"],
-        "status_report": f"{sanitized_output_dir}/status.json",
-        "summary_report": f"{sanitized_output_dir}/summary.json",
-        "progress_report": f"{sanitized_output_dir}/progress.json",
-        "finding_count": summary["finding_count"],
-        "blocking_finding_count": blocking_count,
-        "max_severity": summary["max_severity"],
-        "severity_counts": summary["severity_counts"],
-        "category_counts": summary["category_counts"],
-        "findings_schema": summary["findings_schema"],
-        "pipeline_status_report": None
-        if pipeline_summary is None
-        else f"{sanitized_output_dir}/{pipeline_output_dirname}/status.json",
-        "latest_status_report": None
-        if sanitized_latest_output_dir is None
-        else f"{sanitized_latest_output_dir}/status.json",
-        "latest_summary_report": None
-        if sanitized_latest_output_dir is None
-        else f"{sanitized_latest_output_dir}/summary.json",
-        "top_findings": [
-            {
-                "id": finding.id,
-                "severity": finding.severity,
-                "path": finding.path,
-                "line": finding.line,
-                "message": finding.message,
-            }
-            for finding in findings[:5]
-        ],
-    }
-    progress.start_stage("write_reports")
-    write_json_artifact_fn(output_dir / "status.json", status_report)
-    write_json_artifact_fn(output_dir / "summary.json", summary)
-    write_json_artifact_fn(output_dir / "findings.json", finding_collection.to_dict())
-    if ai_gc_report is not None:
-        write_json_artifact_fn(output_dir / ai_gc_report_filename, ai_gc_report)
-    write_markdown_fn(output_dir / "summary.md", findings, summary)
-    if audit_profile == "full":
-        cli_consistency_report = build_cli_consistency_report_fn(root=repo_root)
-        write_json_artifact_fn(output_dir / "cli_consistency.json", cli_consistency_report)
-    write_audit_run_history_fn(
-        output_dir,
-        latest_output_dir=latest_output_dir,
-        report_kind="repo_audit",
-        primary_payload=summary,
-        status_payload=status_report,
-        summary_payload=summary,
-    )
-    mirror_latest_reports_fn(output_dir, latest_output_dir)
-    progress.complete_stage("write_reports")
-    progress.finalize(overall_status=overall_status_value)
-    return summary
+        custom_findings = filter_ai_gc_findings_for_output_dir_fn(custom_findings, output_dir_path=sanitized_output_dir)
+        if not leaks_only:
+            ai_gc_report = filter_ai_gc_report_for_output_dir_fn(
+                build_ai_gc_report_fn(repo_root),
+                output_dir_path=sanitized_output_dir,
+            )
+        progress.complete_stage("custom_scan", detail=f"{len(custom_findings)} custom findings")
+        progress.start_stage("merge_findings")
+        findings = dedupe_findings_fn([*pipeline_findings, *custom_findings])
+        if leaks_only:
+            findings = [finding for finding in findings if is_leak_finding_fn(finding)]
+        findings = sorted(
+            findings,
+            key=lambda item: (-severity_rank[item.severity], item.category, item.path or "", item.line or 0, item.id),
+        )
+        blocking_count = blocking_finding_count_fn(findings, fail_on)
+        enabled_audit_artifact_ids = {"progress", "status", "summary", "findings", "summary_markdown", "run_history"}
+        if audit_profile == "full":
+            enabled_audit_artifact_ids.add("cli_consistency")
+        if ai_gc_report is not None:
+            enabled_audit_artifact_ids.add("ai_gc")
+        reports = artifact_reports_map_fn(
+            audit_artifacts, profile=audit_profile, enabled_artifact_ids=enabled_audit_artifact_ids
+        )
+        progress.complete_stage("merge_findings", detail=f"{len(findings)} total findings")
+        reports["pipeline_status"] = None if pipeline_summary is None else f"{pipeline_output_dirname}/status.json"
+        reports["pipeline_summary"] = None if pipeline_summary is None else f"{pipeline_output_dirname}/summary.json"
+        finding_collection = finding_collection_factory(tuple(finding.to_record() for finding in findings))
+        overall_status_value = "fail" if blocking_count else "pass"
+        summary = {
+            "generated_by": "sattlint.devtools.repo_audit",
+            "output_dir": sanitized_output_dir,
+            "profile": audit_profile,
+            "entry_report": "status.json",
+            "canonical_command": recommended_command_fn(
+                output_dir=sanitized_output_dir,
+                profile=profile,
+                fail_on=fail_on,
+                leaks_only=leaks_only,
+            ),
+            "pipeline_ran": (not skip_pipeline and not leaks_only),
+            "pipeline_summary": pipeline_summary,
+            "reports": reports,
+            "finding_count": len(findings),
+            "severity_counts": severity_counts_fn(findings),
+            "category_counts": category_counts_fn(findings),
+            "max_severity": max_severity_fn(findings),
+            "findings_schema": finding_collection.schema_metadata,
+            "history_cleanup_findings": [
+                finding.to_dict() for finding in findings if finding.history_cleanup_recommended
+            ],
+            "findings": [finding.to_dict() for finding in findings],
+        }
+        status_report = {
+            "kind": "sattlint.repo_audit.status",
+            "generated_by": "sattlint.devtools.repo_audit",
+            "profile": audit_profile,
+            "fail_on": fail_on,
+            "overall_status": overall_status_value,
+            "canonical_command": summary["canonical_command"],
+            "status_report": f"{sanitized_output_dir}/status.json",
+            "summary_report": f"{sanitized_output_dir}/summary.json",
+            "progress_report": f"{sanitized_output_dir}/progress.json",
+            "finding_count": summary["finding_count"],
+            "blocking_finding_count": blocking_count,
+            "max_severity": summary["max_severity"],
+            "severity_counts": summary["severity_counts"],
+            "category_counts": summary["category_counts"],
+            "findings_schema": summary["findings_schema"],
+            "pipeline_status_report": None
+            if pipeline_summary is None
+            else f"{sanitized_output_dir}/{pipeline_output_dirname}/status.json",
+            "latest_status_report": None
+            if sanitized_latest_output_dir is None
+            else f"{sanitized_latest_output_dir}/status.json",
+            "latest_summary_report": None
+            if sanitized_latest_output_dir is None
+            else f"{sanitized_latest_output_dir}/summary.json",
+            "top_findings": [
+                {
+                    "id": finding.id,
+                    "severity": finding.severity,
+                    "path": finding.path,
+                    "line": finding.line,
+                    "message": finding.message,
+                }
+                for finding in findings[:5]
+            ],
+        }
+        progress.start_stage("write_reports")
+        write_json_artifact_fn(output_dir / "status.json", status_report)
+        write_json_artifact_fn(output_dir / "summary.json", summary)
+        write_json_artifact_fn(output_dir / "findings.json", finding_collection.to_dict())
+        if ai_gc_report is not None:
+            write_json_artifact_fn(output_dir / ai_gc_report_filename, ai_gc_report)
+        write_markdown_fn(output_dir / "summary.md", findings, summary)
+        if audit_profile == "full":
+            cli_consistency_report = build_cli_consistency_report_fn(root=repo_root)
+            write_json_artifact_fn(output_dir / "cli_consistency.json", cli_consistency_report)
+        write_audit_run_history_fn(
+            output_dir,
+            latest_output_dir=latest_output_dir,
+            report_kind="repo_audit",
+            primary_payload=summary,
+            status_payload=status_report,
+            summary_payload=summary,
+        )
+        mirror_latest_reports_fn(output_dir, latest_output_dir)
+        progress.complete_stage("write_reports")
+        progress.finalize(overall_status=overall_status_value)
+        return summary
+    except BaseException as error:
+        failing_stage_key = _progress_active_stage_key(progress)
+        if failing_stage_key is not None:
+            progress.fail_stage(failing_stage_key, detail=_exception_detail(error))
+        progress.finalize(overall_status="failed")
+        findings = finding_collection_factory(())
+        enabled_audit_artifact_ids = {"progress", "status", "summary", "findings", "summary_markdown", "run_history"}
+        if audit_profile == "full":
+            enabled_audit_artifact_ids.add("cli_consistency")
+        reports = artifact_reports_map_fn(
+            audit_artifacts, profile=audit_profile, enabled_artifact_ids=enabled_audit_artifact_ids
+        )
+        reports["pipeline_status"] = None if skip_pipeline or leaks_only else f"{pipeline_output_dirname}/status.json"
+        reports["pipeline_summary"] = None if skip_pipeline or leaks_only else f"{pipeline_output_dirname}/summary.json"
+        error_payload = {
+            "type": type(error).__name__,
+            "message": str(error),
+            "stage": failing_stage_key,
+        }
+        summary = {
+            "generated_by": "sattlint.devtools.repo_audit",
+            "output_dir": sanitized_output_dir,
+            "profile": audit_profile,
+            "entry_report": "status.json",
+            "canonical_command": recommended_command_fn(
+                output_dir=sanitized_output_dir,
+                profile=profile,
+                fail_on=fail_on,
+                leaks_only=leaks_only,
+            ),
+            "pipeline_ran": (not skip_pipeline and not leaks_only),
+            "pipeline_summary": pipeline_summary,
+            "reports": reports,
+            "finding_count": 0,
+            "severity_counts": {},
+            "category_counts": {},
+            "max_severity": None,
+            "findings_schema": findings.schema_metadata,
+            "history_cleanup_findings": [],
+            "findings": [],
+            "error": error_payload,
+        }
+        status_report = {
+            "kind": "sattlint.repo_audit.status",
+            "generated_by": "sattlint.devtools.repo_audit",
+            "profile": audit_profile,
+            "fail_on": fail_on,
+            "overall_status": "fail",
+            "canonical_command": summary["canonical_command"],
+            "status_report": f"{sanitized_output_dir}/status.json",
+            "summary_report": f"{sanitized_output_dir}/summary.json",
+            "progress_report": f"{sanitized_output_dir}/progress.json",
+            "finding_count": 0,
+            "blocking_finding_count": 0,
+            "max_severity": None,
+            "severity_counts": {},
+            "category_counts": {},
+            "findings_schema": findings.schema_metadata,
+            "pipeline_status_report": None
+            if skip_pipeline or leaks_only
+            else f"{sanitized_output_dir}/{pipeline_output_dirname}/status.json",
+            "latest_status_report": None
+            if sanitized_latest_output_dir is None
+            else f"{sanitized_latest_output_dir}/status.json",
+            "latest_summary_report": None
+            if sanitized_latest_output_dir is None
+            else f"{sanitized_latest_output_dir}/summary.json",
+            "top_findings": [],
+            "error": error_payload,
+        }
+        write_json_artifact_fn(output_dir / "status.json", status_report)
+        write_json_artifact_fn(output_dir / "summary.json", summary)
+        write_json_artifact_fn(output_dir / "findings.json", findings.to_dict())
+        write_audit_run_history_fn(
+            output_dir,
+            latest_output_dir=latest_output_dir,
+            report_kind="repo_audit",
+            primary_payload=summary,
+            status_payload=status_report,
+            summary_payload=summary,
+        )
+        mirror_latest_reports_fn(output_dir, latest_output_dir)
+        raise

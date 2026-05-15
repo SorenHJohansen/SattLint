@@ -23,7 +23,6 @@ from sattlint.devtools import ai_work_map as _ai_work_map_module
 from sattlint.devtools import audit_core as _audit_core_module
 from sattlint.devtools import audit_orchestration as _audit_orchestration_module
 from sattlint.devtools import doc_gardener as _doc_gardener_module
-from sattlint.devtools import leak_detection as _leak_detection_module
 from sattlint.devtools import ledger as _ledger_module
 from sattlint.devtools import pipeline as pipeline_module
 from sattlint.devtools import repo_audit_compat as _repo_audit_compat_module
@@ -269,31 +268,11 @@ _read_text = _repo_audit_compat_module._read_text
 _should_skip_dir = _repo_audit_compat_module._should_skip_dir
 _list_tracked_repo_paths = _repo_audit_compat_module._list_tracked_repo_paths
 _iter_repo_file_candidates = _repo_audit_compat_module._iter_repo_file_candidates
-
-
-def _iter_tracked_repo_file_candidates(root: Path, *, include_generated: bool) -> Iterable[Path]:
-    yield from _leak_detection_module.iter_tracked_repo_file_candidates(
-        root,
-        include_generated=include_generated,
-        list_tracked_repo_paths_fn=_list_tracked_repo_paths,
-        should_skip_dir_fn=_should_skip_dir,
-        text_suffixes=TEXT_SUFFIXES,
-    )
+_iter_tracked_repo_file_candidates = _repo_audit_compat_module._iter_tracked_repo_file_candidates
 
 
 _iter_repo_text_files = _repo_audit_compat_module._iter_repo_text_files
-
-
-def _iter_tracked_repo_text_files(root: Path, *, include_generated: bool) -> Iterable[Path]:
-    yield from _leak_detection_module.iter_tracked_repo_text_files(
-        root,
-        include_generated=include_generated,
-        iter_tracked_repo_file_candidates_fn=lambda current_root, generated: _iter_tracked_repo_file_candidates(
-            current_root,
-            include_generated=generated,
-        ),
-        read_text_fn=_read_text,
-    )
+_iter_tracked_repo_text_files = _repo_audit_compat_module._iter_tracked_repo_text_files
 
 
 _iter_repo_text_entries = _repo_audit_compat_module._iter_repo_text_entries

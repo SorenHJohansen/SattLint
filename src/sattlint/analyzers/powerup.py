@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 from sattline_parser.models.ast_model import BasePicture
 
-from .framework import Issue, format_report_header
+from .framework import Issue, empty_issues, format_report_header
 from .initial_values import analyze_initial_values
 from .unsafe_defaults import analyze_unsafe_defaults
 
@@ -19,14 +19,10 @@ _POWERUP_SECTION_TITLES: dict[str, str] = {
 }
 
 
-def _empty_issues() -> list[Issue]:
-    return []
-
-
 @dataclass
 class PowerupReport:
     name: str
-    issues: list[Issue] = field(default_factory=_empty_issues)
+    issues: list[Issue] = field(default_factory=empty_issues)
 
     def summary(self) -> str:
         if not self.issues:

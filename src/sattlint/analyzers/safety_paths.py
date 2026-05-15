@@ -6,16 +6,12 @@ from dataclasses import dataclass, field
 from sattline_parser.models.ast_model import BasePicture
 
 from ..core.safety_paths import SafetyPathTrace, build_safety_path_traces
-from .framework import Issue, format_report_header
+from .framework import Issue, empty_issues, format_report_header
 from .variables import VariablesAnalyzer
 
 _ISSUE_LABELS = {
     "safety-path.unconsumed_signal": "Unconsumed safety-critical signals",
 }
-
-
-def _empty_issues() -> list[Issue]:
-    return []
 
 
 def _empty_safety_traces() -> list[SafetyPathTrace]:
@@ -25,7 +21,7 @@ def _empty_safety_traces() -> list[SafetyPathTrace]:
 @dataclass
 class SafetyPathReport:
     basepicture_name: str
-    issues: list[Issue] = field(default_factory=_empty_issues)
+    issues: list[Issue] = field(default_factory=empty_issues)
     traces: list[SafetyPathTrace] = field(default_factory=_empty_safety_traces)
 
     @property

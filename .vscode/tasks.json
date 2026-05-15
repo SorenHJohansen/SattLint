@@ -133,6 +133,106 @@
 			"problemMatcher": []
 		},
 		{
+			"label": "Audit: Full Repo Audit",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"sattlint.devtools.repo_audit",
+				"--profile",
+				"full",
+				"--output-dir",
+				"artifacts/audit-full-current"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "AI: Validate repo audit CLI",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"pytest",
+				"--no-cov",
+				"tests/test_repo_audit_cli.py",
+				"-x",
+				"-q",
+				"--tb=short"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "AI: Ruff fix audit findings",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"ruff",
+				"check",
+				"--fix",
+				"src/sattlint/analyzers/_dataflow_scope_support.py",
+				"src/sattlint/analyzers/_dataflow_traversal.py",
+				"src/sattlint/analyzers/_dependency_usage_facts.py",
+				"src/sattlint/analyzers/_dependency_usage_scope_support.py",
+				"src/sattlint/analyzers/_reset_path_collection_sequence.py",
+				"src/sattlint/analyzers/_sattline_semantic_contracts.py",
+				"src/sattlint/analyzers/_variables_analyzer_facade.py",
+				"src/sattlint/analyzers/sattline_semantics.py",
+				"src/sattlint/analyzers/variables.py",
+				"src/sattlint/core/_semantic_index.py",
+				"src/sattlint/core/_semantic_index_reference_support.py",
+				"src/sattlint/devtools/audit_core.py",
+				"src/sattlint/devtools/audit_core_discovery.py",
+				"src/sattlint/devtools/leak_detection.py",
+				"src/sattlint/devtools/leak_detection_scan_paths.py",
+				"src/sattlint/devtools/repo_audit_cli.py",
+				"src/sattlint/devtools/repo_audit_cli_reporting.py",
+				"tests/analyzers/test_sattline_semantics.py",
+				"tests/analyzers/test_sattline_semantics_regressions.py",
+				"tests/analyzers/test_sattline_semantics_tail.py",
+				"tests/devtools/test_repo_health_html.py",
+				"tests/parser/test_engine_loader_helpers.py",
+				"tests/test_icf_helpers_grouping.py",
+				"tests/test_pipeline_owner_coverage.py",
+				"tests/test_pipeline_owner_coverage_runtime.py",
+				"tests/test_reset_contamination_ratchet.py",
+				"tests/test_reset_contamination_ratchet_helpers.py",
+				"tests/test_variables_effect_flow_mappings.py"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Audit: Apply AI GC",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"sattlint.devtools.repo_audit",
+				"--apply-ai-gc",
+				"--output-dir",
+				"artifacts/audit-ai-gc-current"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
 			"label": "Metrics: Repo Health Snapshot",
 			"type": "process",
 			"command": "${workspaceFolder}/scripts/run_repo_python.sh",

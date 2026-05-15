@@ -8,6 +8,10 @@ import pytest
 from sattlint.devtools import repo_audit
 
 
+def _artifact_path(*parts: str) -> str:
+    return "/".join(("<external>", *parts))
+
+
 def test_run_check_my_changes_ai_feedback_prefers_failed_finish_gate_step(monkeypatch, tmp_path):
     recommendation = {
         "changed_files": ["src/sattlint/app.py"],
@@ -98,8 +102,8 @@ def test_main_check_my_changes_compacts_verbose_report_fields(monkeypatch, tmp_p
         "overall_status": "fail",
         "finish_gate_status": "fail",
         "reports": {
-            "check_my_changes": "artifacts/audit/check_my_changes.json",
-            "ai_feedback": "artifacts/audit/ai_feedback.json",
+            "check_my_changes": _artifact_path("audit", "check_my_changes.json"),
+            "ai_feedback": _artifact_path("audit", "ai_feedback.json"),
         },
         "planning_context": {"primary_agent": "Repo Audit"},
         "recommendation": {"recommended_check_ids": ["ruff", "pyright", "pytest"]},

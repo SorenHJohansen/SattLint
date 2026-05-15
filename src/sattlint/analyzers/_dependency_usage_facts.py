@@ -5,25 +5,19 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
-    FrameModule,
     ModuleCode,
     ModuleTypeDef,
-    ModuleTypeInstance,
-    ParameterMapping,
     SFCAlternative,
     SFCParallel,
     SFCStep,
     SFCSubsequence,
     SFCTransition,
     SFCTransitionSub,
-    SingleModule,
-    Variable,
 )
 
-from ..casefolding import casefold_key
 from ..grammar import constants as const
-from ..resolution.common import resolve_moduletype_def_strict, varname_base
 from ..resolution.scope import ScopeContext
+from ._dependency_usage_scope_support import _DependencyUsageScopeSupportMixin
 from .sattline_builtins import get_function_signature
 
 
@@ -55,7 +49,7 @@ class StatementFact:
     calls: tuple[CallFact, ...]
 
 
-class DependencyUsageFactCollector:
+class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
     def __init__(
         self,
         base_picture: BasePicture,
@@ -98,16 +92,6 @@ class DependencyUsageFactCollector:
         self._walk_module_code(self.bp.modulecode, context, module_path)
         self._walk_modules(self.bp.submodules or [], context, module_path)
 
-    def _iter_root_typedefs(self) -> list[ModuleTypeDef]:
-        return [
-            moduletype
-            for moduletype in (self.bp.moduletype_defs or [])
-            if self._is_from_root_origin(
-                getattr(moduletype, "origin_file", None),
-                getattr(moduletype, "origin_lib", None),
-            )
-        ]
-
     def _walk_typedef(
         self,
         moduletype: ModuleTypeDef,
@@ -123,126 +107,6 @@ class DependencyUsageFactCollector:
             self._walk_modules(moduletype.submodules or [], context, module_path)
         finally:
             self._active_typedefs.discard(typedef_key)
-
-    def _walk_modules(
-        self,
-        children: list[SingleModule | FrameModule | ModuleTypeInstance],
-        parent_context: ScopeContext,
-        parent_path: list[str],
-    ) -> None:
-        for child in children:
-            child_path = [*parent_path, child.header.name]
-            if isinstance(child, SingleModule):
-                child_context = self._build_scope_context(
-                    [*(child.moduleparameters or []), *(child.localvariables or [])],
-                    moduleparameters=child.moduleparameters or [],
-                    param_mappings=self._build_parameter_mappings(child.parametermappings or [], parent_context),
-                    module_path=child_path,
-                    current_library=parent_context.current_library,
-                    parent_context=parent_context,
-                )
-                self._walk_module_code(child.modulecode, child_context, child_path)
-                self._walk_modules(child.submodules or [], child_context, child_path)
-                continue
-
-            if isinstance(child, FrameModule):
-                frame_context = ScopeContext(
-                    env=parent_context.env,
-                    param_mappings=parent_context.param_mappings,
-                    module_path=child_path.copy(),
-                    display_module_path=child_path.copy(),
-                    current_library=parent_context.current_library,
-                    parent_context=parent_context,
-                )
-                self._walk_module_code(child.modulecode, frame_context, child_path)
-                self._walk_modules(child.submodules or [], frame_context, child_path)
-                continue
-
-            self._walk_moduletype_instance(child, parent_context, child_path)
-
-    def _walk_moduletype_instance(
-        self,
-        instance: ModuleTypeInstance,
-        parent_context: ScopeContext,
-        child_path: list[str],
-    ) -> None:
-        try:
-            moduletype = resolve_moduletype_def_strict(
-                self.bp,
-                instance.moduletype_name,
-                current_library=parent_context.current_library,
-                unavailable_libraries=self._unavailable_libraries,
-            )
-        except ValueError:
-            return
-
-        if not self._is_from_root_origin(
-            getattr(moduletype, "origin_file", None),
-            getattr(moduletype, "origin_lib", None),
-        ):
-            return
-
-        typedef_context = self._build_scope_context(
-            [*(moduletype.moduleparameters or []), *(moduletype.localvariables or [])],
-            moduleparameters=moduletype.moduleparameters or [],
-            param_mappings=self._build_parameter_mappings(instance.parametermappings or [], parent_context),
-            module_path=child_path,
-            current_library=moduletype.origin_lib or parent_context.current_library,
-            parent_context=parent_context,
-        )
-        self._walk_typedef(moduletype, typedef_context, child_path)
-
-    def _build_scope_context(
-        self,
-        variables: list[Variable],
-        *,
-        moduleparameters: list[Variable] | None,
-        param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]],
-        module_path: list[str],
-        current_library: str | None,
-        parent_context: ScopeContext | None,
-    ) -> ScopeContext:
-        context = ScopeContext(
-            env={casefold_key(variable.name): variable for variable in variables},
-            param_mappings=param_mappings,
-            module_path=module_path.copy(),
-            display_module_path=module_path.copy(),
-            current_library=current_library,
-            parent_context=parent_context,
-        )
-        self._moduleparameter_keys_by_context[id(context)] = {
-            casefold_key(variable.name) for variable in (moduleparameters or [])
-        }
-        return context
-
-    def _build_parameter_mappings(
-        self,
-        mappings: list[ParameterMapping],
-        parent_context: ScopeContext,
-    ) -> dict[str, tuple[Variable, str, list[str], list[str]]]:
-        resolved: dict[str, tuple[Variable, str, list[str], list[str]]] = {}
-        for mapping in mappings:
-            if mapping.is_source_global:
-                continue
-            target_name = varname_base(mapping.target)
-            if not target_name:
-                continue
-            if isinstance(mapping.source, dict) and const.KEY_VAR_NAME in mapping.source:
-                full_source = mapping.source[const.KEY_VAR_NAME]
-            elif isinstance(mapping.source, str):
-                full_source = mapping.source
-            else:
-                continue
-            source_var, field_prefix, decl_path, decl_display_path = parent_context.resolve_variable(str(full_source))
-            if source_var is None:
-                continue
-            resolved[target_name.casefold()] = (
-                source_var,
-                field_prefix,
-                decl_path,
-                decl_display_path,
-            )
-        return resolved
 
     def _walk_module_code(
         self,
@@ -321,6 +185,28 @@ class DependencyUsageFactCollector:
             )
         )
 
+    def _collect_fact_items(
+        self,
+        items: Any,
+        context: ScopeContext,
+        *,
+        reads: list[FactRef],
+        writes: list[FactRef],
+        calls: list[CallFact],
+        seen_reads: set[tuple[str, ...]],
+        seen_writes: set[tuple[str, ...]],
+    ) -> None:
+        for item in items:
+            self._collect_node_facts(
+                item,
+                context,
+                reads=reads,
+                writes=writes,
+                calls=calls,
+                seen_reads=seen_reads,
+                seen_writes=seen_writes,
+            )
+
     def _collect_node_facts(
         self,
         node: Any,
@@ -343,16 +229,15 @@ class DependencyUsageFactCollector:
             return
 
         if hasattr(node, "data") and getattr(node, "data", None) == const.KEY_STATEMENT:
-            for child in getattr(node, "children", []):
-                self._collect_node_facts(
-                    child,
-                    context,
-                    reads=reads,
-                    writes=writes,
-                    calls=calls,
-                    seen_reads=seen_reads,
-                    seen_writes=seen_writes,
-                )
+            self._collect_fact_items(
+                getattr(node, "children", []),
+                context,
+                reads=reads,
+                writes=writes,
+                calls=calls,
+                seen_reads=seen_reads,
+                seen_writes=seen_writes,
+            )
             return
 
         if isinstance(node, tuple) and node:
@@ -413,19 +298,8 @@ class DependencyUsageFactCollector:
                         seen_reads=seen_reads,
                         seen_writes=seen_writes,
                     )
-                    for statement in branch_statements or []:
-                        self._collect_node_facts(
-                            statement,
-                            context,
-                            reads=reads,
-                            writes=writes,
-                            calls=calls,
-                            seen_reads=seen_reads,
-                            seen_writes=seen_writes,
-                        )
-                for statement in else_block or []:
-                    self._collect_node_facts(
-                        statement,
+                    self._collect_fact_items(
+                        branch_statements or [],
                         context,
                         reads=reads,
                         writes=writes,
@@ -433,11 +307,8 @@ class DependencyUsageFactCollector:
                         seen_reads=seen_reads,
                         seen_writes=seen_writes,
                     )
-                return
-
-            for child in node[1:]:
-                self._collect_node_facts(
-                    child,
+                self._collect_fact_items(
+                    else_block or [],
                     context,
                     reads=reads,
                     writes=writes,
@@ -445,47 +316,55 @@ class DependencyUsageFactCollector:
                     seen_reads=seen_reads,
                     seen_writes=seen_writes,
                 )
+                return
+
+            self._collect_fact_items(
+                node[1:],
+                context,
+                reads=reads,
+                writes=writes,
+                calls=calls,
+                seen_reads=seen_reads,
+                seen_writes=seen_writes,
+            )
             return
 
         if isinstance(node, list):
-            for item in node:
-                self._collect_node_facts(
-                    item,
-                    context,
-                    reads=reads,
-                    writes=writes,
-                    calls=calls,
-                    seen_reads=seen_reads,
-                    seen_writes=seen_writes,
-                )
+            self._collect_fact_items(
+                node,
+                context,
+                reads=reads,
+                writes=writes,
+                calls=calls,
+                seen_reads=seen_reads,
+                seen_writes=seen_writes,
+            )
             return
 
         children = getattr(node, "children", None)
         if children is not None:
-            for child in children:
-                self._collect_node_facts(
-                    child,
-                    context,
-                    reads=reads,
-                    writes=writes,
-                    calls=calls,
-                    seen_reads=seen_reads,
-                    seen_writes=seen_writes,
-                )
+            self._collect_fact_items(
+                children,
+                context,
+                reads=reads,
+                writes=writes,
+                calls=calls,
+                seen_reads=seen_reads,
+                seen_writes=seen_writes,
+            )
             return
 
         node_dict = getattr(node, "__dict__", None)
         if node_dict is not None:
-            for value in node_dict.values():
-                self._collect_node_facts(
-                    value,
-                    context,
-                    reads=reads,
-                    writes=writes,
-                    calls=calls,
-                    seen_reads=seen_reads,
-                    seen_writes=seen_writes,
-                )
+            self._collect_fact_items(
+                node_dict.values(),
+                context,
+                reads=reads,
+                writes=writes,
+                calls=calls,
+                seen_reads=seen_reads,
+                seen_writes=seen_writes,
+            )
 
     def _resolve_ref(self, expr: Any, context: ScopeContext) -> FactRef | None:
         if not (isinstance(expr, dict) and const.KEY_VAR_NAME in expr):
@@ -542,23 +421,6 @@ class DependencyUsageFactCollector:
         if state_access:
             segments.append(f"__state__:{state_access.casefold()}")
         return tuple(segments)
-
-    def _is_from_root_origin(
-        self,
-        origin_file: str | None,
-        origin_lib: str | None = None,
-    ) -> bool:
-        if self._analyzed_target_is_library:
-            root_origin_lib = getattr(self.bp, "origin_lib", None)
-            if root_origin_lib and origin_lib:
-                return origin_lib.casefold() == root_origin_lib.casefold()
-
-        if not origin_file:
-            return True
-        root_origin = getattr(self.bp, "origin_file", None)
-        if not root_origin:
-            return False
-        return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
 
 
 def collect_statement_facts(
