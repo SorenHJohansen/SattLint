@@ -1,0 +1,17 @@
+{
+  "artifact_digest": "sha1:e09fbcd60f0760c932e200bc8624ded1caae70b6",
+  "artifact_file": "artifacts/audit-quick-current.tmp-blsvdz0z/summary.json",
+  "artifact_kind": null,
+  "artifact_schema_version": null,
+  "generated_by": "sattlint.devtools.repo_audit",
+  "kind": "sattlint.generated_output_sources",
+  "schema_version": 1,
+  "source_count": 1,
+  "sources": [
+    {
+      "digest": "sha1:48d6f4d1d21321ad860089d749aa8dddbbadf3cd",
+      "exists": true,
+      "path": "src/sattlint/devtools/repo_audit.py"
+    }
+  ]
+}

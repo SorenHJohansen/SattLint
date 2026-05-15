@@ -1,0 +1,14 @@
+{
+  "case_id": "invalid-builtin-datatype-typo",
+  "finding_count": 1,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "message": "BasePicture variable 'Counter' uses unknown datatype 'intege'; did you mean 'integer'?",
+  "mode": "strict",
+  "stage": "validation",
+  "target_file": "tests/fixtures/corpus/invalid/BuiltinDatatypeTypo.s",
+  "validation_ok": false
+}

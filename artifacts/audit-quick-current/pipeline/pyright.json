@@ -1,0 +1,131 @@
+{
+  "command": [
+    ".venv/bin/pyright",
+    "--outputjson",
+    "src",
+    "tests"
+  ],
+  "duration_seconds": 36.515,
+  "effective_exit_code": 1,
+  "error_count": 7,
+  "exit_code": 1,
+  "finding_count": 7,
+  "findings": [
+    {
+      "file": "/home/sqhj/projects/SattLint/src/sattlint/_app_graphics_menus.py",
+      "message": "No parameter named \"dirty\"",
+      "range": {
+        "end": {
+          "character": 64,
+          "line": 492
+        },
+        "start": {
+          "character": 59,
+          "line": 492
+        }
+      },
+      "rule": "reportCallIssue",
+      "severity": "error"
+    },
+    {
+      "file": "/home/sqhj/projects/SattLint/src/sattlint/app_graphics.py",
+      "message": "Argument of type \"(path: Path, rules: dict[str, Any], *, dirty: bool) -> None\" cannot be assigned to parameter \"print_graphics_rules_summary_fn\" of type \"(Path, dict[str, Any]) -> None\" in function \"graphics_rules_menu\"\n\u00a0\u00a0Type \"(path: Path, rules: dict[str, Any], *, dirty: bool) -> None\" is not assignable to type \"(Path, dict[str, Any]) -> None\"\n\u00a0\u00a0\u00a0\u00a0Extra parameter \"dirty\"",
+      "range": {
+        "end": {
+          "character": 68,
+          "line": 377
+        },
+        "start": {
+          "character": 40,
+          "line": 377
+        }
+      },
+      "rule": "reportArgumentType",
+      "severity": "error"
+    },
+    {
+      "file": "/home/sqhj/projects/SattLint/tests/_analyzers_suites_test_support.py",
+      "message": "\"AstDiffDetail\" is unknown import symbol",
+      "range": {
+        "end": {
+          "character": 17,
+          "line": 48
+        },
+        "start": {
+          "character": 4,
+          "line": 48
+        }
+      },
+      "rule": "reportAttributeAccessIssue",
+      "severity": "error"
+    },
+    {
+      "file": "/home/sqhj/projects/SattLint/tests/_analyzers_suites_test_support.py",
+      "message": "\"_build_upgrade_notes\" is unknown import symbol",
+      "range": {
+        "end": {
+          "character": 24,
+          "line": 53
+        },
+        "start": {
+          "character": 4,
+          "line": 53
+        }
+      },
+      "rule": "reportAttributeAccessIssue",
+      "severity": "error"
+    },
+    {
+      "file": "/home/sqhj/projects/SattLint/tests/_analyzers_suites_test_support.py",
+      "message": "\"_collect_named_item_diffs\" is unknown import symbol",
+      "range": {
+        "end": {
+          "character": 29,
+          "line": 54
+        },
+        "start": {
+          "character": 4,
+          "line": 54
+        }
+      },
+      "rule": "reportAttributeAccessIssue",
+      "severity": "error"
+    },
+    {
+      "file": "/home/sqhj/projects/SattLint/tests/_analyzers_suites_test_support.py",
+      "message": "\"_diff_normalized_variants\" is unknown import symbol",
+      "range": {
+        "end": {
+          "character": 29,
+          "line": 57
+        },
+        "start": {
+          "character": 4,
+          "line": 57
+        }
+      },
+      "rule": "reportAttributeAccessIssue",
+      "severity": "error"
+    },
+    {
+      "file": "/home/sqhj/projects/SattLint/tests/_analyzers_suites_test_support.py",
+      "message": "\"_normalize_ast_value\" is unknown import symbol",
+      "range": {
+        "end": {
+          "character": 24,
+          "line": 59
+        },
+        "start": {
+          "character": 4,
+          "line": 59
+        }
+      },
+      "rule": "reportAttributeAccessIssue",
+      "severity": "error"
+    }
+  ],
+  "stderr": "",
+  "stdout": "{\n    \"version\": \"1.1.409\",\n    \"time\": \"1778844677247\",\n    \"generalDiagnostics\": [\n        {\n            \"file\": \"/home/sqhj/projects/SattLint/src/sattlint/_app_graphics_menus.py\",\n            \"severity\": \"error\",\n            \"message\": \"No parameter named \\\"dirty\\\"\",\n            \"range\": {\n                \"start\": {\n                    \"line\": 492,\n                    \"character\": 59\n                },\n                \"end\": {\n                    \"line\": 492,\n                    \"character\": 64\n                }\n            },\n            \"rule\": \"reportCallIssue\"\n        },\n        {\n            \"file\": \"/home/sqhj/projects/SattLint/src/sattlint/app_graphics.py\",\n            \"severity\": \"error\",\n            \"message\": \"Argument of type \\\"(path: Path, rules: dict[str, Any], *, dirty: bool) -> None\\\" cannot be assigned to parameter \\\"print_graphics_rules_summary_fn\\\" of type \\\"(Path, dict[str, Any]) -> None\\\" in function \\\"graphics_rules_menu\\\"\\n\u00a0\u00a0Type \\\"(path: Path, rules: dict[str, Any], *, dirty: bool) -> None\\\" is not assignable to type \\\"(Path, dict[str, Any]) -> None\\\"\\n\u00a0\u00a0\u00a0\u00a0Extra parameter \\\"dirty\\\"\",\n            \"range\": {\n                \"start\": {\n                    \"line\": 377,\n                    \"character\": 40\n                },\n                \"end\": {\n                    \"line\": 377,\n                    \"character\": 68\n                }\n            },\n            \"rule\": \"reportArgumentType\"\n        },\n        {\n            \"file\": \"/home/sqhj/projects/SattLint/tests/_analyzers_suites_test_support.py\",\n            \"severity\": \"error\",\n            \"message\": \"\\\"AstDiffDetail\\\" is unknown import symbol\",\n            \"range\": {\n                \"start\": {\n                    \"line\": 48,\n                    \"character\": 4\n                },\n                \"end\": {\n                    \"line\": 48,\n                    \"character\": 17\n                }\n            },\n            \"rule\": \"reportAttributeAccessIssue\"\n        },\n        {\n            \"file\": \"/home/sqhj/projects/SattLint/tests/_analyzers_suites_test_support.py\",\n            \"severity\": \"error\",\n            \"message\": \"\\\"_build_upgrade_notes\\\" is unknown import symbol\",\n            \"range\": {\n                \"start\": {\n                    \"line\": 53,\n                    \"character\": 4\n                },\n                \"end\": {\n                    \"line\": 53,\n                    \"character\": 24\n                }\n            },\n            \"rule\": \"reportAttributeAccessIssue\"\n        },\n        {\n            \"file\": \"/home/sqhj/projects/SattLint/tests/_analyzers_suites_test_support.py\",\n            \"severity\": \"error\",\n            \"message\": \"\\\"_collect_named_item_diffs\\\" is unknown import symbol\",\n            \"range\": {\n                \"start\": {\n                    \"line\": 54,\n                    \"character\": 4\n                },\n                \"end\": {\n                    \"line\": 54,\n                    \"character\": 29\n                }\n            },\n            \"rule\": \"reportAttributeAccessIssue\"\n        },\n        {\n            \"file\": \"/home/sqhj/projects/SattLint/tests/_analyzers_suites_test_support.py\",\n            \"severity\": \"error\",\n            \"message\": \"\\\"_diff_normalized_variants\\\" is unknown import symbol\",\n            \"range\": {\n                \"start\": {\n                    \"line\": 57,\n                    \"character\": 4\n                },\n                \"end\": {\n                    \"line\": 57,\n                    \"character\": 29\n                }\n            },\n            \"rule\": \"reportAttributeAccessIssue\"\n        },\n        {\n            \"file\": \"/home/sqhj/projects/SattLint/tests/_analyzers_suites_test_support.py\",\n            \"severity\": \"error\",\n            \"message\": \"\\\"_normalize_ast_value\\\" is unknown import symbol\",\n            \"range\": {\n                \"start\": {\n                    \"line\": 59,\n                    \"character\": 4\n                },\n                \"end\": {\n                    \"line\": 59,\n                    \"character\": 24\n                }\n            },\n            \"rule\": \"reportAttributeAccessIssue\"\n        }\n    ],\n    \"summary\": {\n        \"filesAnalyzed\": 553,\n        \"errorCount\": 7,\n        \"warningCount\": 0,\n        \"informationCount\": 0,\n        \"timeInSec\": 35.735\n    }\n}\n\n",
+  "tool": "pyright",
+  "warning_count": 0
+}

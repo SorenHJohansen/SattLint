@@ -22,7 +22,7 @@ from sattline_parser.models.ast_model import (
 )
 
 from ..resolution.paths import CanonicalPath
-from ._sfc_collectors import StepContract, _SfcAccessCollector, _SfcStepContractCollector
+from ._sfc_collectors import _SfcAccessCollector
 from ._sfc_guard_logic import (
     _collect_transition_logic_issues,
     _conflict_rep,
@@ -30,6 +30,7 @@ from ._sfc_guard_logic import (
     _paths_conflict,
 )
 from ._sfc_module_walk import iter_sfc_modulecodes
+from ._sfc_step_contracts import StepContract, _SfcStepContractCollector
 from .framework import Issue, SimpleReport
 
 type StepSet = frozenset[str]

@@ -1,0 +1,1805 @@
+{
+  "command": [
+    "<external>/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "addopts=--strict-markers --strict-config",
+    "tests/test_pipeline.py",
+    "tests/test_repo_audit.py",
+    "tests/parser/test_corpus.py",
+    "--junitxml=artifacts/audit-quick-current.tmp-pu4r5_2f/pipeline/pytest.junit.xml"
+  ],
+  "duration_seconds": 9.074,
+  "exit_code": 0,
+  "stderr": "",
+  "stdout": "........................................................................ [ 28%]\n........................................................................ [ 56%]\n........................................................................ [ 85%]\n......................................                                   [100%]\n254 passed in 8.02s\n",
+  "summary": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 254
+  },
+  "testcases": [
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_command_payload_sanitizes_absolute_command_paths",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_collect_environment_report_has_python_executable",
+      "outcome": "passed",
+      "time": "0.016"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_collect_architecture_report_includes_shadowing_cli_filter",
+      "outcome": "passed",
+      "time": "2.939"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_collect_phase2_rule_metadata_gate_fails_on_enforced_gaps",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_collect_analyzer_registry_report_includes_semantic_rule_mappings",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_collect_analyzer_registry_report_exposes_semantic_layer_sources",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_pipeline_tool_exit_codes_cover_optional_and_policy_paths",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_pipeline_counts_rolls_up_optional_and_derived_metrics",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_check_core_invariants_reports_duplicate_fingerprints_and_transform_violations",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_corpus_semantic_findings_include_guidance_fields",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_collect_analyzer_registry_report_maps_rule_ids_back_to_analyzers",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_collect_dependency_graph_report_aggregates_library_edges",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_collect_call_graph_report_aggregates_module_access_edges",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_collect_structural_reports_streams_snapshots_once",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_collect_structural_reports_limits_entries_to_fixture_programs",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_progress_reporter_log_emits_stdout",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_pipeline_finding_collection_normalizes_tool_payloads",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_analysis_diff_report_classifies_changes",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_print_cli_summary_includes_analysis_diff_counts",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_write_pipeline_artifacts_uses_registry_filenames",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_write_pipeline_artifacts_uses_registry_producer_mapping",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_write_json_artifact_retries_permission_error",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_write_json_artifact_writes_source_digest_manifest",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_write_pipeline_artifacts_requires_producer_for_enabled_artifact",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_validate_pipeline_artifact_producers_covers_quick_and_full_profiles",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_collect_graphics_layout_report_resolves_moduletype_moduledefs",
+      "outcome": "passed",
+      "time": "0.003"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_collect_graphics_layout_report_flags_repeated_module_name_drift",
+      "outcome": "passed",
+      "time": "0.003"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_validate_pipeline_artifact_producers_rejects_duplicate_producer_ids",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_collect_impact_analysis_report_aggregates_reverse_dependencies",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_progress_reporter_fail_stage_marks_overall_failed",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_progress_reporter_complete_stage_without_prior_start_sets_started_at",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_progress_reporter_active_stage_payload_returns_active_stage",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_progress_reporter_fail_stage_without_start_sets_started_at",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_progress_reporter_fail_stage_emits_stdout",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_progress_reporter_stage_raises_on_unknown_key",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_artifact_definition_is_available_false_when_not_in_profile",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_artifact_definition_to_dict_returns_expected_shape",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_command_report_returns_expected_keys",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_format_report_header_includes_status_when_given",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_format_report_header_omits_status_when_none",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_is_builtin_function_returns_true_for_known_function",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_call_parameter_signature_channel_kind_returns_async_operation",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_resolve_call_signature_returns_signature_for_known_builtin",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_resolve_call_signature_returns_none_for_falsy_name",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_resolve_call_signature_returns_none_for_unknown_builtin",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_casefold_equal_compares_case_insensitively",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_dedupe_casefolded_strings_removes_duplicates_and_empties",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_raw_source_validation_error_stores_line_and_column",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_span_kwargs_returns_line_and_column_from_span",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_warn_or_raise_raises_when_no_sink",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_ref_span_returns_span_from_dict_with_span",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_ref_span_returns_none_for_non_dict",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_coverage_summary_report_skipped_when_no_xml",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_coverage_summary_report_flags_high_severity",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_coverage_summary_report_normalizes_src_paths_and_tracks_totals",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_coverage_summary_report_flags_ratchet_regression",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_coverage_summary_report_prefers_changed_line_proof",
+      "outcome": "passed",
+      "time": "0.003"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_coverage_summary_report_falls_back_to_touched_file_proof",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_current_debt_snapshot_report_marks_live_and_stale_entries",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_coverage_report_normalizers_cover_empty_absolute_and_duplicate_inputs",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_coverage_report_git_diff_helpers_cover_edge_cases",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_coverage_report_ratchet_and_module_helpers_cover_invalid_inputs",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_coverage_summary_report_discovers_changed_lines_and_flags_low_severity",
+      "outcome": "passed",
+      "time": "0.004"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_canonical_path_join_no_args_returns_self",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_module_segment_display_variants",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_scope_context_resolve_variable_prefix_only_mapping",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_scope_context_resolve_variable_no_prefix_mapping",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_scope_context_resolve_global_name_empty_returns_none",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_scope_context_resolve_global_name_walks_parent",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_finding_location_to_dict_and_from_mapping",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_finding_location_from_mapping_uses_file_fallback",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_finding_record_default_fingerprint_is_set",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_finding_record_to_dict_round_trip_via_from_dict",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_finding_record_derives_tool_specific_failure_fields",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_finding_record_from_mapping_with_explicit_source",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_finding_collection_to_dict_and_from_dict",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_sanitize_path_for_report_returns_relative_for_repo_subpath",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_sanitize_path_for_report_returns_none_for_none",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_sanitize_path_for_report_external_absolute_path",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_sanitize_command_for_report_strips_absolute_path_args",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_path_sanitizer_covers_empty_and_resolve_fallback_branches",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_simple_report_summary_with_note",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_simple_report_summary_no_issues_ok",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_simple_report_summary_with_issues",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_variable_usage_mark_read_ui_and_non_ui",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_variable_usage_mark_field_read_ui",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_variable_usage_mark_field_read_non_ui",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_variable_usage_mark_written_and_mark_field_written",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_variable_usage_distinct_reader_writer_counts",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_variable_usage_is_display_only",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_type_graph_has_record_and_field",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_type_graph_iter_leaf_field_paths_simple_type",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_type_graph_iter_leaf_field_paths_unknown_type",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_type_graph_iter_leaf_field_paths_nested_record",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_type_graph_iter_all_addressable_paths",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_print_output_writes_to_stdout",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_has_rich_returns_bool",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_print_status_fallback_no_rich",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_print_panel_fallback_no_rich",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_print_table_empty_rows_no_rich",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_print_table_with_rows_no_rich",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_track_items_returns_iterable_without_rich",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_phase2_rule_metadata_gate_fails_on_enforced_finding",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_phase2_rule_metadata_gate_advisory_finding_does_not_fail",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_phase2_rule_metadata_gate_passes_with_clean_architecture_report",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_phase2_rule_metadata_gate_both_enforced_and_advisory",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_sattline_semantic_report_groups_by_rule",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_sattline_semantic_report_empty_findings",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_rule_metrics_report_counts_firings",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_rule_metrics_report_never_triggered_uses_registry",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_trace_timing_summary_is_present_and_aggregates_phases",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_serializes_structural_graph_reports",
+      "outcome": "passed",
+      "time": "0.054"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_fails_when_enforced_rule_metadata_is_missing",
+      "outcome": "passed",
+      "time": "0.055"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_marks_pytest_stage_failed_and_writes_failure_status",
+      "outcome": "passed",
+      "time": "0.017"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_writes_analysis_diff_when_baseline_is_supplied",
+      "outcome": "passed",
+      "time": "0.042"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_writes_mutation_and_differential_artifacts_when_requested",
+      "outcome": "passed",
+      "time": "0.047"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_writes_corpus_results_when_manifest_dir_is_supplied",
+      "outcome": "passed",
+      "time": "0.041"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_quick_profile_skips_optional_reports",
+      "outcome": "passed",
+      "time": "0.045"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_pipeline_check_catalog_lists_full_checks_and_commands",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_portable_command_text_builds_expected_repo_commands",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pytest_stage_uses_isolated_coverage_file_and_restores_environment",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_prints_core_invariant_violations",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_baseline_drift_status_skipped_without_baseline",
+      "outcome": "passed",
+      "time": "0.039"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_fail_on_drift_passes_when_no_new_findings",
+      "outcome": "passed",
+      "time": "0.038"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_fail_on_drift_fails_when_new_findings_present",
+      "outcome": "passed",
+      "time": "0.043"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_fail_on_drift_false_does_not_fail_on_new_findings",
+      "outcome": "passed",
+      "time": "0.038"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_main_save_baseline_copies_findings_json",
+      "outcome": "passed",
+      "time": "0.039"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_main_fail_on_drift_exits_nonzero_when_new_findings",
+      "outcome": "passed",
+      "time": "0.041"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_emits_incremental_analysis_artifact",
+      "outcome": "passed",
+      "time": "0.013"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_emits_profiling_and_budget_reports",
+      "outcome": "passed",
+      "time": "0.056"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_main_fail_on_budget_exits_nonzero",
+      "outcome": "passed",
+      "time": "0.071"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_run_pipeline_emits_coverage_summary_when_coverage_xml_exists",
+      "outcome": "passed",
+      "time": "0.030"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_overall_status_returns_pass_with_notes_when_no_fail_but_some_notes",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_project_graph_add_library_dependencies_ignores_none_library_name",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_write_pipeline_artifacts_skips_artifact_with_none_payload",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_tool_status_with_note_count_and_detail",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_tool_status_without_optional_fields",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_pipeline_status_report_with_progress_and_findings",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_pipeline_summary_report_includes_all_fields",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_project_graph_add_library_dependencies_adds_deps",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_project_graph_index_from_basepic_sets_origin",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_incremental_analysis_report_returns_none_for_empty_files",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_incremental_analysis_report_full_mode_for_core_changes",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_incremental_analysis_report_mixed_mode_for_program_file",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_profiling_summary_report_returns_none_for_none_input",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_pipeline",
+      "detail": "",
+      "name": "test_build_profiling_summary_report_identifies_slow_phases",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_iter_tracked_repo_text_files_includes_tracked_generated_files",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_extract_documented_commands_ignores_paths_with_sattlint_prefix_segments",
+      "outcome": "passed",
+      "time": "0.005"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_documentation_command_gaps_flags_missing_command",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_unused_config_keys_reports_unreferenced_key",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_build_local_import_graph_skips_type_checking_and_resolves_relative_imports",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_import_cycles_returns_back_edge_cycle",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_architecture_findings_reports_cycle_size_and_core_coupling",
+      "outcome": "passed",
+      "time": "0.043"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_cli_findings_flags_missing_parser_and_subcommand_descriptions",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_line_findings_redact_email_and_flag_path",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_line_findings_skip_vendor_and_fixture_content",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_line_findings_skip_repo_audit_self_scan_shards_and_scanner_sources",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_iter_repo_text_files_skips_virtualenv_variants",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_copy_audit_snapshot_skips_files_removed_during_copy",
+      "outcome": "passed",
+      "time": "0.003"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_line_findings_ignore_grammar_token_constants",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_line_findings_flag_secret_assignment_suffix_names",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_run_text_scan_check_skips_local_ci_parity_findings",
+      "outcome": "passed",
+      "time": "0.006"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_repo_audit_read_text_rejects_binary_and_falls_back_to_cp1252",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_list_tracked_repo_paths_returns_none_for_missing_git_and_failures",
+      "outcome": "passed",
+      "time": "0.003"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_iter_repo_file_candidates_filters_generated_suffixes_and_large_files",
+      "outcome": "passed",
+      "time": "0.004"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_iter_tracked_repo_file_candidates_skips_missing_dirs_and_large_files",
+      "outcome": "passed",
+      "time": "0.011"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_iter_repo_text_entries_yields_text_and_skips_binary",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_repo_audit_redaction_and_severity_helpers_cover_default_paths",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_parse_coverage_findings_handles_missing_file_and_parse_error",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_repo_audit_ast_path_helpers_cover_branchy_cases",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_repo_audit_source_signal_helpers_cover_edge_cases",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_load_pyproject_accepts_cp1252_toml",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_logging_findings_ignore_fingerprint_identifier",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_hidden_local_dependency_findings_flags_site_packages_path_injection",
+      "outcome": "passed",
+      "time": "0.004"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_build_python_source_scan_context_uses_tracked_files_only",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_build_python_source_scan_context_skips_syntax_errors_and_builds_documented_commands",
+      "outcome": "passed",
+      "time": "0.010"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_write_text_artifact_retries_permission_errors_and_raises_when_attempts_are_exhausted",
+      "outcome": "passed",
+      "time": "0.004"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_report_copy_and_history_helpers_cover_edge_cases",
+      "outcome": "passed",
+      "time": "0.003"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_build_local_import_graph_and_architecture_findings_cover_prefix_and_info_cycles",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_structural_detail_and_cached_line_findings_cover_delegate_paths",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_build_python_source_scan_context_skips_missing_tracked_files",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_ignored_repo_path_references_flags_repo_local_gitignored_library_dependency",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_ignored_repo_path_references_skips_tracked_fixture_and_allowlisted_generated_output_tests",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_ignored_repo_path_references_skips_allowlisted_policy_and_helper_files",
+      "outcome": "passed",
+      "time": "0.003"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_pipeline_findings_prefers_normalized_findings_report",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_host_specific_test_assumptions_flags_skipif_and_os_branch",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_parse_coverage_findings_ignores_untracked_coverage_xml",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_public_readiness_findings_ignores_untracked_workflow",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_public_readiness_findings_flags_unexpected_tracked_root_entries",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_audit_repository_leaks_only_filters_findings_and_skips_pipeline",
+      "outcome": "passed",
+      "time": "0.022"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_flags_markdown_mojibake",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_pipeline_findings_ignores_allowlisted_bandit_noise",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_audit_repository_writes_status_file_and_forwards_profile",
+      "outcome": "passed",
+      "time": "0.085"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_audit_repository_collects_custom_findings_from_tracked_files",
+      "outcome": "passed",
+      "time": "0.087"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_audit_repository_marks_pipeline_stage_failed_and_writes_failure_status",
+      "outcome": "passed",
+      "time": "0.017"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_source",
+      "outcome": "passed",
+      "time": "0.004"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_find_structural_report_findings_translates_structural_architecture_findings",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_audit_repository_fail_policy_applies_to_structural_findings",
+      "outcome": "passed",
+      "time": "0.086"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_updates_quality_score_and_scan_log",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_read_text_falls_back_to_cp1252",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_iter_markdown_files_skips_venv_and_non_markdown",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_parse_markdown_table_handles_invalid_rows_and_section_breaks",
+      "outcome": "passed",
+      "time": "0.000"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_scan_agents_md_reports_missing_and_structure_findings",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_scan_dead_links_and_structure_findings",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_scan_completed_exec_plans_still_active",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_scan_ai_first_source_drift_reports_missing_ledger_section",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_scan_ai_first_source_drift_reports_row_and_digest_issues",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_scan_ai_first_status_drift_reports_mismatch",
+      "outcome": "passed",
+      "time": "0.008"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_scan_ai_first_status_drift_falls_back_to_template_when_local_ledger_missing",
+      "outcome": "passed",
+      "time": "0.003"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_run_scan_aggregates_findings",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_run_harness_freshness_check_translates_ai_and_doc_findings",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_print_cli_summary_includes_findings_schema",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_update_quality_score_creates_trend_section_from_pipeline_snapshot",
+      "outcome": "passed",
+      "time": "0.003"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_load_pipeline_snapshot_returns_message_when_artifacts_missing",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_load_pipeline_snapshot_falls_back_to_findings_json_count",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_main_updates_logs_without_exit_when_clean",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_main_reports_findings_without_opening_pr_by_default",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_main_check_only_does_not_update_logs_or_open_pr",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_main_opens_pr_when_requested",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_flags_retired_source_file_reintroduced",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_flags_refactor_status_mismatch",
+      "outcome": "passed",
+      "time": "0.007"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_main_exits_nonzero_when_findings_exist",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_doc_gardener_main_uses_pipeline_output_dir",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_main_check_routes_finding_checks",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_default_corpus_manifest_dir_returns_none_when_empty",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_default_corpus_manifest_dir_returns_resolved_manifest_root",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_audit_repository_mirrors_latest_reports_to_stable_directory",
+      "outcome": "passed",
+      "time": "0.072"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_audit_repository_run_history_keeps_last_ten_runs_and_marks_older_entries_stale",
+      "outcome": "passed",
+      "time": "0.865"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_audit_repository_skips_pipeline_and_writes_full_cli_consistency_report",
+      "outcome": "passed",
+      "time": "0.077"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_main_defaults_fail_on_medium_for_leaks_only",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_main_reports_latest_links_for_non_default_output_dir",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_collect_custom_findings_selected_checks_only_run_requested_runner",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_build_ai_gc_report_flags_stale_untracked_allowlisted_artifact",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_build_ai_gc_report_flags_manifest_drift_before_age_cutoff",
+      "outcome": "passed",
+      "time": "0.003"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_collect_custom_findings_ai_gc_surfaces_stale_artifacts",
+      "outcome": "passed",
+      "time": "0.009"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_apply_ai_gc_deletes_stale_artifacts_and_writes_report",
+      "outcome": "passed",
+      "time": "0.004"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_build_repo_audit_check_catalog_lists_pipeline_and_custom_checks",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_main_check_cli_consistency_exits_nonzero_and_writes_report",
+      "outcome": "passed",
+      "time": "0.021"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_run_check_my_changes_uses_pipeline_finish_gate_when_no_repo_checks_are_recommended",
+      "outcome": "passed",
+      "time": "0.022"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_run_check_my_changes_uses_repo_audit_finish_gate_when_repo_checks_are_recommended",
+      "outcome": "passed",
+      "time": "0.020"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_run_check_my_changes_writes_run_history",
+      "outcome": "passed",
+      "time": "0.017"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_run_check_my_changes_includes_planning_context",
+      "outcome": "passed",
+      "time": "0.017"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_run_recommended_repo_audit_finish_gate_fails_when_change_scoped_coverage_fails",
+      "outcome": "passed",
+      "time": "0.017"
+    },
+    {
+      "classname": "tests.test_repo_audit",
+      "detail": "",
+      "name": "test_run_recommended_repo_audit_finish_gate_runs_ratchet_policy",
+      "outcome": "passed",
+      "time": "0.017"
+    },
+    {
+      "classname": "tests.parser.test_corpus",
+      "detail": "",
+      "name": "test_load_corpus_manifest_reads_expectations",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.parser.test_corpus",
+      "detail": "",
+      "name": "test_evaluate_finding_ids_reports_missing_and_forbidden_ids",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.parser.test_corpus",
+      "detail": "",
+      "name": "test_run_corpus_case_validates_required_artifacts_and_findings",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.parser.test_corpus",
+      "detail": "",
+      "name": "test_run_corpus_case_reports_artifact_fragment_failures",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.parser.test_corpus",
+      "detail": "",
+      "name": "test_execute_corpus_case_strict_writes_case_artifacts",
+      "outcome": "passed",
+      "time": "0.057"
+    },
+    {
+      "classname": "tests.parser.test_corpus",
+      "detail": "",
+      "name": "test_execute_corpus_case_workspace_writes_semantic_findings",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.parser.test_corpus",
+      "detail": "",
+      "name": "test_execute_corpus_case_workspace_preserves_guidance_for_semantic_findings",
+      "outcome": "passed",
+      "time": "0.002"
+    },
+    {
+      "classname": "tests.parser.test_corpus",
+      "detail": "",
+      "name": "test_run_corpus_suite_aggregates_case_results_and_writes_report",
+      "outcome": "passed",
+      "time": "0.007"
+    },
+    {
+      "classname": "tests.parser.test_corpus",
+      "detail": "",
+      "name": "test_print_cli_summary_includes_findings_schema",
+      "outcome": "passed",
+      "time": "0.001"
+    },
+    {
+      "classname": "tests.parser.test_corpus",
+      "detail": "",
+      "name": "test_checked_in_corpus_manifests_pass_against_repo_fixtures",
+      "outcome": "passed",
+      "time": "1.865"
+    }
+  ],
+  "tool": "pytest"
+}

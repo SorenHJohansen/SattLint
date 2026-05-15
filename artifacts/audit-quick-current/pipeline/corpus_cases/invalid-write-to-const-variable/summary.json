@@ -1,0 +1,14 @@
+{
+  "case_id": "invalid-write-to-const-variable",
+  "finding_count": 1,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "message": "BasePicture equation 'Main' assignment writes to CONST variable 'MaxLimit'",
+  "mode": "strict",
+  "stage": "validation",
+  "target_file": "tests/fixtures/corpus/invalid/WriteToConstVariable.s",
+  "validation_ok": false
+}

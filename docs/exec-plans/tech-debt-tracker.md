@@ -39,9 +39,9 @@ Recent completed closeouts:
 
 Active follow-on plans from the 2026-05-15 architecture debt review:
 
-- `docs/exec-plans/active/40-t-wave-6-pipeline-and-audit-catalog-extraction.md` covers the oversized pipeline and repo-audit coordination surfaces plus adjacent pipeline test debt.
-- `docs/exec-plans/active/41-t-wave-6-app-config-and-doc-gardener-surface-split.md` covers the app-analysis, config, and doc-gardener control-surface split.
-- `docs/exec-plans/active/42-t-wave-6-parser-module-normalization-split.md` covers the parser module-normalization mixin split.
+- `docs/exec-plans/completed/40-t-wave-6-pipeline-and-audit-catalog-extraction.md` covers the oversized pipeline and repo-audit coordination surfaces plus adjacent pipeline test debt.
+- `docs/exec-plans/completed/41-t-wave-6-app-config-and-doc-gardener-surface-split.md` covers the app-analysis, config, and doc-gardener control-surface split.
+- `docs/exec-plans/completed/42-t-wave-6-parser-module-normalization-split.md` covers the parser module-normalization mixin split.
 - `docs/exec-plans/active/43-t-wave-6-analyzer-owner-splits.md` covers the remaining oversized analyzer owners and helper facades.
 - `docs/exec-plans/active/44-t-wave-6-lsp-server-and-test-split.md` covers the LSP server, helper-coverage, and oversized LSP test split.
 - `docs/exec-plans/active/45-t-wave-6-gui-test-and-coverage-ratchet.md` covers the GUI test bottleneck and lowest GUI coverage ratchets.

@@ -58,12 +58,21 @@ It now stays fast and file-scoped: Ruff autofix, Ruff format, AI routing artifac
 Use this as the real local pre-push gate. It chooses the correct finish gate automatically and carries the heavier proof burden that no longer belongs in default pre-commit.
 The public-readiness slice also treats tracked helper or scratch entries at the repo root as hygiene failures; move reusable tooling under `scripts/` and keep the top-level layout canonical.
 
+For long-running quick or full audit snapshots, use the staged runner instead of writing directly into a reused `*-current` directory:
+
+- `python scripts/run_repo_python.sh -m sattlint.devtools.repo_audit_runs --final-output-dir artifacts/audit-quick-current --keep-history artifacts/audit-history --profile quick`
+- `python scripts/run_repo_python.sh -m sattlint.devtools.repo_audit_runs --final-output-dir artifacts/audit-full-current --keep-history artifacts/audit-history --profile full`
+
+Validate a published audit directory with `python scripts/run_repo_python.sh -m sattlint.devtools.artifact_readiness --artifact-dir <dir>` before reading JSON artifacts in automation. Compare before/after findings with `python scripts/run_repo_python.sh -m sattlint.devtools.compare_audit_findings --before <dir> --after <dir>` instead of manually reading both `findings.json` files.
+
 ## CI Gate
 
 - Lint and formatting stay in `lint.yml`.
 - Type and test enforcement stay in `typing.yml`.
 - Repo-audit owner checks stay in `repo-audit.yml`.
 - `ci.yml` runs the fast pre-commit gate and doc-gardener, then uses `check-my-changes` on pull requests and the full repo audit on `main`, manual runs, and nightly health.
+
+When CI or local workflows need a stable long-running audit directory for later inspection, publish it through `sattlint.devtools.repo_audit_runs` and gate readers through `sattlint.devtools.artifact_readiness`.
 
 ## Nightly Gate
 

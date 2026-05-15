@@ -31,6 +31,23 @@ Bootstrap defaults are stage-aware:
 The canonical active-claim lock lives in the repository `git-common-dir` at `.git/sattlint-ai-coordination/current_work_lock.json`.
 Each worktree keeps a local session summary JSON; the deprecated markdown coordination ledger should not be recreated.
 
+## Request-Contract Bootstrap
+
+Use request-contract bootstrap when the user asks for work by request shape instead of by owner file or failing test.
+
+- `implement-plan`: use `python scripts/bootstrap_ai_slice.py --from-request-kind implement-plan --plan-file <plan-file> ...` so the plan file becomes the controlling artifact.
+- `review-artifact`: use `python scripts/bootstrap_ai_slice.py --from-request-kind review-artifact --artifact-path <artifact-path> ...` so review starts from the named artifact instead of a repo scan.
+- `chat-review`: use `python scripts/bootstrap_ai_slice.py --from-request-kind chat-review --artifact-path <workspace-storage|GitHub.copilot-chat|transcripts> ...`; the resolver normalizes the controlling seam to `GitHub.copilot-chat/transcripts/` and treats `debug-logs/` as metadata only.
+- Request-contract bootstrap still writes the normal task and handoff JSON, and it also prints a paste-ready prompt payload that includes the controlling artifact, requested files, first validation command, and expected outcome.
+
+Example commands:
+
+	python scripts/bootstrap_ai_slice.py --task-id ai-chat-observability --stage executor --from-request-kind implement-plan --plan-file docs/exec-plans/completed/46-t-wave-7-ai-chat-observability-and-feedback-loop.md --file src/sattlint/devtools/ai_chat_observability.py --validation "bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_ai_chat_observability.py -x -q --tb=short"
+
+	python scripts/bootstrap_ai_slice.py --task-id audit-summary-review --stage review --from-request-kind review-artifact --artifact-path artifacts/analysis/summary.json --file tests/test_pipeline_run_recommendations.py --validation "bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_pipeline_run_recommendations.py -x -q --tb=short"
+
+	python scripts/bootstrap_ai_slice.py --task-id chat-review-current --stage executor --from-request-kind chat-review --artifact-path <workspace-storage> --file src/sattlint/devtools/ai_chat_observability.py --validation "bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_ai_chat_observability.py -x -q --tb=short"
+
 ## Agent Set
 
 - `Planner`: scopes broad requests, keeps work in one slice when possible, and escalates to multi-stream orchestration only when needed.

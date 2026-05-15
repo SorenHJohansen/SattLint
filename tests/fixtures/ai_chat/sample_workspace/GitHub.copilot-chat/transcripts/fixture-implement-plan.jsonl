@@ -1,0 +1,23 @@
+{"type":"session.start","data":{"sessionId":"fixture-implement-plan","version":1},"id":"evt-1","timestamp":"2026-05-15T10:00:00Z","parentId":null}
+{"type":"user.message","data":{"content":"Implement this plan 46","attachments":[]},"id":"evt-2","timestamp":"2026-05-15T10:00:01Z","parentId":"evt-1"}
+{"type":"assistant.message","data":{"content":"","toolRequests":[]},"id":"evt-3","timestamp":"2026-05-15T10:00:02Z","parentId":"evt-2"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-1","toolName":"read_file","arguments":{"filePath":"src/sattlint/devtools/ai_chat_observability.py"}},"id":"evt-4","timestamp":"2026-05-15T10:00:03Z","parentId":"evt-3"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tool-1","success":true},"id":"evt-5","timestamp":"2026-05-15T10:00:04Z","parentId":"evt-4"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-2","toolName":"file_search","arguments":{"query":"src/sattlint/devtools/**"}},"id":"evt-6","timestamp":"2026-05-15T10:00:05Z","parentId":"evt-5"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tool-2","success":true},"id":"evt-7","timestamp":"2026-05-15T10:00:06Z","parentId":"evt-6"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-3","toolName":"grep_search","arguments":{"query":"status.json|summary.json","isRegexp":true}},"id":"evt-8","timestamp":"2026-05-15T10:00:07Z","parentId":"evt-7"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tool-3","success":true},"id":"evt-9","timestamp":"2026-05-15T10:00:08Z","parentId":"evt-8"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-4","toolName":"read_file","arguments":{"filePath":"tests/test_ai_chat_observability.py"}},"id":"evt-10","timestamp":"2026-05-15T10:00:09Z","parentId":"evt-9"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tool-4","success":true},"id":"evt-11","timestamp":"2026-05-15T10:00:10Z","parentId":"evt-10"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-5","toolName":"list_dir","arguments":{"path":"tests/fixtures/ai_chat"}},"id":"evt-12","timestamp":"2026-05-15T10:00:11Z","parentId":"evt-11"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tool-5","success":true},"id":"evt-13","timestamp":"2026-05-15T10:00:12Z","parentId":"evt-12"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-6","toolName":"semantic_search","arguments":{"query":"chat observability transcript metrics"}},"id":"evt-14","timestamp":"2026-05-15T10:00:13Z","parentId":"evt-13"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tool-6","success":true},"id":"evt-15","timestamp":"2026-05-15T10:00:14Z","parentId":"evt-14"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-7","toolName":"codegraph_search","arguments":{"query":"ai chat observability"}},"id":"evt-16","timestamp":"2026-05-15T10:00:15Z","parentId":"evt-15"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tool-7","success":false,"error":"tool unavailable"},"id":"evt-17","timestamp":"2026-05-15T10:00:16Z","parentId":"evt-16"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-8","toolName":"codegraph_search","arguments":{"query":"ai chat observability"}},"id":"evt-18","timestamp":"2026-05-15T10:00:17Z","parentId":"evt-17"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tool-8","success":false,"error":"tool unavailable"},"id":"evt-19","timestamp":"2026-05-15T10:00:18Z","parentId":"evt-18"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-9","toolName":"apply_patch","arguments":{"input":"*** Begin Patch"}},"id":"evt-20","timestamp":"2026-05-15T10:00:19Z","parentId":"evt-19"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tool-9","success":true},"id":"evt-21","timestamp":"2026-05-15T10:00:20Z","parentId":"evt-20"}
+{"type":"assistant.message","data":{"content":"Applied the first patch.","toolRequests":[]},"id":"evt-22","timestamp":"2026-05-15T10:00:21Z","parentId":"evt-21"}
+this is not json

@@ -1,0 +1,67 @@
+{
+  "command": [
+    ".venv/bin/pyright",
+    "--outputjson",
+    "src",
+    "tests"
+  ],
+  "duration_seconds": 22.932,
+  "effective_exit_code": 1,
+  "error_count": 3,
+  "exit_code": 1,
+  "finding_count": 3,
+  "findings": [
+    {
+      "file": "/home/sqhj/projects/SattLint/src/sattlint/app_analysis.py",
+      "message": "Import \"HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS\" is not accessed",
+      "range": {
+        "end": {
+          "character": 42,
+          "line": 15
+        },
+        "start": {
+          "character": 4,
+          "line": 15
+        }
+      },
+      "rule": "reportUnusedImport",
+      "severity": "error"
+    },
+    {
+      "file": "/home/sqhj/projects/SattLint/src/sattlint/app_analysis.py",
+      "message": "Import \"LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS\" is not accessed",
+      "range": {
+        "end": {
+          "character": 41,
+          "line": 16
+        },
+        "start": {
+          "character": 4,
+          "line": 16
+        }
+      },
+      "rule": "reportUnusedImport",
+      "severity": "error"
+    },
+    {
+      "file": "/home/sqhj/projects/SattLint/src/sattlint/app_analysis.py",
+      "message": "Import \"VARIABLE_ANALYSES\" is not accessed",
+      "range": {
+        "end": {
+          "character": 21,
+          "line": 17
+        },
+        "start": {
+          "character": 4,
+          "line": 17
+        }
+      },
+      "rule": "reportUnusedImport",
+      "severity": "error"
+    }
+  ],
+  "stderr": "",
+  "stdout": "{\n    \"version\": \"1.1.409\",\n    \"time\": \"1778838773313\",\n    \"generalDiagnostics\": [\n        {\n            \"file\": \"/home/sqhj/projects/SattLint/src/sattlint/app_analysis.py\",\n            \"severity\": \"error\",\n            \"message\": \"Import \\\"HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS\\\" is not accessed\",\n            \"range\": {\n                \"start\": {\n                    \"line\": 15,\n                    \"character\": 4\n                },\n                \"end\": {\n                    \"line\": 15,\n                    \"character\": 42\n                }\n            },\n            \"rule\": \"reportUnusedImport\"\n        },\n        {\n            \"file\": \"/home/sqhj/projects/SattLint/src/sattlint/app_analysis.py\",\n            \"severity\": \"error\",\n            \"message\": \"Import \\\"LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS\\\" is not accessed\",\n            \"range\": {\n                \"start\": {\n                    \"line\": 16,\n                    \"character\": 4\n                },\n                \"end\": {\n                    \"line\": 16,\n                    \"character\": 41\n                }\n            },\n            \"rule\": \"reportUnusedImport\"\n        },\n        {\n            \"file\": \"/home/sqhj/projects/SattLint/src/sattlint/app_analysis.py\",\n            \"severity\": \"error\",\n            \"message\": \"Import \\\"VARIABLE_ANALYSES\\\" is not accessed\",\n            \"range\": {\n                \"start\": {\n                    \"line\": 17,\n                    \"character\": 4\n                },\n                \"end\": {\n                    \"line\": 17,\n                    \"character\": 21\n                }\n            },\n            \"rule\": \"reportUnusedImport\"\n        }\n    ],\n    \"summary\": {\n        \"filesAnalyzed\": 519,\n        \"errorCount\": 3,\n        \"warningCount\": 0,\n        \"informationCount\": 0,\n        \"timeInSec\": 22.566\n    }\n}\n\n",
+  "tool": "pyright",
+  "warning_count": 0
+}

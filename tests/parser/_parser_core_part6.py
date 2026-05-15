@@ -205,3 +205,19 @@ ENDDEF (*BasePicture*);
     assert bp.header.invoke_coord_tails == ["PosX"]
     assert bp.moduledef is not None
     assert bp.moduledef.properties[const.KEY_TAILS] == ["PanelResize"]
+
+
+def test_parser_core_parses_nested_submodule_fixture_through_split_module_mixins():
+    fixture_path = _repo_path("tests", "fixtures", "corpus", "valid", "NestedSubmodules.s")
+
+    bp = parser_core_parse_source_text(fixture_path.read_text(encoding="utf-8"))
+
+    assert [moduletype.name for moduletype in bp.moduletype_defs] == ["MiddleType"]
+    assert len(bp.submodules) == 1
+    middle = bp.submodules[0]
+    assert isinstance(middle, ModuleTypeInstance)
+    assert middle.moduletype_name == "MiddleType"
+    middle_type = bp.moduletype_defs[0]
+    assert [sub.header.name for sub in middle_type.submodules] == ["Inner"]
+    assert middle_type.moduledef is not None
+    assert middle_type.modulecode is not None

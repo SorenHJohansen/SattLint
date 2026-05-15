@@ -23,7 +23,6 @@ from lsprotocol.types import (
     ReferenceParams,
     RenameParams,
     TextDocumentPositionParams,
-    TextEdit,
     WorkspaceEdit,
 )
 from pygls import uris
@@ -63,9 +62,6 @@ from ._server_document import (
     record_document_open as _record_document_open,
 )
 from ._server_document import (
-    resolve_symbol_context as _resolve_symbol_context,
-)
-from ._server_document import (
     schedule_workspace_scan as _schedule_workspace_scan,
 )
 from ._server_document import (
@@ -93,18 +89,6 @@ from ._server_helpers import (
     append_workspace_edit as _append_workspace_edit,
 )
 from ._server_helpers import (
-    build_hover as _build_hover,
-)
-from ._server_helpers import (
-    collect_reference_matches as _collect_reference_matches,
-)
-from ._server_helpers import (
-    definition_locations_from_candidates as _definition_locations_from_candidates,
-)
-from ._server_helpers import (
-    definition_uri as _definition_uri,
-)
-from ._server_helpers import (
     document_path as _document_path,
 )
 from ._server_helpers import (
@@ -117,22 +101,7 @@ from ._server_helpers import (
     merge_completion_items as _merge_completion_items,
 )
 from ._server_helpers import (
-    merge_locations as _merge_locations,
-)
-from ._server_helpers import (
     overlay_definition_candidates as _overlay_definition_candidates,
-)
-from ._server_helpers import (
-    range_for_definition as _range_for_definition,
-)
-from ._server_helpers import (
-    range_from_position as _range_from_position,
-)
-from ._server_helpers import (
-    reference_locations_from_matches as _reference_locations_from_matches,
-)
-from ._server_helpers import (
-    resolve_reference_path as _resolve_reference_path,
 )
 from ._server_helpers import (
     semantic_diagnostics_for_path as _semantic_diagnostics_for_path,
@@ -155,6 +124,11 @@ from ._server_helpers import (
 from ._server_helpers import (
     validated_text_document_uri as _validated_text_document_uri,
 )
+from ._server_navigation import handle_definition as _handle_definition
+from ._server_navigation import handle_hover as _handle_hover
+from ._server_navigation import handle_references as _handle_references
+from ._server_rename_completion import handle_completion as _handle_completion
+from ._server_rename_completion import handle_rename as _handle_rename
 from ._server_workspace import (
     is_workspace_control_path as _is_workspace_control_path,
 )
@@ -189,6 +163,9 @@ server = SattLineLanguageServer()
 _PUBLIC_SERVER_HELPERS = (
     SnapshotBundle,
     build_source_path_index,
+    collect_completion_candidates,
+    collect_local_completion_candidates,
+    collect_local_definition_locations,
     collect_semantic_diagnostics,
     collect_syntax_diagnostics,
     infer_module_path_from_source,
@@ -370,192 +347,44 @@ def on_did_close(ls: SattLineLanguageServer, params: DidCloseTextDocumentParams)
 
 @server.feature("textDocument/definition")
 def on_definition(ls: SattLineLanguageServer, params: DefinitionParams) -> list[Location] | None:
-    request = _validated_text_document_position(params)
-    if request is None:
-        return None
-
-    document_uri, line, character = request
-    document = ls.workspace.get_text_document(document_uri)
-    document_path, source_text, local_snapshot, bundle, candidates = _resolve_symbol_context(
-        ls,
-        document,
-        line=line,
-        column=character,
-    )
-    if not _is_program_path(document_path):
-        return None
-
-    if bundle is None:
-        local_locations = collect_local_definition_locations(
-            document_path,
-            source_text,
-            line=line,
-            column=character,
-            snapshot=local_snapshot,
-        )
-        return local_locations or None
-
-    locations = _definition_locations_from_candidates(
-        candidates,
-        bundle=bundle,
-        local_snapshot=local_snapshot,
-        active_document_path=document_path,
-    )
-    return locations or None
+    return _handle_definition(ls, params)
 
 
 @server.feature("textDocument/hover")
 def on_hover(ls: SattLineLanguageServer, params: HoverParams) -> Hover | None:
-    request = _validated_text_document_position(params)
-    if request is None:
-        return None
-
-    document_uri, line, character = request
-    document = ls.workspace.get_text_document(document_uri)
-    document_path, _source_text, _local_snapshot, _bundle, candidates = _resolve_symbol_context(
-        ls,
-        document,
-        line=line,
-        column=character,
-    )
-    if not _is_program_path(document_path) or not candidates:
-        return None
-    return _build_hover(candidates[0])
+    return _handle_hover(ls, params)
 
 
 @server.feature("textDocument/references")
 def on_references(ls: SattLineLanguageServer, params: ReferenceParams) -> list[Location] | None:
-    request = _validated_text_document_position(params)
-    if request is None:
-        return None
-
-    document_uri, line, character = request
-    document = ls.workspace.get_text_document(document_uri)
-    document_path, _source_text, local_snapshot, bundle, candidates = _resolve_symbol_context(
-        ls,
-        document,
-        line=line,
-        column=character,
-    )
-    if not _is_program_path(document_path) or not candidates:
-        return None
-
-    references = _collect_reference_matches(bundle, local_snapshot, candidates)
-    locations = _reference_locations_from_matches(
-        references,
-        bundle=bundle,
-        active_document_path=document_path,
-    )
-    ref_context = getattr(params, "context", None)
-    if getattr(ref_context, "include_declaration", False) or getattr(ref_context, "includeDeclaration", False):
-        declaration_locations: list[Location] = []
-        for definition in candidates:
-            target_range = _range_for_definition(definition)
-            target_uri = _definition_uri(definition, bundle=bundle, active_document_path=document_path)
-            if target_range is None or target_uri is None:
-                continue
-            declaration_locations.append(Location(uri=target_uri, range=target_range))
-        locations = _merge_locations(declaration_locations, locations)
-    return locations or None
+    return _handle_references(ls, params)
 
 
 @server.feature("textDocument/rename")
 def on_rename(ls: SattLineLanguageServer, params: RenameParams) -> WorkspaceEdit | None:
-    request = _validated_rename_request(params)
-    if request is None:
-        return None
-
-    document_uri, line, character, new_name = request
-    _validate_rename_target(new_name)
-
-    document = ls.workspace.get_text_document(document_uri)
-    document_path, _source_text, local_snapshot, bundle, candidates = _resolve_symbol_context(
+    return _handle_rename(
         ls,
-        document,
-        line=line,
-        column=character,
+        params,
+        validated_rename_request=_validated_rename_request,
+        validate_rename_target=_validate_rename_target,
+        append_workspace_edit=_append_workspace_edit,
     )
-    if not _is_program_path(document_path) or not candidates:
-        return None
-
-    references = _collect_reference_matches(bundle, local_snapshot, candidates)
-    changes: dict[str, list[TextEdit]] = {}
-
-    for definition in candidates:
-        target_range = _range_for_definition(definition)
-        target_uri = _definition_uri(definition, bundle=bundle, active_document_path=document_path)
-        if target_range is not None and target_uri is not None:
-            _append_workspace_edit(changes, target_uri, target_range, new_name)
-
-    for reference in references:
-        reference_uri: str | None = None
-        if (reference.source_file or "").casefold() == document_path.name.casefold():
-            reference_uri = uris.from_fs_path(str(document_path.resolve())) or document_path.resolve().as_uri()
-        elif bundle is not None:
-            target_path = _resolve_reference_path(bundle, reference)
-            if target_path is not None:
-                reference_uri = uris.from_fs_path(str(target_path)) or target_path.as_uri()
-        if reference_uri is None:
-            continue
-        _append_workspace_edit(
-            changes,
-            reference_uri,
-            _range_from_position(reference.line, reference.column, reference.length),
-            new_name,
-        )
-
-    if not changes:
-        return None
-    return WorkspaceEdit(changes=changes)
 
 
 @server.feature("textDocument/completion", CompletionOptions(trigger_characters=["."]))
 def on_completion(ls: SattLineLanguageServer, params: TextDocumentPositionParams) -> CompletionList:
-    request = _validated_text_document_position(params)
-    if request is None:
-        return CompletionList(is_incomplete=False, items=[])
-
-    document_uri, line, character = request
-    document = ls.workspace.get_text_document(document_uri)
-    document_path = _document_path(document)
-    if not _is_program_path(document_path):
-        return CompletionList(is_incomplete=False, items=[])
-
-    source_text = _source_text_for_document(ls, document)
-    local_snapshot = _get_or_build_local_snapshot(ls, document, document_path)
-
-    local_items = collect_local_completion_candidates(
-        document_path,
-        source_text,
-        line=line,
-        column=character,
-        limit=ls.settings.max_completion_items,
-        snapshot=local_snapshot,
-    )
-
-    bundle = _load_snapshot_bundle_compat(
+    return _handle_completion(
         ls,
-        document_path,
-        wait_budget=_INTERACTIVE_SNAPSHOT_WAIT_S,
-        allow_stale=True,
-        raise_on_error=False,
+        params,
+        validated_text_document_position=_validated_text_document_position,
+        document_path=_document_path,
+        source_text_for_document=_source_text_for_document,
+        get_or_build_local_snapshot=_get_or_build_local_snapshot,
+        load_snapshot_bundle_compat=_load_snapshot_bundle_compat,
+        collect_local_completion_candidates=collect_local_completion_candidates,
+        merge_completion_items=_merge_completion_items,
+        interactive_snapshot_wait_s=_INTERACTIVE_SNAPSHOT_WAIT_S,
     )
-    if bundle is None:
-        return CompletionList(is_incomplete=False, items=local_items)
-
-    workspace_items = collect_completion_candidates(
-        bundle.snapshot,
-        source_text,
-        line=line,
-        column=character,
-        limit=ls.settings.max_completion_items,
-    )
-    items = _merge_completion_items(
-        local_items,
-        workspace_items,
-        limit=ls.settings.max_completion_items,
-    )
-    return CompletionList(is_incomplete=False, items=items)
 
 
 def cli() -> None:

@@ -13,6 +13,7 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
+from . import _app_startup_from_app as app_startup_module
 from . import app_analysis as app_analysis_module
 from . import app_base as app_base_module
 from . import app_cli_commands as app_cli_commands_module
@@ -120,6 +121,7 @@ def validate_effective_config(cfg: ConfigDict) -> ConfigValidationResult:
 
 
 log: Any = app_base.log
+_APP_MODULE: Any = cast(Any, sys.modules[__name__])
 
 
 # ----------------------------
@@ -169,67 +171,24 @@ def run_syntax_check_command(file_path: str) -> int:
 
 
 def run_cli(argv: list[str]) -> int:
-    return cast(
-        int,
-        app_base.run_cli(
-            argv,
-            config_path=CONFIG_PATH,
-            build_cli_parser_fn=build_cli_parser,
-            run_syntax_check_command_fn=run_syntax_check_command,
-            load_config_fn=load_config,
-            apply_debug_fn=apply_debug,
-            run_validate_config_command_fn=run_validate_config_command,
-            run_analyze_command_fn=run_analyze_command,
-            run_simulate_command_fn=run_simulate_command,
-            run_docgen_command_fn=run_docgen_command,
-            run_format_icf_command_fn=run_format_icf_command,
-            exit_success=EXIT_SUCCESS,
-            exit_usage_error=EXIT_USAGE_ERROR,
-        ),
-    )
+    return app_startup_module.run_cli_from_app(argv, app_module=_APP_MODULE)
 
 
 def run_validate_config_command(cfg: ConfigDict, *, config_path: Path, default_used: bool) -> int:
-    return cast(
-        int,
-        app_cli_commands.run_validate_config_command(
-            cfg,
-            config_path=config_path,
-            default_used=default_used,
-            validate_config_fn=validate_effective_config,
-            exit_success=EXIT_SUCCESS,
-            exit_usage_error=EXIT_USAGE_ERROR,
-        ),
+    return app_startup_module.run_validate_config_command_from_app(
+        cfg,
+        config_path=config_path,
+        default_used=default_used,
+        app_module=_APP_MODULE,
     )
 
 
 def run_analyze_command(cfg: ConfigDict, *, selected_keys: list[str] | None, use_cache: bool) -> int:
-    def _iter_projects(nested_cfg: ConfigDict) -> Iterator[LoadedProject]:
-        return _iter_loaded_projects(nested_cfg, use_cache=use_cache)
-
-    def _run_checks(local_cfg: ConfigDict, local_selected_keys: list[str] | None, local_use_cache: bool) -> None:
-        def _iter_nested_projects(nested_cfg: ConfigDict) -> Iterator[LoadedProject]:
-            return _iter_loaded_projects(nested_cfg, use_cache=local_use_cache)
-
-        app_analysis.run_checks(
-            local_cfg,
-            local_selected_keys,
-            iter_loaded_projects_fn=_iter_nested_projects,
-            get_enabled_analyzers_fn=_get_selectable_analyzers if local_selected_keys else _get_enabled_analyzers,
-            target_is_library_fn=_target_is_library,
-            pause_fn=None,
-        )
-
-    del _iter_projects
-    return cast(
-        int,
-        app_cli_commands.run_analyze_command(
-            cfg,
-            selected_keys=selected_keys,
-            use_cache=use_cache,
-            run_checks_fn=_run_checks,
-            exit_success=EXIT_SUCCESS,
-        ),
+    return app_startup_module.run_analyze_command_from_app(
+        cfg,
+        selected_keys=selected_keys,
+        use_cache=use_cache,
+        app_module=_APP_MODULE,
     )
 
 
@@ -268,21 +227,16 @@ def run_simulate_command(
     output_path: str | None,
     use_cache: bool,
 ) -> int:
-    return cast(
-        int,
-        app_cli_commands.run_simulate_command(
-            cfg,
-            target_path=target_path,
-            module_name=module_name,
-            mode=mode,
-            max_scans=max_scans,
-            output_format=output_format,
-            output_path=output_path,
-            use_cache=use_cache,
-            simulate_fn=_simulate_target,
-            exit_success=EXIT_SUCCESS,
-            exit_usage_error=EXIT_USAGE_ERROR,
-        ),
+    return app_startup_module.run_simulate_command_from_app(
+        cfg,
+        target_path=target_path,
+        module_name=module_name,
+        mode=mode,
+        max_scans=max_scans,
+        output_format=output_format,
+        output_path=output_path,
+        use_cache=use_cache,
+        app_module=_APP_MODULE,
     )
 
 
@@ -293,21 +247,12 @@ def run_docgen_command(
     output_dir: str | None = None,
     output_path: str | None = None,
 ) -> int:
-    def _iter_projects(local_cfg: ConfigDict, local_use_cache: bool) -> Iterator[LoadedProject]:
-        return _iter_loaded_projects(local_cfg, use_cache=local_use_cache)
-
-    return cast(
-        int,
-        app_cli_commands.run_docgen_command(
-            cfg,
-            use_cache=use_cache,
-            output_dir=output_dir,
-            output_path=output_path,
-            iter_loaded_projects_fn=_iter_projects,
-            documentation_unit_selection_fn=_get_documentation_unit_selection,
-            exit_success=EXIT_SUCCESS,
-            exit_usage_error=EXIT_USAGE_ERROR,
-        ),
+    return app_startup_module.run_docgen_command_from_app(
+        cfg,
+        use_cache=use_cache,
+        output_dir=output_dir,
+        output_path=output_path,
+        app_module=_APP_MODULE,
     )
 
 
@@ -329,17 +274,11 @@ def run_format_icf_command(cfg: ConfigDict, *, check: bool = False) -> int:
 
 
 def run_icf_formatter(cfg: ConfigDict) -> None:
-    run_format_icf_command(cfg)
-    pause()
+    app_startup_module.run_icf_formatter_from_app(cfg, app_module=_APP_MODULE)
 
 
 def show_config(cfg: ConfigDict) -> None:
-    app_graphics.show_config(
-        cfg,
-        get_graphics_rules_path_fn=get_graphics_rules_path,
-        load_graphics_rules_fn=load_graphics_rules,
-        graphics_rule_config_line_fn=_graphics_rule_config_line,
-    )
+    app_startup_module.show_config_from_app(cfg, app_module=_APP_MODULE)
 
 
 def _print_menu(
@@ -349,7 +288,7 @@ def _print_menu(
     intro: str | None = None,
     note: str | None = None,
 ) -> None:
-    app_support.print_menu(title, options, print_fn=print, intro=intro, note=note)
+    app_startup_module.print_menu_from_app(title, options, intro=intro, note=note, app_module=_APP_MODULE)
 
 
 def _menu_option(key: str, label: str, description: str) -> MenuOption:
@@ -357,18 +296,11 @@ def _menu_option(key: str, label: str, description: str) -> MenuOption:
 
 
 def _summarize_targets(cfg: ConfigDict) -> str:
-    return cast(str, app_support.summarize_targets(cfg, get_analyzed_targets_fn=_get_analyzed_targets))
+    return app_startup_module.summarize_targets_from_app(cfg, app_module=_APP_MODULE)
 
 
 def show_help(cfg: ConfigDict) -> None:
-    app_support.show_help(
-        cfg,
-        clear_screen_fn=clear_screen,
-        get_analyzed_targets_fn=_get_analyzed_targets,
-        summarize_targets_fn=_summarize_targets,
-        print_fn=print,
-        pause_fn=pause,
-    )
+    app_startup_module.show_help_from_app(cfg, app_module=_APP_MODULE)
 
 
 def _get_analyzed_targets(cfg: ConfigDict) -> list[str]:
@@ -423,16 +355,12 @@ def _discover_graphics_rule_selector_options(
     def _iter_projects(local_cfg: ConfigDict) -> Iterator[LoadedProject]:
         return _iter_loaded_projects(local_cfg)
 
-    return cast(
-        list[dict[str, Any]],
-        app_graphics.discover_graphics_rule_selector_options(
-            cfg,
-            selector_field=selector_field,
-            module_kind=module_kind,
-            has_analyzed_targets_fn=_has_analyzed_targets,
-            iter_loaded_projects_fn=_iter_projects,
-            collect_graphics_layout_entries_for_target_fn=_collect_graphics_layout_entries_for_target,
-        ),
+    del _iter_projects
+    return app_startup_module.discover_graphics_rule_selector_options_from_app(
+        cfg,
+        selector_field=selector_field,
+        module_kind=module_kind,
+        app_module=_APP_MODULE,
     )
 
 
@@ -442,14 +370,11 @@ def _pick_or_prompt_graphics_rule_selector_value(
     *,
     cfg: ConfigDict | None = None,
 ) -> str:
-    return cast(
-        str,
-        app_graphics.pick_or_prompt_graphics_rule_selector_value(
-            selector_field,
-            module_kind,
-            cfg=cfg,
-            discover_graphics_rule_selector_options_fn=_discover_graphics_rule_selector_options,
-        ),
+    return app_startup_module.pick_or_prompt_graphics_rule_selector_value_from_app(
+        selector_field,
+        module_kind,
+        cfg=cfg,
+        app_module=_APP_MODULE,
     )
 
 
@@ -458,46 +383,20 @@ def _annotate_graphics_entries_with_structure_paths(
     project_bp: BasePicture,
     graph: ProjectGraph,
 ) -> list[dict[str, Any]]:
-    return cast(
-        list[dict[str, Any]],
-        app_graphics.annotate_graphics_entries_with_structure_paths(
-            entries,
-            project_bp,
-            graph,
-            classify_documentation_structure_fn=classify_documentation_structure,
-            discover_documentation_unit_candidates_fn=discover_documentation_unit_candidates,
-        ),
+    return app_startup_module.annotate_graphics_entries_with_structure_paths_from_app(
+        entries,
+        project_bp,
+        graph,
+        app_module=_APP_MODULE,
     )
 
 
 def graphics_rules_menu(cfg: ConfigDict | None = None) -> None:
-    app_graphics.graphics_rules_menu(
-        cfg,
-        get_graphics_rules_path_fn=get_graphics_rules_path,
-        load_graphics_rules_fn=load_graphics_rules,
-        save_graphics_rules_fn=save_graphics_rules,
-        prompt_graphics_rule_definition_with_config_fn=_prompt_graphics_rule_definition_with_config,
-        graphics_rule_label_fn=_graphics_rule_label,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=_print_menu,
-        menu_option_factory=_menu_option,
-        confirm_fn=confirm,
-        prompt_fn=prompt,
-        quit_app_fn=quit_app,
-        pause_fn=pause,
-    )
+    app_startup_module.graphics_rules_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
 def _prompt_graphics_rule_definition_with_config(cfg: ConfigDict | None) -> dict[str, Any] | None:
-    return cast(
-        dict[str, Any] | None,
-        app_graphics.prompt_graphics_rule_definition_with_config(
-            cfg,
-            prompt_fn=prompt,
-            pause_fn=pause,
-            pick_or_prompt_graphics_rule_selector_value_fn=_pick_or_prompt_graphics_rule_selector_value,
-        ),
-    )
+    return app_startup_module.prompt_graphics_rule_definition_with_config_from_app(cfg, app_module=_APP_MODULE)
 
 
 def _collect_graphics_layout_entries_for_target(
@@ -505,103 +404,47 @@ def _collect_graphics_layout_entries_for_target(
     project_bp: BasePicture,
     graph: ProjectGraph,
 ) -> list[dict[str, Any]]:
-    return cast(
-        list[dict[str, Any]],
-        app_graphics.collect_graphics_layout_entries_for_target(
-            target_name,
-            project_bp,
-            graph,
-            annotate_graphics_entries_with_structure_paths_fn=_annotate_graphics_entries_with_structure_paths,
-        ),
+    return app_startup_module.collect_graphics_layout_entries_for_target_from_app(
+        target_name,
+        project_bp,
+        graph,
+        app_module=_APP_MODULE,
     )
 
 
 def run_graphics_rules_validation(cfg: ConfigDict) -> None:
-    def _iter_projects(local_cfg: ConfigDict) -> Iterator[LoadedProject]:
-        return _iter_loaded_projects(local_cfg)
-
-    app_graphics.run_graphics_rules_validation(
-        cfg,
-        get_graphics_rules_path_fn=get_graphics_rules_path,
-        load_graphics_rules_fn=load_graphics_rules,
-        iter_loaded_projects_fn=_iter_projects,
-        collect_graphics_layout_entries_for_target_fn=_collect_graphics_layout_entries_for_target,
-        pause_fn=pause,
-    )
+    app_startup_module.run_graphics_rules_validation_from_app(cfg, app_module=_APP_MODULE)
 
 
 def _get_documentation_unit_selection() -> DocumentationSelection:
-    return cast(DocumentationSelection, app_docs.get_documentation_unit_selection())
+    return app_startup_module.get_documentation_unit_selection_from_app(app_module=_APP_MODULE)
 
 
 def preview_documentation_unit_candidates(cfg: ConfigDict) -> None:
-    def _iter_projects(local_cfg: ConfigDict) -> Iterator[LoadedProject]:
-        return _iter_loaded_projects(local_cfg)
-
-    app_docs.preview_documentation_unit_candidates(
-        cfg,
-        iter_loaded_projects_fn=_iter_projects,
-        pause_fn=pause,
-    )
+    app_startup_module.preview_documentation_unit_candidates_from_app(cfg, app_module=_APP_MODULE)
 
 
 def configure_documentation_scope_by_moduletype(cfg: ConfigDict) -> bool:
     del cfg
-    return cast(
-        bool,
-        app_docs.configure_documentation_scope_by_moduletype(
-            split_csv_values_fn=_split_csv_values,
-            pause_fn=pause,
-        ),
-    )
+    return app_startup_module.configure_documentation_scope_by_moduletype_from_app(app_module=_APP_MODULE)
 
 
 def configure_documentation_scope_by_instance_path(cfg: ConfigDict) -> bool:
     del cfg
-    return cast(
-        bool,
-        app_docs.configure_documentation_scope_by_instance_path(
-            split_csv_values_fn=_split_csv_values,
-            pause_fn=pause,
-        ),
-    )
+    return app_startup_module.configure_documentation_scope_by_instance_path_from_app(app_module=_APP_MODULE)
 
 
 def reset_documentation_scope(cfg: ConfigDict) -> bool:
     del cfg
-    return cast(bool, app_docs.reset_documentation_scope(pause_fn=pause))
+    return app_startup_module.reset_documentation_scope_from_app(app_module=_APP_MODULE)
 
 
 def run_generate_documentation(cfg: ConfigDict) -> None:
-    def _iter_projects(local_cfg: ConfigDict) -> Iterator[LoadedProject]:
-        return _iter_loaded_projects(local_cfg)
-
-    app_docs.run_generate_documentation(
-        cfg,
-        iter_loaded_projects_fn=_iter_projects,
-        prompt_fn=prompt,
-        pause_fn=pause,
-    )
+    app_startup_module.run_generate_documentation_from_app(cfg, app_module=_APP_MODULE)
 
 
 def documentation_menu(cfg: ConfigDict) -> bool:
-    def _iter_projects(local_cfg: ConfigDict) -> Iterator[LoadedProject]:
-        return _iter_loaded_projects(local_cfg)
-
-    return cast(
-        bool,
-        app_docs.documentation_menu(
-            cfg,
-            clear_screen_fn=clear_screen,
-            print_menu_fn=_print_menu,
-            menu_option_factory=_menu_option,
-            quit_app_fn=quit_app,
-            pause_fn=pause,
-            split_csv_values_fn=_split_csv_values,
-            iter_loaded_projects_fn=_iter_projects,
-            prompt_fn=prompt,
-        ),
-    )
+    return app_startup_module.documentation_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
 def _iter_loaded_projects(
@@ -929,16 +772,7 @@ def run_advanced_datatype_analysis(cfg: ConfigDict) -> None:
 
 
 def dump_menu(cfg: ConfigDict) -> None:
-    app_menus.dump_menu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=_print_menu,
-        menu_option_factory=_menu_option,
-        quit_app_fn=quit_app,
-        confirm_fn=confirm,
-        iter_loaded_projects_fn=_iter_loaded_projects,
-        analyze_variables_fn=analyze_variables,
-    )
+    app_startup_module.dump_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
 # ----------------------------
@@ -947,82 +781,31 @@ def dump_menu(cfg: ConfigDict) -> None:
 
 
 def config_menu(cfg: ConfigDict) -> bool:
-    return cast(
-        bool,
-        app_menus.config_menu(
-            cfg,
-            config_path=CONFIG_PATH,
-            clear_screen_fn=clear_screen,
-            show_config_fn=show_config,
-            print_menu_fn=_print_menu,
-            menu_option_factory=_menu_option,
-            prompt_fn=prompt,
-            pause_fn=pause,
-            confirm_fn=confirm,
-            target_exists_fn=target_exists,
-            save_config_fn=save_config,
-            apply_debug_fn=apply_debug,
-            graphics_rules_menu_fn=graphics_rules_menu,
-            quit_app_fn=quit_app,
-        ),
-    )
+    return app_startup_module.config_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
 def tools_menu(cfg: ConfigDict) -> None:
-    app_menus.tools_menu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=_print_menu,
-        menu_option_factory=_menu_option,
-        quit_app_fn=quit_app,
-        self_check_fn=self_check,
-        pause_fn=pause,
-        require_targets_for_menu_action_fn=_require_targets_for_menu_action,
-        dump_menu_fn=dump_menu,
-        confirm_fn=confirm,
-        force_refresh_ast_fn=force_refresh_ast,
-    )
+    app_startup_module.tools_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
 # ----------------------------
 # Main loop
 # ----------------------------
-def main(argv: list[str] | None = None) -> int:
-    cli_args = [] if argv is None else argv
-    if cli_args:
-        return run_cli(cli_args)
+_COMPATIBILITY_HELPERS = (
+    _simulate_target,
+    _require_targets_for_menu_action,
+    _split_csv_values,
+    _discover_graphics_rule_selector_options,
+    _pick_or_prompt_graphics_rule_selector_value,
+    _annotate_graphics_entries_with_structure_paths,
+    _prompt_graphics_rule_definition_with_config,
+    _collect_graphics_layout_entries_for_target,
+    _get_documentation_unit_selection,
+)
 
-    try:
-        cfg, default_used = load_config(CONFIG_PATH)
-        apply_debug(cfg)
-        if default_used:
-            emit_output("Warning: Default config created. Open Setup before running analysis.")
-            pause()
-        else:
-            if not self_check(cfg) and not confirm("Self-check failed. Continue?"):
-                return 0
-            if _has_analyzed_targets(cfg) and not ensure_ast_cache(cfg):
-                pause()
-        app_menus.run_main_loop(
-            cfg,
-            clear_screen_fn=clear_screen,
-            print_menu_fn=_print_menu,
-            menu_option_factory=_menu_option,
-            summarize_targets_fn=_summarize_targets,
-            require_targets_for_menu_action_fn=_require_targets_for_menu_action,
-            analysis_menu_fn=analysis_menu,
-            documentation_menu_fn=documentation_menu,
-            config_menu_fn=config_menu,
-            tools_menu_fn=tools_menu,
-            show_help_fn=show_help,
-            confirm_fn=confirm,
-            save_config_fn=save_config,
-            config_path=CONFIG_PATH,
-            quit_app_fn=quit_app,
-        )
-        return 0
-    except QuitAppError:
-        return 0
+
+def main(argv: list[str] | None = None) -> int:
+    return app_startup_module.main_from_app(argv, app_module=_APP_MODULE)
 
 
 def cli() -> int:

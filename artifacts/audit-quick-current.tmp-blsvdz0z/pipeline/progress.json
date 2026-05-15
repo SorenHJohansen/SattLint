@@ -1,0 +1,115 @@
+{
+  "active_stage": null,
+  "canonical_command": "sattlint-analysis-pipeline --profile quick --output-dir artifacts/audit-quick-current.tmp-blsvdz0z/pipeline",
+  "completed_at": 1778844147.1336966,
+  "completed_stage_count": 3,
+  "created_at": 1778844100.1894712,
+  "failed_stage_count": 1,
+  "kind": "sattlint.pipeline.progress",
+  "overall_status": "failed",
+  "skipped_stage_count": 0,
+  "stage_count": 11,
+  "stages": [
+    {
+      "detail": null,
+      "duration_seconds": 0.015,
+      "ended_at": 1778844100.2052214,
+      "key": "environment",
+      "label": "Collect environment",
+      "started_at": 1778844100.1899092,
+      "status": "completed"
+    },
+    {
+      "detail": "0 findings",
+      "duration_seconds": 0.031,
+      "ended_at": 1778844100.2368202,
+      "key": "ruff",
+      "label": "Run Ruff",
+      "started_at": 1778844100.2057147,
+      "status": "completed"
+    },
+    {
+      "detail": "7 errors, 0 warnings",
+      "duration_seconds": 37.402,
+      "ended_at": 1778844137.6388986,
+      "key": "pyright",
+      "label": "Run pyright",
+      "started_at": 1778844100.2372882,
+      "status": "completed"
+    },
+    {
+      "detail": "KeyboardInterrupt",
+      "duration_seconds": 9.491,
+      "ended_at": 1778844147.1302679,
+      "key": "pytest",
+      "label": "Run pytest",
+      "started_at": 1778844137.6395473,
+      "status": "failed"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "vulture",
+      "label": "Run Vulture",
+      "started_at": null,
+      "status": "pending"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "bandit",
+      "label": "Run Bandit",
+      "started_at": null,
+      "status": "pending"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "structural_reports",
+      "label": "Collect structural reports",
+      "started_at": null,
+      "status": "pending"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "trace",
+      "label": "Collect trace report",
+      "started_at": null,
+      "status": "pending"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "corpus",
+      "label": "Run corpus suite",
+      "started_at": null,
+      "status": "pending"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "findings",
+      "label": "Normalize findings",
+      "started_at": null,
+      "status": "pending"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "write_artifacts",
+      "label": "Write artifacts",
+      "started_at": null,
+      "status": "pending"
+    }
+  ],
+  "title": "Pipeline",
+  "updated_at": 1778844147.1336982
+}

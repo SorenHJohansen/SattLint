@@ -241,3 +241,68 @@ def test_bootstrap_slice_promotes_review_and_test_from_generated_executor_handof
     assert test_handoff["stage"] == "test"
     assert test_handoff["branch"] == "test/task-phase-3-bootstrap-test"
     assert test_handoff["commit"] == "test123"
+
+
+def test_collect_config_requires_plan_file_for_implement_plan(tmp_path):
+    _write_templates(tmp_path)
+    args = bootstrap_ai_slice.build_parser().parse_args(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--task-id",
+            "request-contract-bootstrap",
+            "--title",
+            "Request Contract Bootstrap",
+            "--owner",
+            "Planner",
+            "--summary",
+            "Create an implement-plan contract.",
+            "--file",
+            "scripts/bootstrap_ai_slice.py",
+            "--validation",
+            "pytest tests/test_bootstrap_ai_slice.py -x -q --tb=short",
+            "--from-request-kind",
+            "implement-plan",
+        ]
+    )
+
+    try:
+        bootstrap_ai_slice._collect_config(args)
+    except bootstrap_ai_slice.BootstrapError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("Expected implement-plan bootstrap to require --plan-file.")
+
+    assert message == "implement-plan requires --plan-file."
+
+
+def test_collect_config_resolves_chat_review_workspace_storage_to_transcripts(tmp_path):
+    _write_templates(tmp_path)
+    workspace_storage = tmp_path / "workspaceStorage" / "abc123"
+    args = bootstrap_ai_slice.build_parser().parse_args(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--task-id",
+            "chat-review-current",
+            "--title",
+            "Chat Review Current",
+            "--owner",
+            "Planner",
+            "--summary",
+            "Review the latest transcript corpus.",
+            "--file",
+            "src/sattlint/devtools/ai_chat_observability.py",
+            "--validation",
+            "pytest tests/test_ai_chat_observability.py -x -q --tb=short",
+            "--from-request-kind",
+            "chat-review",
+            "--artifact-path",
+            str(workspace_storage),
+        ]
+    )
+
+    config = bootstrap_ai_slice._collect_config(args)
+
+    assert config.request_kind == "chat-review"
+    assert config.request_artifact == "workspaceStorage/abc123/GitHub.copilot-chat/transcripts"

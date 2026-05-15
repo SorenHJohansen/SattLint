@@ -1,0 +1,20 @@
+{
+  "case_id": "semantic-config-drift",
+  "finding_count": 4,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "missing_dependencies": [],
+  "mode": "workspace",
+  "resolved_targets": [
+    "ConfigDrift"
+  ],
+  "rule_counts": {
+    "semantic.instance-configuration-drift": 1,
+    "semantic.unused-variable": 3
+  },
+  "target_file": "tests/fixtures/corpus/semantic/ConfigDrift.s",
+  "warnings": []
+}

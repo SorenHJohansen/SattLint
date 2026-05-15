@@ -8,9 +8,7 @@ paths. This means the variable can retain stale state across equipment resets.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from functools import partial
-from itertools import product
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
@@ -33,15 +31,33 @@ from ..grammar import constants as const
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution.common import path_startswith_casefold
 from ..types import VariableId
+from . import _reset_latching as _reset_latching_module
 from . import _reset_path_collection as _reset_path_collection_module
 from . import _reset_path_state as _reset_path_state_module
-from ._reset_path_state import WriteKey, WriteMap
+from ._reset_path_state import WriteMap
 from .variable_utils import same_origin_file_stem
 
 _PathCollectionDebug = _reset_path_state_module.PathCollectionDebug
 _PathState = _reset_path_state_module.PathState
 _compact_path_states = _reset_path_state_module.compact_path_states
 _merge_parallel_branch_results = _reset_path_state_module.merge_parallel_branch_results
+_BooleanPathState = _reset_latching_module.BooleanPathState
+_all_boolean_paths_cover_false = _reset_latching_module.all_boolean_paths_cover_false
+_boolean_path_covers_false = _reset_latching_module.boolean_path_covers_false
+_check_for_modulecode_latching = _reset_latching_module.check_for_modulecode_latching
+_collect_boolean_seq_block_paths = _reset_latching_module.collect_boolean_seq_block_paths
+_collect_boolean_seq_node_paths = _reset_latching_module.collect_boolean_seq_node_paths
+_collect_boolean_stmt_block_paths = _reset_latching_module.collect_boolean_stmt_block_paths
+_collect_boolean_stmt_paths = _reset_latching_module.collect_boolean_stmt_paths
+_emit_branch_latch_issues = _reset_latching_module.emit_branch_latch_issues
+_literal_boolean = _reset_latching_module.literal_boolean
+_merge_boolean_parallel_branch_results = _reset_latching_module.merge_boolean_parallel_branch_results
+_record_boolean_assignment = _reset_latching_module.record_boolean_assignment
+_record_boolean_function_call = _reset_latching_module.record_boolean_function_call
+_record_boolean_write = _reset_latching_module.record_boolean_write
+_scan_seq_nodes_for_latching = _reset_latching_module.scan_seq_nodes_for_latching
+_scan_stmt_block_for_latching = _reset_latching_module.scan_stmt_block_for_latching
+_scan_stmt_for_latching = _reset_latching_module.scan_stmt_for_latching
 _classify_reset_condition = _reset_path_collection_module.classify_reset_condition
 _clone_with_reset_state = _reset_path_collection_module.clone_with_reset_state
 _collect_assignment_paths = _reset_path_collection_module.collect_assignment_paths
@@ -68,28 +84,11 @@ _varref_casefold = _reset_path_collection_module.varref_casefold
 type _StmtBranch = tuple[Any, list[Any]]
 type _IfTuple = tuple[str, list[_StmtBranch] | None, list[Any] | None]
 type _AssignTuple = tuple[str, Any, Any]
-type _FunctionCallTuple = tuple[str, str, list[Any] | None]
-
-
-def _new_boolean_write_map() -> dict[WriteKey, tuple[Variable, str]]:
-    return {}
 
 
 def _children_of(obj: Any) -> list[Any] | None:
     children = getattr(obj, "children", None)
     return cast(list[Any], children) if isinstance(children, list) else None
-
-
-@dataclass
-class _BooleanPathState:
-    true_writes: dict[WriteKey, tuple[Variable, str]] = field(default_factory=_new_boolean_write_map)
-    false_writes: dict[WriteKey, tuple[Variable, str]] = field(default_factory=_new_boolean_write_map)
-
-    def clone(self) -> _BooleanPathState:
-        return _BooleanPathState(
-            true_writes=dict(self.true_writes),
-            false_writes=dict(self.false_writes),
-        )
 
 
 def detect_reset_contamination(
@@ -275,38 +274,6 @@ def _check_for_modulecode(
             )
 
 
-def _check_for_modulecode_latching(
-    modulecode: ModuleCode,
-    env: dict[str, Variable],
-    path: list[str],
-    issues: list[VariableIssue],
-) -> None:
-    seen: set[tuple[tuple[str, ...], str, str]] = set()
-
-    for eq in modulecode.equations or []:
-        eq_name = getattr(eq, "name", "<unnamed>")
-        _scan_stmt_block_for_latching(
-            eq.code or [],
-            env,
-            path,
-            issues,
-            seen,
-            site=f"EQ:{eq_name}",
-        )
-
-    for seq in modulecode.sequences or []:
-        seq_name = getattr(seq, "name", "<unnamed>")
-        _scan_seq_nodes_for_latching(
-            seq.code or [],
-            env,
-            path,
-            issues,
-            seen,
-            site=f"SEQ:{seq_name}",
-            sequence_name=seq_name,
-        )
-
-
 def _collect_var_refs(modulecode: ModuleCode) -> set[str]:
     refs: set[str] = set()
 
@@ -359,495 +326,6 @@ def _collect_var_refs(modulecode: ModuleCode) -> set[str]:
             visit(stmt)
 
     return refs
-
-
-def _scan_stmt_block_for_latching(
-    stmts: list[Any],
-    env: dict[str, Variable],
-    path: list[str],
-    issues: list[VariableIssue],
-    seen: set[tuple[tuple[str, ...], str, str]],
-    *,
-    site: str,
-    sequence_name: str | None = None,
-) -> None:
-    for stmt in stmts:
-        _scan_stmt_for_latching(
-            stmt,
-            env,
-            path,
-            issues,
-            seen,
-            site=site,
-            sequence_name=sequence_name,
-        )
-
-
-def _scan_stmt_for_latching(
-    obj: Any,
-    env: dict[str, Variable],
-    path: list[str],
-    issues: list[VariableIssue],
-    seen: set[tuple[tuple[str, ...], str, str]],
-    *,
-    site: str,
-    sequence_name: str | None = None,
-) -> None:
-    if obj is None:
-        return
-    if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
-        for child in _children_of(obj) or []:
-            _scan_stmt_for_latching(
-                child,
-                env,
-                path,
-                issues,
-                seen,
-                site=site,
-                sequence_name=sequence_name,
-            )
-        return
-    if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
-        _, branches, else_block = cast(_IfTuple, obj)
-        branch_states: list[tuple[str, list[_BooleanPathState]]] = []
-        for index, (_cond, branch_stmts) in enumerate(branches or []):
-            label = "IF" if index == 0 else f"ELSIF:{index}"
-            states = _collect_boolean_stmt_block_paths(
-                branch_stmts or [],
-                env,
-                [_BooleanPathState()],
-            )
-            branch_states.append((label, states or [_BooleanPathState()]))
-            _scan_stmt_block_for_latching(
-                branch_stmts or [],
-                env,
-                path,
-                issues,
-                seen,
-                site=f"{site} > {label}",
-                sequence_name=sequence_name,
-            )
-        else_states = (
-            _collect_boolean_stmt_block_paths(else_block or [], env, [_BooleanPathState()])
-            if else_block
-            else [_BooleanPathState()]
-        )
-        if else_block:
-            _scan_stmt_block_for_latching(
-                else_block or [],
-                env,
-                path,
-                issues,
-                seen,
-                site=f"{site} > ELSE",
-                sequence_name=sequence_name,
-            )
-
-        for label, states in branch_states:
-            alternative_states = [
-                alt_state
-                for other_label, other_states in branch_states
-                if other_label != label
-                for alt_state in other_states
-            ]
-            alternative_states.extend(else_states)
-            _emit_branch_latch_issues(
-                states,
-                alternative_states or [_BooleanPathState()],
-                path,
-                issues,
-                seen,
-                site=f"{site} > {label}",
-                role_prefix="implicit latch across alternative paths",
-                sequence_name=sequence_name,
-            )
-        return
-    if isinstance(obj, list):
-        for item in cast(list[Any], obj):
-            _scan_stmt_for_latching(
-                item,
-                env,
-                path,
-                issues,
-                seen,
-                site=site,
-                sequence_name=sequence_name,
-            )
-        return
-    children = _children_of(obj)
-    if children is not None:
-        for child in children:
-            _scan_stmt_for_latching(
-                child,
-                env,
-                path,
-                issues,
-                seen,
-                site=site,
-                sequence_name=sequence_name,
-            )
-
-
-def _scan_seq_nodes_for_latching(
-    nodes: list[Any],
-    env: dict[str, Variable],
-    path: list[str],
-    issues: list[VariableIssue],
-    seen: set[tuple[tuple[str, ...], str, str]],
-    *,
-    site: str,
-    sequence_name: str | None = None,
-) -> None:
-    for node in nodes:
-        if isinstance(node, SFCStep):
-            step_site = f"{site} > STEP:{node.name}"
-            entry_states = _collect_boolean_stmt_block_paths(
-                node.code.enter or [],
-                env,
-                [_BooleanPathState()],
-            )
-            active_states = _collect_boolean_stmt_block_paths(
-                node.code.active or [],
-                env,
-                entry_states or [_BooleanPathState()],
-            )
-            exit_states = _collect_boolean_stmt_block_paths(
-                node.code.exit or [],
-                env,
-                [_BooleanPathState()],
-            )
-            _emit_branch_latch_issues(
-                active_states or [_BooleanPathState()],
-                exit_states or [_BooleanPathState()],
-                path,
-                issues,
-                seen,
-                site=step_site,
-                role_prefix="implicit latch across step exit",
-                sequence_name=sequence_name,
-            )
-            _scan_stmt_block_for_latching(
-                node.code.enter or [],
-                env,
-                path,
-                issues,
-                seen,
-                site=f"{step_site}:ENTER",
-                sequence_name=sequence_name,
-            )
-            _scan_stmt_block_for_latching(
-                node.code.active or [],
-                env,
-                path,
-                issues,
-                seen,
-                site=f"{step_site}:ACTIVE",
-                sequence_name=sequence_name,
-            )
-            _scan_stmt_block_for_latching(
-                node.code.exit or [],
-                env,
-                path,
-                issues,
-                seen,
-                site=f"{step_site}:EXIT",
-                sequence_name=sequence_name,
-            )
-            continue
-        if isinstance(node, SFCAlternative):
-            branch_states: list[tuple[str, list[_BooleanPathState]]] = []
-            for index, branch in enumerate(node.branches or []):
-                label = f"ALT:{index + 1}"
-                states = _collect_boolean_seq_block_paths(
-                    branch or [],
-                    env,
-                    [_BooleanPathState()],
-                )
-                branch_states.append((label, states or [_BooleanPathState()]))
-                _scan_seq_nodes_for_latching(
-                    branch or [],
-                    env,
-                    path,
-                    issues,
-                    seen,
-                    site=f"{site} > {label}",
-                    sequence_name=sequence_name,
-                )
-            for label, states in branch_states:
-                alternative_states = [
-                    alt_state
-                    for other_label, other_states in branch_states
-                    if other_label != label
-                    for alt_state in other_states
-                ]
-                _emit_branch_latch_issues(
-                    states,
-                    alternative_states or [_BooleanPathState()],
-                    path,
-                    issues,
-                    seen,
-                    site=f"{site} > {label}",
-                    role_prefix="implicit latch across SFC alternatives",
-                    sequence_name=sequence_name,
-                )
-            continue
-        if isinstance(node, SFCParallel):
-            for index, branch in enumerate(node.branches or []):
-                _scan_seq_nodes_for_latching(
-                    branch or [],
-                    env,
-                    path,
-                    issues,
-                    seen,
-                    site=f"{site} > PAR:{index + 1}",
-                    sequence_name=sequence_name,
-                )
-            continue
-        if isinstance(node, SFCSubsequence | SFCTransitionSub):
-            _scan_seq_nodes_for_latching(
-                node.body or [],
-                env,
-                path,
-                issues,
-                seen,
-                site=site,
-                sequence_name=sequence_name,
-            )
-
-
-def _emit_branch_latch_issues(
-    branch_states: list[_BooleanPathState],
-    alternative_states: list[_BooleanPathState],
-    path: list[str],
-    issues: list[VariableIssue],
-    seen: set[tuple[tuple[str, ...], str, str]],
-    *,
-    site: str,
-    role_prefix: str,
-    sequence_name: str | None,
-) -> None:
-    true_writes: WriteMap = {}
-    for state in branch_states:
-        true_writes.update(state.true_writes)
-
-    for key, (var, field_path) in sorted(true_writes.items(), key=lambda item: (item[0][0], item[0][1])):
-        if _all_boolean_paths_cover_false(alternative_states, key):
-            continue
-        issue_key = (tuple(path), key[0], site.casefold())
-        if issue_key in seen:
-            continue
-        seen.add(issue_key)
-        issues.append(
-            VariableIssue(
-                kind=IssueKind.IMPLICIT_LATCH,
-                module_path=path.copy(),
-                variable=var,
-                role=f"{role_prefix} at {site}",
-                field_path=field_path or None,
-                sequence_name=sequence_name,
-                site=site,
-            )
-        )
-
-
-def _all_boolean_paths_cover_false(states: list[_BooleanPathState], key: WriteKey) -> bool:
-    return bool(states) and all(_boolean_path_covers_false(state.false_writes, key) for state in states)
-
-
-def _boolean_path_covers_false(false_writes: WriteMap, key: WriteKey) -> bool:
-    var_key, _field_key = key
-    return key in false_writes or (var_key, "") in false_writes
-
-
-def _collect_boolean_stmt_block_paths(
-    stmts: list[Any],
-    env: dict[str, Variable],
-    states: list[_BooleanPathState],
-) -> list[_BooleanPathState]:
-    next_states = states
-    for stmt in stmts:
-        next_states = _collect_boolean_stmt_paths(stmt, env, next_states)
-    return next_states
-
-
-def _collect_boolean_stmt_paths(
-    obj: Any,
-    env: dict[str, Variable],
-    states: list[_BooleanPathState],
-) -> list[_BooleanPathState]:
-    if obj is None:
-        return states
-    if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
-        next_states = states
-        for child in _children_of(obj) or []:
-            next_states = _collect_boolean_stmt_paths(child, env, next_states)
-        return next_states
-
-    if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
-        _, branches, else_block = cast(_IfTuple, obj)
-        branch_states: list[_BooleanPathState] = []
-        for state in states:
-            for _cond, branch_stmts in branches or []:
-                branch_states.extend(
-                    _collect_boolean_stmt_block_paths(
-                        branch_stmts or [],
-                        env,
-                        [state.clone()],
-                    )
-                )
-            if else_block:
-                branch_states.extend(
-                    _collect_boolean_stmt_block_paths(
-                        else_block or [],
-                        env,
-                        [state.clone()],
-                    )
-                )
-            else:
-                branch_states.append(state.clone())
-        return branch_states or states
-
-    if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
-        _, target, expr = cast(_AssignTuple, obj)
-        assigned_states: list[_BooleanPathState] = []
-        for state in states:
-            next_state = state.clone()
-            _record_boolean_assignment(target, expr, env, next_state)
-            assigned_states.append(next_state)
-        return assigned_states or states
-
-    if isinstance(obj, tuple) and obj and obj[0] == const.KEY_FUNCTION_CALL:
-        _, fn_name, args = cast(_FunctionCallTuple, obj)
-        call_states: list[_BooleanPathState] = []
-        for state in states:
-            next_state = state.clone()
-            _record_boolean_function_call(fn_name, args or [], env, next_state)
-            call_states.append(next_state)
-        return call_states or states
-
-    if isinstance(obj, list):
-        next_states = states
-        for item in cast(list[Any], obj):
-            next_states = _collect_boolean_stmt_paths(item, env, next_states)
-        return next_states
-
-    children = _children_of(obj)
-    if children is not None:
-        next_states = states
-        for child in children:
-            next_states = _collect_boolean_stmt_paths(child, env, next_states)
-        return next_states
-
-    return states
-
-
-def _collect_boolean_seq_block_paths(
-    nodes: list[Any],
-    env: dict[str, Variable],
-    states: list[_BooleanPathState],
-) -> list[_BooleanPathState]:
-    next_states = states
-    for node in nodes:
-        next_states = _collect_boolean_seq_node_paths(node, env, next_states)
-    return next_states
-
-
-def _collect_boolean_seq_node_paths(
-    node: Any,
-    env: dict[str, Variable],
-    states: list[_BooleanPathState],
-) -> list[_BooleanPathState]:
-    if isinstance(node, SFCStep):
-        next_states = _collect_boolean_stmt_block_paths(node.code.enter or [], env, states)
-        next_states = _collect_boolean_stmt_block_paths(node.code.active or [], env, next_states)
-        return _collect_boolean_stmt_block_paths(node.code.exit or [], env, next_states)
-
-    if isinstance(node, SFCTransition):
-        return states
-
-    if isinstance(node, SFCAlternative):
-        if not node.branches:
-            return states
-        alternative_states: list[_BooleanPathState] = []
-        for state in states:
-            for branch in node.branches or []:
-                alternative_states.extend(
-                    _collect_boolean_seq_block_paths(
-                        branch or [],
-                        env,
-                        [state.clone()],
-                    )
-                )
-        return alternative_states or states
-
-    if isinstance(node, SFCParallel):
-        if not node.branches:
-            return states
-        parallel_states: list[_BooleanPathState] = []
-        for state in states:
-            branch_results = [
-                _collect_boolean_seq_block_paths(
-                    branch or [],
-                    env,
-                    [state.clone()],
-                )
-                for branch in node.branches or []
-            ]
-            parallel_states.extend(_merge_boolean_parallel_branch_results(branch_results))
-        return parallel_states or states
-
-    if isinstance(node, SFCSubsequence | SFCTransitionSub):
-        return _collect_boolean_seq_block_paths(node.body or [], env, states)
-
-    return states
-
-
-def _merge_boolean_parallel_branch_results(
-    branch_results: list[list[_BooleanPathState]],
-) -> list[_BooleanPathState]:
-    if not branch_results:
-        return []
-
-    merged_states: list[_BooleanPathState] = []
-    for combo in product(*branch_results):
-        merged = combo[0].clone()
-        for branch_state in combo[1:]:
-            merged.true_writes.update(branch_state.true_writes)
-            merged.false_writes.update(branch_state.false_writes)
-        merged_states.append(merged)
-    return merged_states
-
-
-def _record_boolean_assignment(
-    target: Any,
-    expr: Any,
-    env: dict[str, Variable],
-    state: _BooleanPathState,
-) -> None:
-    bool_value = _literal_boolean(expr)
-    if bool_value is None:
-        return
-    _record_boolean_write(target, env, state.true_writes if bool_value else state.false_writes)
-
-
-def _record_boolean_function_call(
-    fn_name: str,
-    args: list[Any],
-    env: dict[str, Variable],
-    state: _BooleanPathState,
-) -> None:
-    if fn_name.casefold() != "setbooleanvalue" or len(args) < 2:
-        return
-    bool_value = _literal_boolean(args[1])
-    if bool_value is None:
-        return
-    _record_boolean_write(args[0], env, state.true_writes if bool_value else state.false_writes)
-
-
-def _literal_boolean(expr: Any) -> bool | None:
-    if isinstance(expr, bool):
-        return expr
-    return None
 
 
 def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[str]:
@@ -927,18 +405,3 @@ def _collect_reset_old_vars(modulecode: ModuleCode, reset_ref_cf: str) -> set[st
             visit(stmt)
 
     return reset_old_vars
-
-
-def _record_boolean_write(target: Any, env: dict[str, Variable], out: WriteMap) -> None:
-    if not isinstance(target, dict) or const.KEY_VAR_NAME not in target:
-        return
-    full_ref = cast(dict[str, object], target).get(const.KEY_VAR_NAME)
-    if not isinstance(full_ref, str) or not full_ref:
-        return
-    base, field_path = _split_var_ref(full_ref)
-    if not base or field_path:
-        return
-    var = env.get(base.casefold())
-    if var is None or var.datatype_text.casefold() != "boolean":
-        return
-    out[(var.name.casefold(), "")] = (var, "")

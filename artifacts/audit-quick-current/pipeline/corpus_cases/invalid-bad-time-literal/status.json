@@ -1,0 +1,14 @@
+{
+  "case_id": "invalid-bad-time-literal",
+  "execution_status": "ok",
+  "finding_count": 1,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_status",
+  "mode": "strict",
+  "stage": "validation",
+  "target_file": "tests/fixtures/corpus/invalid/BadTimeLiteral.s",
+  "validation_ok": false
+}

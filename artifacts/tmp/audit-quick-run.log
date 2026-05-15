@@ -1,0 +1,254 @@
+[1/4] Repository audit: Run shared pipeline
+[1/11] Pipeline: Collect environment
+    completed Collect environment in 0.028s
+[2/11] Pipeline: Run Ruff
+    completed Run Ruff in 0.029s (0 findings)
+[3/11] Pipeline: Run pyright
+    completed Run pyright in 36.517s (7 errors, 0 warnings)
+[4/11] Pipeline: Run pytest
+    completed Run pytest in 9.745s (254 tests, 0 failures, 0 errors)
+    skipped Run Vulture (skipped by profile)
+    skipped Run Bandit (skipped by profile)
+    skipped Collect structural reports (skipped by profile)
+    skipped Collect trace report (skipped by profile)
+[9/11] Pipeline: Run corpus suite
+Parser parse failure (line 13, column 1): Unexpected token Token('$END', '') at line 13, column 1.. Expected one of: ALTERNATIVEBRANCH, ALTERNATIVESEQ, AND, CLIPPINGBOUNDS, COLON, COMMA, DIVIDE, DOT, ELSE, ELSIF, ENABLE_PREFIX, ENDALTERNATIVE
+ENDDEF
+^
+Traceback (most recent call last):
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser_state.py", line 77, in feed_token
+    action, arg = states[state][token.type]
+                  ~~~~~~~~~~~~~^^^^^^^^^^^^
+KeyError: '$END'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/sqhj/projects/SattLint/src/sattline_parser/api.py", line 243, in parse_source_text
+    tree = cast(Any, active_parser).parse(cleaned)
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/lark.py", line 677, in parse
+    return self.parser.parse(text, start=start, on_error=on_error)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parser_frontends.py", line 131, in parse
+    return self.parser.parse(stream, chosen_start, **kw)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 42, in parse
+    return self.parser.parse(lexer, start)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 88, in parse
+    return self.parse_from_state(parser_state)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 111, in parse_from_state
+    raise e
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 105, in parse_from_state
+    return state.feed_token(end_token, True)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser_state.py", line 80, in feed_token
+    raise UnexpectedToken(token, expected, state=self, interactive_parser=None)
+lark.exceptions.UnexpectedToken: Unexpected token Token('$END', '') at line 13, column 1.
+Expected one of:
+	* LE
+	* NE
+	* PLUS
+	* DOT
+	* OR
+	* GT
+	* GE
+	* MULTIPLY
+	* LPAR
+	* EQ
+	* MINUS
+	* STATE_SUFFIX
+	* AND
+	* LT
+	* SEMICOLON
+	* DIVIDE
+
+Parser parse failure (line 1, column 1): Unexpected token Token('NAME', 'This') at line 1, column 1.. Expected one of: STRING
+This is not valid SattLine.
+^
+Traceback (most recent call last):
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/lexer.py", line 689, in lex
+    yield lexer.next_token(lexer_state, parser_state)
+          ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/lexer.py", line 622, in next_token
+    raise UnexpectedCharacters(lex_state.text.text, line_ctr.char_pos, line_ctr.line, line_ctr.column,
+                               allowed=allowed, token_history=lex_state.last_token and [lex_state.last_token],
+                               state=parser_state, terminals_by_name=self.terminals_by_name)
+lark.exceptions.UnexpectedCharacters: No terminal matches 'T' in the current parser context, at line 1 col 1
+
+This is not valid SattLine.
+^
+Expected one of:
+	* STRING
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/sqhj/projects/SattLint/src/sattline_parser/api.py", line 243, in parse_source_text
+    tree = cast(Any, active_parser).parse(cleaned)
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/lark.py", line 677, in parse
+    return self.parser.parse(text, start=start, on_error=on_error)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parser_frontends.py", line 131, in parse
+    return self.parser.parse(stream, chosen_start, **kw)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 42, in parse
+    return self.parser.parse(lexer, start)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 88, in parse
+    return self.parse_from_state(parser_state)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 111, in parse_from_state
+    raise e
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 100, in parse_from_state
+    for token in state.lexer.lex(state):
+                 ~~~~~~~~~~~~~~~^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/lexer.py", line 698, in lex
+    raise UnexpectedToken(token, e.allowed, state=parser_state, token_history=[last_token], terminals_by_name=self.root_lexer.terminals_by_name)
+lark.exceptions.UnexpectedToken: Unexpected token Token('NAME', 'This') at line 1, column 1.
+Expected one of:
+	* STRING
+Previous tokens: [None]
+
+Parser parse failure (line 1, column 1): Unexpected token Token('NAME', 'BasePicture') at line 1, column 1.. Expected one of: STRING
+BasePicture Invocation (0.0,0.0,0.0,1.0,
+^
+Traceback (most recent call last):
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/lexer.py", line 689, in lex
+    yield lexer.next_token(lexer_state, parser_state)
+          ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/lexer.py", line 622, in next_token
+    raise UnexpectedCharacters(lex_state.text.text, line_ctr.char_pos, line_ctr.line, line_ctr.column,
+                               allowed=allowed, token_history=lex_state.last_token and [lex_state.last_token],
+                               state=parser_state, terminals_by_name=self.terminals_by_name)
+lark.exceptions.UnexpectedCharacters: No terminal matches 'B' in the current parser context, at line 1 col 1
+
+BasePicture Invocation (0.0,0.0,0.0,1.0,
+^
+Expected one of:
+	* STRING
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/sqhj/projects/SattLint/src/sattline_parser/api.py", line 243, in parse_source_text
+    tree = cast(Any, active_parser).parse(cleaned)
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/lark.py", line 677, in parse
+    return self.parser.parse(text, start=start, on_error=on_error)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parser_frontends.py", line 131, in parse
+    return self.parser.parse(stream, chosen_start, **kw)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 42, in parse
+    return self.parser.parse(lexer, start)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 88, in parse
+    return self.parse_from_state(parser_state)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 111, in parse_from_state
+    raise e
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 100, in parse_from_state
+    for token in state.lexer.lex(state):
+                 ~~~~~~~~~~~~~~~^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/lexer.py", line 698, in lex
+    raise UnexpectedToken(token, e.allowed, state=parser_state, token_history=[last_token], terminals_by_name=self.root_lexer.terminals_by_name)
+lark.exceptions.UnexpectedToken: Unexpected token Token('NAME', 'BasePicture') at line 1, column 1.
+Expected one of:
+	* STRING
+Previous tokens: [None]
+
+Parser parse failure (line 50, column 13): Unexpected token Token('NAME', 'Real_Value') at line 50, column 13.. Expected one of: CONNECTIONNODE, FORMAT_STRING_, LEFTALIGNED, RIGHTALIGNED, STRING, STRING_CRLF, STRING_NOTAIL, VALUEFRACTION, VARNAME, WIDTH_KEY
+            Real_Value
+            ^
+Traceback (most recent call last):
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser_state.py", line 77, in feed_token
+    action, arg = states[state][token.type]
+                  ~~~~~~~~~~~~~^^^^^^^^^^^^
+KeyError: 'NAME'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/sqhj/projects/SattLint/src/sattline_parser/api.py", line 243, in parse_source_text
+    tree = cast(Any, active_parser).parse(cleaned)
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/lark.py", line 677, in parse
+    return self.parser.parse(text, start=start, on_error=on_error)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parser_frontends.py", line 131, in parse
+    return self.parser.parse(stream, chosen_start, **kw)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 42, in parse
+    return self.parser.parse(lexer, start)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 88, in parse
+    return self.parse_from_state(parser_state)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 111, in parse_from_state
+    raise e
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser.py", line 102, in parse_from_state
+    state.feed_token(token)
+    ~~~~~~~~~~~~~~~~^^^^^^^
+  File "/home/sqhj/projects/SattLint/.venv/lib/python3.14/site-packages/lark/parsers/lalr_parser_state.py", line 80, in feed_token
+    raise UnexpectedToken(token, expected, state=self, interactive_parser=None)
+lark.exceptions.UnexpectedToken: Unexpected token Token('NAME', 'Real_Value') at line 50, column 13.
+Expected one of:
+	* VARNAME
+	* FORMAT_STRING_
+	* VALUEFRACTION
+	* LEFTALIGNED
+	* STRING_CRLF
+	* STRING_NOTAIL
+	* CONNECTIONNODE
+	* WIDTH_KEY
+	* RIGHTALIGNED
+	* STRING
+
+    completed Run corpus suite in 1.737s (53 cases, 0 failed)
+[10/11] Pipeline: Normalize findings
+    completed Normalize findings in 0.001s (7 normalized findings)
+[11/11] Pipeline: Write artifacts
+    completed Write artifacts in 0.006s
+    completed Run shared pipeline in 48.183s (7 pipeline findings)
+[2/4] Repository audit: Run repository-specific checks
+    completed Run repository-specific checks in 19.442s (6 custom findings)
+[3/4] Repository audit: Merge and normalize findings
+    completed Merge and normalize findings in 0.001s (13 total findings)
+[4/4] Repository audit: Write audit reports
+    completed Write audit reports in 0.110s
+Audit profile: quick
+Overall status: fail
+Findings schema: sattlint.findings v1
+Findings: 13 total, 7 blocking at fail-on high
+Status report: artifacts/audit-quick-current/status.json
+Summary report: artifacts/audit-quick-current/summary.json
+Latest status report: artifacts/audit/status.json
+Latest summary report: artifacts/audit/summary.json
+Detailed findings:
+- HIGH typing pyright-error-reportCallIssue [src/sattlint/_app_graphics_menus.py:492]: No parameter named "dirty"
+- HIGH typing pyright-error-reportArgumentType [src/sattlint/app_graphics.py:377]: Argument of type "(path: Path, rules: dict[str, Any], *, dirty: bool) -> None" cannot be assigned to parameter "print_graphics_rules_summary_fn" of type "(Path, dict[str, Any]) -> None" in function "graphics_rules_menu"
+  Type "(path: Path, rules: dict[str, Any], *, dirty: bool) -> None" is not assignable to type "(Path, dict[str, Any]) -> None"
+    Extra parameter "dirty"
+- HIGH typing pyright-error-reportAttributeAccessIssue [tests/_analyzers_suites_test_support.py:48]: "AstDiffDetail" is unknown import symbol
+- HIGH typing pyright-error-reportAttributeAccessIssue [tests/_analyzers_suites_test_support.py:53]: "_build_upgrade_notes" is unknown import symbol
+- HIGH typing pyright-error-reportAttributeAccessIssue [tests/_analyzers_suites_test_support.py:54]: "_collect_named_item_diffs" is unknown import symbol
+- HIGH typing pyright-error-reportAttributeAccessIssue [tests/_analyzers_suites_test_support.py:57]: "_diff_normalized_variants" is unknown import symbol
+- HIGH typing pyright-error-reportAttributeAccessIssue [tests/_analyzers_suites_test_support.py:59]: "_normalize_ast_value" is unknown import symbol
+- MEDIUM architecture structural-budget-ratchet-regression: Structural debt regressed beyond the checked-in ratchet baseline.
+  detail: source_file_over_budget_count: 3 > 0
+- MEDIUM logging-observability unexpected-print [src/sattlint/_config_self_check.py]: Library module uses print() instead of structured logging or return values.
+  suggestion: Keep prints in CLI entry points; use logging or reports in library code.
+- MEDIUM maintenance stale-generated-output-manifest [artifacts/ai-chat-fixture]: Generated output drifted from its source-digest manifest.
+  detail: Generated output drifted from its source-digest manifest (changed sources: src/sattlint/devtools/ai_chat_observability.py).
+  suggestion: Run sattlint-repo-audit --apply-ai-gc to delete safe stale artifacts.
+- MEDIUM maintenance stale-generated-output-manifest [artifacts/audit]: Generated output drifted from its source-digest manifest.
+  detail: Generated output drifted from its source-digest manifest (changed sources: src/sattlint/devtools/pipeline.py).
+  suggestion: Run sattlint-repo-audit --apply-ai-gc to delete safe stale artifacts.
+- MEDIUM maintenance stale-generated-output-manifest [artifacts/audit-ai-gc-recheck]: Generated output drifted from its source-digest manifest.
+  detail: Generated output drifted from its source-digest manifest (changed sources: src/sattlint/devtools/repo_audit_entrypoints.py).
+  suggestion: Run sattlint-repo-audit --apply-ai-gc to delete safe stale artifacts.
+- MEDIUM maintenance stale-generated-output-manifest [artifacts/audit-full-current]: Generated output drifted from its source-digest manifest.
+  detail: Generated output drifted from its source-digest manifest (changed sources: src/sattlint/devtools/pipeline.py).
+  suggestion: Run sattlint-repo-audit --apply-ai-gc to delete safe stale artifacts.

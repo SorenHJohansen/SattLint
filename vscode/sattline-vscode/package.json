@@ -102,6 +102,12 @@
           "default": "off",
           "description": "Whether the language server should keep workspace-wide semantic diagnostics warm in the background after startup and save operations. Disable to reduce memory use in large workspaces."
         },
+        "sattlineLsp.maxCachedEntrySnapshots": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Maximum number of entry-root workspace snapshots retained in memory. Lower this to cap RAM use in large multi-program workspaces."
+        },
         "sattlineLsp.maxCompletionItems": {
           "type": "number",
           "default": 100,

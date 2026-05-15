@@ -233,8 +233,21 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         )
 
         self.typedef_index: dict[str, list[ModuleTypeDef]] = {}
+        self._used_dependency_libraries: set[str] = set()
+        self._dependency_library_display_names: dict[str, str] = {}
+        root_origin_lib = getattr(self.bp, "origin_lib", None)
+        if root_origin_lib:
+            self._dependency_library_display_names[root_origin_lib.casefold()] = root_origin_lib
         for moduletype in self.bp.moduletype_defs or []:
             self.typedef_index.setdefault(moduletype.name.lower(), []).append(moduletype)
+            if moduletype.origin_lib:
+                self._dependency_library_display_names.setdefault(
+                    moduletype.origin_lib.casefold(), moduletype.origin_lib
+                )
+        for datatype in self.bp.datatype_defs or []:
+            origin_lib = getattr(datatype, "origin_lib", None)
+            if origin_lib:
+                self._dependency_library_display_names.setdefault(origin_lib.casefold(), origin_lib)
         self.used_params_by_typedef: dict[str, set[str]] = {}
         self.param_reads_by_typedef: dict[str, set[str]] = {}
         self.param_writes_by_typedef: dict[str, set[str]] = {}

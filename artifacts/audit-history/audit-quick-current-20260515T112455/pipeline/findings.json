@@ -1,0 +1,224 @@
+{
+  "finding_count": 7,
+  "findings": [
+    {
+      "analyzer": "pyright",
+      "artifact": "findings",
+      "category": "typing",
+      "confidence": "high",
+      "data": {
+        "code": "reportCallIssue",
+        "rule": "reportCallIssue",
+        "severity": "error"
+      },
+      "detail": null,
+      "file": "src/sattlint/_app_graphics_menus.py",
+      "fingerprint": "pyright.reportCallIssue|src/sattlint/_app_graphics_menus.py|492||No parameter named \"dirty\"",
+      "id": "pyright-error-reportCallIssue",
+      "line": 492,
+      "location": {
+        "column": 59,
+        "line": 492,
+        "module_path": [],
+        "path": "src/sattlint/_app_graphics_menus.py",
+        "symbol": null
+      },
+      "message": "No parameter named \"dirty\"",
+      "minimal_reproducer": "pyright src/sattlint/_app_graphics_menus.py",
+      "owner_surface": "python-types",
+      "rule_id": "pyright.reportCallIssue",
+      "severity": "high",
+      "source": "pyright",
+      "suggested_next_command": "pyright src/sattlint/_app_graphics_menus.py",
+      "suggestion": null
+    },
+    {
+      "analyzer": "pyright",
+      "artifact": "findings",
+      "category": "typing",
+      "confidence": "high",
+      "data": {
+        "code": "reportArgumentType",
+        "rule": "reportArgumentType",
+        "severity": "error"
+      },
+      "detail": null,
+      "file": "src/sattlint/app_graphics.py",
+      "fingerprint": "pyright.reportArgumentType|src/sattlint/app_graphics.py|377||Argument of type \"(path: Path, rules: dict[str, Any], *, dirty: bool) -> None\" cannot be assigned to parameter \"print_graphics_rules_summary_fn\" of type \"(Path, dict[str, Any]) -> None\" in function \"graphics_rules_menu\"\n\u00a0\u00a0Type \"(path: Path, rules: dict[str, Any], *, dirty: bool) -> None\" is not assignable to type \"(Path, dict[str, Any]) -> None\"\n\u00a0\u00a0\u00a0\u00a0Extra parameter \"dirty\"",
+      "id": "pyright-error-reportArgumentType",
+      "line": 377,
+      "location": {
+        "column": 40,
+        "line": 377,
+        "module_path": [],
+        "path": "src/sattlint/app_graphics.py",
+        "symbol": null
+      },
+      "message": "Argument of type \"(path: Path, rules: dict[str, Any], *, dirty: bool) -> None\" cannot be assigned to parameter \"print_graphics_rules_summary_fn\" of type \"(Path, dict[str, Any]) -> None\" in function \"graphics_rules_menu\"\n\u00a0\u00a0Type \"(path: Path, rules: dict[str, Any], *, dirty: bool) -> None\" is not assignable to type \"(Path, dict[str, Any]) -> None\"\n\u00a0\u00a0\u00a0\u00a0Extra parameter \"dirty\"",
+      "minimal_reproducer": "pyright src/sattlint/app_graphics.py",
+      "owner_surface": "python-types",
+      "rule_id": "pyright.reportArgumentType",
+      "severity": "high",
+      "source": "pyright",
+      "suggested_next_command": "pyright src/sattlint/app_graphics.py",
+      "suggestion": null
+    },
+    {
+      "analyzer": "pyright",
+      "artifact": "findings",
+      "category": "typing",
+      "confidence": "high",
+      "data": {
+        "code": "reportAttributeAccessIssue",
+        "rule": "reportAttributeAccessIssue",
+        "severity": "error"
+      },
+      "detail": null,
+      "file": "tests/_analyzers_suites_test_support.py",
+      "fingerprint": "pyright.reportAttributeAccessIssue|tests/_analyzers_suites_test_support.py|48||\"AstDiffDetail\" is unknown import symbol",
+      "id": "pyright-error-reportAttributeAccessIssue",
+      "line": 48,
+      "location": {
+        "column": 4,
+        "line": 48,
+        "module_path": [],
+        "path": "tests/_analyzers_suites_test_support.py",
+        "symbol": null
+      },
+      "message": "\"AstDiffDetail\" is unknown import symbol",
+      "minimal_reproducer": "pyright tests/_analyzers_suites_test_support.py",
+      "owner_surface": "python-types",
+      "rule_id": "pyright.reportAttributeAccessIssue",
+      "severity": "high",
+      "source": "pyright",
+      "suggested_next_command": "pyright tests/_analyzers_suites_test_support.py",
+      "suggestion": null
+    },
+    {
+      "analyzer": "pyright",
+      "artifact": "findings",
+      "category": "typing",
+      "confidence": "high",
+      "data": {
+        "code": "reportAttributeAccessIssue",
+        "rule": "reportAttributeAccessIssue",
+        "severity": "error"
+      },
+      "detail": null,
+      "file": "tests/_analyzers_suites_test_support.py",
+      "fingerprint": "pyright.reportAttributeAccessIssue|tests/_analyzers_suites_test_support.py|53||\"_build_upgrade_notes\" is unknown import symbol",
+      "id": "pyright-error-reportAttributeAccessIssue",
+      "line": 53,
+      "location": {
+        "column": 4,
+        "line": 53,
+        "module_path": [],
+        "path": "tests/_analyzers_suites_test_support.py",
+        "symbol": null
+      },
+      "message": "\"_build_upgrade_notes\" is unknown import symbol",
+      "minimal_reproducer": "pyright tests/_analyzers_suites_test_support.py",
+      "owner_surface": "python-types",
+      "rule_id": "pyright.reportAttributeAccessIssue",
+      "severity": "high",
+      "source": "pyright",
+      "suggested_next_command": "pyright tests/_analyzers_suites_test_support.py",
+      "suggestion": null
+    },
+    {
+      "analyzer": "pyright",
+      "artifact": "findings",
+      "category": "typing",
+      "confidence": "high",
+      "data": {
+        "code": "reportAttributeAccessIssue",
+        "rule": "reportAttributeAccessIssue",
+        "severity": "error"
+      },
+      "detail": null,
+      "file": "tests/_analyzers_suites_test_support.py",
+      "fingerprint": "pyright.reportAttributeAccessIssue|tests/_analyzers_suites_test_support.py|54||\"_collect_named_item_diffs\" is unknown import symbol",
+      "id": "pyright-error-reportAttributeAccessIssue",
+      "line": 54,
+      "location": {
+        "column": 4,
+        "line": 54,
+        "module_path": [],
+        "path": "tests/_analyzers_suites_test_support.py",
+        "symbol": null
+      },
+      "message": "\"_collect_named_item_diffs\" is unknown import symbol",
+      "minimal_reproducer": "pyright tests/_analyzers_suites_test_support.py",
+      "owner_surface": "python-types",
+      "rule_id": "pyright.reportAttributeAccessIssue",
+      "severity": "high",
+      "source": "pyright",
+      "suggested_next_command": "pyright tests/_analyzers_suites_test_support.py",
+      "suggestion": null
+    },
+    {
+      "analyzer": "pyright",
+      "artifact": "findings",
+      "category": "typing",
+      "confidence": "high",
+      "data": {
+        "code": "reportAttributeAccessIssue",
+        "rule": "reportAttributeAccessIssue",
+        "severity": "error"
+      },
+      "detail": null,
+      "file": "tests/_analyzers_suites_test_support.py",
+      "fingerprint": "pyright.reportAttributeAccessIssue|tests/_analyzers_suites_test_support.py|57||\"_diff_normalized_variants\" is unknown import symbol",
+      "id": "pyright-error-reportAttributeAccessIssue",
+      "line": 57,
+      "location": {
+        "column": 4,
+        "line": 57,
+        "module_path": [],
+        "path": "tests/_analyzers_suites_test_support.py",
+        "symbol": null
+      },
+      "message": "\"_diff_normalized_variants\" is unknown import symbol",
+      "minimal_reproducer": "pyright tests/_analyzers_suites_test_support.py",
+      "owner_surface": "python-types",
+      "rule_id": "pyright.reportAttributeAccessIssue",
+      "severity": "high",
+      "source": "pyright",
+      "suggested_next_command": "pyright tests/_analyzers_suites_test_support.py",
+      "suggestion": null
+    },
+    {
+      "analyzer": "pyright",
+      "artifact": "findings",
+      "category": "typing",
+      "confidence": "high",
+      "data": {
+        "code": "reportAttributeAccessIssue",
+        "rule": "reportAttributeAccessIssue",
+        "severity": "error"
+      },
+      "detail": null,
+      "file": "tests/_analyzers_suites_test_support.py",
+      "fingerprint": "pyright.reportAttributeAccessIssue|tests/_analyzers_suites_test_support.py|59||\"_normalize_ast_value\" is unknown import symbol",
+      "id": "pyright-error-reportAttributeAccessIssue",
+      "line": 59,
+      "location": {
+        "column": 4,
+        "line": 59,
+        "module_path": [],
+        "path": "tests/_analyzers_suites_test_support.py",
+        "symbol": null
+      },
+      "message": "\"_normalize_ast_value\" is unknown import symbol",
+      "minimal_reproducer": "pyright tests/_analyzers_suites_test_support.py",
+      "owner_surface": "python-types",
+      "rule_id": "pyright.reportAttributeAccessIssue",
+      "severity": "high",
+      "source": "pyright",
+      "suggested_next_command": "pyright tests/_analyzers_suites_test_support.py",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

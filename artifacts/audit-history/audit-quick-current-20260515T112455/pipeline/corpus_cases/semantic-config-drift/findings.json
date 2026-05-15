@@ -1,0 +1,169 @@
+{
+  "finding_count": 4,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "moduleparameter",
+        "source_kind": "unused",
+        "variable": "Timeout"
+      },
+      "detail": "Declared variables that are never read or written.",
+      "file": "tests/fixtures/corpus/semantic/ConfigDrift.s",
+      "fingerprint": "semantic.unused-variable|tests/fixtures/corpus/semantic/ConfigDrift.s|||Variable 'Timeout' is never used.",
+      "id": "semantic.unused-variable",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture",
+          "ValveA"
+        ],
+        "path": "tests/fixtures/corpus/semantic/ConfigDrift.s",
+        "symbol": null
+      },
+      "message": "Variable 'Timeout' is never used.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unused-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "moduleparameter",
+        "source_kind": "unused",
+        "variable": "Timeout"
+      },
+      "detail": "Declared variables that are never read or written.",
+      "file": "tests/fixtures/corpus/semantic/ConfigDrift.s",
+      "fingerprint": "semantic.unused-variable|tests/fixtures/corpus/semantic/ConfigDrift.s|||Variable 'Timeout' is never used.",
+      "id": "semantic.unused-variable",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture",
+          "ValveB"
+        ],
+        "path": "tests/fixtures/corpus/semantic/ConfigDrift.s",
+        "symbol": null
+      },
+      "message": "Variable 'Timeout' is never used.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unused-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "moduleparameter",
+        "source_kind": "unused",
+        "variable": "Timeout"
+      },
+      "detail": "Declared variables that are never read or written.",
+      "file": "tests/fixtures/corpus/semantic/ConfigDrift.s",
+      "fingerprint": "semantic.unused-variable|tests/fixtures/corpus/semantic/ConfigDrift.s|||Variable 'Timeout' is never used.",
+      "id": "semantic.unused-variable",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture",
+          "TypeDef:DoseValve"
+        ],
+        "path": "tests/fixtures/corpus/semantic/ConfigDrift.s",
+        "symbol": null
+      },
+      "message": "Variable 'Timeout' is never used.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unused-variable",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "interface-contracts",
+      "confidence": "high",
+      "data": {
+        "applies_to": "module-instance-group",
+        "drifting_parameters": [
+          "Timeout"
+        ],
+        "instances": [
+          {
+            "parameters": {
+              "Timeout": "10"
+            },
+            "path": [
+              "BasePicture",
+              "ValveA"
+            ]
+          },
+          {
+            "parameters": {
+              "Timeout": "15"
+            },
+            "path": [
+              "BasePicture",
+              "ValveB"
+            ]
+          }
+        ],
+        "moduletype": "semantic:DoseValve (ConfigDrift.s)",
+        "source_kind": "config_drift.instance_configuration"
+      },
+      "detail": "Instances of the same moduletype should not drift on mapped configuration parameter values without intent.",
+      "file": "tests/fixtures/corpus/semantic/ConfigDrift.s",
+      "fingerprint": "semantic.instance-configuration-drift|tests/fixtures/corpus/semantic/ConfigDrift.s|||Module type 'semantic:DoseValve (ConfigDrift.s)' has drifting instance configuration for Timeout: BasePicture.ValveA(Timeout=10), BasePicture.ValveB(Timeout=15).",
+      "id": "semantic.instance-configuration-drift",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture",
+          "ValveA"
+        ],
+        "path": "tests/fixtures/corpus/semantic/ConfigDrift.s",
+        "symbol": null
+      },
+      "message": "Module type 'semantic:DoseValve (ConfigDrift.s)' has drifting instance configuration for Timeout: BasePicture.ValveA(Timeout=10), BasePicture.ValveB(Timeout=15).",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.instance-configuration-drift",
+      "severity": "medium",
+      "source": "config_drift",
+      "suggested_next_command": null,
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

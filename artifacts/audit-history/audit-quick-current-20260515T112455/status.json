@@ -1,0 +1,71 @@
+{
+  "blocking_finding_count": 12,
+  "canonical_command": "sattlint-repo-audit --profile quick --fail-on high --output-dir artifacts/audit-quick-current.tmp-pu4r5_2f",
+  "category_counts": {
+    "architecture": 1,
+    "harness-freshness": 5,
+    "logging-observability": 1,
+    "maintenance": 4,
+    "typing": 7
+  },
+  "fail_on": "high",
+  "finding_count": 18,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "generated_by": "sattlint.devtools.repo_audit",
+  "kind": "sattlint.repo_audit.status",
+  "latest_status_report": "artifacts/audit/status.json",
+  "latest_summary_report": "artifacts/audit/summary.json",
+  "max_severity": "high",
+  "overall_status": "fail",
+  "pipeline_status_report": "artifacts/audit-quick-current.tmp-pu4r5_2f/pipeline/status.json",
+  "profile": "quick",
+  "progress_report": "artifacts/audit-quick-current.tmp-pu4r5_2f/progress.json",
+  "severity_counts": {
+    "critical": 0,
+    "high": 12,
+    "low": 0,
+    "medium": 6
+  },
+  "status_report": "artifacts/audit-quick-current.tmp-pu4r5_2f/status.json",
+  "summary_report": "artifacts/audit-quick-current.tmp-pu4r5_2f/summary.json",
+  "top_findings": [
+    {
+      "id": "harness-stale",
+      "line": 1,
+      "message": "ExecPlan Progress is fully complete but the file still lives under docs/exec-plans/active/. Move it to docs/exec-plans/completed/.",
+      "path": "docs/exec-plans/active/41-t-wave-6-app-config-and-doc-gardener-surface-split.md",
+      "severity": "high"
+    },
+    {
+      "id": "harness-stale",
+      "line": 1,
+      "message": "ExecPlan Progress is fully complete but the file still lives under docs/exec-plans/active/. Move it to docs/exec-plans/completed/.",
+      "path": "docs/exec-plans/active/46-t-wave-7-ai-chat-observability-and-feedback-loop.md",
+      "severity": "high"
+    },
+    {
+      "id": "harness-stale",
+      "line": 1,
+      "message": "ExecPlan Progress is fully complete but the file still lives under docs/exec-plans/active/. Move it to docs/exec-plans/completed/.",
+      "path": "docs/exec-plans/active/47-t-wave-7-audit-runner-and-artifact-freshness.md",
+      "severity": "high"
+    },
+    {
+      "id": "harness-stale",
+      "line": 1,
+      "message": "ExecPlan Progress is fully complete but the file still lives under docs/exec-plans/active/. Move it to docs/exec-plans/completed/.",
+      "path": "docs/exec-plans/active/48-t-wave-7-codegraph-health-and-fallback-guards.md",
+      "severity": "high"
+    },
+    {
+      "id": "harness-stale",
+      "line": 1,
+      "message": "ExecPlan Progress is fully complete but the file still lives under docs/exec-plans/active/. Move it to docs/exec-plans/completed/.",
+      "path": "docs/exec-plans/active/49-t-wave-7-ai-request-contracts-and-guidance-hardening.md",
+      "severity": "high"
+    }
+  ]
+}

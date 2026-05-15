@@ -1,0 +1,52 @@
+{
+  "active_stage": null,
+  "canonical_command": "sattlint-repo-audit --profile quick --fail-on high --output-dir artifacts/audit-quick-current",
+  "completed_at": 1778844708.515979,
+  "completed_stage_count": 4,
+  "created_at": 1778844640.7768521,
+  "failed_stage_count": 0,
+  "kind": "sattlint.repo_audit.progress",
+  "overall_status": "fail",
+  "skipped_stage_count": 0,
+  "stage_count": 4,
+  "stages": [
+    {
+      "detail": "7 pipeline findings",
+      "duration_seconds": 48.183,
+      "ended_at": 1778844688.960499,
+      "key": "pipeline",
+      "label": "Run shared pipeline",
+      "started_at": 1778844640.7779386,
+      "status": "completed"
+    },
+    {
+      "detail": "6 custom findings",
+      "duration_seconds": 19.442,
+      "ended_at": 1778844708.4030302,
+      "key": "custom_scan",
+      "label": "Run repository-specific checks",
+      "started_at": 1778844688.960855,
+      "status": "completed"
+    },
+    {
+      "detail": "13 total findings",
+      "duration_seconds": 0.001,
+      "ended_at": 1778844708.4048464,
+      "key": "merge_findings",
+      "label": "Merge and normalize findings",
+      "started_at": 1778844708.4036026,
+      "status": "completed"
+    },
+    {
+      "detail": null,
+      "duration_seconds": 0.11,
+      "ended_at": 1778844708.515457,
+      "key": "write_reports",
+      "label": "Write audit reports",
+      "started_at": 1778844708.4056983,
+      "status": "completed"
+    }
+  ],
+  "title": "Repository audit",
+  "updated_at": 1778844708.515983
+}
