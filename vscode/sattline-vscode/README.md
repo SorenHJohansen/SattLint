@@ -14,11 +14,11 @@ If a large multi-program workspace pushes the language server too hard, start wi
 
 ```json
 {
-	"sattlineLsp.workspaceDiagnosticsMode": "off",
-	"sattlineLsp.scanRootOnly": true,
-	"sattlineLsp.maxCachedEntrySnapshots": 1,
-	"sattlineLsp.entryFile": "Programs/Main.s",
-	"sattlineLsp.enableVariableDiagnostics": false
+    "sattlineLsp.workspaceDiagnosticsMode": "off",
+    "sattlineLsp.scanRootOnly": true,
+    "sattlineLsp.maxCachedEntrySnapshots": 1,
+    "sattlineLsp.entryFile": "Programs/Main.s",
+    "sattlineLsp.enableVariableDiagnostics": false
 }
 ```
 

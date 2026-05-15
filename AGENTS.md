@@ -68,6 +68,7 @@ See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface
 - Chat-review starts from `<workspace-storage>/GitHub.copilot-chat/transcripts/*.jsonl`; use `debug-logs/` only as session metadata, not as the controlling content seam.
 - Testing expectation: bug fix or feature change moves with focused tests in same change.
 - Finish gate: focused proof plus touched-file Ruff and Pyright; widen to `--check-my-changes` for shared infra.
+- Do not commit with `--no-verify` unless the user explicitly requests it. If pre-commit or other commit blockers fail, fix the blockers before committing instead of bypassing verification.
 - CI expectation: `ci.yml` is integrated full-trust and nightly health; `lint.yml`, `typing.yml`, and `repo-audit.yml` remain owner workflows.
 - Debugging flow: open `artifacts/audit/status.json` first, then `summary.json`, then owner artifacts.
 - Security: redact secrets, PII, and machine-specific paths.

@@ -42,11 +42,11 @@ Use request-contract bootstrap when the user asks for work by request shape inst
 
 Example commands:
 
-	python scripts/bootstrap_ai_slice.py --task-id ai-chat-observability --stage executor --from-request-kind implement-plan --plan-file docs/exec-plans/completed/46-t-wave-7-ai-chat-observability-and-feedback-loop.md --file src/sattlint/devtools/ai_chat_observability.py --validation "bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_ai_chat_observability.py -x -q --tb=short"
+    python scripts/bootstrap_ai_slice.py --task-id ai-chat-observability --stage executor --from-request-kind implement-plan --plan-file docs/exec-plans/completed/46-t-wave-7-ai-chat-observability-and-feedback-loop.md --file src/sattlint/devtools/ai_chat_observability.py --validation "bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_ai_chat_observability.py -x -q --tb=short"
 
-	python scripts/bootstrap_ai_slice.py --task-id audit-summary-review --stage review --from-request-kind review-artifact --artifact-path artifacts/analysis/summary.json --file tests/test_pipeline_run_recommendations.py --validation "bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_pipeline_run_recommendations.py -x -q --tb=short"
+    python scripts/bootstrap_ai_slice.py --task-id audit-summary-review --stage review --from-request-kind review-artifact --artifact-path artifacts/analysis/summary.json --file tests/test_pipeline_run_recommendations.py --validation "bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_pipeline_run_recommendations.py -x -q --tb=short"
 
-	python scripts/bootstrap_ai_slice.py --task-id chat-review-current --stage executor --from-request-kind chat-review --artifact-path <workspace-storage> --file src/sattlint/devtools/ai_chat_observability.py --validation "bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_ai_chat_observability.py -x -q --tb=short"
+    python scripts/bootstrap_ai_slice.py --task-id chat-review-current --stage executor --from-request-kind chat-review --artifact-path <workspace-storage> --file src/sattlint/devtools/ai_chat_observability.py --validation "bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_ai_chat_observability.py -x -q --tb=short"
 
 ## Agent Set
 
