@@ -580,19 +580,46 @@ def _validate_field_path(
     )
 
 
-def _validate_entry_key_case(
+def _resolve_canonical_leaf_name(
+    type_graph: TypeGraph,
+    root_var: Variable,
+    field_segments: list[str],
+) -> str | None:
+    if not field_segments:
+        return root_var.name
+
+    current_type: Simple_DataType | str | None = root_var.datatype
+    resolved_name: str | None = None
+    for field in field_segments:
+        if isinstance(current_type, Simple_DataType):
+            return None
+
+        field_def = type_graph.field(str(current_type), field)
+        if field_def is None:
+            return None
+
+        resolved_name = field_def.name
+        current_type = field_def.datatype
+
+    return resolved_name
+
+
+def _validate_entry_reference_case(
     entry: ICFEntry,
     *,
+    type_graph: TypeGraph,
+    root_var: Variable,
     variable_name: str,
     field_segments: list[str],
 ) -> ICFValidationIssue | None:
-    expected_name = field_segments[-1] if field_segments else variable_name
-    if entry.key == expected_name or _cf(entry.key) != _cf(expected_name):
+    reference_name = field_segments[-1] if field_segments else variable_name
+    resolved_name = _resolve_canonical_leaf_name(type_graph, root_var, field_segments)
+    if resolved_name is None or reference_name == resolved_name or _cf(reference_name) != _cf(resolved_name):
         return None
     return ICFValidationIssue(
         entry=entry,
-        reason="key case mismatch",
-        detail=f"resolved SattLine name is {expected_name!r}, but ICF key is {entry.key!r}",
+        reason="reference case mismatch",
+        detail=f"resolved SattLine name is {resolved_name!r}, but ICF reference uses {reference_name!r}",
     )
 
 
@@ -874,6 +901,7 @@ def validate_icf_entries_against_program(
             )
             continue
 
+        resolved_leaf_name = _resolve_canonical_leaf_name(type_graph, var, field_segments)
         resolved_entries.append(
             ICFResolvedEntry(
                 entry=entry,
@@ -881,13 +909,15 @@ def validate_icf_entries_against_program(
                 variable_name=var.name,
                 root_datatype=var.datatype,
                 field_path=".".join(field_segments) or None,
-                leaf_name=field_segments[-1] if field_segments else var.name,
+                leaf_name=resolved_leaf_name or (field_segments[-1] if field_segments else var.name),
                 datatype=leaf_datatype,
             )
         )
 
-        key_case_issue = _validate_entry_key_case(
+        key_case_issue = _validate_entry_reference_case(
             entry,
+            type_graph=type_graph,
+            root_var=var,
             variable_name=var.name,
             field_segments=field_segments,
         )

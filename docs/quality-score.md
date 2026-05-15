@@ -25,6 +25,12 @@ Tracked by doc-gardening agent; fails CI when score drops.
 | App → LSP | B | LSP coverage low, needs work |
 | Docs/Process | B | Just restructured, tech debt tracked |
 
+## Trend
+
+| Date | Grade | Notes | Source |
+|---|---|---|---|
+| 2026-05-15 | D | fail; 0 pipeline findings; 0 doc findings; coverage n/a | Pipeline |
+
 ## Grading Scale
 
 - **A**: ≥ 80% coverage, < 5 critical issues, docs current

@@ -8,6 +8,7 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 from sattlint import app
+from sattlint import config as config_module
 from sattlint.models.project_graph import ProjectGraph
 
 
@@ -19,14 +20,14 @@ def test_run_validate_config_command_delegates_to_cli_owner(monkeypatch):
         *,
         config_path: Path,
         default_used: bool,
-        self_check_fn,
+        validate_config_fn,
         exit_success: int,
         exit_usage_error: int,
     ) -> int:
         seen["cfg"] = cfg
         seen["config_path"] = config_path
         seen["default_used"] = default_used
-        seen["self_check_fn"] = self_check_fn
+        seen["validate_config_fn"] = validate_config_fn
         seen["exit_success"] = exit_success
         seen["exit_usage_error"] = exit_usage_error
         return 77
@@ -44,7 +45,7 @@ def test_run_validate_config_command_delegates_to_cli_owner(monkeypatch):
     assert seen["cfg"] is cfg
     assert seen["config_path"] == Path("custom.toml")
     assert seen["default_used"] is True
-    assert seen["self_check_fn"] is app.self_check
+    assert seen["validate_config_fn"] is app.validate_effective_config
     assert seen["exit_success"] == app.EXIT_SUCCESS
     assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
 
@@ -261,7 +262,15 @@ def test_cli_owner_run_validate_config_command_warns_on_default_config(capsys):
         {"debug": False},
         config_path=Path("default.toml"),
         default_used=True,
-        self_check_fn=lambda _cfg: False,
+        validate_config_fn=lambda _cfg: config_module.ConfigValidationResult(
+            passed=False,
+            errors=(
+                config_module.ConfigValidationError(
+                    key_path="analyzed_programs_and_libraries[0]",
+                    message="MissingTarget (not found)",
+                ),
+            ),
+        ),
         exit_success=app.EXIT_SUCCESS,
         exit_usage_error=app.EXIT_USAGE_ERROR,
     )
@@ -269,6 +278,7 @@ def test_cli_owner_run_validate_config_command_warns_on_default_config(capsys):
     out = capsys.readouterr().out
     assert exit_code == app.EXIT_USAGE_ERROR
     assert "Warning: default config loaded from default.toml" in out
+    assert "MissingTarget (not found)" in out
 
 
 def test_cli_owner_run_analyze_command_delegates_and_returns_success():

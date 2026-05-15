@@ -40,6 +40,7 @@ from sattlint.reporting.variables_report import (
     VariablesReport,
 )
 from sattlint.resolution.scope import ScopeContext
+from sattlint.types import VariableId
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -112,6 +113,7 @@ __all__ = [
     "SingleModule",
     "SourceSpan",
     "Variable",
+    "VariableId",
     "VariableIssue",
     "VariablesAnalyzer",
     "VariablesReport",

@@ -1,4 +1,6 @@
 # ruff: noqa: F403, F405
+import logging
+
 from ._parser_core_test_support import *
 
 
@@ -348,7 +350,7 @@ def test_parse_source_text_reports_parse_tree_attach_failure(monkeypatch):
     ]
 
 
-def test_parse_source_text_raises_when_transformer_returns_non_basepicture():
+def test_parse_source_text_raises_when_transformer_returns_non_basepicture(caplog):
     events: list[str] = []
     tree = object()
 
@@ -362,7 +364,13 @@ def test_parse_source_text_raises_when_transformer_returns_non_basepicture():
             assert payload is tree
             return "not-a-basepicture"
 
-    with pytest.raises(RuntimeError, match="Transform result is not BasePicture"):
+    with (
+        caplog.at_level(logging.ERROR, logger="SattLint"),
+        pytest.raises(
+            RuntimeError,
+            match="Transform result is not BasePicture",
+        ),
+    ):
         parser_api.parse_source_text(
             "A = 1;",
             parser=cast(Any, FakeParser()),
@@ -371,6 +379,25 @@ def test_parse_source_text_raises_when_transformer_returns_non_basepicture():
         )
 
     assert events == ["Parse OK, transforming with SLTransformer"]
+    record = caplog.records[-1]
+    assert record.parser_stage == "transform"
+    assert record.parser_path is None
+    assert record.parser_context == "Transform result is not BasePicture; check transformer.start()"
+
+
+def test_parse_source_file_logs_parse_failures_with_path(caplog, tmp_path):
+    source_file = tmp_path / "BrokenProgram.s"
+    source_file.write_text("IF X THEN", encoding="utf-8")
+
+    with caplog.at_level(logging.ERROR, logger="SattLint"), pytest.raises(UnexpectedToken):
+        parser_api.parse_source_file(source_file)
+
+    record = caplog.records[-1]
+    assert record.parser_stage == "parse"
+    assert record.parser_path == str(source_file)
+    assert record.parser_line == 1
+    assert record.parser_column is not None
+    assert "Unexpected" in record.parser_context
 
 
 def test_strip_sl_comments_preserves_trailing_backslash_at_end_of_string():

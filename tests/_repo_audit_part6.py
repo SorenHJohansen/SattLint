@@ -30,6 +30,119 @@ def test_print_cli_summary_includes_findings_schema(tmp_path):
     assert "| 2026-04-30 | 1 findings | Doc-gardening scan |" in tech_debt.read_text(encoding="utf-8")
 
 
+def test_update_quality_score_creates_trend_section_from_pipeline_snapshot(tmp_path):
+    class _FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 4, 30, 12, 0, tzinfo=UTC)
+
+    quality_score = tmp_path / "docs" / "quality-score.md"
+    quality_score.parent.mkdir(parents=True)
+    quality_score.write_text(
+        """
+# Quality Score
+
+## Domain Scores
+
+| Domain | Path | Grade | Coverage | Last Updated | Blocker |
+| --- | --- | --- | --- | --- | --- |
+| DevTools | src/sattlint/devtools/ | B | 18% | 2026-04-28 | TD-004 |
+
+## Layer Scores
+
+| Layer | Grade | Reason |
+| --- | --- | --- |
+| Docs/Process | B | Tracked |
+
+## Grading Scale
+
+- A
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "artifacts" / "analysis"
+    output_dir.mkdir(parents=True)
+    write_json_artifact(
+        output_dir / "status.json",
+        {
+            "overall_status": "pass_with_notes",
+            "status_report": "artifacts/analysis/status.json",
+            "summary_report": "artifacts/analysis/summary.json",
+        },
+    )
+    write_json_artifact(
+        output_dir / "summary.json",
+        {
+            "profile": "full",
+            "reports": {"coverage_summary": "coverage_summary.json"},
+            "counts": {"normalized_findings": 2},
+        },
+    )
+    write_json_artifact(
+        output_dir / "coverage_summary.json",
+        {
+            "summary": {"total_line_rate": 0.88},
+        },
+    )
+    findings = [doc_gardener.DocFinding("docs/index.md", 2, "Medium", "dead_link", "Broken link")]
+
+    with _patch_doc_gardener_paths(tmp_path), patch.object(doc_gardener, "datetime", _FixedDateTime):
+        snapshot, message = doc_gardener.load_pipeline_snapshot(output_dir)
+        assert message is None
+        assert snapshot is not None
+        doc_gardener.update_quality_score(findings, snapshot)
+
+    content = quality_score.read_text(encoding="utf-8")
+    assert "## Trend" in content
+    assert (
+        "| 2026-04-30 | B | pass_with_notes; 2 pipeline findings; 1 doc findings; 88.0% coverage | Pipeline |"
+        in content
+    )
+    assert content.index("## Trend") < content.index("## Grading Scale")
+
+
+def test_load_pipeline_snapshot_returns_message_when_artifacts_missing(tmp_path):
+    snapshot, message = doc_gardener.load_pipeline_snapshot(tmp_path / "artifacts" / "analysis")
+
+    assert snapshot is None
+    assert message == "missing pipeline artifacts: status.json, summary.json"
+
+
+def test_load_pipeline_snapshot_falls_back_to_findings_json_count(tmp_path):
+    output_dir = tmp_path / "artifacts" / "analysis"
+    output_dir.mkdir(parents=True)
+    write_json_artifact(
+        output_dir / "status.json",
+        {
+            "overall_status": "pass",
+            "status_report": "artifacts/analysis/status.json",
+            "summary_report": "artifacts/analysis/summary.json",
+        },
+    )
+    write_json_artifact(
+        output_dir / "summary.json",
+        {
+            "profile": "quick",
+            "reports": {"coverage_summary": None},
+            "counts": {},
+        },
+    )
+    write_json_artifact(
+        output_dir / "findings.json",
+        {
+            "finding_count": 3,
+            "findings": [],
+        },
+    )
+
+    snapshot, message = doc_gardener.load_pipeline_snapshot(output_dir)
+
+    assert message is None
+    assert snapshot is not None
+    assert snapshot.normalized_findings == 3
+
+
 def test_doc_gardener_main_updates_logs_without_exit_when_clean(monkeypatch, capsys):
     monkeypatch.setattr(
         doc_gardener,
@@ -41,7 +154,7 @@ def test_doc_gardener_main_updates_logs_without_exit_when_clean(monkeypatch, cap
             "findings": [],
         },
     )
-    monkeypatch.setattr(doc_gardener, "update_quality_score", lambda findings: None)
+    monkeypatch.setattr(doc_gardener, "update_quality_score", lambda findings, pipeline_snapshot=None: None)
     monkeypatch.setattr(doc_gardener, "update_tech_debt_scan_log", lambda findings: None)
     monkeypatch.setattr(doc_gardener, "open_fixup_pr", lambda findings: pytest.fail("PR should not open when clean"))
 
@@ -66,7 +179,7 @@ def test_doc_gardener_main_reports_findings_without_opening_pr_by_default(monkey
             "findings": [finding._asdict()],
         },
     )
-    monkeypatch.setattr(doc_gardener, "update_quality_score", lambda findings: None)
+    monkeypatch.setattr(doc_gardener, "update_quality_score", lambda findings, pipeline_snapshot=None: None)
     monkeypatch.setattr(doc_gardener, "update_tech_debt_scan_log", lambda findings: None)
     monkeypatch.setattr(doc_gardener, "open_fixup_pr", lambda findings: pytest.fail("PR should be opt-in"))
 
@@ -95,7 +208,7 @@ def test_doc_gardener_main_check_only_does_not_update_logs_or_open_pr(monkeypatc
     monkeypatch.setattr(
         doc_gardener,
         "update_quality_score",
-        lambda findings: pytest.fail("check-only mode should not update quality score"),
+        lambda findings, pipeline_snapshot=None: pytest.fail("check-only mode should not update quality score"),
     )
     monkeypatch.setattr(
         doc_gardener,
@@ -127,7 +240,7 @@ def test_doc_gardener_main_opens_pr_when_requested(monkeypatch, capsys):
             "findings": [finding._asdict()],
         },
     )
-    monkeypatch.setattr(doc_gardener, "update_quality_score", lambda findings: None)
+    monkeypatch.setattr(doc_gardener, "update_quality_score", lambda findings, pipeline_snapshot=None: None)
     monkeypatch.setattr(doc_gardener, "update_tech_debt_scan_log", lambda findings: None)
     opened: list[tuple[doc_gardener.DocFinding, ...]] = []
     monkeypatch.setattr(doc_gardener, "open_fixup_pr", lambda findings: opened.append(tuple(findings)) or True)
@@ -240,3 +353,51 @@ def test_doc_gardener_main_exits_nonzero_when_findings_exist():
         patch.object(doc_gardener, "open_fixup_pr", return_value=False),
     ):
         assert doc_gardener.main() == 1
+
+
+def test_doc_gardener_main_uses_pipeline_output_dir(monkeypatch, capsys, tmp_path):
+    finding = doc_gardener.DocFinding("docs/index.md", 2, "Medium", "dead_link", "Broken link")
+    pipeline_dir = tmp_path / "custom-analysis"
+    pipeline_snapshot = doc_gardener.PipelineSnapshot(
+        output_dir=pipeline_dir,
+        profile="quick",
+        overall_status="pass",
+        normalized_findings=0,
+        coverage_total_line_rate=None,
+    )
+    observed: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        doc_gardener,
+        "run_scan",
+        lambda: {
+            "total_findings": 1,
+            "by_severity": {severity: (1 if severity == "Medium" else 0) for severity in doc_gardener.SEVERITY_ORDER},
+            "by_category": {
+                category: (1 if category == "dead_link" else 0) for category in doc_gardener.CATEGORY_ORDER
+            },
+            "findings": [finding._asdict()],
+        },
+    )
+
+    def fake_load_pipeline_snapshot(output_dir):
+        observed["pipeline_dir"] = output_dir
+        return pipeline_snapshot, None
+
+    monkeypatch.setattr(doc_gardener, "load_pipeline_snapshot", fake_load_pipeline_snapshot)
+    monkeypatch.setattr(
+        doc_gardener,
+        "update_quality_score",
+        lambda findings, pipeline_snapshot=None: observed.setdefault(
+            "quality_score_call",
+            (tuple(findings), pipeline_snapshot),
+        ),
+    )
+    monkeypatch.setattr(doc_gardener, "update_tech_debt_scan_log", lambda findings: None)
+    monkeypatch.setattr(doc_gardener, "open_fixup_pr", lambda findings: False)
+
+    assert doc_gardener.main(["--pipeline-output-dir", str(pipeline_dir)]) == 1
+
+    _out = capsys.readouterr().out
+    assert observed["pipeline_dir"] == pipeline_dir
+    assert observed["quality_score_call"] == ((finding,), pipeline_snapshot)

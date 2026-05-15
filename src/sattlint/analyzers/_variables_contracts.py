@@ -9,7 +9,6 @@ from sattline_parser.models.ast_model import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    Simple_DataType,
     SingleModule,
     Variable,
 )
@@ -277,10 +276,6 @@ def _index_all_variables(self: VariablesAnalyzer) -> None:
             index.setdefault(variable.name.lower(), []).append(variable)
 
 
-def _is_const_candidate(self: VariablesAnalyzer, variable: Variable) -> bool:
-    return isinstance(variable.datatype, Simple_DataType)
-
-
 build_anytype_field_contracts = _build_anytype_field_contracts
 build_anytype_parameter_contract = _build_anytype_parameter_contract
 check_param_mapping = _check_param_mapping
@@ -288,7 +283,6 @@ check_param_mappings_for_single = _check_param_mappings_for_single
 check_param_mappings_for_type_instance = _check_param_mappings_for_type_instance
 get_required_parameter_names_for_typedef = _get_required_parameter_names_for_typedef
 index_all_variables = _index_all_variables
-is_const_candidate = _is_const_candidate
 iter_anytype_typedefs = _iter_anytype_typedefs
 make_nested_contract_extractor = _make_nested_contract_extractor
 
@@ -300,7 +294,6 @@ __all__ = [
     "check_param_mappings_for_type_instance",
     "get_required_parameter_names_for_typedef",
     "index_all_variables",
-    "is_const_candidate",
     "iter_anytype_typedefs",
     "make_nested_contract_extractor",
 ]

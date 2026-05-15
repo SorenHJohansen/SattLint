@@ -429,7 +429,7 @@ def test_variable_issue_str_formats_datatype_literal_and_role_only_variants():
         role="localvariable",
         field_path="State",
         sequence_name="SeqA",
-        reset_variable="ResetCmd",
+        reset_variable=VariableId("ResetCmd"),
     )
     empty_issue = VariableIssue(
         kind=IssueKind.UNUSED,

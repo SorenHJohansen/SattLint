@@ -4,6 +4,7 @@ Covers incremental parsing, local snapshots, workspace diagnostics,
 and hover, reference, rename, definition, and completion handlers.
 """
 
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -31,6 +32,7 @@ from sattlint_lsp.server import (
     on_completion,
     on_definition,
     on_did_change,
+    on_did_change_configuration,
     on_did_close,
     on_did_open,
     on_did_save,
@@ -1268,6 +1270,51 @@ def test_on_initialize_resets_server_state_and_prefers_root_uri(monkeypatch, tmp
     assert calls == ["configured", "scan"]
 
 
+def test_on_did_change_configuration_reconfigures_workspace_and_schedules_scan(monkeypatch, tmp_path):
+    stale_path = (tmp_path / "Programs" / "Main.s").resolve()
+    publish_calls: list[set[Path]] = []
+    calls: list[str] = []
+
+    ls = SimpleNamespace(
+        settings=LspSettings(entry_file="Programs/Old.s", workspace_diagnostics_mode="background"),
+        workspace_root=tmp_path,
+        entry_diagnostics={"entry": {stale_path: ()}},
+        published_workspace_diagnostics={stale_path: ()},
+        entry_scan_generation={"entry": 1},
+        workspace_scan_condition=threading.Condition(),
+        workspace_scan_pending={stale_path},
+    )
+
+    monkeypatch.setattr(
+        "sattlint_lsp.server._publish_workspace_diagnostics_for_paths",
+        lambda current_ls, paths: publish_calls.append(set(paths)),
+    )
+    monkeypatch.setattr(
+        "sattlint_lsp.server._ensure_snapshot_store_configured", lambda current_ls: calls.append("configured") or True
+    )
+    monkeypatch.setattr(
+        "sattlint_lsp.server._schedule_workspace_scan", lambda current_ls, entry_files=None: calls.append("scan")
+    )
+
+    params = SimpleNamespace(
+        settings={
+            "entryFile": "Programs/New.s",
+            "mode": "official",
+            "workspaceDiagnosticsMode": "background",
+        }
+    )
+
+    on_did_change_configuration(cast(Any, ls), cast(Any, params))
+
+    assert ls.settings.entry_file == "Programs/New.s"
+    assert ls.settings.mode == "official"
+    assert ls.entry_diagnostics == {}
+    assert ls.entry_scan_generation == {}
+    assert ls.workspace_scan_pending == set()
+    assert publish_calls == [{stale_path}]
+    assert calls == ["configured", "scan"]
+
+
 def test_on_did_open_and_change_ignore_non_diagnostic_documents(monkeypatch, tmp_path):
     path = (tmp_path / "notes.txt").resolve()
     uri = path.as_uri()
@@ -1329,3 +1376,63 @@ def test_on_did_save_ignores_non_diagnostic_documents(monkeypatch, tmp_path):
     assert path not in ls.document_paths
     assert published[-1].uri == uri
     assert published[-1].diagnostics == []
+
+
+@pytest.mark.parametrize("suffix", [".l", ".z"])
+def test_on_did_save_rescans_workspace_dependency_lists(monkeypatch, tmp_path, suffix):
+    path = (tmp_path / "Libs" / f"Support{suffix}").resolve()
+    uri = path.as_uri()
+    stale_path = (tmp_path / "Programs" / "Main.s").resolve()
+    published = []
+    publish_calls: list[set[Path]] = []
+    calls: list[str] = []
+
+    ls = SimpleNamespace(
+        workspace=SimpleNamespace(
+            get_text_document=lambda requested_uri: SimpleNamespace(uri=requested_uri, source="Support\n", version=4)
+        ),
+        text_document_publish_diagnostics=lambda params: published.append(params),
+        document_states={uri: DocumentState(uri=uri, path=path, version=3, text="old")},
+        document_paths={path: uri},
+        workspace_root=tmp_path,
+        entry_diagnostics={"entry": {stale_path: ()}},
+        published_workspace_diagnostics={stale_path: ()},
+        entry_scan_generation={"entry": 1},
+        workspace_scan_condition=threading.Condition(),
+        workspace_scan_pending={stale_path},
+        snapshot_store=SimpleNamespace(refresh_workspace=lambda: calls.append("refresh")),
+    )
+
+    monkeypatch.setattr("sattlint_lsp.server._document_path", lambda document: path)
+    monkeypatch.setattr(
+        "sattlint_lsp.server._publish_workspace_diagnostics_for_paths",
+        lambda current_ls, paths: publish_calls.append(set(paths)),
+    )
+    monkeypatch.setattr(
+        "sattlint_lsp.server._schedule_workspace_scan", lambda current_ls, entry_files=None: calls.append("scan")
+    )
+    monkeypatch.setattr(
+        "sattlint_lsp.server._record_document_open",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("dependency lists should not open diagnostics state")
+        ),
+    )
+    monkeypatch.setattr(
+        "sattlint_lsp.server._invalidate_cached_entries_for_path",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("dependency lists should refresh workspace inputs")
+        ),
+    )
+
+    save_params = SimpleNamespace(text_document=SimpleNamespace(uri=uri))
+    on_did_save(cast(Any, ls), cast(Any, save_params))
+
+    assert uri not in ls.document_states
+    assert path not in ls.document_paths
+    assert published[-1].uri == uri
+    assert published[-1].diagnostics == []
+    assert ls.entry_diagnostics == {}
+    assert ls.entry_scan_generation == {}
+    assert ls.workspace_scan_pending == set()
+    assert publish_calls == [{stale_path}]
+    assert calls == ["refresh", "scan"]

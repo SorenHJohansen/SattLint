@@ -9,9 +9,9 @@ This plan closes T-026. After this work lands, parser failure paths will emit st
 ## Progress
 
 - [x] (2026-05-13) Create the ExecPlan and confirm `src/sattline_parser/api.py`, `src/sattline_parser/models/ast_model.py`, and the transformer mixins still raise errors without any parser-package logging surface, while `read_text_with_fallback`, `parse_source_text`, and the transformer entrypoint already centralize most exception escape paths.
-- [ ] Add a module-level logging surface to the parser API and log the highest-signal failure paths there.
-- [ ] Add targeted logging only where model or transformer code would otherwise lose essential context.
-- [ ] Add focused parser tests with log capture and rerun strict syntax-check plus narrow pytest.
+- [x] (2026-05-15) Add a module-level logging surface to the parser API and log the highest-signal failure paths there.
+- [x] (2026-05-15) Confirm API-boundary logging already preserves enough path, stage, and context data so no targeted model or transformer logging is needed for this slice.
+- [x] (2026-05-15) Add focused parser tests with log capture and rerun strict syntax-check plus narrow pytest.
 
 ## Surprises & Discoveries
 
@@ -23,6 +23,9 @@ Evidence: the mixins under `src/sattline_parser/transformer/` raise many `ValueE
 
 Observation: parser work must preserve strict behavior.
 Evidence: repository parser instructions explicitly forbid silent fallback in `sattlint syntax-check`, and the parser package currently raises directly when it cannot decode, parse, or transform.
+
+Observation: API-only logging was sufficient for the requested observability.
+Evidence: `parse_source_file` now passes file-path context into `parse_source_text`, which emits structured log records for parse and transform failures without adding duplicate logs to the transformer mixins.
 
 ## Decision Log
 
@@ -38,9 +41,15 @@ Decision: preserve the exact strict-failure contract of `syntax-check` while add
 Rationale: this debt item is about diagnostics and logging, not about accepting invalid files more leniently.
 Date/Author: 2026-05-13 / Copilot (GPT-5.4)
 
+Decision: stop at the API boundary instead of instrumenting individual transformer or model raise sites.
+Rationale: focused caplog coverage showed the API logger already retains file path, stage, location, and human-readable context for escaping failures, so deeper logging would only duplicate noise.
+Date/Author: 2026-05-15 / Copilot (GPT-5.4)
+
 ## Outcomes & Retrospective
 
-Planning baseline only. The current parser already centralizes most failure paths, which makes this debt item smaller than adding logging across the entire parser stack.
+Completed with an API-only implementation. `src/sattline_parser/api.py` now uses the shared `SattLint` logger to emit structured `parser_stage`, `parser_path`, `parser_line`, `parser_column`, and `parser_context` fields for read, decode, parse, and transform failures while still re-raising the original exceptions unchanged.
+
+Focused proof passed. Parser-core tests now capture log records for strict parse failures and transform-shape failures, `sattlint syntax-check tests/fixtures/corpus/valid/VariableModifiers.s` still succeeds, `sattlint syntax-check tests/fixtures/corpus/invalid/NotSattLine.s` still fails strictly, and the narrow parser pytest slice remained green.
 
 ## Context and Orientation
 
@@ -90,7 +99,9 @@ This plan is safe to land in two slices. Add the API-boundary logging first and 
 
 ## Artifacts and Notes
 
-Record one short `caplog` assertion example and one strict `syntax-check` transcript. The important proof is that the parser now logs useful failure context while still failing in exactly the same places.
+`caplog` example: parser-core coverage now asserts `record.parser_stage == "parse"` and `record.parser_path == str(source_file)` for a strict parse failure, and `record.parser_stage == "transform"` for a non-`BasePicture` transformer result.
+
+Strict `syntax-check` proof: `tests/fixtures/corpus/valid/VariableModifiers.s` still passes, while `tests/fixtures/corpus/invalid/NotSattLine.s` exits with status 1 after logging the parse-stage failure context.
 
 ## Interfaces and Dependencies
 

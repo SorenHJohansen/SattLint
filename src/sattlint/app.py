@@ -43,6 +43,7 @@ GraphicsRulesConfig = dict[str, Any]
 GraphicsRulesLoadResult = tuple[GraphicsRulesConfig, bool]
 DocumentationSelection = dict[str, Any]
 LoadedConfig = tuple[ConfigDict, bool]
+ConfigValidationResult = _config_module.ConfigValidationResult
 
 app_analysis = cast(Any, app_analysis_module)
 app_base = cast(Any, app_base_module)
@@ -112,6 +113,10 @@ def save_graphics_rules(path: Path, rules: dict[str, Any]) -> None:
 
 def self_check(cfg: ConfigDict) -> bool:
     return cast(bool, app_base.self_check(cfg))
+
+
+def validate_effective_config(cfg: ConfigDict) -> ConfigValidationResult:
+    return _config_module.validate_effective_config(cfg)
 
 
 log: Any = app_base.log
@@ -191,7 +196,7 @@ def run_validate_config_command(cfg: ConfigDict, *, config_path: Path, default_u
             cfg,
             config_path=config_path,
             default_used=default_used,
-            self_check_fn=self_check,
+            validate_config_fn=validate_effective_config,
             exit_success=EXIT_SUCCESS,
             exit_usage_error=EXIT_USAGE_ERROR,
         ),

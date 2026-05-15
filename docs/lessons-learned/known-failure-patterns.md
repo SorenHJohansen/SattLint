@@ -32,6 +32,13 @@ Agents should learn from prior mistakes. Update after each root-cause analysis.
 - **Fix**: Start review tasks from the user-named artifact, then update the smallest persistent guidance surface that can change future behavior.
 - **Prevention**: Do not open unrelated `ai_*` devtools or broad docs unless the task explicitly requires tooling changes.
 
+### Terminal Script Execution — Heredoc Failure
+
+- **Pattern**: `python3 - << 'PY' ... PY` heredoc syntax fails silently or inconsistently in the VS Code integrated terminal, causing 3-4 retries before the agent finds a working command.
+- **Root cause**: The VS Code terminal does not reliably handle multi-line heredoc blocks sent through the agent's `run_in_terminal` or `send_to_terminal` tools.
+- **Fix**: Write the script content to a file first (`/tmp/script.py` or a named temp file), then run `python3 /tmp/script.py`. Never use heredoc syntax for Python execution in VS Code terminal.
+- **Prevention**: Add a tool-use note to any agent that needs to run a short analysis script: write file then execute. Never inline Python in a heredoc.
+
 ## Past Root Causes
 
 ### Hardcoded Machine Paths

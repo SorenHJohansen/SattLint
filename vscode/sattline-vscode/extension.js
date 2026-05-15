@@ -423,6 +423,14 @@ class StdioLspBridge {
         this.diagnostics.delete(document.uri);
     }
 
+    async didChangeConfiguration() {
+        await this.start();
+        this.workspaceFolder = getPrimaryWorkspaceFolder() || this.workspaceFolder;
+        this.sendNotification('workspace/didChangeConfiguration', {
+            settings: buildInitializationOptions(this.workspaceFolder),
+        });
+    }
+
     async requestDefinitions(document, position) {
         await this.start();
         this.flushDidChange(document);
@@ -670,11 +678,20 @@ async function activate(context) {
             }
         }),
         vscode.workspace.onDidChangeConfiguration(async (event) => {
-            if (event.affectsConfiguration('sattlineLsp') || event.affectsConfiguration('python.defaultInterpreterPath')) {
+            if (event.affectsConfiguration('python.defaultInterpreterPath')) {
                 try {
                     await bridge.restart();
                 } catch (error) {
                     void vscode.window.showErrorMessage(`SattLine language server restart failed: ${getErrorMessage(error)}`);
+                }
+                return;
+            }
+
+            if (event.affectsConfiguration('sattlineLsp')) {
+                try {
+                    await bridge.didChangeConfiguration();
+                } catch (error) {
+                    void vscode.window.showErrorMessage(`SattLine language server configuration refresh failed: ${getErrorMessage(error)}`);
                 }
             }
         }),

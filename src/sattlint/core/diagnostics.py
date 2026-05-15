@@ -9,12 +9,13 @@ from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTyp
 
 from ..analyzers.framework import Issue
 from ..reporting.variables_report import IssueKind, VariableIssue
+from ..types import ProjectPath, TargetName
 
 
 @dataclass(frozen=True, slots=True)
 class SemanticDiagnostic:
-    source_file: str
-    source_library: str | None
+    source_file: ProjectPath
+    source_library: TargetName | None
     line: int
     column: int
     length: int
@@ -30,8 +31,8 @@ class DiagnosticGuidance:
 
 @dataclass(frozen=True, slots=True)
 class _DiagnosticSite:
-    source_file: str
-    source_library: str | None
+    source_file: ProjectPath
+    source_library: TargetName | None
     line: int
     column: int
     length: int
@@ -228,8 +229,8 @@ def _register_site(
     if source_file is None or line is None or column is None:
         return
     sites_by_path[tuple(_cf(segment) for segment in module_path)] = _DiagnosticSite(
-        source_file=source_file,
-        source_library=source_library,
+        source_file=ProjectPath(source_file),
+        source_library=TargetName(source_library) if source_library is not None else None,
         line=line,
         column=column,
         length=max(len(label), 1),
@@ -368,8 +369,10 @@ def project_variable_issues_by_file(
 
         by_file.setdefault(definition.source_file.casefold(), []).append(
             SemanticDiagnostic(
-                source_file=definition.source_file,
-                source_library=definition.source_library,
+                source_file=ProjectPath(definition.source_file),
+                source_library=(
+                    TargetName(definition.source_library) if definition.source_library is not None else None
+                ),
                 line=definition.declaration_span.line,
                 column=definition.declaration_span.column,
                 length=_definition_label_length(definition),

@@ -9,9 +9,9 @@ This plan closes T-018 and T-025 together. After this work lands, the variable a
 ## Progress
 
 - [x] (2026-05-13) Create the ExecPlan and confirm `variables.py` already delegates `is_const_candidate` through `_variables_contracts.py`, while `variable_issue_collection.py` and `_variables_execution.py` still consume that contract-layer helper directly, and `src/sattlint/analyzers/mms.py` still contains a 383-line `analyze_mms_interface_variables` function inside an 835-line debt-ratcheted owner file.
-- [ ] Extract a clearly named shared variable helper module and move const-candidate ownership there.
-- [ ] Decompose MMS interface analysis into smaller top-level helpers in a sibling private module instead of adding more nested locals to `mms.py`.
-- [ ] Update callers, keep report behavior stable, and run focused tests plus touched-file quality gates.
+- [x] (2026-05-15) Extract `src/sattlint/analyzers/variable_utils.py` and move `is_const_candidate` ownership there, with `variables.py` now importing the helper from the shared utility module instead of `_variables_contracts.py`.
+- [x] (2026-05-15) Decompose MMS interface analysis into `src/sattlint/analyzers/_mms_interface_analysis.py`, leaving `analyze_mms_interface_variables` in `src/sattlint/analyzers/mms.py` as a thin coordinator.
+- [x] (2026-05-15) Keep caller behavior stable and run focused tests plus touched-file quality gates: focused variable tests passed, focused MMS analyzer/report tests passed, `tests/test_analyzers_variables.py tests/devtools/test_mms_report.py` passed, and touched-file Ruff plus Pyright were clean.
 
 ## Surprises & Discoveries
 
@@ -23,6 +23,9 @@ Evidence: `artifacts/analysis/file_debt_ratchet.json` marks `src/sattlint/analyz
 
 Observation: the MMS monolith is concentrated inside nested local helpers.
 Evidence: `analyze_mms_interface_variables` still contains nested `_collect_write_locations`, `_resolve_param_source`, `_build_param_map`, `_walk_typedef`, and `_walk_modules` functions, which makes reuse and isolated testing difficult.
+
+Observation: the direct MMS entry-point behavior is covered in an adjacent analyzer fixture module even though the owner validation route stays on `tests/test_analyzers_variables.py`.
+Evidence: targeted MMS analyzer checks live in `tests/_analyzers_variables_adjacent_analyzers.py`, while the owner-level regression proof still passes through `tests/test_analyzers_variables.py` because that umbrella file re-exports the adjacent analyzer scenarios.
 
 ## Decision Log
 
@@ -38,9 +41,17 @@ Decision: preserve current analyzer and report behavior while changing ownership
 Rationale: this debt item is structural, not behavioral. Any new findings or report-format drift would make the refactor harder to validate and easier to reject.
 Date/Author: 2026-05-13 / Copilot (GPT-5.4)
 
+Decision: keep issue emission in `mms.py` but move inventory collection, typedef walking, and ICF-entry translation into `_mms_interface_analysis.py`.
+Rationale: that split keeps the public analyzer entry point and final issue ordering easy to audit while still shrinking the ratcheted owner file substantially.
+Date/Author: 2026-05-15 / Copilot (GPT-5.4)
+
 ## Outcomes & Retrospective
 
-Planning baseline only. Both debt items are partially prepared by earlier extractions, but the remaining ownership boundaries are still misleading or too large.
+Both structural follow-ons landed without behavior drift. `is_const_candidate` now lives in `src/sattlint/analyzers/variable_utils.py`, `_variables_contracts.py` no longer owns that pure predicate, and `variables.py` keeps the same facade alias surface for downstream execution and issue-collection helpers.
+
+The MMS entry point now delegates to top-level helpers in `src/sattlint/analyzers/_mms_interface_analysis.py` for write-location collection, parameter-source resolution, parameter-map building, typedef walking, module walking, and ICF inventory translation. `src/sattlint/analyzers/mms.py` shrank from 835 lines to 210 lines, which satisfies the must-shrink constraint and leaves the final report assembly and issue emission easy to inspect.
+
+Validation stayed green at each step: focused variable helper tests passed, focused MMS analyzer/report tests passed, `python scripts/run_repo_python.py -m pytest --no-cov tests/test_analyzers_variables.py tests/devtools/test_mms_report.py -x -q --tb=short` passed with 64 tests, and touched-file Ruff plus Pyright both passed after a small import-order and shadowing cleanup.
 
 ## Context and Orientation
 
@@ -85,7 +96,9 @@ This plan is safe to land in two small slices. Move the variable helper first an
 
 ## Artifacts and Notes
 
-Record one short import diff for the variable-helper move and one short line-count comparison for `mms.py` before and after the extraction. The critical proof is that the owner files got smaller without changing user-visible analyzer behavior.
+Import diff: `src/sattlint/analyzers/variables.py` no longer imports `is_const_candidate` from `_variables_contracts`; it now imports the helper from `variable_utils` while keeping the existing analyzer alias surface stable.
+
+Line-count comparison: `src/sattlint/analyzers/mms.py` moved from 835 lines before the slice to 210 lines after the extraction, with the extracted helper logic living in `src/sattlint/analyzers/_mms_interface_analysis.py`.
 
 ## Interfaces and Dependencies
 

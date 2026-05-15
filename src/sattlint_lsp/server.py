@@ -10,6 +10,7 @@ from lsprotocol.types import (
     CompletionOptions,
     DefinitionParams,
     Diagnostic,
+    DidChangeConfigurationParams,
     DidChangeTextDocumentParams,
     DidCloseTextDocumentParams,
     DidOpenTextDocumentParams,
@@ -154,6 +155,12 @@ from ._server_helpers import (
 from ._server_helpers import (
     validated_text_document_uri as _validated_text_document_uri,
 )
+from ._server_workspace import (
+    is_workspace_control_path as _is_workspace_control_path,
+)
+from ._server_workspace import (
+    workspace_settings_signature as _workspace_settings_signature,
+)
 from .document_state import DocumentState
 from .workspace_store import SnapshotBundle, WorkspaceSnapshotStore
 
@@ -194,6 +201,22 @@ _PUBLIC_SERVER_HELPERS = (
 )
 
 
+def _clear_workspace_scan_state(ls: SattLineLanguageServer) -> None:
+    ls.entry_scan_generation.clear()
+    with ls.workspace_scan_condition:
+        ls.workspace_scan_pending.clear()
+
+
+def _clear_workspace_diagnostics(ls: SattLineLanguageServer) -> None:
+    affected_paths = {path.resolve() for path in ls.published_workspace_diagnostics}
+    for diagnostics_by_path in ls.entry_diagnostics.values():
+        affected_paths.update(path.resolve() for path in diagnostics_by_path)
+    ls.entry_diagnostics.clear()
+    _clear_workspace_scan_state(ls)
+    if affected_paths:
+        _publish_workspace_diagnostics_for_paths(ls, affected_paths)
+
+
 @server.feature("initialize")
 def on_initialize(ls: SattLineLanguageServer, params: InitializeParams) -> None:
     ls.settings = LspSettings.from_initialization_options(getattr(params, "initialization_options", None))
@@ -222,6 +245,21 @@ def on_initialize(ls: SattLineLanguageServer, params: InitializeParams) -> None:
         ls.workspace_scan_generation = 0
         ls.workspace_scan_thread = None
     _ensure_snapshot_store_configured(ls)
+    _schedule_workspace_scan(ls)
+
+
+@server.feature("workspace/didChangeConfiguration")
+def on_did_change_configuration(ls: SattLineLanguageServer, params: DidChangeConfigurationParams) -> None:
+    previous_settings = ls.settings
+    next_settings = LspSettings.from_initialization_options(getattr(params, "settings", None))
+    ls.settings = next_settings
+
+    if _workspace_settings_signature(previous_settings) == _workspace_settings_signature(next_settings):
+        return
+
+    _clear_workspace_diagnostics(ls)
+    if not _ensure_snapshot_store_configured(ls):
+        return
     _schedule_workspace_scan(ls)
 
 
@@ -286,11 +324,16 @@ def on_did_save(ls: SattLineLanguageServer, params: DidSaveTextDocumentParams) -
 
     document = ls.workspace.get_text_document(document_uri)
     document_path = _document_path(document)
+    workspace_control_path = _is_workspace_control_path(getattr(ls, "workspace_root", None), document_path)
     if not _is_diagnostic_path(document_path):
         state = ls.document_states.pop(document.uri, None)
         if state is not None:
             ls.document_paths.pop(state.path.resolve(), None)
         ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=document.uri, diagnostics=[]))
+        if workspace_control_path:
+            _clear_workspace_diagnostics(ls)
+            ls.snapshot_store.refresh_workspace()
+            _schedule_workspace_scan(ls)
         return
 
     _record_document_open(

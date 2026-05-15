@@ -20,6 +20,7 @@ from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution import decorate_segment
 from ..resolution.common import path_startswith_casefold, resolve_moduletype_def_strict, varname_base
 from ..resolution.scope import ScopeContext
+from ..types import VariableId
 
 if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
@@ -373,7 +374,7 @@ def _detect_datatype_duplications(self: VariablesAnalyzer) -> None:
             continue
 
         first_var, first_path, first_role = occurrences[0]
-        duplicate_locs = [(path, role, variable.name) for variable, path, role in occurrences[1:]]
+        duplicate_locs = [(path, role, VariableId(variable.name)) for variable, path, role in occurrences[1:]]
 
         self.append_issue(
             VariableIssue(

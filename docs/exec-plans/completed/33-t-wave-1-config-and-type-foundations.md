@@ -9,10 +9,10 @@ This plan closes T-005 and T-008 together. After this work lands, SattLint will 
 ## Progress
 
 - [x] (2026-05-13) Create the ExecPlan and confirm `src/sattlint/config.py` already validates raw TOML shape and already has `_self_check_targets`, but missing-target checks are still outside `ConfigValidationResult`, `src/sattlint/app.py` still treats them as interactive console output only, and `src/sattlint/types.py` does not exist.
-- [ ] Add `src/sattlint/types.py` with a small, documented alias set and migrate a narrow set of central interfaces.
-- [ ] Promote analyzed-target existence checks into merged-config validation that reuses existing `target_exists` logic.
-- [ ] Reuse the shared validation in `validate-config` and the interactive startup flow before AST cache or analysis work begins.
-- [ ] Add focused tests and run narrow pytest, Ruff, and Pyright proof.
+- [x] (2026-05-15) Add `src/sattlint/types.py` with `ProjectPath`, `TargetName`, and `VariableId`, then adopt the aliases in config target normalization plus editor and variable-report diagnostics.
+- [x] (2026-05-15) Promote analyzed-target and configured-directory checks into `validate_loaded_config` and merge them with raw-shape checks through `validate_effective_config`.
+- [x] (2026-05-15) Reuse the shared validation in `validate-config` and keep interactive startup on `self_check`, now backed by the same structured validation messages before AST cache warmup.
+- [x] (2026-05-15) Add focused tests for merged target validation and CLI wiring, then pass the narrow pytest proof.
 
 ## Surprises & Discoveries
 
@@ -24,6 +24,9 @@ Evidence: `src/sattlint/config.py` calls `validate_config(cfg)` on the raw TOML 
 
 Observation: a repo-wide `NewType` migration would create unnecessary churn.
 Evidence: there is no existing semantic alias module, and the current debt is discoverability-oriented rather than a runtime correctness problem.
+
+Observation: preserving the legacy self-check message text keeps the interactive diagnostics readable while still upgrading the underlying validation path to structured errors.
+Evidence: `validate_effective_config` now returns `ConfigValidationResult` entries for directory, target, nested analysis, documentation, and graphics-rule failures, and `self_check` prints those messages without needing a parallel ad hoc target-check branch.
 
 ## Decision Log
 
@@ -39,9 +42,15 @@ Decision: formalize target existence checks as a second validation phase that ru
 Rationale: path and target existence depend on defaults and normalized directories, so that logic should not live in the raw TOML-shape validator.
 Date/Author: 2026-05-13 / Copilot (GPT-5.4)
 
+Decision: keep CLI and interactive output on the existing short diagnostic phrases even after moving to structured validation results.
+Rationale: tests and user-visible flows already key off those messages, so the upgrade should change ownership and exit behavior without forcing a broader console-UX rewrite.
+Date/Author: 2026-05-15 / Copilot (GPT-5.4)
+
 ## Outcomes & Retrospective
 
-Planning baseline only. The current repository already has informal self-check output, but it does not yet produce structured validation errors for missing analyzed targets, and it still lacks a semantic alias module.
+Implemented. `src/sattlint/types.py` now centralizes semantic string aliases, `validate_effective_config` merges raw and post-merge validation into one `ConfigValidationResult`, `validate-config` consumes that shared result directly, and interactive startup still prints the same validation messages before AST cache warmup through `self_check`.
+
+Focused proof passed with `python scripts/run_repo_python.py -m pytest --no-cov tests/test_app_config_validation.py tests/test_app_cli_commands.py -x -q --tb=short`. Close-out quality gates also passed with `python scripts/run_repo_python.py -m ruff check src/sattlint/types.py src/sattlint/config.py src/sattlint/app.py src/sattlint/app_cli_commands.py src/sattlint/core/diagnostics.py` and `python scripts/run_repo_python.py -m pyright src/sattlint/types.py src/sattlint/config.py src/sattlint/app.py src/sattlint/app_cli_commands.py src/sattlint/core/diagnostics.py`.
 
 ## Context and Orientation
 

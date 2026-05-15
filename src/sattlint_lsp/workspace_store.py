@@ -110,6 +110,23 @@ class WorkspaceSnapshotStore:
         self._source_file_to_entry_keys: dict[Path, set[str]] = {}
         self._config_version = 0
 
+    def refresh_workspace(self) -> tuple[Path, ...]:
+        with self._lock:
+            if self._workspace_root is None or self._settings is None:
+                self._discovery = None
+                self._entry_files = ()
+                self._states.clear()
+                self._source_file_to_entry_keys.clear()
+                self._config_version += 1
+                return ()
+
+            self._discovery = discover_workspace_sources(self._workspace_root)
+            self._entry_files = _workspace_entry_files(self._discovery)
+            self._states.clear()
+            self._source_file_to_entry_keys.clear()
+            self._config_version += 1
+            return self._entry_files
+
     def ensure_configured(self, workspace_root: Path | None, settings: Any) -> bool:
         normalized_root = workspace_root.resolve() if workspace_root is not None else None
         with self._lock:

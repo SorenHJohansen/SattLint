@@ -156,21 +156,7 @@ def _write_text_artifact(path: Path, content: str) -> None:
 
 
 def _write_markdown(path: Path, findings: list[Finding], summary: dict[str, Any]) -> None:
-    lines = ["# Repository Audit", "", "## Summary", ""]
-    for severity in ("critical", "high", "medium", "low"):
-        lines.append(f"- {severity.title()}: {summary['severity_counts'].get(severity, 0)}")
-    lines.extend(["", "## Findings", ""])
-    if not findings:
-        lines.append("- No findings.")
-    else:
-        for finding in findings:
-            location = finding.path or "<repo>"
-            if finding.line is not None:
-                location = f"{location}:{finding.line}"
-            lines.append(f"- [{finding.severity.upper()}] {finding.category}: {finding.message} ({location})")
-            if finding.detail:
-                lines.append(f"  Detail: {finding.detail}")
-    _write_text_artifact(path, "\n".join(lines) + "\n")
+    _ledger_module.write_markdown(path, findings, summary, write_text_artifact_fn=_write_text_artifact)
 
 
 _mirror_latest_reports = _repo_audit_compat_module._mirror_latest_reports
@@ -185,11 +171,7 @@ _build_audit_run_id = _repo_audit_compat_module._build_audit_run_id
 
 
 def _collect_audit_git_state(root: Path = REPO_ROOT) -> dict[str, Any]:
-    return _ledger_module.collect_audit_git_state(
-        root,
-        git_which=shutil.which,
-        run_command=subprocess.run,
-    )
+    return _ledger_module.collect_audit_git_state(root, git_which=shutil.which, run_command=subprocess.run)
 
 
 _copy_audit_snapshot = _repo_audit_compat_module._copy_audit_snapshot
@@ -204,33 +186,6 @@ _failure_signature = _ledger_module.failure_signature
 _build_failure_patterns = _ledger_module.build_failure_patterns
 
 
-def _build_audit_run_entry(
-    *,
-    run_id: str,
-    captured_at: str,
-    snapshot_dir: Path,
-    history_base: Path,
-    source_dir: Path,
-    report_kind: str,
-    primary_payload: dict[str, Any],
-    status_payload: dict[str, Any] | None,
-    summary_payload: dict[str, Any] | None,
-) -> dict[str, Any]:
-    return _ledger_module.build_audit_run_entry(
-        run_id=run_id,
-        captured_at=captured_at,
-        snapshot_dir=snapshot_dir,
-        history_base=history_base,
-        source_dir=source_dir,
-        report_kind=report_kind,
-        primary_payload=primary_payload,
-        status_payload=status_payload,
-        summary_payload=summary_payload,
-        collect_git_state=_collect_audit_git_state,
-        sanitize_report_path=_sanitize_report_path,
-    )
-
-
 def _write_audit_run_history(
     source_dir: Path,
     *,
@@ -240,7 +195,7 @@ def _write_audit_run_history(
     status_payload: dict[str, Any] | None = None,
     summary_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return _ledger_module.write_audit_run_history(
+    return _ledger_module.write_repo_audit_run_history(
         source_dir,
         latest_output_dir=latest_output_dir,
         report_kind=report_kind,
@@ -254,11 +209,11 @@ def _write_audit_run_history(
         schema_version=AUDIT_RUN_HISTORY_SCHEMA_VERSION,
         build_run_id=_build_audit_run_id,
         copy_snapshot=_copy_audit_snapshot,
-        load_history=_load_audit_run_history,
-        build_entry=_build_audit_run_entry,
+        load_history_fn=_load_audit_run_history,
+        collect_git_state_fn=_collect_audit_git_state,
         history_stale_reasons=_history_stale_reasons,
         build_failure_patterns=_build_failure_patterns,
-        sanitize_report_path=_sanitize_report_path,
+        sanitize_report_path_fn=_sanitize_report_path,
         write_json=write_json_artifact,
         repo_root=REPO_ROOT,
     )

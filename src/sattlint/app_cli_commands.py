@@ -9,6 +9,7 @@ from sattline_parser.models.ast_model import BasePicture
 
 from . import config as config_module
 from . import console as console_module
+from .config import ConfigValidationResult
 from .docgenerator import generate_docx
 from .models.project_graph import ProjectGraph
 
@@ -24,14 +25,16 @@ def run_validate_config_command(
     *,
     config_path: Path,
     default_used: bool,
-    self_check_fn: Callable[[ConfigDict], bool],
+    validate_config_fn: Callable[[ConfigDict], ConfigValidationResult],
     exit_success: int,
     exit_usage_error: int,
 ) -> int:
     if default_used:
         emit_output(f"Warning: default config loaded from {config_path}")
-    is_valid = self_check_fn(cfg)
-    return exit_success if is_valid else exit_usage_error
+    validation = validate_config_fn(cfg)
+    for error in validation.errors:
+        emit_output(error.message)
+    return exit_success if validation.passed else exit_usage_error
 
 
 def run_analyze_command(
