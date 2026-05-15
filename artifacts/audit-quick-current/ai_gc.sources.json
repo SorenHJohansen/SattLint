@@ -1,0 +1,17 @@
+{
+  "artifact_digest": "sha1:161c7c532e1ac5461757ec0181950b5128934b7a",
+  "artifact_file": "artifacts/audit-quick-current/ai_gc.json",
+  "artifact_kind": "sattlint.ai_gc",
+  "artifact_schema_version": 1,
+  "generated_by": "sattlint.devtools.ai_gc",
+  "kind": "sattlint.generated_output_sources",
+  "schema_version": 1,
+  "source_count": 1,
+  "sources": [
+    {
+      "digest": "sha1:83fde28698f2a4074e15ffbfb5731bf721d8109e",
+      "exists": true,
+      "path": "src/sattlint/devtools/ai_gc.py"
+    }
+  ]
+}

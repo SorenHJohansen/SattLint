@@ -1,0 +1,30 @@
+{
+  "case_id": "valid-sequence-alternative",
+  "finding_count": 35,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "missing_dependencies": [],
+  "mode": "workspace",
+  "resolved_targets": [
+    "SequenceAlternative"
+  ],
+  "rule_counts": {
+    "semantic.condition-always-false": 5,
+    "semantic.condition-always-true": 3,
+    "semantic.dead-overwrite": 2,
+    "semantic.implicit-latch": 1,
+    "semantic.loop-conflicting-setpoint": 2,
+    "semantic.never-read-write": 2,
+    "semantic.read-only-non-const": 2,
+    "semantic.signal-lifecycle-unconsumed-write": 2,
+    "semantic.transition-always-true": 1,
+    "spec.basepicture_direct_code": 1,
+    "spec.sequence_step_prefix": 6,
+    "spec.transition_prefix": 8
+  },
+  "target_file": "tests/fixtures/corpus/valid/SequenceAlternative.s",
+  "warnings": []
+}

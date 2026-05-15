@@ -10,7 +10,7 @@
 **Audience:** AI-only repository. Design solutions, workflows, and supporting docs for agent execution rather than human-first operation.
 **Communication:** Terse. Pattern: `[thing] [action] [reason]. [next step].`
 **Machine entrypoint:** `sattlint-repo-audit --profile full --planning-context --output-dir artifacts/audit`.
-**Health checks:** `python scripts/context_health.py --check`; `python scripts/repo_health.py --check --audit-dir artifacts/audit`.
+**Health checks:** `python scripts/context_health.py --check`; `python scripts/context_health.py --check --section codegraph`; `python scripts/repo_health.py --check --audit-dir artifacts/audit`.
 **Branch model:** `main`, `develop/integration`, `ai/task-<id>`, `test/task-<id>`, `review/task-<id>`.
 **Naming:** task ids, worktree folders, and handoff files use lower-kebab-case.
 
@@ -38,7 +38,7 @@ See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface
 
 **Subagents cannot use MCP tools.** Do not tell subagents to call codegraph tools — the main session must gather context and pass it in the prompt.
 
-**Health** — use `codegraph status` or the `CodeGraph Maintenance` prompt (`.github/prompts/codegraph-maintenance.prompt.md`). Rebuild with `codegraph init --index` if the index is stale.
+**Health** — run `python scripts/context_health.py --check --section codegraph` once before CodeGraph exploration. If it reports `healthy`, use CodeGraph-first routing. If it reports `degraded`, run one sync or rebuild and recheck once. If it reports `fallback_to_rg`, stop using CodeGraph MCP calls and fall back immediately.
 
 ## Critical Invariants (Auto-Loaded)
 
@@ -48,6 +48,7 @@ See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface
 - Use repo venv commands, not the VS Code test runner, for executable proof.
 - Treat `vscode/sattline-vscode/` as the SattLine editor client for external workspaces, not as the default host for this repo.
 - Bootstrap new slices with `python scripts/bootstrap_ai_slice.py ...` instead of hand-editing coordination state.
+- For ambiguous `implement-plan`, `review-artifact`, or `chat-review` requests, bootstrap from `python scripts/bootstrap_ai_slice.py --from-request-kind ...` so the controlling artifact, requested files, first validation, and expected outcome are explicit before execution.
 - Treat the shared active-claim lock as `.git/sattlint-ai-coordination/current_work_lock.json`; the deprecated markdown coordination ledger should not be used.
 - One task contract and one handoff per scoped slice when work moves between executor, test, and reviewer.
 - Use `@context-optimizer /audit` before growing AI control files.
@@ -64,6 +65,7 @@ See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface
 - Preferred task size: one owner surface, one behavior goal, one clear validation command.
 - Executor -> Test -> Reviewer uses `.ai/tasks/*.json` and `.ai/handoffs/*.json`.
 - Worktree default: `python scripts/bootstrap_ai_slice.py --task-id <id> --stage executor --file <path> --validation "<command>"`.
+- Chat-review starts from `<workspace-storage>/GitHub.copilot-chat/transcripts/*.jsonl`; use `debug-logs/` only as session metadata, not as the controlling content seam.
 - Testing expectation: bug fix or feature change moves with focused tests in same change.
 - Finish gate: focused proof plus touched-file Ruff and Pyright; widen to `--check-my-changes` for shared infra.
 - CI expectation: `ci.yml` is integrated full-trust and nightly health; `lint.yml`, `typing.yml`, and `repo-audit.yml` remain owner workflows.
@@ -87,4 +89,4 @@ See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface
 
 ## Last Updated
 
-2026-05-07
+2026-05-15

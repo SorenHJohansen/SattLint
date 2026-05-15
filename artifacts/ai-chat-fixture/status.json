@@ -1,0 +1,21 @@
+{
+  "finding_count": 5,
+  "generated_by": "sattlint.devtools.ai_chat_observability",
+  "kind": "sattlint.ai_chat.status",
+  "output_dir": "artifacts/ai-chat-fixture",
+  "overall_status": "degraded",
+  "reports": {
+    "findings": "artifacts/ai-chat-fixture/findings.json",
+    "sessions": "artifacts/ai-chat-fixture/sessions.json",
+    "status": "artifacts/ai-chat-fixture/status.json",
+    "summary": "artifacts/ai-chat-fixture/summary.json"
+  },
+  "schema_version": 1,
+  "session_store_status": "not_requested",
+  "transcript_source": {
+    "input_kind": "transcripts-dir",
+    "input_path": "tests/fixtures/ai_chat/sample_workspace/GitHub.copilot-chat/transcripts",
+    "transcript_count": 2,
+    "transcripts_dir": "tests/fixtures/ai_chat/sample_workspace/GitHub.copilot-chat/transcripts"
+  }
+}

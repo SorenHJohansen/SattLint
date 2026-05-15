@@ -1,0 +1,36 @@
+{
+  "finding_count": 1,
+  "findings": [
+    {
+      "analyzer": "syntax-check",
+      "artifact": "findings",
+      "category": "syntax",
+      "confidence": "high",
+      "data": {
+        "stage": "validation"
+      },
+      "detail": null,
+      "file": "tests/fixtures/corpus/invalid/SeqForkUnknownTarget.s",
+      "fingerprint": "syntax.validation|tests/fixtures/corpus/invalid/SeqForkUnknownTarget.s|||BasePicture sequence 'MainSeq' alternative branch 2 has SEQFORK target 'MissingTarget' that does not exist in the sequence or module",
+      "id": "syntax.validation",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [],
+        "path": "tests/fixtures/corpus/invalid/SeqForkUnknownTarget.s",
+        "symbol": null
+      },
+      "message": "BasePicture sequence 'MainSeq' alternative branch 2 has SEQFORK target 'MissingTarget' that does not exist in the sequence or module",
+      "minimal_reproducer": "sattlint syntax-check tests/fixtures/corpus/invalid/SeqForkUnknownTarget.s",
+      "owner_surface": "syntax-check",
+      "rule_id": "syntax.validation",
+      "severity": "high",
+      "source": "corpus-runner",
+      "suggested_next_command": "sattlint syntax-check tests/fixtures/corpus/invalid/SeqForkUnknownTarget.s",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

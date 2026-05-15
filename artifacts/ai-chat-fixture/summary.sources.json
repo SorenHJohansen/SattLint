@@ -1,0 +1,17 @@
+{
+  "artifact_digest": "sha1:65a7040da2f346ff2c91217f6a0bfcab7dcc6fa8",
+  "artifact_file": "artifacts/ai-chat-fixture/summary.json",
+  "artifact_kind": "sattlint.ai_chat.summary",
+  "artifact_schema_version": 1,
+  "generated_by": "sattlint.devtools.ai_chat_observability",
+  "kind": "sattlint.generated_output_sources",
+  "schema_version": 1,
+  "source_count": 1,
+  "sources": [
+    {
+      "digest": "sha1:2b213bc9c48e6be35892e7852938d874e249fee3",
+      "exists": true,
+      "path": "src/sattlint/devtools/ai_chat_observability.py"
+    }
+  ]
+}

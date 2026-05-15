@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from typing import Any
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -11,12 +10,6 @@ from sattline_parser.models.ast_model import (
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    Sequence,
-    SFCAlternative,
-    SFCParallel,
-    SFCStep,
-    SFCSubsequence,
-    SFCTransitionSub,
     SingleModule,
     Variable,
 )
@@ -28,6 +21,7 @@ from ..resolution.common import (
     varname_base,
     varname_full,
 )
+from . import _alarm_path_traversal as _alarm_path_traversal_module
 from .framework import Issue, format_report_header
 
 _TAG_PARAMETER_NAMES: tuple[str, ...] = (
@@ -53,6 +47,16 @@ _ISSUE_LABELS = {
     "alarm.conflicting_priority": "Conflicting alarm priorities",
     "alarm.never_cleared": "Never-cleared alarm writes",
 }
+
+_AlarmBooleanWriteSummary = _alarm_path_traversal_module.AlarmBooleanWriteSummary
+_as_bool_literal = _alarm_path_traversal_module.as_bool_literal
+_collect_alarm_boolean_writes = _alarm_path_traversal_module.collect_alarm_boolean_writes
+_collect_boolean_writes = _alarm_path_traversal_module.collect_boolean_writes
+_iter_modulecode_statements = _alarm_path_traversal_module.iter_modulecode_statements
+_iter_sequence_node_statements = _alarm_path_traversal_module.iter_sequence_node_statements
+_iter_sequence_statements = _alarm_path_traversal_module.iter_sequence_statements
+_looks_like_alarm_reference = _alarm_path_traversal_module.looks_like_alarm_reference
+_record_boolean_write = _alarm_path_traversal_module.record_boolean_write
 
 
 @dataclass(frozen=True)
@@ -565,164 +569,21 @@ class AlarmIntegrityAnalyzer:
         if modulecode is None:
             return
 
-        writes: dict[str, dict[str, Any]] = {}
-        for statement in self._iter_modulecode_statements(modulecode):
-            self._collect_boolean_writes(statement, env, writes)
-
+        writes = _collect_alarm_boolean_writes(modulecode, env)
         for entry in writes.values():
-            values = entry["values"]
+            values = entry.values
             if True not in values or False in values:
                 continue
             self._issues.append(
                 Issue(
                     kind="alarm.never_cleared",
                     message=(
-                        f"Alarm variable {entry['display']!r} is only written with True and is never explicitly cleared to False in this scope."
+                        f"Alarm variable {entry.display!r} is only written with True and is never explicitly cleared to False in this scope."
                     ),
                     module_path=module_path.copy(),
-                    data={"variable": entry["display"]},
+                    data={"variable": entry.display},
                 )
             )
-
-    def _iter_modulecode_statements(self, modulecode: ModuleCode) -> list[Any]:
-        statements: list[Any] = []
-        for equation in modulecode.equations or []:
-            statements.extend(equation.code or [])
-        for sequence in modulecode.sequences or []:
-            statements.extend(self._iter_sequence_statements(sequence))
-        return statements
-
-    def _iter_sequence_statements(self, sequence: Sequence) -> list[Any]:
-        statements: list[Any] = []
-        for node in sequence.code or []:
-            statements.extend(self._iter_sequence_node_statements(node))
-        return statements
-
-    def _iter_sequence_node_statements(self, node: Any) -> list[Any]:
-        if isinstance(node, SFCStep):
-            return [*(node.code.enter or []), *(node.code.active or []), *(node.code.exit or [])]
-        if isinstance(node, SFCAlternative | SFCParallel):
-            branch_statements: list[Any] = []
-            for branch in node.branches or []:
-                for child in branch:
-                    branch_statements.extend(self._iter_sequence_node_statements(child))
-            return branch_statements
-        if isinstance(node, SFCSubsequence | SFCTransitionSub):
-            nested_statements: list[Any] = []
-            for child in node.body or []:
-                nested_statements.extend(self._iter_sequence_node_statements(child))
-            return nested_statements
-        return []
-
-    def _collect_boolean_writes(
-        self,
-        obj: Any,
-        env: dict[str, Variable],
-        writes: dict[str, dict[str, Any]],
-    ) -> None:
-        if obj is None:
-            return
-
-        if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
-            for child in getattr(obj, "children", []):
-                self._collect_boolean_writes(child, env, writes)
-            return
-
-        if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
-            _if_tag, branches, else_block = obj
-            for condition, branch_statements in branches or []:
-                self._collect_boolean_writes(condition, env, writes)
-                for statement in branch_statements or []:
-                    self._collect_boolean_writes(statement, env, writes)
-            for statement in else_block or []:
-                self._collect_boolean_writes(statement, env, writes)
-            return
-
-        if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
-            _assign, target, expr = obj
-            self._record_boolean_write(target, expr, env, writes)
-            self._collect_boolean_writes(expr, env, writes)
-            return
-
-        if isinstance(obj, tuple) and obj and obj[0] == const.KEY_FUNCTION_CALL:
-            _call, function_name, args = obj
-            if (function_name or "").casefold() == "setbooleanvalue" and len(args or []) >= 2:
-                self._record_boolean_write(args[0], args[1], env, writes)
-            for argument in args or []:
-                self._collect_boolean_writes(argument, env, writes)
-            return
-
-        if isinstance(obj, tuple) and obj and obj[0] == const.KEY_TERNARY:
-            _ternary, branches, else_expr = obj
-            for condition, then_expr in branches or []:
-                self._collect_boolean_writes(condition, env, writes)
-                self._collect_boolean_writes(then_expr, env, writes)
-            self._collect_boolean_writes(else_expr, env, writes)
-            return
-
-        if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_COMPARE, const.KEY_ADD, const.KEY_MUL):
-            for child in obj[1:]:
-                self._collect_boolean_writes(child, env, writes)
-            return
-
-        if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_PLUS, const.KEY_MINUS, const.GRAMMAR_VALUE_NOT):
-            self._collect_boolean_writes(obj[1], env, writes)
-            return
-
-        if isinstance(obj, tuple) and obj and obj[0] in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND):
-            for child in obj[1] or []:
-                self._collect_boolean_writes(child, env, writes)
-            return
-
-        if isinstance(obj, list):
-            for item in obj:
-                self._collect_boolean_writes(item, env, writes)
-            return
-
-        if hasattr(obj, "children"):
-            for child in getattr(obj, "children", []):
-                self._collect_boolean_writes(child, env, writes)
-
-    def _record_boolean_write(
-        self,
-        target: Any,
-        expr: Any,
-        env: dict[str, Variable],
-        writes: dict[str, dict[str, Any]],
-    ) -> None:
-        target_ref = varname_full(target)
-        if not target_ref:
-            return
-        if not self._looks_like_alarm_reference(target_ref, env):
-            return
-        bool_value = self._as_bool_literal(expr)
-        if bool_value is None:
-            return
-
-        entry = writes.setdefault(
-            target_ref.casefold(),
-            {"display": target_ref, "values": set()},
-        )
-        entry["values"].add(bool_value)
-
-    def _looks_like_alarm_reference(
-        self,
-        target_ref: str,
-        env: dict[str, Variable],
-    ) -> bool:
-        base_name = target_ref.split(".", 1)[0]
-        variable = env.get(base_name.casefold())
-        if variable is None:
-            return False
-        datatype_text = variable.datatype_text.casefold()
-        if datatype_text != "boolean":
-            return False
-        return "alarm" in target_ref.casefold()
-
-    def _as_bool_literal(self, expr: Any) -> bool | None:
-        if isinstance(expr, bool):
-            return expr
-        return None
 
     def _location_list(self, candidates: list[_AlarmCandidate]) -> list[str]:
         return sorted({".".join(candidate.module_path) for candidate in candidates})

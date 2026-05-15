@@ -310,6 +310,46 @@ class WorkspaceSnapshotStore:
             return None
         return state.bundle
 
+    def _max_cached_entry_snapshots_locked(self) -> int:
+        settings = self._settings
+        try:
+            limit = int(getattr(settings, "max_cached_entry_snapshots", 2))
+        except (TypeError, ValueError):
+            return 2
+        return max(1, limit)
+
+    def _remove_bundle_sources_locked(self, entry_key: str, bundle: SnapshotBundle) -> None:
+        for source_file in bundle.source_files:
+            resolved_source = source_file.resolve()
+            keys = self._source_file_to_entry_keys.get(resolved_source)
+            if keys is None:
+                continue
+            keys.discard(entry_key)
+            if not keys:
+                self._source_file_to_entry_keys.pop(resolved_source, None)
+
+    def _evict_bundle_locked(self, state: _EntrySnapshotState) -> None:
+        if state.bundle is None:
+            return
+        self._remove_bundle_sources_locked(state.cache_key, state.bundle)
+        state.bundle = None
+        state.stale = False
+
+    def _enforce_bundle_cap_locked(self, protected_entry_keys: set[str] | None = None) -> None:
+        protected = protected_entry_keys or set()
+        limit = self._max_cached_entry_snapshots_locked()
+        cached_states = [state for state in self._states.values() if state.bundle is not None]
+        overflow = len(cached_states) - limit
+        if overflow <= 0:
+            return
+
+        candidates = sorted(
+            (state for state in cached_states if state.cache_key not in protected and state.future is None),
+            key=lambda state: (0 if state.stale else 1, state.last_access, state.cache_key),
+        )
+        for state in candidates[:overflow]:
+            self._evict_bundle_locked(state)
+
     def _state_for_entry_locked(self, entry_file: Path) -> _EntrySnapshotState:
         cache_key = _cache_key(entry_file)
         state = self._states.get(cache_key)
@@ -421,14 +461,9 @@ class WorkspaceSnapshotStore:
             state.last_error = None
 
             if previous_bundle is not None:
-                for source_file in previous_bundle.source_files:
-                    resolved_source = source_file.resolve()
-                    keys = self._source_file_to_entry_keys.get(resolved_source)
-                    if keys is None:
-                        continue
-                    keys.discard(entry_key)
-                    if not keys:
-                        self._source_file_to_entry_keys.pop(resolved_source, None)
+                self._remove_bundle_sources_locked(entry_key, previous_bundle)
 
             for source_file in bundle.source_files:
                 self._source_file_to_entry_keys.setdefault(source_file.resolve(), set()).add(entry_key)
+
+            self._enforce_bundle_cap_locked({entry_key})

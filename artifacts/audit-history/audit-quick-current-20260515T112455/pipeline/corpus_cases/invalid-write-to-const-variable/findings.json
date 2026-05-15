@@ -1,0 +1,36 @@
+{
+  "finding_count": 1,
+  "findings": [
+    {
+      "analyzer": "syntax-check",
+      "artifact": "findings",
+      "category": "syntax",
+      "confidence": "high",
+      "data": {
+        "stage": "validation"
+      },
+      "detail": null,
+      "file": "tests/fixtures/corpus/invalid/WriteToConstVariable.s",
+      "fingerprint": "syntax.validation|tests/fixtures/corpus/invalid/WriteToConstVariable.s|21||BasePicture equation 'Main' assignment writes to CONST variable 'MaxLimit'",
+      "id": "syntax.validation",
+      "line": 21,
+      "location": {
+        "column": 7,
+        "line": 21,
+        "module_path": [],
+        "path": "tests/fixtures/corpus/invalid/WriteToConstVariable.s",
+        "symbol": null
+      },
+      "message": "BasePicture equation 'Main' assignment writes to CONST variable 'MaxLimit'",
+      "minimal_reproducer": "sattlint syntax-check tests/fixtures/corpus/invalid/WriteToConstVariable.s",
+      "owner_surface": "syntax-check",
+      "rule_id": "syntax.validation",
+      "severity": "high",
+      "source": "corpus-runner",
+      "suggested_next_command": "sattlint syntax-check tests/fixtures/corpus/invalid/WriteToConstVariable.s",
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

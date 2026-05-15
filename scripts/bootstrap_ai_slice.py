@@ -23,6 +23,7 @@ HANDOFF_TEMPLATE_PATH = REPO_ROOT / ".ai" / "handoffs" / "handoff.example.json"
 TASK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 VALID_STAGE_VALUES = {"executor", "test", "review"}
 VALID_LEDGER_STATUSES = {"planned", "active", "blocked", "ready-for-merge", "done"}
+VALID_REQUEST_KINDS = {"implement-plan", "review-artifact", "chat-review"}
 STRUCTURAL_DEBT_REDUCTION_HINTS = (
     "decompose",
     "decomposition",
@@ -60,6 +61,8 @@ class BootstrapConfig:
     notes: str
     task_contract_path: str
     handoff_path: str
+    request_kind: str | None = None
+    request_artifact: str | None = None
 
 
 @dataclass(frozen=True)
@@ -129,6 +132,13 @@ def _normalize_ledger_status(status: str) -> str:
     return normalized
 
 
+def _normalize_request_kind(request_kind: str) -> str:
+    normalized = request_kind.strip().casefold()
+    if normalized not in VALID_REQUEST_KINDS:
+        raise BootstrapError(f"request kind must be one of {sorted(VALID_REQUEST_KINDS)}.")
+    return normalized
+
+
 def _default_branch(stage: str, task_id: str) -> str:
     if stage == "review":
         return f"review/task-{task_id}"
@@ -171,6 +181,65 @@ def _resolve_source_ref(args: argparse.Namespace, *, repo_root: Path, stage: str
     if stage in {"review", "test"}:
         return f"ai/task-{task_id}"
     return args.base_branch.strip()
+
+
+def _display_path(raw_path: str, *, repo_root: Path) -> str:
+    candidate = Path(raw_path)
+    resolved = (repo_root / candidate).resolve() if not candidate.is_absolute() else candidate.resolve()
+    try:
+        return resolved.relative_to(repo_root).as_posix()
+    except ValueError:
+        return resolved.as_posix()
+
+
+def _resolve_chat_review_artifact(raw_path: str, *, repo_root: Path) -> str:
+    candidate = Path(raw_path)
+    resolved = (repo_root / candidate).resolve() if not candidate.is_absolute() else candidate.resolve()
+
+    if resolved.name == "transcripts":
+        target = resolved
+    elif resolved.name == "debug-logs":
+        target = resolved.parent / "transcripts"
+    elif resolved.suffix == ".jsonl" and resolved.parent.name == "transcripts":
+        target = resolved.parent
+    elif resolved.suffix == ".jsonl" and resolved.parent.name == "debug-logs":
+        target = resolved.parent.parent / "transcripts"
+    elif resolved.name == "GitHub.copilot-chat":
+        target = resolved / "transcripts"
+    else:
+        target = resolved / "GitHub.copilot-chat" / "transcripts"
+
+    try:
+        return target.relative_to(repo_root).as_posix()
+    except ValueError:
+        return target.as_posix()
+
+
+def _resolve_request_artifact(args: argparse.Namespace, *, repo_root: Path) -> tuple[str | None, str | None]:
+    raw_request_kind = str(args.from_request_kind or "").strip()
+    plan_file = str(args.plan_file or "").strip()
+    artifact_path = str(args.artifact_path or "").strip()
+
+    if not raw_request_kind:
+        if plan_file or artifact_path:
+            raise BootstrapError("Use --from-request-kind before providing --plan-file or --artifact-path.")
+        return None, None
+
+    request_kind = _normalize_request_kind(raw_request_kind)
+    if request_kind == "implement-plan":
+        if not plan_file:
+            raise BootstrapError("implement-plan requires --plan-file.")
+        if artifact_path:
+            raise BootstrapError("implement-plan uses --plan-file, not --artifact-path.")
+        return request_kind, _display_path(plan_file, repo_root=repo_root)
+
+    if plan_file:
+        raise BootstrapError(f"{request_kind} does not accept --plan-file.")
+    if not artifact_path:
+        raise BootstrapError(f"{request_kind} requires --artifact-path.")
+    if request_kind == "chat-review":
+        return request_kind, _resolve_chat_review_artifact(artifact_path, repo_root=repo_root)
+    return request_kind, _display_path(artifact_path, repo_root=repo_root)
 
 
 def _unique_paths(values: Sequence[str], *, repo_root: Path | None = None) -> tuple[str, ...]:
@@ -221,6 +290,7 @@ def _collect_config(args: argparse.Namespace, input_func: InputFunc = input) -> 
 
     task_id = args.task_id or _prompt_value(input_func, "Task ID", normalize=_normalize_rel_path)
     task_id = _require_valid_task_id(task_id)
+    request_kind, request_artifact = _resolve_request_artifact(args, repo_root=repo_root)
     default_title = _humanize_task_id(task_id)
     title = args.title or _prompt_value(input_func, "Title", default=default_title)
     owner = args.owner or _prompt_value(input_func, "Owner", default="Copilot")
@@ -282,6 +352,8 @@ def _collect_config(args: argparse.Namespace, input_func: InputFunc = input) -> 
         notes=notes.strip(),
         task_contract_path=_normalize_rel_path(task_contract_path),
         handoff_path=_normalize_rel_path(handoff_path),
+        request_kind=request_kind,
+        request_artifact=request_artifact,
     )
 
 
@@ -377,6 +449,9 @@ def _git_head_commit(repo_root: Path, git_runner: GitRunner) -> str:
 
 def _task_contract_payload(config: BootstrapConfig, existing: dict[str, Any] | None = None) -> dict[str, Any]:
     payload = dict(existing or _load_json_object(config.repo_root / ".ai" / "tasks" / "task-contract.example.json"))
+    acceptance_criteria = (
+        list(payload.get("acceptance_criteria", [])) if existing else _default_acceptance_criteria(config)
+    )
     payload.update(
         {
             "task_id": config.task_id,
@@ -390,11 +465,68 @@ def _task_contract_payload(config: BootstrapConfig, existing: dict[str, Any] | N
             "validation": list(config.validation),
             "status": "draft",
             "handoff_path": config.handoff_path,
-            "acceptance_criteria": list(payload.get("acceptance_criteria", [])) if existing else [],
+            "acceptance_criteria": acceptance_criteria,
             "risks": list(payload.get("risks", [])) if existing else [],
         }
     )
     return payload
+
+
+def _default_acceptance_criteria(config: BootstrapConfig) -> list[str]:
+    if config.request_kind is None or config.request_artifact is None:
+        return []
+
+    if config.request_kind == "implement-plan":
+        starting_rule = f"Start from the controlling plan {config.request_artifact} before broader repo exploration."
+    elif config.request_kind == "review-artifact":
+        starting_rule = (
+            f"Start from the controlling artifact {config.request_artifact} before opening unrelated repo surfaces."
+        )
+    else:
+        starting_rule = (
+            f"Start from transcript JSONL files under {config.request_artifact}; use debug logs only as metadata."
+        )
+
+    return [
+        starting_rule,
+        f"Keep the scope anchored to the requested files: {', '.join(config.files)}.",
+        f"Run the first validation command: {config.validation[0]}.",
+        f"Deliver the expected outcome: {config.summary}.",
+    ]
+
+
+def _request_contract_payload(config: BootstrapConfig) -> dict[str, Any] | None:
+    if config.request_kind is None or config.request_artifact is None:
+        return None
+    return {
+        "request_kind": config.request_kind,
+        "controlling_artifact": config.request_artifact,
+        "requested_files": list(config.files),
+        "first_validation": config.validation[0],
+        "expected_outcome": config.summary,
+        "success_criteria": _default_acceptance_criteria(config),
+    }
+
+
+def _request_prompt_payload(config: BootstrapConfig) -> str | None:
+    contract = _request_contract_payload(config)
+    if contract is None:
+        return None
+
+    requested_files = "\n".join(f"- {path}" for path in contract["requested_files"])
+    success_criteria = "\n".join(f"- {item}" for item in contract["success_criteria"])
+    return "\n".join(
+        [
+            f"Request kind: {contract['request_kind']}",
+            f"Start from: {contract['controlling_artifact']}",
+            "Requested files:",
+            requested_files,
+            f"First validation: {contract['first_validation']}",
+            f"Expected outcome: {contract['expected_outcome']}",
+            "Success criteria:",
+            success_criteria,
+        ]
+    )
 
 
 def _handoff_payload(
@@ -463,22 +595,33 @@ def bootstrap_slice(config: BootstrapConfig, git_runner: GitRunner = _run_git) -
     _write_json(handoff_path, _handoff_payload(config, commit, existing_handoff))
 
     ledger_path = _upsert_ledger_entry(config)
-    return {
+    result = {
         "branch": config.branch,
         "worktree": worktree_path.as_posix(),
         "task_contract": _relative_path(task_contract_path, config.repo_root),
         "handoff": _relative_path(handoff_path, config.repo_root),
         "lock_state": coordination_lock_state.display_path(ledger_path, config.repo_root),
     }
+    request_contract = _request_contract_payload(config)
+    request_prompt = _request_prompt_payload(config)
+    if request_contract is not None and request_prompt is not None:
+        result["request_contract"] = json.dumps(request_contract, indent=2)
+        result["request_prompt"] = request_prompt
+    return result
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Bootstrap one explicit AI slice from planning output.")
+    parser = argparse.ArgumentParser(
+        description="Bootstrap one explicit AI slice or request contract from planning output."
+    )
     parser.add_argument("--repo-root", default=str(REPO_ROOT))
     parser.add_argument("--task-id")
     parser.add_argument("--title")
     parser.add_argument("--owner")
     parser.add_argument("--summary")
+    parser.add_argument("--from-request-kind", choices=sorted(VALID_REQUEST_KINDS))
+    parser.add_argument("--plan-file")
+    parser.add_argument("--artifact-path")
     parser.add_argument("--file", action="append", default=[])
     parser.add_argument("--validation", action="append", default=[])
     parser.add_argument("--branch")
@@ -513,6 +656,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Task contract: {result['task_contract']}")
     print(f"Handoff: {result['handoff']}")
     print(f"Lock state: {result['lock_state']}")
+    if "request_contract" in result and "request_prompt" in result:
+        print("Request contract:")
+        print(result["request_contract"])
+        print("Prompt payload:")
+        print(result["request_prompt"])
     return 0
 
 

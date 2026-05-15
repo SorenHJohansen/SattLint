@@ -6,15 +6,13 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
+from . import _app_analysis_loading as analysis_loading_module
+from . import _app_analysis_menus as analysis_menus_module
+from . import _app_analysis_variable_analyses as analysis_variable_analyses_module
 from . import app_support as app_support_module
 from . import cache as cache_module
 from . import console as console_module
 from . import engine as engine_module
-from ._app_analysis_variable_analyses import (
-    HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS,
-    LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS,
-    VARIABLE_ANALYSES,
-)
 from .analyzers import variable_usage_reporting as variables_reporting_module
 from .analyzers.comment_code import analyze_comment_code_files
 from .analyzers.framework import AnalysisContext
@@ -38,6 +36,11 @@ from .reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, Variabl
 
 ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
+VariableAnalysisSelection = analysis_variable_analyses_module.VariableAnalysisSelection
+VariableAnalysisMap = analysis_variable_analyses_module.VariableAnalysisMap
+VARIABLE_ANALYSES = analysis_variable_analyses_module.VARIABLE_ANALYSES
+HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = analysis_variable_analyses_module.HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
+LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = analysis_variable_analyses_module.LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
 
 app_support = cast(Any, app_support_module)
 cache = cast(Any, cache_module)
@@ -82,17 +85,19 @@ def _normalize_report_target_name(report: Any, target_name: str) -> Any:
 
 
 def _get_analyzed_targets(cfg: ConfigDict) -> list[str]:
-    return cast(list[str], app_support.get_analyzed_targets(cfg))
+    return analysis_loading_module.get_analyzed_targets(cfg, app_support=app_support)
 
 
 def _require_analyzed_targets(cfg: ConfigDict) -> list[str]:
-    return cast(list[str], app_support.require_analyzed_targets(cfg))
+    return analysis_loading_module.require_analyzed_targets(cfg, app_support=app_support)
 
 
 def _cache_key_for_target(cfg: ConfigDict, target_name: str) -> str:
-    cache_cfg = cfg.copy()
-    cache_cfg["analysis_target"] = target_name
-    return compute_cache_key(cache_cfg)
+    return analysis_loading_module.cache_key_for_target(
+        cfg,
+        target_name,
+        compute_cache_key_fn=compute_cache_key,
+    )
 
 
 def _iter_loaded_projects(
@@ -102,20 +107,13 @@ def _iter_loaded_projects(
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _require_analyzed_targets,
     load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]] | None = None,
 ) -> Iterator[LoadedProject]:
-    loader = load_project if load_project_fn is None else load_project_fn
-    for target_name in require_analyzed_targets_fn(cfg):
-        try:
-            project_bp, graph = loader(
-                cfg,
-                target_name=target_name,
-                use_cache=use_cache,
-            )
-        except Exception as exc:
-            emit_output(f"\n=== Target: {target_name} ===")
-            emit_output("? Failed to load target:")
-            emit_output(exc)
-            continue
-        yield target_name, project_bp, graph
+    return analysis_loading_module.iter_loaded_projects(
+        cfg,
+        use_cache=use_cache,
+        require_analyzed_targets_fn=require_analyzed_targets_fn,
+        load_project_fn=load_project if load_project_fn is None else load_project_fn,
+        emit_output_fn=emit_output,
+    )
 
 
 def iter_loaded_projects(
@@ -134,15 +132,12 @@ def iter_loaded_projects(
 
 
 def _source_paths_for_current_target(project_bp: BasePicture, graph: ProjectGraph) -> set[Path]:
-    source_files: set[Path] = getattr(graph, "source_files", set())
-    origin_file = getattr(project_bp, "origin_file", None)
-    if origin_file:
-        matches = {path for path in source_files if casefold_equal(path.name, origin_file)}
-        if matches:
-            return matches
-
-    target_name = casefold_key(project_bp.header.name)
-    return {path for path in source_files if casefold_key(path.stem) == target_name}
+    return analysis_loading_module.source_paths_for_current_target(
+        project_bp,
+        graph,
+        casefold_equal_fn=casefold_equal,
+        casefold_key_fn=casefold_key,
+    )
 
 
 def source_paths_for_current_target(project_bp: BasePicture, graph: ProjectGraph) -> set[Path]:
@@ -150,16 +145,13 @@ def source_paths_for_current_target(project_bp: BasePicture, graph: ProjectGraph
 
 
 def _target_is_library(cfg: ConfigDict, project_bp: BasePicture, graph: ProjectGraph) -> bool:
-    program_dir = cfg.get("program_dir")
-    if not program_dir:
-        return False
-
-    source_paths = _source_paths_for_current_target(project_bp, graph)
-    if not source_paths:
-        return False
-
-    program_path = Path(program_dir)
-    return all(not engine._is_within_directory(path, program_path) for path in source_paths)
+    return analysis_loading_module.target_is_library(
+        cfg,
+        project_bp,
+        graph,
+        source_paths_for_current_target_fn=_source_paths_for_current_target,
+        is_within_directory_fn=engine._is_within_directory,
+    )
 
 
 def target_is_library(cfg: ConfigDict, project_bp: BasePicture, graph: ProjectGraph) -> bool:
@@ -177,55 +169,18 @@ def load_project(
     target_load_error_factory: Callable[..., Exception] | None = None,
     get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
 ) -> tuple[BasePicture, ProjectGraph]:
-    targets = require_analyzed_targets_fn(cfg)
-    selected_target = target_name or targets[0]
-    cache_dir = get_cache_dir_fn()
-    cache = ASTCache(cache_dir)
-
-    key = cache_key_for_target_fn(cfg, selected_target)
-    cached = cache.load(key) if use_cache else None
-
-    if cached:
-        return cast(tuple[BasePicture, ProjectGraph], cached["project"])
-
-    loader = engine.SattLineProjectLoader(
-        program_dir=Path(cfg["program_dir"]),
-        other_lib_dirs=[Path(p) for p in cfg["other_lib_dirs"]],
-        abb_lib_dir=Path(cfg["ABB_lib_dir"]),
-        mode=engine.CodeMode(cfg["mode"]),
-        scan_root_only=cfg["scan_root_only"],
-        debug=cfg["debug"],
+    return analysis_loading_module.load_project(
+        cfg,
+        target_name=target_name,
+        use_cache=use_cache,
         use_file_ast_cache=use_file_ast_cache,
+        require_analyzed_targets_fn=require_analyzed_targets_fn,
+        cache_key_for_target_fn=cache_key_for_target_fn,
+        target_load_error_factory=target_load_error_factory,
+        get_cache_dir_fn=get_cache_dir_fn,
+        ast_cache_cls=ASTCache,
+        engine_module=engine,
     )
-
-    graph = loader.resolve(selected_target, strict=False)
-    deps_path = loader._find_deps_with_context(
-        selected_target,
-        requester_dir=Path(cfg["program_dir"]),
-    )
-    direct_dependencies = cast(list[str], loader._read_deps(deps_path) if deps_path else [])
-
-    root_bp = graph.ast_by_name.get(selected_target)
-    if not root_bp:
-        if target_load_error_factory is None:
-            raise RuntimeError(f"Target {selected_target!r} was not parsed.")
-        raise target_load_error_factory(
-            selected_target,
-            resolved=list(graph.ast_by_name.keys()),
-            missing=graph.missing,
-            warnings=graph.warnings,
-            direct_dependencies=direct_dependencies,
-        )
-
-    project_bp = engine.merge_project_basepicture(root_bp, graph)
-    used_files = set(graph.source_files)
-    cache_backend = cast(Any, cache)
-    cache_backend.save(
-        key,
-        project=(project_bp, graph),
-        files=used_files,
-    )
-    return project_bp, graph
 
 
 def load_program_ast(
@@ -234,21 +189,12 @@ def load_program_ast(
     *,
     force_dependency_resolution: bool = False,
 ) -> tuple[BasePicture, ProjectGraph]:
-    loader = engine.SattLineProjectLoader(
-        program_dir=Path(cfg["program_dir"]),
-        other_lib_dirs=[Path(p) for p in cfg["other_lib_dirs"]],
-        abb_lib_dir=Path(cfg["ABB_lib_dir"]),
-        mode=engine.CodeMode(cfg["mode"]),
-        scan_root_only=False if force_dependency_resolution else cfg["scan_root_only"],
-        debug=cfg["debug"],
+    return analysis_loading_module.load_program_ast(
+        cfg,
+        program_name,
+        force_dependency_resolution=force_dependency_resolution,
+        engine_module=engine,
     )
-
-    graph = loader.resolve(program_name, strict=False)
-    root_bp = graph.ast_by_name.get(program_name)
-    if not root_bp:
-        raise RuntimeError(f"Program '{program_name}' not parsed. Resolved: {list(graph.ast_by_name.keys())}")
-
-    return root_bp, graph
 
 
 def force_refresh_ast(
@@ -260,26 +206,15 @@ def force_refresh_ast(
     ast_cache_cls: type[ASTCache] = ASTCache,
     get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
 ) -> tuple[BasePicture, ProjectGraph] | None:
-    targets = get_analyzed_targets_fn(cfg)
-    if not targets:
-        return None
-
-    cache = ast_cache_cls(get_cache_dir_fn())
-    cache_backend = cast(Any, cache)
-    result = None
-    total_targets = len(targets)
-    emit_output(f"Refreshing AST caches for {total_targets} target(s)...")
-    for index, target_name in enumerate(targets, start=1):
-        emit_output(f"\nRefreshing AST cache for {target_name}... ({index}/{total_targets})")
-        cache_backend.clear(cache_key_for_target_fn(cfg, target_name))
-        result = load_project_fn(
-            cfg,
-            target_name=target_name,
-            use_cache=False,
-            use_file_ast_cache=False,
-        )
-        emit_output("OK AST cache refreshed")
-    return result
+    return analysis_loading_module.force_refresh_ast(
+        cfg,
+        get_analyzed_targets_fn=get_analyzed_targets_fn,
+        cache_key_for_target_fn=cache_key_for_target_fn,
+        load_project_fn=load_project_fn,
+        ast_cache_cls=ast_cache_cls,
+        get_cache_dir_fn=get_cache_dir_fn,
+        emit_output_fn=emit_output,
+    )
 
 
 def ensure_ast_cache(
@@ -291,44 +226,15 @@ def ensure_ast_cache(
     ast_cache_cls: type[ASTCache] = ASTCache,
     get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
 ) -> bool:
-    targets = get_analyzed_targets_fn(cfg)
-    if not targets:
-        return True
-
-    cache = ast_cache_cls(get_cache_dir_fn())
-    cache_backend = cast(Any, cache)
-    fast = cfg.get("fast_cache_validation", False)
-    ok = True
-    total_targets = len(targets)
-    emit_output(f"Refreshing AST caches for {total_targets} target(s)...")
-    for index, target_name in enumerate(targets, start=1):
-        emit_output(f"\nChecking AST cache for {target_name}... ({index}/{total_targets})")
-        cached = cache_backend.load(cache_key_for_target_fn(cfg, target_name))
-        if cached:
-            has_manifest = bool(cached.get("files"))
-            if fast and has_manifest:
-                is_valid = cast(bool, cache_backend.validate(cached, fast=False))
-            else:
-                is_valid = cast(bool, cache_backend.validate(cached, fast=fast))
-            if is_valid:
-                emit_output("✔ AST cache OK")
-                continue
-
-            if has_manifest:
-                emit_output("⚠ AST cache stale; rebuilding (this may take a while)...")
-            else:
-                emit_output("⚠ AST cache missing file manifest; rebuilding (this may take a while)...")
-        else:
-            emit_output("⚠ AST cache missing; building (this may take a while)...")
-
-        try:
-            load_project_fn(cfg, target_name=target_name, use_cache=False)
-            emit_output("✔ AST cache updated")
-        except Exception as exc:
-            emit_output(f"❌ Failed to build AST cache for {target_name}: {exc}")
-            ok = False
-
-    return ok
+    return analysis_loading_module.ensure_ast_cache(
+        cfg,
+        get_analyzed_targets_fn=get_analyzed_targets_fn,
+        cache_key_for_target_fn=cache_key_for_target_fn,
+        load_project_fn=load_project_fn,
+        ast_cache_cls=ast_cache_cls,
+        get_cache_dir_fn=get_cache_dir_fn,
+        emit_output_fn=emit_output,
+    )
 
 
 def _debug_enabled(cfg: ConfigDict) -> bool:
@@ -482,44 +388,17 @@ def variable_usage_submenu(
     run_module_localvar_analysis_fn: Callable[[ConfigDict], None],
     pause_fn: Callable[[], None],
 ) -> None:
-    while True:
-        clear_screen_fn()
-        emit_output("\n--- Variable issues ---")
-        emit_output("Run focused variable reports or open the investigation tools for deeper tracing.")
-        emit_output()
-        emit_output("High confidence:")
-        emit_output("1) All variable analyses (high confidence)")
-        for key in HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS:
-            name, _ = VARIABLE_ANALYSES[key]
-            emit_output(f"{key}) {name}")
-        emit_output("\nLow confidence:")
-        for key in LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS:
-            name, _ = VARIABLE_ANALYSES[key]
-            emit_output(f"{key}) {name}")
-        emit_output("\nInvestigation tools:")
-        emit_output("22) Datatype usage analysis           Trace field-level usage for one variable name")
-        emit_output("23) Variable usage trace              Show fields and locations for one variable name")
-        emit_output("24) Module local variable analysis    Inspect field usage inside one module path")
-        emit_output("b) Back")
-        emit_output("q) Quit")
-
-        choice = input("> ").strip().lower()
-        if choice == "b":
-            return
-        if choice == "q":
-            quit_app_fn()
-        if choice == "22":
-            run_datatype_usage_analysis_fn(cfg)
-        elif choice == "23":
-            run_debug_variable_usage_fn(cfg)
-        elif choice == "24":
-            run_module_localvar_analysis_fn(cfg)
-        elif choice in VARIABLE_ANALYSES:
-            _name, kinds = VARIABLE_ANALYSES[choice]
-            run_variable_analysis_fn(cfg, kinds)
-        else:
-            emit_output("Invalid choice.")
-            pause_fn()
+    analysis_menus_module.variable_usage_submenu(
+        cfg,
+        clear_screen_fn=clear_screen_fn,
+        quit_app_fn=quit_app_fn,
+        run_variable_analysis_fn=run_variable_analysis_fn,
+        run_datatype_usage_analysis_fn=run_datatype_usage_analysis_fn,
+        run_debug_variable_usage_fn=run_debug_variable_usage_fn,
+        run_module_localvar_analysis_fn=run_module_localvar_analysis_fn,
+        pause_fn=pause_fn,
+        emit_output_fn=emit_output,
+    )
 
 
 def module_analysis_submenu(
@@ -535,40 +414,19 @@ def module_analysis_submenu(
     run_graphics_rules_validation_fn: Callable[[ConfigDict], None],
     pause_fn: Callable[[], None],
 ) -> None:
-    while True:
-        clear_screen_fn()
-        print_menu_fn(
-            "Structure & modules",
-            [
-                menu_option_factory("1", "Compare module variants", "Compare matching module names across instances"),
-                menu_option_factory("2", "Find module instances", "List where a module name appears in the target"),
-                menu_option_factory("3", "Inspect module tree", "Print the module tree for debugging structure"),
-                menu_option_factory(
-                    "4", "Validate graphics rules", "Check configured graphics rules against loaded modules"
-                ),
-                menu_option_factory("b", "Back", ""),
-                menu_option_factory("q", "Quit", ""),
-            ],
-            intro="Use these tools when you need to inspect module layout, duplication, or structural drift.",
-        )
-
-        choice = input("> ").strip().lower()
-        if choice == "b":
-            return
-        if choice == "q":
-            quit_app_fn()
-
-        if choice == "1":
-            run_module_duplicates_analysis_fn(cfg)
-        elif choice == "2":
-            run_module_find_by_name_fn(cfg)
-        elif choice == "3":
-            run_module_tree_debug_fn(cfg)
-        elif choice == "4":
-            run_graphics_rules_validation_fn(cfg)
-        else:
-            emit_output("Invalid choice.")
-            pause_fn()
+    analysis_menus_module.module_analysis_submenu(
+        cfg,
+        clear_screen_fn=clear_screen_fn,
+        print_menu_fn=print_menu_fn,
+        menu_option_factory=menu_option_factory,
+        quit_app_fn=quit_app_fn,
+        run_module_duplicates_analysis_fn=run_module_duplicates_analysis_fn,
+        run_module_find_by_name_fn=run_module_find_by_name_fn,
+        run_module_tree_debug_fn=run_module_tree_debug_fn,
+        run_graphics_rules_validation_fn=run_graphics_rules_validation_fn,
+        pause_fn=pause_fn,
+        emit_output_fn=emit_output,
+    )
 
 
 def interface_communication_submenu(
@@ -583,41 +441,18 @@ def interface_communication_submenu(
     run_icf_formatter_fn: Callable[[ConfigDict], None],
     pause_fn: Callable[[], None],
 ) -> None:
-    while True:
-        clear_screen_fn()
-        print_menu_fn(
-            "Interfaces & communication",
-            [
-                menu_option_factory(
-                    "1", "MMS interface variables", "Inventory MMSWriteVar or MMSReadVar usage and related checks"
-                ),
-                menu_option_factory("2", "Validate ICF paths", "Validate ICF entries against each program AST"),
-                menu_option_factory(
-                    "3",
-                    "Format ICF files",
-                    "Normalize Unit, Journal, Operation, and Group spacing in configured .icf files",
-                ),
-                menu_option_factory("b", "Back", ""),
-                menu_option_factory("q", "Quit", ""),
-            ],
-            intro="Check external interfaces and communication-related wiring for the current targets.",
-        )
-
-        choice = input("> ").strip().lower()
-        if choice == "b":
-            return
-        if choice == "q":
-            quit_app_fn()
-
-        if choice == "1":
-            run_mms_interface_analysis_fn(cfg)
-        elif choice == "2":
-            run_icf_validation_fn(cfg)
-        elif choice == "3":
-            run_icf_formatter_fn(cfg)
-        else:
-            emit_output("Invalid choice.")
-            pause_fn()
+    analysis_menus_module.interface_communication_submenu(
+        cfg,
+        clear_screen_fn=clear_screen_fn,
+        print_menu_fn=print_menu_fn,
+        menu_option_factory=menu_option_factory,
+        quit_app_fn=quit_app_fn,
+        run_mms_interface_analysis_fn=run_mms_interface_analysis_fn,
+        run_icf_validation_fn=run_icf_validation_fn,
+        run_icf_formatter_fn=run_icf_formatter_fn,
+        pause_fn=pause_fn,
+        emit_output_fn=emit_output,
+    )
 
 
 def code_quality_submenu(
@@ -630,29 +465,16 @@ def code_quality_submenu(
     run_comment_code_analysis_fn: Callable[[ConfigDict], None],
     pause_fn: Callable[[], None],
 ) -> None:
-    while True:
-        clear_screen_fn()
-        print_menu_fn(
-            "Code quality",
-            [
-                menu_option_factory("1", "Commented-out code", "Scan raw source comments for code-like content"),
-                menu_option_factory("b", "Back", ""),
-                menu_option_factory("q", "Quit", ""),
-            ],
-            intro="Use these checks for readability and maintainability issues rather than runtime semantics.",
-        )
-
-        choice = input("> ").strip().lower()
-        if choice == "b":
-            return
-        if choice == "q":
-            quit_app_fn()
-
-        if choice == "1":
-            run_comment_code_analysis_fn(cfg)
-        else:
-            emit_output("Invalid choice.")
-            pause_fn()
+    analysis_menus_module.code_quality_submenu(
+        cfg,
+        clear_screen_fn=clear_screen_fn,
+        print_menu_fn=print_menu_fn,
+        menu_option_factory=menu_option_factory,
+        quit_app_fn=quit_app_fn,
+        run_comment_code_analysis_fn=run_comment_code_analysis_fn,
+        pause_fn=pause_fn,
+        emit_output_fn=emit_output,
+    )
 
 
 def analyzer_catalog_menu(
@@ -666,45 +488,17 @@ def analyzer_catalog_menu(
     run_checks_fn: Callable[[ConfigDict, list[str] | None], None],
     pause_fn: Callable[[], None],
 ) -> None:
-    while True:
-        clear_screen_fn()
-        analyzers = get_enabled_analyzers_fn()
-        options = [
-            menu_option_factory("1", "Run full analyzer suite", "Run every default analyzer in sequence"),
-        ]
-        options.extend(
-            menu_option_factory(str(index), spec.name, spec.description)
-            for index, spec in enumerate(analyzers, start=2)
-        )
-        options.extend([menu_option_factory("b", "Back", ""), menu_option_factory("q", "Quit", "")])
-        print_menu_fn(
-            "Analyzer catalog",
-            options,
-            intro=(
-                "This view exposes the registry-backed analyzers directly. "
-                "Only the default analyzer set is exposed here so low-confidence analyzers "
-                "never run from the CLI suite."
-            ),
-        )
-
-        choice = input("> ").strip().lower()
-        if choice == "b":
-            return
-        if choice == "q":
-            quit_app_fn()
-
-        if choice == "1":
-            run_checks_fn(cfg, None)
-        elif choice.isdigit():
-            index = int(choice) - 2
-            if 0 <= index < len(analyzers):
-                run_checks_fn(cfg, [analyzers[index].key])
-            else:
-                emit_output("Invalid choice.")
-                pause_fn()
-        else:
-            emit_output("Invalid choice.")
-            pause_fn()
+    analysis_menus_module.analyzer_catalog_menu(
+        cfg,
+        clear_screen_fn=clear_screen_fn,
+        print_menu_fn=print_menu_fn,
+        menu_option_factory=menu_option_factory,
+        quit_app_fn=quit_app_fn,
+        get_enabled_analyzers_fn=get_enabled_analyzers_fn,
+        run_checks_fn=run_checks_fn,
+        pause_fn=pause_fn,
+        emit_output_fn=emit_output,
+    )
 
 
 def advanced_analysis_menu(
@@ -719,41 +513,18 @@ def advanced_analysis_menu(
     run_module_localvar_analysis_fn: Callable[[ConfigDict], None],
     pause_fn: Callable[[], None],
 ) -> None:
-    while True:
-        clear_screen_fn()
-        print_menu_fn(
-            "Advanced analysis & debug",
-            [
-                menu_option_factory(
-                    "1", "Datatype usage analysis", "Trace field-level usage for a selected variable name"
-                ),
-                menu_option_factory(
-                    "2", "Variable usage trace", "Show fields and locations for a selected variable name"
-                ),
-                menu_option_factory(
-                    "3", "Module local variable analysis", "Inspect field usage inside one module path"
-                ),
-                menu_option_factory("b", "Back", ""),
-                menu_option_factory("q", "Quit", ""),
-            ],
-            intro="Use these tools when the summary reports are not specific enough and you need targeted tracing.",
-        )
-
-        choice = input("> ").strip().lower()
-        if choice == "b":
-            return
-        if choice == "q":
-            quit_app_fn()
-
-        if choice == "1":
-            run_datatype_usage_analysis_fn(cfg)
-        elif choice == "2":
-            run_debug_variable_usage_fn(cfg)
-        elif choice == "3":
-            run_module_localvar_analysis_fn(cfg)
-        else:
-            emit_output("Invalid choice.")
-            pause_fn()
+    analysis_menus_module.advanced_analysis_menu(
+        cfg,
+        clear_screen_fn=clear_screen_fn,
+        print_menu_fn=print_menu_fn,
+        menu_option_factory=menu_option_factory,
+        quit_app_fn=quit_app_fn,
+        run_datatype_usage_analysis_fn=run_datatype_usage_analysis_fn,
+        run_debug_variable_usage_fn=run_debug_variable_usage_fn,
+        run_module_localvar_analysis_fn=run_module_localvar_analysis_fn,
+        pause_fn=pause_fn,
+        emit_output_fn=emit_output,
+    )
 
 
 def analysis_menu(
@@ -773,79 +544,27 @@ def analysis_menu(
     summarize_targets_fn: Callable[[ConfigDict], str],
     pause_fn: Callable[[], None],
 ) -> None:
-    while True:
-        clear_screen_fn()
-        print_menu_fn(
-            "Analyze",
-            [
-                menu_option_factory("1", "Full analyzer suite", "Run every enabled registry-backed analyzer"),
-                menu_option_factory("2", "Variable issues", "Focused variable reports and investigation tools"),
-                menu_option_factory(
-                    "3", "Structure & modules", "Inspect module layout, duplication, and tree structure"
-                ),
-                menu_option_factory("4", "Interfaces & communication", "Check MMS mappings and validate ICF paths"),
-                menu_option_factory("5", "Code quality", "Readability and maintainability checks"),
-                menu_option_factory("6", "Analyzer catalog", "Choose one registry-backed analyzer by name"),
-                menu_option_factory(
-                    "7", "Advanced analysis & debug", "Targeted tracing for variables and module locals"
-                ),
-                menu_option_factory("b", "Back", ""),
-                menu_option_factory("q", "Quit", ""),
-            ],
-            intro=(
-                "Run checks against the configured programs or libraries. "
-                "Use the full analyzer suite for a broad pass, then drill into the focused menus if you need detail."
-            ),
-            note=summarize_targets_fn(cfg),
-        )
-
-        choice = input("> ").strip().lower()
-        if choice == "b":
-            return
-        if choice == "q":
-            quit_app_fn()
-
-        if choice == "1":
-            run_checks_fn(cfg, None)
-        elif choice == "2":
-            variable_usage_submenu_fn(cfg)
-        elif choice == "3":
-            module_analysis_submenu_fn(cfg)
-        elif choice == "4":
-            interface_communication_submenu_fn(cfg)
-        elif choice == "5":
-            code_quality_submenu_fn(cfg)
-        elif choice == "6":
-            analyzer_catalog_menu_fn(cfg)
-        elif choice == "7":
-            advanced_analysis_menu_fn(cfg)
-        else:
-            emit_output("Invalid choice.")
-            pause_fn()
+    analysis_menus_module.analysis_menu(
+        cfg,
+        clear_screen_fn=clear_screen_fn,
+        print_menu_fn=print_menu_fn,
+        menu_option_factory=menu_option_factory,
+        quit_app_fn=quit_app_fn,
+        run_checks_fn=run_checks_fn,
+        variable_usage_submenu_fn=variable_usage_submenu_fn,
+        module_analysis_submenu_fn=module_analysis_submenu_fn,
+        interface_communication_submenu_fn=interface_communication_submenu_fn,
+        code_quality_submenu_fn=code_quality_submenu_fn,
+        analyzer_catalog_menu_fn=analyzer_catalog_menu_fn,
+        advanced_analysis_menu_fn=advanced_analysis_menu_fn,
+        summarize_targets_fn=summarize_targets_fn,
+        pause_fn=pause_fn,
+        emit_output_fn=emit_output,
+    )
 
 
 def _parse_index_selection(selection: str, max_index: int) -> list[int]:
-    tokens = [token.strip() for token in selection.replace(" ", ",").split(",") if token.strip()]
-    indices: set[int] = set()
-
-    for token in tokens:
-        if "-" in token:
-            parts = [part.strip() for part in token.split("-", 1)]
-            if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
-                continue
-            start = int(parts[0])
-            end = int(parts[1])
-            if start > end:
-                start, end = end, start
-            for idx in range(start, end + 1):
-                if 1 <= idx <= max_index:
-                    indices.add(idx)
-        elif token.isdigit():
-            idx = int(token)
-            if 1 <= idx <= max_index:
-                indices.add(idx)
-
-    return sorted(indices)
+    return analysis_menus_module.parse_index_selection(selection, max_index)
 
 
 def run_module_duplicates_analysis(

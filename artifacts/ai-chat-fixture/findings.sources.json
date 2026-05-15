@@ -1,0 +1,17 @@
+{
+  "artifact_digest": "sha1:6a041bb38666c4cb392ea19c96a4641c484a186b",
+  "artifact_file": "artifacts/ai-chat-fixture/findings.json",
+  "artifact_kind": "sattlint.findings",
+  "artifact_schema_version": 1,
+  "generated_by": null,
+  "kind": "sattlint.generated_output_sources",
+  "schema_version": 1,
+  "source_count": 1,
+  "sources": [
+    {
+      "digest": null,
+      "exists": true,
+      "path": "tests/fixtures/ai_chat/sample_workspace/GitHub.copilot-chat/transcripts"
+    }
+  ]
+}

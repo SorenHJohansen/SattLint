@@ -161,6 +161,7 @@ function buildInitializationOptions(folder) {
         scanRootOnly: config.get('scanRootOnly') || false,
         enableVariableDiagnostics: config.get('enableVariableDiagnostics', true),
         workspaceDiagnosticsMode: config.get('workspaceDiagnosticsMode', 'off'),
+        maxCachedEntrySnapshots: config.get('maxCachedEntrySnapshots', 2),
         maxCompletionItems: config.get('maxCompletionItems', 100),
     };
 }

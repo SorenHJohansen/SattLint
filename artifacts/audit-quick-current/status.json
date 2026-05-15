@@ -1,0 +1,70 @@
+{
+  "blocking_finding_count": 7,
+  "canonical_command": "sattlint-repo-audit --profile quick --fail-on high --output-dir artifacts/audit-quick-current",
+  "category_counts": {
+    "architecture": 1,
+    "logging-observability": 1,
+    "maintenance": 4,
+    "typing": 7
+  },
+  "fail_on": "high",
+  "finding_count": 13,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "generated_by": "sattlint.devtools.repo_audit",
+  "kind": "sattlint.repo_audit.status",
+  "latest_status_report": "artifacts/audit/status.json",
+  "latest_summary_report": "artifacts/audit/summary.json",
+  "max_severity": "high",
+  "overall_status": "fail",
+  "pipeline_status_report": "artifacts/audit-quick-current/pipeline/status.json",
+  "profile": "quick",
+  "progress_report": "artifacts/audit-quick-current/progress.json",
+  "severity_counts": {
+    "critical": 0,
+    "high": 7,
+    "low": 0,
+    "medium": 6
+  },
+  "status_report": "artifacts/audit-quick-current/status.json",
+  "summary_report": "artifacts/audit-quick-current/summary.json",
+  "top_findings": [
+    {
+      "id": "pyright-error-reportCallIssue",
+      "line": 492,
+      "message": "No parameter named \"dirty\"",
+      "path": "src/sattlint/_app_graphics_menus.py",
+      "severity": "high"
+    },
+    {
+      "id": "pyright-error-reportArgumentType",
+      "line": 377,
+      "message": "Argument of type \"(path: Path, rules: dict[str, Any], *, dirty: bool) -> None\" cannot be assigned to parameter \"print_graphics_rules_summary_fn\" of type \"(Path, dict[str, Any]) -> None\" in function \"graphics_rules_menu\"\n\u00a0\u00a0Type \"(path: Path, rules: dict[str, Any], *, dirty: bool) -> None\" is not assignable to type \"(Path, dict[str, Any]) -> None\"\n\u00a0\u00a0\u00a0\u00a0Extra parameter \"dirty\"",
+      "path": "src/sattlint/app_graphics.py",
+      "severity": "high"
+    },
+    {
+      "id": "pyright-error-reportAttributeAccessIssue",
+      "line": 48,
+      "message": "\"AstDiffDetail\" is unknown import symbol",
+      "path": "tests/_analyzers_suites_test_support.py",
+      "severity": "high"
+    },
+    {
+      "id": "pyright-error-reportAttributeAccessIssue",
+      "line": 53,
+      "message": "\"_build_upgrade_notes\" is unknown import symbol",
+      "path": "tests/_analyzers_suites_test_support.py",
+      "severity": "high"
+    },
+    {
+      "id": "pyright-error-reportAttributeAccessIssue",
+      "line": 54,
+      "message": "\"_collect_named_item_diffs\" is unknown import symbol",
+      "path": "tests/_analyzers_suites_test_support.py",
+      "severity": "high"
+    }
+  ]
+}

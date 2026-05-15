@@ -1,0 +1,17 @@
+{
+  "artifact_digest": "sha1:6afba26dee4c6cbafc60edbbca2312acf5bf3960",
+  "artifact_file": "artifacts/audit-plan-smoke/artifact_registry.json",
+  "artifact_kind": null,
+  "artifact_schema_version": null,
+  "generated_by": "sattlint.devtools.pipeline",
+  "kind": "sattlint.generated_output_sources",
+  "schema_version": 1,
+  "source_count": 1,
+  "sources": [
+    {
+      "digest": "sha1:071abe5dfc55d604edf1ba56e8915bb9c85c2793",
+      "exists": true,
+      "path": "src/sattlint/devtools/pipeline.py"
+    }
+  ]
+}

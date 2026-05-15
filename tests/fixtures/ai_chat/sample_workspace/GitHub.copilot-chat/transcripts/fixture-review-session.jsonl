@@ -1,0 +1,8 @@
+{"type":"session.start","data":{"sessionId":"fixture-review-session","version":1},"id":"evt-a","timestamp":"2026-05-15T11:00:00Z","parentId":null}
+{"type":"user.message","data":{"content":"Review this repo audit result","attachments":[]},"id":"evt-b","timestamp":"2026-05-15T11:00:01Z","parentId":"evt-a"}
+{"type":"assistant.message","data":{"content":"Checking the audit output before validating it.","toolRequests":[]},"id":"evt-c","timestamp":"2026-05-15T11:00:02Z","parentId":"evt-b"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-a","toolName":"read_file","arguments":{"filePath":"artifacts/audit-full-current/summary.json"}},"id":"evt-d","timestamp":"2026-05-15T11:00:03Z","parentId":"evt-c"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tool-a","success":true},"id":"evt-e","timestamp":"2026-05-15T11:00:04Z","parentId":"evt-d"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-b","toolName":"runTests","arguments":{"files":["tests/test_repo_audit.py"]}},"id":"evt-f","timestamp":"2026-05-15T11:00:05Z","parentId":"evt-e"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tool-b","success":true},"id":"evt-g","timestamp":"2026-05-15T11:00:06Z","parentId":"evt-f"}
+{"type":"assistant.message","data":{"content":"Validated the relevant audit slice.","toolRequests":[]},"id":"evt-h","timestamp":"2026-05-15T11:00:07Z","parentId":"evt-g"}

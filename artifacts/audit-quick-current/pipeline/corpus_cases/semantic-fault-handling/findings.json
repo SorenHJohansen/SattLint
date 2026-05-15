@@ -1,0 +1,405 @@
+{
+  "finding_count": 11,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "boolean-variable",
+        "role": "implicit latch across alternative paths at EQ:Main > IF",
+        "source_kind": "implicit_latch",
+        "variable": "Status"
+      },
+      "detail": "Boolean values that are set on some branches or steps without a matching False write on the complementary path.",
+      "file": "tests/fixtures/corpus/semantic/FaultHandling.s",
+      "fingerprint": "semantic.implicit-latch|tests/fixtures/corpus/semantic/FaultHandling.s|||implicit latch across alternative paths at EQ:Main > IF",
+      "id": "semantic.implicit-latch",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/FaultHandling.s",
+        "symbol": null
+      },
+      "message": "implicit latch across alternative paths at EQ:Main > IF",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.implicit-latch",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "never_read",
+        "variable": "HighFault"
+      },
+      "detail": "Variables that are written but never subsequently read.",
+      "file": "tests/fixtures/corpus/semantic/FaultHandling.s",
+      "fingerprint": "semantic.never-read-write|tests/fixtures/corpus/semantic/FaultHandling.s|||Variable 'HighFault' is written but never read.",
+      "id": "semantic.never-read-write",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/FaultHandling.s",
+        "symbol": null
+      },
+      "message": "Variable 'HighFault' is written but never read.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.never-read-write",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "Status-suffixed variable is written directly in logic instead of being treated as observed status.",
+        "source_kind": "naming_role_mismatch",
+        "variable": "Status"
+      },
+      "detail": "Role-bearing variable prefixes or suffixes such as Cmd, Status, and Alarm should align with observed read and write behavior.",
+      "file": "tests/fixtures/corpus/semantic/FaultHandling.s",
+      "fingerprint": "semantic.naming-role-mismatch|tests/fixtures/corpus/semantic/FaultHandling.s|||Status-suffixed variable is written directly in logic instead of being treated as observed status.",
+      "id": "semantic.naming-role-mismatch",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/FaultHandling.s",
+        "symbol": null
+      },
+      "message": "Status-suffixed variable is written directly in logic instead of being treated as observed status.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.naming-role-mismatch",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "HandledFault",
+        "site": "EQ:Main",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "file": "tests/fixtures/corpus/semantic/FaultHandling.s",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/semantic/FaultHandling.s|||Condition 'HandledFault' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/FaultHandling.s",
+        "symbol": null
+      },
+      "message": "Condition 'HandledFault' is always true at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "Status",
+        "site": "EQ:Main",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "file": "tests/fixtures/corpus/semantic/FaultHandling.s",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/semantic/FaultHandling.s|||Condition 'Status' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/FaultHandling.s",
+        "symbol": null
+      },
+      "message": "Condition 'Status' is always true at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "signal",
+        "signal": "HighFault",
+        "sites": [
+          "equation block 'Main'"
+        ],
+        "source_kind": "signal_lifecycle.unconsumed_write"
+      },
+      "detail": "Signals that are written in a scope should be consumed later in that same scope.",
+      "file": "tests/fixtures/corpus/semantic/FaultHandling.s",
+      "fingerprint": "semantic.signal-lifecycle-unconsumed-write|tests/fixtures/corpus/semantic/FaultHandling.s|||Signal 'HighFault' is written but never consumed later in this scope; writes appear in equation block 'Main'.",
+      "id": "semantic.signal-lifecycle-unconsumed-write",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/FaultHandling.s",
+        "symbol": null
+      },
+      "message": "Signal 'HighFault' is written but never consumed later in this scope; writes appear in equation block 'Main'.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.signal-lifecycle-unconsumed-write",
+      "severity": "medium",
+      "source": "signal_lifecycle",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "setpoint",
+        "distinct_values": [
+          "False",
+          "True"
+        ],
+        "source_kind": "loop_stability.conflicting_setpoint",
+        "variable": "HandledFault",
+        "writes": [
+          {
+            "site": "equation block 'Main'",
+            "value": true
+          },
+          {
+            "site": "equation block 'Main'",
+            "value": false
+          }
+        ]
+      },
+      "detail": "The same setpoint should not receive conflicting literal assignments in one scope.",
+      "file": "tests/fixtures/corpus/semantic/FaultHandling.s",
+      "fingerprint": "semantic.loop-conflicting-setpoint|tests/fixtures/corpus/semantic/FaultHandling.s|||Variable 'HandledFault' receives conflicting literal assignments in this scope: equation block 'Main'=True, equation block 'Main'=False.",
+      "id": "semantic.loop-conflicting-setpoint",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/FaultHandling.s",
+        "symbol": null
+      },
+      "message": "Variable 'HandledFault' receives conflicting literal assignments in this scope: equation block 'Main'=True, equation block 'Main'=False.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.loop-conflicting-setpoint",
+      "severity": "medium",
+      "source": "loop_stability",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "setpoint",
+        "distinct_values": [
+          "False",
+          "True"
+        ],
+        "source_kind": "loop_stability.conflicting_setpoint",
+        "variable": "Status",
+        "writes": [
+          {
+            "site": "equation block 'Main'",
+            "value": true
+          },
+          {
+            "site": "equation block 'Main'",
+            "value": false
+          }
+        ]
+      },
+      "detail": "The same setpoint should not receive conflicting literal assignments in one scope.",
+      "file": "tests/fixtures/corpus/semantic/FaultHandling.s",
+      "fingerprint": "semantic.loop-conflicting-setpoint|tests/fixtures/corpus/semantic/FaultHandling.s|||Variable 'Status' receives conflicting literal assignments in this scope: equation block 'Main'=True, equation block 'Main'=False.",
+      "id": "semantic.loop-conflicting-setpoint",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/FaultHandling.s",
+        "symbol": null
+      },
+      "message": "Variable 'Status' receives conflicting literal assignments in this scope: equation block 'Main'=True, equation block 'Main'=False.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.loop-conflicting-setpoint",
+      "severity": "medium",
+      "source": "loop_stability",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "fault-path",
+        "fault": "HighFault",
+        "source_kind": "fault_handling.missing_recovery"
+      },
+      "detail": "Fault paths that are raised should also be explicitly cleared or acknowledged in the same scope.",
+      "file": "tests/fixtures/corpus/semantic/FaultHandling.s",
+      "fingerprint": "semantic.fault-missing-recovery|tests/fixtures/corpus/semantic/FaultHandling.s|||Fault path 'HighFault' is raised but never explicitly cleared or acknowledged in this scope.",
+      "id": "semantic.fault-missing-recovery",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/FaultHandling.s",
+        "symbol": null
+      },
+      "message": "Fault path 'HighFault' is raised but never explicitly cleared or acknowledged in this scope.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.fault-missing-recovery",
+      "severity": "medium",
+      "source": "fault_handling",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "fault-path",
+        "fault": "HighFault",
+        "source_kind": "fault_handling.unhandled_fault"
+      },
+      "detail": "Fault paths that are raised should be consumed by reachable handling logic in the same scope.",
+      "file": "tests/fixtures/corpus/semantic/FaultHandling.s",
+      "fingerprint": "semantic.fault-unhandled-path|tests/fixtures/corpus/semantic/FaultHandling.s|||Fault path 'HighFault' is raised but no reachable logic consumes it in this scope.",
+      "id": "semantic.fault-unhandled-path",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/FaultHandling.s",
+        "symbol": null
+      },
+      "message": "Fault path 'HighFault' is raised but no reachable logic consumes it in this scope.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.fault-unhandled-path",
+      "severity": "medium",
+      "source": "fault_handling",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "file": "tests/fixtures/corpus/semantic/FaultHandling.s",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/semantic/FaultHandling.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/FaultHandling.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

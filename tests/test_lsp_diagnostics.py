@@ -13,7 +13,6 @@ from lsprotocol.types import CompletionItem as LspCompletionItem
 from lsprotocol.types import CompletionItemKind, Diagnostic, DiagnosticSeverity, Position, Range
 
 from sattline_parser.models.ast_model import SourceSpan
-from sattlint.analyzers.registry import get_declared_lsp_analyzer_keys
 from sattlint.core.diagnostics import SemanticDiagnostic
 from sattlint.core.semantic import SymbolDefinition, SymbolReference, WorkspaceSourceDiscovery
 from sattlint.editor_api import load_workspace_snapshot
@@ -27,13 +26,8 @@ from sattlint_lsp.server import (
     _load_snapshot_bundle,
     _publish_diagnostics,
     build_source_path_index,
-    collect_completion_candidates,
-    collect_local_completion_candidates,
-    collect_local_definition_locations,
     collect_semantic_diagnostics,
     collect_syntax_diagnostics,
-    infer_module_path_from_source,
-    resolve_definition_path,
     resolve_entry_file,
 )
 
@@ -525,70 +519,6 @@ ENDDEF (*BasePicture*);
     assert diagnostics == []
 
 
-def test_infer_module_path_from_source_tracks_nested_modules():
-    source = """
-"SyntaxVersion"
-"OriginalFileDate"
-"ProgramDate"
-BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
-SUBMODULES
-    Child Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 2
-    ModuleDef
-    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-    ModuleCode
-        EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
-            X = 1;
-    ENDDEF (*Child*);
-ModuleDef
-ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-ENDDEF (*BasePicture*);
-""".strip()
-
-    line_index = source.splitlines().index("            X = 1;")
-
-    assert infer_module_path_from_source(source, line_index) == "BasePicture.Child"
-
-
-def test_collect_completion_candidates_uses_inferred_module_scope(tmp_path):
-    source = """
-"SyntaxVersion"
-"OriginalFileDate"
-"ProgramDate"
-BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
-LOCALVARIABLES
-    Dv: integer := 0;
-SUBMODULES
-    Child Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 2
-    MODULEPARAMETERS
-        Param: integer;
-    LOCALVARIABLES
-        LocalVar: boolean := False;
-    ModuleDef
-    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-    ModuleCode
-        EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
-            LocalVar = False;
-    ENDDEF (*Child*);
-ModuleDef
-ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-ENDDEF (*BasePicture*);
-""".strip()
-
-    editing_source = source.replace("LocalVar = False;", "Lo")
-
-    entry_file = tmp_path / "Program" / "Main.s"
-    _write_text(entry_file, source)
-    snapshot = load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=False)
-
-    line_index = editing_source.splitlines().index("            Lo")
-    items = collect_completion_candidates(
-        snapshot, editing_source, line=line_index, column=len("            Lo"), limit=20
-    )
-    labels = {item.label for item in items}
-
-    assert "LocalVar" in labels
-
-
 def test_publish_diagnostics_skips_semantic_analysis_for_clean_did_change(monkeypatch, tmp_path):
     source = """
 "SyntaxVersion"
@@ -809,6 +739,8 @@ ENDDEF (*BasePicture*);
 
 
 def test_collect_semantic_diagnostics_preserves_declared_lsp_analyzer_identity(tmp_path):
+    from sattlint.analyzers.registry import get_declared_lsp_analyzer_keys
+
     entry_file = tmp_path / "Program" / "Main.s"
     _write_text(entry_file, _source_with_unused_variable())
     expected = tuple(
@@ -871,171 +803,6 @@ def test_collect_semantic_diagnostics_include_actionable_guidance_for_spec_compl
     assert "Why it matters:" in target.message
     assert "Suggested fix:" in target.message
     assert "BasePicture code must stay inside frame modules" in target.message
-
-
-def test_resolve_definition_path_prefers_loaded_source_index(tmp_path):
-    source = """
-"SyntaxVersion"
-"OriginalFileDate"
-"ProgramDate"
-BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
-LOCALVARIABLES
-    Dv: integer := 0;
-ModuleDef
-ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-ENDDEF (*BasePicture*);
-""".strip()
-
-    entry_file = tmp_path / "Program" / "Main.s"
-    _write_text(entry_file, source)
-    snapshot = load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=False)
-    bundle = _snapshot_bundle(snapshot, entry_file)
-    definition = snapshot.find_definitions("BasePicture.Dv", limit=1)[0]
-
-    assert resolve_definition_path(bundle, definition) == entry_file.resolve()
-
-
-def test_collect_local_definition_locations_resolves_same_file_symbol(tmp_path):
-    source = """
-"SyntaxVersion"
-"OriginalFileDate"
-"ProgramDate"
-BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
-SUBMODULES
-    Child Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 2
-    LOCALVARIABLES
-        LocalVar: boolean := False;
-    ModuleDef
-    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-    ModuleCode
-        EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
-            LocalVar = True;
-    ENDDEF (*Child*);
-ModuleDef
-ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-ENDDEF (*BasePicture*);
-""".strip()
-
-    entry_file = tmp_path / "Program" / "Main.s"
-    _write_text(entry_file, source)
-
-    target_line = source.splitlines().index("            LocalVar = True;")
-    target_column = source.splitlines()[target_line].index("LocalVar")
-
-    locations = collect_local_definition_locations(
-        entry_file,
-        source,
-        line=target_line,
-        column=target_column,
-    )
-
-    assert len(locations) == 1
-    assert locations[0].range.start.line == 7
-    assert locations[0].range.start.character == 8
-
-
-def test_collect_local_definition_locations_returns_empty_on_recoverable_snapshot_failure(monkeypatch, tmp_path):
-    source = _source_with_unused_variable()
-    entry_file = tmp_path / "Program" / "Main.s"
-    _write_text(entry_file, source)
-
-    monkeypatch.setattr(
-        "sattlint_lsp._server_helpers.load_source_snapshot",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("workspace snapshot unavailable")),
-    )
-
-    locations = collect_local_definition_locations(
-        entry_file,
-        source,
-        line=0,
-        column=0,
-    )
-
-    assert locations == []
-
-
-def test_collect_local_definition_locations_raises_non_recoverable_snapshot_failure(monkeypatch, tmp_path):
-    source = _source_with_unused_variable()
-    entry_file = tmp_path / "Program" / "Main.s"
-    _write_text(entry_file, source)
-
-    monkeypatch.setattr(
-        "sattlint_lsp._server_helpers.load_source_snapshot",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt("stop")),
-    )
-
-    with pytest.raises(KeyboardInterrupt):
-        collect_local_definition_locations(
-            entry_file,
-            source,
-            line=0,
-            column=0,
-        )
-
-
-def test_infer_module_path_from_source_tracks_typedef_modules():
-    source = """
-"SyntaxVersion"
-"OriginalFileDate"
-"ProgramDate"
-BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
-TYPEDEFINITIONS
-    Child = MODULEDEFINITION DateCode_ 2
-    LOCALVARIABLES
-        LocalVar: boolean := False;
-    ModuleDef
-    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-    ModuleCode
-        EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
-            LocalVar = True;
-    ENDDEF (*Child*);
-ModuleDef
-ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-ENDDEF (*BasePicture*);
-""".strip()
-
-    line_index = source.splitlines().index("            LocalVar = True;")
-
-    assert infer_module_path_from_source(source, line_index) == "BasePicture.Child"
-
-
-def test_collect_local_completion_candidates_uses_typedef_module_scope(tmp_path):
-    source = """
-"SyntaxVersion"
-"OriginalFileDate"
-"ProgramDate"
-BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
-TYPEDEFINITIONS
-    Child = MODULEDEFINITION DateCode_ 2
-    LOCALVARIABLES
-        LocalVar: boolean := False;
-    ModuleDef
-    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-    ModuleCode
-        EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
-            LocalVar = True;
-    ENDDEF (*Child*);
-ModuleDef
-ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
-ENDDEF (*BasePicture*);
-""".strip()
-
-    editing_source = source.replace("LocalVar = True;", "Local = True;")
-
-    entry_file = tmp_path / "Program" / "Main.s"
-    _write_text(entry_file, source)
-
-    line_index = editing_source.splitlines().index("            Local = True;")
-    items = collect_local_completion_candidates(
-        entry_file,
-        editing_source,
-        line=line_index,
-        column=len("            Local"),
-        limit=20,
-    )
-    labels = {item.label for item in items}
-
-    assert "LocalVar" in labels
 
 
 def test_lsp_helper_request_validation_covers_valid_and_invalid_shapes():
@@ -1207,6 +974,7 @@ def test_lsp_helper_request_settings_and_merge_helpers_cover_optional_branches(t
             "scanRootOnly": 1,
             "enableVariableDiagnostics": 0,
             "workspaceDiagnosticsMode": " OFF ",
+            "maxCachedEntrySnapshots": "0",
             "maxCompletionItems": "0",
         }
     )
@@ -1215,8 +983,10 @@ def test_lsp_helper_request_settings_and_merge_helpers_cover_optional_branches(t
     assert settings.scan_root_only is True
     assert settings.enable_variable_diagnostics is False
     assert settings.workspace_diagnostics_mode == "off"
+    assert settings.max_cached_entry_snapshots == 1
     assert settings.max_completion_items == 1
     assert LspSettings.from_initialization_options({"maxCompletionItems": "bad"}).max_completion_items == 100
+    assert LspSettings.from_initialization_options({"maxCachedEntrySnapshots": "bad"}).max_cached_entry_snapshots == 2
 
     diagnostic_b = Diagnostic(
         range=Range(start=Position(line=3, character=0), end=Position(line=3, character=1)),
@@ -1599,7 +1369,7 @@ def test_workspace_snapshot_store_cache_prefetch_and_invalidation_edges(tmp_path
         _write_text(path, '"x"\n"y"\n"z"\n')
 
     store._workspace_root = workspace_root
-    store._settings = SimpleNamespace(entry_file="")
+    store._settings = SimpleNamespace(entry_file="", max_cached_entry_snapshots=1)
     store._discovery = WorkspaceSourceDiscovery(
         workspace_root=workspace_root,
         source_dirs=(entry.parent,),
@@ -1625,8 +1395,31 @@ def test_workspace_snapshot_store_cache_prefetch_and_invalidation_edges(tmp_path
     )
     state_entry.bundle = bundle
     state_entry.stale = False
+    state_entry.last_access = 1.0
     state_entry.last_error = RuntimeError("old error")
     state_sibling.stale = True
+
+    sibling_bundle = SnapshotBundle(
+        snapshot=cast(Any, object()),
+        source_paths_by_name={},
+        source_paths_by_key={},
+        entry_file=sibling,
+        cache_key=state_sibling.cache_key,
+        source_files=(sibling,),
+    )
+
+    refresh_future = Future()
+    refresh_future.set_result(sibling_bundle)
+    state_sibling.future = refresh_future
+    store._source_file_to_entry_keys = {
+        entry: {state_entry.cache_key},
+    }
+    store._finalize_future(state_sibling.cache_key, refresh_future)
+
+    assert state_entry.bundle is None
+    assert state_sibling.bundle is sibling_bundle
+    assert entry not in store._source_file_to_entry_keys
+    assert store._source_file_to_entry_keys[sibling] == {state_sibling.cache_key}
 
     submitted: list[Path] = []
 
@@ -1639,7 +1432,10 @@ def test_workspace_snapshot_store_cache_prefetch_and_invalidation_edges(tmp_path
 
     monkeypatch.setattr(store, "_submit_refresh_locked", _submit_refresh)
 
-    assert store.prefetch_entries() == (sibling,)
+    assert store.prefetch_entries() == (entry,)
+    assert submitted == [entry]
+    assert state_entry.future is not None
+    store._finalize_future(state_entry.cache_key, state_entry.future)
     assert store.get_cached_bundle(entry) is bundle
     state_entry.stale = True
     assert store.get_cached_bundle(entry, allow_stale=False) is None

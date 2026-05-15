@@ -1,0 +1,194 @@
+{
+  "finding_count": 5,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "never_read",
+        "variable": "Output"
+      },
+      "detail": "Variables that are written but never subsequently read.",
+      "file": "tests/fixtures/corpus/semantic/LoopStability.s",
+      "fingerprint": "semantic.never-read-write|tests/fixtures/corpus/semantic/LoopStability.s|||Variable 'Output' is written but never read.",
+      "id": "semantic.never-read-write",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/LoopStability.s",
+        "symbol": null
+      },
+      "message": "Variable 'Output' is written but never read.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.never-read-write",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "overwrite_symbol": "Setpoint",
+        "previous_sites": [
+          "EQ:Control"
+        ],
+        "site": "EQ:Control",
+        "source_kind": "dataflow.dead_overwrite",
+        "symbol": "Setpoint"
+      },
+      "detail": "Writes whose value is overwritten before any later read can observe it.",
+      "file": "tests/fixtures/corpus/semantic/LoopStability.s",
+      "fingerprint": "semantic.dead-overwrite|tests/fixtures/corpus/semantic/LoopStability.s|||Variable reference 'Setpoint' is overwritten before its previous value is read.",
+      "id": "semantic.dead-overwrite",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/LoopStability.s",
+        "symbol": null
+      },
+      "message": "Variable reference 'Setpoint' is overwritten before its previous value is read.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.dead-overwrite",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "signal",
+        "signal": "Output",
+        "sites": [
+          "equation block 'Control'"
+        ],
+        "source_kind": "signal_lifecycle.unconsumed_write"
+      },
+      "detail": "Signals that are written in a scope should be consumed later in that same scope.",
+      "file": "tests/fixtures/corpus/semantic/LoopStability.s",
+      "fingerprint": "semantic.signal-lifecycle-unconsumed-write|tests/fixtures/corpus/semantic/LoopStability.s|||Signal 'Output' is written but never consumed later in this scope; writes appear in equation block 'Control'.",
+      "id": "semantic.signal-lifecycle-unconsumed-write",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/LoopStability.s",
+        "symbol": null
+      },
+      "message": "Signal 'Output' is written but never consumed later in this scope; writes appear in equation block 'Control'.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.signal-lifecycle-unconsumed-write",
+      "severity": "medium",
+      "source": "signal_lifecycle",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "setpoint",
+        "distinct_values": [
+          "10",
+          "20"
+        ],
+        "source_kind": "loop_stability.conflicting_setpoint",
+        "variable": "Setpoint",
+        "writes": [
+          {
+            "site": "equation block 'Control'",
+            "value": 10
+          },
+          {
+            "site": "equation block 'Control'",
+            "value": 20
+          }
+        ]
+      },
+      "detail": "The same setpoint should not receive conflicting literal assignments in one scope.",
+      "file": "tests/fixtures/corpus/semantic/LoopStability.s",
+      "fingerprint": "semantic.loop-conflicting-setpoint|tests/fixtures/corpus/semantic/LoopStability.s|||Variable 'Setpoint' receives conflicting literal assignments in this scope: equation block 'Control'=10, equation block 'Control'=20.",
+      "id": "semantic.loop-conflicting-setpoint",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/LoopStability.s",
+        "symbol": null
+      },
+      "message": "Variable 'Setpoint' receives conflicting literal assignments in this scope: equation block 'Control'=10, equation block 'Control'=20.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.loop-conflicting-setpoint",
+      "severity": "medium",
+      "source": "loop_stability",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "file": "tests/fixtures/corpus/semantic/LoopStability.s",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/semantic/LoopStability.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/semantic/LoopStability.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

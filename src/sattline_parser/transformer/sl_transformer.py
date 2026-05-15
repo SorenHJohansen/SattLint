@@ -17,7 +17,9 @@ from sattline_parser.models.ast_model import BasePicture, FloatLiteral, IntLiter
 from ..grammar import constants as const
 from ._expressions_mixin import _ExpressionsMixin
 from ._graphics_interact_mixin import _GraphicsInteractMixin
-from ._modules_mixin import _ModulesMixin
+from ._module_assembly_mixin import _ModuleAssemblyMixin
+from ._module_header_mixin import _ModuleHeaderMixin
+from ._module_layout_mixin import _ModuleLayoutMixin
 from ._sfc_mixin import _SFCMixin
 from ._tokens_mixin import _TokensMixin
 
@@ -78,14 +80,25 @@ def _extract_program_name_from_header_lines(tree: Tree) -> str | None:
     return None
 
 
-class SLTransformer(_TokensMixin, _ExpressionsMixin, _SFCMixin, _ModulesMixin, _GraphicsInteractMixin, Transformer):
+class SLTransformer(
+    _TokensMixin,
+    _ExpressionsMixin,
+    _SFCMixin,
+    _ModuleHeaderMixin,
+    _ModuleAssemblyMixin,
+    _ModuleLayoutMixin,
+    _GraphicsInteractMixin,
+    Transformer,
+):
     """Lark transformer building SattLine AST from parsed grammar.
 
     Mixins provide grouped method implementations by responsibility:
     - _TokensMixin: token coercion and literal conversion
     - _ExpressionsMixin: expressions, values, and statements
     - _SFCMixin: sequence function chart nodes
-    - _ModulesMixin: module definitions and layout
+    - _ModuleHeaderMixin: module headers and invocation argument metadata
+    - _ModuleAssemblyMixin: module-body normalization and AST assembly
+    - _ModuleLayoutMixin: layout, coordinates, and ModuleDef parsing
     - _GraphicsInteractMixin: graphics and interact object handling
     """
 

@@ -1,0 +1,16 @@
+{
+  "case_id": "valid-old-new-on-state-field",
+  "execution_status": "ok",
+  "finding_count": 12,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_status",
+  "missing_dependency_count": 0,
+  "mode": "workspace",
+  "resolved_target_count": 1,
+  "target_file": "tests/fixtures/corpus/valid/OldNewOnStateField.s",
+  "unavailable_libraries": [],
+  "warning_count": 0
+}

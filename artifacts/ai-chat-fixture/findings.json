@@ -1,0 +1,172 @@
+{
+  "finding_count": 5,
+  "findings": [
+    {
+      "analyzer": "ai-chat-observability",
+      "artifact": "findings",
+      "category": "observability",
+      "confidence": "high",
+      "data": {
+        "parse_failures": [
+          {
+            "error": "Expecting value: line 1 column 1 (char 0)",
+            "line_number": 23,
+            "transcript_path": "tests/fixtures/ai_chat/sample_workspace/GitHub.copilot-chat/transcripts/fixture-implement-plan.jsonl"
+          }
+        ]
+      },
+      "detail": "{'transcript_path': 'tests/fixtures/ai_chat/sample_workspace/GitHub.copilot-chat/transcripts/fixture-implement-plan.jsonl', 'line_number': 23, 'error': 'Expecting value: line 1 column 1 (char 0)'}",
+      "file": "tests/fixtures/ai_chat/sample_workspace/GitHub.copilot-chat/transcripts/fixture-implement-plan.jsonl",
+      "fingerprint": "malformed-transcript-line|tests/fixtures/ai_chat/sample_workspace/GitHub.copilot-chat/transcripts/fixture-implement-plan.jsonl|23||Skipped 1 malformed transcript line(s) while building the observability report.",
+      "id": "malformed-transcript-line",
+      "line": 23,
+      "location": {
+        "column": null,
+        "line": 23,
+        "module_path": [],
+        "path": "tests/fixtures/ai_chat/sample_workspace/GitHub.copilot-chat/transcripts/fixture-implement-plan.jsonl",
+        "symbol": null
+      },
+      "message": "Skipped 1 malformed transcript line(s) while building the observability report.",
+      "minimal_reproducer": null,
+      "owner_surface": "observability",
+      "rule_id": "malformed-transcript-line",
+      "severity": "medium",
+      "source": "custom",
+      "suggested_next_command": null,
+      "suggestion": "Inspect the malformed transcript lines and keep the reader tolerant to partial corruption."
+    },
+    {
+      "analyzer": "ai-chat-observability",
+      "artifact": "findings",
+      "category": "observability",
+      "confidence": "high",
+      "data": {
+        "assistant_message_count": 4,
+        "empty_assistant_message_count": 1,
+        "empty_assistant_message_rate": 0.25
+      },
+      "detail": "1 of 4 assistant.message events had empty content.",
+      "file": null,
+      "fingerprint": "high-empty-assistant-output-rate||||Assistant messages contain a high rate of empty output.",
+      "id": "high-empty-assistant-output-rate",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [],
+        "path": null,
+        "symbol": null
+      },
+      "message": "Assistant messages contain a high rate of empty output.",
+      "minimal_reproducer": null,
+      "owner_surface": "observability",
+      "rule_id": "high-empty-assistant-output-rate",
+      "severity": "medium",
+      "source": "custom",
+      "suggested_next_command": null,
+      "suggestion": "Review empty assistant.message events and tighten the chat loop so progress updates contain usable information."
+    },
+    {
+      "analyzer": "ai-chat-observability",
+      "artifact": "findings",
+      "category": "observability",
+      "confidence": "high",
+      "data": {
+        "assistant_message_count": 2,
+        "average_discovery_before_action": 8.0,
+        "bucket": "implement-this-plan",
+        "empty_assistant_message_rate": 0.5,
+        "failed_tool_call_count": 2,
+        "max_discovery_before_action": 8,
+        "session_count": 1
+      },
+      "detail": "Bucket implement-this-plan averaged 8.0 discovery steps before first action, with a max of 8.",
+      "file": null,
+      "fingerprint": "high-discovery-before-action||||One task bucket shows high discovery churn before the first non-discovery action.",
+      "id": "high-discovery-before-action",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [],
+        "path": null,
+        "symbol": null
+      },
+      "message": "One task bucket shows high discovery churn before the first non-discovery action.",
+      "minimal_reproducer": null,
+      "owner_surface": "observability",
+      "rule_id": "high-discovery-before-action",
+      "severity": "medium",
+      "source": "custom",
+      "suggested_next_command": null,
+      "suggestion": "Route implement and review prompts to the owning seam sooner and validate immediately after the first edit."
+    },
+    {
+      "analyzer": "ai-chat-observability",
+      "artifact": "findings",
+      "category": "observability",
+      "confidence": "high",
+      "data": {
+        "codegraph_failure_count": 2,
+        "session_ids": [
+          "fixture-implement-plan"
+        ]
+      },
+      "detail": "CodeGraph tool failures were observed in 1 session(s).",
+      "file": null,
+      "fingerprint": "codegraph-tool-failures||||CodeGraph-related tool calls failed during transcript sessions.",
+      "id": "codegraph-tool-failures",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [],
+        "path": null,
+        "symbol": null
+      },
+      "message": "CodeGraph-related tool calls failed during transcript sessions.",
+      "minimal_reproducer": null,
+      "owner_surface": "observability",
+      "rule_id": "codegraph-tool-failures",
+      "severity": "medium",
+      "source": "custom",
+      "suggested_next_command": null,
+      "suggestion": "Verify the correct tool seam and avoid retrying CodeGraph calls blindly when the tool is unavailable or mismatched."
+    },
+    {
+      "analyzer": "ai-chat-observability",
+      "artifact": "findings",
+      "category": "observability",
+      "confidence": "high",
+      "data": {
+        "same_tool_retry_count": 1,
+        "session_ids": [
+          "fixture-implement-plan"
+        ]
+      },
+      "detail": "Repeated retries were observed in 1 session(s).",
+      "file": null,
+      "fingerprint": "repeated-tool-retries||||The same failing tool was retried in consecutive attempts.",
+      "id": "repeated-tool-retries",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [],
+        "path": null,
+        "symbol": null
+      },
+      "message": "The same failing tool was retried in consecutive attempts.",
+      "minimal_reproducer": null,
+      "owner_surface": "observability",
+      "rule_id": "repeated-tool-retries",
+      "severity": "low",
+      "source": "custom",
+      "suggested_next_command": null,
+      "suggestion": "After the first tool failure, switch to the controlling seam or inspect the error before repeating the same tool call."
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

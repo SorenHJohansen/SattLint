@@ -1,0 +1,14 @@
+{
+  "case_id": "oversized-input",
+  "finding_count": 1,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "message": "Unexpected token Token('NAME', 'Real_Value') at line 50, column 13.. Expected one of: CONNECTIONNODE, FORMAT_STRING_, LEFTALIGNED, RIGHTALIGNED, STRING, STRING_CRLF, STRING_NOTAIL, VALUEFRACTION, VARNAME, WIDTH_KEY\n            Real_Value\n            ^",
+  "mode": "strict",
+  "stage": "parse",
+  "target_file": "tests/fixtures/corpus/invalid/OversizedInput.s",
+  "validation_ok": false
+}

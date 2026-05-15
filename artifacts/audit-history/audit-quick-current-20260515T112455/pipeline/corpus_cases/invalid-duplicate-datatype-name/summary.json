@@ -1,0 +1,14 @@
+{
+  "case_id": "invalid-duplicate-datatype-name",
+  "finding_count": 1,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "message": "BasePicture program name name 'DuplicateDatatypeName' exceeds 20 characters",
+  "mode": "strict",
+  "stage": "validation",
+  "target_file": "tests/fixtures/corpus/invalid/DuplicateDatatypeName.s",
+  "validation_ok": false
+}

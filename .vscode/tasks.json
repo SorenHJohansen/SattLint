@@ -4,10 +4,15 @@
 		{
 			"label": "AI: CodeGraph Health",
 			"type": "process",
-			"command": "codegraph",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
 			"args": [
-				"status",
-				"${workspaceFolder}"
+				"scripts/context_health.py",
+				"--check",
+				"--section",
+				"codegraph"
 			],
 			"problemMatcher": []
 		},
@@ -87,6 +92,25 @@
 			"problemMatcher": []
 		},
 		{
+			"label": "AI: Refresh Chat Observability",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"sattlint.devtools.ai_chat_observability",
+				"--workspace-storage",
+				"${input:copilotChatWorkspaceStorage}",
+				"--output-dir",
+				"artifacts/ai-chat-current"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
 			"label": "Quality: Fast Pre-commit Gate",
 			"type": "process",
 			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
@@ -124,11 +148,13 @@
 			},
 			"args": [
 				"-m",
-				"sattlint.devtools.repo_audit",
+				"sattlint.devtools.repo_audit_runs",
+				"--final-output-dir",
+				"artifacts/audit-quick-current",
+				"--keep-history",
+				"artifacts/audit-history",
 				"--profile",
-				"quick",
-				"--output-dir",
-				"artifacts/audit-quick"
+				"quick"
 			],
 			"problemMatcher": []
 		},
@@ -141,10 +167,42 @@
 			},
 			"args": [
 				"-m",
-				"sattlint.devtools.repo_audit",
+				"sattlint.devtools.repo_audit_runs",
+				"--final-output-dir",
+				"artifacts/audit-full-current",
+				"--keep-history",
+				"artifacts/audit-history",
 				"--profile",
-				"full",
-				"--output-dir",
+				"full"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Audit: Check Quick Audit Readiness",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"sattlint.devtools.artifact_readiness",
+				"--artifact-dir",
+				"artifacts/audit-quick-current"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Audit: Check Full Audit Readiness",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"sattlint.devtools.artifact_readiness",
+				"--artifact-dir",
 				"artifacts/audit-full-current"
 			],
 			"problemMatcher": []
@@ -499,6 +557,13 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "test"
+		}
+	],
+	"inputs": [
+		{
+			"id": "copilotChatWorkspaceStorage",
+			"type": "promptString",
+			"description": "Path to the GitHub.copilot-chat workspace storage root that contains the transcripts/ child directory"
 		}
 	]
 }

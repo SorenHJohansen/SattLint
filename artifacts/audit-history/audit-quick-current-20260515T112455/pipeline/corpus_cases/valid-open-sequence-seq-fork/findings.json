@@ -1,0 +1,1494 @@
+{
+  "finding_count": 40,
+  "findings": [
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "role": "localvariable",
+        "source_kind": "read_only_non_const",
+        "variable": "AbortCmd"
+      },
+      "detail": "Writable declarations that are only ever read.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.read-only-non-const|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Variable 'AbortCmd' is read but never written, yet it is not CONST.",
+      "id": "semantic.read-only-non-const",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Variable 'AbortCmd' is read but never written, yet it is not CONST.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.read-only-non-const",
+      "severity": "medium",
+      "source": "variables",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sequence-node",
+        "branch_path": [
+          0
+        ],
+        "node_index": 4,
+        "node_label": "SFCBreak",
+        "node_type": "SFCBreak",
+        "sequence": "MainOpen",
+        "source_kind": "sfc_unreachable_sequence_node",
+        "terminated_by": {
+          "kind": "SFCFork",
+          "target": "Finished"
+        }
+      },
+      "detail": "Sequence nodes that cannot execute because an earlier node terminates the branch.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.unreachable-sequence-node|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence 'MainOpen' branch 1 contains unreachable node 'SFCBreak' because SFCFork targeting 'Finished' terminates that path earlier.",
+      "id": "semantic.unreachable-sequence-node",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence 'MainOpen' branch 1 contains unreachable node 'SFCBreak' because SFCFork targeting 'Finished' terminates that path earlier.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unreachable-sequence-node",
+      "severity": "medium",
+      "source": "sfc",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sequence-node",
+        "branch_path": [
+          1
+        ],
+        "node_index": 3,
+        "node_label": "SFCBreak",
+        "node_type": "SFCBreak",
+        "sequence": "MainOpen",
+        "source_kind": "sfc_unreachable_sequence_node",
+        "terminated_by": {
+          "kind": "SFCFork",
+          "target": "Working"
+        }
+      },
+      "detail": "Sequence nodes that cannot execute because an earlier node terminates the branch.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.unreachable-sequence-node|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence 'MainOpen' branch 2 contains unreachable node 'SFCBreak' because SFCFork targeting 'Working' terminates that path earlier.",
+      "id": "semantic.unreachable-sequence-node",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence 'MainOpen' branch 2 contains unreachable node 'SFCBreak' because SFCFork targeting 'Working' terminates that path earlier.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unreachable-sequence-node",
+      "severity": "medium",
+      "source": "sfc",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sequence-node",
+        "branch_path": [
+          2
+        ],
+        "node_index": 4,
+        "node_label": "SFCBreak",
+        "node_type": "SFCBreak",
+        "sequence": "MainOpen",
+        "source_kind": "sfc_unreachable_sequence_node",
+        "terminated_by": {
+          "kind": "SFCFork",
+          "target": "Finished"
+        }
+      },
+      "detail": "Sequence nodes that cannot execute because an earlier node terminates the branch.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.unreachable-sequence-node|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence 'MainOpen' branch 3 contains unreachable node 'SFCBreak' because SFCFork targeting 'Finished' terminates that path earlier.",
+      "id": "semantic.unreachable-sequence-node",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence 'MainOpen' branch 3 contains unreachable node 'SFCBreak' because SFCFork targeting 'Finished' terminates that path earlier.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unreachable-sequence-node",
+      "severity": "medium",
+      "source": "sfc",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "transition",
+        "branch_path": [],
+        "node_index": 2,
+        "node_label": "SFCTransition:TrHelper",
+        "node_type": "SFCTransition",
+        "sequence": "Helper",
+        "source_kind": "sfc_unreachable_transition",
+        "terminated_by": {
+          "kind": "SFCFork",
+          "target": "TrHelper"
+        }
+      },
+      "detail": "Transitions that can never fire because an earlier node structurally terminates the branch.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.unreachable-transition|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Transition 'SFCTransition:TrHelper' in sequence 'Helper' can never fire because SFCFork targeting 'TrHelper' terminates that path earlier.",
+      "id": "semantic.unreachable-transition",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Transition 'SFCTransition:TrHelper' in sequence 'Helper' can never fire because SFCFork targeting 'TrHelper' terminates that path earlier.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unreachable-transition",
+      "severity": "medium",
+      "source": "sfc",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sequence-node",
+        "branch_path": [],
+        "node_index": 3,
+        "node_label": "SFCFork:Working",
+        "node_type": "SFCFork",
+        "sequence": "Helper",
+        "source_kind": "sfc_unreachable_sequence_node",
+        "terminated_by": {
+          "kind": "SFCFork",
+          "target": "TrHelper"
+        }
+      },
+      "detail": "Sequence nodes that cannot execute because an earlier node terminates the branch.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.unreachable-sequence-node|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence 'Helper' contains unreachable node 'SFCFork:Working' because SFCFork targeting 'TrHelper' terminates that path earlier.",
+      "id": "semantic.unreachable-sequence-node",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence 'Helper' contains unreachable node 'SFCFork:Working' because SFCFork targeting 'TrHelper' terminates that path earlier.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unreachable-sequence-node",
+      "severity": "medium",
+      "source": "sfc",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "transition",
+        "branch_path": [],
+        "condition": "True",
+        "normalized_guard": "('bool', True)",
+        "sequence": "MainOpen",
+        "source_kind": "sfc_transition_always_true",
+        "transition_name": "TrBegin"
+      },
+      "detail": "Transitions with guards that simplify to true and therefore always fire when reached.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.transition-always-true|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Transition 'TrBegin' in sequence 'MainOpen' has a guard that is always true: True.",
+      "id": "semantic.transition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrBegin' in sequence 'MainOpen' has a guard that is always true: True.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.transition-always-true",
+      "severity": "medium",
+      "source": "sfc",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "transition",
+        "branch_path": [
+          0
+        ],
+        "condition": "True",
+        "normalized_guard": "('bool', True)",
+        "sequence": "MainOpen",
+        "source_kind": "sfc_transition_always_true",
+        "transition_name": "TrExit"
+      },
+      "detail": "Transitions with guards that simplify to true and therefore always fire when reached.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.transition-always-true|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Transition 'TrExit' in sequence 'MainOpen' branch 1 has a guard that is always true: True.",
+      "id": "semantic.transition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrExit' in sequence 'MainOpen' branch 1 has a guard that is always true: True.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.transition-always-true",
+      "severity": "medium",
+      "source": "sfc",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "transition",
+        "branch_path": [
+          2
+        ],
+        "condition": "True",
+        "normalized_guard": "('bool', True)",
+        "sequence": "MainOpen",
+        "source_kind": "sfc_transition_always_true",
+        "transition_name": "TrAbortExit"
+      },
+      "detail": "Transitions with guards that simplify to true and therefore always fire when reached.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.transition-always-true|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Transition 'TrAbortExit' in sequence 'MainOpen' branch 3 has a guard that is always true: True.",
+      "id": "semantic.transition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrAbortExit' in sequence 'MainOpen' branch 3 has a guard that is always true: True.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.transition-always-true",
+      "severity": "medium",
+      "source": "sfc",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "transition",
+        "branch_path": [],
+        "condition": "True",
+        "normalized_guard": "('bool', True)",
+        "sequence": "Helper",
+        "source_kind": "sfc_transition_always_true",
+        "transition_name": "TrHelper"
+      },
+      "detail": "Transitions with guards that simplify to true and therefore always fire when reached.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.transition-always-true|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Transition 'TrHelper' in sequence 'Helper' has a guard that is always true: True.",
+      "id": "semantic.transition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrHelper' in sequence 'Helper' has a guard that is always true: True.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.transition-always-true",
+      "severity": "medium",
+      "source": "sfc",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "True",
+        "site": "SEQ:MainOpen > TRANS:TrBegin",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Condition 'True' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Condition 'True' is always true at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "Output >= 10",
+        "site": "SEQ:MainOpen > ALT:BRANCH:0 > TRANS:TrDone",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Condition 'Output >= 10' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Condition 'Output >= 10' is always false at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "True",
+        "site": "SEQ:MainOpen > ALT:BRANCH:0 > TRANS:TrExit",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Condition 'True' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Condition 'True' is always true at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sequence-node",
+        "branch_path": [
+          0
+        ],
+        "node_index": 4,
+        "node_label": "SFCBreak",
+        "sequence": "MainOpen",
+        "site": "SEQ:MainOpen > ALT:BRANCH:0",
+        "source_kind": "dataflow.unreachable_sequence_node",
+        "terminated_by": {
+          "kind": "SFCFork",
+          "target": "Finished"
+        }
+      },
+      "detail": "Sequence nodes that cannot execute after an earlier terminating node in the same branch.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.unreachable-sequence-node-dataflow|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence node 'SFCBreak' is unreachable because execution is terminated earlier by SFCFork.",
+      "id": "semantic.unreachable-sequence-node-dataflow",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence node 'SFCBreak' is unreachable because execution is terminated earlier by SFCFork.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unreachable-sequence-node-dataflow",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "RestartCmd",
+        "site": "SEQ:MainOpen > ALT:BRANCH:1 > TRANS:TrRetry",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Condition 'RestartCmd' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Condition 'RestartCmd' is always false at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "overwrite_symbol": "Output",
+        "previous_sites": [
+          "SEQ:MainOpen > STEP:Working:ACTIVE"
+        ],
+        "site": "SEQ:MainOpen > ALT:BRANCH:1 > STEP:Retry:ENTER",
+        "source_kind": "dataflow.dead_overwrite",
+        "symbol": "Output"
+      },
+      "detail": "Writes whose value is overwritten before any later read can observe it.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.dead-overwrite|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Variable reference 'Output' is overwritten before its previous value is read.",
+      "id": "semantic.dead-overwrite",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Variable reference 'Output' is overwritten before its previous value is read.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.dead-overwrite",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sequence-node",
+        "branch_path": [
+          1
+        ],
+        "node_index": 3,
+        "node_label": "SFCBreak",
+        "sequence": "MainOpen",
+        "site": "SEQ:MainOpen > ALT:BRANCH:1",
+        "source_kind": "dataflow.unreachable_sequence_node",
+        "terminated_by": {
+          "kind": "SFCFork",
+          "target": "Working"
+        }
+      },
+      "detail": "Sequence nodes that cannot execute after an earlier terminating node in the same branch.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.unreachable-sequence-node-dataflow|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence node 'SFCBreak' is unreachable because execution is terminated earlier by SFCFork.",
+      "id": "semantic.unreachable-sequence-node-dataflow",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence node 'SFCBreak' is unreachable because execution is terminated earlier by SFCFork.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unreachable-sequence-node-dataflow",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "AbortCmd",
+        "site": "SEQ:MainOpen > ALT:BRANCH:2 > TRANS:TrAbort",
+        "source_kind": "dataflow.condition_always_false"
+      },
+      "detail": "Conditions that always evaluate to false at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.condition-always-false|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Condition 'AbortCmd' is always false at this point.",
+      "id": "semantic.condition-always-false",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Condition 'AbortCmd' is always false at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-false",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "variable",
+        "overwrite_symbol": "Output",
+        "previous_sites": [
+          "SEQ:MainOpen > STEP:Working:ACTIVE"
+        ],
+        "site": "SEQ:MainOpen > ALT:BRANCH:2 > STEP:Abort:ENTER",
+        "source_kind": "dataflow.dead_overwrite",
+        "symbol": "Output"
+      },
+      "detail": "Writes whose value is overwritten before any later read can observe it.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.dead-overwrite|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Variable reference 'Output' is overwritten before its previous value is read.",
+      "id": "semantic.dead-overwrite",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Variable reference 'Output' is overwritten before its previous value is read.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.dead-overwrite",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "condition",
+        "condition": "True",
+        "site": "SEQ:MainOpen > ALT:BRANCH:2 > TRANS:TrAbortExit",
+        "source_kind": "dataflow.condition_always_true"
+      },
+      "detail": "Conditions that always evaluate to true at a particular program point.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.condition-always-true|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Condition 'True' is always true at this point.",
+      "id": "semantic.condition-always-true",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Condition 'True' is always true at this point.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.condition-always-true",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sequence-node",
+        "branch_path": [
+          2
+        ],
+        "node_index": 4,
+        "node_label": "SFCBreak",
+        "sequence": "MainOpen",
+        "site": "SEQ:MainOpen > ALT:BRANCH:2",
+        "source_kind": "dataflow.unreachable_sequence_node",
+        "terminated_by": {
+          "kind": "SFCFork",
+          "target": "Finished"
+        }
+      },
+      "detail": "Sequence nodes that cannot execute after an earlier terminating node in the same branch.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.unreachable-sequence-node-dataflow|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence node 'SFCBreak' is unreachable because execution is terminated earlier by SFCFork.",
+      "id": "semantic.unreachable-sequence-node-dataflow",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence node 'SFCBreak' is unreachable because execution is terminated earlier by SFCFork.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unreachable-sequence-node-dataflow",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sequence-node",
+        "branch_path": [],
+        "node_index": 2,
+        "node_label": "SFCTransition:TrHelper",
+        "sequence": "Helper",
+        "site": "SEQ:Helper",
+        "source_kind": "dataflow.unreachable_sequence_node",
+        "terminated_by": {
+          "kind": "SFCFork",
+          "target": "TrHelper"
+        }
+      },
+      "detail": "Sequence nodes that cannot execute after an earlier terminating node in the same branch.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.unreachable-sequence-node-dataflow|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence node 'SFCTransition:TrHelper' is unreachable because execution is terminated earlier by SFCFork.",
+      "id": "semantic.unreachable-sequence-node-dataflow",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence node 'SFCTransition:TrHelper' is unreachable because execution is terminated earlier by SFCFork.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unreachable-sequence-node-dataflow",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sequence-node",
+        "branch_path": [],
+        "node_index": 3,
+        "node_label": "SFCFork:Working",
+        "sequence": "Helper",
+        "site": "SEQ:Helper",
+        "source_kind": "dataflow.unreachable_sequence_node",
+        "terminated_by": {
+          "kind": "SFCFork",
+          "target": "TrHelper"
+        }
+      },
+      "detail": "Sequence nodes that cannot execute after an earlier terminating node in the same branch.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.unreachable-sequence-node-dataflow|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence node 'SFCFork:Working' is unreachable because execution is terminated earlier by SFCFork.",
+      "id": "semantic.unreachable-sequence-node-dataflow",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence node 'SFCFork:Working' is unreachable because execution is terminated earlier by SFCFork.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.unreachable-sequence-node-dataflow",
+      "severity": "medium",
+      "source": "dataflow",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "variable-lifecycle",
+      "confidence": "high",
+      "data": {
+        "applies_to": "signal",
+        "signal": "RestartCmd",
+        "sites": [
+          "sequence 'MainOpen' step 'Retry' ENTER"
+        ],
+        "source_kind": "signal_lifecycle.unconsumed_write"
+      },
+      "detail": "Signals that are written in a scope should be consumed later in that same scope.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.signal-lifecycle-unconsumed-write|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Signal 'RestartCmd' is written but never consumed later in this scope; writes appear in sequence 'MainOpen' step 'Retry' ENTER.",
+      "id": "semantic.signal-lifecycle-unconsumed-write",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Signal 'RestartCmd' is written but never consumed later in this scope; writes appear in sequence 'MainOpen' step 'Retry' ENTER.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.signal-lifecycle-unconsumed-write",
+      "severity": "medium",
+      "source": "signal_lifecycle",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "control-flow",
+      "confidence": "high",
+      "data": {
+        "applies_to": "setpoint",
+        "distinct_values": [
+          "-1",
+          "0"
+        ],
+        "source_kind": "loop_stability.conflicting_setpoint",
+        "variable": "Output",
+        "writes": [
+          {
+            "site": "sequence 'MainOpen' step 'Init' ENTER",
+            "value": 0
+          },
+          {
+            "site": "sequence 'MainOpen' step 'Done' ENTER",
+            "value": 0
+          },
+          {
+            "site": "sequence 'MainOpen' step 'Retry' ENTER",
+            "value": 0
+          },
+          {
+            "site": "sequence 'MainOpen' step 'Abort' ENTER",
+            "value": -1
+          }
+        ]
+      },
+      "detail": "The same setpoint should not receive conflicting literal assignments in one scope.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "semantic.loop-conflicting-setpoint|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Variable 'Output' receives conflicting literal assignments in this scope: sequence 'MainOpen' step 'Init' ENTER=0, sequence 'MainOpen' step 'Done' ENTER=0, sequence 'MainOpen' step 'Retry' ENTER=0, sequence 'MainOpen' step 'Abort' ENTER=-1.",
+      "id": "semantic.loop-conflicting-setpoint",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Variable 'Output' receives conflicting literal assignments in this scope: sequence 'MainOpen' step 'Init' ENTER=0, sequence 'MainOpen' step 'Done' ENTER=0, sequence 'MainOpen' step 'Retry' ENTER=0, sequence 'MainOpen' step 'Abort' ENTER=-1.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "semantic.loop-conflicting-setpoint",
+      "severity": "medium",
+      "source": "loop_stability",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "source_kind": "spec.basepicture_direct_code"
+      },
+      "detail": "BasePicture code must stay inside frame modules.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.basepicture_direct_code|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "id": "spec.basepicture_direct_code",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "BasePicture contains direct code. The engineering spec only allows base-picture code inside a frame module.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.basepicture_direct_code",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainOpen",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Init"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence step 'Init' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Init' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainOpen",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrBegin"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Transition 'TrBegin' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrBegin' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainOpen",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Working"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence step 'Working' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Working' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainOpen",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrDone"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Transition 'TrDone' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrDone' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainOpen",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Done"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence step 'Done' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Done' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainOpen",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrExit"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Transition 'TrExit' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrExit' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainOpen",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrRetry"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Transition 'TrRetry' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrRetry' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainOpen",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Retry"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence step 'Retry' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Retry' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainOpen",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrAbort"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Transition 'TrAbort' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrAbort' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainOpen",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Abort"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence step 'Abort' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Abort' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainOpen",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrAbortExit"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Transition 'TrAbortExit' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrAbortExit' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "MainOpen",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "Finished"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence step 'Finished' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'Finished' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "Helper",
+        "source_kind": "spec.sequence_step_prefix",
+        "step": "HInit"
+      },
+      "detail": "Sequence steps must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.sequence_step_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Sequence step 'HInit' must start with 'ST_' according to the engineering spec.",
+      "id": "spec.sequence_step_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Sequence step 'HInit' must start with 'ST_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.sequence_step_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    },
+    {
+      "analyzer": "sattline-semantics",
+      "artifact": "findings",
+      "category": "engineering-spec",
+      "confidence": "high",
+      "data": {
+        "applies_to": "sattline-construct",
+        "sequence": "Helper",
+        "source_kind": "spec.transition_prefix",
+        "transition": "TrHelper"
+      },
+      "detail": "Transitions must use the required engineering-spec naming prefix.",
+      "file": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+      "fingerprint": "spec.transition_prefix|tests/fixtures/corpus/valid/OpenSequenceSeqFork.s|||Transition 'TrHelper' must start with 'TR_' according to the engineering spec.",
+      "id": "spec.transition_prefix",
+      "line": null,
+      "location": {
+        "column": null,
+        "line": null,
+        "module_path": [
+          "BasePicture"
+        ],
+        "path": "tests/fixtures/corpus/valid/OpenSequenceSeqFork.s",
+        "symbol": null
+      },
+      "message": "Transition 'TrHelper' must start with 'TR_' according to the engineering spec.",
+      "minimal_reproducer": null,
+      "owner_surface": "semantic",
+      "rule_id": "spec.transition_prefix",
+      "severity": "medium",
+      "source": "spec-compliance",
+      "suggested_next_command": null,
+      "suggestion": null
+    }
+  ],
+  "kind": "sattlint.findings",
+  "schema_version": 1
+}

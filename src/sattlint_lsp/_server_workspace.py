@@ -14,6 +14,7 @@ def workspace_settings_signature(settings: LspSettings) -> tuple[object, ...]:
         settings.scan_root_only,
         settings.enable_variable_diagnostics,
         settings.workspace_diagnostics_mode,
+        settings.max_cached_entry_snapshots,
     )
 
 

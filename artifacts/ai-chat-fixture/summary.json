@@ -1,0 +1,99 @@
+{
+  "canonical_command": "python -m sattlint.devtools.ai_chat_observability",
+  "entry_report": "status.json",
+  "generated_by": "sattlint.devtools.ai_chat_observability",
+  "health_summary": {
+    "action_required_finding_ids": [
+      "malformed-transcript-line",
+      "high-empty-assistant-output-rate",
+      "high-discovery-before-action",
+      "codegraph-tool-failures",
+      "repeated-tool-retries"
+    ],
+    "highest_churn_bucket": "implement-this-plan",
+    "session_store_health": "not_requested",
+    "transcript_corpus_health": "degraded"
+  },
+  "kind": "sattlint.ai_chat.summary",
+  "output_dir": "artifacts/ai-chat-fixture",
+  "overall_status": "degraded",
+  "schema_version": 1,
+  "session_store": {
+    "database_path": null,
+    "explanation": "No session database path was provided, so transcript JSONL is the only data source.",
+    "status": "not_requested"
+  },
+  "task_buckets": [
+    {
+      "assistant_message_count": 2,
+      "average_discovery_before_action": 8.0,
+      "bucket": "implement-this-plan",
+      "empty_assistant_message_rate": 0.5,
+      "failed_tool_call_count": 2,
+      "max_discovery_before_action": 8,
+      "session_count": 1
+    },
+    {
+      "assistant_message_count": 2,
+      "average_discovery_before_action": 1.0,
+      "bucket": "review",
+      "empty_assistant_message_rate": 0.0,
+      "failed_tool_call_count": 0,
+      "max_discovery_before_action": 1,
+      "session_count": 1
+    }
+  ],
+  "top_metrics": {
+    "assistant_message_count": 4,
+    "codegraph_failure_count": 2,
+    "empty_assistant_message_count": 1,
+    "empty_assistant_message_rate": 0.25,
+    "failed_tool_call_count": 2,
+    "same_tool_retry_count": 1,
+    "tool_call_count": 11
+  },
+  "top_tools": [
+    {
+      "count": 3,
+      "tool_name": "read_file"
+    },
+    {
+      "count": 2,
+      "tool_name": "codegraph_search"
+    },
+    {
+      "count": 1,
+      "tool_name": "apply_patch"
+    },
+    {
+      "count": 1,
+      "tool_name": "file_search"
+    },
+    {
+      "count": 1,
+      "tool_name": "grep_search"
+    },
+    {
+      "count": 1,
+      "tool_name": "list_dir"
+    },
+    {
+      "count": 1,
+      "tool_name": "runTests"
+    },
+    {
+      "count": 1,
+      "tool_name": "semantic_search"
+    }
+  ],
+  "transcript_corpus": {
+    "explanation": "Transcript JSONL loaded, but malformed lines were skipped and recorded in findings.",
+    "input_kind": "transcripts-dir",
+    "input_path": "tests/fixtures/ai_chat/sample_workspace/GitHub.copilot-chat/transcripts",
+    "malformed_line_count": 1,
+    "session_count": 2,
+    "status": "degraded",
+    "transcript_count": 2,
+    "transcripts_dir": "tests/fixtures/ai_chat/sample_workspace/GitHub.copilot-chat/transcripts"
+  }
+}

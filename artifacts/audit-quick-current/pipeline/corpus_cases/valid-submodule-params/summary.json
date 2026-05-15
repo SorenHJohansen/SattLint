@@ -1,0 +1,26 @@
+{
+  "case_id": "valid-submodule-params",
+  "finding_count": 19,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.corpus.case_summary",
+  "missing_dependencies": [],
+  "mode": "workspace",
+  "resolved_targets": [
+    "SubmoduleParams"
+  ],
+  "rule_counts": {
+    "semantic.condition-always-false": 2,
+    "semantic.condition-always-true": 1,
+    "semantic.global-scope-minimization": 3,
+    "semantic.instance-configuration-drift": 1,
+    "semantic.read-only-non-const": 3,
+    "semantic.signal-lifecycle-unconsumed-write": 1,
+    "semantic.unreachable-branch": 2,
+    "semantic.write-without-effect": 6
+  },
+  "target_file": "tests/fixtures/corpus/valid/SubmoduleParams.s",
+  "warnings": []
+}

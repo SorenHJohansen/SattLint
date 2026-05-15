@@ -16,11 +16,12 @@ Use this skill when you need read-only codebase exploration before editing and `
 
 ## Procedure
 
-1. Start with the lightest query that can answer the question: symbol lookup, single-node details, callers/callees, then impact.
-2. For broader exploration, use `codegraph_explore` in the main session to gather source sections in one call, then pass them inline to any subagent. Do NOT tell subagents to use codegraph tools — they lack MCP access.
-3. Do not reread files that CodeGraph already returned unless you need one nearby detail or a file it did not include.
-4. Fall back to `rg`, semantic search, and targeted file reads only when CodeGraph is unavailable or the needed file is outside the index.
-5. If indexed results look stale after code changes, rebuild the index before concluding the symbol is missing.
+1. Run `python scripts/context_health.py --check --section codegraph` once per session before the first CodeGraph lookup.
+2. If the health result is `healthy`, start with the lightest query that can answer the question: symbol lookup, single-node details, callers/callees, then impact.
+3. If the health result is `degraded`, run one sync or rebuild path, rerun the health check once, and only then use CodeGraph. Do not keep retrying failing MCP calls.
+4. If the health result is `fallback_to_rg`, skip CodeGraph MCP tools for that session and use `rg`, semantic search, and targeted file reads instead.
+5. For broader exploration, use `codegraph_explore` in the main session to gather source sections in one call, then pass them inline to any subagent. Do NOT tell subagents to use codegraph tools — they lack MCP access.
+6. Do not reread files that CodeGraph already returned unless you need one nearby detail or a file it did not include.
 
 ## Index Scope
 
@@ -32,10 +33,12 @@ Use this skill when you need read-only codebase exploration before editing and `
 
 - VS Code MCP wiring lives in `.vscode/mcp.json`.
 - Repo index settings live in `.codegraph/config.json`.
+- Repo-owned preflight: `python scripts/context_health.py --check --section codegraph`.
 - Local CLI check: `command -v codegraph && codegraph --version`.
 
 ## Guardrails
 
 - Do not start with broad text search when a symbol lookup or call graph can answer faster.
+- Do not retry failing CodeGraph MCP calls more than once after a non-healthy health check.
 - Do not treat CodeGraph as authoritative for excluded paths or unindexed languages.
 - Do not widen scope just because CodeGraph can show more of the repo.

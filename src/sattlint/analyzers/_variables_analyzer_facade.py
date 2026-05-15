@@ -8,14 +8,12 @@ from sattline_parser.models.ast_model import ModuleTypeDef, Variable
 
 from ..models.usage import VariableUsage
 from ..reporting.variables_report import IssueKind, VariableIssue
-from ..resolution import AccessGraph
 from ..resolution.scope import ScopeContext
-from ._variables_effect_flow import EffectFlowTracker
-from ._variables_status import ProcedureStatusBinding
-from .validators import AnyTypeFieldContract, ContractMappingValidator, MinMaxValidator, StringMappingValidator
+from ._variables_facade_properties import VariablesAnalyzerFacadePropertiesMixin
+from .validators import AnyTypeFieldContract
 
 
-class VariablesAnalyzerFacadeMixin:
+class VariablesAnalyzerFacadeMixin(VariablesAnalyzerFacadePropertiesMixin):
     _OPAQUE_BUILTIN_TYPES: ClassVar[set[str]]
 
     def __getattr__(self, name: str) -> Any:
@@ -26,102 +24,6 @@ class VariablesAnalyzerFacadeMixin:
 
     def get_usage(self, variable: Variable) -> VariableUsage:
         return self._get_usage(variable)
-
-    @property
-    def access_graph(self) -> AccessGraph:
-        return self.usage_tracker.access_graph
-
-    @property
-    def analyzed_target_is_library(self) -> bool:
-        return self._analyzed_target_is_library
-
-    @property
-    def limit_to_module_path(self) -> list[str] | None:
-        return self._limit_to_module_path
-
-    @property
-    def unavailable_libraries(self) -> set[str]:
-        return self._unavailable_libraries
-
-    @property
-    def include_dependency_moduletype_usage(self) -> bool:
-        return self._include_dependency_moduletype_usage
-
-    @property
-    def alias_links(self) -> list[tuple[Variable, Variable, str]]:
-        return self._alias_links
-
-    @property
-    def procedure_status_bindings(self) -> dict[int, list[ProcedureStatusBinding]]:
-        return self._procedure_status_bindings
-
-    @property
-    def ignorable_output_variable_ids(self) -> set[int]:
-        return self._ignorable_output_variable_ids
-
-    @property
-    def naming_role_patterns(self) -> dict[str, Any]:
-        return self._naming_role_patterns
-
-    @property
-    def any_var_index(self) -> dict[str, list[Variable]]:
-        return self._any_var_index
-
-    @property
-    def required_parameter_names_by_owner(self) -> dict[int, dict[str, str]]:
-        return self._required_parameter_names_by_owner
-
-    @property
-    def contract_validator(self) -> ContractMappingValidator:
-        return self._contract_validator
-
-    @property
-    def min_max_validator(self) -> MinMaxValidator:
-        return self._min_max_validator
-
-    @property
-    def string_validator(self) -> StringMappingValidator:
-        return self._string_validator
-
-    @property
-    def analyzing_typedefs(self) -> set[str]:
-        return self._analyzing_typedefs
-
-    @property
-    def effect_flow_tracker(self) -> EffectFlowTracker:
-        return self._effect_flow_tracker
-
-    @property
-    def effective_output_keys(self) -> set[tuple[str, ...]]:
-        return self._effective_output_keys
-
-    @property
-    def site_stack(self) -> list[str]:
-        return self._site_stack
-
-    @property
-    def root_env(self) -> dict[str, Variable]:
-        return self._root_env
-
-    @property
-    def opaque_builtin_types(self) -> set[str]:
-        return type(self)._OPAQUE_BUILTIN_TYPES
-
-    @property
-    def effect_flow_edges(self) -> dict[tuple[str, ...], tuple[tuple[str, ...], ...]]:
-        return {source_key: tuple(sorted(target_keys)) for source_key, target_keys in self._effect_flow_edges.items()}
-
-    @property
-    def effect_flow_display_names(self) -> dict[tuple[str, ...], str]:
-        return dict(self._effect_flow_display_names)
-
-    @property
-    def analysis_warnings(self) -> list[str]:
-        return self._analysis_warnings
-
-    @property
-    def issues(self) -> list[VariableIssue]:
-        return self._issues
 
     def append_issue(self, issue: VariableIssue) -> None:
         self._append_issue(issue)
