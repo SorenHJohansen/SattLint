@@ -6,16 +6,12 @@ from typing import Any
 
 from sattline_parser.models.ast_model import (
     ModuleCode,
-    SFCAlternative,
-    SFCParallel,
-    SFCStep,
-    SFCSubsequence,
-    SFCTransition,
-    SFCTransitionSub,
     Variable,
 )
 
 from ..grammar import constants as const
+from ._reset_path_collection_sequence import collect_seq_block_paths as _collect_seq_block_paths_impl
+from ._reset_path_collection_sequence import collect_seq_node_paths as _collect_seq_node_paths_impl
 from ._reset_path_condition import (
     _classify_reset_condition,
     _clone_with_reset_state,
@@ -27,7 +23,6 @@ from ._reset_path_condition import (
 )
 from ._reset_path_state import (
     _compact_path_states,
-    _merge_parallel_branch_results,
     _PathCollectionDebug,
     _PathState,
 )
@@ -83,148 +78,15 @@ def _collect_seq_block_paths(
     *,
     path_debug: _PathCollectionDebug | None = None,
 ) -> list[_PathState]:
-    next_states = states
-    for node in nodes:
-        next_states = _collect_seq_node_paths(
-            node,
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            next_states,
-            path_debug=path_debug,
-        )
-    return next_states
-
-
-def _handle_seq_step(
-    node: SFCStep,
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-    *,
-    path_debug: _PathCollectionDebug | None = None,
-) -> list[_PathState]:
-    next_states = _collect_stmt_block_paths(
-        node.code.enter or [],
+    return _collect_seq_block_paths_impl(
+        nodes,
         env,
         reset_ref_cf,
         reset_old_vars_cf,
         states,
+        collect_stmt_block_paths=_collect_stmt_block_paths,
         path_debug=path_debug,
     )
-    next_states = _collect_stmt_block_paths(
-        node.code.active or [],
-        env,
-        reset_ref_cf,
-        reset_old_vars_cf,
-        next_states,
-        path_debug=path_debug,
-    )
-    result = _collect_stmt_block_paths(
-        node.code.exit or [],
-        env,
-        reset_ref_cf,
-        reset_old_vars_cf,
-        next_states,
-        path_debug=path_debug,
-    )
-    result = _compact_path_states(result, debug=path_debug, site=f"seq-node:step:{getattr(node, 'name', '<unnamed>')}")
-    if path_debug is not None:
-        path_debug.emit(
-            "collect-seq-node-paths",
-            node_type="step",
-            node_name=getattr(node, "name", "<unnamed>"),
-            input_count=len(states),
-            output_count=len(result),
-        )
-    return result
-
-
-def _handle_seq_alternative(
-    node: SFCAlternative,
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-    *,
-    path_debug: _PathCollectionDebug | None = None,
-) -> list[_PathState]:
-    if not node.branches:
-        return states
-    alternative_states: list[_PathState] = []
-    for state in states:
-        for branch in node.branches or []:
-            alternative_states.extend(
-                _collect_seq_block_paths(
-                    branch or [],
-                    env,
-                    reset_ref_cf,
-                    reset_old_vars_cf,
-                    [state.clone()],
-                    path_debug=path_debug,
-                )
-            )
-    result = _compact_path_states(
-        alternative_states or states,
-        debug=path_debug,
-        site="seq-node:alternative",
-    )
-    if path_debug is not None:
-        path_debug.emit(
-            "collect-seq-node-paths",
-            node_type="alternative",
-            input_count=len(states),
-            branch_count=len(node.branches or []),
-            output_count=len(result),
-        )
-    return result
-
-
-def _handle_seq_parallel(
-    node: SFCParallel,
-    env: dict[str, Variable],
-    reset_ref_cf: str,
-    reset_old_vars_cf: set[str],
-    states: list[_PathState],
-    *,
-    path_debug: _PathCollectionDebug | None = None,
-) -> list[_PathState]:
-    if not node.branches:
-        return states
-    parallel_states: list[_PathState] = []
-    for state in states:
-        branch_results = [
-            _collect_seq_block_paths(
-                branch or [],
-                env,
-                reset_ref_cf,
-                reset_old_vars_cf,
-                [state.clone()],
-                path_debug=path_debug,
-            )
-            for branch in node.branches or []
-        ]
-        parallel_states.extend(
-            _merge_parallel_branch_results(
-                branch_results,
-                debug=path_debug,
-            )
-        )
-    result = _compact_path_states(
-        parallel_states or states,
-        debug=path_debug,
-        site="seq-node:parallel",
-    )
-    if path_debug is not None:
-        path_debug.emit(
-            "collect-seq-node-paths",
-            node_type="parallel",
-            input_count=len(states),
-            branch_count=len(node.branches or []),
-            output_count=len(result),
-        )
-    return result
 
 
 def _collect_seq_node_paths(
@@ -236,57 +98,15 @@ def _collect_seq_node_paths(
     *,
     path_debug: _PathCollectionDebug | None = None,
 ) -> list[_PathState]:
-    if isinstance(node, SFCStep):
-        return _handle_seq_step(node, env, reset_ref_cf, reset_old_vars_cf, states, path_debug=path_debug)
-
-    if isinstance(node, SFCTransition):
-        return states
-
-    if isinstance(node, SFCAlternative):
-        return _handle_seq_alternative(node, env, reset_ref_cf, reset_old_vars_cf, states, path_debug=path_debug)
-
-    if isinstance(node, SFCParallel):
-        return _handle_seq_parallel(node, env, reset_ref_cf, reset_old_vars_cf, states, path_debug=path_debug)
-
-    if isinstance(node, SFCSubsequence):
-        result = _collect_seq_block_paths(
-            node.body or [],
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-            path_debug=path_debug,
-        )
-        if path_debug is not None:
-            path_debug.emit(
-                "collect-seq-node-paths",
-                node_type="subsequence",
-                node_name=getattr(node, "name", "<unnamed>"),
-                input_count=len(states),
-                output_count=len(result),
-            )
-        return result
-
-    if isinstance(node, SFCTransitionSub):
-        result = _collect_seq_block_paths(
-            node.body or [],
-            env,
-            reset_ref_cf,
-            reset_old_vars_cf,
-            states,
-            path_debug=path_debug,
-        )
-        if path_debug is not None:
-            path_debug.emit(
-                "collect-seq-node-paths",
-                node_type="transition-sub",
-                node_name=getattr(node, "name", "<unnamed>"),
-                input_count=len(states),
-                output_count=len(result),
-            )
-        return result
-
-    return states
+    return _collect_seq_node_paths_impl(
+        node,
+        env,
+        reset_ref_cf,
+        reset_old_vars_cf,
+        states,
+        collect_stmt_block_paths=_collect_stmt_block_paths,
+        path_debug=path_debug,
+    )
 
 
 def _collect_stmt_block_paths(

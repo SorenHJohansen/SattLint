@@ -19,11 +19,12 @@ __all__ = [
     "Issue",
     "Report",
     "SimpleReport",
+    "empty_issues",
     "format_report_header",
 ]
 
 
-def _empty_issues() -> list[Issue]:
+def empty_issues() -> list[Any]:
     return []
 
 
@@ -42,7 +43,7 @@ class Analyzer(Protocol):
 @dataclass
 class SimpleReport:
     name: str
-    issues: list[Issue] = field(default_factory=_empty_issues)
+    issues: list[Issue] = field(default_factory=empty_issues)
     note: str | None = None
 
     def summary(self) -> str:

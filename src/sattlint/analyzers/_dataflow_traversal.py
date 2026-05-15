@@ -7,7 +7,6 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
-    ParameterMapping,
     Sequence,
     SFCAlternative,
     SFCBreak,
@@ -18,35 +17,16 @@ from sattline_parser.models.ast_model import (
     SFCTransition,
     SFCTransitionSub,
     SingleModule,
-    Variable,
 )
 
-from ..casefolding import casefold_key
 from ..grammar import constants as const
-from ..resolution.common import resolve_moduletype_def_strict, varname_base
+from ..resolution.common import resolve_moduletype_def_strict
 from ..resolution.scope import ScopeContext
 from ._dataflow_common import StateMap
+from ._dataflow_scope_support import _DataflowScopeSupportMixin
 
 
-class _DataflowTraversalMixin:
-    def _build_scope_context(
-        self: Any,
-        variables: list[Variable],
-        *,
-        param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]],
-        module_path: list[str],
-        current_library: str | None,
-        parent_context: ScopeContext | None,
-    ) -> ScopeContext:
-        return ScopeContext(
-            env={casefold_key(variable.name): variable for variable in variables},
-            param_mappings=param_mappings,
-            module_path=module_path.copy(),
-            display_module_path=module_path.copy(),
-            current_library=current_library,
-            parent_context=parent_context,
-        )
-
+class _DataflowTraversalMixin(_DataflowScopeSupportMixin):
     def _walk_root_scope(self: Any) -> None:
         root_path = [self.bp.header.name]
         root_variables = list(self.bp.localvariables or [])
@@ -60,31 +40,6 @@ class _DataflowTraversalMixin:
         root_state = self._seed_state({}, root_path, root_variables)
         root_state = self._walk_module_code(self.bp.modulecode, root_context, root_path, root_state)
         self._final_root_state = self._walk_modules(self.bp.submodules or [], root_context, root_path, root_state)
-
-    def _iter_root_typedefs(self: Any) -> list[ModuleTypeDef]:
-        return [
-            moduletype
-            for moduletype in (self.bp.moduletype_defs or [])
-            if self._is_from_root_origin(
-                getattr(moduletype, "origin_file", None),
-                getattr(moduletype, "origin_lib", None),
-            )
-        ]
-
-    def _build_typedef_seed(
-        self: Any,
-        moduletype: ModuleTypeDef,
-        module_path: list[str],
-    ) -> tuple[ScopeContext, StateMap]:
-        variables = [*(moduletype.moduleparameters or []), *(moduletype.localvariables or [])]
-        context = self._build_scope_context(
-            variables,
-            param_mappings={},
-            module_path=module_path,
-            current_library=moduletype.origin_lib or getattr(self.bp, "origin_lib", None),
-            parent_context=None,
-        )
-        return context, self._seed_state({}, module_path, variables)
 
     def run(self: Any) -> list[Any]:
         self._walk_root_scope()
@@ -181,70 +136,6 @@ class _DataflowTraversalMixin:
             [*(moduletype.moduleparameters or []), *(moduletype.localvariables or [])],
         )
         return self._walk_typedef(moduletype, typedef_context, child_path, typedef_state)
-
-    def _build_single_context(
-        self: Any,
-        mod: SingleModule,
-        parent_context: ScopeContext,
-        module_path: list[str],
-    ) -> ScopeContext:
-        return self._build_scope_context(
-            [*(mod.moduleparameters or []), *(mod.localvariables or [])],
-            param_mappings=self._build_parameter_mappings(
-                mod.parametermappings or [],
-                parent_context,
-            ),
-            module_path=module_path,
-            current_library=parent_context.current_library,
-            parent_context=parent_context,
-        )
-
-    def _build_typedef_context(
-        self: Any,
-        moduletype: ModuleTypeDef,
-        instance: ModuleTypeInstance,
-        parent_context: ScopeContext,
-        module_path: list[str],
-    ) -> ScopeContext:
-        return self._build_scope_context(
-            [*(moduletype.moduleparameters or []), *(moduletype.localvariables or [])],
-            param_mappings=self._build_parameter_mappings(
-                instance.parametermappings or [],
-                parent_context,
-            ),
-            module_path=module_path,
-            current_library=moduletype.origin_lib or parent_context.current_library,
-            parent_context=parent_context,
-        )
-
-    def _build_parameter_mappings(
-        self: Any,
-        mappings: list[ParameterMapping],
-        parent_context: ScopeContext,
-    ) -> dict[str, tuple[Variable, str, list[str], list[str]]]:
-        resolved: dict[str, tuple[Variable, str, list[str], list[str]]] = {}
-        for mapping in mappings:
-            if mapping.is_source_global:
-                continue
-            target_name = varname_base(mapping.target)
-            if not target_name:
-                continue
-            if isinstance(mapping.source, dict) and const.KEY_VAR_NAME in mapping.source:
-                full_source = mapping.source[const.KEY_VAR_NAME]
-            elif isinstance(mapping.source, str):
-                full_source = mapping.source
-            else:
-                continue
-            source_var, field_prefix, decl_path, decl_display_path = parent_context.resolve_variable(full_source)
-            if source_var is None:
-                continue
-            resolved[target_name.casefold()] = (
-                source_var,
-                field_prefix,
-                decl_path,
-                decl_display_path,
-            )
-        return resolved
 
     def _walk_module_code(
         self: Any,

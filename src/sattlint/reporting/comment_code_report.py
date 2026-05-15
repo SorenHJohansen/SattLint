@@ -3,11 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..analyzers.framework import Issue, format_report_header
-
-
-def _empty_issues() -> list[Issue]:
-    return []
+from ..analyzers.framework import Issue, empty_issues, format_report_header
 
 
 @dataclass(frozen=True)
@@ -25,7 +21,7 @@ class CommentCodeHit:
 class CommentCodeReport:
     basepicture_name: str
     hits: list[CommentCodeHit]
-    issues: list[Issue] = field(default_factory=_empty_issues)
+    issues: list[Issue] = field(default_factory=empty_issues)
     files_scanned: int = 0
 
     @property

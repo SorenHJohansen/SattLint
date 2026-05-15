@@ -20,7 +20,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from .framework import Issue, format_report_header
+from .framework import Issue, empty_issues, format_report_header
 
 log = logging.getLogger("SattLint")
 
@@ -76,10 +76,6 @@ def _empty_instance_fingerprints() -> list[tuple[list[str], "ModuleFingerprint"]
 
 
 def _empty_str_list() -> list[str]:
-    return []
-
-
-def _empty_issues() -> list[Issue]:
     return []
 
 
@@ -466,7 +462,7 @@ class VersionDriftReport:
     """Analyzer-facing report for module version drift findings."""
 
     name: str
-    issues: list[Issue] = field(default_factory=_empty_issues)
+    issues: list[Issue] = field(default_factory=empty_issues)
 
     def summary(self) -> str:
         if not self.issues:

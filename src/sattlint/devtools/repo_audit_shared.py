@@ -71,10 +71,12 @@ TOP_LEVEL_TRACKED_ENTRY_ALLOWLIST = frozenset(
         "custom.toml",
         "docs",
         "metrics",
+        "opencode.json",
         "pyproject.toml",
         "scripts",
         "src",
         "tests",
+        "uv.lock",
         "vscode",
     }
 )

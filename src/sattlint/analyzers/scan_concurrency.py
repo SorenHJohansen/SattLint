@@ -5,20 +5,16 @@ from typing import Any
 
 from sattline_parser.models.ast_model import BasePicture
 
-from .framework import Issue, format_report_header
+from .framework import Issue, empty_issues, format_report_header
 from .sfc import analyze_sfc, get_configured_mutually_exclusive_step_sets, get_configured_step_contracts
 
 _SCAN_CONCURRENCY_ISSUE_KINDS = frozenset({"sfc_parallel_write_race"})
 
 
-def _empty_issues() -> list[Issue]:
-    return []
-
-
 @dataclass
 class ScanConcurrencyReport:
     name: str
-    issues: list[Issue] = field(default_factory=_empty_issues)
+    issues: list[Issue] = field(default_factory=empty_issues)
 
     def summary(self) -> str:
         if not self.issues:

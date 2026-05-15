@@ -159,6 +159,21 @@ def _save_configuration(
     return dirty
 
 
+def _handle_config_menu_exit(
+    cfg: ConfigDict,
+    *,
+    dirty: bool,
+    config_path: Path,
+    save_config_fn: Callable[[Path, ConfigDict], None],
+    confirm_fn: Callable[[str], bool],
+    quit_app_fn: Callable[[], None],
+) -> None:
+    if dirty and confirm_fn("Unsaved config changes. Save before quitting?"):
+        save_config_fn(config_path, cfg)
+    quit_app_fn()
+    sys.exit(0)
+
+
 def dump_menu(
     cfg: ConfigDict,
     *,
@@ -253,10 +268,14 @@ def config_menu(
         if choice == "b":
             return dirty
         if choice == "q":
-            if dirty and confirm_fn("Unsaved config changes. Save before quitting?"):
-                save_config_fn(config_path, cfg)
-            quit_app_fn()
-            sys.exit(0)
+            _handle_config_menu_exit(
+                cfg,
+                dirty=dirty,
+                config_path=config_path,
+                save_config_fn=save_config_fn,
+                confirm_fn=confirm_fn,
+                quit_app_fn=quit_app_fn,
+            )
 
         if choice == "1":
             dirty = (

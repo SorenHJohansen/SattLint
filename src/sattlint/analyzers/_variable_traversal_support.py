@@ -86,6 +86,40 @@ def _repath_context(
     )
 
 
+def _handle_status_argument(
+    self: VariablesAnalyzer,
+    status: Any,
+    context: ScopeContext,
+    path: list[str],
+    *,
+    is_ui_read: bool,
+) -> None:
+    status_name = _var_name_of(status)
+    if status_name is not None:
+        self._mark_ref_access(
+            status_name,
+            context,
+            path,
+            AccessKind.WRITE,
+            is_ui_read=is_ui_read,
+        )
+        return
+    self._walk_stmt_or_expr(status, context, path, is_ui_read=is_ui_read)
+
+
+def _walk_extra_call_arguments(
+    self: VariablesAnalyzer,
+    args: list[Any],
+    context: ScopeContext,
+    path: list[str],
+    *,
+    start_index: int,
+    is_ui_read: bool,
+) -> None:
+    for extra in args[start_index:]:
+        self._walk_stmt_or_expr(extra, context, path, is_ui_read=is_ui_read)
+
+
 def _handle_function_call(
     self: VariablesAnalyzer,
     fn_name: str | None,
@@ -135,21 +169,10 @@ def _handle_function_call(
         )
 
         if len(args) >= 3:
-            status = args[2]
-            status_name = _var_name_of(status)
-            if status_name is not None:
-                self._mark_ref_access(
-                    status_name,
-                    context,
-                    path,
-                    AccessKind.WRITE,
-                    is_ui_read=is_ui_read,
-                )
-            else:
-                self._walk_stmt_or_expr(status, context, path, is_ui_read=is_ui_read)
+            _handle_status_argument(self, args[2], context, path, is_ui_read=is_ui_read)
 
-        for extra in args[3:] if len(args) > 3 else []:
-            self._walk_stmt_or_expr(extra, context, path, is_ui_read=is_ui_read)
+        if len(args) > 3:
+            _walk_extra_call_arguments(self, args, context, path, start_index=3, is_ui_read=is_ui_read)
         self._record_function_call_effect_flow(fn_name, args or [], context)
         return
 
@@ -191,21 +214,10 @@ def _handle_function_call(
                 self._walk_stmt_or_expr(init_rec, context, path, is_ui_read=is_ui_read)
 
         if len(args) >= 3:
-            status = args[2]
-            status_name = _var_name_of(status)
-            if status_name is not None:
-                self._mark_ref_access(
-                    status_name,
-                    context,
-                    path,
-                    AccessKind.WRITE,
-                    is_ui_read=is_ui_read,
-                )
-            else:
-                self._walk_stmt_or_expr(status, context, path, is_ui_read=is_ui_read)
+            _handle_status_argument(self, args[2], context, path, is_ui_read=is_ui_read)
 
-        for extra in args[3:] if len(args) > 3 else []:
-            self._walk_stmt_or_expr(extra, context, path, is_ui_read=is_ui_read)
+        if len(args) > 3:
+            _walk_extra_call_arguments(self, args, context, path, start_index=3, is_ui_read=is_ui_read)
         self._record_function_call_effect_flow(fn_name, args or [], context)
         return
 

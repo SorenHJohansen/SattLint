@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from sattline_parser.models.ast_model import BasePicture
 
 from ..core.taint_paths import TaintPathTrace, build_taint_path_traces
-from .framework import Issue, format_report_header
+from .framework import Issue, empty_issues, format_report_header
 from .variables import VariablesAnalyzer
 
 _ISSUE_LABELS = {
@@ -20,10 +20,6 @@ _SOURCE_LABELS = {
 }
 
 
-def _empty_issues() -> list[Issue]:
-    return []
-
-
 def _empty_taint_traces() -> list[TaintPathTrace]:
     return []
 
@@ -31,7 +27,7 @@ def _empty_taint_traces() -> list[TaintPathTrace]:
 @dataclass
 class TaintPathReport:
     basepicture_name: str
-    issues: list[Issue] = field(default_factory=_empty_issues)
+    issues: list[Issue] = field(default_factory=empty_issues)
     traces: list[TaintPathTrace] = field(default_factory=_empty_taint_traces)
 
     @property

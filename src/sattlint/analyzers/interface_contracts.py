@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from sattline_parser.models.ast_model import BasePicture
 
 from ..reporting.variables_report import IssueKind, VariableIssue
-from .framework import format_report_header
+from .framework import empty_issues, format_report_header
 from .variables import analyze_variables
 
 INTERFACE_CONTRACT_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
@@ -30,10 +30,6 @@ _SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.CONTRACT_MISMATCH: "Cross-module contract mismatches",
     IssueKind.STRING_MAPPING_MISMATCH: "String mapping type mismatches",
 }
-
-
-def _empty_issues() -> list[VariableIssue]:
-    return []
 
 
 def _sentence_case(text: str | None) -> str:
@@ -62,7 +58,7 @@ def _format_issue_message(issue: VariableIssue) -> str:
 @dataclass
 class InterfaceContractsReport:
     name: str
-    issues: list[VariableIssue] = field(default_factory=_empty_issues)
+    issues: list[VariableIssue] = field(default_factory=empty_issues)
 
     def summary(self) -> str:
         if not self.issues:

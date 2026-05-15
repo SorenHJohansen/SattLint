@@ -6,6 +6,10 @@ from sattlint.devtools import _repo_audit_ai_gc as repo_audit_ai_gc
 from sattlint.devtools import repo_audit
 
 
+def _artifact_path(*parts: str) -> str:
+    return "/".join(("<external>", *parts))
+
+
 def test_audit_repository_ignores_active_output_dir_ai_gc_manifest_drift(tmp_path):
     output_dir = tmp_path / "artifacts" / "audit"
     output_dir_path = (
@@ -96,19 +100,19 @@ def test_ai_gc_helpers_build_findings_and_filter_reports():
                 {"candidate_id": "skip-me", "applied": True},
                 {
                     "candidate_id": "stale-generated-output-manifest",
-                    "path": "artifacts/audit",
+                    "path": _artifact_path("audit"),
                     "reason": "digest drift",
                     "applied": False,
                 },
                 {
                     "candidate_id": "stale-ai-artifact",
-                    "path": "artifacts/tmp.json",
+                    "path": _artifact_path("tmp.json"),
                     "age_days": 45,
                     "size_bytes": 128,
                     "applied": False,
                 },
                 {
-                    "path": "artifacts/other.json",
+                    "path": _artifact_path("other.json"),
                     "reason": "manual cleanup",
                     "applied": False,
                 },
@@ -126,7 +130,7 @@ def test_ai_gc_helpers_build_findings_and_filter_reports():
     assert findings[2].detail == "manual cleanup"
     assert all(finding.source == "ai-gc" for finding in findings)
 
-    output_path = "artifacts/audit"
+    output_path = _artifact_path("audit")
     report = {
         "mode": "report",
         "summary": {
@@ -136,14 +140,14 @@ def test_ai_gc_helpers_build_findings_and_filter_reports():
         },
         "candidates": [
             {"candidate_id": "stale-generated-output-manifest", "path": output_path},
-            {"candidate_id": "stale-ai-artifact", "path": "artifacts/old.json"},
+            {"candidate_id": "stale-ai-artifact", "path": _artifact_path("old.json")},
         ],
         "failures": [],
     }
 
     filtered = repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(report, output_dir_path=output_path)
 
-    assert filtered["candidates"] == [{"candidate_id": "stale-ai-artifact", "path": "artifacts/old.json"}]
+    assert filtered["candidates"] == [{"candidate_id": "stale-ai-artifact", "path": _artifact_path("old.json")}]
     assert filtered["summary"] == {
         "candidate_count": 1,
         "artifact_candidate_count": 1,
@@ -169,19 +173,15 @@ def test_ai_gc_helpers_build_findings_and_filter_reports():
 
 
 def test_ai_gc_helpers_passthrough_path_matching_and_findings_filtering():
-    assert repo_audit_ai_gc._is_active_output_ai_gc_path(None, output_dir_path="artifacts/audit") is False
-    assert repo_audit_ai_gc._is_active_output_ai_gc_path("artifacts/audit/", output_dir_path="artifacts/audit") is True
+    output_path = _artifact_path("audit")
+    assert repo_audit_ai_gc._is_active_output_ai_gc_path(None, output_dir_path=output_path) is False
+    assert repo_audit_ai_gc._is_active_output_ai_gc_path(f"{output_path}/", output_dir_path=output_path) is True
 
     passthrough = {"candidates": "not-a-list"}
-    assert (
-        repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(passthrough, output_dir_path="artifacts/audit")
-        is passthrough
-    )
+    assert repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(passthrough, output_dir_path=output_path) is passthrough
 
-    unchanged = {"candidates": [{"candidate_id": "stale-ai-artifact", "path": "artifacts/old.json"}]}
-    assert (
-        repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(unchanged, output_dir_path="artifacts/audit") is unchanged
-    )
+    unchanged = {"candidates": [{"candidate_id": "stale-ai-artifact", "path": _artifact_path("old.json")}]}
+    assert repo_audit_ai_gc._filter_ai_gc_report_for_output_dir(unchanged, output_dir_path=output_path) is unchanged
 
     findings = [
         repo_audit.Finding(
@@ -190,7 +190,7 @@ def test_ai_gc_helpers_passthrough_path_matching_and_findings_filtering():
             severity="medium",
             confidence="high",
             message="Generated output drifted from its source-digest manifest.",
-            path="artifacts/audit",
+            path=output_path,
             source="ai-gc",
         ),
         repo_audit.Finding(
@@ -199,15 +199,15 @@ def test_ai_gc_helpers_passthrough_path_matching_and_findings_filtering():
             severity="low",
             confidence="high",
             message="Stale AI-generated artifact can be collected.",
-            path="artifacts/old.json",
+            path=_artifact_path("old.json"),
             source="ai-gc",
         ),
-        SimpleNamespace(id="other", path="artifacts/audit", source="custom"),
+        SimpleNamespace(id="other", path=output_path, source="custom"),
     ]
 
     filtered_findings = repo_audit_ai_gc._filter_ai_gc_findings_for_output_dir(
         findings,
-        output_dir_path="artifacts/audit",
+        output_dir_path=output_path,
     )
 
     assert [finding.id for finding in filtered_findings] == ["stale-ai-artifact", "other"]

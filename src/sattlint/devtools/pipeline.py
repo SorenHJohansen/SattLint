@@ -15,6 +15,7 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, cast
 
+from sattlint.contracts import FindingCollection
 from sattlint.devtools import _pipeline_cli as pipeline_cli_helpers
 from sattlint.devtools import _pipeline_execution as pipeline_execution_helpers
 from sattlint.devtools import _pipeline_finish_gate as pipeline_finish_gate_helpers
@@ -1371,6 +1372,151 @@ def _finalize_pipeline_outputs(
     return summary
 
 
+def _progress_active_stage_key(progress: ProgressReporter) -> str | None:
+    progress_payload = progress.to_dict()
+    active_stage = cast(dict[str, Any] | None, progress_payload.get("active_stage"))
+    if not isinstance(active_stage, dict):
+        return None
+    key = active_stage.get("key")
+    return key if isinstance(key, str) and key else None
+
+
+def _exception_detail(error: BaseException) -> str:
+    message = str(error).strip()
+    return f"{type(error).__name__}: {message}" if message else type(error).__name__
+
+
+def _build_failure_tool_statuses(
+    progress: ProgressReporter,
+    *,
+    failing_stage_key: str | None,
+) -> dict[str, dict[str, Any]]:
+    progress_payload = progress.to_dict()
+    progress_stages: dict[str, dict[str, Any]] = {}
+    for raw_stage in cast(list[Any], progress_payload.get("stages", [])):
+        if not isinstance(raw_stage, dict):
+            continue
+        stage = cast(dict[str, Any], raw_stage)
+        stage_key = stage.get("key")
+        if isinstance(stage_key, str) and stage_key:
+            progress_stages[stage_key] = stage
+    stage_to_tool = {
+        "ruff": "ruff",
+        "pyright": "pyright",
+        "pytest": "pytest",
+        "vulture": "vulture",
+        "bandit": "bandit",
+        "corpus": "corpus",
+    }
+    tool_statuses: dict[str, dict[str, Any]] = {}
+    for stage_key, tool_name in stage_to_tool.items():
+        stage = progress_stages.get(stage_key, {})
+        stage_status = stage.get("status")
+        stage_detail = stage.get("detail")
+        if stage_status == "completed":
+            tool_statuses[tool_name] = _make_tool_status(
+                status="pass",
+                report=None,
+                raw_exit_code=0,
+                normalized_exit_code=0,
+                detail=None if not isinstance(stage_detail, str) else stage_detail,
+            )
+            continue
+        if stage_key == failing_stage_key or stage_status == "failed":
+            tool_statuses[tool_name] = _make_tool_status(
+                status="fail",
+                report=None,
+                raw_exit_code=1,
+                normalized_exit_code=1,
+                detail=(
+                    stage_detail
+                    if isinstance(stage_detail, str) and stage_detail
+                    else "failed before report generation"
+                ),
+            )
+            continue
+        tool_statuses[tool_name] = _make_tool_status(
+            status="skipped",
+            report=None,
+            raw_exit_code=None,
+            normalized_exit_code=None,
+            detail="not reached due earlier failure",
+        )
+
+    for tool_name in ("rule_metadata", "baseline_drift", "performance_budget"):
+        tool_statuses[tool_name] = _make_tool_status(
+            status="skipped",
+            report=None,
+            raw_exit_code=None,
+            normalized_exit_code=None,
+            detail="not reached due earlier failure",
+        )
+    return tool_statuses
+
+
+def _write_pipeline_failure_artifacts(
+    context: dict[str, Any],
+    error: BaseException,
+) -> None:
+    progress = cast(ProgressReporter, context["progress"])
+    failing_stage_key = _progress_active_stage_key(progress)
+    if failing_stage_key is not None:
+        progress.fail_stage(failing_stage_key, detail=_exception_detail(error))
+    progress.finalize(overall_status="failed")
+
+    tool_statuses = _build_failure_tool_statuses(progress, failing_stage_key=failing_stage_key)
+    failing_tools = [name for name, payload in tool_statuses.items() if payload["status"] == "fail"]
+    findings = FindingCollection(())
+    reports = artifact_reports_map(
+        PIPELINE_ARTIFACTS,
+        profile=context["profile"],
+        enabled_artifact_ids=context["enabled_artifacts"],
+    )
+    for report_key in list(reports):
+        if report_key not in {"artifact_registry", "findings", "status", "summary", "progress"}:
+            reports[report_key] = None
+    status_report = build_pipeline_status_report(
+        profile=context["profile"],
+        sanitized_output_dir=context["sanitized_output_dir"],
+        overall_status_value="fail",
+        tool_statuses=tool_statuses,
+        failing_tools=failing_tools,
+        non_blocking_tools=[],
+        progress_report=f"{context['sanitized_output_dir']}/progress.json",
+        findings_schema=findings.schema_metadata,
+    )
+    error_payload = {
+        "type": type(error).__name__,
+        "message": str(error),
+        "stage": failing_stage_key,
+    }
+    status_report["error"] = error_payload
+    summary = build_pipeline_summary_report(
+        profile=context["profile"],
+        sanitized_output_dir=context["sanitized_output_dir"],
+        reports=reports,
+        overall_status_value="fail",
+        tool_statuses=tool_statuses,
+        failing_tools=failing_tools,
+        non_blocking_tools=[],
+        tool_exit_codes={name: payload.get("normalized_exit_code") for name, payload in tool_statuses.items()},
+        artifact_registry_report=context["artifact_registry_report"],
+        counts={},
+        progress_report=f"{context['sanitized_output_dir']}/progress.json",
+        findings_schema=findings.schema_metadata,
+    )
+    summary["error"] = error_payload
+    if context["selected_checks"] is not None:
+        selected_checks = list(context["selected_checks"])
+        status_report["selected_checks"] = selected_checks
+        summary["selected_checks"] = selected_checks
+    if "artifact_registry" in context["enabled_artifacts"]:
+        write_json_artifact(context["output_dir"] / "artifact_registry.json", context["artifact_registry_report"])
+    write_json_artifact(context["output_dir"] / "findings.json", findings.to_dict())
+    write_json_artifact(context["output_dir"] / "status.json", status_report)
+    write_json_artifact(context["output_dir"] / "summary.json", summary)
+
+
 def _run_pipeline(
     output_dir: Path,
     *,
@@ -1405,91 +1551,95 @@ def _run_pipeline(
         run_mutation_analysis=run_mutation_analysis,
         pytest_workers=pytest_workers,
     )
-    progress = context["progress"]
-    selected_checks = context.get("selected_checks")
-    selected_check_set = None if selected_checks is None else set(selected_checks)
+    try:
+        progress = context["progress"]
+        selected_checks = context.get("selected_checks")
+        selected_check_set = None if selected_checks is None else set(selected_checks)
 
-    def wants(check_id: str) -> bool:
-        return selected_check_set is None or check_id in selected_check_set
+        def wants(check_id: str) -> bool:
+            return selected_check_set is None or check_id in selected_check_set
 
-    environment_report = skipped_stage_report("environment")
-    if wants("ruff") or wants("pyright") or wants("pytest"):
-        environment_report = _run_environment_stage(progress)
+        environment_report = skipped_stage_report("environment")
+        if wants("ruff") or wants("pyright") or wants("pytest"):
+            environment_report = _run_environment_stage(progress)
 
-    if wants("ruff"):
-        ruff_report, ruff_findings = _run_ruff_stage(progress, python_cmd=context["python_cmd"])
-    else:
-        ruff_report, ruff_findings = skipped_stage_report("ruff"), []
+        if wants("ruff"):
+            ruff_report, ruff_findings = _run_ruff_stage(progress, python_cmd=context["python_cmd"])
+        else:
+            ruff_report, ruff_findings = skipped_stage_report("ruff"), []
 
-    if wants("pyright"):
-        pyright_report, pyright_findings = _run_pyright_stage(progress, python_cmd=context["python_cmd"])
-    else:
-        pyright_report, pyright_findings = skipped_stage_report("pyright"), []
+        if wants("pyright"):
+            pyright_report, pyright_findings = _run_pyright_stage(progress, python_cmd=context["python_cmd"])
+        else:
+            pyright_report, pyright_findings = skipped_stage_report("pyright"), []
 
-    if wants("pytest"):
-        pytest_report = _run_pytest_stage(
-            progress,
-            output_dir=context["output_dir"],
-            python_cmd=context["python_cmd"],
-            profile=context["profile"],
-            pytest_workers=context.get("pytest_workers"),
+        if wants("pytest"):
+            pytest_report = _run_pytest_stage(
+                progress,
+                output_dir=context["output_dir"],
+                python_cmd=context["python_cmd"],
+                profile=context["profile"],
+                pytest_workers=context.get("pytest_workers"),
+            )
+        else:
+            pytest_report = skipped_stage_report("pytest")
+
+        if wants("vulture"):
+            vulture_report, _vulture_findings = _run_vulture_stage(
+                progress,
+                python_cmd=context["python_cmd"],
+                run_vulture=context["run_vulture"],
+            )
+        else:
+            vulture_report, _vulture_findings = (
+                {"tool": "vulture", "skipped": True, "detail": "skipped by check selection"},
+                [],
+            )
+
+        if wants("bandit"):
+            bandit_report = _run_bandit_stage(
+                progress,
+                python_cmd=context["python_cmd"],
+                run_bandit=context["run_bandit"],
+            )
+        else:
+            bandit_report = {"tool": "bandit", "skipped": True, "detail": "skipped by check selection"}
+        stage_reports = {
+            "bandit_report": bandit_report,
+            "environment_report": environment_report,
+            "pyright_findings": pyright_findings,
+            "pyright_report": pyright_report,
+            "pytest_report": pytest_report,
+            "ruff_findings": ruff_findings,
+            "ruff_report": ruff_report,
+            "vulture_report": vulture_report,
+        }
+        optional_reports = _collect_optional_reports(context, trace_target=trace_target)
+        derived_reports = _build_derived_reports(
+            context,
+            stage_reports,
+            optional_reports,
+            baseline_findings=baseline_findings,
+            slow_phase_threshold_ms=slow_phase_threshold_ms,
+            phase_budget_ms=phase_budget_ms,
+            total_budget_ms=total_budget_ms,
         )
-    else:
-        pytest_report = skipped_stage_report("pytest")
-
-    if wants("vulture"):
-        vulture_report, _vulture_findings = _run_vulture_stage(
-            progress,
-            python_cmd=context["python_cmd"],
-            run_vulture=context["run_vulture"],
+        # Hard-fail invariant enforcement (ID 23: Core invariant checks)
+        invariant_violations = _check_core_invariants(derived_reports, context)
+        if invariant_violations:
+            for v in invariant_violations:
+                print(f"INVARIANT VIOLATION: {v}")
+        return _finalize_pipeline_outputs(
+            context,
+            stage_reports,
+            optional_reports,
+            derived_reports,
+            fail_on_drift=fail_on_drift,
+            fail_on_budget=fail_on_budget,
         )
-    else:
-        vulture_report, _vulture_findings = (
-            {"tool": "vulture", "skipped": True, "detail": "skipped by check selection"},
-            [],
-        )
-
-    if wants("bandit"):
-        bandit_report = _run_bandit_stage(
-            progress,
-            python_cmd=context["python_cmd"],
-            run_bandit=context["run_bandit"],
-        )
-    else:
-        bandit_report = {"tool": "bandit", "skipped": True, "detail": "skipped by check selection"}
-    stage_reports = {
-        "bandit_report": bandit_report,
-        "environment_report": environment_report,
-        "pyright_findings": pyright_findings,
-        "pyright_report": pyright_report,
-        "pytest_report": pytest_report,
-        "ruff_findings": ruff_findings,
-        "ruff_report": ruff_report,
-        "vulture_report": vulture_report,
-    }
-    optional_reports = _collect_optional_reports(context, trace_target=trace_target)
-    derived_reports = _build_derived_reports(
-        context,
-        stage_reports,
-        optional_reports,
-        baseline_findings=baseline_findings,
-        slow_phase_threshold_ms=slow_phase_threshold_ms,
-        phase_budget_ms=phase_budget_ms,
-        total_budget_ms=total_budget_ms,
-    )
-    # Hard-fail invariant enforcement (ID 23: Core invariant checks)
-    invariant_violations = _check_core_invariants(derived_reports, context)
-    if invariant_violations:
-        for v in invariant_violations:
-            print(f"INVARIANT VIOLATION: {v}")
-    return _finalize_pipeline_outputs(
-        context,
-        stage_reports,
-        optional_reports,
-        derived_reports,
-        fail_on_drift=fail_on_drift,
-        fail_on_budget=fail_on_budget,
-    )
+    except BaseException as error:
+        _write_pipeline_failure_artifacts(context, error)
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -649,6 +649,21 @@ def _validate_sequence_nodes(
             warning_sink=warning_sink,
         )
 
+    def recurse(branch_nodes: list[object] | None, nested_context: str) -> None:
+        _validate_sequence_nodes(
+            branch_nodes or [],
+            nested_context,
+            labels=labels,
+            label_counts=label_counts,
+            module_labels=module_labels,
+            module_label_counts=module_label_counts,
+            env=env,
+            type_graph=type_graph,
+            require_init_step=False,
+            warning_sink=warning_sink,
+            allow_old_state_assignment=allow_old_state_assignment,
+        )
+
     for index, node in enumerate(nodes):
         if isinstance(node, SFCStep):
             _validate_identifier(node.name, f"{context} step")
@@ -699,64 +714,16 @@ def _validate_sequence_nodes(
                     f"{context} transition-sub {node.name!r} must not start with SEQSTEP; "
                     f"SUBSEQTRANSITION bodies must enter through a transition"
                 )
-            _validate_sequence_nodes(
-                node.body,
-                f"{context} transition-sub {node.name!r}",
-                labels=labels,
-                label_counts=label_counts,
-                module_labels=module_labels,
-                module_label_counts=module_label_counts,
-                env=env,
-                type_graph=type_graph,
-                require_init_step=False,
-                warning_sink=warning_sink,
-                allow_old_state_assignment=allow_old_state_assignment,
-            )
+            recurse(node.body, f"{context} transition-sub {node.name!r}")
         elif isinstance(node, SFCSubsequence):
             _validate_identifier(node.name, f"{context} subsequence")
-            _validate_sequence_nodes(
-                node.body,
-                f"{context} subsequence {node.name!r}",
-                labels=labels,
-                label_counts=label_counts,
-                module_labels=module_labels,
-                module_label_counts=module_label_counts,
-                env=env,
-                type_graph=type_graph,
-                require_init_step=False,
-                warning_sink=warning_sink,
-                allow_old_state_assignment=allow_old_state_assignment,
-            )
+            recurse(node.body, f"{context} subsequence {node.name!r}")
         elif isinstance(node, SFCAlternative):
             for index, branch in enumerate(node.branches, start=1):
-                _validate_sequence_nodes(
-                    branch,
-                    f"{context} alternative branch {index}",
-                    labels=labels,
-                    label_counts=label_counts,
-                    module_labels=module_labels,
-                    module_label_counts=module_label_counts,
-                    env=env,
-                    type_graph=type_graph,
-                    require_init_step=False,
-                    warning_sink=warning_sink,
-                    allow_old_state_assignment=allow_old_state_assignment,
-                )
+                recurse(branch, f"{context} alternative branch {index}")
         elif isinstance(node, SFCParallel):
             for index, branch in enumerate(node.branches, start=1):
-                _validate_sequence_nodes(
-                    branch,
-                    f"{context} parallel branch {index}",
-                    labels=labels,
-                    label_counts=label_counts,
-                    module_labels=module_labels,
-                    module_label_counts=module_label_counts,
-                    env=env,
-                    type_graph=type_graph,
-                    require_init_step=False,
-                    warning_sink=warning_sink,
-                    allow_old_state_assignment=allow_old_state_assignment,
-                )
+                recurse(branch, f"{context} parallel branch {index}")
                 if branch:
                     trailer = _parallel_branch_trailer(branch[-1])
                     if trailer is not None:

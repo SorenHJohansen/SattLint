@@ -202,6 +202,43 @@ def test_audit_repository_collects_custom_findings_from_tracked_files(tmp_path):
     assert collect_custom_findings.call_args.kwargs["tracked_only"] is True
 
 
+def test_audit_repository_marks_pipeline_stage_failed_and_writes_failure_status(monkeypatch, tmp_path):
+    with (
+        pytest.raises(KeyboardInterrupt),
+        patch.object(
+            repo_audit.pipeline_module,
+            "_run_pipeline",
+            side_effect=KeyboardInterrupt("terminal interrupted"),
+        ),
+    ):
+        repo_audit.audit_repository(
+            tmp_path,
+            profile="full",
+            fail_on="high",
+            include_generated=False,
+            leaks_only=False,
+            suspicious_identifiers=["SQHJ"],
+            skip_pipeline=False,
+            skip_vulture=False,
+            skip_bandit=False,
+        )
+
+    progress_report = json.loads((tmp_path / "progress.json").read_text(encoding="utf-8"))
+    status_report = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    summary_report = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    findings_report = json.loads((tmp_path / "findings.json").read_text(encoding="utf-8"))
+
+    assert progress_report["overall_status"] == "failed"
+    pipeline_stage = next(stage for stage in progress_report["stages"] if stage["key"] == "pipeline")
+    assert pipeline_stage["status"] == "failed"
+    assert "KeyboardInterrupt" in pipeline_stage["detail"]
+    assert status_report["overall_status"] == "fail"
+    assert status_report["error"]["stage"] == "pipeline"
+    assert status_report["pipeline_status_report"].endswith("/pipeline/status.json")
+    assert summary_report["error"]["type"] == "KeyboardInterrupt"
+    assert findings_report["finding_count"] == 0
+
+
 def test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_source(tmp_path):
     readme = tmp_path / "README.md"
     readme.write_text("repo docs\n", encoding="utf-8")

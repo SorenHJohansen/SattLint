@@ -20,7 +20,7 @@ from ..resolution.common import (
     varname_base,
     varname_full,
 )
-from .framework import Issue, format_report_header
+from .framework import Issue, empty_issues, format_report_header
 
 _PARAMETER_CATEGORY_MARKERS = {
     "recipe": ("recpar",),
@@ -67,10 +67,6 @@ _CATEGORY_LABELS = {
 }
 
 
-def _empty_issues() -> list[Issue]:
-    return []
-
-
 @dataclass(frozen=True)
 class _ParameterValue:
     status: str
@@ -81,7 +77,7 @@ class _ParameterValue:
 @dataclass
 class InitialValueReport:
     name: str
-    issues: list[Issue] = field(default_factory=_empty_issues)
+    issues: list[Issue] = field(default_factory=empty_issues)
 
     def summary(self) -> str:
         if not self.issues:
