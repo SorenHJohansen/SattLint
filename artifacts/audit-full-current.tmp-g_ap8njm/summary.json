@@ -1,0 +1,36 @@
+{
+  "canonical_command": "sattlint-repo-audit --profile full --fail-on high --output-dir artifacts/audit-full-current.tmp-g_ap8njm",
+  "category_counts": {},
+  "entry_report": "status.json",
+  "error": {
+    "message": "",
+    "stage": "pipeline",
+    "type": "KeyboardInterrupt"
+  },
+  "finding_count": 0,
+  "findings": [],
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "generated_by": "sattlint.devtools.repo_audit",
+  "history_cleanup_findings": [],
+  "max_severity": null,
+  "output_dir": "artifacts/audit-full-current.tmp-g_ap8njm",
+  "pipeline_ran": true,
+  "pipeline_summary": null,
+  "profile": "full",
+  "reports": {
+    "ai_gc": null,
+    "cli_consistency": "cli_consistency.json",
+    "findings": "findings.json",
+    "pipeline_status": "pipeline/status.json",
+    "pipeline_summary": "pipeline/summary.json",
+    "progress": "progress.json",
+    "run_history": "run_history.json",
+    "status": "status.json",
+    "summary": "summary.json",
+    "summary_markdown": "summary.md"
+  },
+  "severity_counts": {}
+}

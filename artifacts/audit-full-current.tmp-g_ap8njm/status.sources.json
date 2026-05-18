@@ -1,0 +1,17 @@
+{
+  "artifact_digest": "sha1:b54c7806c0e78a4cebf4d7a14fdd19cc2ee1f00f",
+  "artifact_file": "artifacts/audit-full-current.tmp-g_ap8njm/status.json",
+  "artifact_kind": "sattlint.repo_audit.status",
+  "artifact_schema_version": null,
+  "generated_by": "sattlint.devtools.repo_audit",
+  "kind": "sattlint.generated_output_sources",
+  "schema_version": 1,
+  "source_count": 1,
+  "sources": [
+    {
+      "digest": "sha1:48d6f4d1d21321ad860089d749aa8dddbbadf3cd",
+      "exists": true,
+      "path": "src/sattlint/devtools/repo_audit.py"
+    }
+  ]
+}
