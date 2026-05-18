@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import Any
 
 from . import config as config_module
+from . import console as console_module
+
+emit_output = console_module.print_output
 
 
 def _self_check_directories(cfg: dict[str, Any]) -> bool:
@@ -15,25 +18,25 @@ def _self_check_directories(cfg: dict[str, Any]) -> bool:
     for name in ("program_dir", "ABB_lib_dir", "icf_dir"):
         raw = cfg.get(name, "")
         if not raw:
-            print(f"WARNING {name} not set")
+            emit_output(f"WARNING {name} not set")
             continue
         path = Path(raw)
         messages = errors_by_key.get(name, ())
         if messages:
             for message in messages:
-                print(message)
+                emit_output(message)
             ok = False
         else:
-            print(f"{name}: {path}")
+            emit_output(f"{name}: {path}")
 
     for index, raw_path in enumerate(cfg.get("other_lib_dirs", [])):
         path = Path(raw_path)
         messages = errors_by_key.get(f"other_lib_dirs[{index}]", ())
         if messages:
             for message in messages:
-                print(message)
+                emit_output(message)
         else:
-            print(f"other_lib_dirs: {path}")
+            emit_output(f"other_lib_dirs: {path}")
 
     return ok
 
@@ -44,19 +47,19 @@ def _self_check_targets(cfg: dict[str, Any]) -> bool:
     ok = True
     targets = list(config_module._configured_targets(cfg))
     if not targets:
-        print("WARNING analyzed_programs_and_libraries is empty")
-        print("Configure targets before running analyses, documentation, or AST cache refresh.")
+        emit_output("WARNING analyzed_programs_and_libraries is empty")
+        emit_output("Configure targets before running analyses, documentation, or AST cache refresh.")
         return ok
 
-    print("Analyzed programs/libraries:")
+    emit_output("Analyzed programs/libraries:")
     for index, target in enumerate(targets):
         messages = errors_by_key.get(f"analyzed_programs_and_libraries[{index}]", ())
         if messages:
             for message in messages:
-                print(message)
+                emit_output(message)
             ok = False
         else:
-            print(f"\u2714 {target}")
+            emit_output(f"\u2714 {target}")
     return ok
 
 
@@ -66,7 +69,7 @@ def _report_validation_namespace(cfg: dict[str, Any], namespace: str) -> bool:
     for error in validation.errors:
         if not error.key_path.startswith(namespace):
             continue
-        print(error.message)
+        emit_output(error.message)
         ok = False
     return ok
 
@@ -81,20 +84,20 @@ def _self_check_graphics_rules() -> bool:
         try:
             graphics_rules, _created = graphics_rules_module.load_graphics_rules(graphics_rules_path)
         except Exception as exc:
-            print(f"graphics_rules_path invalid: {graphics_rules_path} ({exc})")
+            emit_output(f"graphics_rules_path invalid: {graphics_rules_path} ({exc})")
             return False
-        print(f"graphics_rules_path: {graphics_rules_path} ({len(graphics_rules.get('rules', []))} rules)")
+        emit_output(f"graphics_rules_path: {graphics_rules_path} ({len(graphics_rules.get('rules', []))} rules)")
         return True
 
-    print(f"graphics_rules_path not created yet: {graphics_rules_path}")
+    emit_output(f"graphics_rules_path not created yet: {graphics_rules_path}")
     return True
 
 
 def self_check(cfg: dict[str, Any]) -> bool:
-    print("\n--- Self-check diagnostics ---")
+    emit_output("\n--- Self-check diagnostics ---")
     ok = True
 
-    print(f"\u2714 Python {sys.version.split()[0]}")
+    emit_output(f"\u2714 Python {sys.version.split()[0]}")
 
     required_keys = [
         "analyzed_programs_and_libraries",
@@ -110,7 +113,7 @@ def self_check(cfg: dict[str, Any]) -> bool:
     ]
     for key in required_keys:
         if key not in cfg:
-            print(f"â�Œ Missing config key: {key}")
+            emit_output(f"â�Œ Missing config key: {key}")
             ok = False
 
     ok = _self_check_directories(cfg) and ok
@@ -119,5 +122,5 @@ def self_check(cfg: dict[str, Any]) -> bool:
     ok = _report_validation_namespace(cfg, "analysis") and ok
     ok = _self_check_graphics_rules() and ok
 
-    print("------------------------------\n")
+    emit_output("------------------------------\n")
     return ok

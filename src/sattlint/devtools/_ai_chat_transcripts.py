@@ -70,7 +70,8 @@ def resolve_transcripts_input(
             "wrong_log_seam_risk": resolved.name == "debug-logs",
         }
 
-    assert workspace_storage is not None
+    if workspace_storage is None:
+        raise AiChatInputError("Workspace storage directory not found.")
     resolved_root = workspace_storage.resolve()
     if not resolved_root.exists() or not resolved_root.is_dir():
         raise AiChatInputError(f"Workspace storage directory not found: {workspace_storage}")

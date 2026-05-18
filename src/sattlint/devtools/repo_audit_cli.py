@@ -25,14 +25,27 @@ class _ErrorCapableParser(Protocol):
     def error(self, message: str, /) -> None: ...
 
 
-def _repo_audit_module() -> Any:
+def _repo_audit_cli_module() -> Any:
     from sattlint.devtools import repo_audit as repo_audit_module
 
     return repo_audit_module
 
 
+def _repo_audit_loader() -> Any:
+    repo_audit_module_loader = globals().get("_repo_audit_module")
+    if callable(repo_audit_module_loader):
+        return repo_audit_module_loader()
+    return _repo_audit_cli_module()
+
+
+def __getattr__(name: str) -> Any:
+    if name == "_repo_audit_module":
+        return _repo_audit_cli_module
+    raise AttributeError(name)
+
+
 def _latest_report_links(current_output_dir: Path) -> tuple[str | None, str | None]:
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_loader()
     return _reporting_latest_report_links(
         current_output_dir,
         default_output_dir=repo_audit.DEFAULT_OUTPUT_DIR.resolve(),
@@ -41,7 +54,7 @@ def _latest_report_links(current_output_dir: Path) -> tuple[str | None, str | No
 
 
 def _build_cli_parser() -> argparse.ArgumentParser:
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_loader()
     parser = argparse.ArgumentParser(
         description="Run repository audit checks for portability, security, wiring, architecture, and public-readiness."
     )
@@ -176,7 +189,7 @@ def _check_mode_conflicts(args: argparse.Namespace, parser: _ErrorCapableParser)
 
 
 def _summary_findings(summary: dict[str, Any]):
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_loader()
     return (repo_audit.Finding(**finding) for finding in summary["findings"])
 
 
@@ -185,7 +198,7 @@ def _terminal_findings(summary: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _selected_check_exit_code(summary: dict[str, Any], fail_on: str) -> tuple[int, dict[str, Any]]:
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_loader()
     selected_findings = _summary_findings(summary)
     selected_status = (
         "fail"
@@ -211,7 +224,7 @@ def _selected_check_exit_code(summary: dict[str, Any], fail_on: str) -> tuple[in
 
 
 def _run_selected_checks(args: argparse.Namespace, fail_on: str) -> tuple[int, dict[str, Any]]:
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_loader()
     selected_checks = tuple(dict.fromkeys(args.check))
     output_dir = Path(args.output_dir).resolve()
     latest_output_dir = repo_audit.DEFAULT_OUTPUT_DIR.resolve()
@@ -237,7 +250,7 @@ def _run_selected_checks(args: argparse.Namespace, fail_on: str) -> tuple[int, d
 
 
 def main(argv: list[str] | None = None) -> int:
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_loader()
     parser = _build_cli_parser()
     args = parser.parse_args(argv)
     _check_mode_conflicts(args, parser)

@@ -56,15 +56,15 @@ def build_selected_finish_gate_plan(
         )
         command_list = list(surface_recommendation.get("suggested_finish_gate_commands", []))
         recommended_check_ids = list(surface_recommendation.get("recommended_check_ids", []))
+        sanitized_selected_output_dir = repo_audit.PIPELINE_OUTPUT_DIRNAME
     else:
         selected_output_dir = output_dir
         command_list = list(recommendation.get("suggested_finish_gate_commands", []))
         recommended_check_ids = list(recommendation.get("recommended_check_ids", []))
-
-    sanitized_selected_output_dir = (
-        sanitize_path_for_report(selected_output_dir.resolve(), repo_root=repo_audit.REPO_ROOT)
-        or selected_output_dir.resolve().as_posix()
-    )
+        sanitized_selected_output_dir = (
+            sanitize_path_for_report(selected_output_dir.resolve(), repo_root=repo_audit.REPO_ROOT)
+            or selected_output_dir.resolve().as_posix()
+        )
     return {
         "selected_surface": selected_surface,
         "output_dir": sanitized_selected_output_dir,

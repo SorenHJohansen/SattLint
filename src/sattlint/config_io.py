@@ -10,7 +10,10 @@ from typing import Any
 
 import tomli_w
 
+from . import console as console_module
 from .config_validation import DEFAULT_CONFIG, _deep_merge_dict, _normalize_documentation_rule_keys, validate_config
+
+emit_output = console_module.print_output
 
 
 def get_config_path() -> Path:
@@ -31,7 +34,7 @@ def get_graphics_rules_path(config_path: Path | None = None) -> Path:
 
 def load_config(path: Path) -> tuple[dict[str, Any], bool]:
     if not path.exists():
-        print(f"⚠ No config found, creating default: {path}")
+        emit_output(f"⚠ No config found, creating default: {path}")
         cfg = deepcopy(DEFAULT_CONFIG)
         save_config(path, cfg)
         return cfg, True
@@ -44,7 +47,7 @@ def load_config(path: Path) -> tuple[dict[str, Any], bool]:
     validation = validate_config(cfg)
     if not validation.passed:
         for error in validation.errors:
-            print(f"⚠ Config warning [{error.key_path}]: {error.message}")
+            emit_output(f"⚠ Config warning [{error.key_path}]: {error.message}")
 
     merged = _deep_merge_dict(DEFAULT_CONFIG, cfg)
     merged.pop("ignore_ABB_lib", None)
