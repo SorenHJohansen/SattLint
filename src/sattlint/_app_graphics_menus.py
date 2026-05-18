@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
@@ -15,6 +15,10 @@ LoadedProjectIterator = Callable[[ConfigDict], Sequence[LoadedProject] | Any]
 CollectGraphicsLayoutEntriesForTargetFn = Callable[[str, BasePicture, ProjectGraph], list[GraphicsRule]]
 ClassifyDocumentationStructureFn = Callable[..., Any]
 DiscoverDocumentationUnitCandidatesFn = Callable[[Any], Sequence[Any]]
+
+
+class PrintGraphicsRulesSummaryFn(Protocol):
+    def __call__(self, path: Path, rules: dict[str, Any], *, dirty: bool) -> None: ...
 
 
 def prompt_graphics_rule_kind(*, emit_output_fn: Callable[..., None]) -> str:
@@ -479,7 +483,7 @@ def graphics_rules_menu(
     prompt_fn: Callable[..., str],
     quit_app_fn: Callable[[], None],
     pause_fn: Callable[[], None],
-    print_graphics_rules_summary_fn: Callable[[Path, dict[str, Any]], None],
+    print_graphics_rules_summary_fn: PrintGraphicsRulesSummaryFn,
     emit_output_fn: Callable[..., None],
     upsert_graphics_rule_fn: Callable[[dict[str, Any], dict[str, Any]], bool],
     remove_graphics_rule_fn: Callable[[dict[str, Any], int], dict[str, Any]],

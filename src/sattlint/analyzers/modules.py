@@ -1,9 +1,9 @@
-"""Module comparison, version drift analysis, and debug helpers."""
+"""Module comparison and version drift analysis helpers."""
 
 import logging
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -13,6 +13,8 @@ from sattline_parser.models.ast_model import (
     SingleModule,
 )
 
+from . import _modules_diffing as modules_diffing
+from ._modules_debug import debug_module_structure
 from ._modules_diffing import (
     CodeDiff,
     SubmoduleDiff,
@@ -29,113 +31,43 @@ from ._modules_fingerprints import (
     empty_instance_fingerprints,
     fingerprint_variant_key,
     fingerprints_match,
+    normalize_ast_value,
     normalize_name,
 )
-from ._modules_reporting import build_upgrade_notes, compact_diff, material_difference_labels
-from .framework import Issue, empty_issues, format_report_header
+from ._modules_reporting import (
+    build_upgrade_notes,
+    compact_diff,
+    material_difference_labels,
+    render_comparison_summary,
+    render_version_drift_summary,
+)
+from .framework import Issue, empty_issues
 from .variable_utils import same_origin_file_stem
 
 log = logging.getLogger("SattLint")
 
-_DEFAULT_DEBUG_MAX_DEPTH = 10
+AstDiffDetail = modules_diffing.AstDiffDetail
 
-type SubmoduleNode = SingleModule | FrameModule | ModuleTypeInstance
-
-
-def debug_module_structure(base_picture: BasePicture, max_depth: int = _DEFAULT_DEBUG_MAX_DEPTH) -> None:
-    """Detailed debugging: show EVERYTHING about the structure."""
-    log.debug("=== DEBUGGING MODULE STRUCTURE ===")
-    log.debug("BasePicture type: %s", type(base_picture))
-    log.debug("BasePicture name: %r", base_picture.header.name)
-    log.debug("BasePicture has %d submodules", len(base_picture.submodules))
-    log.debug("BasePicture has %d moduletype_defs", len(base_picture.moduletype_defs))
-
-    # Show moduletype_defs
-    log.debug("--- ModuleTypeDefs ---")
-    for mtd in base_picture.moduletype_defs:
-        log.debug("  ModuleTypeDef: %r", mtd.name)
-        log.debug("    - has %d submodules", len(mtd.submodules))
-        for i, sub in enumerate(mtd.submodules):
-            log.debug(
-                "    - submodule[%d]: %s - %r",
-                i,
-                type(sub).__name__,
-                sub.header.name,
-            )
-
-    def _walk(node: Any, depth: int = 0, parent_name: str = "") -> None:
-        if depth > max_depth:
-            log.debug("%s[MAX DEPTH REACHED]", "  " * depth)
-            return
-
-        indent = "  " * depth
-        node_type = type(node).__name__
-
-        if isinstance(node, SingleModule):
-            name = node.header.name
-            log.debug(
-                "%sSingleModule: name=%r, datecode=%s, parent=%r",
-                indent,
-                name,
-                node.datecode,
-                parent_name,
-            )
-            log.debug("%s  - has %d submodules", indent, len(node.submodules))
-            for i, sub in enumerate(node.submodules):
-                log.debug(
-                    "%s  - submodule[%d] type: %s",
-                    indent,
-                    i,
-                    type(sub).__name__,
-                )
-                _walk(sub, depth + 1, name)
-
-        elif isinstance(node, FrameModule):
-            name = node.header.name
-            log.debug(
-                "%sFrameModule: name=%r, datecode=%s, parent=%r",
-                indent,
-                name,
-                node.datecode,
-                parent_name,
-            )
-            log.debug("%s  - has %d submodules", indent, len(node.submodules))
-            for i, sub in enumerate(node.submodules):
-                log.debug(
-                    "%s  - submodule[%d] type: %s",
-                    indent,
-                    i,
-                    type(sub).__name__,
-                )
-                _walk(sub, depth + 1, name)
-
-        elif isinstance(node, ModuleTypeInstance):
-            name = node.header.name
-            log.debug(
-                "%sModuleTypeInstance: name=%r, type=%r, parent=%r",
-                indent,
-                name,
-                node.moduletype_name,
-                parent_name,
-            )
-
-        elif isinstance(node, BasePicture):
-            log.debug("%sBasePicture: name=%r", indent, node.name)
-            log.debug("%s  - has %d submodules", indent, len(node.submodules))
-            for i, sub in enumerate(node.submodules):
-                log.debug(
-                    "%s  - submodule[%d] type: %s",
-                    indent,
-                    i,
-                    type(sub).__name__,
-                )
-                _walk(sub, depth + 1, node.name)
-        else:
-            log.debug("%sUnknown type: %s", indent, node_type)
-
-    log.debug("--- Submodules Tree ---")
-    _walk(base_picture)
-    log.debug("=== END DEBUGGING ===")
+__all__ = [
+    "AstDiffDetail",
+    "CodeDiff",
+    "ComparisonResult",
+    "SubmoduleDiff",
+    "VariableDiff",
+    "_build_upgrade_notes",
+    "_collect_named_item_diffs",
+    "_common_module_prefix",
+    "_compact_diff",
+    "_diff_normalized_variants",
+    "_group_instances_by_variant",
+    "_material_difference_labels",
+    "_material_differences",
+    "_normalize_ast_value",
+    "analyze_version_drift",
+    "compare_modules",
+    "create_fingerprint",
+    "debug_module_structure",
+]
 
 
 @dataclass
@@ -155,133 +87,7 @@ class ComparisonResult:
     code_diff: CodeDiff | None = None
 
     def summary(self) -> str:
-        status = "ok" if self.unique_variants <= 1 else "issues"
-        lines = format_report_header("Module comparison", self.module_name, status=status)
-        lines.extend(
-            [
-                f"Total Instances Found: {self.total_found}",
-                f"Unique Variants: {self.unique_variants}",
-                "",
-            ]
-        )
-
-        if self.total_found == 0:
-            lines.append("⚠ No modules found with this name")
-            return "\n".join(lines)
-
-        if self.unique_variants == 1:
-            lines.append("✓ All instances are structurally identical (datecodes may differ)")
-            lines.append("")
-            lines.append("Instance locations:")
-            for path, fp in self.all_instances:
-                lines.append(f"  DateCode: {fp.datecode} - {' → '.join(path)}")
-        else:
-            lines.append(f"⚠ Found {self.unique_variants} different structural variants")
-            lines.append("")
-
-            # Group instances by variant FINGERPRINT (not just by id)
-            variant_map: dict[int, list[tuple[list[str], ModuleFingerprint]]] = {}
-            for path, fp in self.all_instances:
-                # Find which unique fingerprint this instance matches
-                for i, unique_fp in enumerate(self.fingerprints, 1):
-                    # Check if they have the same structural hash (excluding datecode)
-                    if (
-                        fp.num_moduleparameters == unique_fp.num_moduleparameters
-                        and fp.num_localvariables == unique_fp.num_localvariables
-                        and fp.num_submodules == unique_fp.num_submodules
-                        and fp.num_sequences == unique_fp.num_sequences
-                        and fp.num_equations == unique_fp.num_equations
-                        and fp.moduleparameters_hash == unique_fp.moduleparameters_hash
-                        and fp.localvariables_hash == unique_fp.localvariables_hash
-                        and fp.submodules_hash == unique_fp.submodules_hash
-                        and fp.parameter_mappings_hash == unique_fp.parameter_mappings_hash
-                    ):
-                        if i not in variant_map:
-                            variant_map[i] = []
-                        variant_map[i].append((path, fp))
-                        break
-
-            for i, unique_fp in enumerate(self.fingerprints, 1):
-                instances = variant_map.get(i, [])
-
-                lines.append(f"=== Variant {i} ({len(instances)} instance(s)) ===")
-                lines.append(f"Parameters: {unique_fp.num_moduleparameters}")
-                lines.append(f"Local Vars: {unique_fp.num_localvariables}")
-                lines.append(f"Submodules: {unique_fp.num_submodules}")
-                lines.append(f"Sequences: {unique_fp.num_sequences}")
-                lines.append(f"Equations: {unique_fp.num_equations}")
-                lines.append("Locations:")
-                for path, fp in instances:
-                    lines.append(f"  DateCode: {fp.datecode} - {' → '.join(path)}")
-                lines.append("")
-
-            # Show detailed differences
-            if self.parameter_diff:
-                lines.append("=== Module Parameters Differences ===")
-                lines.append(f"Common ({len(self.parameter_diff.common)}): {sorted(self.parameter_diff.common)}")
-                for var_id, names in sorted(self.parameter_diff.only_in_variant.items()):
-                    if names:
-                        lines.append(f"Only in Variant {var_id} ({len(names)}): {sorted(names)}")
-                lines.append("")
-
-            if self.localvar_diff:
-                lines.append("=== Local Variables Differences ===")
-                lines.append(f"Common ({len(self.localvar_diff.common)}): {sorted(self.localvar_diff.common)}")
-                for var_id, names in sorted(self.localvar_diff.only_in_variant.items()):
-                    if names:
-                        lines.append(f"Only in Variant {var_id} ({len(names)}): {sorted(names)}")
-                lines.append("")
-
-            if self.submodule_diff:
-                lines.append("=== Submodules Differences (Recursive Tree) ===")
-
-                # Group common by depth for better readability
-                common_by_depth: defaultdict[int, list[tuple[str, str]]] = defaultdict(list)
-                for depth, name, typ in self.submodule_diff.common:
-                    common_by_depth[depth].append((name, typ))
-
-                lines.append(f"Common across all variants ({len(self.submodule_diff.common)} total):")
-                for depth in sorted(common_by_depth.keys()):
-                    indent = "  " + ("  " * depth)
-                    items = common_by_depth[depth]
-                    for name, typ in sorted(items):
-                        lines.append(f"{indent}Depth {depth}: {name} ({typ})")
-
-                # Show unique submodules per variant
-                for var_id, unique_subs in sorted(self.submodule_diff.only_in_variant.items()):
-                    if unique_subs:
-                        lines.append(f"Only in Variant {var_id} ({len(unique_subs)} nodes):")
-                        # Group by depth
-                        by_depth: defaultdict[int, list[tuple[str, str]]] = defaultdict(list)
-                        for depth, name, typ in unique_subs:
-                            by_depth[depth].append((name, typ))
-
-                        for depth in sorted(by_depth.keys()):
-                            indent = "  " + ("  " * depth)
-                            items = by_depth[depth]
-                            for name, typ in sorted(items):
-                                lines.append(f"{indent}Depth {depth}: {name} ({typ})")
-                lines.append("")
-
-            if self.code_diff:
-                lines.append("=== Module Code Differences ===")
-                if self.code_diff.sequences_common or any(self.code_diff.sequences_only_in_variant.values()):
-                    lines.append(
-                        f"Sequences Common ({len(self.code_diff.sequences_common)}): {sorted(self.code_diff.sequences_common)}"
-                    )
-                    for var_id, names in sorted(self.code_diff.sequences_only_in_variant.items()):
-                        if names:
-                            lines.append(f"Sequences Only in Variant {var_id} ({len(names)}): {sorted(names)}")
-                if self.code_diff.equations_common or any(self.code_diff.equations_only_in_variant.values()):
-                    lines.append(
-                        f"Equations Common ({len(self.code_diff.equations_common)}): {sorted(self.code_diff.equations_common)}"
-                    )
-                    for var_id, names in sorted(self.code_diff.equations_only_in_variant.items()):
-                        if names:
-                            lines.append(f"Equations Only in Variant {var_id} ({len(names)}): {sorted(names)}")
-                lines.append("")
-
-        return "\n".join(lines)
+        return render_comparison_summary(self)
 
 
 @dataclass
@@ -292,23 +98,7 @@ class VersionDriftReport:
     issues: list[Issue] = field(default_factory=empty_issues)
 
     def summary(self) -> str:
-        if not self.issues:
-            lines = format_report_header("Version drift", self.name, status="ok")
-            lines.append("No module version drift found.")
-            return "\n".join(lines)
-
-        lines = format_report_header("Version drift", self.name, status="issues")
-        lines.append(f"Issues: {len(self.issues)}")
-        lines.append("")
-        kind_counts = Counter(issue.kind for issue in self.issues)
-        lines.append("Kinds:")
-        lines.append(f"  - Module version drift: {kind_counts.get('module.version_drift', 0)}")
-        lines.append("")
-        lines.append("Findings:")
-        for issue in self.issues:
-            location = ".".join(issue.module_path or [self.name])
-            lines.append(f"  - [{location}] {issue.message}")
-        return "\n".join(lines)
+        return render_version_drift_summary(self)
 
 
 def _walk_modules(
@@ -557,6 +347,22 @@ def _group_instances_by_variant(
 
 def _compact_diff(diff: VariableDiff | SubmoduleDiff | CodeDiff | None) -> dict[str, Any] | None:
     return compact_diff(diff)
+
+
+def _build_upgrade_notes(differences: dict[str, Any]) -> list[str]:
+    return build_upgrade_notes(differences)
+
+
+def _normalize_ast_value(value: Any) -> Any:
+    return normalize_ast_value(value)
+
+
+def _collect_named_item_diffs(variant_items: Any) -> Any:
+    return cast(Any, modules_diffing)._collect_named_item_diffs(variant_items)
+
+
+def _diff_normalized_variants(variants: Any, path: str = "") -> Any:
+    return cast(Any, modules_diffing)._diff_normalized_variants(variants, path)
 
 
 def _material_differences(comparison: ComparisonResult) -> dict[str, Any]:

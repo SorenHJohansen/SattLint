@@ -17,7 +17,7 @@ from sattlint.devtools._repo_audit_ai_gc import (
 from sattlint.devtools.pipeline_artifacts import write_json_artifact
 
 
-def _repo_audit_module() -> Any:
+def _repo_audit_reporting_module() -> Any:
     from sattlint.devtools import repo_audit as repo_audit_module
 
     return repo_audit_module
@@ -32,7 +32,7 @@ def _parse_coverage_findings(
     *,
     tracked_paths: tuple[str, ...] | None = None,
 ) -> list[Any]:
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_reporting_module()
     coverage_path = root / "coverage.xml"
     if tracked_paths is not None and "coverage.xml" not in tracked_paths:
         return []
@@ -79,7 +79,7 @@ def build_ai_gc_report(
     now_ts: float | None = None,
     apply: bool = False,
 ) -> dict[str, Any]:
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_reporting_module()
     return repo_audit._ai_gc_module.build_ai_gc_report(
         root,
         tracked_paths=tracked_paths,
@@ -97,7 +97,7 @@ def apply_ai_gc(
     stale_after_days: int,
     now_ts: float | None = None,
 ) -> dict[str, Any]:
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_reporting_module()
     report = build_ai_gc_report(
         root,
         tracked_paths=tracked_paths,
@@ -112,7 +112,7 @@ def apply_ai_gc(
 
 
 def _cli_consistency_doc_paths(root: Path) -> list[Path]:
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_reporting_module()
     doc_paths: list[Path] = []
     for rel_path in repo_audit.CLI_CONSISTENCY_DOC_PATHS:
         path = root / rel_path
@@ -122,7 +122,7 @@ def _cli_consistency_doc_paths(root: Path) -> list[Path]:
 
 
 def build_cli_consistency_report(*, root: Path) -> dict[str, Any]:
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_reporting_module()
     scripts, subcommands = repo_audit._collect_cli_metadata()
     doc_paths = _cli_consistency_doc_paths(root)
     documented_commands = repo_audit._extract_documented_commands(doc_paths, root=root)
@@ -188,7 +188,7 @@ def _find_public_readiness_findings(
     *,
     tracked_paths: tuple[str, ...] | None = None,
 ) -> list[Any]:
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_reporting_module()
     findings: list[Any] = []
     tracked_path_set = None if tracked_paths is None else set(tracked_paths)
     required_files = ["README.md", "LICENSE", "CONTRIBUTING.md", ".gitignore"]
@@ -353,7 +353,7 @@ def _structural_report_location_detail(finding: dict[str, Any]) -> tuple[str | N
 
 
 def _find_structural_report_findings(root: Path | None = None) -> list[Any]:
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_reporting_module()
     from sattlint.devtools import structural_reports as structural_reports_module
 
     report_root = repo_audit.REPO_ROOT if root is None else root
@@ -382,7 +382,7 @@ def _find_structural_report_findings(root: Path | None = None) -> list[Any]:
 
 
 def _find_pipeline_findings(output_dir: Path) -> list[Any]:
-    repo_audit = _repo_audit_module()
+    repo_audit = _repo_audit_reporting_module()
     findings_path = output_dir / "findings.json"
     if findings_path.exists():
         payload = json.loads(findings_path.read_text(encoding="utf-8"))

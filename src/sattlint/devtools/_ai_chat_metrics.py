@@ -9,6 +9,18 @@ from typing import Any
 
 from sattlint.path_sanitizer import sanitize_path_for_report
 
+_TABLE_COUNT_QUERIES = {
+    "sessions": "SELECT COUNT(*) FROM sessions",
+    "turns": "SELECT COUNT(*) FROM turns",
+    "session_files": "SELECT COUNT(*) FROM session_files",
+}
+_SESSION_METADATA_COUNT_QUERIES = {
+    "repo": "SELECT COUNT(*) FROM sessions WHERE TRIM(COALESCE(repo, '')) != ''",
+    "cwd": "SELECT COUNT(*) FROM sessions WHERE TRIM(COALESCE(cwd, '')) != ''",
+    "branch": "SELECT COUNT(*) FROM sessions WHERE TRIM(COALESCE(branch, '')) != ''",
+    "agent": "SELECT COUNT(*) FROM sessions WHERE TRIM(COALESCE(agent, '')) != ''",
+}
+
 
 def probe_session_store(session_db: Path | None, *, repo_root: Path) -> dict[str, Any]:
     if session_db is None:
@@ -239,18 +251,21 @@ def _existing_tables(connection: sqlite3.Connection) -> set[str]:
 
 
 def _table_count(connection: sqlite3.Connection, table_name: str) -> int:
-    row = connection.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
+    query = _TABLE_COUNT_QUERIES.get(table_name)
+    if query is None:
+        raise ValueError(f"Unsupported session-store table: {table_name}")
+    row = connection.execute(query).fetchone()
     return int(row[0]) if row is not None else 0
 
 
 def _session_metadata_counts(connection: sqlite3.Connection) -> dict[str, int]:
     session_columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(sessions)").fetchall()}
     counts: dict[str, int] = {}
-    for column in ("repo", "cwd", "branch", "agent"):
+    for column, query in _SESSION_METADATA_COUNT_QUERIES.items():
         if column not in session_columns:
             counts[column] = 0
             continue
-        row = connection.execute(f"SELECT COUNT(*) FROM sessions WHERE TRIM(COALESCE({column}, '')) != ''").fetchone()
+        row = connection.execute(query).fetchone()
         counts[column] = int(row[0]) if row is not None else 0
     return counts
 
