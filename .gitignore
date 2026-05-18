@@ -36,6 +36,18 @@ build/
 
 # Project outputs (keep artifacts/analysis/ ratchet files)
 artifacts/audit/
+artifacts/audit-history/
+artifacts/audit-quick-current/
+artifacts/audit-quick-current.tmp-*/
+artifacts/audit-review-quick-ignored-path/
+artifacts/audit-fresh/
+artifacts/audit-plan-smoke/
+artifacts/audit-check-documented-commands/
+artifacts/audit-check-my-changes/
+artifacts/audit-check-my-changes-fixed/
+artifacts/audit-cli-consistency-fix/
+artifacts/audit-leaks/
+artifacts/audit-leaks-fresh/
 artifacts/health/
 artifacts/impact-analysis/
 artifacts/audit-ai-gc-current/
@@ -56,6 +68,10 @@ artifacts/tmp/repo-audit-full-*.stamp
 artifacts/tmp/repo-audit-full.latest
 artifacts/tmp/repo-audit-full.latest.meta
 artifacts/tmp/repo_audit_test_slice.*
+artifacts/tmp/*.log
+artifacts/tmp/*.exit
+artifacts/tmp-corpus-debug/
+artifacts/generated/worktree-cleanup/
 *.docx
 *.xlsx
 *.txt

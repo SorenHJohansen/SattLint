@@ -1,0 +1,96 @@
+{
+  "canonical_command": "sattlint-analysis-pipeline --profile full --output-dir artifacts/audit-full-current.tmp-g_ap8njm/pipeline",
+  "error": {
+    "message": "",
+    "stage": "bandit",
+    "type": "KeyboardInterrupt"
+  },
+  "failing_tools": [
+    "bandit"
+  ],
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "kind": "sattlint.pipeline.status",
+  "non_blocking_tools": [],
+  "overall_status": "fail",
+  "profile": "full",
+  "progress_report": "artifacts/audit-full-current.tmp-g_ap8njm/pipeline/progress.json",
+  "status_report": "artifacts/audit-full-current.tmp-g_ap8njm/pipeline/status.json",
+  "summary_report": "artifacts/audit-full-current.tmp-g_ap8njm/pipeline/summary.json",
+  "tool_statuses": {
+    "bandit": {
+      "detail": "KeyboardInterrupt",
+      "finding_count": 0,
+      "normalized_exit_code": 1,
+      "raw_exit_code": 1,
+      "report": null,
+      "status": "fail"
+    },
+    "baseline_drift": {
+      "detail": "not reached due earlier failure",
+      "finding_count": 0,
+      "normalized_exit_code": null,
+      "raw_exit_code": null,
+      "report": null,
+      "status": "skipped"
+    },
+    "corpus": {
+      "detail": "not reached due earlier failure",
+      "finding_count": 0,
+      "normalized_exit_code": null,
+      "raw_exit_code": null,
+      "report": null,
+      "status": "skipped"
+    },
+    "performance_budget": {
+      "detail": "not reached due earlier failure",
+      "finding_count": 0,
+      "normalized_exit_code": null,
+      "raw_exit_code": null,
+      "report": null,
+      "status": "skipped"
+    },
+    "pyright": {
+      "detail": "0 errors, 0 warnings",
+      "finding_count": 0,
+      "normalized_exit_code": 0,
+      "raw_exit_code": 0,
+      "report": null,
+      "status": "pass"
+    },
+    "pytest": {
+      "detail": "2019 tests, 9 failures, 0 errors",
+      "finding_count": 0,
+      "normalized_exit_code": 0,
+      "raw_exit_code": 0,
+      "report": null,
+      "status": "pass"
+    },
+    "ruff": {
+      "detail": "30 findings",
+      "finding_count": 0,
+      "normalized_exit_code": 0,
+      "raw_exit_code": 0,
+      "report": null,
+      "status": "pass"
+    },
+    "rule_metadata": {
+      "detail": "not reached due earlier failure",
+      "finding_count": 0,
+      "normalized_exit_code": null,
+      "raw_exit_code": null,
+      "report": null,
+      "status": "skipped"
+    },
+    "vulture": {
+      "detail": "0 findings",
+      "finding_count": 0,
+      "normalized_exit_code": 0,
+      "raw_exit_code": 0,
+      "report": null,
+      "status": "pass"
+    }
+  }
+}

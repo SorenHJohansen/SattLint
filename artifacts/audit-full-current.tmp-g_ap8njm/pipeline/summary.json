@@ -1,0 +1,694 @@
+{
+  "artifact_registry": {
+    "artifacts": [
+      {
+        "artifact_id": "progress",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "progress.json",
+        "optional": false,
+        "producer": "progress",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.pipeline.progress",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "status",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "status.json",
+        "optional": false,
+        "producer": "status",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.pipeline.status",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "summary",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "summary.json",
+        "optional": false,
+        "producer": "summary",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.pipeline.summary",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "findings",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "findings.json",
+        "optional": false,
+        "producer": "findings",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.findings",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "analysis_diff",
+        "blocking": false,
+        "depends_on": [
+          "findings"
+        ],
+        "enabled": false,
+        "filename": "analysis_diff.json",
+        "optional": true,
+        "producer": "analysis_diff",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.analysis_diff",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "recommendation_drift",
+        "blocking": false,
+        "depends_on": [
+          "status",
+          "summary"
+        ],
+        "enabled": true,
+        "filename": "recommendation_drift.json",
+        "optional": true,
+        "producer": "recommendation_drift",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.pipeline.recommendation_drift",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "corpus_results",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "corpus_results.json",
+        "optional": true,
+        "producer": "corpus_results",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.corpus_results",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "artifact_registry",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "artifact_registry.json",
+        "optional": false,
+        "producer": "artifact_registry",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.artifact_registry",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "environment",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": false,
+        "filename": "environment.json",
+        "optional": false,
+        "producer": "environment",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.environment",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "ruff",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "ruff.json",
+        "optional": false,
+        "producer": "ruff",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.tool_report",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "pyright",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "pyright.json",
+        "optional": false,
+        "producer": "pyright",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.tool_report",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "pytest",
+        "blocking": true,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "pytest.json",
+        "optional": false,
+        "producer": "pytest",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.tool_report",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "vulture",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "vulture.json",
+        "optional": true,
+        "producer": "vulture",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.tool_report",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "bandit",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "bandit.json",
+        "optional": true,
+        "producer": "bandit",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.tool_report",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "architecture",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "architecture.json",
+        "optional": true,
+        "producer": "architecture",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.architecture",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "analyzer_registry",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "analyzer_registry.json",
+        "optional": true,
+        "producer": "analyzer_registry",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.analyzer_registry",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "dependency_graph",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "dependency_graph.json",
+        "optional": true,
+        "producer": "dependency_graph",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.graph",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "call_graph",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "call_graph.json",
+        "optional": true,
+        "producer": "call_graph",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.graph",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "graphics_layout",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "graphics_layout.json",
+        "optional": true,
+        "producer": "graphics_layout",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.graphics_layout",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "impact_analysis",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "impact_analysis.json",
+        "optional": true,
+        "producer": "impact_analysis",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.impact_analysis",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "trace",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "trace.json",
+        "optional": true,
+        "producer": "trace",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.trace",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "incremental_analysis",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "incremental_analysis.json",
+        "optional": true,
+        "producer": "incremental_analysis",
+        "profiles": [
+          "quick",
+          "full"
+        ],
+        "schema_kind": "sattlint.incremental_analysis",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "coverage_summary",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "coverage_summary.json",
+        "optional": true,
+        "producer": "coverage_summary",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.coverage_summary",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "current_debt_snapshot",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": true,
+        "filename": "current_debt_snapshot.json",
+        "optional": true,
+        "producer": "current_debt_snapshot",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.current_debt_snapshot",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "sattline_semantic",
+        "blocking": false,
+        "depends_on": [
+          "findings"
+        ],
+        "enabled": true,
+        "filename": "sattline_semantic.json",
+        "optional": true,
+        "producer": "sattline_semantic",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.sattline_semantic",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "rule_metrics",
+        "blocking": false,
+        "depends_on": [
+          "findings"
+        ],
+        "enabled": true,
+        "filename": "rule_metrics.json",
+        "optional": true,
+        "producer": "rule_metrics",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.rule_metrics",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "mutation_results",
+        "blocking": false,
+        "depends_on": [
+          "findings"
+        ],
+        "enabled": false,
+        "filename": "mutation_results.json",
+        "optional": true,
+        "producer": "mutation_results",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.mutation_results",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "accuracy_metrics",
+        "blocking": false,
+        "depends_on": [
+          "findings"
+        ],
+        "enabled": false,
+        "filename": "accuracy_metrics.json",
+        "optional": true,
+        "producer": "accuracy_metrics",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.accuracy_metrics",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "differential",
+        "blocking": false,
+        "depends_on": [
+          "findings"
+        ],
+        "enabled": false,
+        "filename": "differential.json",
+        "optional": true,
+        "producer": "differential",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.differential",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "production_summary",
+        "blocking": false,
+        "depends_on": [
+          "findings"
+        ],
+        "enabled": false,
+        "filename": "production_summary.json",
+        "optional": true,
+        "producer": "production_summary",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.production_summary",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "ai_templates",
+        "blocking": false,
+        "depends_on": [],
+        "enabled": false,
+        "filename": "ai_templates.json",
+        "optional": true,
+        "producer": "ai_templates",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.ai_templates",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "symbolic_summary",
+        "blocking": false,
+        "depends_on": [
+          "findings"
+        ],
+        "enabled": false,
+        "filename": "symbolic_summary.json",
+        "optional": true,
+        "producer": "symbolic_summary",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.symbolic_lite",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "profiling_summary",
+        "blocking": false,
+        "depends_on": [
+          "trace"
+        ],
+        "enabled": true,
+        "filename": "profiling_summary.json",
+        "optional": true,
+        "producer": "profiling_summary",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.profiling_summary",
+        "schema_version": 1,
+        "used_by": []
+      },
+      {
+        "artifact_id": "performance_budget",
+        "blocking": false,
+        "depends_on": [
+          "profiling_summary"
+        ],
+        "enabled": true,
+        "filename": "performance_budget.json",
+        "optional": true,
+        "producer": "performance_budget",
+        "profiles": [
+          "full"
+        ],
+        "schema_kind": "sattlint.performance_budget",
+        "schema_version": 1,
+        "used_by": []
+      }
+    ],
+    "generated_by": "sattlint.devtools.pipeline",
+    "profile": "full"
+  },
+  "canonical_command": "sattlint-analysis-pipeline --profile full --output-dir artifacts/audit-full-current.tmp-g_ap8njm/pipeline",
+  "counts": {},
+  "entry_report": "status.json",
+  "error": {
+    "message": "",
+    "stage": "bandit",
+    "type": "KeyboardInterrupt"
+  },
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "output_dir": "artifacts/audit-full-current.tmp-g_ap8njm/pipeline",
+  "profile": "full",
+  "progress_report": "artifacts/audit-full-current.tmp-g_ap8njm/pipeline/progress.json",
+  "reports": {
+    "accuracy_metrics": null,
+    "ai_templates": null,
+    "analysis_diff": null,
+    "analyzer_registry": null,
+    "architecture": null,
+    "artifact_registry": "artifact_registry.json",
+    "bandit": null,
+    "call_graph": null,
+    "corpus_results": null,
+    "coverage_summary": null,
+    "current_debt_snapshot": null,
+    "dependency_graph": null,
+    "differential": null,
+    "environment": null,
+    "findings": "findings.json",
+    "graphics_layout": null,
+    "impact_analysis": null,
+    "incremental_analysis": null,
+    "mutation_results": null,
+    "performance_budget": null,
+    "production_summary": null,
+    "profiling_summary": null,
+    "progress": "progress.json",
+    "pyright": null,
+    "pytest": null,
+    "recommendation_drift": null,
+    "ruff": null,
+    "rule_metrics": null,
+    "sattline_semantic": null,
+    "status": "status.json",
+    "summary": "summary.json",
+    "symbolic_summary": null,
+    "trace": null,
+    "vulture": null
+  },
+  "status": {
+    "bandit_exit_code": 1,
+    "baseline_drift_exit_code": null,
+    "corpus_exit_code": null,
+    "failing_tools": [
+      "bandit"
+    ],
+    "non_blocking_tools": [],
+    "overall_status": "fail",
+    "performance_budget_exit_code": null,
+    "pyright_exit_code": 0,
+    "pytest_exit_code": 0,
+    "ruff_exit_code": 0,
+    "rule_metadata_exit_code": null,
+    "tool_statuses": {
+      "bandit": {
+        "detail": "KeyboardInterrupt",
+        "finding_count": 0,
+        "normalized_exit_code": 1,
+        "raw_exit_code": 1,
+        "report": null,
+        "status": "fail"
+      },
+      "baseline_drift": {
+        "detail": "not reached due earlier failure",
+        "finding_count": 0,
+        "normalized_exit_code": null,
+        "raw_exit_code": null,
+        "report": null,
+        "status": "skipped"
+      },
+      "corpus": {
+        "detail": "not reached due earlier failure",
+        "finding_count": 0,
+        "normalized_exit_code": null,
+        "raw_exit_code": null,
+        "report": null,
+        "status": "skipped"
+      },
+      "performance_budget": {
+        "detail": "not reached due earlier failure",
+        "finding_count": 0,
+        "normalized_exit_code": null,
+        "raw_exit_code": null,
+        "report": null,
+        "status": "skipped"
+      },
+      "pyright": {
+        "detail": "0 errors, 0 warnings",
+        "finding_count": 0,
+        "normalized_exit_code": 0,
+        "raw_exit_code": 0,
+        "report": null,
+        "status": "pass"
+      },
+      "pytest": {
+        "detail": "2019 tests, 9 failures, 0 errors",
+        "finding_count": 0,
+        "normalized_exit_code": 0,
+        "raw_exit_code": 0,
+        "report": null,
+        "status": "pass"
+      },
+      "ruff": {
+        "detail": "30 findings",
+        "finding_count": 0,
+        "normalized_exit_code": 0,
+        "raw_exit_code": 0,
+        "report": null,
+        "status": "pass"
+      },
+      "rule_metadata": {
+        "detail": "not reached due earlier failure",
+        "finding_count": 0,
+        "normalized_exit_code": null,
+        "raw_exit_code": null,
+        "report": null,
+        "status": "skipped"
+      },
+      "vulture": {
+        "detail": "0 findings",
+        "finding_count": 0,
+        "normalized_exit_code": 0,
+        "raw_exit_code": 0,
+        "report": null,
+        "status": "pass"
+      }
+    },
+    "vulture_exit_code": 0
+  }
+}
