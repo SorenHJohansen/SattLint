@@ -330,12 +330,13 @@ def build_report(*, section: str | None = None) -> dict[str, Any]:
             issue_path = ".vscode/mcp.json"
         else:
             issue_path = None
+        severity = "warning" if codegraph["status"] == "fallback_to_rg" else "error"
         summary_suffix = f" Detail: {codegraph['status_summary']}" if codegraph["status_summary"] else ""
         error_suffix = f" Detail: {codegraph['status_error']}" if codegraph["status_error"] else ""
         codegraph_issues.append(
             {
                 "id": "codegraph-not-ready",
-                "severity": "error",
+                "severity": severity,
                 "path": issue_path,
                 "message": f"{codegraph['guidance']}{summary_suffix}{error_suffix}",
             }
@@ -475,7 +476,8 @@ def build_report(*, section: str | None = None) -> dict[str, Any]:
     issues.extend(ai_artifact_issues)
     issues.extend(codegraph_issues)
 
-    status = "pass" if not issues else "fail"
+    has_error = any(issue.get("severity") == "error" for issue in issues)
+    status = "pass" if not has_error else "fail"
     return {
         "kind": "sattlint.context_health",
         "schema_version": 1,
@@ -607,7 +609,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _is_failing_report(report: dict[str, Any]) -> bool:
     if report["kind"] == "sattlint.context_health.codegraph":
-        return report["status"] != "healthy"
+        return report["status"] == "degraded"
     return report["status"] != "pass"
 
 

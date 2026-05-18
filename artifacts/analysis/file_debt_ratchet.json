@@ -1,14 +1,5 @@
 {
   "files": {
-    "src/sattline_parser/transformer/_modules_mixin.py": {
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 835,
-        "reason": "Parser transformer owner surface still centralizes grammar-to-AST normalization.",
-        "target": 500,
-        "touch_rule": "must_shrink"
-      }
-    },
     "src/sattline_parser/utils/text_processing.py": {
       "coverage": {
         "allow_rebaseline": false,
@@ -43,13 +34,6 @@
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
-      },
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 679,
-        "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
-        "target": 500,
-        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/_sfc_guard_logic.py": {
@@ -156,13 +140,6 @@
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
-      },
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 835,
-        "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
-        "target": 500,
-        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/modules.py": {
@@ -172,13 +149,6 @@
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
-      },
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 1387,
-        "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
-        "target": 500,
-        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/naming.py": {
@@ -197,15 +167,6 @@
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
-      }
-    },
-    "src/sattlint/analyzers/reset_contamination.py": {
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 1551,
-        "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
-        "target": 500,
-        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/rule_profiles.py": {
@@ -233,13 +194,6 @@
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
-      },
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 1173,
-        "reason": "Analyzer owner surface remains centralized pending planned decomposition.",
-        "target": 500,
-        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/analyzers/scan_loop_resource_usage.py": {
@@ -360,13 +314,6 @@
         "reason": "Touched graphics app coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
-      },
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 907,
-        "reason": "Interactive graphics app owner surface still centralizes graphics rule workflows.",
-        "target": 500,
-        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/cache.py": {
@@ -394,13 +341,6 @@
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
-      },
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 565,
-        "reason": "Config owner surface still centralizes validation, defaults, and persistence flows.",
-        "target": 500,
-        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/console.py": {
@@ -525,13 +465,6 @@
         "reason": "Touched doc-gardener coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
-      },
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 740,
-        "reason": "Devtools owner surface still centralizes audit-support behavior.",
-        "target": 500,
-        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/devtools/finding_exports.py": {
@@ -588,15 +521,6 @@
         "touch_rule": "must_reach_target_on_touch"
       }
     },
-    "src/sattlint/devtools/repo_audit.py": {
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 556,
-        "reason": "Repo-audit owner surface still centralizes full-profile audit checks.",
-        "target": 500,
-        "touch_rule": "must_shrink"
-      }
-    },
     "src/sattlint/devtools/repo_audit_cli.py": {
       "coverage": {
         "allow_rebaseline": false,
@@ -613,13 +537,6 @@
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
-      },
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 1477,
-        "reason": "Repo-audit entrypoint owner still centralizes runnable audit check wiring.",
-        "target": 500,
-        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint/devtools/review_tool.py": {
@@ -902,13 +819,6 @@
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
-      },
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 551,
-        "reason": "LSP owner surface still centralizes editor protocol behavior.",
-        "target": 500,
-        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint_lsp/_server_helpers.py": {
@@ -918,13 +828,6 @@
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
-      },
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 823,
-        "reason": "LSP owner surface still centralizes editor protocol behavior.",
-        "target": 500,
-        "touch_rule": "must_shrink"
       }
     },
     "src/sattlint_lsp/document_state.py": {
@@ -1028,15 +931,6 @@
       "structural": {
         "allow_rebaseline": false,
         "current_baseline": 1413,
-        "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
-        "target": 500,
-        "touch_rule": "must_shrink"
-      }
-    },
-    "tests/test_gui.py": {
-      "structural": {
-        "allow_rebaseline": false,
-        "current_baseline": 1638,
         "reason": "Owner regression suite remains aggregated by subsystem pending further split work.",
         "target": 500,
         "touch_rule": "must_shrink"
