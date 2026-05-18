@@ -145,8 +145,7 @@ def generate_random_text(
     *,
     seed: int | None = None,
 ) -> str:
-    if seed is not None:
-        random.seed(seed)
+    rng = random.Random(seed) if seed is not None else random
     tokens = [
         "PROGRAM",
         "ENDPROGRAM",
@@ -194,13 +193,14 @@ def generate_random_text(
     result: list[str] = []
     current_length = 0
     while current_length < length:
-        # Fuzz harness intentionally uses non-cryptographic randomness.
-        token = random.choice(tokens)  # nosec B311
-        if current_length + len(token) <= length:
-            result.append(token)
-            current_length += len(token)
-        else:
+        remaining_length = length - current_length
+        fitting_tokens = [token for token in tokens if len(token) <= remaining_length]
+        if not fitting_tokens:
             break
+        # Fuzz harness intentionally uses non-cryptographic randomness.
+        token = rng.choice(fitting_tokens)  # nosec B311
+        result.append(token)
+        current_length += len(token)
     return "".join(result)
 
 

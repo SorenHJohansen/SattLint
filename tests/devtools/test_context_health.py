@@ -42,6 +42,23 @@ def _healthy_codegraph_report() -> dict[str, object]:
     }
 
 
+def _fallback_codegraph_report() -> dict[str, object]:
+    return {
+        **_healthy_codegraph_report(),
+        "status": "fallback_to_rg",
+        "recommended_route": "fallback_to_rg",
+        "guidance": "CodeGraph is unavailable here. Use grep_search and read_file instead.",
+        "mcp_config_present": False,
+        "mcp_server_configured": False,
+        "mcp_uses_codegraph_cli": False,
+        "mcp_command": None,
+        "recommended_commands": [
+            "python scripts/context_health.py --check --section codegraph",
+            "rg --files src tests scripts .github",
+        ],
+    }
+
+
 def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -166,6 +183,32 @@ def test_build_report_fails_for_schema_invalid_ai_artifact(monkeypatch, tmp_path
 
     assert report["status"] == "fail"
     assert any(issue["id"] == "invalid-ai-artifact-schema" for issue in report["issues"])
+
+
+def test_build_report_passes_when_codegraph_falls_back(monkeypatch, tmp_path):
+    ratchet_path = _write_repo_fixture(tmp_path)
+
+    monkeypatch.setattr(context_health, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(context_health, "RATCHET_PATH", ratchet_path)
+    monkeypatch.setattr(context_health, "SETTINGS_PATH", tmp_path / ".vscode" / "settings.json")
+    monkeypatch.setattr(context_health, "EXTENSIONS_PATH", tmp_path / ".vscode" / "extensions.json")
+    monkeypatch.setattr(context_health, "_collect_codegraph_health", _fallback_codegraph_report)
+
+    report = context_health.build_report()
+
+    assert report["status"] == "pass"
+    assert any(issue["id"] == "codegraph-not-ready" and issue["severity"] == "warning" for issue in report["issues"])
+
+
+def test_is_failing_report_allows_codegraph_fallback(monkeypatch, tmp_path):
+    _write_repo_fixture(tmp_path)
+
+    monkeypatch.setattr(context_health, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(context_health, "_collect_codegraph_health", _fallback_codegraph_report)
+
+    report = context_health.build_report(section="codegraph")
+
+    assert context_health._is_failing_report(report) is False
 
 
 def test_collect_codegraph_health_reports_healthy(monkeypatch, tmp_path):
