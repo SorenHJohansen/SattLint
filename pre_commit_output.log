@@ -1,0 +1,140 @@
+ruff (legacy alias)......................................................Failed
+- hook id: ruff
+- exit code: 1
+
+F841 Local variable `src_set` is assigned to but never used
+  --> pyright_audit.py:67:5
+   |
+66 |     # 6. Compare strict against src
+67 |     src_set = set(src_py)
+   |     ^^^^^^^
+68 |     strict_set = set(strict_list)
+69 |     missing_in_strict = sorted([f for f in src_py if f not in strict_set])
+   |
+help: Remove assignment to unused variable `src_set`
+
+UP040 Type alias `VariableRef` uses `TypeAlias` annotation instead of the `type` keyword
+  --> src/sattlint/core/ast_tools.py:11:1
+   |
+10 | _DEFAULT_VAR_NAME = "var_name"
+11 | VariableRef: TypeAlias = dict[str, object]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 | CallKind: TypeAlias = Literal["function", "procedure"]
+13 | CallSite: TypeAlias = tuple[CallKind, str, tuple[object, ...]]
+   |
+help: Use the `type` keyword
+
+UP040 Type alias `CallKind` uses `TypeAlias` annotation instead of the `type` keyword
+  --> src/sattlint/core/ast_tools.py:12:1
+   |
+10 | _DEFAULT_VAR_NAME = "var_name"
+11 | VariableRef: TypeAlias = dict[str, object]
+12 | CallKind: TypeAlias = Literal["function", "procedure"]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 | CallSite: TypeAlias = tuple[CallKind, str, tuple[object, ...]]
+   |
+help: Use the `type` keyword
+
+UP040 Type alias `CallSite` uses `TypeAlias` annotation instead of the `type` keyword
+  --> src/sattlint/core/ast_tools.py:13:1
+   |
+11 | VariableRef: TypeAlias = dict[str, object]
+12 | CallKind: TypeAlias = Literal["function", "procedure"]
+13 | CallSite: TypeAlias = tuple[CallKind, str, tuple[object, ...]]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: Use the `type` keyword
+
+C409 Unnecessary list literal passed to `tuple()` (rewrite as a tuple literal)
+   --> tests/_repo_audit_part6.py:527:54
+    |
+525 |     assert result["total_findings"] == 8
+526 |     assert observed["findings"] == (finding, finding, finding, finding, finding, finding, finding, finding)
+527 |     assert doc_gardener.open_fixup_pr([finding]) == (tuple([finding]), doc_gardener._run_repo_cli)
+    |                                                      ^^^^^^^^^^^^^^^^
+    |
+help: Rewrite as a tuple literal
+
+Found 5 errors.
+No fixes available (5 hidden fixes can be enabled with the `--unsafe-fixes` option).
+
+ruff format..............................................................Passed
+AI routing artifacts (auto-regenerate)...................................Passed
+actionlint (GitHub workflows)............................................Passed
+markdownlint-cli2 (changed Markdown files)...............................Failed
+- hook id: markdownlint-cli2
+- exit code: 1
+
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: docs/generated/repo-health.md docs/design-docs/index.md docs/SattLineReferenceDocs/sattline_alarms_events_reference.md docs/exec-plans/feature-roadmap.md docs/references/ai-agent-reference.md docs/exec-plans/completed/27-ratchet-lane-d-consolidation.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 4 file(s)
+Summary: 0 error(s)
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: docs/exec-plans/completed/14-coverage-phase-2-app-devtools-core.md docs/exec-plans/completed/36-t-wave-4-analyzer-refactor-follow-ons.md docs/exec-plans/completed/08-d-wave-2-test-and-quality-infrastructure.md docs/exec-plans/completed/15-coverage-phase-2-analyzers-semantic-lsp.md docs/exec-plans/completed/45-t-wave-6-gui-test-and-coverage-ratchet.md docs/exec-plans/completed/16-coverage-phase-2-parser-gui-reporting.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 6 file(s)
+Summary: 0 error(s)
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: docs/exec-plans/completed/35-t-wave-2-workspace-hot-reload.md docs/exec-plans/completed/04-roadmap-triage.md docs/exec-plans/completed/49-t-wave-7-ai-request-contracts-and-guidance-hardening.md docs/exec-plans/completed/06-d-wave-1-pre-commit-hooks.md docs/design-docs/core-beliefs.md docs/context-loading-order.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 6 file(s)
+Summary: 0 error(s)
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: docs/SattLineReferenceDocs/sattline_batch_control_reference.md SECURITY.md docs/quality-score.md docs/exec-plans/completed/43-t-wave-6-analyzer-owner-splits.md docs/SattLineReferenceDocs/sattline_data_acquisition_reference.md docs/exec-plans/completed/24-ratchet-lane-a-variables-reporting.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 4 file(s)
+Summary: 2 error(s)
+docs/quality-score.md:33 error MD058/blanks-around-tables Tables should be surrounded by blank lines [Context: "| 2026-05-15 | D | fail; 0 pip..."]
+docs/quality-score.md:34 error MD022/blanks-around-headings Headings should be surrounded by blank lines [Expected: 1; Actual: 0; Above] [Context: "## Grading Scale"]
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: vscode/sattline-vscode/README.md docs/exec-plans/completed/31-c-wave-3-dependency-resource-follow-ons.md docs/exec-plans/completed/26-ratchet-lane-c-uncovered-typing-inventory.md docs/exec-plans/completed/23-ratchet-policy-parallel-closeout.md docs/exec-plans/completed/07-d-wave-2-3-backlog-execution.md docs/references/sattline_system_procedures_reference.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 5 file(s)
+Summary: 0 error(s)
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: docs/exec-plans/completed/17-coverage-phase-2-orphans-and-final-gate.md docs/exec-plans/completed/42-t-wave-6-parser-module-normalization-split.md docs/exec-plans/completed/40-t-wave-6-pipeline-and-audit-catalog-extraction.md docs/exec-plans/active/50-t-wave-7-public-1-0-release-readiness.md docs/exec-plans/completed/12-coverage-lane-b-analyzers-semantic-lsp.md docs/ai-workflows.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 6 file(s)
+Summary: 0 error(s)
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: docs/exec-plans/completed/46-t-wave-7-ai-chat-observability-and-feedback-loop.md docs/exec-plans/completed/37-t-wave-4-repo-audit-decomposition.md docs/exec-plans/completed/41-t-wave-6-app-config-and-doc-gardener-surface-split.md docs/exec-plans/completed/02-output-boundary-unification.md docs/exec-plans/completed/03-cli-doc-parity.md README.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 6 file(s)
+Summary: 0 error(s)
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: docs/SattLineReferenceDocs/sattline_language_reference.md AGENTS.md docs/exec-plans/completed/ai-first-repo-hardening.md tests/fixtures/sample_sattline_files/phase0_guardrails/README.md docs/SattLineReferenceDocs/sattline_hardware_reference.md docs/exec-plans/completed/11-coverage-lane-a-app-devtools-engine.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 4 file(s)
+Summary: 1 error(s)
+AGENTS.md:33 error MD012/no-multiple-blanks Multiple consecutive blank lines [Expected: 1; Actual: 2]
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: docs/SattLineReferenceDocs/sattline_io_communication_reference.md docs/exec-plans/completed/32-d-wave-2-devtools-follow-ons.md ARCHITECTURE.md docs/exec-plans/completed/13-coverage-lane-c-parser-reporting-gui.md docs/exec-plans/completed/22-d-041-impact-analysis-tool.md docs/lessons-learned/known-failure-patterns.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 5 file(s)
+Summary: 0 error(s)
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: CONTRIBUTING.md docs/exec-plans/completed/34-t-wave-1-doc-gardener-pipeline-consumption.md CHANGELOG.md docs/exec-plans/completed/01-structural-unblockers.md docs/SattLineReferenceDocs/sattline_serialized_composite_reference.md docs/references/cli-commands.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 5 file(s)
+Summary: 0 error(s)
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: tests/fixtures/corpus/README.md docs/exec-plans/completed/10-d-wave-backlog-advanced-analysis-gating.md docs/exec-plans/completed/33-t-wave-1-config-and-type-foundations.md docs/exec-plans/completed/28-c-wave-1-semantic-core-follow-ons.md docs/exec-plans/completed/19-t-022-pytest-recovery-rebaseline.md docs/generated/context-health.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 5 file(s)
+Summary: 0 error(s)
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: docs/exec-plans/completed/25-ratchet-lane-b-repo-audit-devtools.md docs/SattLineReferenceDocs/sattline_controllers_analog_reference.md docs/exec-plans/completed/21-c-022-state-inference.md docs/exec-plans/completed/29-c-wave-2-analyzer-roadmap-follow-ons.md docs/exec-plans/completed/11-program-d-missing-work-closeout.md docs/exec-plans/tech-debt-tracker.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 5 file(s)
+Summary: 0 error(s)
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: docs/repo-map.md docs/exec-plans/completed/33-d-wave-backlog-promotion-decision.md docs/SattLineReferenceDocs/sattline_execution_reference.md docs/SattLineReferenceDocs/sattline_graphics_reference.md docs/exec-plans/completed/30-c-wave-backlog-s88-scope-lock.md docs/architecture.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 4 file(s)
+Summary: 0 error(s)
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: docs/exec-plans/completed/47-t-wave-7-audit-runner-and-artifact-freshness.md docs/exec-plans/completed/09-d-wave-3-semantic-and-differential-tooling.md docs/exec-plans/completed/39-t-wave-5-parser-failure-logging.md docs/exec-plans/completed/20-d-038-sfc-scan-cycle-simulation.md docs/exec-plans/completed/18-t-009-lsp-closeout.md docs/exec-plans/completed/05-coverage-to-100.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 6 file(s)
+Summary: 0 error(s)
+markdownlint-cli2 v0.22.1 (markdownlint v0.40.0)
+Finding: docs/quality-gates.md docs/exec-plans/completed/38-t-wave-5-analyzer-coverage-follow-ons.md docs/exec-plans/index.md !artifacts/** !docs/generated/** !docs/SattLineReferenceDocs/** !docs/references/sattline_system_procedures_reference.md
+Linting: 3 file(s)
+Summary: 0 error(s)
+
+Context health gate......................................................Passed
+SattLint syntax-check (staged SattLine files)........(no files to check)Skipped
+trim trailing whitespace.................................................Passed
+fix end of files.........................................................Passed
+check yaml...............................................................Passed
+check toml...............................................................Passed
+check for merge conflicts................................................Passed
+mixed line ending........................................................Passed
+check for added large files..............................................Passed

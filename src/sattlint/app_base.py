@@ -20,7 +20,8 @@ from .cli import entry as cli_entry_module
 CONFIG_PATH = config_module.get_config_path()
 DEFAULT_CONFIG = config_module.DEFAULT_CONFIG
 EXIT_SUCCESS = 0
-EXIT_USAGE_ERROR = 1
+EXIT_FAILURE = 1
+EXIT_USAGE_ERROR = 2
 
 # Configure logging so normal runs stay quiet unless debug mode is enabled.
 logging.basicConfig(format="%(message)s", level=logging.INFO)
@@ -107,7 +108,7 @@ def run_syntax_check_command(file_path: str) -> int:
         return EXIT_SUCCESS
 
     emit_output(_format_syntax_error(result), file=sys.stderr)
-    return EXIT_USAGE_ERROR
+    return EXIT_FAILURE
 
 
 def run_cli(

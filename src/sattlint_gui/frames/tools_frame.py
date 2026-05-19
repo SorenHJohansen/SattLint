@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
@@ -8,10 +9,18 @@ from ..binding import SattLintBinding
 from ..widgets.console import ConsoleView
 
 
+def _noop_result(_title: str, _text: str) -> None:
+    return None
+
+
+def _noop_status(_text: str) -> None:
+    return None
+
+
 class ToolsFrame(ttk.Frame):
     def __init__(
         self,
-        parent,
+        parent: tk.Misc,
         *,
         binding: SattLintBinding,
         on_result: Callable[[str, str], None] | None = None,
@@ -19,8 +28,8 @@ class ToolsFrame(ttk.Frame):
     ) -> None:
         super().__init__(parent, style="Content.TFrame")
         self.binding = binding
-        self.on_result = on_result or (lambda _title, _text: None)
-        self.on_status = on_status or (lambda _text: None)
+        self.on_result: Callable[[str, str], None] = on_result or _noop_result
+        self.on_status: Callable[[str], None] = on_status or _noop_status
         self.cfg = self.binding.load_config()
 
         self.columnconfigure(0, weight=1)
@@ -49,7 +58,7 @@ class ToolsFrame(ttk.Frame):
         analyzers = self.binding.list_enabled_analyzers()
         lines = [f"{item.key}: {item.name}" for item in analyzers]
         self.console.set_text("\n".join(lines) if lines else "No analyzers configured")
-        self.on_result("Enabled Analyzers", self.console._text.get("1.0", "end-1c"))
+        self.on_result("Enabled Analyzers", self.console.get_text())
         self.on_status("Listed enabled analyzers")
 
     def _finish_task(self, title: str, output: str) -> None:

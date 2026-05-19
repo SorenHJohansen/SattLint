@@ -1,19 +1,28 @@
 from __future__ import annotations
 
 import threading
+import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
-from ..binding import SattLintBinding
+from ..binding import BindingResult, SattLintBinding
 from ..widgets.analyzer_list import AnalyzerList
 from ..widgets.console import ConsoleView
 from ..widgets.target_list import TargetList
 
 
+def _noop_result(_title: str, _text: str) -> None:
+    return None
+
+
+def _noop_status(_text: str) -> None:
+    return None
+
+
 class AnalyzeFrame(ttk.Frame):
     def __init__(
         self,
-        parent,
+        parent: tk.Misc,
         *,
         binding: SattLintBinding,
         on_result: Callable[[str, str], None] | None = None,
@@ -21,8 +30,8 @@ class AnalyzeFrame(ttk.Frame):
     ) -> None:
         super().__init__(parent, style="Content.TFrame")
         self.binding = binding
-        self.on_result = on_result or (lambda _title, _text: None)
-        self.on_status = on_status or (lambda _text: None)
+        self.on_result: Callable[[str, str], None] = on_result or _noop_result
+        self.on_status: Callable[[str], None] = on_status or _noop_status
         self.cfg = self.binding.load_config()
 
         self.columnconfigure(1, weight=1)
@@ -83,7 +92,7 @@ class AnalyzeFrame(ttk.Frame):
         selected = self.analyzer_list.get_selected_keys()
         self._run_task("Run Bundle", lambda: self.binding.run_bundle(self.cfg, selected or None))
 
-    def _run_task(self, title: str, action) -> None:
+    def _run_task(self, title: str, action: Callable[[], BindingResult]) -> None:
         self.console.set_text(f"{title} running...")
         self.on_status(f"{title} running...")
 

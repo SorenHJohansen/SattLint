@@ -1,7 +1,0 @@
-{
-  "include": [
-    "src/sattlint/devtools/doc_gardener.py",
-    "src/sattlint/devtools/review_tool.py"
-  ],
-  "typeCheckingMode": "strict"
-}

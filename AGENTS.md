@@ -30,7 +30,6 @@
 
 See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface map.
 
-
 ## Critical Invariants (Auto-Loaded)
 
 - Reuse existing seams. No broad rewrites or duplicate tooling.

@@ -8,7 +8,7 @@ from typing import Any, cast
 import pytest
 
 import sattlint
-from sattlint import app, app_base
+from sattlint import app, app_base, engine
 from sattlint.cli import entry as cli_entry
 
 
@@ -24,7 +24,7 @@ def _run_base_cli(argv: list[str], **overrides) -> int:
                 app_base.EXIT_SUCCESS
             )
         ),
-        "run_docgen_command_fn": lambda cfg, *, use_cache: app_base.EXIT_SUCCESS,
+        "run_docgen_command_fn": lambda cfg, *, use_cache, output_dir, output_path: app_base.EXIT_SUCCESS,
         "run_format_icf_command_fn": lambda cfg, *, check: app_base.EXIT_SUCCESS,
     }
     kwargs.update(overrides)
@@ -42,6 +42,21 @@ def test_build_cli_parser_has_descriptions():
         choices
     )
     assert getattr(syntax_parser, "description", None)
+
+
+def test_build_cli_parser_repo_audit_includes_dedicated_options():
+    parser = app_base.build_cli_parser()
+
+    action = next(action for action in parser._actions if getattr(action, "choices", None))
+    choices = cast(dict[str, object], action.choices)
+    repo_audit_parser = cast(Any, choices["repo-audit"])
+    option_strings = {
+        option
+        for parser_action in repo_audit_parser._actions
+        for option in getattr(parser_action, "option_strings", [])
+    }
+
+    assert {"--profile", "--fail-on", "--list-checks", "--planning-context"} <= option_strings
 
 
 def test_run_cli_without_command_returns_usage_error():
@@ -162,13 +177,30 @@ def test_run_cli_analyze_passes_opt_in_state_inference_key():
         run_analyze_command_fn=lambda cfg, *, selected_keys, use_cache: (
             seen.update({"cfg": cfg, "selected_keys": selected_keys, "use_cache": use_cache}) or app_base.EXIT_SUCCESS
         ),
-        run_docgen_command_fn=lambda cfg, *, use_cache: app_base.EXIT_SUCCESS,
+        run_docgen_command_fn=lambda cfg, *, use_cache, output_dir, output_path: app_base.EXIT_SUCCESS,
         run_format_icf_command_fn=lambda cfg, *, check: app_base.EXIT_SUCCESS,
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
     assert seen["selected_keys"] == ["state_inference"]
     assert seen["use_cache"] is True
+
+
+def test_run_cli_analyze_list_checks_prints_available_keys(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "sattlint.analyzers.registry.get_default_analyzers",
+        lambda: [SimpleNamespace(key="variables"), SimpleNamespace(key="timing")],
+    )
+
+    exit_code = cli_entry.run_cli(
+        ["analyze", "--list-checks"],
+        config_path=Path("config.toml"),
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert captured.out.splitlines() == ["variables", "timing"]
+    assert captured.err == ""
 
 
 def test_run_cli_simulate_passes_flags():
@@ -235,6 +267,32 @@ def test_run_cli_format_icf_passes_check_flag():
     assert seen["check"] is True
 
 
+def test_run_cli_docgen_passes_output_flags():
+    seen = {}
+
+    exit_code = _run_base_cli(
+        ["docgen", "--output-dir", "docs-out", "--output-path", "report.docx"],
+        load_config_fn=lambda path: ({"debug": False}, False),
+        apply_debug_fn=lambda _cfg: None,
+        run_docgen_command_fn=lambda cfg, *, use_cache, output_dir, output_path: (
+            seen.update(
+                {
+                    "cfg": cfg,
+                    "use_cache": use_cache,
+                    "output_dir": output_dir,
+                    "output_path": output_path,
+                }
+            )
+            or app_base.EXIT_SUCCESS
+        ),
+    )
+
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert seen["use_cache"] is True
+    assert seen["output_dir"] == "docs-out"
+    assert seen["output_path"] == "report.docx"
+
+
 def test_run_cli_repo_audit_passes_through_args(monkeypatch):
     seen = {}
 
@@ -252,6 +310,20 @@ def test_run_cli_repo_audit_passes_through_args(monkeypatch):
     assert seen["argv"] == ["--profile", "quick", "--fail-on", "high"]
 
 
+def test_run_cli_quiet_suppresses_forwarded_repo_audit_stdout(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "sattlint.devtools.repo_audit.main",
+        lambda argv=None: print("visible") or app_base.EXIT_SUCCESS,
+    )
+
+    exit_code = _run_base_cli(["--quiet", "repo-audit", "--list-checks"])
+
+    captured = capsys.readouterr()
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert captured.out == ""
+    assert captured.err == ""
+
+
 def test_run_cli_quiet_suppresses_stdout(monkeypatch, capsys):
     monkeypatch.setattr(app_base, "run_syntax_check_command", lambda _path: print("visible") or app_base.EXIT_SUCCESS)
 
@@ -260,6 +332,59 @@ def test_run_cli_quiet_suppresses_stdout(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert exit_code == app_base.EXIT_SUCCESS
     assert captured.out == ""
+
+
+def test_run_syntax_check_command_prints_ok_for_valid_file(monkeypatch, tmp_path, capsys):
+    source_path = tmp_path / "Program.s"
+    source_path.write_text("BasePicture\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        app_base.engine_module,
+        "validate_single_file_syntax",
+        lambda _path: engine.SyntaxValidationResult(file_path=source_path, ok=True, stage="validation"),
+    )
+
+    exit_code = app_base.run_syntax_check_command(str(source_path))
+
+    captured = capsys.readouterr()
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert captured.out == "OK\n"
+    assert captured.err == ""
+
+
+def test_run_syntax_check_command_returns_domain_failure_for_invalid_file(monkeypatch, tmp_path, capsys):
+    source_path = tmp_path / "Broken.s"
+    source_path.write_text("BasePicture\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        app_base.engine_module,
+        "validate_single_file_syntax",
+        lambda _path: engine.SyntaxValidationResult(
+            file_path=source_path,
+            ok=False,
+            stage="validation",
+            message="bad syntax",
+            line=7,
+            column=3,
+        ),
+    )
+
+    exit_code = app_base.run_syntax_check_command(str(source_path))
+
+    captured = capsys.readouterr()
+    assert exit_code == app_base.EXIT_FAILURE
+    assert "ERROR [validation]" in captured.err
+    assert "bad syntax" in captured.err
+
+
+def test_run_syntax_check_command_returns_usage_error_for_missing_file(capsys, tmp_path):
+    missing_path = tmp_path / "Missing.s"
+
+    exit_code = app_base.run_syntax_check_command(str(missing_path))
+
+    captured = capsys.readouterr()
+    assert exit_code == app_base.EXIT_USAGE_ERROR
+    assert "ERROR [io]" in captured.err
 
 
 class _FakeParser:

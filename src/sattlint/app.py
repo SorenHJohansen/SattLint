@@ -62,8 +62,9 @@ LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = app_analysis.LOW_CONFID
 emit_output: Callable[..., None] = console_module.print_output  # type: ignore[assignment]
 
 
-EXIT_SUCCESS: int = 0
-EXIT_USAGE_ERROR: int = 1
+EXIT_SUCCESS: int = app_base.EXIT_SUCCESS
+EXIT_FAILURE: int = app_base.EXIT_FAILURE
+EXIT_USAGE_ERROR: int = app_base.EXIT_USAGE_ERROR
 
 CONFIG_PATH: Path = app_base.CONFIG_PATH
 DEFAULT_CONFIG: ConfigDict = app_base.DEFAULT_CONFIG

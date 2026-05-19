@@ -10,17 +10,24 @@ The observable proof is that all 19 GUI files pass `pyright` under strict mode w
 
 ## Progress
 
-- [ ] Capture the live baseline: 204 strict-mode errors across 13 files, dominated by `reportUnknownArgumentType` (58), `reportUnknownMemberType` (57), and `reportUnknownParameterType` (27).
-- [ ] Fix the tkinter annotation gaps in `src/sattlint_gui/frames/config_frame.py` (92 errors, the largest cluster).
-- [ ] Fix the remaining frame files: `analyze_frame.py` (22), `tools_frame.py` (14), `results_frame.py` (13), `docs_frame.py` (12), `sidebar.py` (3).
-- [ ] Fix the support files: `binding.py` (18), `widgets/analyzer_list.py` (15), `widgets/console.py` (4), `widgets/report_view.py` (4), `widgets/target_list.py` (4), `window.py` (3), plus the 1-error cluster in `frames/analyze_frame.py`.
-- [ ] Update `pyproject.toml` to add the 19 GUI files to `tool.pyright.strict`, add `src/sattlint_gui` to `tool.sattlint.typing_ratchet.strict_roots`, and add the approval record.
-- [ ] Run focused validation: `bash scripts/run_repo_python.sh -m pyright src/sattlint_gui`, focused GUI tests, touched-file Ruff, and ratchet-policy proof.
-- [ ] Collapse `pyproject.toml` to `typeCheckingMode = "strict"` globally and remove the explicit strict list.
+- [x] Capture the live baseline: the current worktree no longer matches the original 204-error snapshot; the first fresh strict probe showed 112 GUI errors, then 94 after the first owner-file fixes.
+- [x] Fix the tkinter annotation gaps in `src/sattlint_gui/frames/config_frame.py` (current worktree: 6 strict errors, now 0).
+- [x] Fix the dynamic app-binding facade in `src/sattlint_gui/binding.py` (current worktree: 19 strict errors, now 0).
+- [x] Fix the callback and worker typing gaps in `src/sattlint_gui/frames/analyze_frame.py` (current worktree: 22 strict errors, now 0).
+- [x] Fix the shared analyzer checklist widget in `src/sattlint_gui/widgets/analyzer_list.py` (current worktree: 15 strict errors, now 0).
+- [x] Fix the remaining frame files: `tools_frame.py`, `results_frame.py`, `docs_frame.py`, and `sidebar.py` are strict-clean; `analyze_frame.py` stayed clean after the shared widget fixes.
+- [x] Fix the support files: `widgets/console.py`, `widgets/report_view.py`, `widgets/target_list.py`, and `window.py` are strict-clean; `binding.py` and `widgets/analyzer_list.py` remain clean.
+- [x] Update `pyproject.toml` to add the 19 GUI files to `tool.pyright.strict`, add `src/sattlint_gui` to `tool.sattlint.typing_ratchet.strict_roots`, and add the approval record.
+- [x] Run focused validation: `bash scripts/run_repo_python.sh -m pyright src/sattlint_gui`, `bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_gui.py -x -q --tb=short`, `bash scripts/run_repo_python.sh -m ruff check src/sattlint_gui`, and `bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_ratchet_policy.py tests/test_ratchet_policy_typing.py -x -q --tb=short` all passed.
+- [x] Collapse `pyproject.toml` to `typeCheckingMode = "strict"` globally and remove the explicit strict list.
 
 ## Surprises & Discoveries
 
-_Update as work proceeds._
+- The attached plan baseline was stale against the live worktree. The first fresh strict probe found 112 GUI errors, not 204, and `config_frame.py` had already shrunk from the planned 92 errors to 6.
+- The dominant remaining GUI strict failures still match the plan's qualitative diagnosis: tkinter callback and widget APIs expose loosely typed members, so focused parent annotations plus narrow `cast()` helpers clear the errors without changing behavior.
+- `binding.py` is now a strict-clean typed facade over `sattlint.app`; the controlling fix was an explicit app-module protocol plus typed helpers for the legacy underscore methods, not broader GUI changes.
+- After the shared-widget fixes landed, the remaining package-level strict probe fell to only `sidebar.py` and `window.py`; both were resolved with minimal tkinter parent and method-call typing helpers, and the package now passes strict pyright end to end.
+- The broader `tests/ -k "gui or sattlint_gui"` command pulled in an unrelated `sattlint.docgenerator.classification` import seam during collection, so the focused GUI proof was routed to `tests/test_gui.py`, which passed after restoring the config-frame helper seam used by the SimpleNamespace-based doubles.
 
 ## Decision Log
 
@@ -33,7 +40,9 @@ _Update as work proceeds._
 
 ## Outcomes & Retrospective
 
-_Fill in after completion._
+- The GUI package is strict-clean in the live worktree, and the repo has now completed the optional follow-up collapse to global `typeCheckingMode = "strict"` for `src`.
+- The explicit `tool.pyright.strict` list and `tool.sattlint.typing_ratchet.strict_roots` entries were removed after a temporary global-strict probe and the checked-in `pyproject.toml` both proved clean.
+- Focused proof passed for the GUI slice, the collapsed global strict config, GUI-targeted pytest, GUI Ruff, and the ratchet-policy pytest suite.
 
 ## Context and Orientation
 
@@ -100,6 +109,7 @@ for e in errors[:30]:
 **2. Fix GUI files in cluster order (largest first).**
 
 Preferred fixes:
+
 - Add explicit `cast(SomeType, widget.cget(...))` when tkinter getters return `Any`.
 - Annotate `command=` and event-callback parameters with `Callable[..., None]` or the narrowest type that satisfies the slot.
 - Replace bare `lambda` with typed `def` helpers when the lambda body has untyped bindings.

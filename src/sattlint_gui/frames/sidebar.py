@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import tkinter as tk
 from collections.abc import Callable, Sequence
 from tkinter import ttk
 
 
 class SidebarFrame(ttk.Frame):
-    def __init__(self, parent, *, items: Sequence[str], on_select: Callable[[str], None]) -> None:
+    def __init__(self, parent: tk.Misc, *, items: Sequence[str], on_select: Callable[[str], None]) -> None:
         super().__init__(parent, style="Sidebar.TFrame", padding=16)
         self.columnconfigure(0, weight=1)
         self._buttons: dict[str, ttk.Button] = {}

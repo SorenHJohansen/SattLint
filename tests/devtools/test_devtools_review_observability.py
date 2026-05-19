@@ -257,12 +257,17 @@ def test_review_tool_print_review_handles_severity_and_non_numeric_coverage(caps
 
 def test_review_tool_module_main_guard(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("sattlint.devtools.doc_gardener.run_scan", lambda: {
-        "total_findings": 0,
-        "by_severity": {},
-        "by_category": {},
-    })
-    monkeypatch.setattr("sattlint.devtools.observability.collect_all_metrics", lambda: {"coverage": {"line_coverage": 99.0}})
+    monkeypatch.setattr(
+        "sattlint.devtools.doc_gardener.run_scan",
+        lambda: {
+            "total_findings": 0,
+            "by_severity": {},
+            "by_category": {},
+        },
+    )
+    monkeypatch.setattr(
+        "sattlint.devtools.observability.collect_all_metrics", lambda: {"coverage": {"line_coverage": 99.0}}
+    )
 
     def _fake_run(cmd, capture_output, text, check, cwd=None):
         rendered = " ".join(cmd)

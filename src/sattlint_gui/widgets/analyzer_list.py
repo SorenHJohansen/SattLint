@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import ttk
+from typing import Any, cast
 
 from ..binding import AnalyzerDescriptor
 from ..theme import resolve_theme
@@ -10,7 +12,7 @@ from ..theme import resolve_theme
 class AnalyzerList(ttk.Frame):
     """Scrollable checklist of analyzers with Select All / Deselect All helpers."""
 
-    def __init__(self, parent, *, title: str) -> None:
+    def __init__(self, parent: tk.Misc, *, title: str) -> None:
         super().__init__(parent, style="Panel.TFrame", padding=12)
         theme = resolve_theme(parent)
         self.columnconfigure(0, weight=1)
@@ -29,7 +31,8 @@ class AnalyzerList(ttk.Frame):
         canvas_host.rowconfigure(0, weight=1)
 
         self._canvas = tk.Canvas(canvas_host, bg=theme.bg_panel, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(canvas_host, orient=tk.VERTICAL, command=self._canvas.yview)
+        canvas_yview = cast(Callable[..., tuple[float, float] | None], cast(Any, self._canvas).yview)
+        scrollbar = ttk.Scrollbar(canvas_host, orient=tk.VERTICAL, command=canvas_yview)
         self._canvas.configure(yscrollcommand=scrollbar.set)
         self._canvas.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
@@ -41,11 +44,12 @@ class AnalyzerList(ttk.Frame):
 
         self._vars: list[tuple[tk.BooleanVar, str]] = []  # (boolvar, key)
 
-    def _on_inner_configure(self, _event) -> None:
+    def _on_inner_configure(self, _event: tk.Event[tk.Misc]) -> None:
         self._canvas.configure(scrollregion=self._canvas.bbox("all"))
 
-    def _on_canvas_configure(self, event) -> None:
-        self._canvas.itemconfigure(self._inner_id, width=event.width)
+    def _on_canvas_configure(self, event: tk.Event[tk.Misc]) -> None:
+        width = int(cast(Any, event).width)
+        self._canvas.itemconfigure(self._inner_id, width=width)
 
     def set_analyzers(self, analyzers: list[AnalyzerDescriptor]) -> None:
         for widget in self._inner.winfo_children():

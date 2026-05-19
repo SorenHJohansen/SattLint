@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
-from typing import Literal, TypeAlias, cast
+from typing import Literal, cast
 
 from ..grammar import constants as const
 
 _DEFAULT_VAR_NAME = "var_name"
-VariableRef: TypeAlias = dict[str, object]
-CallKind: TypeAlias = Literal["function", "procedure"]
-CallSite: TypeAlias = tuple[CallKind, str, tuple[object, ...]]
+type VariableRef = dict[str, object]
+type CallKind = Literal["function", "procedure"]
+type CallSite = tuple[CallKind, str, tuple[object, ...]]
 
 
 def iter_variable_refs(node: object, *, key_name: str = _DEFAULT_VAR_NAME) -> Iterator[VariableRef]:
@@ -79,11 +79,7 @@ def iter_call_sites(node: object) -> Iterator[CallSite]:
 
         name = mapping.get(const.KEY_NAME)
         raw_args = mapping.get(const.KEY_ARGS)
-        if (
-            const.KEY_VAR_NAME not in mapping
-            and isinstance(name, str)
-            and isinstance(raw_args, list | tuple)
-        ):
+        if const.KEY_VAR_NAME not in mapping and isinstance(name, str) and isinstance(raw_args, list | tuple):
             args = tuple(cast(Iterable[object], raw_args))
             yield ("procedure", name, args)
             for argument in args:

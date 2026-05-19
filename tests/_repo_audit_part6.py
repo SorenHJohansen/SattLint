@@ -511,7 +511,9 @@ def test_doc_gardener_helper_forwarders_and_run_scan(monkeypatch, tmp_path):
     monkeypatch.setattr(
         doc_gardener.doc_gardener_updates_module,
         "open_fixup_pr",
-        lambda findings, run_repo_cli_fn: observed.setdefault("open_fixup_pr", (tuple(findings), run_repo_cli_fn)) or True,
+        lambda findings, run_repo_cli_fn: (
+            observed.setdefault("open_fixup_pr", (tuple(findings), run_repo_cli_fn)) or True
+        ),
     )
 
     assert doc_gardener._should_skip_path(sentinel_path) is True
@@ -522,7 +524,7 @@ def test_doc_gardener_helper_forwarders_and_run_scan(monkeypatch, tmp_path):
 
     assert result["total_findings"] == 8
     assert observed["findings"] == (finding, finding, finding, finding, finding, finding, finding, finding)
-    assert doc_gardener.open_fixup_pr([finding]) == (tuple([finding]), doc_gardener._run_repo_cli)
+    assert doc_gardener.open_fixup_pr([finding]) == ((finding,), doc_gardener._run_repo_cli)
 
 
 def test_doc_gardener_main_prints_pipeline_snapshot_unavailable(monkeypatch, capsys):

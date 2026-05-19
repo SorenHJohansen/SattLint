@@ -53,10 +53,12 @@ def _latest_report_links(current_output_dir: Path) -> tuple[str | None, str | No
     )
 
 
-def _build_cli_parser() -> argparse.ArgumentParser:
+def build_cli_parser(*, prog: str | None = None, add_help: bool = True) -> argparse.ArgumentParser:
     repo_audit = _repo_audit_loader()
     parser = argparse.ArgumentParser(
-        description="Run repository audit checks for portability, security, wiring, architecture, and public-readiness."
+        prog=prog,
+        add_help=add_help,
+        description="Run repository audit checks for portability, security, wiring, architecture, and public-readiness.",
     )
     parser.add_argument(
         "--output-dir",
@@ -150,6 +152,10 @@ def _build_cli_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-vulture", action="store_true", help="Skip Vulture inside the shared pipeline")
     parser.add_argument("--skip-bandit", action="store_true", help="Skip Bandit inside the shared pipeline")
     return parser
+
+
+def _build_cli_parser() -> argparse.ArgumentParser:
+    return build_cli_parser()
 
 
 def _check_mode_conflicts(args: argparse.Namespace, parser: _ErrorCapableParser) -> None:
@@ -251,7 +257,7 @@ def _run_selected_checks(args: argparse.Namespace, fail_on: str) -> tuple[int, d
 
 def main(argv: list[str] | None = None) -> int:
     repo_audit = _repo_audit_loader()
-    parser = _build_cli_parser()
+    parser = build_cli_parser()
     args = parser.parse_args(argv)
     _check_mode_conflicts(args, parser)
     fail_on = args.fail_on or ("medium" if args.leaks_only else "high")

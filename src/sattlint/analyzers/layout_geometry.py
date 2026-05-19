@@ -57,21 +57,14 @@ def _is_point(value: object) -> TypeGuard[_Point]:
     if not isinstance(value, tuple):
         return False
     coords = cast(tuple[object, ...], value)
-    return (
-        len(coords) == 2
-        and all(isinstance(coord, int | float) for coord in coords)
-    )
+    return len(coords) == 2 and all(isinstance(coord, int | float) for coord in coords)
 
 
 def _is_point_pair(value: object) -> TypeGuard[_PointPair]:
     if not isinstance(value, tuple):
         return False
     pair = cast(tuple[object, ...], value)
-    return (
-        len(pair) == 2
-        and _is_point(pair[0])
-        and _is_point(pair[1])
-    )
+    return len(pair) == 2 and _is_point(pair[0]) and _is_point(pair[1])
 
 
 def _normalize_rect(coords: object) -> _Rect | None:
