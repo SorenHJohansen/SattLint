@@ -1,5 +1,5 @@
 {
-  "finding_count": 5,
+  "finding_count": 4,
   "findings": [
     {
       "analyzer": "ai-chat-observability",
@@ -101,38 +101,6 @@
       "source": "custom",
       "suggested_next_command": null,
       "suggestion": "Route implement and review prompts to the owning seam sooner and validate immediately after the first edit."
-    },
-    {
-      "analyzer": "ai-chat-observability",
-      "artifact": "findings",
-      "category": "observability",
-      "confidence": "high",
-      "data": {
-        "codegraph_failure_count": 2,
-        "session_ids": [
-          "fixture-implement-plan"
-        ]
-      },
-      "detail": "CodeGraph tool failures were observed in 1 session(s).",
-      "file": null,
-      "fingerprint": "codegraph-tool-failures||||CodeGraph-related tool calls failed during transcript sessions.",
-      "id": "codegraph-tool-failures",
-      "line": null,
-      "location": {
-        "column": null,
-        "line": null,
-        "module_path": [],
-        "path": null,
-        "symbol": null
-      },
-      "message": "CodeGraph-related tool calls failed during transcript sessions.",
-      "minimal_reproducer": null,
-      "owner_surface": "observability",
-      "rule_id": "codegraph-tool-failures",
-      "severity": "medium",
-      "source": "custom",
-      "suggested_next_command": null,
-      "suggestion": "Verify the correct tool seam and avoid retrying CodeGraph calls blindly when the tool is unavailable or mismatched."
     },
     {
       "analyzer": "ai-chat-observability",

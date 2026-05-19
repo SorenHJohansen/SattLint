@@ -1,5 +1,5 @@
 {
-  "artifact_digest": "sha1:6a041bb38666c4cb392ea19c96a4641c484a186b",
+  "artifact_digest": "sha1:3f8fd65e9835fbf908d8e7adfaca745ea923d41f",
   "artifact_file": "artifacts/ai-chat-fixture/findings.json",
   "artifact_kind": "sattlint.findings",
   "artifact_schema_version": 1,

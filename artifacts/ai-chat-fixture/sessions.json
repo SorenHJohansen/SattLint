@@ -6,13 +6,12 @@
   "sessions": [
     {
       "assistant_message_count": 2,
-      "codegraph_failure_count": 2,
       "discovery_before_action_count": 8,
       "empty_assistant_message_count": 1,
       "event_count": 22,
       "failed_tool_call_count": 2,
       "failed_tool_counts": {
-        "codegraph_search": 2
+        "grep_search": 2
       },
       "first_action_tool": "apply_patch",
       "malformed_line_count": 1,
@@ -23,9 +22,8 @@
       "tool_call_count": 9,
       "tool_counts": {
         "apply_patch": 1,
-        "codegraph_search": 2,
         "file_search": 1,
-        "grep_search": 1,
+        "grep_search": 3,
         "list_dir": 1,
         "read_file": 2,
         "semantic_search": 1
@@ -35,7 +33,6 @@
     },
     {
       "assistant_message_count": 2,
-      "codegraph_failure_count": 0,
       "discovery_before_action_count": 1,
       "empty_assistant_message_count": 0,
       "event_count": 8,

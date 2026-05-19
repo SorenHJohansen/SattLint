@@ -49,7 +49,7 @@ Date/Author: 2026-05-15 / Copilot (GPT-5.4)
 
 Implemented on 2026-05-15: `sattlint.devtools.ai_chat_observability` now reads transcript JSONL files, emits `status.json`, `summary.json`, `sessions.json`, and `findings.json`, and treats the session database as an optional health signal instead of the primary chat source.
 
-The shipped fixture corpus exercises malformed transcript lines, empty assistant output, high discovery-before-action churn, failed CodeGraph calls, and repeated same-tool retries. `tests/test_ai_chat_observability.py` passed as the focused regression proof for both `--transcripts-dir` and `--workspace-storage` input modes.
+The shipped fixture corpus exercises malformed transcript lines, empty assistant output, high discovery-before-action churn, failed tool calls, and repeated same-tool retries. `tests/test_ai_chat_observability.py` passed as the focused regression proof for both `--transcripts-dir` and `--workspace-storage` input modes.
 
 Repeatability is now wired into the workspace through the `AI: Refresh Chat Observability` VS Code task, which prompts for the `GitHub.copilot-chat` storage root and writes the report to `artifacts/ai-chat-current`.
 
@@ -69,7 +69,7 @@ Start by implementing a transcript loader that reads one directory of `*.jsonl` 
 
 Build metrics from those normalized sessions next. At minimum, capture transcript count, assistant-message count, empty assistant-message count, tool-call count, failed tool-call count, discovery-before-action count, first action tool, prompt buckets such as `implement this plan`, `review`, `audit`, `validate`, and the most common tools. Add a parallel session-store health probe that reads the local session database only when a path is provided and reports whether the database contains usable turn-level data.
 
-Then implement a finding classifier. It should flag patterns such as `session-store-empty`, `wrong-log-seam-risk`, `high-discovery-before-action`, `high-empty-assistant-output-rate`, and `codegraph-tool-failures`. Keep findings descriptive and evidence-backed so they can feed later docs, dashboards, or nightly runs.
+Then implement a finding classifier. It should flag patterns such as `session-store-empty`, `wrong-log-seam-risk`, `high-discovery-before-action`, `high-empty-assistant-output-rate`, and repeated-tool retry issues. Keep findings descriptive and evidence-backed so they can feed later docs, dashboards, or nightly runs.
 
 Finish by writing artifacts under one output directory. `status.json` should say whether the run completed and whether the data source was degraded. `summary.json` should surface the top metrics and the top risky task categories. `sessions.json` should record one normalized summary per transcript. `findings.json` should contain the actionable issues. If the repo already has a health dashboard generator that can consume another JSON artifact, extend it only after the standalone command is stable.
 

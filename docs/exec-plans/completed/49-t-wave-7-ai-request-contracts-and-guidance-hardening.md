@@ -50,7 +50,7 @@ Rationale: the existing task and handoff schemas stay stable, while the bootstra
 Date/Author: 2026-05-15 / Copilot (GPT-5.4)
 
 Decision: embed the most-read instruction content directly in specialist `.agent.md` system prompts.
-Rationale: transcript corpus analysis found that 5 of 18 sessions each read the same 3 to 6 instruction files (sattline-invariants, python-tests, validation-routing SKILL, codegraph-routing SKILL) in their first 10 tool calls before doing any useful work. The agent files have a `system` field that renders at session start without a tool call. Embedding a compact summary of each specialist agent's key invariants there eliminates those redundant reads. The full instruction files remain the authoritative source; the agent body holds a stable summary that the executor reads before the source of truth has loaded.
+Rationale: transcript corpus analysis found that 5 of 18 sessions each read the same 3 to 6 instruction files (sattline-invariants, python-tests, validation-routing SKILL, and other routing guidance) in their first 10 tool calls before doing any useful work. The agent files have a `system` field that renders at session start without a tool call. Embedding a compact summary of each specialist agent's key invariants there eliminates those redundant reads. The full instruction files remain the authoritative source; the agent body holds a stable summary that the executor reads before the source of truth has loaded.
 Date/Author: 2026-05-15 / Copilot (Claude Sonnet 4.6)
 
 ## Outcomes & Retrospective
