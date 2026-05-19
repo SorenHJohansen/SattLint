@@ -1,5 +1,5 @@
 {
-  "finding_count": 5,
+  "finding_count": 4,
   "generated_by": "sattlint.devtools.ai_chat_observability",
   "kind": "sattlint.ai_chat.status",
   "output_dir": "artifacts/ai-chat-fixture",

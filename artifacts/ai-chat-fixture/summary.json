@@ -7,7 +7,6 @@
       "malformed-transcript-line",
       "high-empty-assistant-output-rate",
       "high-discovery-before-action",
-      "codegraph-tool-failures",
       "repeated-tool-retries"
     ],
     "highest_churn_bucket": "implement-this-plan",
@@ -45,7 +44,6 @@
   ],
   "top_metrics": {
     "assistant_message_count": 4,
-    "codegraph_failure_count": 2,
     "empty_assistant_message_count": 1,
     "empty_assistant_message_rate": 0.25,
     "failed_tool_call_count": 2,
@@ -55,11 +53,11 @@
   "top_tools": [
     {
       "count": 3,
-      "tool_name": "read_file"
+      "tool_name": "grep_search"
     },
     {
-      "count": 2,
-      "tool_name": "codegraph_search"
+      "count": 3,
+      "tool_name": "read_file"
     },
     {
       "count": 1,
@@ -68,10 +66,6 @@
     {
       "count": 1,
       "tool_name": "file_search"
-    },
-    {
-      "count": 1,
-      "tool_name": "grep_search"
     },
     {
       "count": 1,
