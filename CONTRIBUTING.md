@@ -87,7 +87,8 @@ The repository includes `.vscode/settings.json` which configures:
 
 - Cross-platform Python interpreter discovery via `.venv`
 - Ruff for linting
-- Pyright for type checking
+- Pylance in `openFilesOnly` mode for lower editor overhead in this AI-first repo
+- Pyright CLI runs as the authoritative type-check gate
 - Pytest for testing
 - Context Optimizer line budget alignment for AI context files
 - Search visibility for machine-readable audit reports under `artifacts/audit/`

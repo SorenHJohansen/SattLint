@@ -7,7 +7,7 @@ from ..theme import resolve_theme
 
 
 class TargetList(ttk.Frame):
-    def __init__(self, parent, *, title: str) -> None:
+    def __init__(self, parent: tk.Misc, *, title: str) -> None:
         super().__init__(parent, style="Panel.TFrame", padding=12)
         theme = resolve_theme(parent)
         self.columnconfigure(0, weight=1)

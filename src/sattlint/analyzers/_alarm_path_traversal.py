@@ -179,7 +179,11 @@ def collect_boolean_writes(
             collect_boolean_writes(child, env, writes)
         return
 
-    if tuple_node is not None and tuple_node and tuple_node[0] in (const.KEY_PLUS, const.KEY_MINUS, const.GRAMMAR_VALUE_NOT):
+    if (
+        tuple_node is not None
+        and tuple_node
+        and tuple_node[0] in (const.KEY_PLUS, const.KEY_MINUS, const.GRAMMAR_VALUE_NOT)
+    ):
         collect_boolean_writes(tuple_node[1] if len(tuple_node) > 1 else None, env, writes)
         return
 

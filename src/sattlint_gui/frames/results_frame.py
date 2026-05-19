@@ -2,16 +2,27 @@ from __future__ import annotations
 
 import datetime
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import ttk
+from typing import Any, cast
 
 from ..theme import resolve_theme
 from ..widgets.report_view import ReportView
 
 
+def _listbox_yview(listbox: tk.Listbox) -> Callable[..., tuple[float, float] | None]:
+    return cast(Callable[..., tuple[float, float] | None], cast(Any, listbox).yview)
+
+
+def _listbox_selection(listbox: tk.Listbox) -> tuple[int, ...]:
+    curselection = cast(Callable[[], tuple[int, ...]], cast(Any, listbox).curselection)
+    return curselection()
+
+
 class ResultsFrame(ttk.Frame):
     """Two-pane results view: history list on the left, detail on the right."""
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent: tk.Misc) -> None:
         super().__init__(parent, style="Content.TFrame")
         theme = resolve_theme(parent)
         self.columnconfigure(0, weight=0)
@@ -41,7 +52,7 @@ class ResultsFrame(ttk.Frame):
             width=22,
             exportselection=False,
         )
-        scrollbar = ttk.Scrollbar(list_host, orient=tk.VERTICAL, command=self._history_box.yview)
+        scrollbar = ttk.Scrollbar(list_host, orient=tk.VERTICAL, command=_listbox_yview(self._history_box))
         self._history_box.configure(yscrollcommand=scrollbar.set)
         self._history_box.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
@@ -69,8 +80,8 @@ class ResultsFrame(ttk.Frame):
         self._history_box.see(idx)
         self._show_entry(idx)
 
-    def _on_history_select(self, _event) -> None:
-        selection = self._history_box.curselection()
+    def _on_history_select(self, _event: tk.Event[tk.Misc]) -> None:
+        selection = _listbox_selection(self._history_box)
         if not selection:
             return
         self._show_entry(selection[0])

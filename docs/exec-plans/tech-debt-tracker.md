@@ -2,7 +2,7 @@
 
 Living document of known technical debt in SattLint.
 Updated by doc-gardening agent and human developers.
-Last updated: 2026-05-18
+Last updated: 2026-05-19
 
 Active work now lives in:
 
@@ -45,15 +45,36 @@ Active follow-on plans from the 2026-05-15 architecture debt review:
 - `docs/exec-plans/completed/41-t-wave-6-app-config-and-doc-gardener-surface-split.md` covers the app-analysis, config, and doc-gardener control-surface split.
 - `docs/exec-plans/completed/42-t-wave-6-parser-module-normalization-split.md` covers the parser module-normalization mixin split.
 - `docs/exec-plans/active/50-t-wave-7-public-1-0-release-readiness.md` covers the cross-cutting `1.0.0` public-release contract, packaging rehearsal, version alignment, and community-facing repo polish required before the first stable tag.
+- `docs/exec-plans/active/58-t-wave-8-ci-workflow-consolidation-and-release-rehearsal.md` covers GitHub Actions consolidation, shared CI setup, release rehearsal wiring, and AI-only workflow-doc alignment.
 
 Active follow-on plans from the 2026-05-18 strict-typing inventory review:
 
-- `docs/exec-plans/active/51-t-wave-7-parser-strict-typing-promotion.md` covers the remaining parser strict blocker plus the uncovered parser transformer helper files.
+- `docs/exec-plans/completed/51-t-wave-7-parser-strict-typing-promotion.md` covers the remaining parser strict blocker plus the uncovered parser transformer helper files.
 - `docs/exec-plans/active/52-t-wave-7-lsp-strict-typing-promotion.md` covers the uncovered LSP helper files.
 - `docs/exec-plans/active/53-t-wave-7-core-support-strict-typing-promotion.md` covers the uncovered semantic-core, reporting, resolution, and simulation support files.
-- `docs/exec-plans/active/54-t-wave-7-app-config-strict-typing-promotion.md` covers the current app or config strict blocker plus the uncovered app-side helper files.
-- `docs/exec-plans/active/55-t-wave-7-devtools-strict-typing-promotion.md` covers the uncovered devtools surface and the remaining devtools debt-allowlist exits.
-- `docs/exec-plans/active/56-t-wave-7-analyzers-strict-typing-promotion.md` covers the uncovered analyzer helper and domain-analyzer files.
+- `docs/exec-plans/completed/54-t-wave-7-app-config-strict-typing-promotion.md` covers the current app or config strict blocker plus the uncovered app-side helper files.
+- `docs/exec-plans/completed/55-t-wave-7-devtools-strict-typing-promotion.md` covers the uncovered devtools surface and the remaining devtools debt-allowlist exits.
+- `docs/exec-plans/completed/56-t-wave-7-analyzers-strict-typing-promotion.md` covers the uncovered analyzer helper and domain-analyzer files.
+
+Active follow-on plan from the 2026-05-19 repo-map and architecture review:
+
+- `docs/exec-plans/active/58-t-wave-8-repo-structure-and-architecture-alignment.md` covers canonical root-layout cleanup, architecture-doc alignment, the undocumented GUI and editor-facade surfaces, and stale `arch_linter` naming.
+
+Active follow-on plan from the 2026-05-19 security review:
+
+- `docs/exec-plans/active/61-t-wave-8-repo-security-and-supply-chain-hardening.md` covers release trust-boundary tightening, workflow-security policy enforcement, CodeGraph helper hardening, and complete Python-plus-Node dependency monitoring.
+
+Active follow-on plan from the 2026-05-19 performance and scalability review:
+
+- `docs/exec-plans/active/62-t-wave-8-performance-and-scalability-hardening.md` covers the inverted fast-cache-validation path, project-loader cache persistence churn, workspace-discovery and LSP refresh bounding, structural-report snapshot reuse, and repo-audit plus pipeline scan pruning for large repositories.
+
+Active follow-on plan from the 2026-05-19 CLI UX review:
+
+- `docs/exec-plans/completed/63-t-wave-8-cli-ux-and-documentation-trustworthiness.md` covers top-level CLI flag discoverability, actionable output and exit-code consistency, repo-audit alias help parity, and reproducible command examples in the README and CLI reference.
+
+Active follow-on plan from the 2026-05-19 maintainability blind-spot review:
+
+- `docs/exec-plans/active/64-t-wave-8-maintainer-blind-spot-reconciliation.md` turns the broad review into one durable routing artifact, closes the remaining retired-TODO source-ledger seam in doc-gardener, and records which existing active plans own the other suspicious paths.
 
 ---
 
@@ -61,6 +82,9 @@ Active follow-on plans from the 2026-05-18 strict-typing inventory review:
 
 | Date | Findings | Action Taken |
 |------|-----------|--------------|
+| 2026-05-19 | 1 findings | Doc-gardening scan |
+| 2026-05-19 | 0 findings | Doc-gardening scan |
+| 2026-05-19 | 1 findings | Doc-gardening scan |
 | 2026-05-15 | 0 findings | Doc-gardening scan |
 | 2026-05-15 | 0 findings | Doc-gardening scan |
 | 2026-05-06 | 0 findings | Doc-gardening scan |

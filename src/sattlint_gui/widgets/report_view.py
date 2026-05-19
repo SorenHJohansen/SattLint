@@ -13,7 +13,7 @@ _ISSUE_COUNT_RE = re.compile(r"^\s*\d+ issues?\b")
 
 
 class ReportView(ttk.Frame):
-    def __init__(self, parent, *, title: str) -> None:
+    def __init__(self, parent: tk.Misc, *, title: str) -> None:
         super().__init__(parent, style="Panel.TFrame", padding=12)
         self._theme = resolve_theme(parent)
         self.columnconfigure(0, weight=1)

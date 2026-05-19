@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import ttk
+from typing import Any, cast
 
 from .binding import SattLintBinding
 from .frames.analyze_frame import AnalyzeFrame
@@ -12,6 +14,16 @@ from .frames.sidebar import SidebarFrame
 from .frames.tools_frame import ToolsFrame
 from .theme import DEFAULT_THEME, SattLintTheme
 from .widgets.styled_widgets import apply_theme
+
+
+def _paned_add(paned: tk.PanedWindow, child: tk.Widget, **kwargs: object) -> None:
+    add = cast(Callable[..., None], cast(Any, paned).add)
+    add(child, **kwargs)
+
+
+def _raise_view(view: ttk.Frame) -> None:
+    tkraise = cast(Callable[[], None], cast(Any, view).tkraise)
+    tkraise()
 
 
 class SattLintWindow(tk.Tk):
@@ -49,8 +61,8 @@ class SattLintWindow(tk.Tk):
         content_host.rowconfigure(1, weight=1)
         content_host.rowconfigure(2, weight=0)
 
-        paned.add(sidebar_host, minsize=self.theme.sidebar_width)
-        paned.add(content_host)
+        _paned_add(paned, sidebar_host, minsize=self.theme.sidebar_width)
+        _paned_add(paned, content_host)
 
         sidebar = SidebarFrame(
             sidebar_host,
@@ -100,7 +112,7 @@ class SattLintWindow(tk.Tk):
 
     def show_view(self, name: str) -> None:
         view = self._views[name]
-        view.tkraise()
+        _raise_view(view)
         if self.sidebar is not None:
             self.sidebar.set_selected(name)
         self.set_status(f"Viewing {name}")

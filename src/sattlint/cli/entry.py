@@ -12,7 +12,8 @@ from ..__version__ import __version__
 from ..console import print_output
 
 EXIT_SUCCESS = 0
-EXIT_USAGE_ERROR = 1
+EXIT_FAILURE = 1
+EXIT_USAGE_ERROR = 2
 
 ConfigDict = dict[str, Any]
 BuildCliParserFn = Callable[[], argparse.ArgumentParser]
@@ -29,12 +30,15 @@ class _ParsedCliArgs(Protocol):
     command: str | None
     file: str
     checks: list[str]
+    list_checks: bool
     target_path: str
     module: str
     mode: str
     max_scans: int
     format: str
     output: str | None
+    output_dir: str | None
+    output_path: str | None
     check: bool
 
 
@@ -42,10 +46,17 @@ def _exit_code(result: int | None, *, fallback: int) -> int:
     return fallback if result is None else result
 
 
+def _list_analyzer_keys() -> None:
+    from ..analyzers.registry import get_default_analyzers
+
+    for spec in get_default_analyzers():
+        print_output(spec.key)
+
+
 def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sattlint",
-        description="Interactive SattLine analysis app with a non-interactive syntax-check command.",
+        description="Interactive SattLine analysis app with non-interactive syntax-check, analysis, documentation, simulation, and repo-audit commands.",
     )
     parser.add_argument("--version", action="version", version=f"sattlint {version}")
     parser.add_argument("--config", default=None, metavar="PATH", help="Path to a SattLint config file")
@@ -78,6 +89,11 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         default=[],
         metavar="KEY",
         help="Analysis check key to run (repeatable)",
+    )
+    analyze_parser.add_argument(
+        "--list-checks",
+        action="store_true",
+        help="List available analysis check keys and exit",
     )
 
     simulate_parser = subparsers.add_parser(
@@ -116,6 +132,15 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         "docgen",
         help="Generate DOCX documentation",
         description="Generate FS-style DOCX documentation for configured targets.",
+    ).add_argument(
+        "--output-dir",
+        default=None,
+        help="Directory to write generated DOCX files into",
+    )
+    subparsers.choices["docgen"].add_argument(
+        "--output-path",
+        default=None,
+        help="Explicit DOCX file path for single-target generation",
     )
 
     format_icf_parser = subparsers.add_parser(
@@ -132,15 +157,14 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help="Report whether configured .icf files would change without rewriting them.",
     )
 
-    repo_audit_parser = subparsers.add_parser(
+    from ..devtools import repo_audit_cli
+
+    repo_audit_parent = repo_audit_cli.build_cli_parser(prog="sattlint repo-audit", add_help=False)
+    subparsers.add_parser(
         "repo-audit",
+        parents=[repo_audit_parent],
         help="Run repository audit checks",
-        description="Scan the repository for portability and hygiene issues.",
-    )
-    repo_audit_parser.add_argument(
-        "extra",
-        nargs=argparse.REMAINDER,
-        help="Arguments forwarded to repo-audit",
+        description=repo_audit_parent.description,
     )
 
     return parser
@@ -194,11 +218,19 @@ def run_cli(
             remaining = list(argv[idx + 1 :])
         except StopIteration:
             remaining = []
-        return repo_audit.main(remaining) or exit_success
+        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
+        with context:
+            return repo_audit.main(remaining) or exit_success
 
     if leftover:
         print_output(f"sattlint: error: unrecognized arguments: {' '.join(leftover)}", file=sys.stderr)
         return exit_usage_error
+
+    if command == "analyze" and getattr(args, "list_checks", False):
+        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
+        with context:
+            _list_analyzer_keys()
+        return exit_success
 
     if command in ("validate-config", "analyze", "simulate", "docgen", "format-icf"):
         try:
@@ -247,7 +279,15 @@ def run_cli(
         if command == "docgen":
             if run_docgen_command_fn is None:
                 raise RuntimeError("docgen handler is required")
-            return _exit_code(run_docgen_command_fn(cfg, use_cache=use_cache), fallback=exit_success)
+            return _exit_code(
+                run_docgen_command_fn(
+                    cfg,
+                    use_cache=use_cache,
+                    output_dir=getattr(args, "output_dir", None),
+                    output_path=getattr(args, "output_path", None),
+                ),
+                fallback=exit_success,
+            )
 
         if run_format_icf_command_fn is None:
             raise RuntimeError("format-icf handler is required")

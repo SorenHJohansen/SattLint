@@ -1,58 +1,87 @@
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from tkinter import filedialog, messagebox, simpledialog, ttk
+from typing import Any, TypedDict, cast
 
 from ..binding import SattLintBinding
 from ..theme import resolve_theme
 
-_EDITABLE_TOP_LEVEL_KEYS = (
-    "analyzed_programs_and_libraries",
-    "mode",
-    "scan_root_only",
-    "fast_cache_validation",
-    "debug",
-    "program_dir",
-    "ABB_lib_dir",
-    "icf_dir",
-    "other_lib_dirs",
-)
 
-_LIST_KEYS = ("analyzed_programs_and_libraries", "other_lib_dirs")
+class EditableConfig(TypedDict):
+    analyzed_programs_and_libraries: list[str]
+    mode: str
+    scan_root_only: bool
+    fast_cache_validation: bool
+    debug: bool
+    program_dir: str
+    ABB_lib_dir: str
+    icf_dir: str
+    other_lib_dirs: list[str]
 
 
-def extract_editable_config(cfg: dict) -> dict:
-    extracted = {key: deepcopy(cfg.get(key)) for key in _EDITABLE_TOP_LEVEL_KEYS}
-    for key in _LIST_KEYS:
-        value = extracted.get(key)
-        if not isinstance(value, list):
-            extracted[key] = []
-    for key in ("program_dir", "ABB_lib_dir", "icf_dir"):
-        extracted[key] = str(extracted.get(key) or "")
-    extracted["mode"] = str(extracted.get("mode") or "official")
-    extracted["scan_root_only"] = bool(extracted.get("scan_root_only"))
-    extracted["fast_cache_validation"] = bool(extracted.get("fast_cache_validation", True))
-    extracted["debug"] = bool(extracted.get("debug"))
-    return extracted
+def _list_config_value(cfg: dict[str, Any], key: str) -> list[str]:
+    value = cfg.get(key)
+    if not isinstance(value, list):
+        return []
+    items = cast(list[object], value)
+    return [item_str for item in items if (item_str := str(item).strip())]
 
 
-def apply_editable_config(base_cfg: dict, editable_cfg: dict) -> dict:
+def _string_config_value(cfg: dict[str, Any], key: str, default: str = "") -> str:
+    return str(cfg.get(key) or default)
+
+
+def extract_editable_config(cfg: dict[str, Any]) -> EditableConfig:
+    return {
+        "analyzed_programs_and_libraries": _list_config_value(cfg, "analyzed_programs_and_libraries"),
+        "mode": _string_config_value(cfg, "mode", "official"),
+        "scan_root_only": bool(cfg.get("scan_root_only")),
+        "fast_cache_validation": bool(cfg.get("fast_cache_validation", True)),
+        "debug": bool(cfg.get("debug")),
+        "program_dir": _string_config_value(cfg, "program_dir"),
+        "ABB_lib_dir": _string_config_value(cfg, "ABB_lib_dir"),
+        "icf_dir": _string_config_value(cfg, "icf_dir"),
+        "other_lib_dirs": _list_config_value(cfg, "other_lib_dirs"),
+    }
+
+
+def apply_editable_config(base_cfg: dict[str, Any], editable_cfg: Mapping[str, Any]) -> dict[str, Any]:
     merged = deepcopy(base_cfg)
-    normalized = extract_editable_config(editable_cfg)
+    normalized = extract_editable_config(dict(editable_cfg))
     for key, value in normalized.items():
         merged[key] = value
     return merged
 
 
+def _get_string_var(variable: tk.StringVar) -> str:
+    return variable.get()
+
+
+def _get_bool_var(variable: tk.BooleanVar) -> bool:
+    return variable.get()
+
+
+def _listbox_selection(listbox: tk.Listbox) -> tuple[int, ...]:
+    curselection = cast(Callable[[], tuple[int, ...]], cast(Any, listbox).curselection)
+    return curselection()
+
+
+def _listbox_item(listbox: tk.Listbox, index: int) -> str:
+    getter = cast(Callable[[int], object], cast(Any, listbox).get)
+    return str(getter(index)).strip()
+
+
 class ConfigFrame(ttk.Frame):
-    def __init__(self, parent, *, binding: SattLintBinding) -> None:
+    def __init__(self, parent: tk.Misc, *, binding: SattLintBinding) -> None:
         super().__init__(parent, style="Content.TFrame")
         self.binding = binding
         theme = resolve_theme(parent)
         self._loading = False
         self._dirty = False
-        self._full_config: dict = {}
+        self._full_config: dict[str, Any] = {}
 
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
@@ -131,7 +160,7 @@ class ConfigFrame(ttk.Frame):
         targets_panel.columnconfigure(0, weight=1)
         targets_panel.rowconfigure(1, weight=1)
         ttk.Label(targets_panel, text="Analyzed Targets", style="Section.TLabel").grid(row=0, column=0, sticky="w")
-        self.targets_list = tk.Listbox(
+        self.targets_list: tk.Listbox = tk.Listbox(
             targets_panel,
             relief=tk.FLAT,
             bg=theme.input_bg,
@@ -152,7 +181,7 @@ class ConfigFrame(ttk.Frame):
         libs_panel.columnconfigure(0, weight=1)
         libs_panel.rowconfigure(1, weight=1)
         ttk.Label(libs_panel, text="Other Library Dirs", style="Section.TLabel").grid(row=0, column=0, sticky="w")
-        self.other_libs_list = tk.Listbox(
+        self.other_libs_list: tk.Listbox = tk.Listbox(
             libs_panel,
             relief=tk.FLAT,
             bg=theme.input_bg,
@@ -175,14 +204,27 @@ class ConfigFrame(ttk.Frame):
 
         self.reload_config()
 
-    def _build_path_row(self, parent, row: int, label: str, variable: tk.StringVar, browse_command) -> None:
+    def _build_path_row(
+        self,
+        parent: ttk.Frame,
+        row: int,
+        label: str,
+        variable: tk.StringVar,
+        browse_command: Callable[[], None],
+    ) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=(10, 0))
         ttk.Entry(parent, textvariable=variable).grid(row=row, column=1, sticky="ew", pady=(10, 0))
         ttk.Button(parent, text="Browse", command=browse_command).grid(
             row=row, column=2, sticky="e", padx=(8, 0), pady=(10, 0)
         )
 
-    def _on_field_changed(self, *_args) -> None:
+    def _string_var_value(self, variable: tk.StringVar) -> str:
+        return _get_string_var(variable).strip()
+
+    def _bool_var_value(self, variable: tk.BooleanVar) -> bool:
+        return _get_bool_var(variable)
+
+    def _on_field_changed(self, *_args: object) -> None:
         if self._loading:
             return
         self._set_dirty(True)
@@ -204,26 +246,26 @@ class ConfigFrame(ttk.Frame):
             listbox.insert(tk.END, value)
 
     def _get_listbox_items(self, listbox: tk.Listbox) -> list[str]:
-        return [str(listbox.get(index)).strip() for index in range(listbox.size()) if str(listbox.get(index)).strip()]
+        return [value for index in range(listbox.size()) if (value := _listbox_item(listbox, index))]
 
-    def _current_editable_config(self) -> dict:
+    def _current_editable_config(self) -> EditableConfig:
         return {
             "analyzed_programs_and_libraries": self._get_listbox_items(self.targets_list),
-            "mode": self.mode_var.get().strip() or "official",
-            "scan_root_only": bool(self.scan_root_only_var.get()),
-            "fast_cache_validation": bool(self.fast_cache_validation_var.get()),
-            "debug": bool(self.debug_var.get()),
-            "program_dir": self.program_dir_var.get().strip(),
-            "ABB_lib_dir": self.abb_lib_dir_var.get().strip(),
-            "icf_dir": self.icf_dir_var.get().strip(),
+            "mode": _get_string_var(self.mode_var).strip() or "official",
+            "scan_root_only": _get_bool_var(self.scan_root_only_var),
+            "fast_cache_validation": _get_bool_var(self.fast_cache_validation_var),
+            "debug": _get_bool_var(self.debug_var),
+            "program_dir": _get_string_var(self.program_dir_var).strip(),
+            "ABB_lib_dir": _get_string_var(self.abb_lib_dir_var).strip(),
+            "icf_dir": _get_string_var(self.icf_dir_var).strip(),
             "other_lib_dirs": self._get_listbox_items(self.other_libs_list),
         }
 
-    def _preview_full_config(self) -> dict:
+    def _preview_full_config(self) -> dict[str, Any]:
         return apply_editable_config(self._full_config, self._current_editable_config())
 
     def _browse_directory(self, variable: tk.StringVar) -> None:
-        directory = filedialog.askdirectory(parent=self, initialdir=variable.get().strip() or None)
+        directory = filedialog.askdirectory(parent=self, initialdir=_get_string_var(variable).strip() or None)
         if not directory:
             return
         variable.set(directory)
@@ -238,7 +280,7 @@ class ConfigFrame(ttk.Frame):
         self._browse_directory(self.icf_dir_var)
 
     def _show_graphics_rules_path(self) -> None:
-        messagebox.showinfo("Graphics Rules", self.graphics_rules_path_var.get(), parent=self)
+        messagebox.showinfo("Graphics Rules", _get_string_var(self.graphics_rules_path_var).strip(), parent=self)
 
     def _add_target(self) -> None:
         target_name = simpledialog.askstring("Add Target", "Program or library name", parent=self)
@@ -257,7 +299,7 @@ class ConfigFrame(ttk.Frame):
         self._set_dirty(True)
 
     def _remove_target(self) -> None:
-        selection = self.targets_list.curselection()
+        selection = _listbox_selection(self.targets_list)
         if not selection:
             return
         self.targets_list.delete(selection[0])
@@ -275,7 +317,7 @@ class ConfigFrame(ttk.Frame):
         self._set_dirty(True)
 
     def _remove_other_lib_dir(self) -> None:
-        selection = self.other_libs_list.curselection()
+        selection = _listbox_selection(self.other_libs_list)
         if not selection:
             return
         self.other_libs_list.delete(selection[0])

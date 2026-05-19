@@ -36,22 +36,23 @@ sattlint syntax-check path/to/Program.s
 ```bash
 sattlint analyze
 sattlint analyze --list-checks        # Show available checks
-sattlint analyze --config path/to/config.toml
-sattlint analyze --no-cache           # Skip caching layer
+sattlint --config path/to/config.toml analyze
+sattlint --no-cache analyze           # Skip caching layer
 ```
 
 **validate-config**  -  Validate configuration file:
 
 ```bash
 sattlint validate-config
-sattlint validate-config --config path/to/config.toml --verbose
+sattlint --config path/to/config.toml validate-config
 ```
 
 **docgen**  -  Generate Word documentation:
 
 ```bash
 sattlint docgen --output-dir docs-out
-sattlint docgen --config path/to/config.toml --output-dir docs-out
+sattlint docgen --output-path docs-out/Main_FS.docx
+sattlint --config path/to/config.toml docgen --output-dir docs-out
 ```
 
 **format-icf**  -  Format Industrial Control Format:
@@ -74,7 +75,6 @@ sattlint repo-audit --fail-on high       # Exit with error if findings exceed th
 
 ```bash
 sattlint --config path/to/config.toml [subcommand]
-sattlint --verbose [subcommand]
 sattlint --quiet [subcommand]
 sattlint --no-cache [subcommand]
 ```
@@ -423,10 +423,10 @@ Override with `--config path/to/custom.toml` on any command.
 | Code | Meaning                                    |
 | ---- | ------------------------------------------ |
 | 0    | Success                                    |
-| 1    | Execution error (check output for details) |
-| 2    | Invalid arguments or configuration         |
+| 1    | Command ran and reported a real problem    |
+| 2    | Invalid arguments or invalid configuration |
 
-Audit commands may exit with 1 if findings exceed `--fail-on` threshold (not an error, but explicit status).
+Examples of exit code `1` include invalid SattLine input reported by `syntax-check` and repo-audit findings at or above the selected `--fail-on` threshold.
 
 ---
 

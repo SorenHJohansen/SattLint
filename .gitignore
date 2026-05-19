@@ -33,6 +33,15 @@ htmlcov/
 *.egg-info/
 dist/
 build/
+node_modules/
+tmp-pyright-*.json
+temp_pyright*
+pyright_output*.json
+pyright_probe*.json
+pyright_batch_probe_out.json
+pyright_results.json
+tmp_pyright_analyzers.json
+probe_results.json
 
 # Project outputs (keep artifacts/analysis/ ratchet files)
 artifacts/audit/

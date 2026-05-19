@@ -388,7 +388,9 @@ class _DataflowConditionMixin:
                 return UNKNOWN
 
             if operator == const.GRAMMAR_VALUE_NOT:
-                value = self._evaluate_expression(expr_tuple[1] if len(expr_tuple) > 1 else None, context, module_path, state)
+                value = self._evaluate_expression(
+                    expr_tuple[1] if len(expr_tuple) > 1 else None, context, module_path, state
+                )
                 return (not value) if isinstance(value, bool) else UNKNOWN
 
             if operator in (const.KEY_COMPARE, "compare"):
@@ -427,7 +429,9 @@ class _DataflowConditionMixin:
                 return scalar_value
 
             if operator in (const.KEY_PLUS, const.KEY_MINUS):
-                inner = self._evaluate_expression(expr_tuple[1] if len(expr_tuple) > 1 else None, context, module_path, state)
+                inner = self._evaluate_expression(
+                    expr_tuple[1] if len(expr_tuple) > 1 else None, context, module_path, state
+                )
                 if not isinstance(inner, int | float) or isinstance(inner, bool):
                     return UNKNOWN
                 return inner if operator == const.KEY_PLUS else -inner
@@ -460,7 +464,13 @@ class _DataflowConditionMixin:
         if condition_tuple is not None and condition_tuple:
             operator = condition_tuple[0]
             if operator == const.GRAMMAR_VALUE_NOT:
-                return self._assume(condition_tuple[1] if len(condition_tuple) > 1 else None, not truth, next_state, context, module_path)
+                return self._assume(
+                    condition_tuple[1] if len(condition_tuple) > 1 else None,
+                    not truth,
+                    next_state,
+                    context,
+                    module_path,
+                )
             if operator == const.GRAMMAR_VALUE_AND and truth:
                 for part in _expr_items(condition_tuple[1] if len(condition_tuple) > 1 else None):
                     next_state = self._assume(part, True, next_state, context, module_path)

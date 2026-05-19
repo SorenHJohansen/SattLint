@@ -110,6 +110,21 @@ def test_repo_audit_cli_selected_and_finish_gate_branches(monkeypatch, tmp_path)
     assert summaries[2] == {"overall_status": "fail", "profile": "full"}
 
 
+def test_repo_audit_cli_build_parser_supports_alias_parent_usage(monkeypatch, tmp_path):
+    fake_repo_audit = _fake_repo_audit_module(tmp_path, [])
+
+    monkeypatch.setattr(repo_audit_cli, "_repo_audit_module", lambda: fake_repo_audit)
+
+    parser = repo_audit_cli.build_cli_parser(prog="sattlint repo-audit", add_help=False)
+    option_strings = {
+        option for parser_action in parser._actions for option in getattr(parser_action, "option_strings", [])
+    }
+
+    assert parser.prog == "sattlint repo-audit"
+    assert "-h" not in option_strings
+    assert {"--profile", "--fail-on", "--list-checks", "--planning-context"} <= option_strings
+
+
 def test_repo_audit_cli_conflicts_and_latest_links(monkeypatch, tmp_path):
     parser = argparse.ArgumentParser()
     fake_repo_audit = _fake_repo_audit_module(tmp_path, [])

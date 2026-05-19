@@ -262,7 +262,9 @@ def _normalize_guard_signature(expr: object) -> object:
 
         if operator in (const.KEY_COMPARE, "compare") and len(expr_parts) == 3:
             left = expr_parts[1]
-            comparisons = [_normalize_compare_guard(left, symbol, right) for symbol, right in _comparison_pairs(expr_parts[2])]
+            comparisons = [
+                _normalize_compare_guard(left, symbol, right) for symbol, right in _comparison_pairs(expr_parts[2])
+            ]
             if not comparisons:
                 return _normalize_guard_signature(left)
             if len(comparisons) == 1:

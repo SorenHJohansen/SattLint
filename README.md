@@ -142,8 +142,9 @@ sattlint repo-audit --profile quick --fail-on high
 Shared flags for config-driven commands:
 
 ```bash
+sattlint --config path/to/config.toml analyze
 sattlint --config path/to/config.toml --no-cache analyze
-sattlint --config path/to/config.toml --verbose validate-config
+sattlint --config path/to/config.toml validate-config
 sattlint --quiet repo-audit --profile quick
 ```
 
@@ -255,8 +256,14 @@ sattlint syntax-check /path/to/Program.s
 
 Output:
 
-- `OK` → valid file
-- Error message → invalid file
+- `OK` -> valid file
+- Error message -> invalid file
+
+Exit codes:
+
+- `0` -> success
+- `1` -> command ran and found a real problem in the input or repository
+- `2` -> invalid arguments or invalid configuration input
 
 ---
 

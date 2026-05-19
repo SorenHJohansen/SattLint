@@ -7,7 +7,7 @@ from ..theme import resolve_theme
 
 
 class ConsoleView(ttk.Frame):
-    def __init__(self, parent, *, title: str) -> None:
+    def __init__(self, parent: tk.Misc, *, title: str) -> None:
         super().__init__(parent, style="Content.TFrame")
         theme = resolve_theme(parent)
         self.columnconfigure(0, weight=1)
@@ -36,6 +36,9 @@ class ConsoleView(ttk.Frame):
         self._text.insert(tk.END, text)
         self._text.see(tk.END)
         self._text.configure(state=tk.DISABLED)
+
+    def get_text(self) -> str:
+        return self._text.get("1.0", "end-1c")
 
 
 __all__ = ["ConsoleView"]

@@ -11,10 +11,18 @@ from ..widgets.console import ConsoleView
 from ..widgets.report_view import ReportView
 
 
+def _noop_result(_title: str, _text: str) -> None:
+    return None
+
+
+def _noop_status(_text: str) -> None:
+    return None
+
+
 class DocsFrame(ttk.Frame):
     def __init__(
         self,
-        parent,
+        parent: tk.Misc,
         *,
         binding: SattLintBinding,
         on_result: Callable[[str, str], None] | None = None,
@@ -22,8 +30,8 @@ class DocsFrame(ttk.Frame):
     ) -> None:
         super().__init__(parent, style="Content.TFrame")
         self.binding = binding
-        self.on_result = on_result or (lambda _title, _text: None)
-        self.on_status = on_status or (lambda _text: None)
+        self.on_result: Callable[[str, str], None] = on_result or _noop_result
+        self.on_status: Callable[[str], None] = on_status or _noop_status
         self.cfg = self.binding.load_config()
         self.output_dir_var = tk.StringVar(value=str(Path.cwd() / "docs-out"))
 
