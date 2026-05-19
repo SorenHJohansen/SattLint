@@ -120,3 +120,6 @@ def _declaration_locations(
             continue
         declaration_locations.append(Location(uri=target_uri, range=target_range))
     return declaration_locations
+
+
+declaration_locations = _declaration_locations

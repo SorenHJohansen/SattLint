@@ -3,7 +3,23 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+
+def _finding_entries(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    findings: list[dict[str, Any]] = []
+    for entry in cast(list[object], value):
+        if isinstance(entry, dict):
+            findings.append(cast(dict[str, Any], entry))
+    return findings
+
+
+def _string_entries(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item_text for entry in cast(list[object], value) if (item_text := str(entry)).strip()]
 
 
 def _append_structural_budget_findings(findings: list[dict[str, Any]], structural_budgets: dict[str, Any]) -> None:
@@ -91,7 +107,7 @@ def collect_phase2_rule_metadata_gate(
 ) -> dict[str, Any]:
     from sattlint.devtools import structural_reports as structural_reports_module
 
-    findings = architecture_report.get("findings", []) or []
+    findings = _finding_entries(architecture_report.get("findings"))
     blocking_findings = [
         finding
         for finding in findings
@@ -103,10 +119,10 @@ def collect_phase2_rule_metadata_gate(
         if finding.get("id") in structural_reports_module.PHASE2_ADVISORY_RULE_METADATA_FINDING_IDS
     ]
     blocking_rule_ids = sorted(
-        {rule_id for finding in blocking_findings for rule_id in finding.get("missing_rule_ids", [])}
+        {rule_id for finding in blocking_findings for rule_id in _string_entries(finding.get("missing_rule_ids"))}
     )
     advisory_rule_ids = sorted(
-        {rule_id for finding in advisory_findings for rule_id in finding.get("missing_rule_ids", [])}
+        {rule_id for finding in advisory_findings for rule_id in _string_entries(finding.get("missing_rule_ids"))}
     )
     return {
         "status": "fail" if blocking_rule_ids else "pass",
@@ -358,7 +374,7 @@ def collect_architecture_report(
             }
         )
 
-    structural_reports_module._append_structural_budget_findings(findings, structural_budgets)
+    _append_structural_budget_findings(findings, structural_budgets)
     phase2_rule_metadata_gate = structural_reports_module.collect_phase2_rule_metadata_gate({"findings": findings})
 
     return {

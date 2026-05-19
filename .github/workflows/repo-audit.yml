@@ -54,7 +54,7 @@ jobs:
 
       - name: Lint Markdown
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: markdownlint-cli2 --config .markdownlint-cli2.jsonc
+        run: python scripts/run_markdownlint.py --config .markdownlint-cli2.jsonc
 
       - name: Build distributions
         if: ${{ matrix.run_build }}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import cast
 
 from sattline_parser.models.ast_model import BasePicture
 
@@ -9,21 +10,31 @@ from ._wave2_support import InstanceParameterValue, collect_instance_parameter_v
 from .framework import Issue
 
 
+def _empty_issue_list() -> list[Issue]:
+    return []
+
+
+def _empty_object_summary() -> dict[str, object]:
+    return {}
+
+
 @dataclass
 class ConfigDriftReport:
     name: str
-    issues: list[Issue] = field(default_factory=list)
-    summary_data: dict[str, object] = field(default_factory=dict)
+    issues: list[Issue] = field(default_factory=_empty_issue_list)
+    summary_data: dict[str, object] = field(default_factory=_empty_object_summary)
 
     def summary(self) -> str:
         lines = ["Report: Config drift", f"Target: {self.name}"]
         lines.append("Status: issues" if self.issues else "Status: ok")
         summary = self.summary_data.get("summary")
-        drift_count = summary.get("config_drift_count", 0) if isinstance(summary, dict) else 0
+        summary_map = cast(dict[str, object], summary) if isinstance(summary, dict) else None
+        raw_drift_count = summary_map.get("config_drift_count", 0) if summary_map is not None else 0
+        drift_count = raw_drift_count if isinstance(raw_drift_count, int) else 0
         lines.append(f"Summary: {drift_count} drifting configuration groups")
         drift_keys = self.summary_data.get("config_drift")
         if isinstance(drift_keys, list) and drift_keys:
-            lines.append(f"Config drift keys: {', '.join(str(item) for item in drift_keys)}")
+            lines.append(f"Config drift keys: {', '.join(str(item) for item in cast(list[object], drift_keys))}")
         if not self.issues:
             lines.append("No issues found.")
             return "\n".join(lines)

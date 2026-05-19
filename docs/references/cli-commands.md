@@ -179,6 +179,15 @@ python -m pre_commit run --all-files
 
 That hook set is now intentionally fast and file-scoped. It auto-fixes Python formatting with Ruff, lints changed Markdown files, checks staged SattLine files, and reruns context health only when the AI-control plane is touched.
 
+Standalone workflow and Markdown lint wrappers:
+
+```bash
+python scripts/run_actionlint.py
+python scripts/run_markdownlint.py --config .markdownlint-cli2.jsonc
+```
+
+Use these wrappers when running the tools directly outside pre-commit. Pre-commit and CI both call the same wrappers so the fallback behavior and platform handling stay aligned.
+
 Local pre-push gate:
 
 ```bash
@@ -226,6 +235,11 @@ Used to:
 - Inspect the checked-in ratchet status and regressions quickly during local edits
 - Override the repo root or ratchet file when debugging with `--repo-root` or `--ratchet-path`
 
+Trigger conditions:
+
+- Run this before or after refactors that move code between files or add helper layers
+- Use the `Quality: Structural Ratchet` task for a quick budget sanity check before a wider repo-audit run
+
 Exit code:
 
 - `0` when the ratchet passes
@@ -266,6 +280,11 @@ Used to:
 - Validate analyzer behavior on standardized samples
 - Track coverage metrics over time
 
+Trigger conditions:
+
+- Run this when parser, analyzer, or corpus-manifest behavior changes need proof against the checked-in fixture suites
+- Use the `Analysis: Fixture Corpus Runner` task for the default checked-in manifest set under `tests/fixtures/corpus/manifests`
+
 ---
 
 ### sattlint-analysis-pipeline
@@ -305,6 +324,11 @@ Output feeds into `sattlint-repo-audit` and CI checks.
 
 For AI-assisted review of a narrow change set, prefer `--recommend-checks` first and `--run-recommended-finish-gate` when you want one executable finish gate. Full pipeline runs now also emit `recommendation_drift.json` when changed files are known, so CI can catch non-passing checks that were omitted from the recommended slice.
 
+VS Code tasks:
+
+- `Quality: Recommend Pipeline Checks` for diff-scoped shared-pipeline routing before widening to repo-audit
+- `Quality: Shared Pipeline Finish Gate` when the shared pipeline is the only finish gate you need locally
+
 ---
 
 ## Specialized Commands
@@ -331,6 +355,8 @@ sattlint-review
 
 Provides structured feedback on SattLine code changes.
 
+This command is currently advisory. CI runs it in the `Agent Review (Advisory)` job and does not fail the workflow when it reports issues. Use it for extra local signal, not as a required finish gate.
+
 ---
 
 ### sattlint-observability
@@ -342,6 +368,11 @@ sattlint-observability
 ```
 
 Used for performance profiling and execution analysis.
+
+Trigger conditions:
+
+- Run this only for manual local diagnostics when you need a quick snapshot of coverage, lint, and install-health metrics in one JSON artifact
+- Use the `Metrics: Observability Snapshot` task for the default local snapshot flow; it is not part of the standard pre-commit or pre-push gates
 
 ---
 

@@ -1,4 +1,9 @@
 import json
+import runpy
+import shutil
+import subprocess
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -101,6 +106,35 @@ def test_review_tool_doc_gardener_exception_is_reported(monkeypatch):
     assert "scan failed" in result["error"]
 
 
+def test_review_tool_run_command_success_and_exception(monkeypatch):
+    monkeypatch.setattr(review_tool.shutil, "which", lambda tool_name: f"/usr/bin/{tool_name}")
+    monkeypatch.setattr(
+        review_tool.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="ok", stderr=""),
+    )
+
+    assert review_tool.run_command(["python", "-V"]) == (0, "ok", "")
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(review_tool.subprocess, "run", _boom)
+    assert review_tool.run_command(["python", "-V"]) == (1, "", "boom")
+
+
+def test_review_tool_doc_gardener_success_is_reported(monkeypatch):
+    monkeypatch.setattr(
+        review_tool,
+        "doc_gardener_scan",
+        lambda: {"total_findings": 0, "by_severity": {"Low": 0}, "by_category": {"dead_link": 0}},
+    )
+
+    result = review_tool.run_doc_gardener()
+
+    assert result == {"passed": True, "findings": 0, "by_severity": {"Low": 0}, "by_category": {"dead_link": 0}}
+
+
 def test_review_tool_run_tests_and_linting_parse_summary(monkeypatch):
     sequence = [
         (1, "5 passed, 2 failed, 3 skipped in 0.12s", ""),
@@ -145,6 +179,15 @@ def test_review_tool_run_full_review_writes_report(tmp_path, monkeypatch):
     assert disk_report["overall_passed"] is True
 
 
+def test_review_tool_format_and_observability_helpers(monkeypatch):
+    monkeypatch.setattr(review_tool, "run_command", lambda *_args, **_kwargs: (0, "formatted", ""))
+    assert review_tool.run_format_check() == {"passed": True, "stdout": "formatted", "stderr": ""}
+
+    payload = {"coverage": {"line_coverage": 91.2}}
+    monkeypatch.setattr(review_tool, "collect_all_metrics", lambda: payload)
+    assert review_tool.collect_observability() == payload
+
+
 def test_review_tool_print_review_and_main_exit(monkeypatch, capsys):
     report = {
         "timestamp": "now",
@@ -179,3 +222,60 @@ def test_review_tool_print_review_and_main_exit(monkeypatch, capsys):
         review_tool.main()
 
     assert exc.value.code == 1
+
+
+def test_review_tool_print_review_handles_severity_and_non_numeric_coverage(capsys):
+    report = {
+        "timestamp": "now",
+        "overall_passed": True,
+        "checks": {
+            "architecture": {"passed": True, "violations": 0},
+            "documentation": {"passed": True, "findings": 1, "by_severity": {"High": 1}},
+            "tests": {"passed": True, "failed": 0, "skipped": 0},
+            "linting": {"passed": True, "warnings": 0, "errors": 0},
+            "formatting": {"passed": True},
+            "observability": {"coverage": {"line_coverage": "n/a", "branch_coverage": None}},
+        },
+        "summary": {
+            "architecture_violations": 0,
+            "doc_findings": 1,
+            "tests_passed": True,
+            "tests_failed": 0,
+            "lint_warnings": 0,
+            "lint_errors": 0,
+            "format_passed": True,
+        },
+    }
+
+    review_tool.print_review(report)
+
+    stdout = capsys.readouterr().out
+    assert "By Severity: {'High': 1}" in stdout
+    assert "Line Coverage: 0.0%" in stdout
+    assert "Branch Coverage: 0.0%" in stdout
+
+
+def test_review_tool_module_main_guard(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sattlint.devtools.doc_gardener.run_scan", lambda: {
+        "total_findings": 0,
+        "by_severity": {},
+        "by_category": {},
+    })
+    monkeypatch.setattr("sattlint.devtools.observability.collect_all_metrics", lambda: {"coverage": {"line_coverage": 99.0}})
+
+    def _fake_run(cmd, capture_output, text, check, cwd=None):
+        rendered = " ".join(cmd)
+        if "pytest" in rendered:
+            return SimpleNamespace(returncode=0, stdout="5 passed, 0 failed, 0 skipped in 0.12s", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(shutil, "which", lambda tool_name: f"/usr/bin/{tool_name}")
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    monkeypatch.setattr(sys, "argv", ["review_tool.py"])
+
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("sattlint.devtools.review_tool", run_name="__main__")
+
+    assert exc.value.code == 0
+    assert (tmp_path / "artifacts" / "review_report.json").exists()

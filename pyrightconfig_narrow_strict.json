@@ -1,0 +1,18 @@
+{
+  "include": [
+    "src/sattlint/docgenerator/classification.py",
+    "src/sattlint/docgenerator/docgen.py"
+  ],
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.13",
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": [
+    "src"
+  ],
+  "reportMissingTypeStubs": false,
+  "strict": [
+    "src/sattlint/docgenerator/classification.py",
+    "src/sattlint/docgenerator/docgen.py"
+  ]
+}

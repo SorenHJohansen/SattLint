@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import overload
 
 _SOURCE_EXTENSIONS = {".s", ".x", ".l", ".z"}
 _PROGRAM_EXTENSIONS = {".s", ".x"}
@@ -29,6 +30,14 @@ def _path_key(path: Path) -> str:
 
 def _path_parent_key(path: Path) -> str:
     return _path_key(path.parent)
+
+
+@overload
+def _resolved_path(path: None) -> None: ...
+
+
+@overload
+def _resolved_path(path: Path) -> Path: ...
 
 
 def _resolved_path(path: Path | None) -> Path | None:
@@ -64,6 +73,10 @@ def _index_source_files(paths: tuple[Path, ...]) -> dict[str, tuple[Path, ...]]:
     return {stem: tuple(sorted(matches, key=_path_key)) for stem, matches in index.items()}
 
 
+def _path_stem_index_factory() -> dict[str, tuple[Path, ...]]:
+    return {}
+
+
 @dataclass(frozen=True, slots=True)
 class WorkspaceSourceDiscovery:
     workspace_root: Path
@@ -72,12 +85,12 @@ class WorkspaceSourceDiscovery:
     dependency_files: tuple[Path, ...]
     abb_lib_dir: Path | None = None
     program_files_by_stem: dict[str, tuple[Path, ...]] = field(
-        default_factory=dict,
+        default_factory=_path_stem_index_factory,
         repr=False,
         compare=False,
     )
     dependency_files_by_stem: dict[str, tuple[Path, ...]] = field(
-        default_factory=dict,
+        default_factory=_path_stem_index_factory,
         repr=False,
         compare=False,
     )
@@ -117,7 +130,7 @@ class WorkspaceSourceDiscovery:
             sibling_branch: list[Path] = []
             for source_dir in self.source_dirs:
                 resolved = _resolved_path(source_dir)
-                if resolved is None or resolved == requester:
+                if resolved == requester:
                     continue
                 if not _is_relative_to(resolved, cluster_root):
                     continue
@@ -133,8 +146,6 @@ class WorkspaceSourceDiscovery:
 
         for source_dir in self.source_dirs:
             resolved = _resolved_path(source_dir)
-            if resolved is None:
-                continue
             if abb_dir is not None and resolved == abb_dir:
                 continue
             add(resolved)
@@ -145,15 +156,15 @@ class WorkspaceSourceDiscovery:
     def shared_library_root_for(self, requester_dir: Path | None) -> Path | None:
         requester = _resolved_path(requester_dir)
         workspace_root = _resolved_path(self.workspace_root)
-        if requester is None or workspace_root is None or not _is_relative_to(requester, workspace_root):
+        if requester is None or not _is_relative_to(requester, workspace_root):
             return None
 
-        current: Path | None = requester
-        while current is not None and _is_relative_to(current, workspace_root):
+        current = requester
+        while _is_relative_to(current, workspace_root):
             branches: set[str] = set()
             for source_dir in self.source_dirs:
                 resolved = _resolved_path(source_dir)
-                if resolved is None or not _is_relative_to(resolved, current):
+                if not _is_relative_to(resolved, current):
                     continue
                 branch = _first_branch_under(current, resolved)
                 if branch is None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -18,6 +19,7 @@ from .. import config as config_module
 from ..resolution.common import format_moduletype_label, path_startswith_casefold, resolve_moduletype_def_strict
 
 type DocumentableNode = SingleModule | FrameModule | ModuleTypeInstance
+type DocumentationRule = dict[str, list[str]]
 DOCUMENTATION_CATEGORY_ORDER = [
     "em",
     "ops",
@@ -52,6 +54,25 @@ _DOCUMENTATION_PARAMETER_PREFIXES = {
     "ep": ("ep_", "engpar"),
     "up": ("up_", "usrpar"),
 }
+_DOCUMENTATION_RULE_KEYS: tuple[str, ...] = (
+    "name_contains",
+    "label_equals",
+    "desc_name_contains",
+    "desc_label_equals",
+)
+
+
+@dataclass(frozen=True)
+class DocumentationUnitsConfig:
+    mode: str = "all"
+    instance_paths: tuple[str, ...] = ()
+    moduletype_names: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ResolvedDocumentationConfig:
+    classifications: dict[str, DocumentationRule]
+    units: DocumentationUnitsConfig = DocumentationUnitsConfig()
 
 
 @dataclass(frozen=True)
@@ -123,15 +144,52 @@ class DocumentationClassification:
         ]
 
 
+def _resolve_documentation_config(documentation_config: dict[str, Any] | None) -> ResolvedDocumentationConfig:
+    raw_doc_cfg = config_module.get_documentation_config(documentation_config)
+    raw_classifications = raw_doc_cfg.get("classifications")
+    classifications: dict[str, DocumentationRule] = {}
+    if isinstance(raw_classifications, dict):
+        typed_classifications = cast(dict[str, object], raw_classifications)
+        for name, raw_rule in typed_classifications.items():
+            classifications[name] = _coerce_documentation_rule(raw_rule)
+
+    units = DocumentationUnitsConfig()
+    raw_units = raw_doc_cfg.get("units")
+    if isinstance(raw_units, dict):
+        typed_units = cast(dict[str, object], raw_units)
+        units = DocumentationUnitsConfig(
+            mode=str(typed_units.get("mode", "all")).strip().lower() or "all",
+            instance_paths=tuple(_normalize_requested_values(typed_units.get("instance_paths", []))),
+            moduletype_names=tuple(_normalize_requested_values(typed_units.get("moduletype_names", []))),
+        )
+
+    return ResolvedDocumentationConfig(classifications=classifications, units=units)
+
+
+def _coerce_documentation_rule(raw_rule: object) -> DocumentationRule:
+    if not isinstance(raw_rule, dict):
+        return {}
+    typed_rule = cast(dict[str, object], raw_rule)
+    normalized: DocumentationRule = {}
+    for key in _DOCUMENTATION_RULE_KEYS:
+        values = typed_rule.get(key)
+        if not isinstance(values, list):
+            continue
+        typed_values = cast(list[object], values)
+        normalized[key] = [str(value).strip() for value in typed_values if str(value).strip()]
+    return normalized
+
+
 def classify_documentation_structure(
     base_picture: BasePicture,
-    documentation_config: dict | None = None,
+    documentation_config: dict[str, Any] | None = None,
     *,
     unavailable_libraries: set[str] | None = None,
 ) -> DocumentationClassification:
-    doc_cfg = config_module.get_documentation_config(documentation_config)
+    doc_cfg = _resolve_documentation_config(documentation_config)
     section_order = DOCUMENTATION_CATEGORY_ORDER.copy()
-    rules = doc_cfg.get("classifications", {})
+    rules = doc_cfg.classifications
+    empty_rule: DocumentationRule = {}
 
     entries = _collect_documented_modules(
         base_picture,
@@ -140,7 +198,7 @@ def classify_documentation_structure(
     categories = {
         name: _collect_category_entries(
             name,
-            rules.get(name, {}),
+            rules.get(name, empty_rule),
             entries,
         )
         for name in section_order
@@ -213,7 +271,7 @@ def document_scope_summary(entry: DocumentedModule, classification: Documentatio
 
 def _apply_documentation_scope(
     classification: DocumentationClassification,
-    documentation_config: dict,
+    documentation_config: ResolvedDocumentationConfig,
 ) -> DocumentationClassification:
     scope = _resolve_documentation_scope(classification, documentation_config)
     if not scope.roots:
@@ -244,20 +302,17 @@ def _apply_documentation_scope(
 
 def _resolve_documentation_scope(
     classification: DocumentationClassification,
-    documentation_config: dict,
+    documentation_config: ResolvedDocumentationConfig,
 ) -> DocumentationScope:
-    units = documentation_config.get("units", {})
-    if not isinstance(units, dict):
-        return DocumentationScope(mode="all", roots=[])
-
-    mode = str(units.get("mode", "all")).strip().lower() or "all"
+    units = documentation_config.units
+    mode = units.mode or "all"
     candidates = discover_documentation_unit_candidates(classification)
 
     if mode == "all":
         return DocumentationScope(mode=mode, roots=[], requested_values=[], unmatched_values=[])
 
     if mode == "instance_paths":
-        requested_values = _normalize_requested_values(units.get("instance_paths", []))
+        requested_values = list(units.instance_paths)
         roots, unmatched = _resolve_scope_paths(candidates, requested_values)
         return DocumentationScope(
             mode=mode,
@@ -267,7 +322,7 @@ def _resolve_documentation_scope(
         )
 
     if mode == "moduletype_names":
-        requested_values = _normalize_requested_values(units.get("moduletype_names", []))
+        requested_values = list(units.moduletype_names)
         requested_cf = {value.casefold() for value in requested_values}
         roots = [candidate for candidate in candidates if (candidate.moduletype_name or "").casefold() in requested_cf]
         matched_types = {(candidate.moduletype_name or "").casefold() for candidate in roots}
@@ -283,9 +338,11 @@ def _resolve_documentation_scope(
 
 
 def _normalize_requested_values(values: object) -> list[str]:
-    if not isinstance(values, list):
-        return []
-    return [str(value).strip() for value in values if str(value).strip()]
+    return (
+        [str(value).strip() for value in cast(list[object], values) if str(value).strip()]
+        if isinstance(values, list)
+        else []
+    )
 
 
 def _resolve_scope_paths(
@@ -431,29 +488,6 @@ def _resolve_instance_moduletype(
         return None
 
 
-def _matches_rule(
-    entry: DocumentedModule,
-    rule: dict,
-    entries: list[DocumentedModule],
-) -> bool:
-    direct_name_patterns = _rule_list(rule, "name_contains")
-    direct_label_patterns = _rule_list(rule, "label_equals")
-    descendant_name_patterns = _rule_list(rule, "desc_name_contains")
-    descendant_label_patterns = _rule_list(rule, "desc_label_equals")
-
-    if not any(
-        (
-            direct_name_patterns,
-            direct_label_patterns,
-            descendant_name_patterns,
-            descendant_label_patterns,
-        )
-    ):
-        return False
-
-    return bool(_matches_direct(entry, name_contains=direct_name_patterns, label_equals=direct_label_patterns))
-
-
 def _matches_direct(
     entry: DocumentedModule,
     *,
@@ -483,42 +517,13 @@ def _equals_pattern(text: str, patterns: list[str]) -> bool:
     return False
 
 
-def _rule_list(rule: dict, key: str) -> list[str]:
-    values = rule.get(key, []) if isinstance(rule, dict) else []
-    return [str(value) for value in values if str(value).strip()]
-
-
-def _descendants_of(
-    entry: DocumentedModule,
-    entries: list[DocumentedModule],
-) -> list[DocumentedModule]:
-    return [
-        candidate
-        for candidate in entries
-        if candidate.path != entry.path and path_startswith_casefold(list(candidate.path), list(entry.path))
-    ]
-
-
-def _has_descendant_marker_match(
-    entry: DocumentedModule,
-    entries: list[DocumentedModule],
-    *,
-    name_contains: list[str],
-    label_equals: list[str],
-) -> bool:
-    return any(
-        _matches_direct(
-            descendant,
-            name_contains=name_contains,
-            label_equals=label_equals,
-        )
-        for descendant in _descendants_of(entry, entries)
-    )
+def _rule_list(rule: DocumentationRule, key: str) -> list[str]:
+    return rule.get(key, [])
 
 
 def _collect_category_entries(
     category: str,
-    rule: dict,
+    rule: DocumentationRule,
     entries: list[DocumentedModule],
 ) -> list[DocumentedModule]:
     direct_name_patterns = _rule_list(rule, "name_contains")

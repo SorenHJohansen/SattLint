@@ -98,9 +98,9 @@ def _resolve_field_datatype(
     root_type: Simple_DataType | str,
     field_path: tuple[str, ...],
 ) -> Simple_DataType | str | None:
-    current: Simple_DataType | str | None = root_type
+    current: Simple_DataType | str = root_type
     for segment in field_path:
-        if current is None or isinstance(current, Simple_DataType):
+        if isinstance(current, Simple_DataType):
             return current
         field = type_graph.field(str(current), segment)
         if field is None:
@@ -135,7 +135,7 @@ def _child_module_items(
 ) -> list[tuple[str, str]]:
     if isinstance(node, BasePicture | SingleModule | FrameModule | ModuleTypeDef):
         children = list(node.submodules or [])
-    elif isinstance(node, ModuleTypeInstance):
+    else:
         typedef = _try_resolve_instance_typedef(
             base_picture,
             node,
@@ -143,8 +143,6 @@ def _child_module_items(
             unavailable_libraries,
         )
         children = list(typedef.submodules or []) if typedef is not None else []
-    else:
-        children = []
 
     items: list[tuple[str, str]] = []
     for child in children:
@@ -152,7 +150,7 @@ def _child_module_items(
             items.append((child.header.name, "module"))
         elif isinstance(child, FrameModule):
             items.append((child.header.name, "frame"))
-        elif isinstance(child, ModuleTypeInstance):
+        else:
             items.append((child.header.name, "moduletype-instance"))
     return items
 
@@ -202,5 +200,6 @@ path_startswith = _path_startswith
 normalize_mode = _normalize_mode
 source_file_key = _source_file_key
 identifier_contains_column = _identifier_contains_column
+child_module_items = _child_module_items
 resolve_field_datatype = _resolve_field_datatype
 try_resolve_instance_typedef = _try_resolve_instance_typedef

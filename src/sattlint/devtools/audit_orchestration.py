@@ -5,7 +5,11 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+
+def _json_mapping(value: object) -> dict[str, Any] | None:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def doc_gardener_finding_to_repo_audit(finding: Any, *, finding_factory: Callable[..., Any]) -> Any:
@@ -68,8 +72,11 @@ def run_harness_freshness_check(
 
 
 def _progress_active_stage_key(progress: Any) -> str | None:
-    active_stage = progress.to_dict().get("active_stage")
-    if not isinstance(active_stage, dict):
+    progress_payload = _json_mapping(progress.to_dict())
+    if progress_payload is None:
+        return None
+    active_stage = _json_mapping(progress_payload.get("active_stage"))
+    if active_stage is None:
         return None
     key = active_stage.get("key")
     return key if isinstance(key, str) and key else None
@@ -206,7 +213,7 @@ def audit_repository(
         reports["pipeline_summary"] = None if pipeline_summary is None else f"{pipeline_output_dirname}/summary.json"
         finding_collection = finding_collection_factory(tuple(finding.to_record() for finding in findings))
         overall_status_value = "fail" if blocking_count else "pass"
-        summary = {
+        summary: dict[str, Any] = {
             "generated_by": "sattlint.devtools.repo_audit",
             "output_dir": sanitized_output_dir,
             "profile": audit_profile,
@@ -230,7 +237,7 @@ def audit_repository(
             ],
             "findings": [finding.to_dict() for finding in findings],
         }
-        status_report = {
+        status_report: dict[str, Any] = {
             "kind": "sattlint.repo_audit.status",
             "generated_by": "sattlint.devtools.repo_audit",
             "profile": audit_profile,
@@ -302,12 +309,12 @@ def audit_repository(
         )
         reports["pipeline_status"] = None if skip_pipeline or leaks_only else f"{pipeline_output_dirname}/status.json"
         reports["pipeline_summary"] = None if skip_pipeline or leaks_only else f"{pipeline_output_dirname}/summary.json"
-        error_payload = {
+        error_payload: dict[str, Any] = {
             "type": type(error).__name__,
             "message": str(error),
             "stage": failing_stage_key,
         }
-        summary = {
+        summary: dict[str, Any] = {
             "generated_by": "sattlint.devtools.repo_audit",
             "output_dir": sanitized_output_dir,
             "profile": audit_profile,

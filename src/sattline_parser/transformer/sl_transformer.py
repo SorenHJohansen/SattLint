@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 """Lark transformer that builds the SattLine AST.
 
 Split into responsibility-based mixins for maintainability.
@@ -6,77 +8,71 @@ Split into responsibility-based mixins for maintainability.
 from __future__ import annotations
 
 import re
-from typing import Any, cast
+from typing import Any, TypeGuard, cast
 
 from lark import Token, Transformer, Tree
 
-__all__ = ["SLTransformer"]
-
-from sattline_parser.models.ast_model import BasePicture, FloatLiteral, IntLiteral, SourceSpan
+from sattline_parser.models.ast_model import BasePicture, FloatLiteral, IntLiteral
 
 from ..grammar import constants as const
+from . import _module_shared as _module_shared
 from ._expressions_mixin import _ExpressionsMixin
 from ._graphics_interact_mixin import _GraphicsInteractMixin
 from ._module_assembly_mixin import _ModuleAssemblyMixin
 from ._module_header_mixin import _ModuleHeaderMixin
 from ._module_layout_mixin import _ModuleLayoutMixin
+from ._module_shared import TransformerItem, TransformerTree, _tree_children
 from ._sfc_mixin import _SFCMixin
 from ._tokens_mixin import _TokensMixin
 
+__all__ = [
+    "SLTransformer",
+    "_extract_program_name_from_header_lines",
+    "_flatten_items",
+    "_is_tree",
+    "_iter_tree_children",
+    "_meta_span",
+    "_strip_quoted",
+]
 
-def _meta_span(meta: Any) -> SourceSpan | None:
-    """Extract source span from Lark meta."""
-    line = getattr(meta, "line", None)
-    column = getattr(meta, "column", None)
-    if line is None or column is None:
-        return None
-    return SourceSpan(line=int(line), column=int(column))
-
-
-def _strip_quoted(s: str) -> str:
-    """Strip quotes and unescape from a quoted string."""
-    inner = s[1:-1] if len(s) >= 2 and s[0] == '"' and s[-1] == '"' else s
-    return inner.replace('""', '"').rstrip("\n")
+_flatten_items = _module_shared._flatten_items
+_meta_span = _module_shared._meta_span
 
 
-def _flatten_items(items):
-    """Yield flat stream of items from possibly nested lists and Trees."""
-    for it in items:
-        if isinstance(it, list):
-            yield from _flatten_items(it)
-        elif isinstance(it, Tree) and it.data in (
-            const.TREE_TAG_BASE_MODULE_BODY,
-            const.TREE_TAG_MODULE_BODY,
-        ):
-            tree = cast(Tree, it)
-            yield from _flatten_items(tree.children)
-        else:
-            yield it
-
-
-def _is_tree(node: Any) -> bool:
+def _is_tree(node: object) -> TypeGuard[TransformerTree]:
     """Check if node is a Lark Tree."""
     return hasattr(node, "data") and hasattr(node, "children")
-
-
-def _iter_tree_children(node: Any):
-    """Iterate over children of a Tree node."""
-    if _is_tree(node):
-        yield from getattr(node, "children", [])
 
 
 _PROGRAM_NAME_RE = re.compile(r",\s*name:\s*(\S+)", re.IGNORECASE)
 
 
-def _extract_program_name_from_header_lines(tree: Tree) -> str | None:
+def _iter_tree_children(node: object) -> tuple[TransformerItem, ...]:
+    """Yield tree children when given a Tree-like node, otherwise return an empty tuple."""
+    if not _is_tree(node):
+        return ()
+    return tuple(_tree_children(node))
+
+
+def _strip_quoted(text: str) -> str:
+    """Remove wrapping double quotes and unescape doubled inner quotes."""
+    if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
+        return text[1:-1].replace('""', '"').rstrip("\n")
+    return text
+
+
+_EXPORTED_HELPERS = (_flatten_items, _iter_tree_children, _meta_span, _strip_quoted)
+
+
+def _extract_program_name_from_header_lines(tree: TransformerTree) -> str | None:
     """Extract program name from the program_date_line header string."""
-    for child in tree.children:
-        if isinstance(child, Tree) and child.data == "program_date_line":
-            for token in child.children:
+    for child in _tree_children(tree):
+        if _is_tree(child) and child.data == "program_date_line":
+            for token in _iter_tree_children(child):
                 raw = str(token).strip('"')
-                m = _PROGRAM_NAME_RE.search(raw)
-                if m:
-                    return m.group(1).strip()
+                match = _PROGRAM_NAME_RE.search(raw)
+                if match:
+                    return match.group(1).strip()
     return None
 
 
@@ -88,7 +84,7 @@ class SLTransformer(
     _ModuleAssemblyMixin,
     _ModuleLayoutMixin,
     _GraphicsInteractMixin,
-    Transformer,
+    Transformer[Any, Any],
 ):
     """Lark transformer building SattLine AST from parsed grammar.
 
@@ -102,82 +98,86 @@ class SLTransformer(
     - _GraphicsInteractMixin: graphics and interact object handling
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
-    def _extract_coord_tails(self, nodes: list[Any]) -> list[Any]:
+    def _extract_coord_tails(self, nodes: list[TransformerItem]) -> list[object]:
         """Extract coordinate tail annotations from nested node structure."""
-        tails: list[Any] = []
+        tails: list[object] = []
 
-        def visit(x: Any):
-            if x is None or isinstance(x, Token):
+        def visit(value: object) -> None:
+            if value is None or isinstance(value, Token):
                 return
-            if isinstance(x, IntLiteral | FloatLiteral | int | float | bool):
+            if isinstance(value, IntLiteral | FloatLiteral | int | float | bool):
                 return
-            if isinstance(x, str):
-                tails.append(x)
+            if isinstance(value, str):
+                tails.append(value)
                 return
-            if isinstance(x, tuple):
-                if len(x) == 2 and all(isinstance(v, int | float) for v in x):
+            if isinstance(value, tuple):
+                tuple_value = cast(tuple[object, ...], value)
+                if len(tuple_value) == 2 and all(isinstance(item, int | float) for item in tuple_value):
                     return
-                tails.append(x)
+                tails.append(tuple_value)
                 return
-            if isinstance(x, dict):
-                if const.KEY_VAR_NAME in x:
-                    tails.append(x)
+            if isinstance(value, dict):
+                payload = cast(dict[str, object], value)
+                if const.KEY_VAR_NAME in payload:
+                    tails.append(payload)
                     return
-                for value in x.values():
-                    visit(value)
+                for nested in payload.values():
+                    visit(nested)
                 return
-            if isinstance(x, list):
-                for value in x:
-                    visit(value)
+            if isinstance(value, list):
+                for nested in cast(list[object], value):
+                    visit(nested)
                 return
-            if _is_tree(x):
-                for child in getattr(x, "children", []):
+            if _is_tree(value):
+                for child in _tree_children(value):
                     visit(child)
 
         for node in nodes:
             visit(node)
         return tails
 
-    def _merge_tails(self, *tail_groups: list[Any]) -> list[Any]:
+    def _merge_tails(self, *tail_groups: list[object]) -> list[object]:
         """Merge multiple tail groups into a single flat list."""
-        merged: list[Any] = []
+        merged: list[object] = []
         for group in tail_groups:
-            for tail in group or []:
-                merged.append(tail)
+            merged.extend(group)
         return merged
 
-    def _extract_coord_payloads(self, items: list[Any]) -> tuple[list[Any], list[Any]]:
+    def _extract_coord_payloads(self, items: list[TransformerItem]) -> tuple[list[object], list[object]]:
         """Extract coordinates and tails from items."""
-        coords: list[Any] = []
-        tails: list[Any] = []
-        for it in items:
-            if isinstance(it, dict) and const.KEY_COORDS in it:
-                coords.append(it[const.KEY_COORDS])
-                tails.extend(it.get(const.KEY_TAILS) or [])
-            elif isinstance(it, tuple):
-                coords.append(it)
+        coords: list[object] = []
+        tails: list[object] = []
+        for item in items:
+            if isinstance(item, dict) and const.KEY_COORDS in item:
+                payload = cast(dict[str, object], item)
+                coords.append(payload[const.KEY_COORDS])
+                raw_tails = payload.get(const.KEY_TAILS)
+                if isinstance(raw_tails, list):
+                    tails.extend(cast(list[object], raw_tails))
+            elif isinstance(item, tuple):
+                coords.append(cast(tuple[object, ...], item))
         return coords, tails
 
-    def _extract_tailed_rule_payload(self, node: Any) -> Any | None:
+    def _extract_tailed_rule_payload(self, node: object) -> object | None:
         """Extract payload from a tailed grammar rule."""
         if not _is_tree(node):
             return None
 
-        for child in reversed(getattr(node, "children", [])):
+        for child in reversed(_tree_children(node)):
             if isinstance(child, Token):
                 continue
             if _is_tree(child) and getattr(child, "data", None) == const.KEY_ENABLE_EXPRESSION:
                 return child
             if isinstance(child, dict | tuple | str):
-                return child
+                return cast(object, child)
         return None
 
-    def _collect_invar_enable_tails(self, nodes: list[Any]) -> list[Any]:
+    def _collect_invar_enable_tails(self, nodes: list[TransformerItem]) -> list[object]:
         """Find InVar_ trees and enable-expression tails in nested structure."""
-        tails: list[Any] = []
+        tails: list[object] = []
         tailed_rules = {
             "format_string_tailed",
             "value_fraction_tailed",
@@ -186,54 +186,56 @@ class SLTransformer(
             "colour_style_tailed",
         }
 
-        def visit(x: Any):
-            if x is None:
+        def visit(value: object) -> None:
+            if value is None:
                 return
-            if isinstance(x, dict):
-                if const.KEY_TAIL in x and x[const.KEY_TAIL] is not None:
-                    tails.append(x[const.KEY_TAIL])
-                if const.TREE_TAG_ENABLE in x and const.KEY_TAIL in x and x[const.KEY_TAIL] is not None:
-                    tails.append(x[const.KEY_TAIL])
-                for v in x.values():
-                    visit(v)
+            if isinstance(value, dict):
+                payload = cast(dict[str, object], value)
+                if const.KEY_TAIL in payload and payload[const.KEY_TAIL] is not None:
+                    tails.append(payload[const.KEY_TAIL])
+                if (
+                    const.TREE_TAG_ENABLE in payload
+                    and const.KEY_TAIL in payload
+                    and payload[const.KEY_TAIL] is not None
+                ):
+                    tails.append(payload[const.KEY_TAIL])
+                for nested in payload.values():
+                    visit(nested)
                 return
-            if _is_tree(x):
-                data = getattr(x, "data", None)
+            if _is_tree(value):
+                data = getattr(value, "data", None)
                 if data in (
                     const.GRAMMAR_VALUE_INVAR_PREFIX,
                     const.KEY_ENABLE_EXPRESSION,
                     "invar_tail",
                 ):
-                    tails.append(x)
+                    tails.append(value)
                 elif data in tailed_rules:
-                    payload = self._extract_tailed_rule_payload(x)
+                    payload = self._extract_tailed_rule_payload(value)
                     if payload is not None:
                         tails.append(payload)
-                for ch in getattr(x, "children", []):
-                    visit(ch)
+                for child in _tree_children(value):
+                    visit(child)
                 return
-            if isinstance(x, list):
-                for y in x:
-                    visit(y)
-                return
+            if isinstance(value, list):
+                for nested in cast(list[object], value):
+                    visit(nested)
 
-        for n in nodes:
-            visit(n)
+        for node in nodes:
+            visit(node)
         return tails
 
-    # ---------- top-level ----------
-
-    def start(self, items) -> BasePicture:
+    def start(self, items: list[TransformerItem]) -> BasePicture:
         """Grammar start -> BasePicture root from parsed program."""
         program_name: str | None = None
-        bp: BasePicture | None = None
-        for it in items:
-            if isinstance(it, Tree) and it.data == "header_lines":
-                program_name = _extract_program_name_from_header_lines(it)
-            elif isinstance(it, BasePicture):
-                bp = it
-        if bp is not None:
-            bp.program_name = program_name
-            return bp
-        types = ", ".join(type(x).__name__ for x in items)
+        base_picture: BasePicture | None = None
+        for item in items:
+            if isinstance(item, Tree) and item.data == "header_lines":
+                program_name = _extract_program_name_from_header_lines(cast(TransformerTree, item))
+            elif isinstance(item, BasePicture):
+                base_picture = item
+        if base_picture is not None:
+            base_picture.program_name = program_name
+            return base_picture
+        types = ", ".join(type(item).__name__ for item in items)
         raise ValueError(f"start expected a BasePicture; got: {types}")

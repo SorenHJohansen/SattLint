@@ -105,16 +105,34 @@ def _resolve_python_executable() -> str:
     return pipeline_execution_helpers._resolve_python_executable()
 
 
+def resolve_python_executable() -> str:
+    return _resolve_python_executable()
+
+
 def _resolve_venv_tool(tool_name: str) -> str | None:
     return pipeline_execution_helpers._resolve_venv_tool(tool_name)
+
+
+def resolve_venv_tool(tool_name: str) -> str | None:
+    return _resolve_venv_tool(tool_name)
 
 
 def _run_command(name: str, command: list[str], *, cwd: Path = REPO_ROOT) -> CommandResult:
     return pipeline_execution_helpers._run_command(name, command, cwd=cwd)
 
 
+def run_command(name: str, command: list[str], *, cwd: Path = REPO_ROOT) -> CommandResult:
+    if cwd == REPO_ROOT:
+        return _run_command(name, command)
+    return _run_command(name, command, cwd=cwd)
+
+
 def _detect_changed_files(*, repo_root: Path = REPO_ROOT) -> list[str]:
     return pipeline_execution_helpers._detect_changed_files(repo_root=repo_root)
+
+
+def detect_changed_files(*, repo_root: Path = REPO_ROOT) -> list[str]:
+    return _detect_changed_files(repo_root=repo_root)
 
 
 def _profile_settings(profile: str) -> dict[str, Any]:
@@ -135,6 +153,10 @@ def _profile_settings(profile: str) -> dict[str, Any]:
             "pytest_addopts_override": None,
         }
     raise ValueError(f"Unsupported pipeline profile: {profile}")
+
+
+def profile_settings(profile: str) -> dict[str, Any]:
+    return _profile_settings(profile)
 
 
 build_pipeline_check_catalog = pipeline_cli_helpers.build_pipeline_check_catalog
@@ -1158,6 +1180,47 @@ def _run_pipeline(
     except BaseException as error:
         _write_pipeline_failure_artifacts(context, error)
         raise
+
+
+def run_pipeline(
+    output_dir: Path,
+    *,
+    trace_target: Path | None,
+    mutation_target: Path | None = None,
+    profile: str = DEFAULT_PIPELINE_PROFILE,
+    include_vulture: bool | None = None,
+    include_bandit: bool | None = None,
+    baseline_findings: Path | None = None,
+    corpus_manifest_dir: Path | None = None,
+    changed_files: list[str] | None = None,
+    slow_phase_threshold_ms: float = 25.0,
+    phase_budget_ms: float = 50.0,
+    total_budget_ms: float = 250.0,
+    fail_on_drift: bool = False,
+    fail_on_budget: bool = False,
+    selected_checks: Iterable[str] | None = None,
+    run_mutation_analysis: bool = False,
+    pytest_workers: str | None = None,
+) -> dict[str, Any]:
+    return _run_pipeline(
+        output_dir,
+        trace_target=trace_target,
+        mutation_target=mutation_target,
+        profile=profile,
+        include_vulture=include_vulture,
+        include_bandit=include_bandit,
+        baseline_findings=baseline_findings,
+        corpus_manifest_dir=corpus_manifest_dir,
+        changed_files=changed_files,
+        slow_phase_threshold_ms=slow_phase_threshold_ms,
+        phase_budget_ms=phase_budget_ms,
+        total_budget_ms=total_budget_ms,
+        fail_on_drift=fail_on_drift,
+        fail_on_budget=fail_on_budget,
+        selected_checks=selected_checks,
+        run_mutation_analysis=run_mutation_analysis,
+        pytest_workers=pytest_workers,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

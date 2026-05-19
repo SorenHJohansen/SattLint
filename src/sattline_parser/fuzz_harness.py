@@ -247,5 +247,9 @@ def _is_expected_parse_error(error: Exception) -> bool:
     )
 
 
+def is_expected_parse_error(error: Exception) -> bool:
+    return _is_expected_parse_error(error)
+
+
 class TimeoutError(Exception):
     pass

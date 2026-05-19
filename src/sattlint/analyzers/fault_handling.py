@@ -14,11 +14,19 @@ from ._wave2_support import (
 from .framework import Issue
 
 
+def _empty_issue_list() -> list[Issue]:
+    return []
+
+
+def _empty_summary_data() -> dict[str, int]:
+    return {}
+
+
 @dataclass
 class FaultHandlingReport:
     name: str
-    issues: list[Issue] = field(default_factory=list)
-    summary_data: dict[str, int] = field(default_factory=dict)
+    issues: list[Issue] = field(default_factory=_empty_issue_list)
+    summary_data: dict[str, int] = field(default_factory=_empty_summary_data)
 
     def summary(self) -> str:
         lines = ["Report: Fault handling", f"Target: {self.name}"]

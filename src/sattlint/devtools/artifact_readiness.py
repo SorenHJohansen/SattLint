@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS
 
@@ -18,11 +18,16 @@ class ReadinessError(RuntimeError):
     """Raised when an artifact directory is missing or still unsafe to read."""
 
 
+def _json_mapping(value: object) -> dict[str, Any] | None:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else None
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
+    payload_dict = _json_mapping(payload)
+    if payload_dict is None:
         raise ValueError(f"{path.name} must contain a JSON object.")
-    return payload
+    return payload_dict
 
 
 def _contains_incomplete_stage(progress_payload: dict[str, Any]) -> bool:
@@ -35,8 +40,9 @@ def _contains_incomplete_stage(progress_payload: dict[str, Any]) -> bool:
     if not isinstance(stages, list):
         return False
     return any(
-        isinstance(stage, dict) and str(stage.get("status") or "").casefold() in {"pending", "running"}
-        for stage in stages
+        (stage := _json_mapping(stage_obj)) is not None
+        and str(stage.get("status") or "").casefold() in {"pending", "running"}
+        for stage_obj in cast(list[object], stages)
     )
 
 
@@ -47,18 +53,19 @@ def _required_root_artifacts() -> list[str]:
 def _required_pipeline_artifacts(summary_payload: dict[str, Any]) -> tuple[list[str], str | None]:
     if summary_payload.get("pipeline_ran") is not True:
         return [], None
-    pipeline_summary = summary_payload.get("pipeline_summary")
-    if not isinstance(pipeline_summary, dict):
+    pipeline_summary = _json_mapping(summary_payload.get("pipeline_summary"))
+    if pipeline_summary is None:
         return [], "pipeline summary missing from completed audit"
-    artifact_registry = pipeline_summary.get("artifact_registry")
-    if not isinstance(artifact_registry, dict):
+    artifact_registry = _json_mapping(pipeline_summary.get("artifact_registry"))
+    if artifact_registry is None:
         return [], "pipeline artifact registry missing from completed audit"
     artifacts = artifact_registry.get("artifacts")
     if not isinstance(artifacts, list):
         return [], "pipeline artifact registry is malformed"
     required: list[str] = []
-    for artifact in artifacts:
-        if not isinstance(artifact, dict):
+    for artifact_obj in cast(list[object], artifacts):
+        artifact = _json_mapping(artifact_obj)
+        if artifact is None:
             continue
         artifact_id = artifact.get("artifact_id")
         filename = artifact.get("filename")
@@ -138,8 +145,8 @@ def build_artifact_readiness_report(artifact_dir: Path) -> dict[str, Any]:
     progress_pending = isinstance(progress_payload, dict) and _contains_incomplete_stage(progress_payload)
     report["progress_pending"] = progress_pending
 
-    summary_error = summary_payload.get("error") if isinstance(summary_payload, dict) else None
-    status_error = status_payload.get("error") if isinstance(status_payload, dict) else None
+    summary_error: object = cast(object, summary_payload.get("error")) if isinstance(summary_payload, dict) else None
+    status_error: object = cast(object, status_payload.get("error")) if isinstance(status_payload, dict) else None
 
     if payload_errors:
         report["state"] = "incomplete"
@@ -157,9 +164,11 @@ def build_artifact_readiness_report(artifact_dir: Path) -> dict[str, Any]:
         report["state"] = "incomplete"
         report["message"] = "progress pending"
         return report
-    if isinstance(summary_error, dict) or isinstance(status_error, dict):
+    summary_error_payload = cast(dict[str, Any], summary_error) if isinstance(summary_error, dict) else None
+    status_error_payload = cast(dict[str, Any], status_error) if isinstance(status_error, dict) else None
+    if summary_error_payload is not None or status_error_payload is not None:
         report["state"] = "incomplete"
-        error_payload = summary_error if isinstance(summary_error, dict) else status_error or {}
+        error_payload = summary_error_payload or status_error_payload or {}
         error_message = str(error_payload.get("message") or "audit failed before publication")
         report["message"] = f"audit failed before completion: {error_message}"
         return report

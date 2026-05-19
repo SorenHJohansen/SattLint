@@ -2,41 +2,6 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "AI: CodeGraph Health",
-			"type": "process",
-			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
-			"windows": {
-				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
-			},
-			"args": [
-				"scripts/context_health.py",
-				"--check",
-				"--section",
-				"codegraph"
-			],
-			"problemMatcher": []
-		},
-		{
-			"label": "AI: Sync CodeGraph Index",
-			"type": "process",
-			"command": "codegraph",
-			"args": [
-				"sync",
-				"${workspaceFolder}"
-			],
-			"problemMatcher": []
-		},
-		{
-			"label": "AI: Rebuild CodeGraph Index",
-			"type": "process",
-			"command": "codegraph",
-			"args": [
-				"index",
-				"${workspaceFolder}"
-			],
-			"problemMatcher": []
-		},
-		{
 			"label": "AI: Planning Context",
 			"type": "process",
 			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
@@ -107,6 +72,91 @@
 				"artifacts/ai-chat-current"
 			],
 			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Quality: Recommend Pipeline Checks",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\.venv\Scripts\python.exe"
+			},
+			"args": [
+				"-m",
+				"sattlint.devtools.pipeline",
+				"--profile",
+				"full",
+				"--recommend-checks",
+				"--output-dir",
+				"artifacts/analysis"
+			],
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Quality: Shared Pipeline Finish Gate",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\.venv\Scripts\python.exe"
+			},
+			"args": [
+				"-m",
+				"sattlint.devtools.pipeline",
+				"--profile",
+				"full",
+				"--run-recommended-finish-gate",
+				"--output-dir",
+				"artifacts/analysis"
+			],
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Quality: Structural Ratchet",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\.venv\Scripts\python.exe"
+			},
+			"args": [
+				"-m",
+				"sattlint.devtools.structural_reports",
+				"--json"
+			],
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Analysis: Fixture Corpus Runner",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\.venv\Scripts\python.exe"
+			},
+			"args": [
+				"-m",
+				"sattlint.devtools.corpus",
+				"--manifest-dir",
+				"tests/fixtures/corpus/manifests",
+				"--output-dir",
+				"artifacts/analysis/corpus"
+			],
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Metrics: Observability Snapshot",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/run_repo_python.sh",
+			"windows": {
+				"command": "${workspaceFolder}\.venv\Scripts\python.exe"
+			},
+			"args": [
+				"-m",
+				"sattlint.devtools.observability"
+			],
 			"problemMatcher": [],
 			"group": "test"
 		},

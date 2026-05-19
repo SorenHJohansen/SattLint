@@ -261,6 +261,50 @@ def test_sattline_semantics_includes_scan_cycle_temporal_misuse_rule():
     assert any(issue.rule.id == "semantic.scan-cycle-temporal-misuse" for issue in report.issues)
 
 
+def test_sattline_semantics_includes_invalid_state_access_rule():
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[
+            DataType(
+                name="RegressionType",
+                description=None,
+                datecode=None,
+                var_list=[Variable(name="Running", datatype=Simple_DataType.BOOLEAN)],
+            ),
+            DataType(
+                name="SelfType",
+                description=None,
+                datecode=None,
+                var_list=[Variable(name="Regression", datatype="RegressionType")],
+            ),
+        ],
+        localvariables=[
+            Variable(name="Self", datatype="SelfType"),
+            Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (
+                            const.KEY_ASSIGN,
+                            _varref("Output"),
+                            {const.KEY_VAR_NAME: "Self.Regression.Running", "state": "old"},
+                        )
+                    ],
+                )
+            ],
+        ),
+    )
+
+    report = analyze_sattline_semantics(bp)
+
+    assert any(issue.rule.id == "semantic.invalid-state-access" for issue in report.issues)
+
+
 def test_sattline_semantics_includes_parallel_write_race_rule():
     bp = BasePicture(
         header=_hdr("Root"),

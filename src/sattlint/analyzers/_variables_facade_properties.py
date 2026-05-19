@@ -1,5 +1,7 @@
 """Forwarding property mixin for VariablesAnalyzer facade state."""
 
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 from typing import Any, ClassVar, Protocol, cast

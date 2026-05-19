@@ -3,14 +3,18 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+
+def _json_mapping(value: object) -> dict[str, Any] | None:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def load_json_mapping(path: Path, *, read_text_fn: Callable[[Path], str]) -> dict[str, Any]:
     payload = json.loads(read_text_fn(path))
     if not isinstance(payload, dict):
         raise ValueError(f"Expected JSON object in {path.as_posix()}")
-    return payload
+    return cast(dict[str, Any], payload)
 
 
 def load_pipeline_finding_count(
@@ -53,14 +57,14 @@ def load_pipeline_snapshot(
     if not isinstance(overall_status, str) or not overall_status:
         return None, f"invalid pipeline status in {status_path.as_posix()}"
 
-    counts = summary_payload.get("counts")
-    normalized_findings = counts.get("normalized_findings") if isinstance(counts, dict) else None
+    counts = _json_mapping(summary_payload.get("counts"))
+    normalized_findings = counts.get("normalized_findings") if counts is not None else None
     if not isinstance(normalized_findings, int):
         normalized_findings = load_pipeline_finding_count_fn(output_dir)
 
-    reports = summary_payload.get("reports")
+    reports = _json_mapping(summary_payload.get("reports"))
     coverage_total_line_rate: float | None = None
-    coverage_report = reports.get("coverage_summary") if isinstance(reports, dict) else None
+    coverage_report = reports.get("coverage_summary") if reports is not None else None
     if isinstance(coverage_report, str) and coverage_report:
         coverage_path = output_dir / coverage_report
         if coverage_path.exists():
@@ -68,8 +72,8 @@ def load_pipeline_snapshot(
                 coverage_payload = load_json_mapping_fn(coverage_path)
             except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
                 coverage_payload = {}
-            coverage_summary = coverage_payload.get("summary")
-            total_line_rate = coverage_summary.get("total_line_rate") if isinstance(coverage_summary, dict) else None
+            coverage_summary = _json_mapping(coverage_payload.get("summary"))
+            total_line_rate = coverage_summary.get("total_line_rate") if coverage_summary is not None else None
             if isinstance(total_line_rate, int | float):
                 coverage_total_line_rate = float(total_line_rate)
 

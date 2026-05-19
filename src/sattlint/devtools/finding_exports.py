@@ -3,14 +3,34 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
 from sattlint.path_sanitizer import sanitize_path_for_report
 
 _PYTEST_TRACEBACK_LOCATION_RE = re.compile(r"(?P<path>(?:[A-Za-z]:)?[^:\n]+?\.(?:py|s|x|l|z)):(?P<line>\d+)")
 _VULTURE_MESSAGE_RE = re.compile(r"unused (?P<kind>[A-Za-z][A-Za-z _-]*?) ['\"](?P<symbol>[^'\"]+)['\"]")
+
+
+def _coerce_mapping(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    mapping = cast(Mapping[object, Any], value)
+    return {str(key): item for key, item in mapping.items()}
+
+
+def _coerce_mapping_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    items: list[dict[str, Any]] = []
+    entries = cast(list[Any], value)
+    for item in entries:
+        if isinstance(item, Mapping):
+            mapping = cast(Mapping[object, Any], item)
+            items.append({str(key): nested_value for key, nested_value in mapping.items()})
+    return items
 
 
 def _sanitize_path(value: Any, *, repo_root: Path) -> str | None:
@@ -85,6 +105,10 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
+def _int_or_zero(value: Any) -> int:
+    return _int_or_none(value) or 0
+
+
 def _pytest_failure_location(detail: str | None, *, repo_root: Path) -> tuple[str | None, int | None]:
     if not detail:
         return None, None
@@ -114,7 +138,7 @@ def _build_ruff_findings(
 ) -> list[FindingRecord]:
     records: list[FindingRecord] = []
     for entry in findings:
-        location = entry.get("location") or {}
+        location = _coerce_mapping(entry.get("location"))
         code = str(entry.get("code") or "unknown").lower()
         path = _sanitize_path(entry.get("filename"), repo_root=repo_root)
         command = f"ruff check {path}" if path else "ruff check src tests"
@@ -131,8 +155,8 @@ def _build_ruff_findings(
                 artifact="findings",
                 location=FindingLocation(
                     path=path,
-                    line=location.get("row"),
-                    column=location.get("column"),
+                    line=_int_or_none(location.get("row")),
+                    column=_int_or_none(location.get("column")),
                 ),
                 owner_surface="python-style",
                 minimal_reproducer=command,
@@ -196,8 +220,8 @@ def _build_pyright_findings(
         severity = str(entry.get("severity") or "error").lower()
         rule = entry.get("rule") or ""
         code = str(entry.get("errorCode") or rule or "unknown")
-        range_data = entry.get("range", {})
-        start = range_data.get("start", {})
+        range_data = _coerce_mapping(entry.get("range"))
+        start = _coerce_mapping(range_data.get("start"))
         path = _sanitize_path(entry.get("file"), repo_root=repo_root)
         command = f"pyright {path}" if path else "pyright src tests"
         records.append(
@@ -213,8 +237,8 @@ def _build_pyright_findings(
                 artifact="findings",
                 location=FindingLocation(
                     path=path,
-                    line=start.get("line") if start else entry.get("line"),
-                    column=start.get("character") if start else entry.get("column"),
+                    line=_int_or_none(start.get("line")) if start else _int_or_none(entry.get("line")),
+                    column=_int_or_none(start.get("character")) if start else _int_or_none(entry.get("column")),
                 ),
                 owner_surface="python-types",
                 minimal_reproducer=command,
@@ -318,12 +342,11 @@ def _build_architecture_findings(findings: list[dict[str, Any]]) -> list[Finding
 
 
 def _build_pytest_findings(pytest_report: dict[str, Any], *, repo_root: Path) -> list[FindingRecord]:
-    summary = pytest_report.get("summary") or {}
-    failures = int(summary.get("failures", 0))
-    errors = int(summary.get("errors", 0))
-    failed_testcases = [
-        testcase for testcase in pytest_report.get("testcases", []) if testcase.get("outcome") in {"failed", "error"}
-    ]
+    summary = _coerce_mapping(pytest_report.get("summary"))
+    failures = _int_or_zero(summary.get("failures"))
+    errors = _int_or_zero(summary.get("errors"))
+    testcases = _coerce_mapping_list(pytest_report.get("testcases"))
+    failed_testcases = [testcase for testcase in testcases if testcase.get("outcome") in {"failed", "error"}]
     if failed_testcases:
         records: list[FindingRecord] = []
         for index, testcase in enumerate(failed_testcases, start=1):
@@ -408,9 +431,11 @@ def build_pipeline_finding_collection(
     vulture_findings: list[dict[str, Any]],
     bandit_findings: list[dict[str, Any]],
     architecture_findings: list[dict[str, Any]],
+    mypy_findings: list[dict[str, Any]] | None = None,
 ) -> FindingCollection:
     records = [
         *_build_ruff_findings(ruff_findings, repo_root=repo_root),
+        *_build_mypy_findings(list(mypy_findings or []), repo_root=repo_root),
         *_build_pyright_findings(pyright_findings, repo_root=repo_root),
         *_build_pytest_findings(pytest_report, repo_root=repo_root),
         *_build_vulture_findings(vulture_findings, repo_root=repo_root),

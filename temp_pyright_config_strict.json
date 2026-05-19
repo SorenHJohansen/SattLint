@@ -1,0 +1,10 @@
+{
+  "include": [
+    "src/sattlint/analyzers/_variable_traversal_walk.py",
+    "src/sattlint/analyzers/_variable_traversal_support.py",
+    "src/sattlint/analyzers/_variable_traversal_objects.py"
+  ],
+  "venvPath": ".",
+  "venv": "venv",
+  "typeCheckingMode": "strict"
+}

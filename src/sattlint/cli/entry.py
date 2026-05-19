@@ -3,14 +3,43 @@ from __future__ import annotations
 import argparse
 import io
 import sys
+from collections.abc import Callable
 from contextlib import nullcontext, redirect_stdout
 from pathlib import Path
+from typing import Any, Protocol, cast
 
 from ..__version__ import __version__
 from ..console import print_output
 
 EXIT_SUCCESS = 0
 EXIT_USAGE_ERROR = 1
+
+ConfigDict = dict[str, Any]
+BuildCliParserFn = Callable[[], argparse.ArgumentParser]
+RunSyntaxCheckCommandFn = Callable[[str], int]
+LoadConfigFn = Callable[[Path], tuple[ConfigDict, bool]]
+ApplyDebugFn = Callable[[ConfigDict], None]
+AppCommandFn = Callable[..., int | None]
+
+
+class _ParsedCliArgs(Protocol):
+    config: str | None
+    no_cache: bool
+    quiet: bool
+    command: str | None
+    file: str
+    checks: list[str]
+    target_path: str
+    module: str
+    mode: str
+    max_scans: int
+    format: str
+    output: str | None
+    check: bool
+
+
+def _exit_code(result: int | None, *, fallback: int) -> int:
+    return fallback if result is None else result
 
 
 def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
@@ -121,15 +150,15 @@ def run_cli(
     argv: list[str],
     *,
     config_path: Path,
-    build_cli_parser_fn=None,
-    run_syntax_check_command_fn=None,
-    load_config_fn=None,
-    apply_debug_fn=None,
-    run_validate_config_command_fn=None,
-    run_analyze_command_fn=None,
-    run_simulate_command_fn=None,
-    run_docgen_command_fn=None,
-    run_format_icf_command_fn=None,
+    build_cli_parser_fn: BuildCliParserFn | None = None,
+    run_syntax_check_command_fn: RunSyntaxCheckCommandFn | None = None,
+    load_config_fn: LoadConfigFn | None = None,
+    apply_debug_fn: ApplyDebugFn | None = None,
+    run_validate_config_command_fn: AppCommandFn | None = None,
+    run_analyze_command_fn: AppCommandFn | None = None,
+    run_simulate_command_fn: AppCommandFn | None = None,
+    run_docgen_command_fn: AppCommandFn | None = None,
+    run_format_icf_command_fn: AppCommandFn | None = None,
     exit_success: int = EXIT_SUCCESS,
     exit_usage_error: int = EXIT_USAGE_ERROR,
 ) -> int:
@@ -138,23 +167,26 @@ def run_cli(
 
     parser = build_cli_parser_fn()
     try:
-        args, leftover = parser.parse_known_args(argv)
+        parsed_namespace, leftover = parser.parse_known_args(argv)
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else exit_usage_error
         return code
 
-    resolved_config_path = Path(args.config) if args.config else config_path
-    use_cache = not getattr(args, "no_cache", False)
-    quiet = getattr(args, "quiet", False)
+    args = cast(_ParsedCliArgs, parsed_namespace)
 
-    if args.command == "syntax-check":
+    resolved_config_path = Path(args.config) if args.config else config_path
+    use_cache = not args.no_cache
+    quiet = args.quiet
+    command = args.command
+
+    if command == "syntax-check":
         if run_syntax_check_command_fn is None:
             raise RuntimeError("syntax-check handler is required")
         context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
         with context:
             return run_syntax_check_command_fn(args.file)
 
-    if args.command == "repo-audit":
+    if command == "repo-audit":
         from ..devtools import repo_audit
 
         try:
@@ -168,7 +200,7 @@ def run_cli(
         print_output(f"sattlint: error: unrecognized arguments: {' '.join(leftover)}", file=sys.stderr)
         return exit_usage_error
 
-    if args.command in ("validate-config", "analyze", "simulate", "docgen", "format-icf"):
+    if command in ("validate-config", "analyze", "simulate", "docgen", "format-icf"):
         try:
             if load_config_fn is None or apply_debug_fn is None:
                 raise RuntimeError("CLI config handlers are required for this command")
@@ -178,24 +210,27 @@ def run_cli(
             print_output(f"ERROR [config] {exc}", file=sys.stderr)
             return exit_usage_error
 
-        if args.command == "validate-config":
+        if command == "validate-config":
             if run_validate_config_command_fn is None:
                 raise RuntimeError("validate-config handler is required")
-            return (
-                run_validate_config_command_fn(cfg, config_path=resolved_config_path, default_used=default_used)
-                or exit_success
+            return _exit_code(
+                run_validate_config_command_fn(cfg, config_path=resolved_config_path, default_used=default_used),
+                fallback=exit_success,
             )
 
-        if args.command == "analyze":
+        if command == "analyze":
             if run_analyze_command_fn is None:
                 raise RuntimeError("analyze handler is required")
-            selected_keys = getattr(args, "checks", None) or None
-            return run_analyze_command_fn(cfg, selected_keys=selected_keys, use_cache=use_cache) or exit_success
+            selected_keys = args.checks or None
+            return _exit_code(
+                run_analyze_command_fn(cfg, selected_keys=selected_keys, use_cache=use_cache),
+                fallback=exit_success,
+            )
 
-        if args.command == "simulate":
+        if command == "simulate":
             if run_simulate_command_fn is None:
                 raise RuntimeError("simulate handler is required")
-            return (
+            return _exit_code(
                 run_simulate_command_fn(
                     cfg,
                     target_path=args.target_path,
@@ -205,18 +240,18 @@ def run_cli(
                     output_format=args.format,
                     output_path=args.output,
                     use_cache=use_cache,
-                )
-                or exit_success
+                ),
+                fallback=exit_success,
             )
 
-        if args.command == "docgen":
+        if command == "docgen":
             if run_docgen_command_fn is None:
                 raise RuntimeError("docgen handler is required")
-            return run_docgen_command_fn(cfg, use_cache=use_cache) or exit_success
+            return _exit_code(run_docgen_command_fn(cfg, use_cache=use_cache), fallback=exit_success)
 
         if run_format_icf_command_fn is None:
             raise RuntimeError("format-icf handler is required")
-        return run_format_icf_command_fn(cfg, check=getattr(args, "check", False))
+        return _exit_code(run_format_icf_command_fn(cfg, check=args.check), fallback=exit_success)
 
     parser.print_usage(sys.stderr)
     return exit_usage_error

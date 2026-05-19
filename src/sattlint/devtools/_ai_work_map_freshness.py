@@ -3,9 +3,38 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.devtools.pipeline_checks import collect_repo_file_inventory, path_matches_globs
+
+type JsonDict = dict[str, object]
+
+
+def _dict_entries(value: object) -> list[JsonDict]:
+    if not isinstance(value, list):
+        return []
+    items = cast(list[object], value)
+    entries: list[JsonDict] = []
+    for item in items:
+        if isinstance(item, dict):
+            entries.append(cast(JsonDict, item))
+    return entries
+
+
+def _string_entries(value: object) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    items = cast(list[object] | tuple[object, ...], value)
+    entries: list[str] = []
+    for item in items:
+        text = str(item).strip()
+        if text:
+            entries.append(text)
+    return entries
+
+
+def _string_value(value: object, default: str = "") -> str:
+    return default if value is None else str(value)
 
 
 def _catalog_registry_path(source: str) -> str:
@@ -47,7 +76,7 @@ def verify_ai_harness_freshness(
     repo_files = collect_repo_file_inventory(repo_root)
     issues: list[dict[str, Any]] = []
 
-    expected_work_map = ai_work_map_module._render_json(resolved_work_map)
+    expected_work_map = ai_work_map_module.render_json(resolved_work_map)
     if not output_path.exists():
         issues.append(
             {
@@ -67,7 +96,7 @@ def verify_ai_harness_freshness(
             }
         )
 
-    expected_session_context_map = ai_work_map_module._render_json(resolved_session_context_map)
+    expected_session_context_map = ai_work_map_module.render_json(resolved_session_context_map)
     if not session_output_path.exists():
         issues.append(
             {
@@ -107,10 +136,10 @@ def verify_ai_harness_freshness(
             }
         )
 
-    instructions = [entry for entry in resolved_work_map.get("instructions", []) if isinstance(entry, dict)]
+    instructions = _dict_entries(resolved_work_map.get("instructions"))
     for entry in instructions:
-        file_path = str(entry.get("file_path", "")).strip()
-        apply_to = [str(pattern).strip() for pattern in entry.get("apply_to", []) if str(pattern).strip()]
+        file_path = _string_value(entry.get("file_path")).strip()
+        apply_to = _string_entries(entry.get("apply_to"))
         if not apply_to:
             issues.append(
                 {
@@ -145,16 +174,14 @@ def verify_ai_harness_freshness(
                 }
             )
 
-    agents = {
-        str(entry.get("name", "")).strip(): entry
-        for entry in resolved_work_map.get("agents", [])
-        if isinstance(entry, dict) and str(entry.get("name", "")).strip()
-    }
+    agents: dict[str, JsonDict] = {}
+    for entry in _dict_entries(resolved_work_map.get("agents")):
+        agent_name = _string_value(entry.get("name")).strip()
+        if agent_name:
+            agents[agent_name] = entry
     routed_agents: set[str] = set()
-    for rule in resolved_work_map.get("agent_routing", []):
-        if not isinstance(rule, dict):
-            continue
-        agent_name = str(rule.get("agent_name", "")).strip()
+    for rule in _dict_entries(resolved_work_map.get("agent_routing")):
+        agent_name = _string_value(rule.get("agent_name")).strip()
         if not agent_name:
             continue
         if agent_name not in agents:
@@ -169,7 +196,7 @@ def verify_ai_harness_freshness(
             )
             continue
         routed_agents.add(agent_name)
-        path_globs = [str(pattern).strip() for pattern in rule.get("path_globs", []) if str(pattern).strip()]
+        path_globs = _string_entries(rule.get("path_globs"))
         if not path_globs:
             issues.append(
                 {
@@ -217,22 +244,23 @@ def verify_ai_harness_freshness(
                 "issue_id": "orphaned-agent",
                 "severity": "high",
                 "message": "User-invocable agent has no routing rule and cannot be recommended automatically.",
-                "path": str(entry.get("file_path", "")).strip(),
+                "path": _string_value(entry.get("file_path")).strip(),
                 "agent_name": agent_name,
             }
         )
 
-    instruction_lookup = ai_work_map_module._instruction_lookup(resolved_work_map)
+    instruction_lookup = ai_work_map_module.instruction_lookup(resolved_work_map)
     for collection_name in ("pipeline_checks", "repo_audit_checks"):
-        for entry in resolved_work_map.get(collection_name, []):
-            if not isinstance(entry, dict):
-                continue
-            check_id = str(entry.get("id", "")).strip()
+        for entry in _dict_entries(resolved_work_map.get(collection_name)):
+            check_id = _string_value(entry.get("id")).strip()
             if not check_id:
                 continue
-            source = str(entry.get("source", "pipeline" if collection_name == "pipeline_checks" else "repo-audit"))
+            source = _string_value(
+                entry.get("source"),
+                "pipeline" if collection_name == "pipeline_checks" else "repo-audit",
+            )
             registry_path = _catalog_registry_path(source)
-            ai_summary = str(entry.get("ai_summary", "")).strip()
+            ai_summary = _string_value(entry.get("ai_summary")).strip()
             if not ai_summary:
                 issues.append(
                     {
@@ -243,10 +271,7 @@ def verify_ai_harness_freshness(
                         "check_id": check_id,
                     }
                 )
-
-            ai_instruction_files = [
-                str(path_text).strip() for path_text in entry.get("ai_instruction_files", []) if str(path_text).strip()
-            ]
+            ai_instruction_files = _string_entries(entry.get("ai_instruction_files"))
             if not ai_instruction_files:
                 issues.append(
                     {

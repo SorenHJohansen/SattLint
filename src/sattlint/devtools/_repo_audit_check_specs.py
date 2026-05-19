@@ -227,9 +227,7 @@ def build_repo_audit_check_recommendations(
     repo_audit = entrypoints_module._repo_audit_module()
     resolved_output_dir = (output_dir or repo_audit.DEFAULT_OUTPUT_DIR).resolve()
     changed_file_list = normalize_changed_files(
-        pipeline_module._detect_changed_files(repo_root=repo_audit.REPO_ROOT)
-        if changed_files is None
-        else changed_files
+        pipeline_module.detect_changed_files(repo_root=repo_audit.REPO_ROOT) if changed_files is None else changed_files
     )
     catalog = entrypoints_module.build_repo_audit_check_catalog(
         profile=profile,

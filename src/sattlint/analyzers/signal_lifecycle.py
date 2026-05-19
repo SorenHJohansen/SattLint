@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any
+from typing import cast
 
 from sattline_parser.models.ast_model import BasePicture, ModuleCode, Variable
 
@@ -11,11 +11,69 @@ from ._wave2_support import iter_read_variable_names, iter_statement_sites, root
 from .framework import Issue
 
 
+def _empty_issue_list() -> list[Issue]:
+    return []
+
+
+def _empty_summary_data() -> dict[str, int]:
+    return {}
+
+
+_NodeTuple = tuple[object, ...]
+_NodeList = list[object]
+_NodeSequence = _NodeTuple | _NodeList
+
+
+def _object_tuple(node: object) -> _NodeTuple | None:
+    if isinstance(node, tuple):
+        return cast(_NodeTuple, node)
+    return None
+
+
+def _object_list(node: object) -> _NodeList | None:
+    if isinstance(node, list):
+        return cast(_NodeList, node)
+    return None
+
+
+def _object_sequence(node: object) -> _NodeSequence | None:
+    tuple_items = _object_tuple(node)
+    if tuple_items is not None:
+        return tuple_items
+    return _object_list(node)
+
+
+def _statement_children(node: object) -> _NodeSequence | None:
+    if getattr(node, "data", None) != const.KEY_STATEMENT:
+        return None
+    return _object_sequence(getattr(node, "children", None))
+
+
+def _sequence_as_list(node: object) -> list[object]:
+    items = _object_sequence(node)
+    if items is None:
+        return []
+    return list(items)
+
+
+def _iter_branch_pairs(node: object) -> list[tuple[object, object]]:
+    branches = _object_sequence(node)
+    if branches is None:
+        return []
+    pairs: list[tuple[object, object]] = []
+    for branch in branches:
+        branch_items = _object_sequence(branch)
+        if branch_items is None or len(branch_items) < 2:
+            continue
+        pairs.append((branch_items[0], branch_items[1]))
+    return pairs
+
+
 @dataclass
 class SignalLifecycleReport:
     name: str
-    issues: list[Issue] = field(default_factory=list)
-    summary_data: dict[str, int] = field(default_factory=dict)
+    issues: list[Issue] = field(default_factory=_empty_issue_list)
+    summary_data: dict[str, int] = field(default_factory=_empty_summary_data)
 
     def summary(self) -> str:
         lines = ["Report: Signal lifecycle", f"Target: {self.name}"]
@@ -120,7 +178,7 @@ class SignalLifecycleAnalyzer:
 
     def _process_node(
         self,
-        node: Any,
+        node: object,
         *,
         written: set[str],
         env: dict[str, Variable],
@@ -130,9 +188,10 @@ class SignalLifecycleAnalyzer:
         write_sites: dict[str, set[str]],
         site_label: str,
     ) -> set[str]:
-        if hasattr(node, "data") and getattr(node, "data", None) == const.KEY_STATEMENT:
+        statement_children = _statement_children(node)
+        if statement_children is not None:
             current = set(written)
-            for child in getattr(node, "children", []):
+            for child in statement_children:
                 current = self._process_node(
                     child,
                     written=current,
@@ -145,10 +204,12 @@ class SignalLifecycleAnalyzer:
                 )
             return current
 
-        if isinstance(node, tuple) and node:
-            tag = node[0]
-            if tag == const.KEY_ASSIGN and len(node) >= 3:
-                _assign, target, expr = node[:3]
+        tuple_node = _object_tuple(node)
+        if tuple_node is not None and tuple_node:
+            tag = tuple_node[0]
+            if tag == const.KEY_ASSIGN and len(tuple_node) >= 3:
+                target = tuple_node[1]
+                expr = tuple_node[2]
                 self._mark_reads(
                     expr,
                     written=written,
@@ -170,10 +231,11 @@ class SignalLifecycleAnalyzer:
                 write_sites[key].add(site_label)
                 return next_written
 
-            if tag == const.GRAMMAR_VALUE_IF and len(node) == 3:
-                _if_tag, branches, else_block = node
+            if tag == const.GRAMMAR_VALUE_IF and len(tuple_node) == 3:
+                branches = tuple_node[1]
+                else_block = tuple_node[2]
                 branch_written: list[set[str]] = []
-                for condition, branch_statements in branches or []:
+                for condition, branch_statements in _iter_branch_pairs(branches):
                     self._mark_reads(
                         condition,
                         written=written,
@@ -184,7 +246,7 @@ class SignalLifecycleAnalyzer:
                         site_label=site_label,
                     )
                     branch_state = set(written)
-                    for statement in branch_statements or []:
+                    for statement in _sequence_as_list(branch_statements):
                         branch_state = self._process_node(
                             statement,
                             written=branch_state,
@@ -197,7 +259,7 @@ class SignalLifecycleAnalyzer:
                         )
                     branch_written.append(branch_state)
                 else_state = set(written)
-                for statement in else_block or []:
+                for statement in _sequence_as_list(else_block):
                     else_state = self._process_node(
                         statement,
                         written=else_state,
@@ -209,7 +271,12 @@ class SignalLifecycleAnalyzer:
                         site_label=site_label,
                     )
                 branch_written.append(else_state)
-                return set.intersection(*branch_written) if branch_written else set(written)
+                if not branch_written:
+                    return set(written)
+                merged_written = set(branch_written[0])
+                for branch_state in branch_written[1:]:
+                    merged_written.intersection_update(branch_state)
+                return merged_written
 
         self._mark_reads(
             node,
@@ -224,7 +291,7 @@ class SignalLifecycleAnalyzer:
 
     def _mark_reads(
         self,
-        node: Any,
+        node: object,
         *,
         written: set[str],
         env: dict[str, Variable],

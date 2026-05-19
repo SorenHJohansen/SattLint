@@ -183,6 +183,42 @@ ENDDEF (*BasePicture*);
     assert "uses OLD on non-STATE variable 'CMD.Other'" in result.message
 
 
+def test_validate_single_file_syntax_rejects_old_on_non_state_nested_self_field(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+    RegressionType = RECORD DateCode_ 1
+        Running: boolean;
+    ENDDEF (*RegressionType*);
+    SelfType = RECORD DateCode_ 1
+        Regression: RegressionType;
+    ENDDEF (*SelfType*);
+LOCALVARIABLES
+    Self: SelfType;
+    Output: boolean := False;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        IF Self.Regression.Running:Old THEN
+            Output = True;
+        ENDIF;
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "OldOnNonStateNestedSelfField.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert "uses OLD on non-STATE variable 'Self.Regression.Running'" in result.message
+
+
 def test_load_source_text_preserves_state_markers_in_compressed_libraries():
     cases = [
         ("StateMarkersLib.x", "GetRemoteFile", "ExecuteLocal"),

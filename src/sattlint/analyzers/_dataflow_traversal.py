@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     FrameModule,
@@ -24,6 +24,38 @@ from ..resolution.common import resolve_moduletype_def_strict
 from ..resolution.scope import ScopeContext
 from ._dataflow_common import StateMap
 from ._dataflow_scope_support import _DataflowScopeSupportMixin
+
+_NodeTuple = tuple[object, ...]
+_NodeList = list[object]
+_NodeSequence = _NodeTuple | _NodeList
+
+
+def _object_tuple(node: object) -> _NodeTuple | None:
+    return cast(_NodeTuple, node) if isinstance(node, tuple) else None
+
+
+def _object_list(node: object) -> _NodeList | None:
+    return cast(_NodeList, node) if isinstance(node, list) else None
+
+
+def _object_sequence(node: object) -> _NodeSequence | None:
+    tuple_items = _object_tuple(node)
+    if tuple_items is not None:
+        return tuple_items
+    return _object_list(node)
+
+
+def _statement_children(node: object) -> _NodeSequence | None:
+    if getattr(node, "data", None) != const.KEY_STATEMENT:
+        return None
+    return _object_sequence(getattr(node, "children", None))
+
+
+def _sequence_as_list(node: object) -> list[object]:
+    items = _object_sequence(node)
+    if items is None:
+        return []
+    return list(items)
 
 
 class _DataflowTraversalMixin(_DataflowScopeSupportMixin):
@@ -349,34 +381,38 @@ class _DataflowTraversalMixin(_DataflowScopeSupportMixin):
 
     def _analyze_stmt_or_expr(
         self: Any,
-        obj: Any,
+        obj: object,
         context: ScopeContext,
         module_path: list[str],
         state: StateMap,
     ) -> StateMap:
-        if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
+        statement_children = _statement_children(obj)
+        if statement_children is not None:
             current_state = state
-            for child in getattr(obj, "children", []):
+            for child in statement_children:
                 current_state = self._analyze_stmt_or_expr(child, context, module_path, current_state)
             return current_state
 
-        if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
-            return self._analyze_if_statement(obj, context, module_path, state)
+        tuple_node = _object_tuple(obj)
+        if tuple_node is not None and tuple_node and tuple_node[0] == const.GRAMMAR_VALUE_IF:
+            return self._analyze_if_statement(cast(tuple[Any, ...], tuple_node), context, module_path, state)
 
-        if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
-            _assign, target, expr = obj
+        if tuple_node is not None and tuple_node and tuple_node[0] == const.KEY_ASSIGN and len(tuple_node) >= 3:
+            target = tuple_node[1]
+            expr = tuple_node[2]
             current_state = state
             self._report_expression_temporal_hazards(expr, context, module_path, current_state)
             value = self._evaluate_expression(expr, context, module_path, current_state)
             return self._write_target(target, value, context, current_state)
 
-        if isinstance(obj, tuple) and obj and obj[0] == const.KEY_FUNCTION_CALL:
-            _call, function_name, args = obj
+        if tuple_node is not None and tuple_node and tuple_node[0] == const.KEY_FUNCTION_CALL:
+            function_name = tuple_node[1] if len(tuple_node) > 1 else None
+            args = _sequence_as_list(tuple_node[2] if len(tuple_node) > 2 else None)
             current_state = state
-            for argument in args or []:
+            for argument in args:
                 self._report_expression_temporal_hazards(argument, context, module_path, current_state)
                 self._evaluate_expression(argument, context, module_path, current_state)
-            return self._apply_call_side_effects(function_name, args or [], context, current_state)
+            return self._apply_call_side_effects(function_name, args, context, current_state)
 
         self._report_expression_temporal_hazards(obj, context, module_path, state)
         self._evaluate_expression(obj, context, module_path, state)

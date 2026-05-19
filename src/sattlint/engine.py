@@ -22,7 +22,7 @@ from sattline_parser.models.ast_model import (
 from sattline_parser.transformer.sl_transformer import SLTransformer
 
 from .cache import FileASTCache, FileLookupCache, get_cache_dir
-from .graphics_validation import validate_graphics_file
+from .graphics_validation import GraphicsValidationResult, validate_graphics_file
 from .models.project_graph import ProjectFailure, ProjectGraph
 from .utils.text_processing import find_disallowed_comments
 from .validation import (
@@ -236,7 +236,7 @@ def resolve_graphics_companion_path(
 
 def _graphics_validation_to_syntax_result(
     file_path: Path,
-    result,
+    result: GraphicsValidationResult,
     *,
     warnings: Iterable[str] = (),
 ) -> SyntaxValidationResult:
@@ -266,7 +266,7 @@ def _record_project_failure(graph: ProjectGraph, name: str, exception: Exception
     line = getattr(exception, "line", None)
     column = getattr(exception, "column", None)
     length = getattr(exception, "length", None)
-    if isinstance(exception, VisitError) and exception.orig_exc is not None:
+    if isinstance(exception, VisitError):
         line = line if line is not None else getattr(exception.orig_exc, "line", None)
         column = column if column is not None else getattr(exception.orig_exc, "column", None)
         length = length if length is not None else getattr(exception.orig_exc, "length", None)
@@ -323,7 +323,7 @@ class DebugMixin:
                 log.debug(f"[DEBUG] {line}")
 
 
-def _is_within_directory(path: Path, directory: Path) -> bool:
+def is_within_directory(path: Path, directory: Path) -> bool:
     try:
         path.resolve().relative_to(directory.resolve())
         return True
@@ -391,7 +391,7 @@ def parse_source_file(
 def _extract_error_position(exc: Exception) -> tuple[int | None, int | None]:
     line = getattr(exc, "line", None)
     column = getattr(exc, "column", None)
-    if isinstance(exc, VisitError) and exc.orig_exc is not None:
+    if isinstance(exc, VisitError):
         line = line if line is not None else getattr(exc.orig_exc, "line", None)
         column = column if column is not None else getattr(exc.orig_exc, "column", None)
     return line, column
@@ -438,7 +438,7 @@ def validate_single_file_syntax(
         )
     except VisitError as exc:
         line, column = _extract_error_position(exc)
-        message = str(exc.orig_exc) if exc.orig_exc is not None else str(exc)
+        message = str(exc.orig_exc)
         return SyntaxValidationResult(
             file_path=target_path,
             ok=False,
@@ -815,7 +815,7 @@ class SattLineProjectLoader(DebugMixin):
     def _load_or_parse(self, code_path: Path) -> BasePicture:
         if self.use_file_ast_cache:
             cached = self._ast_cache.load(code_path, self.mode.value)
-            if cached is not None:
+            if isinstance(cached, BasePicture):
                 self.dbg(f"Using cached AST for: {code_path}")
                 return cached
 
@@ -854,12 +854,6 @@ class SattLineProjectLoader(DebugMixin):
         try:
             validation_warnings: list[str] = []
             bp = self._load_or_parse(code_path)
-            if bp is None:
-                msg = f"{root_name} transformed to no BasePicture (parse/transform issue?)"
-                if strict:
-                    raise RuntimeError(msg)
-                graph.missing.append(msg)
-                return graph
             validate_transformed_basepicture(
                 bp,
                 allow_unresolved_external_datatypes=not strict,
@@ -945,49 +939,45 @@ class SattLineProjectLoader(DebugMixin):
                 try:
                     validation_warnings: list[str] = []
                     bp = self._load_or_parse(code_path)
-                    if bp is not None:
-                        try:
-                            validate_transformed_basepicture(
-                                bp,
-                                external_datatypes=tuple(graph.datatype_defs.values()),
-                                external_moduletype_defs=tuple(graph.moduletype_defs.values()),
-                                allow_unresolved_external_datatypes=not strict,
-                                enforce_unique_submodule_names=False,
-                                allow_parameterless_module_mappings=True,
-                                warn_unknown_parameter_targets=True,
-                                warn_incompatible_parameter_mappings=True,
-                                warning_sink=validation_warnings.append,
-                            )
-                        except StructuralValidationError as ex:
-                            if key == root_key:
-                                raise
-                            _record_project_warning(graph, name, f"validation warning: {ex}")
-                        for warning in validation_warnings:
-                            _record_project_warning(graph, name, warning)
-                        graph.ast_by_name[name] = bp
-                        lib_name = self._record_library_name(name, code_path)
-                        version_conflicts = _collect_dependency_version_conflicts(
-                            graph,
+                    try:
+                        validate_transformed_basepicture(
                             bp,
-                            library_name=lib_name,
-                            source_path=code_path,
+                            external_datatypes=tuple(graph.datatype_defs.values()),
+                            external_moduletype_defs=tuple(graph.moduletype_defs.values()),
+                            allow_unresolved_external_datatypes=not strict,
+                            enforce_unique_submodule_names=False,
+                            allow_parameterless_module_mappings=True,
+                            warn_unknown_parameter_targets=True,
+                            warn_incompatible_parameter_mappings=True,
+                            warning_sink=validation_warnings.append,
                         )
-                        if version_conflicts:
-                            if strict:
-                                raise DependencyVersionCompatibilityError(version_conflicts)
-                            for conflict in version_conflicts:
-                                _record_project_warning(
-                                    graph,
-                                    name,
-                                    f"version compatibility warning: {conflict}",
-                                )
-                        graph.add_library_dependencies(lib_name, dep_libs)
-                        graph.index_from_basepic(
-                            bp, source_path=code_path, library_name=lib_name
-                        )  # aggregate defs for global analysis [2]
-                    else:
-                        msg = f"{name} transform produced no BasePicture (skipped)"
-                        graph.missing.append(msg)
+                    except StructuralValidationError as ex:
+                        if key == root_key:
+                            raise
+                        _record_project_warning(graph, name, f"validation warning: {ex}")
+                    for warning in validation_warnings:
+                        _record_project_warning(graph, name, warning)
+                    graph.ast_by_name[name] = bp
+                    lib_name = self._record_library_name(name, code_path)
+                    version_conflicts = _collect_dependency_version_conflicts(
+                        graph,
+                        bp,
+                        library_name=lib_name,
+                        source_path=code_path,
+                    )
+                    if version_conflicts:
+                        if strict:
+                            raise DependencyVersionCompatibilityError(version_conflicts)
+                        for conflict in version_conflicts:
+                            _record_project_warning(
+                                graph,
+                                name,
+                                f"version compatibility warning: {conflict}",
+                            )
+                    graph.add_library_dependencies(lib_name, dep_libs)
+                    graph.index_from_basepic(
+                        bp, source_path=code_path, library_name=lib_name
+                    )  # aggregate defs for global analysis [2]
                 except Exception as ex:
                     for warning in locals().get("validation_warnings", []):
                         _record_project_warning(graph, name, warning)

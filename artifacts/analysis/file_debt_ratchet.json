@@ -133,15 +133,6 @@
         "touch_rule": "must_reach_target_on_touch"
       }
     },
-    "src/sattlint/analyzers/mms.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 7536,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
     "src/sattlint/analyzers/modules.py": {
       "coverage": {
         "allow_rebaseline": false,
@@ -334,15 +325,6 @@
         "touch_rule": "must_reach_target_on_touch"
       }
     },
-    "src/sattlint/config.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 9786,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
     "src/sattlint/console.py": {
       "coverage": {
         "allow_rebaseline": false,
@@ -458,15 +440,6 @@
         "touch_rule": "must_reach_target_on_touch"
       }
     },
-    "src/sattlint/devtools/doc_gardener.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 7277,
-        "reason": "Touched doc-gardener coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
     "src/sattlint/devtools/finding_exports.py": {
       "coverage": {
         "allow_rebaseline": false,
@@ -534,15 +507,6 @@
       "coverage": {
         "allow_rebaseline": false,
         "current_baseline": 8807,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
-    "src/sattlint/devtools/review_tool.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 9048,
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"

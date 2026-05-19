@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from . import config as config_module
+from . import config_validation as config_validation_module
 from . import console as console_module
 
 emit_output = console_module.print_output
@@ -12,7 +13,7 @@ emit_output = console_module.print_output
 
 def _self_check_directories(cfg: dict[str, Any]) -> bool:
     validation = config_module.validate_loaded_config(cfg)
-    errors_by_key = config_module._validation_errors_by_key(validation)
+    errors_by_key = config_validation_module.validation_errors_by_key(validation)
     ok = True
 
     for name in ("program_dir", "ABB_lib_dir", "icf_dir"):
@@ -43,9 +44,9 @@ def _self_check_directories(cfg: dict[str, Any]) -> bool:
 
 def _self_check_targets(cfg: dict[str, Any]) -> bool:
     validation = config_module.validate_loaded_config(cfg)
-    errors_by_key = config_module._validation_errors_by_key(validation)
+    errors_by_key = config_validation_module.validation_errors_by_key(validation)
     ok = True
-    targets = list(config_module._configured_targets(cfg))
+    targets = list(config_validation_module.configured_targets(cfg))
     if not targets:
         emit_output("WARNING analyzed_programs_and_libraries is empty")
         emit_output("Configure targets before running analyses, documentation, or AST cache refresh.")

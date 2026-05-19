@@ -373,6 +373,15 @@ def _document_path(document: TextDocument) -> Path:
     return Path(uris.to_fs_path(uri) or uri).resolve()
 
 
+DEFAULT_MAX_COMPLETION_ITEMS = _DEFAULT_MAX_COMPLETION_ITEMS
+NAME_PATTERN = _NAME_PATTERN
+RECOVERABLE_LSP_EXCEPTIONS = _RECOVERABLE_LSP_EXCEPTIONS
+cf = _cf
+path_startswith = _path_startswith
+range_for_definition = _range_for_definition
+range_from_position = _range_from_position
+
+
 _symbol_helpers = import_module("sattlint_lsp._server_symbol_helpers")
 _collect_reference_matches = _symbol_helpers._collect_reference_matches
 _definition_locations_from_candidates = _symbol_helpers._definition_locations_from_candidates
@@ -445,7 +454,6 @@ def _build_hover(definition: SymbolDefinition) -> Hover | None:
 DEFAULT_LOCAL_PARSER = _DEFAULT_LOCAL_PARSER
 INTERACTIVE_SNAPSHOT_WAIT_S = _INTERACTIVE_SNAPSHOT_WAIT_S
 DIAGNOSTIC_SNAPSHOT_WAIT_S = _DIAGNOSTIC_SNAPSHOT_WAIT_S
-RECOVERABLE_LSP_EXCEPTIONS = _RECOVERABLE_LSP_EXCEPTIONS
 append_workspace_edit = _append_workspace_edit
 build_hover = _build_hover
 collect_reference_matches = _collect_reference_matches
@@ -462,8 +470,6 @@ merge_completion_items = _merge_completion_items
 merge_locations = _merge_locations
 merge_unique_diagnostics = _merge_unique_diagnostics
 overlay_definition_candidates = _overlay_definition_candidates
-range_for_definition = _range_for_definition
-range_from_position = _range_from_position
 reference_locations_from_matches = _reference_locations_from_matches
 resolve_reference_path = _resolve_reference_path
 root_workspace_failure_message = _root_workspace_failure_message

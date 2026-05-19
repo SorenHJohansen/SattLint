@@ -1,5 +1,7 @@
 """Helper functions extracted from the repo audit entrypoints facade."""
 
+# pyright: reportUnusedFunction=false
+
 from __future__ import annotations
 
 from collections import Counter

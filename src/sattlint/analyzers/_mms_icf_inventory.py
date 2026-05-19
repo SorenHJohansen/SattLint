@@ -1,5 +1,7 @@
 """ICF inventory loading and translation helpers for MMS analysis."""
 
+# pyright: reportPrivateUsage=false
+
 from __future__ import annotations
 
 from dataclasses import dataclass

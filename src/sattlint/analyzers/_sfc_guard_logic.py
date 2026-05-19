@@ -1,13 +1,14 @@
+# pyright: reportUnusedFunction=false
+
 """SFC guard normalization and transition logic analysis."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence as SequenceABC
-from typing import Any
+from typing import TypedDict, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
-    Sequence,
     SFCAlternative,
     SFCParallel,
     SFCSubsequence,
@@ -20,6 +21,38 @@ from ..grammar import constants as const
 from ..resolution.paths import CanonicalPath
 from ._sfc_module_walk import iter_sfc_modulecodes
 from .framework import Issue
+
+GuardLiteral = bool | int | float | str
+
+
+class _DuplicateTransition(TypedDict):
+    name: str
+    condition: str
+    normalized_guard: str
+
+
+def _tuple_parts(value: object) -> tuple[object, ...] | None:
+    if not isinstance(value, tuple):
+        return None
+    return cast(tuple[object, ...], value)
+
+
+def _iter_values(value: object) -> list[object]:
+    if isinstance(value, list):
+        return cast(list[object], value)
+    if isinstance(value, tuple):
+        return list(cast(tuple[object, ...], value))
+    return []
+
+
+def _comparison_pairs(raw: object) -> list[tuple[str, object]]:
+    pairs: list[tuple[str, object]] = []
+    for item in _iter_values(raw):
+        parts = _tuple_parts(item)
+        if parts is None or len(parts) != 2 or not isinstance(parts[0], str):
+            continue
+        pairs.append((parts[0], parts[1]))
+    return pairs
 
 
 def _paths_conflict(a: CanonicalPath, b: CanonicalPath) -> bool:
@@ -36,7 +69,7 @@ def _conflict_rep(a: CanonicalPath, b: CanonicalPath) -> CanonicalPath:
     return b
 
 
-def _expr_text(expr: Any) -> str:
+def _expr_text(expr: object) -> str:
     return " ".join(format_expr(expr).split())
 
 
@@ -53,11 +86,13 @@ def _invert_compare_operator(operator: str) -> str:
     }.get(operator, operator)
 
 
-def _signature_literal_value(signature: object) -> bool | int | float | str | None:
-    if not isinstance(signature, tuple) or len(signature) != 2:
+def _signature_literal_value(signature: object) -> GuardLiteral | None:
+    parts = _tuple_parts(signature)
+    if parts is None or len(parts) != 2:
         return None
-    tag, value = signature
-    if tag in {"bool", "int", "float", "str"}:
+    tag = parts[0]
+    value = parts[1]
+    if tag in {"bool", "int", "float", "str"} and isinstance(value, bool | int | float | str):
         return value
     return None
 
@@ -90,12 +125,17 @@ def _complement_signature(signature: object) -> object:
         return ("bool", False)
     if signature == ("bool", False):
         return ("bool", True)
-    if isinstance(signature, tuple) and signature:
-        tag = signature[0]
-        if tag == "not" and len(signature) == 2:
-            return signature[1]
-        if tag == "compare" and len(signature) == 4:
-            _tag, operator, left, right = signature
+    parts = _tuple_parts(signature)
+    if parts:
+        tag = parts[0]
+        if tag == "not" and len(parts) == 2:
+            return parts[1]
+        if tag == "compare" and len(parts) == 4:
+            operator = parts[1]
+            left = parts[2]
+            right = parts[3]
+            if not isinstance(operator, str):
+                return ("not", signature)
             if operator == "==":
                 return ("compare", "<>", left, right)
             if operator == "<>":
@@ -114,8 +154,9 @@ def _complement_signature(signature: object) -> object:
 def _normalize_logical_guard(kind: str, parts: list[object]) -> object:
     flattened: list[object] = []
     for part in parts:
-        if isinstance(part, tuple) and len(part) == 2 and part[0] == kind:
-            flattened.extend(part[1])
+        part_tuple = _tuple_parts(part)
+        if part_tuple is not None and len(part_tuple) == 2 and part_tuple[0] == kind:
+            flattened.extend(_iter_values(part_tuple[1]))
         else:
             flattened.append(part)
 
@@ -149,7 +190,7 @@ def _normalize_logical_guard(kind: str, parts: list[object]) -> object:
     return (kind, tuple(normalized))
 
 
-def _normalize_compare_guard(left: Any, operator: str, right: Any) -> object:
+def _normalize_compare_guard(left: object, operator: str, right: object) -> object:
     left_signature = _normalize_guard_signature(left)
     right_signature = _normalize_guard_signature(right)
 
@@ -177,11 +218,13 @@ def _normalize_compare_guard(left: Any, operator: str, right: Any) -> object:
     return ("compare", normalized_operator, left_signature, right_signature)
 
 
-def _normalize_guard_signature(expr: Any) -> object:
-    if hasattr(expr, "data") and expr.data == const.KEY_STATEMENT:
-        children = getattr(expr, "children", [])
+def _normalize_guard_signature(expr: object) -> object:
+    if getattr(expr, "data", None) == const.KEY_STATEMENT:
+        children = getattr(expr, "children", None)
+        if not isinstance(children, list):
+            return ("text", "")
         if children:
-            return _normalize_guard_signature(children[0])
+            return _normalize_guard_signature(cast(list[object], children)[0])
         return ("text", "")
 
     if isinstance(expr, bool):
@@ -194,42 +237,45 @@ def _normalize_guard_signature(expr: Any) -> object:
         return ("str", expr)
 
     if isinstance(expr, dict) and const.KEY_VAR_NAME in expr:
-        full_name = expr[const.KEY_VAR_NAME]
-        state_access = expr.get("state")
+        payload = cast(dict[str, object], expr)
+        full_name = payload.get(const.KEY_VAR_NAME)
+        state_access = payload.get("state")
         if isinstance(full_name, str) and full_name:
             if isinstance(state_access, str) and state_access:
                 return ("var", full_name.casefold(), state_access.casefold())
             return ("var", full_name.casefold())
-        return ("text", _expr_text(expr).casefold())
+        return ("text", _expr_text(cast(object, expr)).casefold())
 
-    if isinstance(expr, tuple) and expr:
-        operator = expr[0]
+    expr_parts = _tuple_parts(cast(object, expr))
+    if expr_parts:
+        operator = expr_parts[0]
 
-        if operator == const.GRAMMAR_VALUE_NOT:
-            return _complement_signature(_normalize_guard_signature(expr[1]))
+        if operator == const.GRAMMAR_VALUE_NOT and len(expr_parts) >= 2:
+            return _complement_signature(_normalize_guard_signature(expr_parts[1]))
 
-        if operator in (const.GRAMMAR_VALUE_AND, const.GRAMMAR_VALUE_OR):
+        if operator in (const.GRAMMAR_VALUE_AND, const.GRAMMAR_VALUE_OR) and len(expr_parts) >= 2:
             logical_kind = "and" if operator == const.GRAMMAR_VALUE_AND else "or"
             return _normalize_logical_guard(
                 logical_kind,
-                [_normalize_guard_signature(part) for part in expr[1] or []],
+                [_normalize_guard_signature(part) for part in _iter_values(expr_parts[1])],
             )
 
-        if operator in (const.KEY_COMPARE, "compare"):
-            _compare, left, pairs = expr
-            comparisons = [_normalize_compare_guard(left, symbol, right) for symbol, right in pairs or []]
+        if operator in (const.KEY_COMPARE, "compare") and len(expr_parts) == 3:
+            left = expr_parts[1]
+            comparisons = [_normalize_compare_guard(left, symbol, right) for symbol, right in _comparison_pairs(expr_parts[2])]
             if not comparisons:
                 return _normalize_guard_signature(left)
             if len(comparisons) == 1:
                 return comparisons[0]
             return _normalize_logical_guard("and", comparisons)
 
-    return ("text", _expr_text(expr).casefold())
+    return ("text", _expr_text(cast(object, expr)).casefold())
 
 
 def _guard_constant_truth(signature: object) -> bool | None:
-    if isinstance(signature, tuple) and len(signature) == 2 and signature[0] == "bool":
-        return bool(signature[1])
+    parts = _tuple_parts(signature)
+    if parts is not None and len(parts) == 2 and parts[0] == "bool":
+        return bool(parts[1])
     return None
 
 
@@ -242,11 +288,11 @@ def _collect_transition_logic_issues(base_picture: BasePicture) -> list[Issue]:
         sequence_name: str,
         branch_path: tuple[int, ...] = (),
     ) -> None:
-        duplicate_groups: dict[str, list[dict[str, Any]]] = {}
+        duplicate_groups: dict[str, list[_DuplicateTransition]] = {}
 
         for index, node in enumerate(nodes or []):
             if isinstance(node, SFCTransition):
-                condition_text = _expr_text(node.condition)
+                condition_text = _expr_text(cast(object, node.condition))
                 signature = _normalize_guard_signature(node.condition)
                 constant_truth = _guard_constant_truth(signature)
                 transition_name = node.name or f"<unnamed:{index + 1}>"
@@ -282,13 +328,12 @@ def _collect_transition_logic_issues(base_picture: BasePicture) -> list[Issue]:
                         )
                     )
 
-                duplicate_groups.setdefault(repr(signature), []).append(
-                    {
-                        "name": transition_name,
-                        "condition": condition_text,
-                        "normalized_guard": repr(signature),
-                    }
+                duplicate = _DuplicateTransition(
+                    name=transition_name,
+                    condition=condition_text,
+                    normalized_guard=repr(signature),
                 )
+                duplicate_groups.setdefault(repr(signature), []).append(duplicate)
                 continue
 
             if isinstance(node, SFCAlternative | SFCParallel):
@@ -330,8 +375,7 @@ def _collect_transition_logic_issues(base_picture: BasePicture) -> list[Issue]:
         if modulecode is None:
             continue
         for sequence in modulecode.sequences or []:
-            if isinstance(sequence, Sequence):
-                inspect_nodes(sequence.code, module_path, sequence.name)
+            inspect_nodes(sequence.code, module_path, sequence.name)
 
     return issues
 

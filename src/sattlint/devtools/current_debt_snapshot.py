@@ -5,11 +5,15 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 CURRENT_DEBT_SNAPSHOT_SCHEMA_KIND = "sattlint.current_debt_snapshot"
 CURRENT_DEBT_SNAPSHOT_SCHEMA_VERSION = 1
 FILE_DEBT_RATCHET_PATH = Path("artifacts") / "analysis" / "file_debt_ratchet.json"
+
+
+def _json_mapping(value: object) -> dict[str, Any] | None:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def _normalize_file_debt_entries(payload: dict[str, Any]) -> dict[str, dict[str, dict[str, Any]]]:
@@ -18,16 +22,19 @@ def _normalize_file_debt_entries(payload: dict[str, Any]) -> dict[str, dict[str,
         raise ValueError("file_debt_ratchet.json must contain a files object.")
 
     normalized: dict[str, dict[str, dict[str, Any]]] = {}
-    for raw_path, raw_dimensions in sorted(raw_files.items()):
+    for raw_path, raw_dimensions in sorted(
+        cast(dict[object, object], raw_files).items(), key=lambda item: str(item[0])
+    ):
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise ValueError("file_debt_ratchet.json contains an invalid path key.")
         if not isinstance(raw_dimensions, dict) or not raw_dimensions:
             raise ValueError(f"file_debt_ratchet.json entry for {raw_path!r} must be a non-empty object.")
-        normalized[raw_path] = {
-            str(dimension): dict(payload)
-            for dimension, payload in sorted(raw_dimensions.items())
-            if isinstance(payload, dict)
-        }
+        raw_dimensions_dict = cast(dict[object, object], raw_dimensions)
+        normalized_dimensions: dict[str, dict[str, Any]] = {}
+        for dimension, dimension_payload in sorted(raw_dimensions_dict.items(), key=lambda item: str(item[0])):
+            if isinstance(dimension_payload, dict):
+                normalized_dimensions[str(dimension)] = dict(cast(dict[str, Any], dimension_payload))
+        normalized[raw_path] = normalized_dimensions
     return normalized
 
 
@@ -37,11 +44,11 @@ def _load_file_debt_entries(repo_root: Path) -> tuple[dict[str, dict[str, dict[s
         return {}, f"{FILE_DEBT_RATCHET_PATH.as_posix()} not found"
 
     try:
-        payload = json.loads(ledger_path.read_text(encoding="utf-8"))
+        payload = _json_mapping(json.loads(ledger_path.read_text(encoding="utf-8")))
     except (OSError, json.JSONDecodeError) as exc:
         return {}, f"{FILE_DEBT_RATCHET_PATH.as_posix()} could not be read: {exc}"
 
-    if not isinstance(payload, dict):
+    if payload is None:
         return {}, f"{FILE_DEBT_RATCHET_PATH.as_posix()} must contain a JSON object"
 
     try:
@@ -59,11 +66,12 @@ def _coverage_basis_points_by_path(coverage_summary_report: Mapping[str, Any] | 
         return {}
 
     coverage_by_path: dict[str, int] = {}
-    for module in modules:
+    for module in cast(list[object], modules):
         if not isinstance(module, Mapping):
             continue
-        path = module.get("path")
-        line_rate = module.get("line_rate")
+        module_mapping = cast(Mapping[str, Any], module)
+        path = module_mapping.get("path")
+        line_rate = module_mapping.get("line_rate")
         if not isinstance(path, str) or line_rate is None:
             continue
         try:
@@ -122,7 +130,11 @@ def build_current_debt_snapshot_report(
     if isinstance(structural_budget_report, Mapping):
         structural_counts_raw = structural_budget_report.get("current_file_line_counts")
     structural_counts = (
-        {str(path): int(count) for path, count in structural_counts_raw.items() if isinstance(count, int)}
+        {
+            str(path): int(count)
+            for path, count in cast(Mapping[object, object], structural_counts_raw).items()
+            if isinstance(count, int)
+        }
         if isinstance(structural_counts_raw, Mapping)
         else {}
     )

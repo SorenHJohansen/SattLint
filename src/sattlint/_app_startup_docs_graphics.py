@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from sattline_parser.models.ast_model import BasePicture
 
@@ -22,16 +22,13 @@ def discover_graphics_rule_selector_options(
     iter_loaded_projects_fn: Callable[[ConfigDict], Iterator[LoadedProject]],
     collect_graphics_layout_entries_for_target_fn: Callable[[str, BasePicture, ProjectGraph], list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
-    return cast(
-        list[dict[str, Any]],
-        discover_graphics_rule_selector_options_fn(
-            cfg,
-            selector_field=selector_field,
-            module_kind=module_kind,
-            has_analyzed_targets_fn=has_analyzed_targets_fn,
-            iter_loaded_projects_fn=iter_loaded_projects_fn,
-            collect_graphics_layout_entries_for_target_fn=collect_graphics_layout_entries_for_target_fn,
-        ),
+    return discover_graphics_rule_selector_options_fn(
+        cfg,
+        selector_field=selector_field,
+        module_kind=module_kind,
+        has_analyzed_targets_fn=has_analyzed_targets_fn,
+        iter_loaded_projects_fn=iter_loaded_projects_fn,
+        collect_graphics_layout_entries_for_target_fn=collect_graphics_layout_entries_for_target_fn,
     )
 
 
@@ -43,14 +40,11 @@ def pick_or_prompt_graphics_rule_selector_value(
     pick_or_prompt_graphics_rule_selector_value_fn: Callable[..., str],
     discover_graphics_rule_selector_options_fn: Callable[..., list[dict[str, Any]]],
 ) -> str:
-    return cast(
-        str,
-        pick_or_prompt_graphics_rule_selector_value_fn(
-            selector_field,
-            module_kind,
-            cfg=cfg,
-            discover_graphics_rule_selector_options_fn=discover_graphics_rule_selector_options_fn,
-        ),
+    return pick_or_prompt_graphics_rule_selector_value_fn(
+        selector_field,
+        module_kind,
+        cfg=cfg,
+        discover_graphics_rule_selector_options_fn=discover_graphics_rule_selector_options_fn,
     )
 
 
@@ -63,15 +57,12 @@ def annotate_graphics_entries_with_structure_paths(
     classify_documentation_structure_fn: Callable[..., Any],
     discover_documentation_unit_candidates_fn: Callable[..., list[Any]],
 ) -> list[dict[str, Any]]:
-    return cast(
-        list[dict[str, Any]],
-        annotate_graphics_entries_with_structure_paths_fn(
-            entries,
-            project_bp,
-            graph,
-            classify_documentation_structure_fn=classify_documentation_structure_fn,
-            discover_documentation_unit_candidates_fn=discover_documentation_unit_candidates_fn,
-        ),
+    return annotate_graphics_entries_with_structure_paths_fn(
+        entries,
+        project_bp,
+        graph,
+        classify_documentation_structure_fn=classify_documentation_structure_fn,
+        discover_documentation_unit_candidates_fn=discover_documentation_unit_candidates_fn,
     )
 
 
@@ -117,14 +108,11 @@ def prompt_graphics_rule_definition_with_config(
     pause_fn: Callable[[], None],
     pick_or_prompt_graphics_rule_selector_value_fn: Callable[..., str],
 ) -> dict[str, Any] | None:
-    return cast(
-        dict[str, Any] | None,
-        prompt_graphics_rule_definition_with_config_fn(
-            cfg,
-            prompt_fn=prompt_fn,
-            pause_fn=pause_fn,
-            pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
-        ),
+    return prompt_graphics_rule_definition_with_config_fn(
+        cfg,
+        prompt_fn=prompt_fn,
+        pause_fn=pause_fn,
+        pick_or_prompt_graphics_rule_selector_value_fn=pick_or_prompt_graphics_rule_selector_value_fn,
     )
 
 
@@ -136,14 +124,11 @@ def collect_graphics_layout_entries_for_target(
     collect_graphics_layout_entries_for_target_fn: Callable[..., list[dict[str, Any]]],
     annotate_graphics_entries_with_structure_paths_fn: Callable[..., list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
-    return cast(
-        list[dict[str, Any]],
-        collect_graphics_layout_entries_for_target_fn(
-            target_name,
-            project_bp,
-            graph,
-            annotate_graphics_entries_with_structure_paths_fn=annotate_graphics_entries_with_structure_paths_fn,
-        ),
+    return collect_graphics_layout_entries_for_target_fn(
+        target_name,
+        project_bp,
+        graph,
+        annotate_graphics_entries_with_structure_paths_fn=annotate_graphics_entries_with_structure_paths_fn,
     )
 
 
@@ -171,7 +156,7 @@ def get_documentation_unit_selection(
     *,
     get_documentation_unit_selection_fn: Callable[[], dict[str, Any]],
 ) -> dict[str, Any]:
-    return cast(dict[str, Any], get_documentation_unit_selection_fn())
+    return get_documentation_unit_selection_fn()
 
 
 def preview_documentation_unit_candidates(
@@ -194,12 +179,9 @@ def configure_documentation_scope_by_moduletype(
     split_csv_values_fn: Callable[[str], list[str]],
     pause_fn: Callable[[], None],
 ) -> bool:
-    return cast(
-        bool,
-        configure_documentation_scope_by_moduletype_fn(
-            split_csv_values_fn=split_csv_values_fn,
-            pause_fn=pause_fn,
-        ),
+    return configure_documentation_scope_by_moduletype_fn(
+        split_csv_values_fn=split_csv_values_fn,
+        pause_fn=pause_fn,
     )
 
 
@@ -209,12 +191,9 @@ def configure_documentation_scope_by_instance_path(
     split_csv_values_fn: Callable[[str], list[str]],
     pause_fn: Callable[[], None],
 ) -> bool:
-    return cast(
-        bool,
-        configure_documentation_scope_by_instance_path_fn(
-            split_csv_values_fn=split_csv_values_fn,
-            pause_fn=pause_fn,
-        ),
+    return configure_documentation_scope_by_instance_path_fn(
+        split_csv_values_fn=split_csv_values_fn,
+        pause_fn=pause_fn,
     )
 
 
@@ -223,7 +202,7 @@ def reset_documentation_scope(
     reset_documentation_scope_fn: Callable[..., bool],
     pause_fn: Callable[[], None],
 ) -> bool:
-    return cast(bool, reset_documentation_scope_fn(pause_fn=pause_fn))
+    return reset_documentation_scope_fn(pause_fn=pause_fn)
 
 
 def run_generate_documentation(
@@ -255,19 +234,16 @@ def documentation_menu(
     iter_loaded_projects_fn: Callable[[ConfigDict], Iterator[LoadedProject]],
     prompt_fn: Callable[..., str],
 ) -> bool:
-    return cast(
-        bool,
-        documentation_menu_fn(
-            cfg,
-            clear_screen_fn=clear_screen_fn,
-            print_menu_fn=print_menu_fn,
-            menu_option_factory=menu_option_factory,
-            quit_app_fn=quit_app_fn,
-            pause_fn=pause_fn,
-            split_csv_values_fn=split_csv_values_fn,
-            iter_loaded_projects_fn=iter_loaded_projects_fn,
-            prompt_fn=prompt_fn,
-        ),
+    return documentation_menu_fn(
+        cfg,
+        clear_screen_fn=clear_screen_fn,
+        print_menu_fn=print_menu_fn,
+        menu_option_factory=menu_option_factory,
+        quit_app_fn=quit_app_fn,
+        pause_fn=pause_fn,
+        split_csv_values_fn=split_csv_values_fn,
+        iter_loaded_projects_fn=iter_loaded_projects_fn,
+        prompt_fn=prompt_fn,
     )
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from sattline_parser.models.ast_model import BasePicture
 
@@ -49,23 +49,20 @@ def run_cli(
     exit_success: int,
     exit_usage_error: int,
 ) -> int:
-    return cast(
-        int,
-        run_cli_owner_fn(
-            argv,
-            config_path=config_path,
-            build_cli_parser_fn=build_cli_parser_fn,
-            run_syntax_check_command_fn=run_syntax_check_command_fn,
-            load_config_fn=load_config_fn,
-            apply_debug_fn=apply_debug_fn,
-            run_validate_config_command_fn=run_validate_config_command_fn,
-            run_analyze_command_fn=run_analyze_command_fn,
-            run_simulate_command_fn=run_simulate_command_fn,
-            run_docgen_command_fn=run_docgen_command_fn,
-            run_format_icf_command_fn=run_format_icf_command_fn,
-            exit_success=exit_success,
-            exit_usage_error=exit_usage_error,
-        ),
+    return run_cli_owner_fn(
+        argv,
+        config_path=config_path,
+        build_cli_parser_fn=build_cli_parser_fn,
+        run_syntax_check_command_fn=run_syntax_check_command_fn,
+        load_config_fn=load_config_fn,
+        apply_debug_fn=apply_debug_fn,
+        run_validate_config_command_fn=run_validate_config_command_fn,
+        run_analyze_command_fn=run_analyze_command_fn,
+        run_simulate_command_fn=run_simulate_command_fn,
+        run_docgen_command_fn=run_docgen_command_fn,
+        run_format_icf_command_fn=run_format_icf_command_fn,
+        exit_success=exit_success,
+        exit_usage_error=exit_usage_error,
     )
 
 
@@ -79,16 +76,13 @@ def run_validate_config_command(
     exit_success: int,
     exit_usage_error: int,
 ) -> int:
-    return cast(
-        int,
-        run_validate_config_command_fn(
-            cfg,
-            config_path=config_path,
-            default_used=default_used,
-            validate_config_fn=validate_config_fn,
-            exit_success=exit_success,
-            exit_usage_error=exit_usage_error,
-        ),
+    return run_validate_config_command_fn(
+        cfg,
+        config_path=config_path,
+        default_used=default_used,
+        validate_config_fn=validate_config_fn,
+        exit_success=exit_success,
+        exit_usage_error=exit_usage_error,
     )
 
 
@@ -118,15 +112,12 @@ def run_analyze_command(
             pause_fn=None,
         )
 
-    return cast(
-        int,
-        run_analyze_command_fn(
-            cfg,
-            selected_keys=selected_keys,
-            use_cache=use_cache,
-            run_checks_fn=_run_checks,
-            exit_success=exit_success,
-        ),
+    return run_analyze_command_fn(
+        cfg,
+        selected_keys=selected_keys,
+        use_cache=use_cache,
+        run_checks_fn=_run_checks,
+        exit_success=exit_success,
     )
 
 
@@ -145,21 +136,18 @@ def run_simulate_command(
     exit_success: int,
     exit_usage_error: int,
 ) -> int:
-    return cast(
-        int,
-        run_simulate_command_fn(
-            cfg,
-            target_path=target_path,
-            module_name=module_name,
-            mode=mode,
-            max_scans=max_scans,
-            output_format=output_format,
-            output_path=output_path,
-            use_cache=use_cache,
-            simulate_fn=simulate_fn,
-            exit_success=exit_success,
-            exit_usage_error=exit_usage_error,
-        ),
+    return run_simulate_command_fn(
+        cfg,
+        target_path=target_path,
+        module_name=module_name,
+        mode=mode,
+        max_scans=max_scans,
+        output_format=output_format,
+        output_path=output_path,
+        use_cache=use_cache,
+        simulate_fn=simulate_fn,
+        exit_success=exit_success,
+        exit_usage_error=exit_usage_error,
     )
 
 
@@ -178,18 +166,15 @@ def run_docgen_command(
     def _iter_projects(local_cfg: ConfigDict, local_use_cache: bool) -> Iterator[LoadedProject]:
         return iter_loaded_projects_fn(local_cfg, use_cache=local_use_cache)
 
-    return cast(
-        int,
-        run_docgen_command_fn(
-            cfg,
-            use_cache=use_cache,
-            output_dir=output_dir,
-            output_path=output_path,
-            iter_loaded_projects_fn=_iter_projects,
-            documentation_unit_selection_fn=documentation_unit_selection_fn,
-            exit_success=exit_success,
-            exit_usage_error=exit_usage_error,
-        ),
+    return run_docgen_command_fn(
+        cfg,
+        use_cache=use_cache,
+        output_dir=output_dir,
+        output_path=output_path,
+        iter_loaded_projects_fn=_iter_projects,
+        documentation_unit_selection_fn=documentation_unit_selection_fn,
+        exit_success=exit_success,
+        exit_usage_error=exit_usage_error,
     )
 
 
@@ -237,7 +222,7 @@ def summarize_targets(
     summarize_targets_fn: Callable[..., str],
     get_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
 ) -> str:
-    return cast(str, summarize_targets_fn(cfg, get_analyzed_targets_fn=get_analyzed_targets_fn))
+    return summarize_targets_fn(cfg, get_analyzed_targets_fn=get_analyzed_targets_fn)
 
 
 def show_help(
@@ -302,24 +287,21 @@ def config_menu(
     graphics_rules_menu_fn: Callable[[ConfigDict], None],
     quit_app_fn: Callable[[], None],
 ) -> bool:
-    return cast(
-        bool,
-        config_menu_fn(
-            cfg,
-            config_path=config_path,
-            clear_screen_fn=clear_screen_fn,
-            show_config_fn=show_config_fn,
-            print_menu_fn=print_menu_fn,
-            menu_option_factory=menu_option_factory,
-            prompt_fn=prompt_fn,
-            pause_fn=pause_fn,
-            confirm_fn=confirm_fn,
-            target_exists_fn=target_exists_fn,
-            save_config_fn=save_config_fn,
-            apply_debug_fn=apply_debug_fn,
-            graphics_rules_menu_fn=graphics_rules_menu_fn,
-            quit_app_fn=quit_app_fn,
-        ),
+    return config_menu_fn(
+        cfg,
+        config_path=config_path,
+        clear_screen_fn=clear_screen_fn,
+        show_config_fn=show_config_fn,
+        print_menu_fn=print_menu_fn,
+        menu_option_factory=menu_option_factory,
+        prompt_fn=prompt_fn,
+        pause_fn=pause_fn,
+        confirm_fn=confirm_fn,
+        target_exists_fn=target_exists_fn,
+        save_config_fn=save_config_fn,
+        apply_debug_fn=apply_debug_fn,
+        graphics_rules_menu_fn=graphics_rules_menu_fn,
+        quit_app_fn=quit_app_fn,
     )
 
 

@@ -13,9 +13,9 @@
 {"type":"tool.execution_complete","data":{"toolCallId":"tool-5","success":true},"id":"evt-13","timestamp":"2026-05-15T10:00:12Z","parentId":"evt-12"}
 {"type":"tool.execution_start","data":{"toolCallId":"tool-6","toolName":"semantic_search","arguments":{"query":"chat observability transcript metrics"}},"id":"evt-14","timestamp":"2026-05-15T10:00:13Z","parentId":"evt-13"}
 {"type":"tool.execution_complete","data":{"toolCallId":"tool-6","success":true},"id":"evt-15","timestamp":"2026-05-15T10:00:14Z","parentId":"evt-14"}
-{"type":"tool.execution_start","data":{"toolCallId":"tool-7","toolName":"codegraph_search","arguments":{"query":"ai chat observability"}},"id":"evt-16","timestamp":"2026-05-15T10:00:15Z","parentId":"evt-15"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-7","toolName":"grep_search","arguments":{"query":"ai chat observability","isRegexp":false}},"id":"evt-16","timestamp":"2026-05-15T10:00:15Z","parentId":"evt-15"}
 {"type":"tool.execution_complete","data":{"toolCallId":"tool-7","success":false,"error":"tool unavailable"},"id":"evt-17","timestamp":"2026-05-15T10:00:16Z","parentId":"evt-16"}
-{"type":"tool.execution_start","data":{"toolCallId":"tool-8","toolName":"codegraph_search","arguments":{"query":"ai chat observability"}},"id":"evt-18","timestamp":"2026-05-15T10:00:17Z","parentId":"evt-17"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-8","toolName":"grep_search","arguments":{"query":"ai chat observability","isRegexp":false}},"id":"evt-18","timestamp":"2026-05-15T10:00:17Z","parentId":"evt-17"}
 {"type":"tool.execution_complete","data":{"toolCallId":"tool-8","success":false,"error":"tool unavailable"},"id":"evt-19","timestamp":"2026-05-15T10:00:18Z","parentId":"evt-18"}
 {"type":"tool.execution_start","data":{"toolCallId":"tool-9","toolName":"apply_patch","arguments":{"input":"*** Begin Patch"}},"id":"evt-20","timestamp":"2026-05-15T10:00:19Z","parentId":"evt-19"}
 {"type":"tool.execution_complete","data":{"toolCallId":"tool-9","success":true},"id":"evt-21","timestamp":"2026-05-15T10:00:20Z","parentId":"evt-20"}

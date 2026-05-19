@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import (
@@ -14,6 +14,8 @@ from sattline_parser.models.ast_model import (
 )
 
 from ..contracts import FindingCollection
+
+MutationRecordValue = str | bool | None
 
 MUTATION_RESULTS_FILENAME = "mutation_results.json"
 MUTATION_SCHEMA_KIND = "sattlint.mutation_results"
@@ -31,11 +33,27 @@ class MutationRecord:
     killing_rule_id: str | None = None
 
 
+def _empty_mutation_records() -> list[MutationRecord]:
+    return []
+
+
 @dataclass
 class MutationResults:
-    records: list[MutationRecord] = field(default_factory=list)
+    records: list[MutationRecord] = field(default_factory=_empty_mutation_records)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
+        records: list[dict[str, MutationRecordValue]] = [
+            {
+                "mutation_kind": record.mutation_kind,
+                "location": record.location,
+                "original": record.original,
+                "mutated": record.mutated,
+                "killed": record.killed,
+                "killing_analyzer": record.killing_analyzer,
+                "killing_rule_id": record.killing_rule_id,
+            }
+            for record in self.records
+        ]
         return {
             "kind": MUTATION_SCHEMA_KIND,
             "schema_version": MUTATION_SCHEMA_VERSION,
@@ -44,18 +62,7 @@ class MutationResults:
                 "killed": sum(1 for r in self.records if r.killed),
                 "alive": sum(1 for r in self.records if not r.killed),
             },
-            "records": [
-                {
-                    "mutation_kind": r.mutation_kind,
-                    "location": r.location,
-                    "original": r.original,
-                    "mutated": r.mutated,
-                    "killed": r.killed,
-                    "killing_analyzer": r.killing_analyzer,
-                    "killing_rule_id": r.killing_rule_id,
-                }
-                for r in self.records
-            ],
+            "records": records,
         }
 
     @property
@@ -82,10 +89,9 @@ def _mutate_literal(source: str, literal_type: str = "bool") -> Iterable[str]:
                 if mutated != source:
                     yield mutated
         elif literal_type == "numeric":
-            import re
 
-            def _flip_numeric(m: re.Match) -> str:
-                value = m.group(0)
+            def _flip_numeric(match: re.Match[str]) -> str:
+                value: str = match.group(0)
                 try:
                     return str(int(value) + 1)
                 except ValueError:

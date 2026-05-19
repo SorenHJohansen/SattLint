@@ -1,6 +1,6 @@
 """Shared helpers for MMS interface inventory analysis."""
 
-# pyright: reportPrivateUsage=false
+# pyright: reportPrivateUsage=false, reportUnusedFunction=false
 
 from __future__ import annotations
 
@@ -180,7 +180,7 @@ def _extract_external_tag(
     inst: ModuleTypeInstance,
     mt_def: ModuleTypeDef | None,
 ) -> str | None:
-    available_names = (
+    available_names: set[str] = (
         {variable.name.casefold() for variable in (mt_def.moduleparameters or [])} if mt_def is not None else set()
     )
     for mapping in inst.parametermappings or []:
@@ -223,7 +223,7 @@ def _resolve_source_details(
     leaf_name = variable.name
     for field in field_segments:
         leaf_name = field
-        if isinstance(current_type, Simple_DataType) or current_type is None:
+        if not isinstance(current_type, str):
             return _datatype_label(current_type), leaf_name
 
         field_def = type_graph.field(str(current_type), field)
@@ -256,3 +256,19 @@ def _best_icf_validation_report(
         if candidate.valid_entries == best_report.valid_entries and len(candidate.issues) < len(best_report.issues):
             best_report = candidate
     return best_report
+
+
+extract_external_tag = _extract_external_tag
+find_parameter_mapping = _find_parameter_mapping
+find_variable = _find_variable
+normalize_external_tag = _normalize_external_tag
+tag_family_key = _tag_family_key
+
+
+__all__ = [
+    "extract_external_tag",
+    "find_parameter_mapping",
+    "find_variable",
+    "normalize_external_tag",
+    "tag_family_key",
+]

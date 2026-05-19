@@ -119,6 +119,12 @@ pytest -q --tb=short
 # Auto-fix touched Python files after AI edits
 python scripts/run_ai_edit_gate.py
 
+# Lint GitHub Actions workflows via the repo wrapper used by pre-commit and CI
+python scripts/run_actionlint.py
+
+# Lint Markdown via the repo wrapper used by pre-commit and CI
+python scripts/run_markdownlint.py --config .markdownlint-cli2.jsonc
+
 # Run the fast local pre-commit gate
 python -m pre_commit run --all-files
 
@@ -169,6 +175,10 @@ python -m pre_commit run --all-files
 Use `python scripts/run_ai_edit_gate.py` after AI or scripted edits to auto-fix touched Python files with Ruff and to rerun context health when the AI-control plane changes.
 Use `python -m pre_commit run --all-files` as the fast local hygiene gate for staged formatting, changed Markdown lint, SattLine syntax-check, and targeted context-health checks.
 Use `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit` as the real local pre-push gate. It selects the right finish gate for the current slice and carries the broader proof burden.
+Use the workspace tasks `Quality: Recommend Pipeline Checks` and `Quality: Shared Pipeline Finish Gate` when you need the narrower shared-pipeline routing described in the CLI docs without running the full repo-audit wrapper.
+Use `Quality: Structural Ratchet` before or after larger refactors that may move file-size or method-size budgets.
+Use `Analysis: Fixture Corpus Runner` when parser or analyzer changes need proof against the checked-in corpus manifests.
+Use `Metrics: Observability Snapshot` only for manual local diagnostics; it is not part of the normal finish gate.
 
 ## AI-First Workflow
 

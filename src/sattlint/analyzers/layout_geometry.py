@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import combinations
+from typing import TypeGuard, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -14,6 +15,8 @@ from ..grammar import constants as const
 from ..reporting.variables_report import IssueKind, VariableIssue
 
 _Rect = tuple[float, float, float, float]
+_Point = tuple[float, float]
+_PointPair = tuple[_Point, _Point]
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,18 +53,39 @@ def _point_pair_to_rect(first: tuple[float, float], second: tuple[float, float])
     return (left, top, right, bottom)
 
 
+def _is_point(value: object) -> TypeGuard[_Point]:
+    if not isinstance(value, tuple):
+        return False
+    coords = cast(tuple[object, ...], value)
+    return (
+        len(coords) == 2
+        and all(isinstance(coord, int | float) for coord in coords)
+    )
+
+
+def _is_point_pair(value: object) -> TypeGuard[_PointPair]:
+    if not isinstance(value, tuple):
+        return False
+    pair = cast(tuple[object, ...], value)
+    return (
+        len(pair) == 2
+        and _is_point(pair[0])
+        and _is_point(pair[1])
+    )
+
+
 def _normalize_rect(coords: object) -> _Rect | None:
     if isinstance(coords, list):
-        if len(coords) == 1:
-            return _normalize_rect(coords[0])
-        if len(coords) == 2 and all(isinstance(point, tuple) and len(point) == 2 for point in coords):
-            return _point_pair_to_rect(coords[0], coords[1])
+        items = cast(list[object], coords)
+        if len(items) == 1:
+            return _normalize_rect(items[0])
+        if len(items) == 2 and _is_point(items[0]) and _is_point(items[1]):
+            return _point_pair_to_rect(items[0], items[1])
         return None
 
-    if isinstance(coords, tuple) and len(coords) == 2:
+    if _is_point_pair(coords):
         first, second = coords
-        if isinstance(first, tuple) and len(first) == 2 and isinstance(second, tuple) and len(second) == 2:
-            return _point_pair_to_rect(first, second)
+        return _point_pair_to_rect(first, second)
     return None
 
 

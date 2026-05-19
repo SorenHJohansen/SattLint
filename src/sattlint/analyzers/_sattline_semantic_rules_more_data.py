@@ -83,6 +83,14 @@ DATAFLOW_RULES: dict[str, SemanticRule] = {
         applies_to="state-variable",
         description=":OLD references are read-only and cannot be used as write targets or out-parameters.",
     ),
+    "dataflow.invalid_state_access": SemanticRule(
+        id="semantic.invalid-state-access",
+        source="dataflow",
+        category="control-flow",
+        severity="error",
+        applies_to="state-variable",
+        description=":OLD and :NEW access is only valid on variables or leaf fields declared State.",
+    ),
 }
 
 SIGNAL_LIFECYCLE_RULES: dict[str, SemanticRule] = {

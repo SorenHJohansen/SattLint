@@ -4,6 +4,8 @@ Handles grammar token-to-value conversion: STRING, NAME, numeric and boolean lit
 keywords, and terminal punctuation.
 """
 
+# pyright: reportUnusedClass=false
+
 from __future__ import annotations
 
 from typing import Literal
@@ -19,7 +21,7 @@ DEFAULT_INIT = object()
 class _TokensMixin:
     """Mixin providing token and terminal coercion methods."""
 
-    def _unwrap_token(self, tok):
+    def _unwrap_token(self, tok: object) -> str | object:
         """Unwrap a Lark Token to string."""
         if isinstance(tok, Token):
             return str(tok)
@@ -79,57 +81,57 @@ class _TokensMixin:
 
     # Keywords we care about as flags
 
-    def GLOBAL_KW(self, _) -> Literal[True]:  # "GLOBAL"
+    def GLOBAL_KW(self, _tok: object) -> Literal[True]:  # "GLOBAL"
         """Grammar GLOBAL_KW keyword -> True."""
         return True
 
-    def CONST_KW(self, _) -> Literal["Const"]:
+    def CONST_KW(self, _tok: object) -> Literal["Const"]:
         """Grammar CONST_KW keyword -> "Const"."""
         return "Const"
 
-    def STATE_KW(self, _) -> Literal["State"]:
+    def STATE_KW(self, _tok: object) -> Literal["State"]:
         """Grammar STATE_KW keyword -> "State"."""
         return "State"
 
-    def OPSAVE_KW(self, _) -> Literal["OpSave"]:
+    def OPSAVE_KW(self, _tok: object) -> Literal["OpSave"]:
         """Grammar OPSAVE_KW keyword -> "OpSave"."""
         return "OpSave"
 
-    def SECURE_KW(self, _) -> Literal["Secure"]:
+    def SECURE_KW(self, _tok: object) -> Literal["Secure"]:
         """Grammar SECURE_KW keyword -> "Secure"."""
         return "Secure"
 
     # DEFAULT in init
 
-    def DEFAULT(self, _) -> object:
+    def DEFAULT(self, _tok: object) -> object:
         """Grammar DEFAULT terminal -> DEFAULT_INIT sentinel."""
         return DEFAULT_INIT
 
     # Punctuation tokens we don't need as data (returning None is fine; we'll filter Nones)
 
-    def COLON(self, _) -> None:
+    def COLON(self, _tok: object) -> None:
         """Grammar COLON punctuation -> None (filtered out)."""
         return None
 
-    def COMMA(self, _) -> None:
+    def COMMA(self, _tok: object) -> None:
         """Grammar COMMA punctuation -> None (filtered out)."""
         return None
 
-    def SEMI(self, _) -> None:
+    def SEMI(self, _tok: object) -> None:
         """Grammar SEMI punctuation -> None (filtered out)."""
         return None
 
     # And the := and optional Duration_Value inside opt_var_init
 
-    def ASSIGN_INIT_VALUE(self, _) -> None:
+    def ASSIGN_INIT_VALUE(self, _tok: object) -> None:
         """Grammar ASSIGN_INIT_VALUE (:=) punctuation -> None (filtered out)."""
         return None
 
-    def DURATION_VALUE(self, _) -> object:
+    def DURATION_VALUE(self, _tok: object) -> object:
         """Grammar DURATION_VALUE terminal -> GRAMMAR_VALUE_DURATION_VALUE sentinel."""
         return const.GRAMMAR_VALUE_DURATION_VALUE
 
-    def sl_datecode(self, items) -> int:
+    def sl_datecode(self, items: list[object]) -> int:
         """Grammar sl_datecode rule -> int datecode."""
         for it in items:
             if isinstance(it, Token) and it.type == const.KEY_SL_DATECODE:

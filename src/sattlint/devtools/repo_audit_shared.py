@@ -49,7 +49,6 @@ GENERATED_PATH_PREFIXES = (
 )
 TOP_LEVEL_TRACKED_ENTRY_ALLOWLIST = frozenset(
     {
-        ".codegraph",
         ".ai",
         ".editorconfig",
         ".gitattributes",

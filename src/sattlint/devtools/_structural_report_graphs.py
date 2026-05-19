@@ -25,9 +25,7 @@ def _structural_entry_files(
 
 
 def _structural_report_discovery(workspace_root: Path, discovery: Any) -> Any:
-    from sattlint.devtools import structural_reports as structural_reports_module
-
-    selected_program_files = structural_reports_module._structural_entry_files(
+    selected_program_files = _structural_entry_files(
         workspace_root,
         tuple(discovery.program_files),
     )
@@ -133,7 +131,7 @@ def _accumulate_call_graph_snapshot(
 
     entry_file = structural_reports_module.sanitize_path_for_report(snapshot.entry_file, repo_root=workspace_root)
     root_module = getattr(snapshot.base_picture, "name", snapshot.entry_file.stem)
-    for definition, accesses in structural_reports_module._iter_snapshot_accesses_by_definition(snapshot):
+    for definition, accesses in _iter_snapshot_accesses_by_definition(snapshot):
         target_path = definition.declaration_module_path or (root_module,)
         target_module = ".".join(target_path)
         node_index.setdefault(target_module.casefold(), {"id": target_module, "kind": "module"})
@@ -270,7 +268,7 @@ def _stream_workspace_graph_reports(
     from sattlint.devtools import structural_reports as structural_reports_module
 
     full_discovery = structural_reports_module.discover_workspace_sources(workspace_root)
-    discovery = structural_reports_module._structural_report_discovery(workspace_root, full_discovery)
+    discovery = structural_reports_module.structural_report_discovery(workspace_root, full_discovery)
     snapshot_failures: list[dict[str, Any]] = []
     dependency_node_index: dict[str, dict[str, Any]] = {}
     dependency_edge_index: dict[tuple[str, str], dict[str, Any]] = {}
@@ -282,9 +280,8 @@ def _stream_workspace_graph_reports(
     for index, entry_file in enumerate(discovery.program_files, start=1):
         sanitized_entry = structural_reports_module.sanitize_path_for_report(entry_file, repo_root=workspace_root)
         sanitized_entry = sanitized_entry or entry_file.name
-        if progress_callback is not None and structural_reports_module._should_emit_snapshot_progress(
-            index,
-            total_program_files,
+        if progress_callback is not None and structural_reports_module.should_emit_snapshot_progress(
+            index, total_program_files
         ):
             progress_callback(f"Structural: loading {index}/{total_program_files} {sanitized_entry}")
         try:
@@ -310,13 +307,13 @@ def _stream_workspace_graph_reports(
             continue
 
         snapshot_count += 1
-        structural_reports_module._accumulate_dependency_graph_snapshot(
+        structural_reports_module.accumulate_dependency_graph_snapshot(
             snapshot,
             workspace_root=workspace_root,
             node_index=dependency_node_index,
             edge_index=dependency_edge_index,
         )
-        structural_reports_module._accumulate_call_graph_snapshot(
+        structural_reports_module.accumulate_call_graph_snapshot(
             snapshot,
             workspace_root=workspace_root,
             node_index=call_node_index,
@@ -328,7 +325,7 @@ def _stream_workspace_graph_reports(
         snapshots=[],
         snapshot_failures=snapshot_failures,
     )
-    dependency_graph_report = structural_reports_module._build_dependency_graph_report(
+    dependency_graph_report = structural_reports_module.build_dependency_graph_report(
         workspace_root=workspace_root,
         discovery=discovery,
         node_index=dependency_node_index,
@@ -336,7 +333,7 @@ def _stream_workspace_graph_reports(
         snapshot_count=snapshot_count,
         snapshot_failures=snapshot_failures,
     )
-    call_graph_report = structural_reports_module._build_call_graph_report(
+    call_graph_report = structural_reports_module.build_call_graph_report(
         workspace_root=workspace_root,
         node_index=call_node_index,
         edge_index=call_edge_index,
@@ -353,20 +350,20 @@ def collect_dependency_graph_report(
 ) -> dict[str, Any]:
     from sattlint.devtools import structural_reports as structural_reports_module
 
-    resolved_inputs = structural_reports_module._normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
+    resolved_inputs = structural_reports_module.normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
 
     node_index: dict[str, dict[str, Any]] = {}
     edge_index: dict[tuple[str, str], dict[str, Any]] = {}
 
     for snapshot in resolved_inputs.snapshots:
-        structural_reports_module._accumulate_dependency_graph_snapshot(
+        structural_reports_module.accumulate_dependency_graph_snapshot(
             snapshot,
             workspace_root=workspace_root,
             node_index=node_index,
             edge_index=edge_index,
         )
 
-    return structural_reports_module._build_dependency_graph_report(
+    return structural_reports_module.build_dependency_graph_report(
         workspace_root=workspace_root,
         discovery=resolved_inputs.discovery,
         node_index=node_index,
@@ -383,20 +380,20 @@ def collect_call_graph_report(
 ) -> dict[str, Any]:
     from sattlint.devtools import structural_reports as structural_reports_module
 
-    resolved_inputs = structural_reports_module._normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
+    resolved_inputs = structural_reports_module.normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
 
     node_index: dict[str, dict[str, Any]] = {}
     edge_index: dict[tuple[str, str], dict[str, Any]] = {}
 
     for snapshot in resolved_inputs.snapshots:
-        structural_reports_module._accumulate_call_graph_snapshot(
+        structural_reports_module.accumulate_call_graph_snapshot(
             snapshot,
             workspace_root=workspace_root,
             node_index=node_index,
             edge_index=edge_index,
         )
 
-    return structural_reports_module._build_call_graph_report(
+    return structural_reports_module.build_call_graph_report(
         workspace_root=workspace_root,
         node_index=node_index,
         edge_index=edge_index,

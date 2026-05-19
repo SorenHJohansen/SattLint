@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import cast
 
 from sattline_parser.models.ast_model import (
     ModuleCode,
@@ -20,10 +20,64 @@ from ..grammar import constants as const
 from ..resolution.common import varname_full
 
 
+def _empty_bool_values() -> set[bool]:
+    return set()
+
+
+_NodeTuple = tuple[object, ...]
+_NodeList = list[object]
+_NodeSequence = _NodeTuple | _NodeList
+
+
+def _object_tuple(node: object) -> _NodeTuple | None:
+    if isinstance(node, tuple):
+        return cast(_NodeTuple, node)
+    return None
+
+
+def _object_list(node: object) -> _NodeList | None:
+    if isinstance(node, list):
+        return cast(_NodeList, node)
+    return None
+
+
+def _object_sequence(node: object) -> _NodeSequence | None:
+    tuple_items = _object_tuple(node)
+    if tuple_items is not None:
+        return tuple_items
+    return _object_list(node)
+
+
+def _statement_children(node: object) -> _NodeSequence | None:
+    if getattr(node, "data", None) != const.KEY_STATEMENT:
+        return None
+    return _object_sequence(getattr(node, "children", None))
+
+
+def _sequence_as_list(node: object) -> list[object]:
+    items = _object_sequence(node)
+    if items is None:
+        return []
+    return list(items)
+
+
+def _iter_branch_pairs(node: object) -> list[tuple[object, object]]:
+    branches = _object_sequence(node)
+    if branches is None:
+        return []
+    pairs: list[tuple[object, object]] = []
+    for branch in branches:
+        branch_items = _object_sequence(branch)
+        if branch_items is None or len(branch_items) < 2:
+            continue
+        pairs.append((branch_items[0], branch_items[1]))
+    return pairs
+
+
 @dataclass
 class AlarmBooleanWriteSummary:
     display: str
-    values: set[bool] = field(default_factory=set)
+    values: set[bool] = field(default_factory=_empty_bool_values)
 
 
 def collect_alarm_boolean_writes(
@@ -36,8 +90,8 @@ def collect_alarm_boolean_writes(
     return writes
 
 
-def iter_modulecode_statements(modulecode: ModuleCode) -> list[Any]:
-    statements: list[Any] = []
+def iter_modulecode_statements(modulecode: ModuleCode) -> list[object]:
+    statements: list[object] = []
     for equation in modulecode.equations or []:
         statements.extend(equation.code or [])
     for sequence in modulecode.sequences or []:
@@ -45,24 +99,24 @@ def iter_modulecode_statements(modulecode: ModuleCode) -> list[Any]:
     return statements
 
 
-def iter_sequence_statements(sequence: Sequence) -> list[Any]:
-    statements: list[Any] = []
+def iter_sequence_statements(sequence: Sequence) -> list[object]:
+    statements: list[object] = []
     for node in sequence.code or []:
         statements.extend(iter_sequence_node_statements(node))
     return statements
 
 
-def iter_sequence_node_statements(node: Any) -> list[Any]:
+def iter_sequence_node_statements(node: object) -> list[object]:
     if isinstance(node, SFCStep):
         return [*(node.code.enter or []), *(node.code.active or []), *(node.code.exit or [])]
     if isinstance(node, SFCAlternative | SFCParallel):
-        branch_statements: list[Any] = []
+        branch_statements: list[object] = []
         for branch in node.branches or []:
             for child in branch:
                 branch_statements.extend(iter_sequence_node_statements(child))
         return branch_statements
     if isinstance(node, SFCSubsequence | SFCTransitionSub):
-        nested_statements: list[Any] = []
+        nested_statements: list[object] = []
         for child in node.body or []:
             nested_statements.extend(iter_sequence_node_statements(child))
         return nested_statements
@@ -70,77 +124,85 @@ def iter_sequence_node_statements(node: Any) -> list[Any]:
 
 
 def collect_boolean_writes(
-    obj: Any,
+    obj: object,
     env: dict[str, Variable],
     writes: dict[str, AlarmBooleanWriteSummary],
 ) -> None:
     if obj is None:
         return
 
-    if hasattr(obj, "data") and obj.data == const.KEY_STATEMENT:
-        for child in getattr(obj, "children", []):
+    statement_children = _statement_children(obj)
+    if statement_children is not None:
+        for child in statement_children:
             collect_boolean_writes(child, env, writes)
         return
 
-    if isinstance(obj, tuple) and obj and obj[0] == const.GRAMMAR_VALUE_IF:
-        _if_tag, branches, else_block = obj
-        for condition, branch_statements in branches or []:
+    tuple_node = _object_tuple(obj)
+    if tuple_node is not None and tuple_node and tuple_node[0] == const.GRAMMAR_VALUE_IF:
+        branches = tuple_node[1] if len(tuple_node) > 1 else None
+        else_block = tuple_node[2] if len(tuple_node) > 2 else None
+        for condition, branch_statements in _iter_branch_pairs(branches):
             collect_boolean_writes(condition, env, writes)
-            for statement in branch_statements or []:
+            for statement in _sequence_as_list(branch_statements):
                 collect_boolean_writes(statement, env, writes)
-        for statement in else_block or []:
+        for statement in _sequence_as_list(else_block):
             collect_boolean_writes(statement, env, writes)
         return
 
-    if isinstance(obj, tuple) and obj and obj[0] == const.KEY_ASSIGN:
-        _assign, target, expr = obj
+    if tuple_node is not None and tuple_node and tuple_node[0] == const.KEY_ASSIGN and len(tuple_node) >= 3:
+        target = tuple_node[1]
+        expr = tuple_node[2]
         record_boolean_write(target, expr, env, writes)
         collect_boolean_writes(expr, env, writes)
         return
 
-    if isinstance(obj, tuple) and obj and obj[0] == const.KEY_FUNCTION_CALL:
-        _call, function_name, args = obj
-        if (function_name or "").casefold() == "setbooleanvalue" and len(args or []) >= 2:
+    if tuple_node is not None and tuple_node and tuple_node[0] == const.KEY_FUNCTION_CALL:
+        function_name = tuple_node[1] if len(tuple_node) > 1 and isinstance(tuple_node[1], str) else ""
+        args = _sequence_as_list(tuple_node[2] if len(tuple_node) > 2 else None)
+        if function_name.casefold() == "setbooleanvalue" and len(args) >= 2:
             record_boolean_write(args[0], args[1], env, writes)
-        for argument in args or []:
+        for argument in args:
             collect_boolean_writes(argument, env, writes)
         return
 
-    if isinstance(obj, tuple) and obj and obj[0] == const.KEY_TERNARY:
-        _ternary, branches, else_expr = obj
-        for condition, then_expr in branches or []:
+    if tuple_node is not None and tuple_node and tuple_node[0] == const.KEY_TERNARY:
+        branches = tuple_node[1] if len(tuple_node) > 1 else None
+        else_expr = tuple_node[2] if len(tuple_node) > 2 else None
+        for condition, then_expr in _iter_branch_pairs(branches):
             collect_boolean_writes(condition, env, writes)
             collect_boolean_writes(then_expr, env, writes)
         collect_boolean_writes(else_expr, env, writes)
         return
 
-    if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_COMPARE, const.KEY_ADD, const.KEY_MUL):
-        for child in obj[1:]:
+    if tuple_node is not None and tuple_node and tuple_node[0] in (const.KEY_COMPARE, const.KEY_ADD, const.KEY_MUL):
+        for child in tuple_node[1:]:
             collect_boolean_writes(child, env, writes)
         return
 
-    if isinstance(obj, tuple) and obj and obj[0] in (const.KEY_PLUS, const.KEY_MINUS, const.GRAMMAR_VALUE_NOT):
-        collect_boolean_writes(obj[1], env, writes)
+    if tuple_node is not None and tuple_node and tuple_node[0] in (const.KEY_PLUS, const.KEY_MINUS, const.GRAMMAR_VALUE_NOT):
+        collect_boolean_writes(tuple_node[1] if len(tuple_node) > 1 else None, env, writes)
         return
 
-    if isinstance(obj, tuple) and obj and obj[0] in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND):
-        for child in obj[1] or []:
+    if tuple_node is not None and tuple_node and tuple_node[0] in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND):
+        for child in _sequence_as_list(tuple_node[1] if len(tuple_node) > 1 else None):
             collect_boolean_writes(child, env, writes)
         return
 
-    if isinstance(obj, list):
-        for item in obj:
+    list_node = _object_list(obj)
+    if list_node is not None:
+        for item in list_node:
             collect_boolean_writes(item, env, writes)
         return
 
-    if hasattr(obj, "children"):
-        for child in getattr(obj, "children", []):
+    children = _object_sequence(getattr(obj, "children", None))
+    if children is not None:
+        for child in children:
             collect_boolean_writes(child, env, writes)
 
 
 def record_boolean_write(
-    target: Any,
-    expr: Any,
+    target: object,
+    expr: object,
     env: dict[str, Variable],
     writes: dict[str, AlarmBooleanWriteSummary],
 ) -> None:
@@ -174,7 +236,7 @@ def looks_like_alarm_reference(
     return "alarm" in target_ref.casefold()
 
 
-def as_bool_literal(expr: Any) -> bool | None:
+def as_bool_literal(expr: object) -> bool | None:
     if isinstance(expr, bool):
         return expr
     return None

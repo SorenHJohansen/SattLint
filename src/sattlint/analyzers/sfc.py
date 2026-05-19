@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false
+
 """SFC analysis for structural dead paths, write races, and state conflicts."""
 
 from __future__ import annotations
@@ -6,11 +8,10 @@ from collections.abc import Iterable, Mapping
 from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass
 from itertools import product
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
-    Sequence,
     SFCAlternative,
     SFCBreak,
     SFCFork,
@@ -37,6 +38,10 @@ type StepSet = frozenset[str]
 type ExclusiveStepGroup = tuple[str, ...]
 
 
+def _mapping_value(mapping: Mapping[str, object], key: str) -> object:
+    return mapping.get(key)
+
+
 @dataclass(frozen=True)
 class SfcReachabilityFinding:
     module_path: tuple[str, ...]
@@ -49,7 +54,7 @@ class SfcReachabilityFinding:
 
 
 def _normalize_step_groups(
-    step_groups: Iterable[Iterable[str]] | None,
+    step_groups: Iterable[Iterable[object]] | None,
 ) -> tuple[ExclusiveStepGroup, ...]:
     if step_groups is None:
         return ()
@@ -78,21 +83,27 @@ def _normalize_step_groups(
 def normalize_mutually_exclusive_step_sets(raw: object) -> tuple[ExclusiveStepGroup, ...]:
     if not isinstance(raw, list):
         return ()
-    return _normalize_step_groups(group for group in raw if isinstance(group, list | tuple | set))
+    groups: list[Iterable[object]] = []
+    for group in cast(list[object], raw):
+        if isinstance(group, list | tuple | set):
+            groups.append(cast(Iterable[object], group))
+    return _normalize_step_groups(groups)
 
 
 def get_configured_mutually_exclusive_step_sets(
-    config: dict[str, Any] | None,
+    config: Mapping[str, object] | None,
 ) -> tuple[ExclusiveStepGroup, ...]:
-    if not isinstance(config, dict):
+    if config is None:
         return ()
-    analysis = config.get("analysis", {})
-    if not isinstance(analysis, dict):
+    analysis = _mapping_value(config, "analysis")
+    if not isinstance(analysis, Mapping):
         return ()
-    sfc_config = analysis.get("sfc", {})
-    if not isinstance(sfc_config, dict):
+    analysis_map = cast(Mapping[str, object], analysis)
+    sfc_config = _mapping_value(analysis_map, "sfc")
+    if not isinstance(sfc_config, Mapping):
         return ()
-    return normalize_mutually_exclusive_step_sets(sfc_config.get("mutually_exclusive_steps", []))
+    sfc_map = cast(Mapping[str, object], sfc_config)
+    return normalize_mutually_exclusive_step_sets(_mapping_value(sfc_map, "mutually_exclusive_steps"))
 
 
 def _normalize_step_contract_refs(raw: object) -> tuple[str, ...]:
@@ -101,7 +112,7 @@ def _normalize_step_contract_refs(raw: object) -> tuple[str, ...]:
 
     normalized: list[str] = []
     seen: set[str] = set()
-    for item in raw:
+    for item in cast(list[object], raw):
         if not isinstance(item, str):
             continue
         value = item.strip()
@@ -119,9 +130,10 @@ def _normalize_step_contract(raw: object) -> StepContract:
     if not isinstance(raw, dict):
         return StepContract()
 
+    payload = cast(dict[str, object], raw)
     return StepContract(
-        required_enter_writes=_normalize_step_contract_refs(raw.get("required_enter_writes", [])),
-        required_exit_writes=_normalize_step_contract_refs(raw.get("required_exit_writes", [])),
+        required_enter_writes=_normalize_step_contract_refs(payload.get("required_enter_writes", [])),
+        required_exit_writes=_normalize_step_contract_refs(payload.get("required_exit_writes", [])),
     )
 
 
@@ -130,7 +142,7 @@ def normalize_step_contracts(raw: object) -> dict[str, StepContract]:
         return {}
 
     normalized: dict[str, StepContract] = {}
-    for step_name, contract_raw in raw.items():
+    for step_name, contract_raw in cast(Mapping[object, object], raw).items():
         if not isinstance(step_name, str):
             continue
         name = step_name.strip()
@@ -144,17 +156,19 @@ def normalize_step_contracts(raw: object) -> dict[str, StepContract]:
 
 
 def get_configured_step_contracts(
-    config: dict[str, Any] | None,
+    config: Mapping[str, object] | None,
 ) -> dict[str, StepContract]:
-    if not isinstance(config, dict):
+    if config is None:
         return {}
-    analysis = config.get("analysis", {})
-    if not isinstance(analysis, dict):
+    analysis = _mapping_value(config, "analysis")
+    if not isinstance(analysis, Mapping):
         return {}
-    sfc_config = analysis.get("sfc", {})
-    if not isinstance(sfc_config, dict):
+    analysis_map = cast(Mapping[str, object], analysis)
+    sfc_config = _mapping_value(analysis_map, "sfc")
+    if not isinstance(sfc_config, Mapping):
         return {}
-    return normalize_step_contracts(sfc_config.get("step_contracts", {}))
+    sfc_map = cast(Mapping[str, object], sfc_config)
+    return normalize_step_contracts(_mapping_value(sfc_map, "step_contracts"))
 
 
 def _sequence_node_label(node: object) -> str:
@@ -221,8 +235,7 @@ def collect_sfc_reachability_findings(
         if modulecode is None:
             continue
         for sequence in modulecode.sequences or []:
-            if isinstance(sequence, Sequence):
-                _inspect_sfc_linear_nodes(findings, sequence.code, module_path, sequence.name)
+            _inspect_sfc_linear_nodes(findings, sequence.code, module_path, sequence.name)
 
     return findings
 
@@ -292,9 +305,6 @@ def _collect_illegal_state_combination_issues(
         if modulecode is None:
             continue
         for sequence in modulecode.sequences or []:
-            if not isinstance(sequence, Sequence):
-                continue
-
             conflicts = _find_illegal_state_combinations(
                 _collect_active_step_sets(sequence.code or []),
                 mutually_exclusive_steps,

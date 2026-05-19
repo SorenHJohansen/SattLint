@@ -15,6 +15,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
 
 from sattline_parser.models.ast_model import (
+    BasePicture,
+    ParameterMapping,
     Sequence,
     SFCAlternative,
     SFCBreak,
@@ -69,9 +71,9 @@ class SequenceRenderRow:
 
 
 def _ensure_styles(doc: DocClass) -> None:
-    styles = doc.styles
+    styles = t.cast(t.Any, doc.styles)
     if "Underlined" not in styles:
-        style = t.cast(t.Any, styles.add_style("Underlined", WD_STYLE_TYPE.PARAGRAPH))
+        style = styles.add_style("Underlined", WD_STYLE_TYPE.PARAGRAPH)
         style.base_style = styles["Normal"]
         style.font.underline = True
         style.font.size = Pt(10)
@@ -136,12 +138,6 @@ def _value_text(value: object | None) -> str:
     if value is None:
         return ""
     return str(value)
-
-
-def _format_coord(coord: tuple[float, ...] | None) -> str:
-    if coord is None:
-        return "<none>"
-    return "(" + ", ".join(f"{value:.6g}" for value in coord) + ")"
 
 
 def _prettify_name(text: str) -> str:
@@ -289,20 +285,25 @@ def _sequence_table_rows(rows: list[SequenceRenderRow]) -> list[list[str]]:
     return [[row.node_type, row.name, row.detail, row.enter, row.active, row.exit] for row in rows]
 
 
-def _mapping_target_name(mapping) -> str:
-    if isinstance(mapping.target, dict):
-        return str(mapping.target.get("var_name", ""))
-    return str(mapping.target)
+def _mapping_target_name(mapping: ParameterMapping) -> str:
+    target = mapping.target
+    if isinstance(target, dict):
+        typed_target = t.cast(dict[str, object], target)
+        return str(typed_target.get("var_name", ""))
+    return str(target)
 
 
-def _mapping_source_text(mapping) -> str:
-    if isinstance(mapping.source, dict):
-        return str(mapping.source.get("var_name", ""))
-    if mapping.source is not None:
-        return str(mapping.source)
-    if mapping.source_literal is None:
+def _mapping_source_text(mapping: ParameterMapping) -> str:
+    source = mapping.source
+    if isinstance(source, dict):
+        typed_source = t.cast(dict[str, object], source)
+        return str(typed_source.get("var_name", ""))
+    if source is not None:
+        return str(source)
+    source_literal = mapping.source_literal
+    if source_literal is None:
         return ""
-    return str(mapping.source_literal)
+    return str(source_literal)
 
 
 def _mapping_value(entry: DocumentedModule, *target_names: str) -> str | None:
@@ -1245,11 +1246,12 @@ def _render_upgrade_insights(
     )
 
     for issue in upgrade_issues:
-        issue_data = issue.data or {}
+        issue_data = t.cast(dict[str, object], issue.data or {})
         module_name = str(issue_data.get("module_name", issue.message))
         _heading(doc, f"Module {module_name}", level=2)
         _paragraph(doc, issue.message)
-        for note in issue_data.get("upgrade_notes", []) or []:
+        upgrade_notes = issue_data.get("upgrade_notes", [])
+        for note in t.cast(list[object], upgrade_notes if isinstance(upgrade_notes, list) else []):
             _bullet(doc, str(note))
 
 
@@ -1347,10 +1349,10 @@ def _is_supervision_entry(entry: DocumentedModule) -> bool:
 
 
 def generate_docx(
-    root,
+    root: BasePicture,
     out_path: str | pathlib.Path,
     *,
-    documentation_config: dict | None = None,
+    documentation_config: dict[str, t.Any] | None = None,
     unavailable_libraries: set[str] | None = None,
     upgrade_issues: t.Sequence[Issue] | None = None,
 ) -> None:

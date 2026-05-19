@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import Variable
 
@@ -43,7 +43,8 @@ def _split_var_ref(full_ref: str) -> tuple[str, str]:
 def _record_write(target: Any, env: dict[str, Variable], out: WriteMap) -> None:
     if not isinstance(target, dict) or const.KEY_VAR_NAME not in target:
         return
-    full_ref = target[const.KEY_VAR_NAME]
+    target_map = cast(dict[str, object], target)
+    full_ref = target_map[const.KEY_VAR_NAME]
     if not isinstance(full_ref, str) or not full_ref:
         return
     base, field_path = _split_var_ref(full_ref)

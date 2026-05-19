@@ -16,16 +16,5 @@
     "lsp": "allow",
     "skill": "allow"
   },
-  "mcp": {
-    "codegraph": {
-      "type": "local",
-      "command": [
-        "node",
-        "/usr/sbin/codegraph",
-        "serve",
-        "--mcp"
-      ],
-      "enabled": true
-    }
-  }
+  "mcp": {}
 }

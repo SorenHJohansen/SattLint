@@ -27,7 +27,7 @@ def build_pipeline_check_recommendations(
     owner_module = _pipeline_cli_owner_module()
     resolved_output_dir = (output_dir or pipeline_module.DEFAULT_OUTPUT_DIR).resolve()
     resolved_changed_files = pipeline_module.normalize_changed_files(
-        pipeline_module._detect_changed_files(repo_root=pipeline_module.REPO_ROOT)
+        pipeline_module.detect_changed_files(repo_root=pipeline_module.REPO_ROOT)
         if changed_files is None
         else changed_files
     )

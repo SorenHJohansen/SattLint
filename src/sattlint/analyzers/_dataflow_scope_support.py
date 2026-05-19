@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import ModuleTypeDef, ModuleTypeInstance, ParameterMapping, SingleModule, Variable
 
@@ -31,9 +31,10 @@ class _DataflowScopeSupportMixin:
         )
 
     def _iter_root_typedefs(self: Any) -> list[ModuleTypeDef]:
+        moduletype_defs = cast(list[ModuleTypeDef] | None, getattr(self.bp, "moduletype_defs", None))
         return [
             moduletype
-            for moduletype in (self.bp.moduletype_defs or [])
+            for moduletype in (moduletype_defs or [])
             if self._is_from_root_origin(
                 getattr(moduletype, "origin_file", None),
                 getattr(moduletype, "origin_lib", None),

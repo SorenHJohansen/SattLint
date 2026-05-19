@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.contracts import FindingCollection
 from sattlint.devtools import pipeline as pipeline_module
@@ -15,6 +15,10 @@ from sattlint.devtools.progress_reporting import ProgressReporter
 from sattlint.path_sanitizer import sanitize_path_for_report
 
 RECOMMENDED_REPO_AUDIT_MAX_WORKERS = 2
+
+
+def _json_mapping(value: object) -> dict[str, Any] | None:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def _recommended_slice_entrypoints_module() -> Any:
@@ -52,7 +56,7 @@ def _run_recommended_slice_pipeline(
     pipeline_check_ids: list[str],
     pytest_workers: str | None,
 ) -> dict[str, Any]:
-    pipeline_summary = pipeline_module._run_pipeline(
+    pipeline_summary = pipeline_module.run_pipeline(
         output_dir,
         trace_target=(pipeline_module.DEFAULT_TRACE_TARGET if pipeline_module.DEFAULT_TRACE_TARGET.exists() else None),
         profile=profile,
@@ -98,7 +102,7 @@ def _run_recommended_slice_custom_scan(
     if "cli-consistency" in repo_check_ids:
         cli_consistency_report = repo_audit.build_cli_consistency_report(root=repo_root)
         custom_findings.extend(entrypoints_module._cli_consistency_findings(cli_consistency_report))
-    scoped_custom_findings = _recommended_slice_runs_module()._filter_custom_findings_to_changed_files(
+    scoped_custom_findings = _recommended_slice_runs_module().filter_custom_findings_to_changed_files(
         custom_findings,
         list(resolved_changed_files),
     )
@@ -129,9 +133,7 @@ def run_recommended_repo_audit_slice(
     output_dir.mkdir(parents=True, exist_ok=True)
     ai_gc_report = None
     resolved_changed_files = entrypoints_module.normalize_changed_files(
-        pipeline_module._detect_changed_files(repo_root=repo_audit.REPO_ROOT)
-        if changed_files is None
-        else changed_files
+        pipeline_module.detect_changed_files(repo_root=repo_audit.REPO_ROOT) if changed_files is None else changed_files
     )
     recommendation = entrypoints_module.build_repo_audit_check_recommendations(
         profile=profile,
@@ -290,7 +292,10 @@ def run_recommended_repo_audit_slice(
             "selected_pipeline_check_durations_seconds": (
                 {}
                 if pipeline_summary is None
-                else dict((pipeline_summary.get("timing") or {}).get("check_durations_seconds") or {})
+                else dict(
+                    _json_mapping((_json_mapping(pipeline_summary.get("timing")) or {}).get("check_durations_seconds"))
+                    or {}
+                )
             ),
             "parallel_worker_count": RECOMMENDED_REPO_AUDIT_MAX_WORKERS,
             "critical_path_duration_seconds": 0.0,
@@ -359,7 +364,14 @@ def run_recommended_repo_audit_slice(
     progress.complete_stage("write_reports")
     progress.finalize(overall_status=overall_status_value)
     write_reports_duration = round(_recommended_slice_progress_stage_duration(progress, "write_reports"), 3)
-    stage_durations = summary["timing"]["stage_durations_seconds"]
+    timing_summary = _json_mapping(summary.get("timing"))
+    if timing_summary is None:
+        timing_summary = {}
+        summary["timing"] = timing_summary
+    stage_durations = _json_mapping(timing_summary.get("stage_durations_seconds"))
+    if stage_durations is None:
+        stage_durations = {}
+        timing_summary["stage_durations_seconds"] = stage_durations
     stage_durations["write_reports"] = write_reports_duration
     critical_path_duration = round(
         max(stage_durations["pipeline"], stage_durations["custom_scan"])
@@ -367,8 +379,8 @@ def run_recommended_repo_audit_slice(
         + write_reports_duration,
         3,
     )
-    summary["timing"]["critical_path_duration_seconds"] = critical_path_duration
-    summary["timing"]["total_duration_seconds"] = round(sum(float(value) for value in stage_durations.values()), 3)
+    timing_summary["critical_path_duration_seconds"] = critical_path_duration
+    timing_summary["total_duration_seconds"] = round(sum(float(value) for value in stage_durations.values()), 3)
     return summary
 
 

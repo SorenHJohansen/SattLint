@@ -22,7 +22,7 @@ jobs:
           actionlint --version
 
       - name: Run actionlint
-        run: actionlint -color
+        run: python scripts/run_actionlint.py
 
   ruff:
     name: Ruff (${{ matrix.os }})
@@ -96,7 +96,7 @@ jobs:
         run: sattlint-layer-lint
 
   review:
-    name: Agent Review
+    name: Agent Review (Advisory)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -112,6 +112,6 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system -e ".[dev,test]"
 
-      - name: Run agent review
+      - name: Run advisory agent review
         run: sattlint-review
         continue-on-error: true

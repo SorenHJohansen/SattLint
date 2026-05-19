@@ -10,7 +10,7 @@
 **Audience:** AI-only repository. Design solutions, workflows, and supporting docs for agent execution rather than human-first operation.
 **Communication:** Terse. Pattern: `[thing] [action] [reason]. [next step].`
 **Machine entrypoint:** `sattlint-repo-audit --profile full --planning-context --output-dir artifacts/audit`.
-**Health checks:** `python scripts/context_health.py --check`; `python scripts/context_health.py --check --section codegraph`; `python scripts/repo_health.py --check --audit-dir artifacts/audit`.
+**Health checks:** `python scripts/context_health.py --check`; `python scripts/repo_health.py --check --audit-dir artifacts/audit`.
 **Branch model:** `main`, `develop/integration`, `ai/task-<id>`, `test/task-<id>`, `review/task-<id>`.
 **Naming:** task ids, worktree folders, and handoff files use lower-kebab-case.
 
@@ -30,15 +30,6 @@
 
 See `.github/instructions/repo-map.instructions.md` for the scoped owner-surface map.
 
-## CodeGraph
-
-`.codegraph/` is initialized in this repo (347 files, 8926 nodes). Use the `codegraph-routing` skill (`.github/skills/codegraph-routing/SKILL.md`) for read-only exploration before editing.
-
-**Main session** — lightweight tools only: `codegraph_search`, `codegraph_callers`/`codegraph_callees`, `codegraph_impact`, `codegraph_node`. For broader exploration, use `codegraph_explore` directly (one call) to gather source sections, then pass them inline to subagents.
-
-**Subagents cannot use MCP tools.** Do not tell subagents to call codegraph tools — the main session must gather context and pass it in the prompt.
-
-**Health** — run `python scripts/context_health.py --check --section codegraph` once before CodeGraph exploration. If it reports `healthy`, use CodeGraph-first routing. If it reports `degraded`, run one sync or rebuild and recheck once. If it reports `fallback_to_rg`, stop using CodeGraph MCP calls and fall back immediately.
 
 ## Critical Invariants (Auto-Loaded)
 

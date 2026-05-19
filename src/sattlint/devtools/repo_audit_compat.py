@@ -1,5 +1,7 @@
 """Compatibility helper surface extracted from repo_audit."""
 
+# pyright: reportUnusedFunction=false
+
 from __future__ import annotations
 
 import ast

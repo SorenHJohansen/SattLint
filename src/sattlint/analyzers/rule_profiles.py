@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Protocol, cast
 
+from .issue import Issue
 from .sattline_semantics import SemanticRule, get_rule_for_framework_issue_kind
 
 
@@ -14,7 +16,7 @@ class RuleProfile:
     severity_overrides: dict[str, str] | None = None
     confidence_overrides: dict[str, str] | None = None
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "name": self.name,
             "description": self.description,
@@ -22,6 +24,34 @@ class RuleProfile:
             "severity_overrides": dict(self.severity_overrides or {}),
             "confidence_overrides": dict(self.confidence_overrides or {}),
         }
+
+
+def _mapping(raw: object) -> Mapping[str, object] | None:
+    if isinstance(raw, Mapping):
+        return cast(Mapping[str, object], raw)
+    return None
+
+
+def _normalized_string_tuple(raw: object) -> tuple[str, ...]:
+    values = cast(Sequence[object], raw) if isinstance(raw, list) else ()
+    return tuple(sorted(value_text for value in values if (value_text := str(value).strip())))
+
+
+def _normalized_string_mapping(raw: object) -> dict[str, str]:
+    mapping = _mapping(raw)
+    if mapping is None:
+        return {}
+    normalized: dict[str, str] = {}
+    for rule_id, value in mapping.items():
+        rule_text = str(rule_id).strip()
+        value_text = str(value).strip()
+        if rule_text and value_text:
+            normalized[rule_text] = value_text
+    return normalized
+
+
+class _IssueReport(Protocol):
+    issues: list[Issue]
 
 
 _EXTRA_RULES_BY_KIND: dict[str, SemanticRule] = {
@@ -256,36 +286,27 @@ def _default_profiles() -> dict[str, RuleProfile]:
 
 
 def _normalize_profile_payload(name: str, payload: object) -> RuleProfile:
-    if not isinstance(payload, dict):
+    payload_map = _mapping(payload)
+    if payload_map is None:
         return _default_profiles().get(name, RuleProfile(name=name, description=f"Custom profile {name}."))
-    disabled_rules = tuple(
-        sorted(str(rule_id).strip() for rule_id in payload.get("disabled_rules", []) if str(rule_id).strip())
-    )
-    severity_overrides = {
-        str(rule_id).strip(): str(value).strip()
-        for rule_id, value in dict(payload.get("severity_overrides", {})).items()
-        if str(rule_id).strip() and str(value).strip()
-    }
-    confidence_overrides = {
-        str(rule_id).strip(): str(value).strip()
-        for rule_id, value in dict(payload.get("confidence_overrides", {})).items()
-        if str(rule_id).strip() and str(value).strip()
-    }
+    disabled_rules = _normalized_string_tuple(payload_map.get("disabled_rules", []))
+    severity_overrides = _normalized_string_mapping(payload_map.get("severity_overrides", {}))
+    confidence_overrides = _normalized_string_mapping(payload_map.get("confidence_overrides", {}))
     return RuleProfile(
         name=name,
-        description=str(payload.get("description") or f"Custom profile {name}."),
+        description=str(payload_map.get("description") or f"Custom profile {name}."),
         disabled_rules=disabled_rules,
         severity_overrides=severity_overrides,
         confidence_overrides=confidence_overrides,
     )
 
 
-def get_configured_rule_profiles(config: dict[str, Any] | None) -> dict[str, RuleProfile]:
+def get_configured_rule_profiles(config: Mapping[str, object] | None) -> dict[str, RuleProfile]:
     profiles = _default_profiles()
-    analysis = {} if not isinstance(config, dict) else dict(config.get("analysis") or {})
-    profile_config = dict(analysis.get("rule_profiles") or {})
-    configured_profiles = profile_config.get("profiles")
-    if isinstance(configured_profiles, dict):
+    analysis = _mapping(config.get("analysis") if config is not None else None)
+    profile_config = _mapping(analysis.get("rule_profiles") if analysis is not None else None)
+    configured_profiles = _mapping(profile_config.get("profiles") if profile_config is not None else None)
+    if configured_profiles is not None:
         for name, payload in configured_profiles.items():
             profile_name = str(name).strip()
             if not profile_name:
@@ -294,15 +315,15 @@ def get_configured_rule_profiles(config: dict[str, Any] | None) -> dict[str, Rul
     return profiles
 
 
-def get_active_rule_profile(config: dict[str, Any] | None) -> RuleProfile:
+def get_active_rule_profile(config: Mapping[str, object] | None) -> RuleProfile:
     profiles = get_configured_rule_profiles(config)
-    analysis = {} if not isinstance(config, dict) else dict(config.get("analysis") or {})
-    profile_config = dict(analysis.get("rule_profiles") or {})
-    active_name = str(profile_config.get("active") or "default").strip() or "default"
+    analysis = _mapping(config.get("analysis") if config is not None else None)
+    profile_config = _mapping(analysis.get("rule_profiles") if analysis is not None else None)
+    active_name = str(profile_config.get("active") if profile_config is not None else "default").strip() or "default"
     return profiles.get(active_name, profiles["default"])
 
 
-def get_default_rule_profile_report() -> dict[str, Any]:
+def get_default_rule_profile_report() -> dict[str, object]:
     profiles = _default_profiles()
     return {
         "active": "default",
@@ -314,20 +335,17 @@ def _resolve_issue_rule(issue_kind: str) -> SemanticRule | None:
     return _EXTRA_RULES_BY_KIND.get(issue_kind) or get_rule_for_framework_issue_kind(issue_kind)
 
 
-def _normalized_issue_kind(issue: Any) -> str | None:
-    raw_kind = getattr(issue, "kind", None)
-    if raw_kind is None:
-        return None
-    kind_value = getattr(raw_kind, "value", raw_kind)
-    kind_text = str(kind_value).strip()
+def _normalized_issue_kind(issue: Issue) -> str | None:
+    kind_text = issue.kind.strip()
     return kind_text or None
 
 
-def _issue_has_rule_metadata(issue: Any) -> bool:
-    return all(hasattr(issue, attr) for attr in ("rule_id", "severity", "confidence", "explanation", "suggestion"))
+def _issue_has_rule_metadata(issue: Issue) -> bool:
+    del issue
+    return True
 
 
-def _derived_rule_id(issue: Any) -> str | None:
+def _derived_rule_id(issue: Issue) -> str | None:
     normalized_kind = _normalized_issue_kind(issue)
     if normalized_kind is None:
         return None
@@ -335,7 +353,7 @@ def _derived_rule_id(issue: Any) -> str | None:
     return rule.id if rule is not None else None
 
 
-def materialize_issue_metadata(issue: Any) -> Any:
+def materialize_issue_metadata(issue: Issue) -> Issue:
     if not _issue_has_rule_metadata(issue):
         return issue
     normalized_kind = _normalized_issue_kind(issue)
@@ -354,27 +372,30 @@ def materialize_issue_metadata(issue: Any) -> Any:
     )
 
 
-def apply_rule_profile_to_issue(issue: Any, profile: RuleProfile) -> Any | None:
+def apply_rule_profile_to_issue(issue: Issue, profile: RuleProfile) -> Issue | None:
     materialized = materialize_issue_metadata(issue)
-    resolved_rule_id = getattr(materialized, "rule_id", None) or _derived_rule_id(materialized)
+    resolved_rule_id = materialized.rule_id or _derived_rule_id(materialized)
     if resolved_rule_id in set(profile.disabled_rules):
         return None
     if resolved_rule_id is None:
-        return materialized
-    if not all(hasattr(materialized, attr) for attr in ("severity", "confidence")):
         return materialized
     severity = (profile.severity_overrides or {}).get(resolved_rule_id, materialized.severity)
     confidence = (profile.confidence_overrides or {}).get(resolved_rule_id, materialized.confidence)
     return replace(materialized, severity=severity, confidence=confidence)
 
 
-def apply_rule_profile_to_report(analyzer_key: str, report: Any, config: dict[str, Any] | None):
+def apply_rule_profile_to_report(analyzer_key: str, report: object, config: Mapping[str, object] | None) -> object:
     del analyzer_key
     issues = getattr(report, "issues", None)
     if not isinstance(issues, list):
         return report
+    typed_report = cast(_IssueReport, report)
+    typed_issues = cast(list[Issue], issues)
     profile = get_active_rule_profile(config)
-    report.issues = [
-        updated for issue in issues for updated in [apply_rule_profile_to_issue(issue, profile)] if updated is not None
+    typed_report.issues = [
+        updated
+        for issue in typed_issues
+        for updated in [apply_rule_profile_to_issue(issue, profile)]
+        if updated is not None
     ]
-    return report
+    return typed_report

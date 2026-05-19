@@ -1,30 +1,37 @@
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Mapping
+from typing import cast
 
 from sattline_parser.models.ast_model import Variable
 
 from ..grammar import constants as const
 
 
-def varname_base(var_dict_or_str: Any) -> str | None:
+def _string_object_mapping(value: object) -> Mapping[str, object] | None:
+    if isinstance(value, Mapping):
+        return cast(Mapping[str, object], value)
+    return None
+
+
+def varname_base(var_dict_or_str: object) -> str | None:
     """Extract base variable name from a variable_name dict or string."""
-    if isinstance(var_dict_or_str, dict) and const.KEY_VAR_NAME in var_dict_or_str:
-        full = var_dict_or_str[const.KEY_VAR_NAME]
-    elif isinstance(var_dict_or_str, str):
-        full = var_dict_or_str
-    else:
+    full = varname_full(var_dict_or_str)
+    if full is None:
         return None
-    base = full.split(".", 1)[0] if full else None
-    return base.lower() if base else None
+    base, _separator, _tail = full.partition(".")
+    return base.casefold()
 
 
-def varname_full(var_dict_or_str: Any) -> str | None:
+def varname_full(var_dict_or_str: object) -> str | None:
     """Extract full variable name from a variable_name dict or string."""
-    if isinstance(var_dict_or_str, dict) and const.KEY_VAR_NAME in var_dict_or_str:
-        return var_dict_or_str[const.KEY_VAR_NAME]
     if isinstance(var_dict_or_str, str):
         return var_dict_or_str
+    mapping = _string_object_mapping(var_dict_or_str)
+    if mapping is not None:
+        value = mapping.get(const.KEY_VAR_NAME)
+        if isinstance(value, str):
+            return value
     return None
 
 

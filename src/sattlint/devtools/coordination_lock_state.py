@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from sattlint.devtools import _coordination_lock_paths as lock_paths
 
@@ -62,6 +62,21 @@ def utc_now_timestamp() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def _json_mapping(value: object) -> dict[str, Any] | None:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else None
+
+
+def _json_mapping_sequence(value: object) -> list[Mapping[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    entries: list[Mapping[str, Any]] = []
+    for item in cast(list[object], value):
+        entry = _json_mapping(item)
+        if entry is not None:
+            entries.append(entry)
+    return entries
+
+
 coordination_dir = lock_paths.coordination_dir
 git_common_dir = lock_paths.git_common_dir
 shared_coordination_dir = partial(
@@ -78,18 +93,18 @@ lock_state_path = partial(
 )
 summary_path = partial(lock_paths.summary_path, summary_file_name=SUMMARY_FILE_NAME)
 display_path = lock_paths.display_path
-_parse_attached_worktree_branches = lock_paths._parse_attached_worktree_branches
-_attached_worktree_branches = lock_paths._attached_worktree_branches
+_parse_attached_worktree_branches = lock_paths.parse_attached_worktree_branches
+_attached_worktree_branches = lock_paths.attached_worktree_branches
 _task_contract_path_for_workstream = partial(
-    lock_paths._task_contract_path_for_workstream,
+    lock_paths.task_contract_path_for_workstream,
     task_contracts_dir=TASK_CONTRACTS_DIR,
 )
 _handoff_path_for_workstream = partial(
-    lock_paths._handoff_path_for_workstream,
+    lock_paths.handoff_path_for_workstream,
     handoffs_dir=HANDOFFS_DIR,
 )
 _expected_workstream_branches = partial(
-    lock_paths._expected_workstream_branches,
+    lock_paths.expected_workstream_branches,
     supported_stage_branch_prefixes=SUPPORTED_STAGE_BRANCH_PREFIXES,
 )
 _parse_updated_at_timestamp = lock_paths.parse_updated_at_timestamp
@@ -146,8 +161,7 @@ def _hold_lock(repo_root: Path):
     try:
         yield
     finally:
-        if lock_fd is not None:
-            os.close(lock_fd)
+        os.close(lock_fd)
         lock_path.unlink(missing_ok=True)
 
 
@@ -164,31 +178,32 @@ def load_file_debt_state(repo_root: Path) -> dict[str, dict[str, dict[str, Any]]
     if not ratchet_path.exists():
         return {}
 
-    payload = json.loads(ratchet_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
+    payload = _json_mapping(json.loads(ratchet_path.read_text(encoding="utf-8")))
+    if payload is None:
         return {}
     raw_files = payload.get("files", {})
     if not isinstance(raw_files, dict):
         return {}
 
     normalized: dict[str, dict[str, dict[str, Any]]] = {}
-    for raw_path, raw_dimensions in raw_files.items():
+    for raw_path, raw_dimensions in cast(Mapping[object, object], raw_files).items():
         if not isinstance(raw_dimensions, Mapping):
             continue
+        raw_dimensions_mapping = cast(Mapping[str, Any], raw_dimensions)
         rel_path = normalize_relative_path(str(raw_path))
         if not rel_path:
             continue
         dimensions: dict[str, dict[str, Any]] = {}
         for dimension in ("structural", "typing", "coverage"):
-            raw_dimension = raw_dimensions.get(dimension)
+            raw_dimension = raw_dimensions_mapping.get(dimension)
             if isinstance(raw_dimension, Mapping):
-                dimensions[dimension] = dict(raw_dimension)
+                dimensions[dimension] = dict(cast(Mapping[str, Any], raw_dimension))
         if dimensions:
             normalized[rel_path] = dimensions
     return normalized
 
 
-_claim_matches_path = lock_paths._claim_matches_path
+_claim_matches_path = lock_paths.claim_matches_path
 
 
 def _effective_structural_touch_rule(structural: Mapping[str, Any]) -> str | None:
@@ -310,11 +325,11 @@ def _normalize_entry(
     if status == "done":
         return None
 
-    raw_claims = raw_entry.get("claimed_paths") or raw_entry.get("claims") or []
+    raw_claims: object = raw_entry.get("claimed_paths") or raw_entry.get("claims") or []
     if isinstance(raw_claims, str):
         claim_items = split_claim_text(raw_claims)
     elif isinstance(raw_claims, list):
-        claim_items = [str(item) for item in raw_claims]
+        claim_items = [str(item) for item in cast(list[object], raw_claims)]
     else:
         claim_items = []
     claimed_paths = unique_claim_paths(claim_items, repo_root=repo_root)
@@ -397,16 +412,17 @@ def parse_markdown_ledger(
 
 
 def _load_state_entries(repo_root: Path, state_file: Path, *, default_updated_at: str) -> list[LockStateEntry]:
-    payload = json.loads(state_file.read_text(encoding="utf-8"))
+    payload: object = json.loads(state_file.read_text(encoding="utf-8"))
     if isinstance(payload, dict):
-        raw_entries = payload.get("workstreams", [])
+        raw_entries_obj: object = cast(dict[str, Any], payload).get("workstreams", [])
     elif isinstance(payload, list):
-        raw_entries = payload
+        raw_entries_obj = cast(list[object], payload)
     else:
         raise ValueError(f"Unsupported lock-state payload in {state_file}.")
-    if not isinstance(raw_entries, list):
+    if not isinstance(raw_entries_obj, list):
         raise ValueError(f"Lock-state workstreams must be a list in {state_file}.")
-    return _normalize_entries(raw_entries, repo_root=repo_root, default_updated_at=default_updated_at)
+    normalized_entries = _json_mapping_sequence(cast(object, raw_entries_obj))
+    return _normalize_entries(normalized_entries, repo_root=repo_root, default_updated_at=default_updated_at)
 
 
 def _write_lock_state_files(repo_root: Path, entries: list[LockStateEntry]) -> list[LockStateEntry]:

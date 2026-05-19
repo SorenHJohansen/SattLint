@@ -1,4 +1,7 @@
 # ruff: noqa: F403, F405
+import runpy
+import sys
+
 from ._repo_audit_test_support import *
 
 
@@ -401,3 +404,203 @@ def test_doc_gardener_main_uses_pipeline_output_dir(monkeypatch, capsys, tmp_pat
     _out = capsys.readouterr().out
     assert observed["pipeline_dir"] == pipeline_dir
     assert observed["quality_score_call"] == ((finding,), pipeline_snapshot)
+
+
+def test_doc_gardener_helper_forwarders_and_run_scan(monkeypatch, tmp_path):
+    class _UnreadableRaw:
+        def decode(self, encoding, errors="strict"):
+            if encoding == "utf-8" and errors == "replace":
+                return "decoded-with-replacement"
+            raise UnicodeDecodeError(encoding, b"\x81", 0, 1, "bad byte")
+
+    sample = tmp_path / "sample.md"
+    sample.write_text("placeholder", encoding="utf-8")
+    monkeypatch.setattr(Path, "read_bytes", lambda self: _UnreadableRaw())
+    assert doc_gardener._read_text(sample) == "decoded-with-replacement"
+
+    monkeypatch.setattr(doc_gardener.shutil, "which", lambda tool_name: f"/usr/bin/{tool_name}")
+    completed = SimpleNamespace(returncode=0, stdout="ok", stderr="")
+    run_calls: list[tuple[list[str], Path]] = []
+
+    def _fake_run(cmd, *, capture_output, text, cwd, check):
+        run_calls.append((cmd, cwd))
+        assert capture_output is True
+        assert text is True
+        assert check is False
+        return completed
+
+    monkeypatch.setattr(doc_gardener.subprocess, "run", _fake_run)
+    assert doc_gardener._resolve_cli("git") == "/usr/bin/git"
+    assert doc_gardener._run_repo_cli("git", ["status"]) is completed
+    assert run_calls == [(["/usr/bin/git", "status"], doc_gardener.DOCS_DIR.parent)]
+
+    monkeypatch.setattr(doc_gardener.shutil, "which", lambda _tool_name: None)
+    with pytest.raises(FileNotFoundError):
+        doc_gardener._resolve_cli("gh")
+
+    sentinel_path = tmp_path / "docs" / "index.md"
+    sentinel_path.parent.mkdir(parents=True)
+    sentinel_path.write_text("# Docs\n", encoding="utf-8")
+    finding = doc_gardener.DocFinding("docs/index.md", 2, "Medium", "dead_link", "Broken link")
+    observed: dict[str, object] = {}
+
+    monkeypatch.setattr(doc_gardener.doc_gardener_scan_module, "should_skip_path", lambda path: path == sentinel_path)
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "iter_markdown_files",
+        lambda **_kwargs: iter([sentinel_path]),
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "source_sync_digest",
+        lambda path, read_text_fn: f"digest:{path.name}:{read_text_fn(path)}",
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_agents_md",
+        lambda **_kwargs: [finding],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_dead_links",
+        lambda **_kwargs: [finding],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_docs_structure",
+        lambda **_kwargs: [finding],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_markdown_encoding_artifacts",
+        lambda **_kwargs: [finding],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_ai_first_source_drift",
+        lambda **_kwargs: [finding],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_ai_first_status_drift",
+        lambda **_kwargs: [finding],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_completed_exec_plans_still_active",
+        lambda **_kwargs: [finding],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_stale_docs",
+        lambda **_kwargs: [finding],
+    )
+
+    def _fake_build_scan_result(findings, **kwargs):
+        observed["findings"] = tuple(findings)
+        observed["kwargs"] = kwargs
+        return {
+            "total_findings": len(findings),
+            "by_severity": dict.fromkeys(doc_gardener.SEVERITY_ORDER, 0),
+            "by_category": dict.fromkeys(doc_gardener.CATEGORY_ORDER, 0),
+            "findings": [entry._asdict() for entry in findings],
+            "timestamp": kwargs["timestamp"],
+        }
+
+    monkeypatch.setattr(doc_gardener.doc_gardener_scan_module, "build_scan_result", _fake_build_scan_result)
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_updates_module,
+        "open_fixup_pr",
+        lambda findings, run_repo_cli_fn: observed.setdefault("open_fixup_pr", (tuple(findings), run_repo_cli_fn)) or True,
+    )
+
+    assert doc_gardener._should_skip_path(sentinel_path) is True
+    assert list(doc_gardener._iter_markdown_files()) == [sentinel_path]
+    assert doc_gardener._source_sync_digest(sentinel_path) == "digest:index.md:decoded-with-replacement"
+
+    result = doc_gardener.run_scan()
+
+    assert result["total_findings"] == 8
+    assert observed["findings"] == (finding, finding, finding, finding, finding, finding, finding, finding)
+    assert doc_gardener.open_fixup_pr([finding]) == (tuple([finding]), doc_gardener._run_repo_cli)
+
+
+def test_doc_gardener_main_prints_pipeline_snapshot_unavailable(monkeypatch, capsys):
+    monkeypatch.setattr(
+        doc_gardener,
+        "run_scan",
+        lambda: {
+            "total_findings": 0,
+            "by_severity": dict.fromkeys(doc_gardener.SEVERITY_ORDER, 0),
+            "by_category": dict.fromkeys(doc_gardener.CATEGORY_ORDER, 0),
+            "findings": [],
+        },
+    )
+    monkeypatch.setattr(doc_gardener, "load_pipeline_snapshot", lambda _output_dir: (None, "missing artifacts"))
+    monkeypatch.setattr(doc_gardener, "update_quality_score", lambda findings, pipeline_snapshot=None: None)
+    monkeypatch.setattr(doc_gardener, "update_tech_debt_scan_log", lambda findings: None)
+
+    assert doc_gardener.main() == 0
+
+    out = capsys.readouterr().out
+    assert "Pipeline snapshot unavailable: missing artifacts" in out
+
+
+def test_doc_gardener_module_main_guard(monkeypatch):
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_agents_md",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_dead_links",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_docs_structure",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_markdown_encoding_artifacts",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_ai_first_source_drift",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_ai_first_status_drift",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_completed_exec_plans_still_active",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "scan_stale_docs",
+        lambda **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        doc_gardener.doc_gardener_scan_module,
+        "build_scan_result",
+        lambda findings, **kwargs: {
+            "total_findings": len(findings),
+            "by_severity": dict.fromkeys(doc_gardener.SEVERITY_ORDER, 0),
+            "by_category": dict.fromkeys(doc_gardener.CATEGORY_ORDER, 0),
+            "findings": [],
+            "timestamp": kwargs["timestamp"],
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["doc_gardener.py", "--check-only"])
+
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("sattlint.devtools.doc_gardener", run_name="__main__")
+
+    assert exc.value.code == 0

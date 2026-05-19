@@ -6,6 +6,16 @@ from pathlib import Path
 from typing import Any, cast
 
 
+def _mapping_entries(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    entries: list[dict[str, Any]] = []
+    for entry in cast(list[object], value):
+        if isinstance(entry, dict):
+            entries.append(cast(dict[str, Any], entry))
+    return entries
+
+
 def _dedupe_snapshot_failures(*failure_lists: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[str] = set()
     failures: list[dict[str, Any]] = []
@@ -29,7 +39,7 @@ def _collect_reverse_impact(
     direct_dependents: set[str] = set()
     direct_entry_files: set[str] = set()
     direct_list_values: dict[str, set[str]] = {field: set() for field in list_fields}
-    direct_count_values = cast(dict[str, int], dict.fromkeys(count_fields, 0))
+    direct_count_values: dict[str, int] = dict.fromkeys(count_fields, 0)
 
     for edge in incoming_edges.get(node_id, []):
         direct_dependents.add(edge["source"])
@@ -42,7 +52,7 @@ def _collect_reverse_impact(
     transitive_dependents: set[str] = set()
     transitive_entry_files: set[str] = set()
     transitive_list_values: dict[str, set[str]] = {field: set() for field in list_fields}
-    transitive_count_values = cast(dict[str, int], dict.fromkeys(count_fields, 0))
+    transitive_count_values: dict[str, int] = dict.fromkeys(count_fields, 0)
     pending = [node_id]
     visited_targets: set[str] = set()
 
@@ -92,7 +102,7 @@ def collect_impact_analysis_report(
 ) -> dict[str, Any]:
     from sattlint.devtools import structural_reports as structural_reports_module
 
-    resolved_graph_inputs = structural_reports_module._normalize_graph_inputs(
+    resolved_graph_inputs = structural_reports_module.normalize_graph_inputs(
         graph_inputs, workspace_root=workspace_root
     )
     resolved_dependency_graph = (
@@ -109,17 +119,17 @@ def collect_impact_analysis_report(
     )
 
     dependency_incoming: dict[str, list[dict[str, Any]]] = {}
-    for edge in resolved_dependency_graph.get("edges", []):
+    for edge in _mapping_entries(resolved_dependency_graph.get("edges")):
         dependency_incoming.setdefault(edge["target"], []).append(edge)
 
     module_incoming: dict[str, list[dict[str, Any]]] = {}
-    for edge in resolved_call_graph.get("edges", []):
+    for edge in _mapping_entries(resolved_call_graph.get("edges")):
         if edge["source"].casefold() == edge["target"].casefold():
             continue
         module_incoming.setdefault(edge["target"], []).append(edge)
 
-    library_impacts = []
-    for node in resolved_dependency_graph.get("nodes", []):
+    library_impacts: list[dict[str, Any]] = []
+    for node in _mapping_entries(resolved_dependency_graph.get("nodes")):
         impact = _collect_reverse_impact(node["id"], dependency_incoming)
         library_impacts.append(
             {
@@ -129,8 +139,8 @@ def collect_impact_analysis_report(
             }
         )
 
-    module_impacts = []
-    for node in resolved_call_graph.get("nodes", []):
+    module_impacts: list[dict[str, Any]] = []
+    for node in _mapping_entries(resolved_call_graph.get("nodes")):
         impact = _collect_reverse_impact(
             node["id"],
             module_incoming,
@@ -152,8 +162,8 @@ def collect_impact_analysis_report(
         "library_impacts": library_impacts,
         "module_impacts": module_impacts,
         "snapshot_failures": _dedupe_snapshot_failures(
-            resolved_dependency_graph.get("snapshot_failures", []),
-            resolved_call_graph.get("snapshot_failures", []),
+            _mapping_entries(resolved_dependency_graph.get("snapshot_failures")),
+            _mapping_entries(resolved_call_graph.get("snapshot_failures")),
         ),
     }
 

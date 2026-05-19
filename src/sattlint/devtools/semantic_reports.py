@@ -7,7 +7,8 @@ ID7: build_rule_metrics_report - per-rule trigger counts and coverage from findi
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any
+from collections.abc import Mapping
+from typing import TypedDict, cast
 
 SATTLINE_SEMANTIC_SCHEMA_KIND = "sattlint.sattline_semantic"
 SATTLINE_SEMANTIC_SCHEMA_VERSION = 1
@@ -15,8 +16,45 @@ SATTLINE_SEMANTIC_SCHEMA_VERSION = 1
 RULE_METRICS_SCHEMA_KIND = "sattlint.rule_metrics"
 RULE_METRICS_SCHEMA_VERSION = 1
 
+ReportMapping = Mapping[str, object]
 
-def build_sattline_semantic_report(findings_report: dict[str, Any]) -> dict[str, Any]:
+
+class _RuleMeta(TypedDict):
+    severity: str
+    category: str
+
+
+class _SemanticRuleSummary(TypedDict):
+    rule_id: str
+    count: int
+    severity: str
+    category: str
+
+
+class _RuleMetricsSummary(TypedDict):
+    rule_id: str
+    finding_count: int
+    targets_affected: int
+
+
+def _mapping_list(value: object) -> list[ReportMapping]:
+    if not isinstance(value, list):
+        return []
+    items = cast(list[object], value)
+    result: list[ReportMapping] = []
+    for item in items:
+        if isinstance(item, Mapping):
+            result.append(cast(ReportMapping, item))
+    return result
+
+
+def _mapping(value: object) -> ReportMapping | None:
+    if not isinstance(value, Mapping):
+        return None
+    return cast(ReportMapping, value)
+
+
+def build_sattline_semantic_report(findings_report: ReportMapping) -> dict[str, object]:
     """Build a derived summary of semantic findings from the pipeline findings report.
 
     Extracts findings whose rule_id starts with 'semantic.' and produces:
@@ -26,11 +64,11 @@ def build_sattline_semantic_report(findings_report: dict[str, Any]) -> dict[str,
     - by_severity counts
     - sources list
     """
-    findings = findings_report.get("findings") or []
+    findings = _mapping_list(findings_report.get("findings"))
     semantic_findings = [f for f in findings if str(f.get("rule_id") or "").startswith("semantic.")]
 
     rule_counts: Counter[str] = Counter()
-    rule_meta: dict[str, dict[str, str]] = {}
+    rule_meta: dict[str, _RuleMeta] = {}
     category_counts: Counter[str] = Counter()
     severity_counts: Counter[str] = Counter()
     sources: set[str] = set()
@@ -48,14 +86,14 @@ def build_sattline_semantic_report(findings_report: dict[str, Any]) -> dict[str,
         severity_counts[severity] += 1
         sources.add(source)
 
-    rules = sorted(
+    rules: list[_SemanticRuleSummary] = sorted(
         [
-            {
-                "rule_id": rule_id,
-                "count": rule_counts[rule_id],
-                "severity": rule_meta[rule_id]["severity"],
-                "category": rule_meta[rule_id]["category"],
-            }
+            _SemanticRuleSummary(
+                rule_id=rule_id,
+                count=rule_counts[rule_id],
+                severity=rule_meta[rule_id]["severity"],
+                category=rule_meta[rule_id]["category"],
+            )
             for rule_id in rule_counts
         ],
         key=lambda rule: (-int(rule["count"]), str(rule["rule_id"])),
@@ -73,16 +111,16 @@ def build_sattline_semantic_report(findings_report: dict[str, Any]) -> dict[str,
 
 
 def build_rule_metrics_report(
-    findings_report: dict[str, Any],
-    analyzer_registry: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    findings_report: ReportMapping,
+    analyzer_registry: ReportMapping | None = None,
+) -> dict[str, object]:
     """Build per-rule trigger counts and coverage from the pipeline findings payload.
 
     Counts how many times each semantic rule fired, how many distinct analyzed targets
     were affected, and (when an analyzer_registry is provided) reports which rules
     never triggered at all.
     """
-    findings = findings_report.get("findings") or []
+    findings = _mapping_list(findings_report.get("findings"))
     semantic_findings = [f for f in findings if str(f.get("rule_id") or "").startswith("semantic.")]
 
     rule_fire_counts: Counter[str] = Counter()
@@ -91,8 +129,8 @@ def build_rule_metrics_report(
     for finding in semantic_findings:
         rule_id = str(finding.get("rule_id") or "semantic.unknown")
         # Use path as a proxy for "target" (may be None for cross-module findings).
-        location = finding.get("location") or {}
-        path = str(location.get("path") or "<unknown>")
+        location = _mapping(finding.get("location"))
+        path = str(location.get("path") or "<unknown>") if location is not None else "<unknown>"
 
         rule_fire_counts[rule_id] += 1
         rule_target_sets.setdefault(rule_id, set()).add(path)
@@ -100,7 +138,7 @@ def build_rule_metrics_report(
     # All known semantic rule IDs from the registry (if provided).
     known_rule_ids: set[str] = set()
     if analyzer_registry:
-        for rule_entry in analyzer_registry.get("rules") or []:
+        for rule_entry in _mapping_list(analyzer_registry.get("rules")):
             rule_id = str(rule_entry.get("rule_id") or rule_entry.get("id") or "")
             if rule_id.startswith("semantic."):
                 known_rule_ids.add(rule_id)
@@ -108,13 +146,13 @@ def build_rule_metrics_report(
     triggered_rule_ids = set(rule_fire_counts.keys())
     never_triggered = sorted(known_rule_ids - triggered_rule_ids)
 
-    rules = sorted(
+    rules: list[_RuleMetricsSummary] = sorted(
         [
-            {
-                "rule_id": rule_id,
-                "finding_count": rule_fire_counts[rule_id],
-                "targets_affected": len(rule_target_sets.get(rule_id, set())),
-            }
+            _RuleMetricsSummary(
+                rule_id=rule_id,
+                finding_count=rule_fire_counts[rule_id],
+                targets_affected=len(rule_target_sets.get(rule_id, set())),
+            )
             for rule_id in triggered_rule_ids
         ],
         key=lambda rule: (-int(rule["finding_count"]), str(rule["rule_id"])),

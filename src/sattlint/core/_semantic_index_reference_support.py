@@ -9,8 +9,8 @@ from ..call_signatures import CallSignatureOccurrence, resolve_call_signature
 from ..grammar import constants as const
 from ..resolution import CanonicalPath, decorate_segment
 from ..resolution.scope import ScopeContext
-from ._semantic_helpers import _source_file_key, _try_resolve_instance_typedef
-from ._semantic_snapshot import _ReferenceOccurrence
+from ._semantic_helpers import source_file_key, try_resolve_instance_typedef
+from ._semantic_snapshot import ReferenceOccurrence
 from .ast_tools import iter_call_sites, iter_variable_refs
 
 
@@ -23,7 +23,7 @@ class _SemanticIndexReferenceSupportMixin:
         source_file: str | None,
         source_library: str | None,
     ) -> None:
-        file_key = _source_file_key(source_file)
+        file_key = source_file_key(source_file)
         if file_key is None or node is None:
             return
 
@@ -54,7 +54,7 @@ class _SemanticIndexReferenceSupportMixin:
 
             state = ref.get("state")
             text = full_name if not state else f"{full_name}:{state}"
-            occurrence = _ReferenceOccurrence(
+            occurrence = ReferenceOccurrence(
                 line=span.line,
                 column=span.column,
                 text=text,
@@ -199,7 +199,7 @@ class _SemanticIndexReferenceSupportMixin:
                 *display_module_path,
                 decorate_segment(module.header.name, "MT", module.moduletype_name),
             )
-            moduletype = _try_resolve_instance_typedef(
+            moduletype = try_resolve_instance_typedef(
                 self.base_picture,
                 module,
                 self._moduletype_index,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.devtools import coverage_reports as _coverage_reports_module
 from sattlint.devtools._repo_audit_ai_gc import (
@@ -21,6 +21,10 @@ def _repo_audit_reporting_module() -> Any:
     from sattlint.devtools import repo_audit as repo_audit_module
 
     return repo_audit_module
+
+
+def _json_mapping(value: object) -> dict[str, Any] | None:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def build_coverage_summary_report(root: Path) -> dict[str, Any]:
@@ -385,13 +389,17 @@ def _find_pipeline_findings(output_dir: Path) -> list[Any]:
     repo_audit = _repo_audit_reporting_module()
     findings_path = output_dir / "findings.json"
     if findings_path.exists():
-        payload = json.loads(findings_path.read_text(encoding="utf-8"))
+        payload = _json_mapping(json.loads(findings_path.read_text(encoding="utf-8"))) or {}
         normalized_findings: list[Any] = []
-        for entry in payload.get("findings", []):
+        finding_entries = payload.get("findings")
+        for entry_obj in cast(list[object], finding_entries) if isinstance(finding_entries, list) else []:
+            entry = _json_mapping(entry_obj)
+            if entry is None:
+                continue
             finding_id = str(entry.get("id") or entry.get("rule_id") or "pipeline-finding")
             if finding_id in repo_audit.STRUCTURAL_DEBT_FINDING_IDS:
                 continue
-            location = entry.get("location") or {}
+            location = _json_mapping(entry.get("location")) or {}
             path = location.get("path")
             if repo_audit._should_ignore_normalized_pipeline_finding(finding_id, path):
                 continue
@@ -414,8 +422,12 @@ def _find_pipeline_findings(output_dir: Path) -> list[Any]:
     findings: list[Any] = []
     vulture_path = output_dir / "vulture.json"
     if vulture_path.exists():
-        payload = json.loads(vulture_path.read_text(encoding="utf-8"))
-        for entry in payload.get("findings", []):
+        payload = _json_mapping(json.loads(vulture_path.read_text(encoding="utf-8"))) or {}
+        finding_entries = payload.get("findings")
+        for entry_obj in cast(list[object], finding_entries) if isinstance(finding_entries, list) else []:
+            entry = _json_mapping(entry_obj)
+            if entry is None:
+                continue
             findings.append(
                 repo_audit.Finding(
                     id="vulture-dead-code",

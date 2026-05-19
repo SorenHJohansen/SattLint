@@ -7,7 +7,7 @@ import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.devtools.structural_reports import (
     REPO_ROOT,
@@ -18,6 +18,17 @@ from sattlint.devtools.structural_reports import (
     collect_workspace_graph_inputs,
 )
 from sattlint.path_sanitizer import sanitize_path_for_report
+
+
+def _mapping_entries(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    entries: list[dict[str, Any]] = []
+    for entry in cast(list[object], value):
+        if isinstance(entry, dict):
+            entries.append(cast(dict[str, Any], entry))
+    return entries
+
 
 DEFAULT_OUTPUT_FILENAME = "impact_analysis.json"
 
@@ -273,7 +284,7 @@ def build_impact_analysis_selection(
         ]
     )
 
-    report = {
+    report: dict[str, Any] = {
         "generated_by": "sattlint.devtools.impact_analyzer",
         "report_kind": "impact-analysis-selection",
         "status": "error" if errors else "ok",
@@ -289,7 +300,7 @@ def build_impact_analysis_selection(
             "libraries": selected_library_impacts,
             "modules": selected_module_impacts,
         },
-        "snapshot_failures": list(resolved_impact_report.get("snapshot_failures", [])),
+        "snapshot_failures": _mapping_entries(resolved_impact_report.get("snapshot_failures")),
         "errors": errors,
     }
     if include_full_report:

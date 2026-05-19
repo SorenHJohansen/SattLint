@@ -1,28 +1,68 @@
 from __future__ import annotations
 
+# pyright: reportUnusedFunction=false
 from collections import defaultdict
 from typing import Any
 
-from sattline_parser.models.ast_model import BasePicture
+from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, ModuleTypeInstance, ParameterMapping, Variable
 
 from ..reporting.icf_report import ICFEntry
 from ..reporting.mms_report import MMSInterfaceReport
 from ..resolution.type_graph import TypeGraph
-from . import _mms_interface_helpers as _mms_helpers
 from ._mms_interface_analysis import (
     _InterfaceInventoryEntry,
     collect_icf_inventory_entries,
     collect_mms_inventory_entries,
     load_icf_entries_from_config,
 )
+from ._mms_interface_analysis import (
+    extract_external_tag as extract_external_tag_impl,
+)
+from ._mms_interface_analysis import (
+    normalize_external_tag as normalize_external_tag_impl,
+)
+from ._mms_interface_analysis import (
+    tag_family_key as tag_family_key_impl,
+)
+from ._mms_interface_helpers import (
+    find_parameter_mapping as find_parameter_mapping_impl,
+)
+from ._mms_interface_helpers import (
+    find_variable as find_variable_impl,
+)
 from .framework import Issue
 from .variables import VariablesAnalyzer
 
-_extract_external_tag = _mms_helpers._extract_external_tag
-_find_parameter_mapping = _mms_helpers._find_parameter_mapping
-_find_variable = _mms_helpers._find_variable
-_normalize_external_tag = _mms_helpers._normalize_external_tag
-_tag_family_key = _mms_helpers._tag_family_key
+
+def _extract_external_tag(
+    base_picture: BasePicture,
+    module_path: list[str],
+    inst: ModuleTypeInstance,
+    mt_def: ModuleTypeDef | None,
+) -> str | None:
+    return extract_external_tag_impl(base_picture, module_path, inst, mt_def)
+
+
+def _normalize_external_tag(tag: str | None) -> str | None:
+    return normalize_external_tag_impl(tag)
+
+
+def _tag_family_key(tag: str | None) -> str | None:
+    return tag_family_key_impl(tag)
+
+
+def _find_parameter_mapping(
+    mappings: list[ParameterMapping] | None,
+    parameter_name: str,
+) -> ParameterMapping | None:
+    return find_parameter_mapping_impl(mappings, parameter_name)
+
+
+def _find_variable(
+    variables: list[Variable] | None,
+    wanted_name: str,
+) -> Variable | None:
+    return find_variable_impl(variables, wanted_name)
 
 
 def _source_label(source_kind: str) -> str:

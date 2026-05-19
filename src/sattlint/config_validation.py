@@ -6,9 +6,11 @@ import os
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypeGuard, cast
 
 from .types import TargetName
+
+type ConfigDict = dict[str, object]
 
 _DOCUMENTATION_RULE_LIST_KEYS = (
     "name_contains",
@@ -187,25 +189,55 @@ class ConfigValidationResult:
         }
 
 
-def _deep_merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+def _is_config_dict(value: object) -> TypeGuard[ConfigDict]:
+    if not isinstance(value, dict):
+        return False
+    typed_value = cast(dict[object, object], value)
+    return all(isinstance(key, str) for key in typed_value)
+
+
+def _config_dict(value: object) -> ConfigDict | None:
+    return value if _is_config_dict(value) else None
+
+
+def _object_list(value: object) -> list[object]:
+    if isinstance(value, list):
+        return list(cast(list[object], value))
+    if isinstance(value, tuple):
+        return list(cast(tuple[object, ...], value))
+    return []
+
+
+def _string_list(value: object) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    items = list(cast(list[object], value))
+    if not all(isinstance(item, str) for item in items):
+        return None
+    return [item for item in items if isinstance(item, str)]
+
+
+def _deep_merge_dict(base: ConfigDict, override: ConfigDict) -> ConfigDict:
     merged = deepcopy(base)
     for key, value in override.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = _deep_merge_dict(merged[key], value)
+        nested_override = _config_dict(value)
+        nested_base = _config_dict(merged.get(key))
+        if nested_override is not None and nested_base is not None:
+            merged[key] = _deep_merge_dict(nested_base, nested_override)
             continue
         merged[key] = value
     return merged
 
 
 def _normalize_documentation_rule_keys(config: dict[str, Any]) -> dict[str, Any]:
-    normalized = deepcopy(config)
-    documentation = normalized.get("documentation")
-    if not isinstance(documentation, dict):
-        return normalized
+    normalized = deepcopy(cast(ConfigDict, config))
+    documentation = _config_dict(normalized.get("documentation"))
+    if documentation is None:
+        return cast(dict[str, Any], normalized)
 
-    classifications = documentation.get("classifications")
-    if not isinstance(classifications, dict):
-        return normalized
+    classifications = _config_dict(documentation.get("classifications"))
+    if classifications is None:
+        return cast(dict[str, Any], normalized)
 
     for legacy_key, short_key in _DOCUMENTATION_LEGACY_CATEGORY_KEYS.items():
         if legacy_key not in classifications:
@@ -215,8 +247,9 @@ def _normalize_documentation_rule_keys(config: dict[str, Any]) -> dict[str, Any]
             continue
         classifications[short_key] = legacy_rule
 
-    for rule in classifications.values():
-        if not isinstance(rule, dict):
+    for rule_value in list(classifications.values()):
+        rule = _config_dict(rule_value)
+        if rule is None:
             continue
         for legacy_key, short_key in _DOCUMENTATION_LEGACY_RULE_KEYS.items():
             if legacy_key not in rule:
@@ -226,23 +259,19 @@ def _normalize_documentation_rule_keys(config: dict[str, Any]) -> dict[str, Any]
                 continue
             rule[short_key] = legacy_values
 
-    return normalized
+    return cast(dict[str, Any], normalized)
 
 
 def get_documentation_config(cfg: dict[str, Any] | None = None) -> dict[str, Any]:
-    documentation_defaults = cast(dict[str, Any], deepcopy(DEFAULT_CONFIG["documentation"]))
+    documentation_defaults = deepcopy(cast(ConfigDict, DEFAULT_CONFIG["documentation"]))
     if not cfg:
-        return documentation_defaults
+        return cast(dict[str, Any], documentation_defaults)
 
-    cfg = _normalize_documentation_rule_keys(cfg)
+    normalized_cfg = cast(ConfigDict, _normalize_documentation_rule_keys(cfg))
 
-    if "documentation" in cfg and isinstance(cfg.get("documentation"), dict):
-        override = cfg.get("documentation", {})
-    else:
-        override = cfg
-    if not isinstance(override, dict):
-        return documentation_defaults
-    return _deep_merge_dict(documentation_defaults, override)
+    documentation_override = _config_dict(normalized_cfg.get("documentation"))
+    override = documentation_override if documentation_override is not None else normalized_cfg
+    return cast(dict[str, Any], _deep_merge_dict(documentation_defaults, override))
 
 
 def _build_validation_result(errors: list[ConfigValidationError]) -> ConfigValidationResult:
@@ -266,9 +295,10 @@ def _merge_validation_results(*results: ConfigValidationResult) -> ConfigValidat
 
 
 def _configured_targets(cfg: dict[str, Any]) -> tuple[TargetName, ...]:
+    typed_cfg = cast(ConfigDict, cfg)
     return tuple(
         TargetName(normalized)
-        for raw_target in cfg.get("analyzed_programs_and_libraries", [])
+        for raw_target in _object_list(typed_cfg.get("analyzed_programs_and_libraries", []))
         if (normalized := str(raw_target).strip())
     )
 
@@ -280,10 +310,17 @@ def _validation_errors_by_key(validation: ConfigValidationResult) -> dict[str, t
     return {key: tuple(messages) for key, messages in errors_by_key.items()}
 
 
+normalize_documentation_rule_keys = _normalize_documentation_rule_keys
+configured_targets = _configured_targets
+validation_errors_by_key = _validation_errors_by_key
+deep_merge_dict = _deep_merge_dict
+
+
 def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
     errors: list[ConfigValidationError] = []
+    typed_cfg = cast(ConfigDict, cfg)
 
-    for key in cfg:
+    for key in typed_cfg:
         if key not in VALID_TOP_LEVEL_KEYS:
             errors.append(
                 ConfigValidationError(
@@ -292,7 +329,7 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                 )
             )
 
-    mode = cfg.get("mode")
+    mode = typed_cfg.get("mode")
     if mode is not None and mode not in {"official", "draft"}:
         errors.append(
             ConfigValidationError(
@@ -301,15 +338,16 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
             )
         )
 
-    analysis = cfg.get("analysis")
-    if analysis is not None and not isinstance(analysis, dict):
+    analysis_value = typed_cfg.get("analysis")
+    analysis = _config_dict(analysis_value)
+    if analysis_value is not None and analysis is None:
         errors.append(
             ConfigValidationError(
                 key_path="analysis",
                 message="analysis must be a table/object.",
             )
         )
-    elif isinstance(analysis, dict):
+    elif analysis is not None:
         for key in analysis:
             if key not in VALID_ANALYSIS_KEYS:
                 errors.append(
@@ -319,8 +357,9 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                     )
                 )
 
-        naming = analysis.get("naming")
-        if naming is not None and isinstance(naming, dict):
+        naming_value = analysis.get("naming")
+        naming = _config_dict(naming_value)
+        if naming is not None:
             for target in naming:
                 if target not in VALID_NAMING_TARGETS:
                     errors.append(
@@ -330,8 +369,8 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                         )
                     )
             for target in _NAMING_RULE_TARGETS:
-                target_rule = naming.get(target, {})
-                if not isinstance(target_rule, dict):
+                target_rule = _config_dict(naming.get(target, {}))
+                if target_rule is None:
                     errors.append(
                         ConfigValidationError(
                             key_path=f"analysis.naming.{target}",
@@ -349,8 +388,8 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                         )
                     )
 
-                allow = target_rule.get("allow", [])
-                if not isinstance(allow, list) or not all(isinstance(item, str) for item in allow):
+                allow = _string_list(target_rule.get("allow", []))
+                if allow is None:
                     errors.append(
                         ConfigValidationError(
                             key_path=f"analysis.naming.{target}.allow",
@@ -358,15 +397,16 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                         )
                     )
 
-        sfc = analysis.get("sfc")
-        if sfc is not None and not isinstance(sfc, dict):
+        sfc_value = analysis.get("sfc")
+        sfc = _config_dict(sfc_value)
+        if sfc_value is not None and sfc is None:
             errors.append(
                 ConfigValidationError(
                     key_path="analysis.sfc",
                     message="analysis.sfc must be a table/object",
                 )
             )
-        elif isinstance(sfc, dict):
+        elif sfc is not None:
             step_groups = sfc.get("mutually_exclusive_steps", [])
             if not isinstance(step_groups, list):
                 errors.append(
@@ -376,8 +416,8 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                     )
                 )
 
-            step_contracts = sfc.get("step_contracts", {})
-            if not isinstance(step_contracts, dict):
+            step_contracts = _config_dict(sfc.get("step_contracts", {}))
+            if step_contracts is None:
                 errors.append(
                     ConfigValidationError(
                         key_path="analysis.sfc.step_contracts",
@@ -386,7 +426,7 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                 )
             else:
                 for step_name, contract in step_contracts.items():
-                    if not isinstance(step_name, str) or not step_name.strip():
+                    if not step_name.strip():
                         errors.append(
                             ConfigValidationError(
                                 key_path="analysis.sfc.step_contracts",
@@ -394,7 +434,8 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                             )
                         )
                         continue
-                    if not isinstance(contract, dict):
+                    typed_contract = _config_dict(contract)
+                    if typed_contract is None:
                         errors.append(
                             ConfigValidationError(
                                 key_path=f"analysis.sfc.step_contracts.{step_name}",
@@ -403,8 +444,8 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                         )
                         continue
                     for key in ("required_enter_writes", "required_exit_writes"):
-                        values = contract.get(key, [])
-                        if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+                        values = _string_list(typed_contract.get(key, []))
+                        if values is None:
                             errors.append(
                                 ConfigValidationError(
                                     key_path=f"analysis.sfc.step_contracts.{step_name}.{key}",
@@ -414,7 +455,7 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                                 )
                             )
 
-        if naming is not None and not isinstance(naming, dict):
+        if naming_value is not None and naming is None:
             errors.append(
                 ConfigValidationError(
                     key_path="analysis.naming",
@@ -422,17 +463,18 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                 )
             )
 
-    documentation = cfg.get("documentation")
-    if documentation is not None and not isinstance(documentation, dict):
+    documentation_value = typed_cfg.get("documentation")
+    documentation = _config_dict(documentation_value)
+    if documentation_value is not None and documentation is None:
         errors.append(
             ConfigValidationError(
                 key_path="documentation",
                 message="documentation must be a table/object.",
             )
         )
-    elif isinstance(documentation, dict):
-        classifications = documentation.get("classifications", {})
-        if not isinstance(classifications, dict) or not classifications:
+    elif documentation is not None:
+        classifications = _config_dict(documentation.get("classifications", {}))
+        if classifications is None or not classifications:
             errors.append(
                 ConfigValidationError(
                     key_path="documentation.classifications",
@@ -449,7 +491,8 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                         )
                     )
                     continue
-                if not isinstance(rule, dict):
+                typed_rule = _config_dict(rule)
+                if typed_rule is None:
                     errors.append(
                         ConfigValidationError(
                             key_path=f"documentation.classifications.{category}",
@@ -458,8 +501,8 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                     )
                     continue
                 for key in _DOCUMENTATION_RULE_LIST_KEYS:
-                    values = rule.get(key, [])
-                    if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+                    values = _string_list(typed_rule.get(key, []))
+                    if values is None:
                         errors.append(
                             ConfigValidationError(
                                 key_path=f"documentation.classifications.{category}.{key}",
@@ -471,17 +514,19 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
 
 
 def target_exists(target: str, cfg: dict[str, Any]) -> bool:
+    typed_cfg = cast(ConfigDict, cfg)
+    other_lib_dirs = _object_list(typed_cfg.get("other_lib_dirs", []))
     dirs = [
         Path(str(raw_path))
         for raw_path in (
-            cfg.get("program_dir", ""),
-            cfg.get("ABB_lib_dir", ""),
-            *cfg.get("other_lib_dirs", []),
+            typed_cfg.get("program_dir", ""),
+            typed_cfg.get("ABB_lib_dir", ""),
+            *other_lib_dirs,
         )
         if str(raw_path).strip()
     ]
 
-    mode = str(cfg.get("mode", "official")).strip().lower()
+    mode = str(typed_cfg.get("mode", "official")).strip().lower()
     extensions = [".s", ".x"] if mode == "draft" else [".x"]
 
     for directory in dirs:
@@ -496,9 +541,10 @@ def target_exists(target: str, cfg: dict[str, Any]) -> bool:
 
 def validate_loaded_config(cfg: dict[str, Any]) -> ConfigValidationResult:
     errors: list[ConfigValidationError] = []
+    typed_cfg = cast(ConfigDict, cfg)
 
     for name in ("program_dir", "ABB_lib_dir", "icf_dir"):
-        raw = str(cfg.get(name, "")).strip()
+        raw = str(typed_cfg.get(name, "")).strip()
         if not raw:
             continue
         path = Path(raw)
@@ -518,7 +564,7 @@ def validate_loaded_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                 )
             )
 
-    for index, raw_path in enumerate(cfg.get("other_lib_dirs", [])):
+    for index, raw_path in enumerate(_object_list(typed_cfg.get("other_lib_dirs", []))):
         path = Path(str(raw_path))
         if path.exists():
             continue

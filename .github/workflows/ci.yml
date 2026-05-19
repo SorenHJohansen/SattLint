@@ -54,7 +54,7 @@ jobs:
         run: python scripts/context_health.py --check --json-output artifacts/health/context-health.json --markdown-output docs/generated/context-health.md
 
       - name: Lint GitHub Actions workflows
-        run: actionlint -color
+        run: python scripts/run_actionlint.py
 
       - name: Run fast pre-commit gate
         run: |
@@ -124,7 +124,7 @@ jobs:
         run: python scripts/context_health.py --check --json-output artifacts/health/context-health-nightly.json --markdown-output artifacts/health/context-health-nightly.md
 
       - name: Lint GitHub Actions workflows
-        run: actionlint -color
+        run: python scripts/run_actionlint.py
 
       - name: Run doc gardener
         run: python -m sattlint.devtools.doc_gardener --check-only

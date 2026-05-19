@@ -17,11 +17,15 @@ _PATH_FRONTIER_LIMIT = 64
 _LOG = logging.getLogger("SattLint")
 
 
+def _empty_write_map() -> WriteMap:
+    return {}
+
+
 @dataclass
 class _PathState:
     reset_state: str = "unknown"
-    run_writes: WriteMap = field(default_factory=dict)
-    reset_writes: WriteMap = field(default_factory=dict)
+    run_writes: WriteMap = field(default_factory=_empty_write_map)
+    reset_writes: WriteMap = field(default_factory=_empty_write_map)
 
     def clone(self) -> _PathState:
         return _PathState(

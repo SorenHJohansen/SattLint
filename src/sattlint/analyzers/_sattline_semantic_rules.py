@@ -133,6 +133,7 @@ RULE_CONTRACTS_BY_ID: dict[str, SemanticRuleContract] = {
         "semantic.scan-cycle-stale-read",
         "semantic.scan-cycle-implicit-new",
         "semantic.scan-cycle-temporal-misuse",
+        "semantic.invalid-state-access",
     ),
     **rule_contract_entries(
         SIGNAL_LIFECYCLE_RULE_CONTRACT,

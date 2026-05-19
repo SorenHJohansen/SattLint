@@ -59,6 +59,17 @@ _INTERFACE_TARGETS: dict[str, dict[str, str]] = {
 _InterfaceInventoryEntry = _mms_icf_inventory_module.InterfaceInventoryEntry
 collect_icf_inventory_entries = _mms_icf_inventory_module.collect_icf_inventory_entries
 load_icf_entries_from_config = _mms_icf_inventory_module.load_icf_entries_from_config
+extract_external_tag = _extract_external_tag
+normalize_external_tag = _normalize_external_tag
+tag_family_key = _tag_family_key
+
+
+def _empty_mms_hits() -> list[MMSInterfaceHit]:
+    return []
+
+
+def _empty_inventory_entries() -> list[_InterfaceInventoryEntry]:
+    return []
 
 
 @dataclass(slots=True)
@@ -67,8 +78,8 @@ class _MMSInterfaceAnalysisState:
     analyzer: VariablesAnalyzer
     type_graph: TypeGraph
     debug: bool
-    hits: list[MMSInterfaceHit] = dataclass_field(default_factory=list)
-    inventory_entries: list[_InterfaceInventoryEntry] = dataclass_field(default_factory=list)
+    hits: list[MMSInterfaceHit] = dataclass_field(default_factory=_empty_mms_hits)
+    inventory_entries: list[_InterfaceInventoryEntry] = dataclass_field(default_factory=_empty_inventory_entries)
 
 
 def _collect_write_locations(
@@ -139,7 +150,7 @@ def _collect_write_locations(
         if not matched_fields:
             return ()
 
-        results = []
+        results: list[tuple[str, tuple[tuple[tuple[str, ...], int], ...]]] = []
         for field, locations in sorted(matched_fields.items()):
             matched_counts: dict[tuple[str, ...], int] = {}
             for location in locations:
@@ -151,7 +162,7 @@ def _collect_write_locations(
     if not field_writes and not whole_var_writes:
         return ()
 
-    results = []
+    results: list[tuple[str, tuple[tuple[tuple[str, ...], int], ...]]] = []
     for field, locations in sorted(field_writes.items()):
         counts: dict[tuple[str, ...], int] = {}
         for location in locations:
@@ -311,7 +322,7 @@ def _walk_typedef(
                 visited_types,
             )
             visited_types.remove(mt_key)
-        elif isinstance(module, (SingleModule, FrameModule)):
+        else:
             _walk_typedef(
                 state,
                 module.submodules,
@@ -404,5 +415,8 @@ __all__ = [
     "_tag_family_key",
     "collect_icf_inventory_entries",
     "collect_mms_inventory_entries",
+    "extract_external_tag",
     "load_icf_entries_from_config",
+    "normalize_external_tag",
+    "tag_family_key",
 ]
