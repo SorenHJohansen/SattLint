@@ -135,30 +135,6 @@ def load_pipeline_snapshot(output_dir: Path) -> tuple[PipelineSnapshot | None, s
     )
 
 
-def _format_coverage_percent(line_rate: float | None) -> str:
-    return doc_gardener_updates_module.format_coverage_percent(line_rate)
-
-
-def _grade_from_pipeline_snapshot(snapshot: PipelineSnapshot) -> str:
-    return doc_gardener_updates_module.grade_from_pipeline_snapshot(snapshot)
-
-
-def _build_quality_trend_entry(
-    findings: Sequence[DocFinding],
-    *,
-    pipeline_snapshot: PipelineSnapshot | None,
-) -> tuple[str, str, str, str]:
-    return doc_gardener_updates_module.build_quality_trend_entry(
-        findings,
-        pipeline_snapshot=pipeline_snapshot,
-        date_str=datetime.now(UTC).strftime("%Y-%m-%d"),
-    )
-
-
-def _upsert_trend_section(content: str, *, row: str) -> str:
-    return doc_gardener_updates_module.upsert_trend_section(content, row=row)
-
-
 def _should_skip_path(path: Path) -> bool:
     return doc_gardener_scan_module.should_skip_path(path)
 
@@ -283,7 +259,7 @@ def scan_stale_docs() -> Sequence[DocFinding]:
 
 def run_scan() -> dict[str, Any]:
     """Run full doc-gardening scan. Returns findings + metadata."""
-    findings = []
+    findings: list[DocFinding] = []
     findings.extend(scan_agents_md())
     findings.extend(scan_dead_links())
     findings.extend(scan_docs_structure())

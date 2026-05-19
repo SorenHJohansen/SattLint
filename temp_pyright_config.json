@@ -1,0 +1,1 @@
+{ "include": ["src/sattlint/config.py"], "typeCheckingMode": "strict" }

@@ -8,7 +8,7 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, cast
 
 from sattlint.analyzers.framework import AnalysisContext
 from sattlint.analyzers.registry import get_default_analyzer_catalog
@@ -18,10 +18,6 @@ from sattlint.semantic_analysis import build_variable_semantic_artifacts
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OUTPUT_FILENAME = "profiler_report.json"
-
-
-class _IssueReport(Protocol):
-    issues: list[Any]
 
 
 def _duration_ms(start: float, end: float) -> float:
@@ -76,8 +72,8 @@ def _profile_snapshot_analyzers(
         end = timer()
         duration_ms = _duration_ms(start, end)
         total_duration_ms = round(total_duration_ms + duration_ms, 3)
-        issues = getattr(report, "issues", [])
-        issue_count = len(issues) if isinstance(issues, list) else 0
+        issues: object = getattr(report, "issues", None)
+        issue_count = len(cast(list[object], issues)) if isinstance(issues, list) else 0
         records.append(
             {
                 "key": spec.key,

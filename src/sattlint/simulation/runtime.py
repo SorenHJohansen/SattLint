@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -18,7 +19,7 @@ from sattline_parser.models.ast_model import (
     SingleModule,
 )
 
-from ..analyzers._dataflow_common import _is_scalar_value
+from ..analyzers._dataflow_common import is_scalar_value
 from ..analyzers.dataflow import DataflowAnalyzer, ScalarValue, StateMap
 from ..core.semantic import SemanticSnapshot
 from ..resolution.common import resolve_moduletype_def_strict
@@ -200,17 +201,17 @@ def _select_target(base_picture: BasePicture, analyzer: DataflowAnalyzer, module
     return matches[0]
 
 
-def _iter_targets(base_picture: BasePicture, analyzer: DataflowAnalyzer):
+def _iter_targets(base_picture: BasePicture, analyzer: DataflowAnalyzer) -> Iterator[_SimulationTarget]:
     root_path = [base_picture.header.name]
     root_variables = list(base_picture.localvariables or [])
-    root_context = analyzer._build_scope_context(
+    root_context = analyzer.build_scope_context(
         root_variables,
         param_mappings={},
         module_path=root_path,
         current_library=getattr(base_picture, "origin_lib", None),
         parent_context=None,
     )
-    root_state = analyzer._seed_state({}, root_path, root_variables)
+    root_state = analyzer.seed_state({}, root_path, root_variables)
     yield _SimulationTarget(root_path, base_picture.modulecode, root_context, root_state)
     yield from _iter_child_targets(
         base_picture,
@@ -229,12 +230,12 @@ def _iter_child_targets(
     parent_context: ScopeContext,
     parent_path: list[str],
     state: StateMap,
-):
+) -> Iterator[_SimulationTarget]:
     for child in modules:
         child_path = [*parent_path, child.header.name]
         if isinstance(child, SingleModule):
-            child_context = analyzer._build_single_context(child, parent_context, child_path)
-            child_state = analyzer._seed_state(
+            child_context = analyzer.build_single_context(child, parent_context, child_path)
+            child_state = analyzer.seed_state(
                 state,
                 child_path,
                 [*(child.moduleparameters or []), *(child.localvariables or [])],
@@ -276,13 +277,13 @@ def _iter_child_targets(
                 base_picture,
                 child.moduletype_name,
                 current_library=parent_context.current_library,
-                unavailable_libraries=analyzer._unavailable_libraries,
+                unavailable_libraries=analyzer.unavailable_libraries,
             )
         except ValueError:
             continue
 
-        typedef_context = analyzer._build_typedef_context(moduletype, child, parent_context, child_path)
-        typedef_state = analyzer._seed_state(
+        typedef_context = analyzer.build_typedef_context(moduletype, child, parent_context, child_path)
+        typedef_state = analyzer.seed_state(
             state,
             child_path,
             [*(moduletype.moduleparameters or []), *(moduletype.localvariables or [])],
@@ -359,7 +360,7 @@ def _run_step_phase(
         step = step_lookup.get(step_label)
         if step is None:
             continue
-        current_state = analyzer._analyze_block(
+        current_state = analyzer.analyze_block(
             getattr(step.code, phase) or [],
             context,
             module_path,
@@ -416,7 +417,7 @@ def _advance_nodes(
             if transition is None:
                 next_active.add(label)
                 continue
-            condition = analyzer._evaluate_condition(transition.condition, context, module_path, state)
+            condition = analyzer.evaluate_condition(transition.condition, context, module_path, state)
             if condition is True:
                 transition_fires.add(transition.name or label)
                 next_active.update(_collect_entry_steps(nodes[index + 2 :], prefix) or {label})
@@ -460,7 +461,7 @@ def _run_equations(analyzer: DataflowAnalyzer, target: _SimulationTarget, state:
     if target.modulecode is None:
         return current_state
     for equation in target.modulecode.equations or []:
-        current_state = analyzer._analyze_block(equation.code or [], target.context, target.module_path, current_state)
+        current_state = analyzer.analyze_block(equation.code or [], target.context, target.module_path, current_state)
     return current_state
 
 
@@ -468,18 +469,16 @@ def _export_state(state: StateMap, target: _SimulationTarget) -> dict[str, Scala
     exported: dict[str, ScalarValue] = {}
     path_prefix = tuple(segment.casefold() for segment in target.module_path)
     for key, value in state.items():
-        if not isinstance(key, tuple):
-            continue
         if key[: len(path_prefix)] != path_prefix:
             continue
         if any(segment in {"__old__", "__pending__"} for segment in key):
             continue
-        if not _is_scalar_value(value):
+        if not is_scalar_value(value):
             continue
         relative_key = ".".join(key[len(path_prefix) :])
         if not relative_key:
             continue
-        exported[_display_state_name(relative_key, target.context)] = cast(ScalarValue, value)
+        exported[_display_state_name(relative_key, target.context)] = value
     return {name: exported[name] for name in sorted(exported)}
 
 

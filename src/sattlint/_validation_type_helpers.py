@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence as AbcSequence
+from typing import cast
 
 from sattline_parser.models.ast_model import (
     FloatLiteral,
@@ -75,7 +76,8 @@ def _has_time_literal_marker(value: object) -> bool:
 def _extract_time_literal(value: object) -> str | None:
     if not isinstance(value, dict) or const.GRAMMAR_VALUE_TIME_VALUE not in value:
         return None
-    literal = value.get(const.GRAMMAR_VALUE_TIME_VALUE)
+    mapping = cast(dict[str, object], value)
+    literal = mapping.get(const.GRAMMAR_VALUE_TIME_VALUE)
     return literal if isinstance(literal, str) else None
 
 
@@ -309,8 +311,10 @@ def _expression_is_zero_literal(node: object) -> bool:
         return int(node) == 0
     if isinstance(node, FloatLiteral | float):
         return float(node) == 0.0
-    if isinstance(node, tuple) and len(node) == 2 and node[0] in {const.KEY_PLUS, const.KEY_MINUS}:
-        return _expression_is_zero_literal(node[1])
+    if isinstance(node, tuple):
+        tuple_node = cast(tuple[object, ...], node)
+        if len(tuple_node) == 2 and tuple_node[0] in {const.KEY_PLUS, const.KEY_MINUS}:
+            return _expression_is_zero_literal(tuple_node[1])
     return False
 
 
@@ -370,15 +374,22 @@ def _assignment_type_matches(
 
 BUILTIN_DATATYPE_NAMES = _BUILTIN_DATATYPE_NAMES
 assignment_type_matches = _assignment_type_matches
+builtin_type_matches = _builtin_type_matches
+expression_is_zero_literal = _expression_is_zero_literal
 extract_time_literal = _extract_time_literal
 format_datatype = _format_datatype
 has_time_literal_marker = _has_time_literal_marker
 infer_literal_datatype = _infer_literal_datatype
 is_anytype_datatype = _is_anytype_datatype
+is_boolean_datatype = _is_boolean_datatype
+is_numeric_datatype = _is_numeric_datatype
 is_string_simple_type = _is_string_simple_type
 is_valid_duration_literal = _is_valid_duration_literal
 is_valid_time_literal = _is_valid_time_literal
 literal_matches_expected_datatype = _literal_matches_expected_datatype
+merge_compatible_types = _merge_compatible_types
+merge_numeric_types = _merge_numeric_types
+normalize_builtin_datatype = _normalize_builtin_datatype
 resolve_ref_datatype = _resolve_ref_datatype
 resolve_root_variable = _resolve_root_variable
 resolve_variable_field_datatype = _resolve_variable_field_datatype

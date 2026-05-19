@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -45,6 +46,16 @@ _RULE_KEYS = {
 }
 
 
+def _issue_list() -> list[Issue]:
+    return []
+
+
+def _config_mapping(raw: object) -> Mapping[str, object] | None:
+    if isinstance(raw, Mapping):
+        return cast(Mapping[str, object], raw)
+    return None
+
+
 @dataclass(frozen=True)
 class NamingRule:
     style: str = "infer"
@@ -65,7 +76,7 @@ class NamingDeclaration:
 @dataclass
 class NamingConsistencyReport:
     name: str
-    issues: list[Issue] = field(default_factory=list)
+    issues: list[Issue] = field(default_factory=_issue_list)
 
     def summary(self) -> str:
         if not self.issues:
@@ -92,17 +103,18 @@ class NamingConsistencyReport:
 
 
 def _normalize_rule(raw: object) -> NamingRule:
-    if not isinstance(raw, dict):
+    rule_config = _config_mapping(raw)
+    if rule_config is None:
         return NamingRule()
 
-    style = str(raw.get("style", "infer")).strip().lower() or "infer"
+    style = str(rule_config.get("style", "infer")).strip().lower() or "infer"
     if style not in SUPPORTED_NAMING_STYLES:
         style = "infer"
 
-    allow_raw = raw.get("allow", [])
+    allow_raw = rule_config.get("allow", [])
     allow: list[str] = []
-    if isinstance(allow_raw, list):
-        for item in allow_raw:
+    if isinstance(allow_raw, Sequence) and not isinstance(allow_raw, (str, bytes)):
+        for item in cast(Sequence[object], allow_raw):
             if not isinstance(item, str):
                 continue
             value = item.strip()
@@ -112,21 +124,21 @@ def _normalize_rule(raw: object) -> NamingRule:
     return NamingRule(style=style, allow=tuple(allow))
 
 
-def get_configured_naming_rules(config: dict[str, Any] | None) -> dict[str, NamingRule]:
+def get_configured_naming_rules(config: Mapping[str, object] | None) -> dict[str, NamingRule]:
     defaults = {
         "variables": NamingRule(),
         "modules": NamingRule(),
         "instances": NamingRule(),
     }
-    if not isinstance(config, dict):
+    if config is None:
         return defaults
 
-    analysis = config.get("analysis", {})
-    if not isinstance(analysis, dict):
+    analysis = _config_mapping(config.get("analysis", {}))
+    if analysis is None:
         return defaults
 
-    naming = analysis.get("naming", {})
-    if not isinstance(naming, dict):
+    naming = _config_mapping(analysis.get("naming", {}))
+    if naming is None:
         return defaults
 
     return {key: _normalize_rule(naming.get(key, {})) for key in defaults}

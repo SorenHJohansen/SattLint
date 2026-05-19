@@ -6,7 +6,7 @@ import shlex
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.path_sanitizer import sanitize_path_for_report
 
@@ -357,9 +357,13 @@ def _step_status_from_exit_code(exit_code: int | None) -> str:
     return "pass" if exit_code in (None, 0) else "fail"
 
 
+def _json_mapping(value: object) -> dict[str, Any] | None:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else None
+
+
 def _pipeline_duration_seconds(pipeline_summary: dict[str, Any], pipeline_check_id: str) -> float:
-    timing = pipeline_summary.get("timing") or {}
-    duration_map = timing.get("check_durations_seconds") or {}
+    timing = _json_mapping(pipeline_summary.get("timing")) or {}
+    duration_map = _json_mapping(timing.get("check_durations_seconds")) or {}
     try:
         return float(duration_map.get(pipeline_check_id) or 0.0)
     except (TypeError, ValueError):
@@ -376,10 +380,13 @@ def _pipeline_reused_finish_gate_step(
     pipeline_check_id = _PIPELINE_REUSED_FINISH_GATE_STEP_IDS.get(str(step.get("id", "")))
     if pipeline_check_id is None:
         return None
-    tool_status = pipeline_summary.get("status", {}).get("tool_statuses", {}).get(pipeline_check_id)
-    if not isinstance(tool_status, dict) or tool_status.get("status") == "skipped":
+    status_payload = _json_mapping(pipeline_summary.get("status"))
+    tool_statuses = _json_mapping(status_payload.get("tool_statuses")) if status_payload is not None else None
+    tool_status = _json_mapping(tool_statuses.get(pipeline_check_id)) if tool_statuses is not None else None
+    if tool_status is None or tool_status.get("status") == "skipped":
         return None
-    exit_code = tool_status.get("normalized_exit_code")
+    exit_code_raw = tool_status.get("normalized_exit_code")
+    exit_code = exit_code_raw if isinstance(exit_code_raw, int) else None
     return {
         "id": step["id"],
         "label": step["label"],

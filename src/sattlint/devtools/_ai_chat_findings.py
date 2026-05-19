@@ -108,22 +108,6 @@ def build_findings(
             )
         )
 
-    if int(top_metrics["codegraph_failure_count"]) > 0:
-        failed_sessions = [session["session_id"] for session in sessions if int(session["codegraph_failure_count"]) > 0]
-        findings.append(
-            _finding(
-                finding_id="codegraph-tool-failures",
-                severity="medium",
-                message="CodeGraph-related tool calls failed during transcript sessions.",
-                detail=f"CodeGraph tool failures were observed in {len(failed_sessions)} session(s).",
-                suggestion="Verify the correct tool seam and avoid retrying CodeGraph calls blindly when the tool is unavailable or mismatched.",
-                data={
-                    "codegraph_failure_count": top_metrics["codegraph_failure_count"],
-                    "session_ids": failed_sessions,
-                },
-            )
-        )
-
     if int(top_metrics["same_tool_retry_count"]) > 0:
         retried_sessions = [session["session_id"] for session in sessions if int(session["same_tool_retry_count"]) > 0]
         findings.append(

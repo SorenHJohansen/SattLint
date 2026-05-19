@@ -127,7 +127,7 @@ def scan_agents_md(
     max_agents_lines: int,
     read_text_fn: Callable[[Path], str],
 ) -> Sequence[Any]:
-    findings = []
+    findings: list[Any] = []
     if not agents_md.exists():
         findings.append(doc_finding_cls("AGENTS.md", 0, "Critical", "missing", "AGENTS.md not found"))
         return findings
@@ -162,7 +162,7 @@ def scan_dead_links(
     read_text_fn: Callable[[Path], str],
     relative_path_fn: Callable[[Path], str],
 ) -> Sequence[Any]:
-    findings = []
+    findings: list[Any] = []
     if not docs_dir.exists():
         return findings
 
@@ -198,7 +198,7 @@ def scan_dead_links(
 
 
 def scan_docs_structure(*, doc_finding_cls: type[Any], docs_dir: Path) -> Sequence[Any]:
-    findings = []
+    findings: list[Any] = []
     required_dirs = ["design-docs", "exec-plans", "references"]
     required_files = [
         "quality-score.md",
@@ -227,7 +227,7 @@ def scan_markdown_encoding_artifacts(
     mojibake_tokens: Sequence[str],
     relative_path_fn: Callable[[Path], str],
 ) -> Sequence[Any]:
-    findings = []
+    findings: list[Any] = []
 
     for markdown_file in iter_markdown_files_fn():
         lines = read_text_fn(markdown_file).splitlines()
@@ -259,7 +259,7 @@ def scan_ai_first_source_drift(
     source_sync_digest_fn: Callable[[Path], str],
     relative_path_fn: Callable[[Path], str],
 ) -> Sequence[Any]:
-    findings = []
+    findings: list[Any] = []
     if not ai_first_debt.exists():
         return findings
 
@@ -373,7 +373,7 @@ def scan_ai_first_status_drift(
     normalize_status_fn: Callable[[str], str],
     relative_path_fn: Callable[[Path], str],
 ) -> Sequence[Any]:
-    findings = []
+    findings: list[Any] = []
     if not ai_first_debt.exists():
         return findings
 
@@ -417,13 +417,13 @@ def scan_completed_exec_plans_still_active(
 ) -> Sequence[Any]:
     from sattlint.devtools import ai_work_map as ai_work_map_module
 
-    findings = []
+    findings: list[Any] = []
     active_exec_plans_dir = docs_dir / "exec-plans" / "active"
     if not active_exec_plans_dir.exists():
         return findings
 
     for plan_path in sorted(active_exec_plans_dir.glob("*.md")):
-        if not ai_work_map_module._is_completed_exec_plan(plan_path):
+        if not ai_work_map_module.is_completed_exec_plan(plan_path):
             continue
         findings.append(
             doc_finding_cls(
@@ -446,7 +446,7 @@ def scan_stale_docs(
     relative_path_fn: Callable[[Path], str],
     run_repo_cli_fn: Callable[[str, Sequence[str]], Any],
 ) -> Sequence[Any]:
-    findings = []
+    findings: list[Any] = []
     try:
         thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
 
@@ -470,7 +470,7 @@ def scan_stale_docs(
                     if doc_date < thirty_days_ago:
                         content = read_text_fn(doc)
                         code_refs = re.findall(r"`([^`]+\.(?:py|toml|json|yaml|yml))`", content)
-                        stale_refs = []
+                        stale_refs: list[str] = []
                         for ref in code_refs:
                             ref_path = docs_dir.parent / ref
                             if ref_path.exists():

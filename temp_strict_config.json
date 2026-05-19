@@ -1,0 +1,10 @@
+{
+    "include": [
+        "src/sattlint/analyzers/_variables_facade_properties.py",
+        "src/sattlint/analyzers/_variables_effect_sources.py",
+        "src/sattlint/analyzers/signal_lifecycle.py"
+    ],
+    "venvPath": ".",
+    "venv": ".venv",
+    "typeCheckingMode": "strict"
+}

@@ -9,7 +9,7 @@ import tempfile
 import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from sattlint.devtools.pipeline_artifacts import write_json_artifact
 from sattlint.path_sanitizer import sanitize_path_for_report
@@ -19,6 +19,40 @@ AUDIT_RUN_HISTORY_DIRNAME = "history"
 AUDIT_RUN_HISTORY_LIMIT = 10
 AUDIT_RUN_HISTORY_SCHEMA_KIND = "sattlint.audit_run_history"
 AUDIT_RUN_HISTORY_SCHEMA_VERSION = 1
+
+
+class FailurePatternGroup(TypedDict):
+    signature: str
+    occurrence_count: int
+    latest_run_id: str
+    latest_captured_at: str
+    report_kind: Any
+    selected_surface: Any
+    finish_gate_status: Any
+    top_failure_ids: list[str]
+    top_failure_messages: list[str]
+    run_ids: list[str]
+
+
+def _json_mapping(value: object) -> dict[str, Any] | None:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else None
+
+
+def _mapping_entries(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    entries: list[dict[str, Any]] = []
+    for item in cast(list[object], value):
+        entry = _json_mapping(item)
+        if entry is not None:
+            entries.append(entry)
+    return entries
+
+
+def _string_entries(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item_text for item in cast(list[object], value) if (item_text := str(item)).strip()]
 
 
 def _cleanup_temp_path(path: Path) -> None:
@@ -119,15 +153,12 @@ def load_audit_run_history(
     if not path.exists():
         return []
     try:
-        payload = json.loads(read_text(path))
+        payload = _json_mapping(json.loads(read_text(path)))
     except (OSError, ValueError, json.JSONDecodeError):
         return []
-    if not isinstance(payload, dict):
+    if payload is None:
         return []
-    runs = payload.get("runs")
-    if not isinstance(runs, list):
-        return []
-    return [entry for entry in runs if isinstance(entry, dict) and isinstance(entry.get("run_id"), str)]
+    return [entry for entry in _mapping_entries(payload.get("runs")) if isinstance(entry.get("run_id"), str)]
 
 
 def build_audit_run_id() -> str:
@@ -219,25 +250,25 @@ def failure_signature(entry: dict[str, Any]) -> str | None:
     finish_gate_status = entry.get("finish_gate_status")
     if isinstance(finish_gate_status, str) and finish_gate_status:
         components.append(f"finish:{finish_gate_status}")
-    top_failure_ids = entry.get("top_failure_ids")
-    if isinstance(top_failure_ids, list) and top_failure_ids:
-        components.extend(str(item) for item in top_failure_ids[:5] if str(item))
+    top_failure_ids = _string_entries(entry.get("top_failure_ids"))
+    if top_failure_ids:
+        components.extend(top_failure_ids[:5])
     else:
-        selected_checks = entry.get("selected_checks")
-        if isinstance(selected_checks, list) and selected_checks:
-            components.extend(str(item) for item in selected_checks[:5] if str(item))
+        selected_checks = _string_entries(entry.get("selected_checks"))
+        if selected_checks:
+            components.extend(selected_checks[:5])
     if len(components) == 1:
         return None
     return "|".join(components)
 
 
 def build_failure_patterns(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    grouped: dict[str, dict[str, Any]] = {}
+    grouped: dict[str, FailurePatternGroup] = {}
     for entry in runs:
         signature = failure_signature(entry)
         if signature is None:
             continue
-        group = grouped.get(signature)
+        group: FailurePatternGroup | None = grouped.get(signature)
         if group is None:
             group = {
                 "signature": signature,
@@ -247,16 +278,19 @@ def build_failure_patterns(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "report_kind": entry.get("report_kind"),
                 "selected_surface": entry.get("selected_surface"),
                 "finish_gate_status": entry.get("finish_gate_status"),
-                "top_failure_ids": list(entry.get("top_failure_ids", [])),
-                "top_failure_messages": list(entry.get("top_failure_messages", []))[:3],
+                "top_failure_ids": _string_entries(entry.get("top_failure_ids"))[:5],
+                "top_failure_messages": _string_entries(entry.get("top_failure_messages"))[:3],
                 "run_ids": [],
             }
             grouped[signature] = group
         group["occurrence_count"] += 1
         group["run_ids"].append(entry["run_id"])
-    return sorted(
-        grouped.values(),
-        key=lambda item: (-int(item["occurrence_count"]), str(item["latest_captured_at"])),
+    return cast(
+        list[dict[str, Any]],
+        sorted(
+            grouped.values(),
+            key=lambda item: (-int(item["occurrence_count"]), str(item["latest_captured_at"])),
+        ),
     )
 
 
@@ -276,24 +310,21 @@ def build_audit_run_entry(
 ) -> dict[str, Any]:
     git_state = collect_git_state()
     top_findings: list[dict[str, Any]] = []
-    if isinstance(status_payload, dict) and isinstance(status_payload.get("top_findings"), list):
-        top_findings = list(status_payload["top_findings"])
-    if not top_findings and isinstance(primary_payload.get("top_findings"), list):
-        top_findings = list(primary_payload["top_findings"])
+    if status_payload is not None:
+        top_findings = _mapping_entries(status_payload.get("top_findings"))
+    if not top_findings:
+        top_findings = _mapping_entries(primary_payload.get("top_findings"))
 
     selected_checks: list[str] = []
-    if isinstance(summary_payload, dict) and isinstance(summary_payload.get("selected_checks"), list):
-        selected_checks = [str(item) for item in summary_payload["selected_checks"] if str(item)]
-    elif isinstance(primary_payload.get("selected_checks"), list):
-        selected_checks = [str(item) for item in primary_payload["selected_checks"] if str(item)]
-    elif isinstance(primary_payload.get("recommendation"), dict):
-        recommended = primary_payload["recommendation"].get("recommended_check_ids")
-        if isinstance(recommended, list):
-            selected_checks = [str(item) for item in recommended if str(item)]
+    if summary_payload is not None:
+        selected_checks = _string_entries(summary_payload.get("selected_checks"))
+    if not selected_checks:
+        selected_checks = _string_entries(primary_payload.get("selected_checks"))
+    recommendation = _json_mapping(primary_payload.get("recommendation"))
+    if not selected_checks and recommendation is not None:
+        selected_checks = _string_entries(recommendation.get("recommended_check_ids"))
 
-    changed_files: list[str] = []
-    if isinstance(primary_payload.get("changed_files"), list):
-        changed_files = [str(item) for item in primary_payload["changed_files"] if str(item)]
+    changed_files = _string_entries(primary_payload.get("changed_files"))
 
     base_stale_reasons: list[str] = []
     if git_state["dirty"] is True:
@@ -364,13 +395,9 @@ def build_audit_run_entry(
             if isinstance(summary_payload, dict) and isinstance(summary_payload.get("max_severity"), str)
             else None
         ),
-        "top_failure_ids": [
-            str(item.get("id")) for item in top_findings if isinstance(item, dict) and isinstance(item.get("id"), str)
-        ][:5],
+        "top_failure_ids": [str(item.get("id")) for item in top_findings if isinstance(item.get("id"), str)][:5],
         "top_failure_messages": [
-            str(item.get("message"))
-            for item in top_findings
-            if isinstance(item, dict) and isinstance(item.get("message"), str)
+            str(item.get("message")) for item in top_findings if isinstance(item.get("message"), str)
         ][:5],
         "reports": dict(primary_payload.get("reports", {})) if isinstance(primary_payload.get("reports"), dict) else {},
         "output_dir": sanitize_report_path(source_dir),

@@ -42,6 +42,9 @@ def _filter_custom_findings_to_changed_files(findings: list[Any], changed_files:
     return [finding for finding in findings if _finding_matches_changed_files(finding, changed_files)]
 
 
+filter_custom_findings_to_changed_files = _filter_custom_findings_to_changed_files
+
+
 def run_recommended_repo_audit_slice(
     output_dir: Path,
     *,
@@ -116,14 +119,14 @@ def run_recommended_repo_audit_finish_gate(
         fail_on=fail_on,
         changed_files=recommendation["changed_files"],
         recommended_checks=recommendation["recommended_checks"],
-        ruff_command=[pipeline_module._resolve_venv_tool("ruff") or "ruff"],
-        pyright_command=[pipeline_module._resolve_venv_tool("pyright") or "pyright"],
-        python_command=[pipeline_module._resolve_python_executable()],
+        ruff_command=[pipeline_module.resolve_venv_tool("ruff") or "ruff"],
+        pyright_command=[pipeline_module.resolve_venv_tool("pyright") or "pyright"],
+        python_command=[pipeline_module.resolve_python_executable()],
         pytest_workers=pytest_workers,
     )[1:]
     step_reports = execute_finish_gate_steps(
         steps=finish_gate_steps,
-        run_command=pipeline_module._run_command,
+        run_command=pipeline_module.run_command,
         pipeline_summary=summary.get("pipeline_summary"),
     )
     finish_gate_status = "pass"

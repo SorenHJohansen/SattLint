@@ -5,6 +5,7 @@ import textwrap
 from sattline_parser import strip_sl_comments
 from sattline_parser.models.ast_model import (
     BasePicture,
+    DataType,
     Equation,
     ModuleCode,
     ModuleHeader,
@@ -280,6 +281,49 @@ def test_assigning_to_old_is_reported_as_temporal_misuse():
         issue.kind == "dataflow.scan_cycle_temporal_misuse"
         and issue.data is not None
         and issue.data.get("symbol") == "Flag:Old"
+        for issue in report.issues
+    )
+
+
+def test_old_on_non_state_nested_field_is_reported():
+    bp = BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
+        datatype_defs=[
+            DataType(
+                name="RegressionType",
+                description=None,
+                datecode=None,
+                var_list=[Variable(name="Running", datatype=Simple_DataType.BOOLEAN)],
+            ),
+            DataType(
+                name="SelfType",
+                description=None,
+                datecode=None,
+                var_list=[Variable(name="Regression", datatype="RegressionType")],
+            ),
+        ],
+        localvariables=[
+            Variable(name="Self", datatype="SelfType"),
+            Variable(name="Output", datatype=Simple_DataType.BOOLEAN),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[(const.KEY_ASSIGN, _varref("Output"), _state_ref("Self.Regression.Running", "old"))],
+                )
+            ]
+        ),
+    )
+
+    report = analyze_dataflow(bp)
+
+    assert any(
+        issue.kind == "dataflow.invalid_state_access"
+        and issue.data is not None
+        and issue.data.get("symbol") == "Self.Regression.Running:Old"
         for issue in report.issues
     )
 

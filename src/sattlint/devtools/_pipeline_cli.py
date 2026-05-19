@@ -32,7 +32,7 @@ def build_pipeline_check_catalog(*, profile: str, output_dir: Path | None) -> di
         profile=profile,
         output_dir=output_dir or pipeline_module.DEFAULT_OUTPUT_DIR,
         repo_root=pipeline_module.REPO_ROOT,
-        validate_profile=pipeline_module._profile_settings,
+        validate_profile=pipeline_module.profile_settings,
     )
 
 
@@ -144,7 +144,7 @@ def run_recommended_pipeline_finish_gate(
         recommended_checks=recommendation["recommended_checks"],
         pytest_workers=pytest_workers,
     )
-    summary = pipeline_module._run_pipeline(
+    summary = pipeline_module.run_pipeline(
         output_dir,
         trace_target=trace_target,
         profile=profile,
@@ -166,14 +166,14 @@ def run_recommended_pipeline_finish_gate(
         output_dir=output_dir,
         changed_files=recommendation["changed_files"],
         recommended_checks=recommendation["recommended_checks"],
-        ruff_command=[pipeline_module._resolve_venv_tool("ruff") or "ruff"],
-        pyright_command=[pipeline_module._resolve_venv_tool("pyright") or "pyright"],
-        python_command=[pipeline_module._resolve_python_executable()],
+        ruff_command=[pipeline_module.resolve_venv_tool("ruff") or "ruff"],
+        pyright_command=[pipeline_module.resolve_venv_tool("pyright") or "pyright"],
+        python_command=[pipeline_module.resolve_python_executable()],
         pytest_workers=pytest_workers,
     )[1:]
     step_reports = execute_finish_gate_steps(
         steps=finish_gate_steps,
-        run_command=pipeline_module._run_command,
+        run_command=pipeline_module.run_command,
         pipeline_summary=summary,
     )
     finish_gate_status = "pass"

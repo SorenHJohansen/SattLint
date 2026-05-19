@@ -358,6 +358,144 @@ def test_run_policy_check_allows_preexisting_touched_debt_during_scope_expansion
     )
 
 
+def _pyproject_with_global_strict(
+    cov_fail_under: str,
+    *,
+    strict_roots: tuple[str, ...] = ("src/sattlint/core",),
+    debt_allowlist: tuple[str, ...] = (),
+) -> str:
+    root_lines = "\n".join(f'    "{path}",' for path in strict_roots)
+    debt_lines = "\n".join(f'    "{path}",' for path in debt_allowlist)
+    return f"""
+[tool.pytest.ini_options]
+addopts = ["--cov-fail-under={cov_fail_under}"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+
+[tool.sattlint.typing_ratchet]
+strict_roots = [
+{root_lines}
+]
+debt_allowlist = [
+{debt_lines}
+]
+""".strip()
+
+
+def test_global_strict_mode_accepts_no_explicit_strict_list(tmp_path):
+    """typeCheckingMode=strict with no strict list covers all scope files implicitly."""
+    (tmp_path / "src" / "sattlint" / "core").mkdir(parents=True)
+    for rel_path in ("src/sattlint/core/document.py", "src/sattlint/core/semantic.py"):
+        (tmp_path / rel_path).write_text("value = 1\n", encoding="utf-8")
+
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-19.md"
+    base_pyproject = _pyproject_with_typing_ratchet(
+        "87.26",
+        strict_paths=("src/sattlint/core/document.py",),
+        debt_allowlist=("src/sattlint/core/semantic.py",),
+        strict_roots=("src/sattlint/core",),
+    )
+    head_pyproject = _pyproject_with_global_strict("87.26", strict_roots=("src/sattlint/core",))
+
+    errors = ratchet_policy.evaluate_policy_change(
+        repo_root=tmp_path,
+        changed_files=(ratchet_policy.PYPROJECT_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.PYPROJECT_PATH: head_pyproject,
+            approval_path: "Approved-by: Human Reviewer\nReason: collapse to global strict\n",
+        },
+        base_text_by_path={
+            ratchet_policy.PYPROJECT_PATH: base_pyproject,
+            approval_path: None,
+        },
+    )
+
+    assert errors == []
+
+
+def test_global_strict_mode_no_backslide_when_removing_explicit_list(tmp_path):
+    """Going from a full explicit strict list to typeCheckingMode=strict is not a backslide."""
+    (tmp_path / "src" / "sattlint" / "core").mkdir(parents=True)
+    (tmp_path / "src" / "sattlint" / "core" / "document.py").write_text("value = 1\n", encoding="utf-8")
+
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-19.md"
+    base_pyproject = _pyproject_with_typing_ratchet(
+        "87.26",
+        strict_paths=("src/sattlint/core/document.py",),
+        debt_allowlist=(),
+        strict_roots=("src/sattlint/core",),
+    )
+    head_pyproject = _pyproject_with_global_strict("87.26", strict_roots=("src/sattlint/core",))
+
+    errors = ratchet_policy.evaluate_policy_change(
+        repo_root=tmp_path,
+        changed_files=(ratchet_policy.PYPROJECT_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.PYPROJECT_PATH: head_pyproject,
+            approval_path: "Approved-by: Human Reviewer\nReason: collapse to global strict\n",
+        },
+        base_text_by_path={
+            ratchet_policy.PYPROJECT_PATH: base_pyproject,
+            approval_path: None,
+        },
+    )
+
+    assert errors == []
+
+
+def test_global_strict_mode_new_scoped_file_is_implicitly_covered(tmp_path):
+    """A new file added under a globally-strict root is covered without an explicit list entry."""
+    (tmp_path / "src" / "sattlint" / "core").mkdir(parents=True)
+    for rel_path in ("src/sattlint/core/document.py", "src/sattlint/core/new_module.py"):
+        (tmp_path / rel_path).write_text("value = 1\n", encoding="utf-8")
+
+    head_pyproject = _pyproject_with_global_strict("87.26", strict_roots=("src/sattlint/core",))
+    state = ratchet_policy._typing_ratchet_state(head_pyproject, "pyproject.toml")
+    assert state is not None
+    assert state.global_strict
+
+    errors = ratchet_policy._typing_ratchet_state_errors(
+        repo_root=tmp_path,
+        added_files=("src/sattlint/core/new_module.py",),
+        state=state,
+    )
+
+    assert errors == []
+
+
+def test_global_strict_backslide_to_partial_explicit_list_raises_coverage_error(tmp_path):
+    """Switching from global strict to a partial explicit list that leaves files uncovered is rejected."""
+    (tmp_path / "src" / "sattlint" / "core").mkdir(parents=True)
+    for rel_path in ("src/sattlint/core/document.py", "src/sattlint/core/semantic.py"):
+        (tmp_path / rel_path).write_text("value = 1\n", encoding="utf-8")
+
+    approval_path = ".github/approvals/ratchet-rebaseline-2026-05-19.md"
+    base_pyproject = _pyproject_with_global_strict("87.26", strict_roots=("src/sattlint/core",))
+    # head reverts to explicit list but only lists one of the two files
+    head_pyproject = _pyproject_with_typing_ratchet(
+        "87.26",
+        strict_paths=("src/sattlint/core/document.py",),
+        debt_allowlist=(),
+        strict_roots=("src/sattlint/core",),
+    )
+
+    errors = ratchet_policy.evaluate_policy_change(
+        repo_root=tmp_path,
+        changed_files=(ratchet_policy.PYPROJECT_PATH, approval_path),
+        current_text_by_path={
+            ratchet_policy.PYPROJECT_PATH: head_pyproject,
+            approval_path: "Approved-by: Human Reviewer\nReason: attempted revert\n",
+        },
+        base_text_by_path={
+            ratchet_policy.PYPROJECT_PATH: base_pyproject,
+            approval_path: None,
+        },
+    )
+
+    assert any("uncovered" in error for error in errors)
+
+
 def test_run_policy_check_rejects_touched_file_in_per_file_typing_debt(monkeypatch, tmp_path):
     scoped_file = tmp_path / "src" / "sattlint" / "app.py"
     scoped_file.parent.mkdir(parents=True)

@@ -77,7 +77,7 @@ def get_layer_for_module(module_name: str) -> int:
 
 def check_file_for_arch_violations(file_path: Path) -> list[ArchViolation]:
     """Check a single Python file for architecture violations."""
-    violations = []
+    violations: list[ArchViolation] = []
     try:
         with open(file_path, encoding="utf-8") as f:
             content = f.read()
@@ -147,7 +147,7 @@ def check_file_for_arch_violations(file_path: Path) -> list[ArchViolation]:
 
 def find_python_files(root_dirs: list[Path]) -> list[Path]:
     """Find all Python files in the given root directories."""
-    python_files = []
+    python_files: list[Path] = []
     for root in root_dirs:
         if root.exists():
             python_files.extend(root.rglob("*.py"))
@@ -164,7 +164,7 @@ def main() -> None:
 
     python_files = find_python_files(roots)
 
-    all_violations = []
+    all_violations: list[ArchViolation] = []
     for file_path in python_files:
         violations = check_file_for_arch_violations(file_path)
         all_violations.extend(violations)

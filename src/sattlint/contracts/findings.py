@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 FINDING_SCHEMA_KIND = "sattlint.findings"
 FINDING_SCHEMA_VERSION = 1
@@ -28,6 +28,10 @@ _OWNER_SURFACE_BY_ANALYZER = {
     "syntax-check": "syntax-check",
     "vulture": "dead-code",
 }
+
+
+def _empty_data_dict() -> dict[str, Any]:
+    return {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +81,7 @@ class FindingRecord:
     owner_surface: str | None = None
     minimal_reproducer: str | None = None
     suggested_next_command: str | None = None
-    data: dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=_empty_data_dict)
 
     def __post_init__(self) -> None:
         if self.fingerprint is None:
@@ -190,8 +194,8 @@ class FindingRecord:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> FindingRecord:
-        location_payload = payload.get("location")
-        location = FindingLocation.from_mapping(location_payload if isinstance(location_payload, Mapping) else payload)
+        location_payload = _coerce_mapping(payload.get("location"))
+        location = FindingLocation.from_mapping(location_payload if location_payload is not None else payload)
         rule_id = _coerce_str(payload.get("rule_id") or payload.get("id")) or "unknown"
         return cls(
             id=_coerce_str(payload.get("id")) or rule_id,
@@ -210,7 +214,7 @@ class FindingRecord:
             owner_surface=_coerce_str(payload.get("owner_surface")),
             minimal_reproducer=_coerce_str(payload.get("minimal_reproducer")),
             suggested_next_command=_coerce_str(payload.get("suggested_next_command")),
-            data=dict(payload.get("data") or {}),
+            data=_coerce_data_dict(payload.get("data")),
         )
 
     @classmethod
@@ -222,8 +226,8 @@ class FindingRecord:
         analyzer: str | None = None,
         artifact: str | None = None,
     ) -> FindingRecord:
-        location_payload = payload.get("location")
-        location = FindingLocation.from_mapping(location_payload if isinstance(location_payload, Mapping) else payload)
+        location_payload = _coerce_mapping(payload.get("location"))
+        location = FindingLocation.from_mapping(location_payload if location_payload is not None else payload)
         rule_id = _coerce_str(payload.get("rule_id") or payload.get("id")) or "unknown"
         return cls(
             id=_coerce_str(payload.get("id")) or rule_id,
@@ -241,7 +245,7 @@ class FindingRecord:
             owner_surface=_coerce_str(payload.get("owner_surface")),
             minimal_reproducer=_coerce_str(payload.get("minimal_reproducer")),
             suggested_next_command=_coerce_str(payload.get("suggested_next_command")),
-            data=dict(payload.get("data") or {}),
+            data=_coerce_data_dict(payload.get("data")),
         )
 
 
@@ -268,7 +272,7 @@ class FindingCollection:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> FindingCollection:
-        findings_payload = payload.get("findings") or []
+        findings_payload = _coerce_mapping_sequence(payload.get("findings"))
         return cls(
             findings=tuple(FindingRecord.from_dict(item) for item in findings_payload),
             schema_kind=_coerce_str(payload.get("kind")) or FINDING_SCHEMA_KIND,
@@ -296,9 +300,34 @@ def _coerce_str(value: Any) -> str | None:
     return str(value)
 
 
+def _coerce_mapping(value: Any) -> Mapping[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+    mapping = cast(Mapping[object, Any], value)
+    return {str(key): item for key, item in mapping.items()}
+
+
+def _coerce_data_dict(value: Any) -> dict[str, Any]:
+    mapping = _coerce_mapping(value)
+    return dict(mapping) if mapping is not None else {}
+
+
+def _coerce_mapping_sequence(value: Any) -> tuple[Mapping[str, Any], ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    items: list[Mapping[str, Any]] = []
+    sequence = cast(list[Any] | tuple[Any, ...], value)
+    for item in sequence:
+        mapping = _coerce_mapping(item)
+        if mapping is not None:
+            items.append(mapping)
+    return tuple(items)
+
+
 def _coerce_module_path(value: Any) -> tuple[str, ...]:
     if value is None:
         return ()
     if isinstance(value, list | tuple):
-        return tuple(str(item) for item in value)
+        items = cast(list[Any] | tuple[Any, ...], value)
+        return tuple(str(item) for item in items)
     return (str(value),)

@@ -6,7 +6,7 @@ import ast
 import re
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 def find_architecture_findings(
@@ -113,9 +113,12 @@ def find_cli_findings(
             )
         )
     for action in parser._actions:
-        choices = getattr(action, "choices", None) or {}
-        for subparser in choices.values():
-            if not subparser.description:
+        choices = getattr(action, "choices", None)
+        if not isinstance(choices, dict):
+            continue
+        for subparser in cast(dict[object, object], choices).values():
+            if getattr(subparser, "description", None):
+                continue
                 findings.append(
                     finding_factory(
                         id="cli-missing-subcommand-description",

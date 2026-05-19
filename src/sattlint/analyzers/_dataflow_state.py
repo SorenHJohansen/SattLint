@@ -10,40 +10,60 @@ from ..grammar import constants as const
 from ..resolution.scope import ScopeContext
 from ._dataflow_common import INITIALIZED, UNKNOWN, PendingWrite, ResolvedRef, ScalarValue, StateMap
 
+_NodeTuple = tuple[object, ...]
+_NodeList = list[object]
+_NodeDict = dict[str, object]
+
+
+def _object_tuple(node: object) -> _NodeTuple | None:
+    return cast(_NodeTuple, node) if isinstance(node, tuple) else None
+
+
+def _object_list(node: object) -> _NodeList | None:
+    return cast(_NodeList, node) if isinstance(node, list) else None
+
+
+def _string_key_dict(node: object) -> _NodeDict | None:
+    return cast(_NodeDict, node) if isinstance(node, dict) else None
+
 
 class _DataflowStateMixin:
     def _collect_stateful_refs(
         self: Any,
-        expr: Any,
+        expr: object,
         context: ScopeContext,
     ) -> list[ResolvedRef]:
         collected: list[ResolvedRef] = []
 
-        def visit(node: Any) -> None:
-            if isinstance(node, dict) and const.KEY_VAR_NAME in node:
+        def visit(node: object) -> None:
+            node_dict = _string_key_dict(node)
+            if node_dict is not None and const.KEY_VAR_NAME in node_dict:
                 resolved = self._resolve_ref(node, context)
                 if resolved is not None and resolved.is_state_variable:
                     collected.append(resolved)
                 return
 
             if isinstance(node, Tree) and node.data == const.KEY_STATEMENT:
-                for child in cast(list[Any], node.children):
+                for child in _object_list(getattr(cast(object, node), "children", None)) or []:
                     visit(child)
                 return
 
-            if isinstance(node, tuple):
-                for item in node:
+            node_obj = cast(object, node)
+            tuple_node = _object_tuple(node_obj)
+            if tuple_node is not None:
+                for item in tuple_node:
                     visit(item)
                 return
 
-            if isinstance(node, list):
-                for item in node:
+            list_node = _object_list(node_obj)
+            if list_node is not None:
+                for item in list_node:
                     visit(item)
                 return
 
-            children = getattr(node, "children", None)
-            if isinstance(children, list):
-                for child in cast(list[Any], children):
+            children = _object_list(getattr(node_obj, "children", None))
+            if children is not None:
+                for child in children:
                     visit(child)
 
         visit(expr)
@@ -181,9 +201,9 @@ class _DataflowStateMixin:
             if all(value is not UNKNOWN for value in values):
                 merged[key] = INITIALIZED
 
-        common_pending_keys: set[tuple[str, ...]] = (
-            set.intersection(*pending_keys_per_state) if pending_keys_per_state else set()
-        )
+        common_pending_keys: set[tuple[str, ...]] = set(pending_keys_per_state[0]) if pending_keys_per_state else set()
+        for pending_keys in pending_keys_per_state[1:]:
+            common_pending_keys.intersection_update(pending_keys)
         for pending_key in common_pending_keys:
             pending_values = [state.get(pending_key) for state in states]
             if not all(isinstance(value, PendingWrite) for value in pending_values):

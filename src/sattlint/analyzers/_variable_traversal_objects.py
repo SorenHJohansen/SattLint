@@ -1,5 +1,7 @@
 """Header and object traversal helpers for variable analysis."""
 
+# pyright: reportPrivateUsage=false, reportUnusedFunction=false
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
@@ -14,6 +16,10 @@ if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
 
 
+def _object_mapping(value: object) -> dict[str, object] | None:
+    return cast(dict[str, object], value) if isinstance(value, dict) else None
+
+
 def _walk_header_enable(self: VariablesAnalyzer, header: Any, context: ScopeContext, path: list[str]) -> None:
     tail = getattr(header, "enable_tail", None)
     if tail is not None:
@@ -26,8 +32,8 @@ def _walk_header_invoke_tails(self: VariablesAnalyzer, header: Any, context: Sco
 
 
 def _walk_header_groupconn(self: VariablesAnalyzer, header: Any, context: ScopeContext, path: list[str]) -> None:
-    var_dict = getattr(header, "groupconn", None)
-    if not isinstance(var_dict, dict):
+    var_dict = _object_mapping(getattr(header, "groupconn", None))
+    if var_dict is None:
         return
     base = var_dict.get(const.KEY_VAR_NAME)
     if not isinstance(base, str):
@@ -42,8 +48,8 @@ def _walk_header_groupconn(self: VariablesAnalyzer, header: Any, context: ScopeC
 
 
 def _walk_typedef_groupconn(self: VariablesAnalyzer, mt: Any, context: ScopeContext, path: list[str]) -> None:
-    var_dict = getattr(mt, "groupconn", None)
-    if not isinstance(var_dict, dict):
+    var_dict = _object_mapping(getattr(mt, "groupconn", None))
+    if var_dict is None:
         return
     base = var_dict.get(const.KEY_VAR_NAME)
     if not isinstance(base, str):
@@ -87,9 +93,10 @@ def _walk_interact_object(self: VariablesAnalyzer, io: Any, context: ScopeContex
     self._scan_for_varrefs(props.get(const.KEY_BODY), context, path, is_ui_read=True)
 
     procedure = props.get(const.KEY_PROCEDURE)
-    if isinstance(procedure, dict) and const.KEY_PROCEDURE_CALL in procedure:
-        call = procedure.get(const.KEY_PROCEDURE_CALL)
-        if isinstance(call, dict):
+    procedure_mapping = _object_mapping(procedure)
+    if procedure_mapping is not None and const.KEY_PROCEDURE_CALL in procedure_mapping:
+        call = _object_mapping(procedure_mapping.get(const.KEY_PROCEDURE_CALL))
+        if call is not None:
             fn_name = call.get(const.KEY_NAME)
             args = call.get(const.KEY_ARGS)
             self._handle_function_call(

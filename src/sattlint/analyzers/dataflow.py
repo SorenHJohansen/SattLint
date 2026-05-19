@@ -7,12 +7,17 @@ from sattline_parser.models.ast_model import (
     BasePicture,
     FloatLiteral,
     IntLiteral,
+    ModuleTypeDef,
+    ModuleTypeInstance,
     SFCFork,
+    SingleModule,
+    Variable,
 )
 from sattline_parser.utils import formatter as formatter_module
 
 from ..grammar import constants as const
 from ..resolution.scope import ScopeContext
+from ..resolution.type_graph import TypeGraph
 from ._dataflow_common import (
     INITIALIZED,
     OLD_PREFIX,
@@ -45,6 +50,7 @@ class DataflowAnalyzer(DataflowTraversalMixin, DataflowConditionMixin, DataflowS
         self.bp = base_picture
         self._unavailable_libraries = unavailable_libraries or set()
         self._analyzed_target_is_library = analyzed_target_is_library
+        self._type_graph = TypeGraph.from_basepicture(base_picture)
         self._issues: list[Issue] = []
         self._final_root_state: StateMap = {}
         self._site_stack: list[str] = []
@@ -54,10 +60,75 @@ class DataflowAnalyzer(DataflowTraversalMixin, DataflowConditionMixin, DataflowS
         self._reported_scan_cycle_stale_read: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_implicit_new: set[tuple[tuple[str, ...], str, str]] = set()
         self._reported_scan_cycle_temporal_misuse: set[tuple[tuple[str, ...], str, str, str]] = set()
+        self._reported_invalid_state_access: set[tuple[tuple[str, ...], str, str]] = set()
 
     @property
     def issues(self) -> list[Issue]:
         return self._issues
+
+    @property
+    def unavailable_libraries(self) -> set[str]:
+        return self._unavailable_libraries
+
+    def build_scope_context(
+        self,
+        variables: list[Variable],
+        *,
+        param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]],
+        module_path: list[str],
+        current_library: str | None,
+        parent_context: ScopeContext | None,
+    ) -> ScopeContext:
+        return self._build_scope_context(
+            variables,
+            param_mappings=param_mappings,
+            module_path=module_path,
+            current_library=current_library,
+            parent_context=parent_context,
+        )
+
+    def seed_state(
+        self,
+        state: StateMap,
+        module_path: list[str],
+        variables: list[Variable],
+    ) -> StateMap:
+        return self._seed_state(state, module_path, variables)
+
+    def build_single_context(
+        self,
+        mod: SingleModule,
+        parent_context: ScopeContext,
+        module_path: list[str],
+    ) -> ScopeContext:
+        return self._build_single_context(mod, parent_context, module_path)
+
+    def build_typedef_context(
+        self,
+        moduletype: ModuleTypeDef,
+        instance: ModuleTypeInstance,
+        parent_context: ScopeContext,
+        module_path: list[str],
+    ) -> ScopeContext:
+        return self._build_typedef_context(moduletype, instance, parent_context, module_path)
+
+    def analyze_block(
+        self,
+        statements: list[Any],
+        context: ScopeContext,
+        module_path: list[str],
+        state: StateMap,
+    ) -> StateMap:
+        return self._analyze_block(statements, context, module_path, state)
+
+    def evaluate_condition(
+        self,
+        condition: Any,
+        context: ScopeContext,
+        module_path: list[str],
+        state: StateMap,
+    ) -> bool | None:
+        return self._evaluate_condition(condition, context, module_path, state)
 
     def _apply_call_side_effects(
         self,
@@ -256,6 +327,32 @@ class DataflowAnalyzer(DataflowTraversalMixin, DataflowConditionMixin, DataflowS
             },
         )
 
+    def _report_invalid_state_access(
+        self,
+        display_name: str,
+        base_display_name: str,
+        state_access: str,
+        module_path: list[str],
+    ) -> None:
+        site = self._site_str()
+        dedupe_key = (tuple(module_path), site, display_name.casefold())
+        if dedupe_key in self._reported_invalid_state_access:
+            return
+        self._reported_invalid_state_access.add(dedupe_key)
+        self._add_issue(
+            kind="dataflow.invalid_state_access",
+            message=(
+                f"Variable reference {display_name!r} uses {state_access.upper()} on non-STATE variable "
+                f"{base_display_name!r}."
+            ),
+            module_path=module_path,
+            data={
+                "symbol": display_name,
+                "state_symbol": base_display_name,
+                "site": site,
+            },
+        )
+
     def _report_expression_temporal_hazards(
         self,
         expr: Any,
@@ -306,7 +403,13 @@ class DataflowAnalyzer(DataflowTraversalMixin, DataflowConditionMixin, DataflowS
         if variable is None:
             return None
         raw_state_access = expr_map.get("state")
-        state_access = raw_state_access if isinstance(raw_state_access, str) else None
+        requested_state_access = raw_state_access if isinstance(raw_state_access, str) else None
+        resolved_state = self._resolve_state_flag(variable, field_path)
+        display_name = full_name if not requested_state_access else f"{full_name}:{requested_state_access.title()}"
+        state_access = requested_state_access
+        if requested_state_access and resolved_state is not None and not resolved_state:
+            self._report_invalid_state_access(display_name, full_name, requested_state_access, context.module_path)
+            state_access = None
         symbol_key = self._state_key(decl_path, variable.name, field_path)
         symbol_root_key = self._state_key(decl_path, variable.name, "")
         key = symbol_key
@@ -314,7 +417,6 @@ class DataflowAnalyzer(DataflowTraversalMixin, DataflowConditionMixin, DataflowS
         if state_access == "old":
             key = self._old_state_key(symbol_key)
             root_key = self._old_state_key(symbol_root_key)
-        display_name = full_name if not state_access else f"{full_name}:{state_access.title()}"
         return ResolvedRef(
             key=key,
             root_key=root_key,
@@ -323,8 +425,25 @@ class DataflowAnalyzer(DataflowTraversalMixin, DataflowConditionMixin, DataflowS
             display_name=display_name,
             base_display_name=full_name,
             state_access=state_access,
-            is_state_variable=bool(variable.state),
+            is_state_variable=bool(resolved_state),
         )
+
+    def _resolve_state_flag(
+        self,
+        variable: Any,
+        field_path: str,
+    ) -> bool | None:
+        resolved_state = getattr(variable, "state", None)
+        current_datatype = getattr(variable, "datatype", None)
+        for field_name in (segment for segment in field_path.split(".") if segment):
+            if current_datatype is None or not isinstance(current_datatype, str):
+                return None
+            field = self._type_graph.field(current_datatype, field_name)
+            if field is None:
+                return None
+            current_datatype = field.datatype
+            resolved_state = field.state
+        return resolved_state
 
     def _compare_values(self, left: ScalarValue, operator: str, right: ScalarValue) -> bool | None:
         try:

@@ -81,6 +81,10 @@ def _parse_attached_worktree_branches(output: str) -> set[str]:
     return branches
 
 
+def parse_attached_worktree_branches(output: str) -> set[str]:
+    return _parse_attached_worktree_branches(output)
+
+
 def _attached_worktree_branches(repo_root: Path) -> set[str]:
     resolved_repo_root = repo_root.resolve()
     git_executable = shutil.which("git")
@@ -99,16 +103,39 @@ def _attached_worktree_branches(repo_root: Path) -> set[str]:
     return _parse_attached_worktree_branches(completed.stdout)
 
 
+def attached_worktree_branches(repo_root: Path) -> set[str]:
+    return _attached_worktree_branches(repo_root)
+
+
 def _task_contract_path_for_workstream(repo_root: Path, workstream_id: str, *, task_contracts_dir: Path) -> Path:
     return repo_root / task_contracts_dir / f"{workstream_id}.json"
+
+
+def task_contract_path_for_workstream(repo_root: Path, workstream_id: str, *, task_contracts_dir: Path) -> Path:
+    return _task_contract_path_for_workstream(repo_root, workstream_id, task_contracts_dir=task_contracts_dir)
 
 
 def _handoff_path_for_workstream(repo_root: Path, workstream_id: str, *, handoffs_dir: Path) -> Path:
     return repo_root / handoffs_dir / f"{workstream_id}.json"
 
 
+def handoff_path_for_workstream(repo_root: Path, workstream_id: str, *, handoffs_dir: Path) -> Path:
+    return _handoff_path_for_workstream(repo_root, workstream_id, handoffs_dir=handoffs_dir)
+
+
 def _expected_workstream_branches(workstream_id: str, *, supported_stage_branch_prefixes: tuple[str, ...]) -> set[str]:
     return {workstream_id, *(f"{prefix}{workstream_id}" for prefix in supported_stage_branch_prefixes)}
+
+
+def expected_workstream_branches(
+    workstream_id: str,
+    *,
+    supported_stage_branch_prefixes: tuple[str, ...],
+) -> set[str]:
+    return _expected_workstream_branches(
+        workstream_id,
+        supported_stage_branch_prefixes=supported_stage_branch_prefixes,
+    )
 
 
 def parse_updated_at_timestamp(raw_timestamp: str) -> datetime | None:
@@ -254,3 +281,7 @@ def _claim_matches_path(claim: str, rel_path: str) -> bool:
     if claim.endswith("/"):
         return rel_path.startswith(claim)
     return rel_path == claim
+
+
+def claim_matches_path(claim: str, rel_path: str) -> bool:
+    return _claim_matches_path(claim, rel_path)

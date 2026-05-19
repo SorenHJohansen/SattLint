@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.path_sanitizer import sanitize_path_for_report
 
 
 def mapping_of(value: object) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
+    return cast(dict[str, Any], value) if isinstance(value, dict) else {}
 
 
 def string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
-    return [str(item) for item in value if str(item).strip()]
+    return [item_text for item in cast(list[object], value) if (item_text := str(item)).strip()]
 
 
 def selected_surface_and_reason(recommendation: dict[str, Any]) -> tuple[str, str]:
@@ -145,7 +145,10 @@ def build_check_my_changes_planning_report(
 
 
 def first_failed_finish_gate_step(finish_gate_report: dict[str, Any]) -> dict[str, Any] | None:
-    for step in finish_gate_report.get("commands", []) or []:
+    commands = finish_gate_report.get("commands")
+    if not isinstance(commands, list):
+        return None
+    for step in cast(list[object], commands):
         step_dict = mapping_of(step)
         if not step_dict or step_dict.get("status") != "fail":
             continue
@@ -172,7 +175,8 @@ def build_ai_feedback_report(
     selected_result: dict[str, Any],
 ) -> dict[str, Any]:
     instruction_names: list[str] = []
-    for item in planning_context.get("instruction_files", []) or []:
+    instruction_files = planning_context.get("instruction_files")
+    for item in cast(list[object], instruction_files) if isinstance(instruction_files, list) else []:
         item_dict = mapping_of(item)
         name = item_dict.get("name")
         if name:

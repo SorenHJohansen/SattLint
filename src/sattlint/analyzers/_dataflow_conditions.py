@@ -26,6 +26,33 @@ type LogicalTuple = tuple[str, list[ExprNode] | None]
 type BinaryOpPart = tuple[str, ExprNode]
 type BinaryOpTuple = tuple[str, ExprNode, list[BinaryOpPart] | None]
 
+type ExprTuple = tuple[object, ...]
+type ExprList = list[object]
+
+
+def _expr_tuple(value: object) -> ExprTuple | None:
+    return cast(ExprTuple, value) if isinstance(value, tuple) else None
+
+
+def _expr_list(value: object) -> ExprList | None:
+    return cast(ExprList, value) if isinstance(value, list) else None
+
+
+def _expr_items(value: object) -> list[object]:
+    tuple_value = _expr_tuple(value)
+    if tuple_value is not None:
+        return list(tuple_value)
+    list_value = _expr_list(value)
+    if list_value is not None:
+        return list_value
+    return []
+
+
+def _statement_children(value: object) -> list[object] | None:
+    if getattr(value, "data", None) != const.KEY_STATEMENT:
+        return None
+    return _expr_list(getattr(value, "children", None))
+
 
 class _DataflowConditionMixin:
     def _report_condition(
@@ -86,21 +113,25 @@ class _DataflowConditionMixin:
 
     def _logical_shortcut_truth(
         self: Any,
-        condition: Any,
+        condition: object,
         context: ScopeContext,
     ) -> bool | None:
-        if not (isinstance(condition, tuple) and condition):
+        condition_tuple = _expr_tuple(condition)
+        if condition_tuple is None or not condition_tuple:
             return None
 
-        operator = condition[0]
+        operator = condition_tuple[0]
         if operator == const.GRAMMAR_VALUE_NOT:
-            truth = self._logical_shortcut_truth(condition[1], context)
+            truth = self._logical_shortcut_truth(condition_tuple[1] if len(condition_tuple) > 1 else None, context)
             return None if truth is None else not truth
 
         if operator in (const.GRAMMAR_VALUE_AND, const.GRAMMAR_VALUE_OR):
             facts = [
                 fact
-                for fact in (self._condition_fact(part, context) for part in (condition[1] or []))
+                for fact in (
+                    self._condition_fact(part, context)
+                    for part in _expr_items(condition_tuple[1] if len(condition_tuple) > 1 else None)
+                )
                 if fact is not None
             ]
             if operator == const.GRAMMAR_VALUE_AND:
@@ -111,7 +142,7 @@ class _DataflowConditionMixin:
 
     def _condition_fact(
         self: Any,
-        expr: Any,
+        expr: object,
         context: ScopeContext,
     ) -> ConditionFact | None:
         if isinstance(expr, dict) and const.KEY_VAR_NAME in expr:
@@ -120,14 +151,15 @@ class _DataflowConditionMixin:
                 return None
             return ("bool", resolved.key, True)
 
-        if isinstance(expr, tuple) and expr:
-            operator = expr[0]
+        expr_tuple = _expr_tuple(cast(object, expr))
+        if expr_tuple is not None and expr_tuple:
+            operator = expr_tuple[0]
             if operator == const.GRAMMAR_VALUE_NOT:
-                inner = self._condition_fact(expr[1], context)
+                inner = self._condition_fact(expr_tuple[1] if len(expr_tuple) > 1 else None, context)
                 return self._negate_condition_fact(inner)
 
             if operator in (const.KEY_COMPARE, "compare"):
-                _, left_expr, pairs = cast(CompareTuple, expr)
+                _, left_expr, pairs = cast(CompareTuple, expr_tuple)
                 if pairs is None or len(pairs) != 1:
                     return None
                 comparison_operator, right_expr = pairs[0]
@@ -260,12 +292,13 @@ class _DataflowConditionMixin:
 
     def _self_compare_truth(
         self: Any,
-        condition: Any,
+        condition: object,
         context: ScopeContext,
     ) -> bool | None:
-        if not (isinstance(condition, tuple) and condition and condition[0] in (const.KEY_COMPARE, "compare")):
+        condition_tuple = _expr_tuple(condition)
+        if condition_tuple is None or not condition_tuple or condition_tuple[0] not in (const.KEY_COMPARE, "compare"):
             return None
-        _, left, pairs = cast(CompareTuple, condition)
+        _, left, pairs = cast(CompareTuple, condition_tuple)
         if pairs is None or len(pairs) != 1:
             return None
         operator, right = pairs[0]
@@ -281,15 +314,15 @@ class _DataflowConditionMixin:
 
     def _evaluate_expression(
         self: Any,
-        expr: Any,
+        expr: object,
         context: ScopeContext,
         module_path: list[str],
         state: StateMap,
     ) -> ScalarValue | object:
-        if hasattr(expr, "data") and expr.data == const.KEY_STATEMENT:
-            children = getattr(expr, "children", [])
-            if children:
-                return self._evaluate_expression(children[0], context, module_path, state)
+        statement_children = _statement_children(expr)
+        if statement_children is not None:
+            if statement_children:
+                return self._evaluate_expression(statement_children[0], context, module_path, state)
             return UNKNOWN
 
         if isinstance(expr, IntLiteral):
@@ -311,11 +344,12 @@ class _DataflowConditionMixin:
                 return UNKNOWN
             return self._read_resolved_value(resolved, module_path, state)
 
-        if isinstance(expr, tuple) and expr:
-            operator = expr[0]
+        expr_tuple = _expr_tuple(cast(object, expr))
+        if expr_tuple is not None and expr_tuple:
+            operator = expr_tuple[0]
 
             if operator in (const.KEY_TERNARY, "Ternary"):
-                _, branches, else_expr = cast(TernaryTuple, expr)
+                _, branches, else_expr = cast(TernaryTuple, expr_tuple)
                 branch_values: list[ScalarValue | object] = []
                 fallthrough_state = state
                 for condition, branch_expr in branches or []:
@@ -333,13 +367,13 @@ class _DataflowConditionMixin:
                 return self._coalesce_values(branch_values)
 
             if operator == const.KEY_FUNCTION_CALL:
-                _, _, args = cast(FunctionCallTuple, expr)
+                _, _, args = cast(FunctionCallTuple, expr_tuple)
                 for argument in args or []:
                     self._evaluate_expression(argument, context, module_path, state)
                 return UNKNOWN
 
             if operator in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND):
-                _, parts = cast(LogicalTuple, expr)
+                _, parts = cast(LogicalTuple, expr_tuple)
                 values = [self._evaluate_expression(item, context, module_path, state) for item in parts or []]
                 if operator == const.GRAMMAR_VALUE_OR:
                     if any(value is True for value in values):
@@ -354,11 +388,11 @@ class _DataflowConditionMixin:
                 return UNKNOWN
 
             if operator == const.GRAMMAR_VALUE_NOT:
-                value = self._evaluate_expression(expr[1], context, module_path, state)
+                value = self._evaluate_expression(expr_tuple[1] if len(expr_tuple) > 1 else None, context, module_path, state)
                 return (not value) if isinstance(value, bool) else UNKNOWN
 
             if operator in (const.KEY_COMPARE, "compare"):
-                _, left, pairs = cast(CompareTuple, expr)
+                _, left, pairs = cast(CompareTuple, expr_tuple)
                 left_value = self._evaluate_expression(left, context, module_path, state)
                 if not is_scalar_value(left_value):
                     return UNKNOWN
@@ -376,7 +410,7 @@ class _DataflowConditionMixin:
                 return all(results)
 
             if operator in (const.KEY_ADD, const.KEY_MUL):
-                _, left, parts = cast(BinaryOpTuple, expr)
+                _, left, parts = cast(BinaryOpTuple, expr_tuple)
                 value = self._evaluate_expression(left, context, module_path, state)
                 if not is_scalar_value(value):
                     return UNKNOWN
@@ -393,7 +427,7 @@ class _DataflowConditionMixin:
                 return scalar_value
 
             if operator in (const.KEY_PLUS, const.KEY_MINUS):
-                inner = self._evaluate_expression(expr[1], context, module_path, state)
+                inner = self._evaluate_expression(expr_tuple[1] if len(expr_tuple) > 1 else None, context, module_path, state)
                 if not isinstance(inner, int | float) or isinstance(inner, bool):
                     return UNKNOWN
                 return inner if operator == const.KEY_PLUS else -inner
@@ -402,7 +436,7 @@ class _DataflowConditionMixin:
 
     def _assume(
         self: Any,
-        condition: Any,
+        condition: object,
         truth: bool,
         state: StateMap,
         context: ScopeContext,
@@ -410,10 +444,10 @@ class _DataflowConditionMixin:
     ) -> StateMap:
         next_state = state.copy()
 
-        if hasattr(condition, "data") and condition.data == const.KEY_STATEMENT:
-            children = getattr(condition, "children", [])
-            if children:
-                return self._assume(children[0], truth, next_state, context, module_path)
+        statement_children = _statement_children(condition)
+        if statement_children is not None:
+            if statement_children:
+                return self._assume(statement_children[0], truth, next_state, context, module_path)
             return next_state
 
         if isinstance(condition, dict) and const.KEY_VAR_NAME in condition:
@@ -422,20 +456,21 @@ class _DataflowConditionMixin:
                 next_state[resolved.key] = truth
             return next_state
 
-        if isinstance(condition, tuple) and condition:
-            operator = condition[0]
+        condition_tuple = _expr_tuple(cast(object, condition))
+        if condition_tuple is not None and condition_tuple:
+            operator = condition_tuple[0]
             if operator == const.GRAMMAR_VALUE_NOT:
-                return self._assume(condition[1], not truth, next_state, context, module_path)
+                return self._assume(condition_tuple[1] if len(condition_tuple) > 1 else None, not truth, next_state, context, module_path)
             if operator == const.GRAMMAR_VALUE_AND and truth:
-                for part in condition[1] or []:
+                for part in _expr_items(condition_tuple[1] if len(condition_tuple) > 1 else None):
                     next_state = self._assume(part, True, next_state, context, module_path)
                 return next_state
             if operator == const.GRAMMAR_VALUE_OR and not truth:
-                for part in condition[1] or []:
+                for part in _expr_items(condition_tuple[1] if len(condition_tuple) > 1 else None):
                     next_state = self._assume(part, False, next_state, context, module_path)
                 return next_state
             if operator in (const.KEY_COMPARE, "compare"):
-                assumed = self._assume_compare(condition, truth, next_state, context, module_path)
+                assumed = self._assume_compare(condition_tuple, truth, next_state, context, module_path)
                 if assumed is not None:
                     return assumed
 

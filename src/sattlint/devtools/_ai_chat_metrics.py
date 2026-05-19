@@ -94,7 +94,6 @@ def build_summary_report(
     empty_assistant_message_count = sum(int(session["empty_assistant_message_count"]) for session in sessions)
     tool_call_count = sum(int(session["tool_call_count"]) for session in sessions)
     failed_tool_call_count = sum(int(session["failed_tool_call_count"]) for session in sessions)
-    codegraph_failure_count = sum(int(session["codegraph_failure_count"]) for session in sessions)
     same_tool_retry_count = sum(int(session["same_tool_retry_count"]) for session in sessions)
     malformed_line_count = len(parse_failures)
 
@@ -188,7 +187,6 @@ def build_summary_report(
             "empty_assistant_message_rate": _ratio(empty_assistant_message_count, assistant_message_count),
             "tool_call_count": tool_call_count,
             "failed_tool_call_count": failed_tool_call_count,
-            "codegraph_failure_count": codegraph_failure_count,
             "same_tool_retry_count": same_tool_retry_count,
         },
         "task_buckets": task_buckets,

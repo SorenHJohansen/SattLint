@@ -126,6 +126,85 @@ _graphics_field_value = _graphics_module._graphics_field_value
 _graphics_layout_group_payload = _graphics_module._graphics_layout_group_payload
 _graphics_layout_entry = _graphics_module._graphics_layout_entry
 _walk_graphics_layout_children = _graphics_module._walk_graphics_layout_children
+GRAPHICS_LAYOUT_COMPARISON_FIELDS = _GRAPHICS_LAYOUT_COMPARISON_FIELDS
+
+
+def structural_entry_files(workspace_root: Path, program_files: tuple[Path, ...]) -> tuple[Path, ...]:
+    return _structural_entry_files(workspace_root, program_files)
+
+
+def structural_report_discovery(workspace_root: Path, discovery: Any) -> Any:
+    return _structural_report_discovery(workspace_root, discovery)
+
+
+def accumulate_dependency_graph_snapshot(
+    snapshot: Any,
+    *,
+    workspace_root: Path,
+    node_index: dict[str, dict[str, Any]],
+    edge_index: dict[tuple[str, str], dict[str, Any]],
+) -> None:
+    _accumulate_dependency_graph_snapshot(
+        snapshot,
+        workspace_root=workspace_root,
+        node_index=node_index,
+        edge_index=edge_index,
+    )
+
+
+def accumulate_call_graph_snapshot(
+    snapshot: Any,
+    *,
+    workspace_root: Path,
+    node_index: dict[str, dict[str, Any]],
+    edge_index: dict[tuple[str, str], dict[str, Any]],
+) -> None:
+    _accumulate_call_graph_snapshot(
+        snapshot,
+        workspace_root=workspace_root,
+        node_index=node_index,
+        edge_index=edge_index,
+    )
+
+
+def build_dependency_graph_report(
+    *,
+    workspace_root: Path,
+    discovery: Any,
+    node_index: dict[str, dict[str, Any]],
+    edge_index: dict[tuple[str, str], dict[str, Any]],
+    snapshot_count: int,
+    snapshot_failures: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return _build_dependency_graph_report(
+        workspace_root=workspace_root,
+        discovery=discovery,
+        node_index=node_index,
+        edge_index=edge_index,
+        snapshot_count=snapshot_count,
+        snapshot_failures=snapshot_failures,
+    )
+
+
+def build_call_graph_report(
+    *,
+    workspace_root: Path,
+    node_index: dict[str, dict[str, Any]],
+    edge_index: dict[tuple[str, str], dict[str, Any]],
+    snapshot_count: int,
+    snapshot_failures: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return _build_call_graph_report(
+        workspace_root=workspace_root,
+        node_index=node_index,
+        edge_index=edge_index,
+        snapshot_count=snapshot_count,
+        snapshot_failures=snapshot_failures,
+    )
+
+
+def should_emit_snapshot_progress(index: int, total: int) -> bool:
+    return _should_emit_snapshot_progress(index, total)
 
 
 def collect_structural_budget_report(
@@ -235,6 +314,14 @@ def _normalize_graph_inputs(
         snapshots=list(snapshots),
         snapshot_failures=list(failures),
     )
+
+
+def normalize_graph_inputs(
+    graph_inputs: WorkspaceGraphInputs | tuple[Any, list[Any], list[dict[str, Any]]] | None,
+    *,
+    workspace_root: Path,
+) -> WorkspaceGraphInputs:
+    return _normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
 
 
 def _parse_ratchet_args(argv: Sequence[str] | None) -> argparse.Namespace:

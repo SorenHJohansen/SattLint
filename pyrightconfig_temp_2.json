@@ -1,0 +1,19 @@
+{
+  "include": [
+    "src/sattlint/resolution/context_builder.py",
+    "src/sattlint/engine.py",
+    "src/sattlint/cli/entry.py",
+    "src/sattlint/devtools/corpus.py"
+  ],
+  "strict": [
+    "src/sattlint/resolution/context_builder.py",
+    "src/sattlint/engine.py",
+    "src/sattlint/cli/entry.py",
+    "src/sattlint/devtools/corpus.py"
+  ],
+  "pythonVersion": "3.13",
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": ["src"],
+  "reportMissingTypeStubs": false
+}

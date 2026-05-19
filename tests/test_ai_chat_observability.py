@@ -41,7 +41,6 @@ def test_ai_chat_observability_writes_fixture_artifacts(tmp_path):
         "session-store-empty",
         "high-empty-assistant-output-rate",
         "high-discovery-before-action",
-        "codegraph-tool-failures",
         "repeated-tool-retries",
         "malformed-transcript-line",
     } <= finding_ids
@@ -50,7 +49,6 @@ def test_ai_chat_observability_writes_fixture_artifacts(tmp_path):
     assert implement_session["prompt_bucket"] == "implement-this-plan"
     assert implement_session["first_action_tool"] == "apply_patch"
     assert implement_session["discovery_before_action_count"] == 8
-    assert implement_session["codegraph_failure_count"] == 2
     assert implement_session["same_tool_retry_count"] == 1
 
 

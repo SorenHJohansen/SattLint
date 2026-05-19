@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from typing import Any
+# pyright: reportPrivateUsage=false
+from typing import Protocol
 
 from sattline_parser.models.ast_model import (
+    BasePicture,
     FrameModule,
+    ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
@@ -17,8 +20,66 @@ from ..resolution.common import resolve_moduletype_def_strict, varname_base
 from ..resolution.scope import ScopeContext
 
 
+class _DependencyUsageScopeState(Protocol):
+    bp: BasePicture
+    _analyzed_target_is_library: bool
+    _unavailable_libraries: set[str]
+    _moduleparameter_keys_by_context: dict[int, set[str]]
+
+    def _walk_module_code(
+        self,
+        modulecode: ModuleCode | None,
+        context: ScopeContext,
+        module_path: list[str],
+    ) -> None: ...
+
+    def _walk_modules(
+        self,
+        children: list[SingleModule | FrameModule | ModuleTypeInstance],
+        parent_context: ScopeContext,
+        parent_path: list[str],
+    ) -> None: ...
+
+    def _walk_typedef(
+        self,
+        moduletype: ModuleTypeDef,
+        context: ScopeContext,
+        module_path: list[str],
+    ) -> None: ...
+
+    def _build_scope_context(
+        self,
+        variables: list[Variable],
+        *,
+        moduleparameters: list[Variable] | None,
+        param_mappings: dict[str, tuple[Variable, str, list[str], list[str]]],
+        module_path: list[str],
+        current_library: str | None,
+        parent_context: ScopeContext | None,
+    ) -> ScopeContext: ...
+
+    def _build_parameter_mappings(
+        self,
+        mappings: list[ParameterMapping],
+        parent_context: ScopeContext,
+    ) -> dict[str, tuple[Variable, str, list[str], list[str]]]: ...
+
+    def _walk_moduletype_instance(
+        self,
+        instance: ModuleTypeInstance,
+        parent_context: ScopeContext,
+        child_path: list[str],
+    ) -> None: ...
+
+    def _is_from_root_origin(
+        self,
+        origin_file: str | None,
+        origin_lib: str | None = None,
+    ) -> bool: ...
+
+
 class _DependencyUsageScopeSupportMixin:
-    def _iter_root_typedefs(self: Any) -> list[ModuleTypeDef]:
+    def _iter_root_typedefs(self: _DependencyUsageScopeState) -> list[ModuleTypeDef]:
         return [
             moduletype
             for moduletype in (self.bp.moduletype_defs or [])
@@ -29,7 +90,7 @@ class _DependencyUsageScopeSupportMixin:
         ]
 
     def _build_scope_context(
-        self: Any,
+        self: _DependencyUsageScopeState,
         variables: list[Variable],
         *,
         moduleparameters: list[Variable] | None,
@@ -52,7 +113,7 @@ class _DependencyUsageScopeSupportMixin:
         return context
 
     def _build_parameter_mappings(
-        self: Any,
+        self: _DependencyUsageScopeState,
         mappings: list[ParameterMapping],
         parent_context: ScopeContext,
     ) -> dict[str, tuple[Variable, str, list[str], list[str]]]:
@@ -81,7 +142,7 @@ class _DependencyUsageScopeSupportMixin:
         return resolved
 
     def _walk_modules(
-        self: Any,
+        self: _DependencyUsageScopeState,
         children: list[SingleModule | FrameModule | ModuleTypeInstance],
         parent_context: ScopeContext,
         parent_path: list[str],
@@ -117,7 +178,7 @@ class _DependencyUsageScopeSupportMixin:
             self._walk_moduletype_instance(child, parent_context, child_path)
 
     def _walk_moduletype_instance(
-        self: Any,
+        self: _DependencyUsageScopeState,
         instance: ModuleTypeInstance,
         parent_context: ScopeContext,
         child_path: list[str],
@@ -149,7 +210,7 @@ class _DependencyUsageScopeSupportMixin:
         self._walk_typedef(moduletype, typedef_context, child_path)
 
     def _is_from_root_origin(
-        self: Any,
+        self: _DependencyUsageScopeState,
         origin_file: str | None,
         origin_lib: str | None = None,
     ) -> bool:

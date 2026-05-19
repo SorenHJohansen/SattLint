@@ -14,6 +14,10 @@ STDOUT_COMMAND_HEAD_LENGTH = 160
 STDOUT_COMMAND_TAIL_LENGTH = 40
 
 
+def _object_mapping(value: object) -> dict[str, object] | None:
+    return cast(dict[str, object], value) if isinstance(value, dict) else None
+
+
 def latest_report_links(
     current_output_dir: Path, *, default_output_dir: Path, repo_root: Path
 ) -> tuple[str | None, str | None]:
@@ -91,9 +95,10 @@ def compact_instruction_names(planning_context: dict[str, Any]) -> list[str]:
     instruction_file_items = list(cast(list[object], instruction_files))
     names: list[str] = []
     for item in instruction_file_items:
-        if not isinstance(item, dict):
+        item_dict = _object_mapping(item)
+        if item_dict is None:
             continue
-        name = item.get("name")
+        name = item_dict.get("name")
         if name is not None:
             names.append(str(name))
     return names
@@ -106,11 +111,12 @@ def compact_blocking_invariants(planning_context: dict[str, Any]) -> list[dict[s
     invariant_items = list(cast(list[object], invariants))
     compacted: list[dict[str, str]] = []
     for item in invariant_items[:MAX_STDOUT_ITEM_PREVIEW]:
-        if not isinstance(item, dict):
+        item_dict = _object_mapping(item)
+        if item_dict is None:
             continue
         entry: dict[str, str] = {}
         for key in ("id", "summary"):
-            value = item.get(key)
+            value = item_dict.get(key)
             if value is not None:
                 entry[key] = str(value)
         if entry:

@@ -20,10 +20,6 @@ def is_scalar_value(value: ScalarValue | object) -> TypeGuard[ScalarValue]:
     return isinstance(value, bool | int | float | str)
 
 
-def _is_scalar_value(value: ScalarValue | object) -> TypeGuard[ScalarValue]:
-    return is_scalar_value(value)
-
-
 def invert_compare_operator(operator: str) -> str:
     return {
         "<": ">",

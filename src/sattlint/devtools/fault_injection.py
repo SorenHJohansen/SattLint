@@ -20,6 +20,18 @@ _EXCEPTION_TYPES: dict[str, type[Exception]] = {
 }
 
 
+def _checkpoint_count_map() -> dict[str, int]:
+    return {}
+
+
+def _string_list() -> list[str]:
+    return []
+
+
+def _fault_run_record_list() -> list[FaultRunRecord]:
+    return []
+
+
 @dataclass(frozen=True)
 class FaultSpec:
     """A deterministic fault to inject at a named checkpoint."""
@@ -49,8 +61,8 @@ class FaultInjector:
     """Inject configured faults when checkpoints are reached."""
 
     specs: tuple[FaultSpec, ...] = ()
-    checkpoint_counts: dict[str, int] = field(default_factory=dict)
-    triggered_fault_ids: list[str] = field(default_factory=list)
+    checkpoint_counts: dict[str, int] = field(default_factory=_checkpoint_count_map)
+    triggered_fault_ids: list[str] = field(default_factory=_string_list)
 
     def checkpoint(self, checkpoint: str) -> None:
         current_count = self.checkpoint_counts.get(checkpoint, 0) + 1
@@ -74,7 +86,7 @@ class FaultRunRecord:
     checkpoint: str | None = None
     exception_type: str | None = None
     message: str | None = None
-    checkpoint_counts: Mapping[str, int] = field(default_factory=dict)
+    checkpoint_counts: Mapping[str, int] = field(default_factory=_checkpoint_count_map)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -92,7 +104,7 @@ class FaultRunRecord:
 class FaultInjectionResults:
     """Collection of fault injection outcomes with a machine-readable summary."""
 
-    records: list[FaultRunRecord] = field(default_factory=list)
+    records: list[FaultRunRecord] = field(default_factory=_fault_run_record_list)
 
     def to_dict(self) -> dict[str, Any]:
         status_counts: dict[str, int] = {}

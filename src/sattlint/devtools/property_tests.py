@@ -10,15 +10,19 @@ from pathlib import Path
 from typing import Any
 
 from sattline_parser.fuzz_harness import (
-    _is_expected_parse_error,
     collect_corpus_inputs,
     fuzz_parse_text,
     generate_random_text,
+    is_expected_parse_error,
 )
 
 PROPERTY_TEST_RESULTS_FILENAME = "property_test_results.json"
 PROPERTY_TEST_SCHEMA_KIND = "sattlint.property_test_results"
 PROPERTY_TEST_SCHEMA_VERSION = 1
+
+
+def _property_check_record_list() -> list[PropertyCheckRecord]:
+    return []
 
 
 @dataclass(frozen=True)
@@ -39,7 +43,7 @@ class PropertyCheckRecord:
 
 @dataclass
 class PropertyTestResults:
-    records: list[PropertyCheckRecord] = field(default_factory=list)
+    records: list[PropertyCheckRecord] = field(default_factory=_property_check_record_list)
 
     def to_dict(self) -> dict[str, Any]:
         status_counts = Counter("passed" if record.passed else "failed" for record in self.records)
@@ -105,7 +109,7 @@ def run_property_tests(
 
     for seed, source in generate_seeded_property_inputs(seeds, text_length=text_length):
         parse_result = fuzz_parse_text(source, input_desc=f"seed:{seed}", timeout=timeout)
-        passed = parse_result.error is None or _is_expected_parse_error(parse_result.error)
+        passed = parse_result.error is None or is_expected_parse_error(parse_result.error)
         results.records.append(
             PropertyCheckRecord(
                 property_id="random-inputs-fail-gracefully",

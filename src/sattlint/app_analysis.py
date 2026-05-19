@@ -150,7 +150,7 @@ def _target_is_library(cfg: ConfigDict, project_bp: BasePicture, graph: ProjectG
         project_bp,
         graph,
         source_paths_for_current_target_fn=_source_paths_for_current_target,
-        is_within_directory_fn=engine._is_within_directory,
+        is_within_directory_fn=engine.is_within_directory,
     )
 
 

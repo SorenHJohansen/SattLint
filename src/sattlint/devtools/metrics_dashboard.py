@@ -7,7 +7,7 @@ import json
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
 from sattlint.analyzers.modules import analyze_version_drift
@@ -16,6 +16,12 @@ from sattlint.path_sanitizer import sanitize_path_for_report
 from sattlint.tracing import collect_ast_summary
 
 DEFAULT_OUTPUT_FILENAME = "metrics_dashboard.json"
+
+
+def _string_entries(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(entry) for entry in cast(list[object], value)]
 
 
 def _emit_metrics_progress(message: str) -> None:
@@ -59,7 +65,7 @@ def _complexity_sort_key(item: dict[str, Any]) -> tuple[int, str, str]:
     return (
         -int(item.get("complexity") or 0),
         str(item.get("entry_file") or "").casefold(),
-        ".".join(str(segment) for segment in item.get("module_path") or []).casefold(),
+        ".".join(_string_entries(item.get("module_path"))).casefold(),
     )
 
 

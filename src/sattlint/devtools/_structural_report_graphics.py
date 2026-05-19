@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -57,7 +57,7 @@ def _graphics_field_value(entry: dict[str, Any], field_name: str) -> Any:
     for segment in field_name.split("."):
         if not isinstance(value, dict):
             return None
-        value = value.get(segment)
+        value = cast(dict[str, Any], value).get(segment)
     return value
 
 
@@ -72,11 +72,11 @@ def _graphics_layout_group_payload(
     differing_fields: list[str] = []
     field_variants: dict[str, list[Any]] = {}
 
-    for field_name in structural_reports_module._GRAPHICS_LAYOUT_COMPARISON_FIELDS:
+    for field_name in structural_reports_module.GRAPHICS_LAYOUT_COMPARISON_FIELDS:
         variants: dict[str, Any] = {}
         for member in members:
-            value = structural_reports_module._graphics_field_value(member, field_name)
-            variants.setdefault(structural_reports_module._stable_json_marker(value), value)
+            value = _graphics_field_value(member, field_name)
+            variants.setdefault(_stable_json_marker(value), value)
         if len(variants) > 1:
             differing_fields.append(field_name)
             field_variants[field_name] = list(variants.values())
@@ -119,8 +119,8 @@ def _graphics_layout_entry(
         "module_kind": module_kind,
         "definition_scope": definition_scope,
         "moduledef_origin_kind": moduledef_origin_kind,
-        "invocation": structural_reports_module._serialize_invoke_coord(header),
-        "moduledef": structural_reports_module._serialize_moduledef(moduledef),
+        "invocation": _serialize_invoke_coord(header),
+        "moduledef": _serialize_moduledef(moduledef),
     }
     if moduletype_name is not None:
         payload["moduletype_name"] = moduletype_name
@@ -150,13 +150,19 @@ def _walk_graphics_layout_children(
 ) -> None:
     from sattlint.devtools import structural_reports as structural_reports_module
 
-    unavailable_libraries = getattr(snapshot.project_graph, "unavailable_libraries", set())
+    project_graph: object = getattr(snapshot, "project_graph", None)
+    raw_unavailable_libraries: object = (
+        getattr(project_graph, "unavailable_libraries", None) if project_graph is not None else None
+    )
+    unavailable_libraries: set[str] = set()
+    if isinstance(raw_unavailable_libraries, set):
+        unavailable_libraries = {str(item) for item in cast(set[object], raw_unavailable_libraries)}
 
     for child in children:
         child_path = (*parent_path, child.header.name)
         if isinstance(child, SingleModule):
             entries.append(
-                structural_reports_module._graphics_layout_entry(
+                _graphics_layout_entry(
                     workspace_root=workspace_root,
                     entry_file=entry_file,
                     module_path=child_path,
@@ -167,7 +173,7 @@ def _walk_graphics_layout_children(
                     moduledef_origin_kind="local-module",
                 )
             )
-            structural_reports_module._walk_graphics_layout_children(
+            _walk_graphics_layout_children(
                 bp=bp,
                 children=child.submodules or [],
                 entry_file=entry_file,
@@ -183,7 +189,7 @@ def _walk_graphics_layout_children(
 
         if isinstance(child, FrameModule):
             entries.append(
-                structural_reports_module._graphics_layout_entry(
+                _graphics_layout_entry(
                     workspace_root=workspace_root,
                     entry_file=entry_file,
                     module_path=child_path,
@@ -194,7 +200,7 @@ def _walk_graphics_layout_children(
                     moduledef_origin_kind="local-module",
                 )
             )
-            structural_reports_module._walk_graphics_layout_children(
+            _walk_graphics_layout_children(
                 bp=bp,
                 children=child.submodules or [],
                 entry_file=entry_file,
@@ -221,7 +227,7 @@ def _walk_graphics_layout_children(
             resolution_error = str(exc)
 
         entries.append(
-            structural_reports_module._graphics_layout_entry(
+            _graphics_layout_entry(
                 workspace_root=workspace_root,
                 entry_file=entry_file,
                 module_path=child_path,
@@ -249,7 +255,7 @@ def _walk_graphics_layout_children(
 
         active_moduletype_keys.add(moduletype_key)
         try:
-            structural_reports_module._walk_graphics_layout_children(
+            _walk_graphics_layout_children(
                 bp=bp,
                 children=resolved_moduletype.submodules or [],
                 entry_file=entry_file,
@@ -272,14 +278,14 @@ def collect_graphics_layout_report(
 ) -> dict[str, Any]:
     from sattlint.devtools import structural_reports as structural_reports_module
 
-    resolved_inputs = structural_reports_module._normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
+    resolved_inputs = structural_reports_module.normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
     entries: list[dict[str, Any]] = []
 
     for snapshot in resolved_inputs.snapshots:
         bp = snapshot.base_picture
         root_path = (bp.header.name,)
         entries.append(
-            structural_reports_module._graphics_layout_entry(
+            _graphics_layout_entry(
                 workspace_root=workspace_root,
                 entry_file=snapshot.entry_file,
                 module_path=root_path,
@@ -290,7 +296,7 @@ def collect_graphics_layout_report(
                 moduledef_origin_kind="local-module",
             )
         )
-        structural_reports_module._walk_graphics_layout_children(
+        _walk_graphics_layout_children(
             bp=bp,
             children=bp.submodules or [],
             entry_file=snapshot.entry_file,
@@ -315,7 +321,7 @@ def collect_graphics_layout_report(
         ).append(entry)
 
     groups = [
-        structural_reports_module._graphics_layout_group_payload(
+        _graphics_layout_group_payload(
             module_kind=members[0]["module_kind"],
             module_name=members[0]["module_name"],
             members=members,
@@ -348,7 +354,7 @@ def collect_graphics_layout_report(
             workspace_root,
             repo_root=workspace_root,
         ),
-        "comparison_fields": list(structural_reports_module._GRAPHICS_LAYOUT_COMPARISON_FIELDS),
+        "comparison_fields": list(structural_reports_module.GRAPHICS_LAYOUT_COMPARISON_FIELDS),
         "entries": entries,
         "groups": groups,
         "findings": findings,

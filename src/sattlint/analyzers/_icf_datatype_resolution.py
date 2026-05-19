@@ -10,11 +10,9 @@ def resolve_leaf_datatype(
     root_var: Variable,
     field_segments: list[str],
 ) -> Simple_DataType | str | None:
-    current_type: Simple_DataType | str | None = root_var.datatype
+    current_type: Simple_DataType | str = root_var.datatype
     for field in field_segments:
         if isinstance(current_type, Simple_DataType):
-            return None
-        if current_type is None:
             return None
         field_def = type_graph.field(str(current_type), field)
         if field_def is None:

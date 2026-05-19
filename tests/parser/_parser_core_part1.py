@@ -361,6 +361,15 @@ def test_sfc_mixin_builds_modulecode_sequences_and_equations():
         ]
     )
     equation = mixin.equationblock(["EqA", (5, 6), (7, 8), Tree(parser_const.KEY_STATEMENT, ["stmt"])])
+    tokenized_equation = mixin.equationblock(
+        [
+            Token(parser_const.GRAMMAR_VALUE_EQUATIONBLOCK, parser_const.GRAMMAR_VALUE_EQUATIONBLOCK),
+            "EqToken",
+            (6, 7),
+            (8, 9),
+            Tree(parser_const.KEY_STATEMENT, ["token_stmt"]),
+        ]
+    )
     nested_sequence = Sequence(name="Nested", type="SEQUENCE", position=(0, 0), size=(1, 1), code=[])
     nested_equation = Equation(name="EqNested", position=(9, 10), size=(11, 12), code=[])
     modulecode = mixin.modulecode([sequence, equation, [nested_sequence, nested_equation]])
@@ -375,6 +384,7 @@ def test_sfc_mixin_builds_modulecode_sequences_and_equations():
         code=[init_step, transition],
     )
     assert equation == Equation(name="EqA", position=(5.0, 6.0), size=(7.0, 8.0), code=["stmt"])
+    assert tokenized_equation == Equation(name="EqToken", position=(6.0, 7.0), size=(8.0, 9.0), code=["token_stmt"])
     assert modulecode.sequences == [sequence, nested_sequence]
     assert modulecode.equations == [equation, nested_equation]
 

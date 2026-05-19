@@ -9,7 +9,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint import engine as engine_module
 from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, analyze_sattline_semantics
@@ -28,12 +28,20 @@ CORPUS_RESULTS_SCHEMA_KIND = "sattlint.corpus_results"
 CORPUS_RESULTS_SCHEMA_VERSION = 1
 _CASE_ID_SANITIZER = re.compile(r"[^A-Za-z0-9._-]+")
 
+type JsonScalar = str | int | float | bool | None
+type JsonValue = JsonScalar | dict[str, JsonValue] | list[JsonValue]
+type JsonObject = dict[str, JsonValue]
+
+
+def _json_object_factory() -> JsonObject:
+    return {}
+
 
 @dataclass(frozen=True, slots=True)
 class CorpusExpectation:
     expected_finding_ids: tuple[str, ...] = ()
     forbidden_finding_ids: tuple[str, ...] = ()
-    artifact_fragments: dict[str, Any] = field(default_factory=dict)
+    artifact_fragments: JsonObject = field(default_factory=_json_object_factory)
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,22 +155,26 @@ class _CorpusExecutionArtifacts:
 
 
 def load_corpus_manifest(path: Path) -> CorpusCaseManifest:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    expectation_payload = payload.get("expectation") or {}
+    payload = _load_json_object(path)
+    expectation_payload = _as_json_object(payload.get("expectation")) or {}
     return CorpusCaseManifest(
         case_id=str(payload["case_id"]),
         target_file=str(payload["target_file"]),
         mode=str(payload.get("mode") or "workspace"),
         expectation=CorpusExpectation(
-            expected_finding_ids=tuple(str(item) for item in expectation_payload.get("expected_finding_ids", [])),
-            forbidden_finding_ids=tuple(str(item) for item in expectation_payload.get("forbidden_finding_ids", [])),
+            expected_finding_ids=tuple(
+                str(item) for item in _as_json_array(expectation_payload.get("expected_finding_ids"))
+            ),
+            forbidden_finding_ids=tuple(
+                str(item) for item in _as_json_array(expectation_payload.get("forbidden_finding_ids"))
+            ),
             artifact_fragments=_coerce_artifact_fragments(expectation_payload.get("artifact_fragments")),
         ),
-        required_artifacts=tuple(str(item) for item in payload.get("required_artifacts", [])),
+        required_artifacts=tuple(str(item) for item in _as_json_array(payload.get("required_artifacts"))),
         workspace_root=_coerce_optional_str(payload.get("workspace_root")),
         program_dir=_coerce_optional_str(payload.get("program_dir")),
         abb_lib_dir=_coerce_optional_str(payload.get("abb_lib_dir")),
-        other_lib_dirs=tuple(str(item) for item in payload.get("other_lib_dirs", [])),
+        other_lib_dirs=tuple(str(item) for item in _as_json_array(payload.get("other_lib_dirs"))),
     )
 
 
@@ -294,7 +306,7 @@ def run_corpus_case(
     if not findings_path.exists():
         raise FileNotFoundError(f"Corpus findings artifact does not exist: {findings_path}")
 
-    findings_payload = json.loads(findings_path.read_text(encoding="utf-8"))
+    findings_payload = cast(dict[str, Any], json.loads(findings_path.read_text(encoding="utf-8")))
     findings = FindingCollection.from_dict(findings_payload)
     evaluation = evaluate_finding_ids(
         manifest,
@@ -380,10 +392,30 @@ def _coerce_optional_str(value: Any) -> str | None:
     return str(value)
 
 
-def _coerce_artifact_fragments(value: Any) -> dict[str, Any]:
-    if not isinstance(value, Mapping):
+def _as_json_object(value: object) -> JsonObject | None:
+    if not isinstance(value, dict):
+        return None
+    return cast(JsonObject, value)
+
+
+def _as_json_array(value: object) -> list[JsonValue]:
+    if not isinstance(value, list):
+        return []
+    return cast(list[JsonValue], value)
+
+
+def _load_json_object(path: Path) -> JsonObject:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Expected JSON object in {path}")
+    return cast(JsonObject, payload)
+
+
+def _coerce_artifact_fragments(value: object) -> JsonObject:
+    payload = _as_json_object(value)
+    if payload is None:
         return {}
-    return {str(key): expected_fragment for key, expected_fragment in value.items()}
+    return {str(key): expected_fragment for key, expected_fragment in payload.items()}
 
 
 def _normalize_severity(value: str) -> str:
@@ -431,8 +463,8 @@ def _collect_artifact_fragment_failures(
 
 
 def _collect_fragment_mismatches(
-    expected: Any,
-    actual: Any,
+    expected: JsonValue,
+    actual: object,
     *,
     path: str,
 ) -> tuple[str, ...]:
@@ -445,10 +477,11 @@ def _collect_fragment_mismatches(
             if key_str not in actual:
                 failures.append(f"{path}.{key_str}: missing key")
                 continue
+            actual_mapping = cast(Mapping[str, object], actual)
             failures.extend(
                 _collect_fragment_mismatches(
                     expected_value,
-                    actual[key_str],
+                    actual_mapping[key_str],
                     path=f"{path}.{key_str}",
                 )
             )
@@ -503,10 +536,6 @@ def format_cli_summary(status_report: dict[str, Any]) -> str:
     lines.append(f"Failed cases: {status_report['failed_count']}")
     lines.append(f"Corpus results: {status_report['corpus_results_report']}")
     return "\n".join(lines)
-
-
-def _print_cli_summary(status_report: dict[str, Any]) -> None:
-    print(format_cli_summary(status_report))
 
 
 def _execute_strict_case(
@@ -621,12 +650,13 @@ def _execute_workspace_case(
             f"Resolved targets: {sorted(graph.ast_by_name)}; missing: {graph.missing}"
         )
 
+    unavailable_libraries = graph.unavailable_libraries
     project_bp = engine_module.merge_project_basepicture(root_bp, graph)
     semantic_report = analyze_sattline_semantics(
         project_bp,
         debug=False,
-        unavailable_libraries=getattr(graph, "unavailable_libraries", set()),
-        analyzed_target_is_library=not engine_module._is_within_directory(target_path, program_dir),
+        unavailable_libraries=unavailable_libraries,
+        analyzed_target_is_library=not engine_module.is_within_directory(target_path, program_dir),
     )
     findings = _build_semantic_finding_collection(
         semantic_report,
@@ -646,7 +676,7 @@ def _execute_workspace_case(
         "missing_dependency_count": len(graph.missing),
         "finding_count": len(findings.findings),
         "findings_schema": findings.schema_metadata,
-        "unavailable_libraries": sorted(getattr(graph, "unavailable_libraries", set())),
+        "unavailable_libraries": sorted(unavailable_libraries),
     }
     summary = {
         "kind": "sattlint.corpus.case_summary",

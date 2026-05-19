@@ -14,7 +14,14 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
-from sattlint.analyzers.mms import analyze_mms_interface_variables
+from sattlint.analyzers.mms import (
+    _emit_datatype_mismatch_issues,
+    _emit_dead_tag_issues,
+    _emit_duplicate_tag_issues,
+    _emit_naming_drift_issues,
+    _InterfaceInventoryEntry,
+    analyze_mms_interface_variables,
+)
 from sattlint.analyzers.registry import get_default_analyzers
 from sattlint.reporting.icf_report import ICFEntry
 
@@ -29,6 +36,26 @@ def _varref(name: str) -> dict:
 
 def _issue_kinds(report) -> set[str]:
     return {issue.kind for issue in report.issues}
+
+
+def _inventory_entry(**overrides: object) -> _InterfaceInventoryEntry:
+    entry = {
+        "source_kind": "mms",
+        "module_path": ["Program", "Unit"],
+        "moduletype_name": "MMSWriteVar",
+        "parameter_name": "WriteData",
+        "source_variable": "ExportValue",
+        "source_datatype": "INTEGER",
+        "source_leaf_name": "ExportValue",
+        "external_tag": "Plant.Result",
+        "external_tag_key": "plant.result",
+        "tag_family_key": "plant|result",
+        "direction": "outgoing",
+        "write_fields": (),
+        "write_note": None,
+    }
+    entry.update(overrides)
+    return _InterfaceInventoryEntry(**entry)
 
 
 def test_mms_interface_flags_dead_tags_for_unwritten_outgoing_variables() -> None:
@@ -267,3 +294,20 @@ def test_mms_interface_analyzer_is_enabled_by_default() -> None:
 
     assert "mms-interface" in specs
     assert specs["mms-interface"].enabled is True
+
+
+def test_mms_helper_emitters_skip_entries_without_required_tag_keys() -> None:
+    missing_external_key = _inventory_entry(external_tag_key=None)
+    missing_family_key = _inventory_entry(tag_family_key=None)
+    missing_external_tag = _inventory_entry(external_tag=None)
+
+    assert _emit_duplicate_tag_issues([missing_external_key]) == []
+    assert _emit_datatype_mismatch_issues([missing_external_key]) == []
+    assert _emit_naming_drift_issues([missing_family_key, missing_external_tag]) == []
+
+
+def test_mms_dead_tag_helper_skips_missing_tags_and_unknown_write_notes() -> None:
+    missing_external_tag = _inventory_entry(external_tag=None)
+    unknown_write_note = _inventory_entry(write_note="unknown (variable not found)")
+
+    assert _emit_dead_tag_issues([missing_external_tag, unknown_write_note]) == []

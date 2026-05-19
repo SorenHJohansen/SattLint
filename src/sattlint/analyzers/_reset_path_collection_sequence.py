@@ -15,7 +15,18 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 
-from ._reset_path_state import _compact_path_states, _merge_parallel_branch_results, _PathCollectionDebug, _PathState
+from ._reset_path_state import (
+    PathCollectionDebug as _PathCollectionDebug,
+)
+from ._reset_path_state import (
+    PathState as _PathState,
+)
+from ._reset_path_state import (
+    compact_path_states as _compact_path_states,
+)
+from ._reset_path_state import (
+    merge_parallel_branch_results as _merge_parallel_branch_results,
+)
 
 
 def collect_seq_block_paths(

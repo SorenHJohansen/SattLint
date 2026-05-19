@@ -14,7 +14,7 @@ from ._server_helpers import collect_reference_matches as _collect_reference_mat
 from ._server_helpers import is_program_path as _is_program_path
 from ._server_helpers import range_from_position as _range_from_position
 from ._server_helpers import resolve_reference_path as _resolve_reference_path
-from ._server_navigation import _declaration_locations
+from ._server_navigation import declaration_locations as _declaration_locations
 
 if TYPE_CHECKING:
     from .server import SattLineLanguageServer

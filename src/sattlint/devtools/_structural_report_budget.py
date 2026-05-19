@@ -6,7 +6,11 @@ import ast
 import json
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+
+def _json_mapping(value: object) -> dict[str, Any] | None:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def _is_structural_budget_python_path(rel_path: str) -> bool:
@@ -68,14 +72,15 @@ def _normalize_file_line_exceptions(raw: Any, *, label: str) -> dict[str, dict[s
         raise ValueError(f"{label} file_line_exceptions must be a JSON object keyed by repo-relative path.")
 
     normalized: dict[str, dict[str, Any]] = {}
-    for raw_path, payload in raw.items():
+    for raw_path, payload in cast(dict[object, object], raw).items():
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise ValueError(f"{label} file_line_exceptions keys must be non-empty strings.")
         if not isinstance(payload, dict):
             raise ValueError(f"{label} file_line_exceptions[{raw_path!r}] must be a JSON object.")
 
-        max_lines = payload.get("max_lines")
-        reason = payload.get("reason")
+        payload_dict = cast(dict[str, Any], payload)
+        max_lines = payload_dict.get("max_lines")
+        reason = payload_dict.get("reason")
         if not isinstance(max_lines, int) or max_lines <= 0:
             raise ValueError(f"{label} file_line_exceptions[{raw_path!r}].max_lines must be a positive integer.")
         if not isinstance(reason, str) or not reason.strip():
@@ -103,7 +108,7 @@ def _load_structural_budget_ratchet(
         return {"status": "missing", "path": sanitized_path, "metrics": {}, "file_line_exceptions": {}}
 
     try:
-        payload = json.loads(resolved_path.read_text(encoding="utf-8"))
+        payload = _json_mapping(json.loads(resolved_path.read_text(encoding="utf-8")))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         return {
             "status": "invalid",
@@ -113,9 +118,28 @@ def _load_structural_budget_ratchet(
             "error": str(exc),
             "error_type": type(exc).__name__,
         }
+    if payload is None:
+        return {
+            "status": "invalid",
+            "path": sanitized_path,
+            "metrics": {},
+            "file_line_exceptions": {},
+            "error": "ratchet payload must be a JSON object",
+            "error_type": "ValueError",
+        }
 
     metrics = payload.get("metrics")
-    if not isinstance(metrics, dict) or any(not isinstance(value, int) for value in metrics.values()):
+    if not isinstance(metrics, dict):
+        return {
+            "status": "invalid",
+            "path": sanitized_path,
+            "metrics": {},
+            "file_line_exceptions": {},
+            "error": "ratchet metrics must be a JSON object with integer values",
+            "error_type": "ValueError",
+        }
+    metrics_dict = cast(dict[str, Any], metrics)
+    if any(not isinstance(value, int) for value in metrics_dict.values()):
         return {
             "status": "invalid",
             "path": sanitized_path,
@@ -146,7 +170,7 @@ def _load_structural_budget_ratchet(
     file_debt_path = repo_root / structural_reports_module.FILE_DEBT_RATCHET_PATH
     if file_debt_path.exists():
         try:
-            file_debt_payload = json.loads(file_debt_path.read_text(encoding="utf-8"))
+            file_debt_payload = _json_mapping(json.loads(file_debt_path.read_text(encoding="utf-8")))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             return {
                 "status": "invalid",
@@ -155,6 +179,15 @@ def _load_structural_budget_ratchet(
                 "file_line_exceptions": {},
                 "error": (f"{structural_reports_module.FILE_DEBT_RATCHET_PATH.as_posix()} could not be loaded: {exc}"),
                 "error_type": type(exc).__name__,
+            }
+        if file_debt_payload is None:
+            return {
+                "status": "invalid",
+                "path": sanitized_path,
+                "metrics": {},
+                "file_line_exceptions": {},
+                "error": f"{structural_reports_module.FILE_DEBT_RATCHET_PATH.as_posix()} must be a JSON object.",
+                "error_type": "ValueError",
             }
 
         files_payload = file_debt_payload.get("files")
@@ -168,7 +201,7 @@ def _load_structural_budget_ratchet(
                 "error_type": "ValueError",
             }
 
-        for raw_path, dimension_payload in files_payload.items():
+        for raw_path, dimension_payload in cast(dict[object, object], files_payload).items():
             if not isinstance(raw_path, str) or not isinstance(dimension_payload, dict):
                 return {
                     "status": "invalid",
@@ -181,10 +214,12 @@ def _load_structural_budget_ratchet(
                     "error_type": "ValueError",
                 }
 
-            structural_payload = dimension_payload.get("structural")
-            if structural_payload is None:
+            dimension_payload_dict = cast(dict[str, Any], dimension_payload)
+            raw_structural_payload = dimension_payload_dict.get("structural")
+            if raw_structural_payload is None:
                 continue
-            if not isinstance(structural_payload, dict):
+            structural_payload = _json_mapping(raw_structural_payload)
+            if structural_payload is None:
                 return {
                     "status": "invalid",
                     "path": sanitized_path,
@@ -246,7 +281,7 @@ def _load_structural_budget_ratchet(
         "path": sanitized_path,
         "kind": payload.get("kind"),
         "schema_version": payload.get("schema_version"),
-        "metrics": {key: int(value) for key, value in metrics.items()},
+        "metrics": {key: int(value) for key, value in metrics_dict.items()},
         "file_line_exceptions": file_line_exceptions,
     }
 
@@ -315,7 +350,7 @@ def collect_structural_budget_report(
     class_method_max_count = thresholds["class_method_max_count"]
     duplicate_private_name_min_files = thresholds["duplicate_private_name_min_files"]
     duplicate_private_name_min_length = thresholds["duplicate_private_name_min_length"]
-    ratchet_state = structural_reports_module._load_structural_budget_ratchet(repo_root, ratchet_path=ratchet_path)
+    ratchet_state = _load_structural_budget_ratchet(repo_root, ratchet_path=ratchet_path)
     file_line_exceptions = ratchet_state.get("file_line_exceptions", {})
 
     source_files_over_budget: list[dict[str, Any]] = []
@@ -372,9 +407,7 @@ def collect_structural_budget_report(
             continue
 
         if relative_path in structural_reports_module.FACADE_PRIVATE_BOUNDARY_FILES:
-            facade_private_entrypoints.extend(
-                structural_reports_module._collect_facade_private_entrypoints(tree, relative_path=relative_path)
-            )
+            facade_private_entrypoints.extend(_collect_facade_private_entrypoints(tree, relative_path=relative_path))
 
         module_level_private_names = {
             node.name
@@ -484,7 +517,7 @@ def collect_structural_budget_report(
     }
     current_metrics = structural_reports_module.summarize_structural_budget_metrics(report)
     report["metrics"] = current_metrics
-    report["ratchet"] = structural_reports_module._evaluate_structural_budget_ratchet(
+    report["ratchet"] = _evaluate_structural_budget_ratchet(
         current_metrics,
         ratchet_state,
         current_file_line_counts,

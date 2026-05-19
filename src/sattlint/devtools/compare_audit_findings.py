@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.devtools.artifact_readiness import ReadinessError, assert_artifact_dir_ready
 from sattlint.devtools.baselines import build_analysis_diff_report, load_finding_collection
@@ -15,8 +15,23 @@ COMPARE_SCHEMA_KIND = "sattlint.audit_findings_comparison"
 COMPARE_SCHEMA_VERSION = 1
 
 
+def _json_mapping(value: object) -> dict[str, Any] | None:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else None
+
+
+def _finding_entries(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    findings: list[dict[str, Any]] = []
+    for entry in cast(list[object], value):
+        finding = _json_mapping(entry)
+        if finding is not None:
+            findings.append(finding)
+    return findings
+
+
 def _compact_finding(finding: dict[str, Any]) -> dict[str, Any]:
-    location = finding.get("location") or {}
+    location = _json_mapping(finding.get("location")) or {}
     return {
         "id": finding.get("id") or finding.get("rule_id"),
         "path": location.get("path"),
@@ -27,8 +42,8 @@ def _compact_finding(finding: dict[str, Any]) -> dict[str, Any]:
 
 
 def _compact_changed_finding(finding: dict[str, Any]) -> dict[str, Any]:
-    current = finding.get("current") or {}
-    change = finding.get("change") or {}
+    current = _json_mapping(finding.get("current")) or {}
+    change = _json_mapping(finding.get("change")) or {}
     compact = _compact_finding(current)
     compact["changed_fields"] = change.get("changed_fields")
     compact["baseline_fingerprint"] = change.get("baseline_fingerprint")
@@ -47,7 +62,7 @@ def build_audit_findings_comparison(before_dir: Path, after_dir: Path) -> dict[s
         baseline_label=before_dir.resolve().as_posix(),
         current_label=after_dir.resolve().as_posix(),
     )
-    findings = diff_report["findings"]
+    findings = _json_mapping(diff_report.get("findings")) or {}
     return {
         "kind": COMPARE_SCHEMA_KIND,
         "schema_version": COMPARE_SCHEMA_VERSION,
@@ -57,10 +72,10 @@ def build_audit_findings_comparison(before_dir: Path, after_dir: Path) -> dict[s
         "after_findings": after_findings.as_posix(),
         "summary": diff_report["summary"],
         "findings": {
-            "new": [_compact_finding(finding) for finding in findings["new"]],
-            "resolved": [_compact_finding(finding) for finding in findings["resolved"]],
-            "unchanged": [_compact_finding(finding) for finding in findings["unchanged"]],
-            "changed": [_compact_changed_finding(finding) for finding in findings["changed"]],
+            "new": [_compact_finding(finding) for finding in _finding_entries(findings.get("new"))],
+            "resolved": [_compact_finding(finding) for finding in _finding_entries(findings.get("resolved"))],
+            "unchanged": [_compact_finding(finding) for finding in _finding_entries(findings.get("unchanged"))],
+            "changed": [_compact_changed_finding(finding) for finding in _finding_entries(findings.get("changed"))],
         },
         "readiness": {
             "before": {"state": before_report["state"], "message": before_report["message"]},

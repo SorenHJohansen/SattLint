@@ -6,9 +6,11 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.path_sanitizer import sanitize_path_for_report
+
+type JsonDict = dict[str, object]
 
 DISCOVERY_TOOL_NAMES = {
     "fetch_webpage",
@@ -23,11 +25,6 @@ DISCOVERY_TOOL_NAMES = {
     "tool_search_tool",
     "view_image",
     "vscode_listCodeUsages",
-    "codegraph_search",
-    "codegraph_callers",
-    "codegraph_callees",
-    "codegraph_impact",
-    "codegraph_node",
 }
 
 
@@ -120,7 +117,6 @@ def _summarize_transcript(
     empty_assistant_message_count = 0
     tool_call_count = 0
     failed_tool_call_count = 0
-    codegraph_failure_count = 0
     same_tool_retry_count = 0
     event_count = 0
     prompt_preview: str | None = None
@@ -135,7 +131,7 @@ def _summarize_transcript(
         if not raw_line.strip():
             continue
         try:
-            event = json.loads(raw_line)
+            raw_event = json.loads(raw_line)
         except json.JSONDecodeError as exc:
             parse_failures.append(
                 TranscriptParseFailure(
@@ -147,9 +143,22 @@ def _summarize_transcript(
             )
             continue
 
+        if not isinstance(raw_event, dict):
+            parse_failures.append(
+                TranscriptParseFailure(
+                    transcript_path=sanitize_path_for_report(transcript_path, repo_root=repo_root)
+                    or transcript_path.name,
+                    line_number=line_number,
+                    error="Transcript line is not a JSON object.",
+                )
+            )
+            continue
+
+        event = cast(JsonDict, raw_event)
+
         event_count += 1
         event_type = _event_type(event)
-        data = event.get("data") if isinstance(event.get("data"), dict) else {}
+        data = _json_object(event.get("data")) or {}
 
         if event_type == "user.message":
             user_message_count += 1
@@ -194,8 +203,6 @@ def _summarize_transcript(
             if _tool_success(data) is False:
                 failed_tool_call_count += 1
                 failed_tool_counts[tool_name] += 1
-                if "codegraph" in tool_name.casefold():
-                    codegraph_failure_count += 1
                 last_failed_tool_name = tool_name
 
     sanitized_path = sanitize_path_for_report(transcript_path, repo_root=repo_root) or transcript_path.name
@@ -208,7 +215,6 @@ def _summarize_transcript(
         "empty_assistant_message_count": empty_assistant_message_count,
         "tool_call_count": tool_call_count,
         "failed_tool_call_count": failed_tool_call_count,
-        "codegraph_failure_count": codegraph_failure_count,
         "same_tool_retry_count": same_tool_retry_count,
         "prompt_preview": prompt_preview,
         "prompt_bucket": _prompt_bucket(prompt_preview),
@@ -220,22 +226,26 @@ def _summarize_transcript(
     }, parse_failures
 
 
-def _event_type(event: dict[str, Any]) -> str:
+def _json_object(value: object) -> JsonDict | None:
+    return cast(JsonDict, value) if isinstance(value, dict) else None
+
+
+def _event_type(event: JsonDict) -> str:
     raw = event.get("type") or event.get("event") or event.get("eventName")
     return str(raw or "")
 
 
-def _tool_call_id(data: dict[str, Any]) -> str | None:
+def _tool_call_id(data: JsonDict) -> str | None:
     tool_call_id = data.get("toolCallId") or data.get("tool_call_id")
     return str(tool_call_id) if tool_call_id else None
 
 
-def _tool_name(data: dict[str, Any]) -> str:
+def _tool_name(data: JsonDict) -> str:
     tool_name = data.get("toolName") or data.get("tool_name") or data.get("name")
     return str(tool_name or "unknown")
 
 
-def _tool_success(data: dict[str, Any]) -> bool | None:
+def _tool_success(data: JsonDict) -> bool | None:
     success = data.get("success")
     if isinstance(success, bool):
         return success
@@ -249,26 +259,38 @@ def _tool_success(data: dict[str, Any]) -> bool | None:
     return None
 
 
-def _extract_text(value: Any) -> str:
+def _extract_text(value: object) -> str:
     if value is None:
         return ""
     if isinstance(value, str):
         return value
     if isinstance(value, list):
-        return " ".join(part for part in (_extract_text(item) for item in value) if part)
+        items = cast(list[object], value)
+        parts: list[str] = []
+        for item in items:
+            part = _extract_text(item)
+            if part:
+                parts.append(part)
+        return " ".join(parts)
     if isinstance(value, dict):
+        payload = cast(JsonDict, value)
         for key in ("content", "text", "value", "message", "reasoningText"):
-            if key in value:
-                text = _extract_text(value[key])
+            if key in payload:
+                text = _extract_text(payload[key])
                 if text:
                     return text
-        return " ".join(part for part in (_extract_text(item) for item in value.values()) if part)
+        parts: list[str] = []
+        for item in payload.values():
+            part = _extract_text(item)
+            if part:
+                parts.append(part)
+        return " ".join(parts)
     return str(value)
 
 
 def _is_discovery_tool(tool_name: str) -> bool:
     normalized = tool_name.casefold()
-    return normalized in DISCOVERY_TOOL_NAMES or normalized.startswith("codegraph_")
+    return normalized in DISCOVERY_TOOL_NAMES
 
 
 def _prompt_bucket(prompt_preview: str | None) -> str:

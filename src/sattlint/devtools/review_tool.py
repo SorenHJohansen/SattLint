@@ -8,7 +8,7 @@ import subprocess  # nosec B404
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 # Import our devtools for reuse
 from .doc_gardener import run_scan as doc_gardener_scan
@@ -198,7 +198,7 @@ def print_review(report: dict[str, Any]) -> None:
     print(f"Timestamp: {report['timestamp']}")
     print(f"Overall Status: {'PASS' if report['overall_passed'] else 'FAIL'}")
     print("\nSummary:")
-    summary = report["summary"]
+    summary = cast(dict[str, object], report["summary"])
     print(f"  Architecture Violations: {summary['architecture_violations']}")
     print(f"  Documentation Findings: {summary['doc_findings']}")
     print(f"  Tests: {summary['tests_passed']} passed, {summary['tests_failed']} failed")
@@ -206,10 +206,12 @@ def print_review(report: dict[str, Any]) -> None:
     print(f"  Formatting: {'PASS' if summary['format_passed'] else 'FAIL'}")
 
     print("\nDetails:")
-    for check_name, check_result in report["checks"].items():
+    checks = cast(dict[str, dict[str, object]], report["checks"])
+    for check_name, check_result in checks.items():
         print(f"  {check_name.upper()}:")
-        if isinstance(check_result, dict) and "passed" in check_result:
-            print(f"    Passed: {check_result['passed']}")
+        passed = check_result.get("passed")
+        if isinstance(passed, bool):
+            print(f"    Passed: {passed}")
         # Print a few key details per check
         if check_name == "architecture":
             print(f"    Violations: {check_result.get('violations', 0)}")
@@ -228,9 +230,16 @@ def print_review(report: dict[str, Any]) -> None:
             print(f"    Passed: {check_result.get('passed', False)}")
         elif check_name == "observability":
             # Just show a couple of metrics
-            cov = check_result.get("coverage", {})
-            print(f"    Line Coverage: {cov.get('line_coverage', 0):.1f}%")
-            print(f"    Branch Coverage: {cov.get('branch_coverage', 0):.1f}%")
+            coverage = check_result.get("coverage")
+            cov = cast(dict[str, object], coverage) if isinstance(coverage, dict) else {}
+            line_coverage = cov.get("line_coverage", 0.0)
+            branch_coverage = cov.get("branch_coverage", 0.0)
+            if not isinstance(line_coverage, int | float):
+                line_coverage = 0.0
+            if not isinstance(branch_coverage, int | float):
+                branch_coverage = 0.0
+            print(f"    Line Coverage: {line_coverage:.1f}%")
+            print(f"    Branch Coverage: {branch_coverage:.1f}%")
 
     print("\n" + "=" * 60)
 

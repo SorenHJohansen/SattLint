@@ -1,0 +1,1 @@
+{"include": ["src/sattlint/analyzers/_reset_path_collection.py"], "venvPath": ".", "venv": "venv", "typeCheckingMode": "strict"}

@@ -300,9 +300,9 @@ class AlarmIntegrityAnalyzer:
         inst: ModuleTypeInstance,
         mt_def: ModuleTypeDef | None,
     ) -> set[str]:
-        names = (
-            {variable.name.casefold() for variable in (mt_def.moduleparameters or [])} if mt_def is not None else set()
-        )
+        names: set[str] = set()
+        if mt_def is not None:
+            names = {variable.name.casefold() for variable in (mt_def.moduleparameters or [])}
         for mapping in inst.parametermappings or []:
             target_name = varname_base(mapping.target)
             if target_name:

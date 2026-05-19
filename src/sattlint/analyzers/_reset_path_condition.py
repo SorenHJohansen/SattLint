@@ -2,38 +2,71 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from ..grammar import constants as const
-from ._reset_path_state import _PathState
+from ._reset_path_state import PathState as _PathState
+
+_NodeTuple = tuple[object, ...]
+_NodeList = list[object]
+_NodeSequence = _NodeTuple | _NodeList
+_NodeDict = dict[str, object]
+
+
+def _object_tuple(node: object) -> _NodeTuple | None:
+    if isinstance(node, tuple):
+        return cast(_NodeTuple, node)
+    return None
+
+
+def _object_list(node: object) -> _NodeList | None:
+    if isinstance(node, list):
+        return cast(_NodeList, node)
+    return None
+
+
+def _object_sequence(node: object) -> _NodeSequence | None:
+    tuple_items = _object_tuple(node)
+    if tuple_items is not None:
+        return tuple_items
+    return _object_list(node)
+
+
+def _string_key_dict(node: object) -> _NodeDict | None:
+    if isinstance(node, dict):
+        return cast(_NodeDict, node)
+    return None
 
 
 def _varref_casefold(obj: Any) -> str | None:
-    if not isinstance(obj, dict) or const.KEY_VAR_NAME not in obj:
+    node_dict = _string_key_dict(obj)
+    if node_dict is None or const.KEY_VAR_NAME not in node_dict:
         return None
-    full = obj[const.KEY_VAR_NAME]
+    full = node_dict[const.KEY_VAR_NAME]
     if not isinstance(full, str) or not full:
         return None
     return full.casefold()
 
 
 def _is_exact_run_condition(cond: Any, reset_ref_cf: str) -> bool:
+    tuple_node = _object_tuple(cond)
     return (
-        isinstance(cond, tuple)
-        and len(cond) == 2
-        and cond[0] == const.GRAMMAR_VALUE_NOT
-        and _varref_casefold(cond[1]) == reset_ref_cf
+        tuple_node is not None
+        and len(tuple_node) == 2
+        and tuple_node[0] == const.GRAMMAR_VALUE_NOT
+        and _varref_casefold(tuple_node[1]) == reset_ref_cf
     )
 
 
 def _is_exact_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: set[str]) -> bool:
+    tuple_node = _object_tuple(cond)
     if _varref_casefold(cond) == reset_ref_cf:
         return True
     return (
-        isinstance(cond, tuple)
-        and len(cond) == 2
-        and cond[0] == const.GRAMMAR_VALUE_NOT
-        and _varref_casefold(cond[1]) in reset_old_vars_cf
+        tuple_node is not None
+        and len(tuple_node) == 2
+        and tuple_node[0] == const.GRAMMAR_VALUE_NOT
+        and _varref_casefold(tuple_node[1]) in reset_old_vars_cf
     )
 
 
@@ -41,11 +74,12 @@ def _classify_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: s
     positives: set[str] = set()
     negatives: set[str] = set()
 
-    def visit(obj: Any, negated: bool) -> None:
+    def visit(obj: object, negated: bool) -> None:
         if obj is None:
             return
-        if isinstance(obj, dict) and const.KEY_VAR_NAME in obj:
-            full = obj[const.KEY_VAR_NAME]
+        node_dict = _string_key_dict(obj)
+        if node_dict is not None and const.KEY_VAR_NAME in node_dict:
+            full = node_dict[const.KEY_VAR_NAME]
             if isinstance(full, str) and full:
                 name_cf = full.casefold()
                 if name_cf == reset_ref_cf or name_cf in reset_old_vars_cf:
@@ -54,19 +88,22 @@ def _classify_reset_condition(cond: Any, reset_ref_cf: str, reset_old_vars_cf: s
                     else:
                         positives.add(name_cf)
             return
-        if isinstance(obj, tuple) and obj:
-            if obj[0] == const.GRAMMAR_VALUE_NOT:
-                visit(obj[1], not negated)
+        tuple_node = _object_tuple(obj)
+        if tuple_node is not None and tuple_node:
+            if tuple_node[0] == const.GRAMMAR_VALUE_NOT:
+                visit(tuple_node[1] if len(tuple_node) > 1 else None, not negated)
                 return
-            for item in obj[1:]:
+            for item in tuple_node[1:]:
                 visit(item, negated)
             return
-        if isinstance(obj, list):
-            for item in obj:
+        list_node = _object_list(obj)
+        if list_node is not None:
+            for item in list_node:
                 visit(item, negated)
             return
-        if hasattr(obj, "children"):
-            for child in getattr(obj, "children", []):
+        children = _object_sequence(getattr(obj, "children", None))
+        if children is not None:
+            for child in children:
                 visit(child, negated)
 
     visit(cond, False)

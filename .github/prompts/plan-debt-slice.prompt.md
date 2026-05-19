@@ -12,8 +12,7 @@ Plan one SattLint work slice from the requested tech debt item.
 Requirements:
 
 - Use the `debt-id-routing` skill first against `docs/exec-plans/tech-debt-tracker.md`.
-- Use the `codegraph-routing` skill before broad text search when you need to confirm the controlling symbol, caller flow, or owner surface. The main session must call codegraph tools directly — subagents cannot access MCP tools.
-- If the owning surface is still unclear after the first lightweight lookup, use `codegraph_explore` in the main session to gather source sections, then pass them inline to the subagent.
+
 - Read `.git/sattlint-ai-coordination/current_work_lock.json` before proposing claims.
 - Keep one slice when possible; split only when the debt item spans incompatible owner surfaces or an explicit blocker requires a precursor slice.
 - Use `.ai/tasks/task-contract.example.json` and `.ai/handoffs/handoff.example.json` as the artifact shape references when suggesting task and handoff paths.

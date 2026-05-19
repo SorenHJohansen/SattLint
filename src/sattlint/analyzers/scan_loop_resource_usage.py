@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+from typing import cast
+
 from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
@@ -110,9 +113,18 @@ class ScanLoopResourceUsageAnalyzer:
     ) -> None:
         if node is None:
             return
-        if isinstance(node, tuple) and node:
-            if node[0] == const.KEY_FUNCTION_CALL and len(node) == 3:
-                _call_tag, function_name, args = node
+        if isinstance(node, tuple):
+            items = cast(tuple[object, ...], node)
+            if not items:
+                return
+            if items[0] == const.KEY_FUNCTION_CALL and len(items) == 3:
+                function_name = items[1]
+                raw_args = items[2]
+                arguments: Iterable[object] = ()
+                if isinstance(raw_args, list):
+                    arguments = cast(list[object], raw_args)
+                elif isinstance(raw_args, tuple):
+                    arguments = cast(tuple[object, ...], raw_args)
                 signature = get_function_signature(str(function_name))
                 if signature is not None and not signature.precision_scangroup:
                     self._issues.append(
@@ -130,18 +142,23 @@ class ScanLoopResourceUsageAnalyzer:
                             },
                         )
                     )
-                for argument in args or []:
+                for argument in arguments:
                     self._scan_node(argument, module_path=module_path, context=context)
                 return
-            for child in node[1:]:
+            for child in items[1:]:
                 self._scan_node(child, module_path=module_path, context=context)
             return
         if isinstance(node, list):
-            for item in node:
+            for item in cast(list[object], node):
                 self._scan_node(item, module_path=module_path, context=context)
             return
-        if hasattr(node, "children"):
-            for child in getattr(node, "children", []):
+        children = getattr(node, "children", None)
+        if isinstance(children, list):
+            for child in cast(list[object], children):
+                self._scan_node(child, module_path=module_path, context=context)
+            return
+        if isinstance(children, tuple):
+            for child in cast(tuple[object, ...], children):
                 self._scan_node(child, module_path=module_path, context=context)
 
 

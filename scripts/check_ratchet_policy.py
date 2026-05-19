@@ -74,6 +74,7 @@ class TypingRatchetState:
     strict_paths: tuple[str, ...]
     strict_roots: tuple[str, ...]
     debt_allowlist: tuple[str, ...]
+    global_strict: bool = False
 
 
 def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -267,7 +268,9 @@ def _typing_ratchet_state(
             return None
         raise ValueError(f"{label} is missing [tool.sattlint.typing_ratchet].")
 
+    type_checking_mode = pyright_section.get("typeCheckingMode", "off")
     strict_paths = _normalized_string_list(pyright_section.get("strict", []), f"{label} [tool.pyright].strict")
+    global_strict = type_checking_mode == "strict" and not strict_paths
     strict_roots = _normalized_string_list(
         typing_ratchet_section.get("strict_roots", []),
         f"{label} [tool.sattlint.typing_ratchet].strict_roots",
@@ -276,13 +279,14 @@ def _typing_ratchet_state(
         typing_ratchet_section.get("debt_allowlist", []),
         f"{label} [tool.sattlint.typing_ratchet].debt_allowlist",
     )
-    if not strict_roots:
+    if not strict_roots and not global_strict:
         raise ValueError(f"{label} typing ratchet strict_roots must not be empty.")
 
     return TypingRatchetState(
         strict_paths=strict_paths,
         strict_roots=strict_roots,
         debt_allowlist=debt_allowlist,
+        global_strict=global_strict,
     )
 
 
@@ -345,18 +349,24 @@ def _typing_ratchet_state_errors(
             + "."
         )
 
-    uncovered_scope_files = set(scope_files - strict_paths - debt_allowlist)
+    if state.global_strict:
+        uncovered_scope_files: set[str] = set()
+    else:
+        uncovered_scope_files = set(scope_files - strict_paths - debt_allowlist)
     if base_state is None:
         if uncovered_scope_files:
             errors.append(
                 "Typing ratchet scope has uncovered Python files: " + ", ".join(sorted(uncovered_scope_files)) + "."
             )
     else:
-        base_uncovered_scope_files = (
-            set(_typing_scope_python_files(repo_root, base_state.strict_roots))
-            - set(base_state.strict_paths)
-            - set(base_state.debt_allowlist)
-        )
+        if base_state.global_strict:
+            base_uncovered_scope_files: set[str] = set()
+        else:
+            base_uncovered_scope_files = (
+                set(_typing_scope_python_files(repo_root, base_state.strict_roots))
+                - set(base_state.strict_paths)
+                - set(base_state.debt_allowlist)
+            )
         newly_uncovered_scope_files = sorted(uncovered_scope_files - base_uncovered_scope_files)
         if newly_uncovered_scope_files:
             errors.append(
@@ -377,7 +387,7 @@ def _typing_ratchet_state_errors(
                 "Typing debt allowlist grew with a new scoped file: "
                 f"{rel_path}. New files under the strict scope must land in tool.pyright.strict."
             )
-        elif rel_path not in strict_paths:
+        elif not state.global_strict and rel_path not in strict_paths:
             errors.append(f"New file under the typing strict scope is not covered by tool.pyright.strict: {rel_path}.")
 
     touched_scope_debt = sorted(
@@ -425,6 +435,9 @@ def _typing_ratchet_backslide_errors(
         errors.append(f"Typing strict scope shrank: removed strict root {rel_root}.")
 
     for rel_path in sorted(base_strict - head_strict):
+        if head_state.global_strict:
+            # Promoting from explicit list to global-strict mode keeps all files covered.
+            continue
         if rel_path in head_debt:
             errors.append(
                 f"Pyright strict coverage moved into typing debt: {rel_path}. Fix types first; do not rebaseline."

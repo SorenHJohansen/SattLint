@@ -16,11 +16,11 @@ from ..resolution import CanonicalSymbolTable, TypeGraph
 from ..resolution.access_graph import AccessEvent
 from ..resolution.common import resolve_module_by_strict_path
 from ._semantic_helpers import (
-    _cf,
-    _child_module_items,
-    _identifier_contains_column,
-    _path_startswith,
-    _source_file_key,
+    cf,
+    child_module_items,
+    identifier_contains_column,
+    path_startswith,
+    source_file_key,
 )
 from .diagnostics import SemanticDiagnostic
 from .safety_paths import (
@@ -69,7 +69,7 @@ class _ReferenceOccurrence:
     definition_keys: tuple[tuple[str, ...], ...]
 
     def matches(self, line: int, column: int) -> bool:
-        return self.line == line and _identifier_contains_column(self.column, self.text, column)
+        return self.line == line and identifier_contains_column(self.column, self.text, column)
 
     def definition_key_for_column(self, column: int) -> tuple[str, ...]:
         current_column = self.column
@@ -97,6 +97,49 @@ class _ReferenceOccurrence:
         return None
 
 
+ReferenceOccurrence = _ReferenceOccurrence
+
+DefinitionKey = tuple[str, ...]
+ReferencesByFile = dict[str, tuple[ReferenceOccurrence, ...]]
+ReferencesByDefinitionKey = dict[DefinitionKey, tuple[SymbolReference, ...]]
+AccessesByDefinitionKey = dict[DefinitionKey, tuple[AccessEvent, ...]]
+EffectFlowEdges = dict[DefinitionKey, tuple[DefinitionKey, ...]]
+EffectFlowDisplayNames = dict[DefinitionKey, str]
+SemanticDiagnosticsByFile = dict[str, tuple[SemanticDiagnostic, ...]]
+
+
+def _accesses_by_definition_key_factory() -> AccessesByDefinitionKey:
+    return {}
+
+
+def _effect_flow_display_names_factory() -> EffectFlowDisplayNames:
+    return {}
+
+
+def _effect_flow_edges_factory() -> EffectFlowEdges:
+    return {}
+
+
+def _moduletype_index_factory() -> dict[str, list[ModuleTypeDef]]:
+    return {}
+
+
+def _references_by_definition_key_factory() -> ReferencesByDefinitionKey:
+    return {}
+
+
+def _references_by_file_factory() -> ReferencesByFile:
+    return {}
+
+
+def _semantic_diagnostics_by_file_factory() -> SemanticDiagnosticsByFile:
+    return {}
+
+
+def _symbol_definition_map_factory() -> dict[DefinitionKey, SymbolDefinition]:
+    return {}
+
+
 @dataclass(frozen=True, slots=True)
 class CompletionItem:
     label: str
@@ -108,14 +151,16 @@ class CompletionItem:
 @dataclass(frozen=True, slots=True)
 class SemanticAnalysisArtifacts:
     diagnostics: tuple[VariableIssue, ...] = ()
-    accesses_by_definition_key: dict[tuple[str, ...], tuple[AccessEvent, ...]] = field(default_factory=dict)
-    effect_flow_edges: dict[tuple[str, ...], tuple[tuple[str, ...], ...]] = field(default_factory=dict)
-    effect_flow_display_names: dict[tuple[str, ...], str] = field(default_factory=dict)
-    semantic_diagnostics_by_file: dict[str, tuple[SemanticDiagnostic, ...]] = field(default_factory=dict)
+    accesses_by_definition_key: AccessesByDefinitionKey = field(default_factory=_accesses_by_definition_key_factory)
+    effect_flow_edges: EffectFlowEdges = field(default_factory=_effect_flow_edges_factory)
+    effect_flow_display_names: EffectFlowDisplayNames = field(default_factory=_effect_flow_display_names_factory)
+    semantic_diagnostics_by_file: SemanticDiagnosticsByFile = field(
+        default_factory=_semantic_diagnostics_by_file_factory
+    )
 
 
 SemanticAnalysisProvider = Callable[
-    [BasePicture, ProjectGraph, bool, bool, dict[tuple[str, ...], SymbolDefinition]],
+    [BasePicture, ProjectGraph, bool, bool, dict[DefinitionKey, SymbolDefinition]],
     SemanticAnalysisArtifacts,
 ]
 
@@ -132,43 +177,43 @@ class SemanticSnapshot:
     definitions: tuple[SymbolDefinition, ...]
     diagnostics: tuple[VariableIssue, ...] = ()
     call_signatures: tuple[CallSignatureOccurrence, ...] = ()
-    _definitions_by_key: dict[tuple[str, ...], SymbolDefinition] = field(
-        default_factory=dict,
+    _definitions_by_key: dict[DefinitionKey, SymbolDefinition] = field(
+        default_factory=_symbol_definition_map_factory,
         repr=False,
         compare=False,
     )
     _moduletype_index: dict[str, list[ModuleTypeDef]] = field(
-        default_factory=dict,
+        default_factory=_moduletype_index_factory,
         repr=False,
         compare=False,
     )
-    _references_by_file: dict[str, tuple[_ReferenceOccurrence, ...]] = field(
-        default_factory=dict,
+    _references_by_file: ReferencesByFile = field(
+        default_factory=_references_by_file_factory,
         repr=False,
         compare=False,
     )
-    _references_by_definition_key: dict[tuple[str, ...], tuple[SymbolReference, ...]] = field(
-        default_factory=dict,
+    _references_by_definition_key: ReferencesByDefinitionKey = field(
+        default_factory=_references_by_definition_key_factory,
         repr=False,
         compare=False,
     )
-    _accesses_by_definition_key: dict[tuple[str, ...], tuple[AccessEvent, ...]] = field(
-        default_factory=dict,
+    _accesses_by_definition_key: AccessesByDefinitionKey = field(
+        default_factory=_accesses_by_definition_key_factory,
         repr=False,
         compare=False,
     )
-    _effect_flow_edges: dict[tuple[str, ...], tuple[tuple[str, ...], ...]] = field(
-        default_factory=dict,
+    _effect_flow_edges: EffectFlowEdges = field(
+        default_factory=_effect_flow_edges_factory,
         repr=False,
         compare=False,
     )
-    _effect_flow_display_names: dict[tuple[str, ...], str] = field(
-        default_factory=dict,
+    _effect_flow_display_names: EffectFlowDisplayNames = field(
+        default_factory=_effect_flow_display_names_factory,
         repr=False,
         compare=False,
     )
-    _semantic_diagnostics_by_file: dict[str, tuple[SemanticDiagnostic, ...]] = field(
-        default_factory=dict,
+    _semantic_diagnostics_by_file: SemanticDiagnosticsByFile = field(
+        default_factory=_semantic_diagnostics_by_file_factory,
         repr=False,
         compare=False,
     )
@@ -194,7 +239,7 @@ class SemanticSnapshot:
             return []
 
         segments = tuple(segment for segment in raw.split(".") if segment)
-        key = tuple(_cf(segment) for segment in segments)
+        key = tuple(cf(segment) for segment in segments)
 
         direct = self._definitions_by_key.get(key)
         if direct is not None:
@@ -202,7 +247,7 @@ class SemanticSnapshot:
 
         matches: list[tuple[int, int, SymbolDefinition]] = []
         for definition in self.definitions:
-            definition_key = tuple(_cf(segment) for segment in definition.canonical_path.split("."))
+            definition_key = tuple(cf(segment) for segment in definition.canonical_path.split("."))
             if segments and definition_key[-len(key) :] == key:
                 matches.append((len(key), len(definition_key), definition))
             elif len(key) == 1 and definition_key[-1] == key[0]:
@@ -220,7 +265,7 @@ class SemanticSnapshot:
         line: int,
         column: int,
     ) -> list[SymbolDefinition]:
-        file_key = _source_file_key(source_file)
+        file_key = source_file_key(source_file)
         if file_key is None:
             return []
 
@@ -248,12 +293,12 @@ class SemanticSnapshot:
         limit: int | None = None,
     ) -> list[SymbolReference]:
         if isinstance(query, SymbolDefinition):
-            definition_key = tuple(_cf(segment) for segment in query.canonical_path.split("."))
+            definition_key = tuple(cf(segment) for segment in query.canonical_path.split("."))
         else:
             definitions = self.find_definitions(query, limit=1)
             if not definitions:
                 return []
-            definition_key = tuple(_cf(segment) for segment in definitions[0].canonical_path.split("."))
+            definition_key = tuple(cf(segment) for segment in definitions[0].canonical_path.split("."))
 
         references = list(self._references_by_definition_key.get(definition_key, ()))
         if limit is not None:
@@ -267,12 +312,12 @@ class SemanticSnapshot:
         limit: int | None = None,
     ) -> list[SymbolAccess]:
         if isinstance(query, SymbolDefinition):
-            definition_key = tuple(_cf(segment) for segment in query.canonical_path.split("."))
+            definition_key = tuple(cf(segment) for segment in query.canonical_path.split("."))
         else:
             definitions = self.find_definitions(query, limit=1)
             if not definitions:
                 return []
-            definition_key = tuple(_cf(segment) for segment in definitions[0].canonical_path.split("."))
+            definition_key = tuple(cf(segment) for segment in definitions[0].canonical_path.split("."))
 
         accesses = list(build_symbol_accesses(self._accesses_by_definition_key.get(definition_key, ())))
         if limit is not None:
@@ -287,7 +332,7 @@ class SemanticSnapshot:
         for definition in self.definitions:
             if roots_only and definition.field_path is not None:
                 continue
-            definition_key = tuple(_cf(segment) for segment in definition.canonical_path.split("."))
+            definition_key = tuple(cf(segment) for segment in definition.canonical_path.split("."))
             yield definition, self._accesses_by_definition_key.get(definition_key, ())
 
     def find_safety_paths(
@@ -415,7 +460,7 @@ class SemanticSnapshot:
         limit: int | None = None,
     ) -> list[CallSignatureOccurrence]:
         needle = query.strip().casefold()
-        file_key = _source_file_key(source_path) if source_path is not None else None
+        file_key = source_file_key(source_path) if source_path is not None else None
         library_key = None
         if source_path is not None:
             source = Path(str(source_path))
@@ -425,7 +470,7 @@ class SemanticSnapshot:
         for occurrence in self.call_signatures:
             if needle and occurrence.name.casefold() != needle:
                 continue
-            if file_key is not None and _source_file_key(occurrence.source_file) != file_key:
+            if file_key is not None and source_file_key(occurrence.source_file) != file_key:
                 continue
             if (
                 library_key is not None
@@ -457,7 +502,7 @@ class SemanticSnapshot:
                 current_node: Any | None = resolved.node
             except ValueError:
                 visible_path = tuple(segment for segment in module_path.split(".") if segment)
-                if visible_path and _cf(visible_path[0]) == _cf(self.base_picture.header.name):
+                if visible_path and cf(visible_path[0]) == cf(self.base_picture.header.name):
                     visible_path = visible_path[1:]
                 current_node = None
         else:
@@ -469,7 +514,7 @@ class SemanticSnapshot:
         for definition in self.definitions:
             if definition.field_path is not None:
                 continue
-            if not _path_startswith(visible_path, definition.declaration_module_path):
+            if not path_startswith(visible_path, definition.declaration_module_path):
                 continue
             if prefix_cf and not definition.canonical_path.split(".")[-1].casefold().startswith(prefix_cf):
                 continue
@@ -486,7 +531,7 @@ class SemanticSnapshot:
                 items_by_label[label.casefold()] = current
 
         if current_node is not None:
-            for child_name, child_kind in _child_module_items(
+            for child_name, child_kind in child_module_items(
                 self.base_picture,
                 current_node,
                 self._moduletype_index,

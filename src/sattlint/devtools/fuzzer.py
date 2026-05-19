@@ -15,11 +15,11 @@ from sattline_parser.api import parse_source_text
 from sattline_parser.fuzz_harness import (
     FuzzResult,
     TimeoutError,
-    _is_expected_parse_error,
     assert_no_crashes,
     assert_no_timeouts,
     collect_corpus_inputs,
     generate_random_text,
+    is_expected_parse_error,
     run_corpus_regression,
     run_random_fuzz,
 )
@@ -34,12 +34,20 @@ FUZZ_RESULTS_SCHEMA_KIND = "sattlint.fuzz_results"
 FUZZ_RESULTS_SCHEMA_VERSION = 1
 
 
+def _fuzz_result_list() -> list[FuzzResult]:
+    return []
+
+
+def _fuzz_execution_record_list() -> list[FuzzExecutionRecord]:
+    return []
+
+
 def analyze_fuzz_crashes(results: list[FuzzResult]) -> list[dict[str, Any]]:
     """Return unexpected crash records from a fuzz run."""
     crashes: list[dict[str, Any]] = []
     for result in results:
         error = result.error
-        if error is None or isinstance(error, TimeoutError) or _is_expected_parse_error(error):
+        if error is None or isinstance(error, TimeoutError) or is_expected_parse_error(error):
             continue
         crashes.append(result.to_dict())
     return crashes
@@ -49,7 +57,7 @@ def analyze_fuzz_crashes(results: list[FuzzResult]) -> list[dict[str, Any]]:
 class FuzzCampaignResults:
     """Machine-readable summary of a corpus plus random fuzz campaign."""
 
-    results: list[FuzzResult] = field(default_factory=list)
+    results: list[FuzzResult] = field(default_factory=_fuzz_result_list)
 
     @property
     def crash_reports(self) -> list[dict[str, Any]]:
@@ -63,7 +71,7 @@ class FuzzCampaignResults:
             for result in self.results
             if result.error is not None
             and not isinstance(result.error, TimeoutError)
-            and _is_expected_parse_error(result.error)
+            and is_expected_parse_error(result.error)
         )
         return {
             "kind": FUZZ_RESULTS_SCHEMA_KIND,
@@ -144,7 +152,7 @@ class FuzzExecutionRecord:
 
 @dataclass
 class FuzzerReport:
-    records: list[FuzzExecutionRecord] = field(default_factory=list)
+    records: list[FuzzExecutionRecord] = field(default_factory=_fuzz_execution_record_list)
 
     def to_dict(self) -> dict[str, Any]:
         status_counts = Counter(record.status for record in self.records)
@@ -208,7 +216,7 @@ def _record_for_error(
         )
     if isinstance(error, TimeoutError):
         status = "timeout"
-    elif _is_expected_parse_error(error):
+    elif is_expected_parse_error(error):
         status = "expected-parse-error"
     else:
         status = "unexpected-crash"

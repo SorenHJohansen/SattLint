@@ -2,93 +2,117 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
+from typing import Literal, TypeAlias, cast
+
 from ..grammar import constants as const
 
 _DEFAULT_VAR_NAME = "var_name"
+VariableRef: TypeAlias = dict[str, object]
+CallKind: TypeAlias = Literal["function", "procedure"]
+CallSite: TypeAlias = tuple[CallKind, str, tuple[object, ...]]
 
 
-def iter_variable_refs(node: object, *, key_name: str = _DEFAULT_VAR_NAME):
-    if isinstance(node, dict) and key_name in node:
-        yield node
-        return
-
+def iter_variable_refs(node: object, *, key_name: str = _DEFAULT_VAR_NAME) -> Iterator[VariableRef]:
     if isinstance(node, dict):
-        for value in node.values():
+        mapping = cast(dict[str, object], node)
+        if key_name in mapping:
+            yield mapping
+            return
+        for value in mapping.values():
             yield from iter_variable_refs(value, key_name=key_name)
         return
 
     if isinstance(node, tuple):
-        for item in node:
+        for item in cast(tuple[object, ...], node):
             yield from iter_variable_refs(item, key_name=key_name)
         return
 
     if isinstance(node, list):
-        for item in node:
+        for item in cast(list[object], node):
             yield from iter_variable_refs(item, key_name=key_name)
         return
 
     children = getattr(node, "children", None)
-    if children is not None:
-        for child in children:
+    if isinstance(children, list):
+        for child in cast(list[object], children):
+            yield from iter_variable_refs(child, key_name=key_name)
+        return
+    if isinstance(children, tuple):
+        for child in cast(tuple[object, ...], children):
             yield from iter_variable_refs(child, key_name=key_name)
         return
 
     node_dict = getattr(node, "__dict__", None)
-    if node_dict is not None:
-        for value in node_dict.values():
+    if isinstance(node_dict, dict):
+        for value in cast(dict[str, object], node_dict).values():
             yield from iter_variable_refs(value, key_name=key_name)
 
 
-def iter_call_sites(node: object):
-    if isinstance(node, tuple) and len(node) == 3 and node[0] == const.KEY_FUNCTION_CALL:
-        yield ("function", node[1], tuple(node[2] or ()))
-        for argument in node[2] or ():
-            yield from iter_call_sites(argument)
+def iter_call_sites(node: object) -> Iterator[CallSite]:
+    if isinstance(node, tuple):
+        items = cast(tuple[object, ...], node)
+        if len(items) == 3 and items[0] == const.KEY_FUNCTION_CALL and isinstance(items[1], str):
+            raw_args = items[2]
+            args = tuple(cast(Iterable[object], raw_args)) if isinstance(raw_args, list | tuple) else ()
+            yield ("function", items[1], args)
+            for argument in args:
+                yield from iter_call_sites(argument)
+            return
+        for item in items:
+            yield from iter_call_sites(item)
         return
 
     if isinstance(node, dict):
-        if const.KEY_PROCEDURE_CALL in node and isinstance(node[const.KEY_PROCEDURE_CALL], dict):
-            call = node[const.KEY_PROCEDURE_CALL]
+        mapping = cast(dict[str, object], node)
+        raw_call = mapping.get(const.KEY_PROCEDURE_CALL)
+        if isinstance(raw_call, dict):
+            call = cast(dict[str, object], raw_call)
             name = call.get(const.KEY_NAME)
-            args = tuple(call.get(const.KEY_ARGS) or ())
+            raw_args = call.get(const.KEY_ARGS)
+            args = tuple(cast(Iterable[object], raw_args)) if isinstance(raw_args, list | tuple) else ()
             if isinstance(name, str):
                 yield ("procedure", name, args)
             for argument in args:
                 yield from iter_call_sites(argument)
             return
 
+        name = mapping.get(const.KEY_NAME)
+        raw_args = mapping.get(const.KEY_ARGS)
         if (
-            const.KEY_NAME in node
-            and const.KEY_ARGS in node
-            and const.KEY_VAR_NAME not in node
-            and isinstance(node.get(const.KEY_NAME), str)
-            and isinstance(node.get(const.KEY_ARGS) or (), list | tuple)
+            const.KEY_VAR_NAME not in mapping
+            and isinstance(name, str)
+            and isinstance(raw_args, list | tuple)
         ):
-            args = tuple(node.get(const.KEY_ARGS) or ())
-            yield ("procedure", node[const.KEY_NAME], args)
+            args = tuple(cast(Iterable[object], raw_args))
+            yield ("procedure", name, args)
             for argument in args:
                 yield from iter_call_sites(argument)
-            for key, value in node.items():
+            for key, value in mapping.items():
                 if key not in {const.KEY_NAME, const.KEY_ARGS}:
                     yield from iter_call_sites(value)
             return
 
-        for value in node.values():
+        for value in mapping.values():
             yield from iter_call_sites(value)
         return
 
     if isinstance(node, list):
-        for item in node:
+        for item in cast(list[object], node):
             yield from iter_call_sites(item)
         return
 
     children = getattr(node, "children", None)
-    if children is not None:
-        for child in children:
+    if isinstance(children, list):
+        for child in cast(list[object], children):
+            yield from iter_call_sites(child)
+        return
+    if isinstance(children, tuple):
+        for child in cast(tuple[object, ...], children):
             yield from iter_call_sites(child)
         return
 
     node_dict = getattr(node, "__dict__", None)
-    if node_dict is not None:
-        for value in node_dict.values():
+    if isinstance(node_dict, dict):
+        for value in cast(dict[str, object], node_dict).values():
             yield from iter_call_sites(value)

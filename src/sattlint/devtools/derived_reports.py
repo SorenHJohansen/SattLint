@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from sattlint.analyzers.registry import get_default_analyzer_catalog
 from sattlint.path_sanitizer import sanitize_path_for_report
@@ -29,6 +30,64 @@ _FULL_FALLBACK_PREFIXES = (
 )
 _ANALYZER_SOURCE_PREFIX = "src/sattlint/analyzers/"
 _PROGRAM_SUFFIXES = (".s", ".x", ".l", ".z")
+
+ReportMapping = Mapping[str, object]
+
+
+class _PhaseSummary(TypedDict):
+    phase: str
+    event_count: int
+    span_ms: float
+
+
+def _mapping_list(value: object) -> list[ReportMapping]:
+    if not isinstance(value, list):
+        return []
+    items = cast(list[object], value)
+    result: list[ReportMapping] = []
+    for item in items:
+        if isinstance(item, Mapping):
+            result.append(cast(ReportMapping, item))
+    return result
+
+
+def _mapping_dict(value: object) -> dict[str, ReportMapping]:
+    if not isinstance(value, Mapping):
+        return {}
+    entries = cast(Mapping[object, object], value)
+    result: dict[str, ReportMapping] = {}
+    for key, item in entries.items():
+        if isinstance(key, str) and isinstance(item, Mapping):
+            result[key] = cast(ReportMapping, item)
+    return result
+
+
+def _to_float(value: object, default: float = 0.0) -> float:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _to_int(value: object, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
 
 
 def _default_analyzer_report() -> dict[str, Any]:
@@ -62,7 +121,7 @@ def build_incremental_analysis_report(
         return None
 
     analyzer_report = analyzer_registry_report or _default_analyzer_report()
-    analyzers = analyzer_report.get("analyzers") or []
+    analyzers = _mapping_list(analyzer_report.get("analyzers"))
     incremental_analyzers = sorted(
         str(analyzer.get("key") or "") for analyzer in analyzers if analyzer.get("supports_incremental") is True
     )
@@ -110,17 +169,17 @@ def build_profiling_summary_report(
     if trace_report is None:
         return None
 
-    timing_summary = dict(trace_report.get("timing_summary") or {})
-    events = list(trace_report.get("events") or [])
-    total_duration_ms = round(max((float(event.get("time_offset_ms") or 0.0) for event in events), default=0.0), 3)
+    timing_summary = _mapping_dict(trace_report.get("timing_summary"))
+    events = _mapping_list(trace_report.get("events"))
+    total_duration_ms = round(max((_to_float(event.get("time_offset_ms")) for event in events), default=0.0), 3)
 
-    phases = sorted(
+    phases: list[_PhaseSummary] = sorted(
         [
-            {
-                "phase": phase,
-                "event_count": int(stats.get("event_count") or 0),
-                "span_ms": float(stats.get("span_ms") or 0.0),
-            }
+            _PhaseSummary(
+                phase=phase,
+                event_count=_to_int(stats.get("event_count")),
+                span_ms=_to_float(stats.get("span_ms")),
+            )
             for phase, stats in timing_summary.items()
         ],
         key=lambda item: (-item["span_ms"], item["phase"]),
@@ -153,15 +212,16 @@ def build_performance_budget_report(
     if profiling_summary_report is None:
         return None
 
-    total_duration_ms = float(profiling_summary_report.get("total_duration_ms") or 0.0)
+    total_duration_ms = _to_float(profiling_summary_report.get("total_duration_ms"))
+    phases = _mapping_list(profiling_summary_report.get("phases"))
     over_budget_phases = [
         {
             "phase": str(phase.get("phase") or "unknown"),
-            "span_ms": float(phase.get("span_ms") or 0.0),
-            "event_count": int(phase.get("event_count") or 0),
+            "span_ms": _to_float(phase.get("span_ms")),
+            "event_count": _to_int(phase.get("event_count")),
         }
-        for phase in profiling_summary_report.get("phases") or []
-        if float(phase.get("span_ms") or 0.0) > phase_budget_ms
+        for phase in phases
+        if _to_float(phase.get("span_ms")) > phase_budget_ms
     ]
     total_duration_exceeded = total_duration_ms > total_budget_ms
     violation_count = len(over_budget_phases) + (1 if total_duration_exceeded else 0)

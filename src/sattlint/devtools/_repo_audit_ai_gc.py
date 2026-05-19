@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
+
+
+def _json_mapping(value: object) -> dict[str, Any] | None:
+    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def _repo_audit_ai_gc_module() -> Any:
@@ -14,7 +18,13 @@ def _repo_audit_ai_gc_module() -> Any:
 def _ai_gc_report_findings(report: dict[str, Any]) -> list[Any]:
     repo_audit = _repo_audit_ai_gc_module()
     findings: list[Any] = []
-    for candidate in report.get("candidates", []):
+    candidates = report.get("candidates")
+    if not isinstance(candidates, list):
+        return findings
+    for candidate_obj in cast(list[object], candidates):
+        candidate = _json_mapping(candidate_obj)
+        if candidate is None:
+            continue
         if candidate.get("applied"):
             continue
         candidate_id = str(candidate.get("candidate_id") or "ai-gc")
@@ -61,29 +71,38 @@ def _filter_ai_gc_report_for_output_dir(report: dict[str, Any], *, output_dir_pa
     candidates = report.get("candidates")
     if not isinstance(candidates, list):
         return report
+    candidate_items = cast(list[object], candidates)
     filtered_candidates = [
-        candidate
-        for candidate in candidates
+        candidate_obj
+        for candidate_obj in candidate_items
         if not (
-            isinstance(candidate, dict)
+            (candidate := _json_mapping(candidate_obj)) is not None
             and str(candidate.get("candidate_id") or "") == "stale-generated-output-manifest"
-            and _is_active_output_ai_gc_path(candidate.get("path"), output_dir_path=output_dir_path)
+            and _is_active_output_ai_gc_path(
+                str(candidate.get("path") or "") or None,
+                output_dir_path=output_dir_path,
+            )
         )
     ]
-    if len(filtered_candidates) == len(candidates):
+    if len(filtered_candidates) == len(candidate_items):
         return report
     filtered_report = dict(report)
     filtered_report["candidates"] = filtered_candidates
-    filtered_summary = dict(report.get("summary", {}))
+    filtered_summary = dict(_json_mapping(report.get("summary")) or {})
     filtered_summary["candidate_count"] = len(filtered_candidates)
-    filtered_summary["artifact_candidate_count"] = sum(
-        1
-        for candidate in filtered_candidates
-        if candidate.get("candidate_id") in {"stale-ai-artifact", "stale-generated-output-manifest"}
-    )
-    filtered_summary["manifest_drift_candidate_count"] = sum(
-        1 for candidate in filtered_candidates if candidate.get("candidate_id") == "stale-generated-output-manifest"
-    )
+    artifact_candidate_count = 0
+    manifest_drift_candidate_count = 0
+    for candidate_obj in filtered_candidates:
+        candidate = _json_mapping(candidate_obj)
+        if candidate is None:
+            continue
+        candidate_id = str(candidate.get("candidate_id") or "")
+        if candidate_id in {"stale-ai-artifact", "stale-generated-output-manifest"}:
+            artifact_candidate_count += 1
+        if candidate_id == "stale-generated-output-manifest":
+            manifest_drift_candidate_count += 1
+    filtered_summary["artifact_candidate_count"] = artifact_candidate_count
+    filtered_summary["manifest_drift_candidate_count"] = manifest_drift_candidate_count
     filtered_report["summary"] = filtered_summary
     failures = filtered_report.get("failures")
     filtered_report["status"] = (

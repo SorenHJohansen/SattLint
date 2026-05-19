@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from sattline_parser.models.ast_model import (
     BasePicture,
     FrameModule,
@@ -182,42 +184,81 @@ class CyclomaticComplexityAnalyzer:
     def _count_node(self, node: object) -> int:
         if node is None:
             return 0
-        if isinstance(node, tuple) and node:
-            tag = node[0]
-            if tag == const.GRAMMAR_VALUE_IF:
-                _if_tag, branches, else_block = node
-                count = len(branches or [])
-                for condition, branch_statements in branches or []:
+        if isinstance(node, tuple):
+            items = cast(tuple[object, ...], node)
+            if not items:
+                return 0
+            tag = items[0]
+            if tag == const.GRAMMAR_VALUE_IF and len(items) == 3:
+                raw_branches = items[1]
+                else_block = items[2]
+                if_branches: list[tuple[object, list[object]]] = []
+                if isinstance(raw_branches, list):
+                    for branch in cast(list[object], raw_branches):
+                        if not isinstance(branch, tuple):
+                            continue
+                        branch_items = cast(tuple[object, ...], branch)
+                        if len(branch_items) != 2 or not isinstance(branch_items[1], list):
+                            continue
+                        if_branches.append((branch_items[0], cast(list[object], branch_items[1])))
+                count = len(if_branches)
+                for condition, branch_statements in if_branches:
                     count += self._count_node(condition)
-                    count += self._count_statement_list(branch_statements or [])
-                count += self._count_statement_list(else_block or [])
+                    count += self._count_statement_list(branch_statements)
+                if isinstance(else_block, list):
+                    count += self._count_statement_list(cast(list[object], else_block))
                 return count
-            if tag == const.KEY_TERNARY:
-                _ternary_tag, branches, else_expr = node
-                count = len(branches or [])
-                for condition, then_expr in branches or []:
+            if tag == const.KEY_TERNARY and len(items) == 3:
+                raw_branches = items[1]
+                else_expr = items[2]
+                ternary_branches: list[tuple[object, object]] = []
+                if isinstance(raw_branches, list):
+                    for branch in cast(list[object], raw_branches):
+                        if not isinstance(branch, tuple):
+                            continue
+                        branch_items = cast(tuple[object, ...], branch)
+                        if len(branch_items) != 2:
+                            continue
+                        ternary_branches.append((branch_items[0], branch_items[1]))
+                count = len(ternary_branches)
+                for condition, then_expr in ternary_branches:
                     count += self._count_node(condition)
                     count += self._count_node(then_expr)
                 count += self._count_node(else_expr)
                 return count
-            if tag == const.KEY_ASSIGN:
-                _assign_tag, target, expr = node
+            if tag == const.KEY_ASSIGN and len(items) == 3:
+                target = items[1]
+                expr = items[2]
                 return self._count_node(target) + self._count_node(expr)
-            if tag == const.KEY_FUNCTION_CALL:
-                _call_tag, _function_name, args = node
-                return sum(self._count_node(argument) for argument in args or [])
+            if tag == const.KEY_FUNCTION_CALL and len(items) == 3:
+                raw_args = items[2]
+                if isinstance(raw_args, list):
+                    return sum(self._count_node(argument) for argument in cast(list[object], raw_args))
+                if isinstance(raw_args, tuple):
+                    return sum(self._count_node(argument) for argument in cast(tuple[object, ...], raw_args))
+                return 0
             if tag in (const.KEY_COMPARE, const.KEY_ADD, const.KEY_MUL):
-                return sum(self._count_node(child) for child in node[1:])
+                return sum(self._count_node(child) for child in items[1:])
             if tag in (const.KEY_PLUS, const.KEY_MINUS, const.GRAMMAR_VALUE_NOT):
-                return self._count_node(node[1])
-            if tag in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND):
-                children = node[1] or []
+                return self._count_node(items[1]) if len(items) > 1 else 0
+            if tag in (const.GRAMMAR_VALUE_OR, const.GRAMMAR_VALUE_AND) and len(items) > 1:
+                raw_children = items[1]
+                children: list[object] = []
+                if isinstance(raw_children, list):
+                    children = cast(list[object], raw_children)
+                elif isinstance(raw_children, tuple):
+                    children = list(cast(tuple[object, ...], raw_children))
                 return max(0, len(children) - 1) + sum(self._count_node(child) for child in children)
-            return sum(self._count_node(child) for child in node[1:])
+            return sum(self._count_node(child) for child in items[1:])
         if isinstance(node, list):
-            return sum(self._count_node(item) for item in node)
-        if hasattr(node, "children"):
-            return sum(self._count_node(child) for child in getattr(node, "children", []))
+            return sum(self._count_node(item) for item in cast(list[object], node))
+        raw_children = getattr(node, "children", None)
+        if isinstance(raw_children, list):
+            child_nodes = cast(list[object], raw_children)
+            return sum(self._count_node(child) for child in child_nodes)
+        if isinstance(raw_children, tuple):
+            child_nodes = cast(tuple[object, ...], raw_children)
+            return sum(self._count_node(child) for child in child_nodes)
         return 0
 
 

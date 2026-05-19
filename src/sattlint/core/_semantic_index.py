@@ -22,12 +22,12 @@ from ..resolution import (
     decorate_segment,
 )
 from ._semantic_helpers import (
-    _cf,
-    _format_datatype,
-    _resolve_field_datatype,
+    cf,
+    format_datatype,
+    resolve_field_datatype,
 )
 from ._semantic_index_reference_support import _SemanticIndexReferenceSupportMixin
-from ._semantic_snapshot import SymbolDefinition, SymbolReference, _ReferenceOccurrence
+from ._semantic_snapshot import ReferenceOccurrence, SymbolDefinition, SymbolReference
 
 
 class _SemanticIndexBuilder(_SemanticIndexReferenceSupportMixin):
@@ -44,7 +44,7 @@ class _SemanticIndexBuilder(_SemanticIndexReferenceSupportMixin):
         self._root_env = {v.name.casefold(): v for v in (base_picture.localvariables or [])}
         self._definitions_by_key: dict[tuple[str, ...], SymbolDefinition] = {}
         self._definitions_in_order: list[SymbolDefinition] = []
-        self._references_by_file: dict[str, list[_ReferenceOccurrence]] = {}
+        self._references_by_file: dict[str, list[ReferenceOccurrence]] = {}
         self._references_by_definition_key: dict[tuple[str, ...], list[SymbolReference]] = {}
         self._call_signatures: list[CallSignatureOccurrence] = []
         self._moduletype_index: dict[str, list[ModuleTypeDef]] = {}
@@ -67,7 +67,7 @@ class _SemanticIndexBuilder(_SemanticIndexReferenceSupportMixin):
         tuple[SymbolDefinition, ...],
         dict[tuple[str, ...], SymbolDefinition],
         dict[str, list[ModuleTypeDef]],
-        dict[str, tuple[_ReferenceOccurrence, ...]],
+        dict[str, tuple[ReferenceOccurrence, ...]],
         dict[tuple[str, ...], tuple[SymbolReference, ...]],
         tuple[CallSignatureOccurrence, ...],
     ]:
@@ -150,7 +150,7 @@ class _SemanticIndexBuilder(_SemanticIndexReferenceSupportMixin):
             next_active.add(current_key)
             for variable_field in datatype.var_list or []:
                 path = (*prefix, variable_field.name)
-                results[(root_type_name.casefold(), tuple(_cf(segment) for segment in path))] = (
+                results[(root_type_name.casefold(), tuple(cf(segment) for segment in path))] = (
                     variable_field,
                     datatype.origin_file,
                     datatype.origin_lib,
@@ -170,7 +170,7 @@ class _SemanticIndexBuilder(_SemanticIndexReferenceSupportMixin):
         if isinstance(root_type, Simple_DataType):
             return None
         return self._datatype_field_definitions.get(
-            (root_type.casefold(), tuple(_cf(segment) for segment in field_path))
+            (root_type.casefold(), tuple(cf(segment) for segment in field_path))
         )
 
     def _lookup_global_variable(self, name: str | None) -> Variable | None:
@@ -221,7 +221,7 @@ class _SemanticIndexBuilder(_SemanticIndexReferenceSupportMixin):
                 self._record_definition(
                     canonical_path=root_path.join(*field_segments),
                     kind="field",
-                    datatype=_resolve_field_datatype(self.type_graph, variable.datatype, field_segments),
+                    datatype=resolve_field_datatype(self.type_graph, variable.datatype, field_segments),
                     module_path=module_path,
                     display_module_path=display_module_path,
                     field_path=".".join(field_segments),
@@ -246,7 +246,7 @@ class _SemanticIndexBuilder(_SemanticIndexReferenceSupportMixin):
         definition = SymbolDefinition(
             canonical_path=str(canonical_path),
             kind=kind,
-            datatype=_format_datatype(datatype),
+            datatype=format_datatype(datatype),
             declaration_module_path=module_path,
             display_module_path=display_module_path,
             field_path=field_path,

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -29,6 +30,21 @@ class _ExecutionBlock:
     label: str
     reads: tuple[str, ...]
     writes: tuple[str, ...]
+
+
+def _object_sequence(raw: object) -> Sequence[object] | None:
+    if isinstance(raw, (list, tuple)):
+        return cast(Sequence[object], raw)
+    return None
+
+
+def _branch_pair(raw: object) -> tuple[object, object] | None:
+    if not isinstance(raw, tuple):
+        return None
+    tuple_raw = cast(tuple[object, ...], raw)
+    if len(tuple_raw) != 2:
+        return None
+    return tuple_raw
 
 
 class LoopOutputRefactorAnalyzer:
@@ -206,23 +222,32 @@ class LoopOutputRefactorAnalyzer:
             return
 
         if isinstance(node, tuple) and node:
-            tag = node[0]
-            if tag == const.KEY_ASSIGN and len(node) >= 3:
-                _assign, target, expr = node[:3]
+            tuple_node = cast(tuple[object, ...], node)
+            tag = tuple_node[0]
+            if tag == const.KEY_ASSIGN and len(tuple_node) >= 3:
+                target = tuple_node[1]
+                expr = tuple_node[2]
                 self._collect_target_writes(target, writes)
                 self._collect_expression_reads(expr, reads)
                 return
-            if tag == const.GRAMMAR_VALUE_IF and len(node) == 3:
-                _if_tag, branches, else_block = node
-                for condition, branch_statements in branches or []:
+            if tag == const.GRAMMAR_VALUE_IF and len(tuple_node) == 3:
+                branches = _object_sequence(tuple_node[1])
+                else_block = _object_sequence(tuple_node[2])
+                for branch in branches or ():
+                    branch_pair = _branch_pair(branch)
+                    if branch_pair is None:
+                        continue
+                    condition = branch_pair[0]
+                    branch_statements = _object_sequence(branch_pair[1])
                     self._collect_expression_reads(condition, reads)
-                    for statement in branch_statements or []:
+                    for statement in branch_statements or ():
                         self._collect_statement_io(statement, reads, writes)
-                for statement in else_block or []:
+                for statement in else_block or ():
                     self._collect_statement_io(statement, reads, writes)
                 return
 
-        self._collect_expression_reads(node, reads)
+        expression_node = cast(object, node)
+        self._collect_expression_reads(expression_node, reads)
 
     def _collect_expression_reads(self, node: object, reads: set[str]) -> None:
         for ref in iter_variable_refs(node, key_name=const.KEY_VAR_NAME):

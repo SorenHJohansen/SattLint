@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import cast
 
 from sattlint.resolution.scope import ScopeContext
 
@@ -13,10 +13,55 @@ from .sattline_builtins import get_function_signature
 EffectKey = tuple[str, ...]
 ResolveEffectKey = Callable[[str, ScopeContext], EffectKey | None]
 
+_NodeTuple = tuple[object, ...]
+_NodeList = list[object]
+_NodeSequence = _NodeTuple | _NodeList
+_NodeDict = dict[str, object]
+
+
+def _object_tuple(node: object) -> _NodeTuple | None:
+    if isinstance(node, tuple):
+        return cast(_NodeTuple, node)
+    return None
+
+
+def _object_list(node: object) -> _NodeList | None:
+    if isinstance(node, list):
+        return cast(_NodeList, node)
+    return None
+
+
+def _object_sequence(node: object) -> _NodeSequence | None:
+    tuple_items = _object_tuple(node)
+    if tuple_items is not None:
+        return tuple_items
+    return _object_list(node)
+
+
+def _string_key_dict(node: object) -> _NodeDict | None:
+    if isinstance(node, dict):
+        return cast(_NodeDict, node)
+    return None
+
+
+def _sequence_as_list(node: object) -> list[object]:
+    items = _object_sequence(node)
+    if items is None:
+        return []
+    return list(items)
+
+
+def _var_name_from_mapping(node: object) -> str | None:
+    mapping = _string_key_dict(node)
+    if mapping is None:
+        return None
+    raw_name = mapping.get(const.KEY_VAR_NAME)
+    return raw_name if isinstance(raw_name, str) and raw_name else None
+
 
 def collect_function_input_effect_keys(
     fn_name: str | None,
-    args: list[Any],
+    args: list[object],
     context: ScopeContext,
     *,
     resolve_effect_key: ResolveEffectKey,
@@ -36,14 +81,16 @@ def collect_function_input_effect_keys(
 
     fn_key = fn_name.casefold()
     if fn_key in {"copyvariable", "copyvarnosort"}:
-        if args and isinstance(args[0], dict) and const.KEY_VAR_NAME in args[0]:
-            key = resolve_effect_key(args[0][const.KEY_VAR_NAME], context)
+        full_ref = _var_name_from_mapping(args[0]) if args else None
+        if full_ref is not None:
+            key = resolve_effect_key(full_ref, context)
             return {key} if key is not None else set()
         return set()
 
     if fn_key == "initvariable":
-        if len(args) >= 2 and isinstance(args[1], dict) and const.KEY_VAR_NAME in args[1]:
-            key = resolve_effect_key(args[1][const.KEY_VAR_NAME], context)
+        full_ref = _var_name_from_mapping(args[1]) if len(args) >= 2 else None
+        if full_ref is not None:
+            key = resolve_effect_key(full_ref, context)
             return {key} if key is not None else set()
         return set()
 
@@ -78,7 +125,7 @@ def collect_function_input_effect_keys(
 
 
 def collect_expression_effect_sources(
-    obj: Any,
+    obj: object,
     context: ScopeContext,
     *,
     resolve_effect_key: ResolveEffectKey,
@@ -89,14 +136,16 @@ def collect_expression_effect_sources(
     if obj is None:
         return sources
 
-    if isinstance(obj, dict):
-        if const.KEY_VAR_NAME in obj:
-            full_ref = obj[const.KEY_VAR_NAME]
-            key = resolve_effect_key(full_ref, context)
-            if key is not None:
-                sources.add(key)
+    node_dict = _string_key_dict(obj)
+    if node_dict is not None:
+        if const.KEY_VAR_NAME in node_dict:
+            full_ref = node_dict[const.KEY_VAR_NAME]
+            if isinstance(full_ref, str):
+                key = resolve_effect_key(full_ref, context)
+                if key is not None:
+                    sources.add(key)
             return sources
-        for value in obj.values():
+        for value in node_dict.values():
             sources.update(
                 collect_expression_effect_sources(
                     value,
@@ -106,8 +155,9 @@ def collect_expression_effect_sources(
             )
         return sources
 
-    if isinstance(obj, list):
-        for item in obj:
+    list_node = _object_list(obj)
+    if list_node is not None:
+        for item in list_node:
             sources.update(
                 collect_expression_effect_sources(
                     item,
@@ -117,8 +167,9 @@ def collect_expression_effect_sources(
             )
         return sources
 
-    if hasattr(obj, "data"):
-        for child in getattr(obj, "children", []):
+    children = _object_sequence(getattr(obj, "children", None))
+    if children is not None:
+        for child in children:
             sources.update(
                 collect_expression_effect_sources(
                     child,
@@ -128,16 +179,18 @@ def collect_expression_effect_sources(
             )
         return sources
 
-    if isinstance(obj, tuple):
-        if obj and obj[0] == const.KEY_FUNCTION_CALL:
-            _, fn_name, fn_args = obj
+    tuple_node = _object_tuple(obj)
+    if tuple_node is not None:
+        if tuple_node and tuple_node[0] == const.KEY_FUNCTION_CALL:
+            fn_name = tuple_node[1] if len(tuple_node) > 1 and isinstance(tuple_node[1], str) else None
+            fn_args = _sequence_as_list(tuple_node[2] if len(tuple_node) > 2 else None)
             return collect_function_input_effect_keys(
                 fn_name,
-                fn_args or [],
+                fn_args,
                 context,
                 resolve_effect_key=resolve_effect_key,
             )
-        items = obj[1:] if obj and isinstance(obj[0], str) else obj
+        items = tuple_node[1:] if tuple_node and isinstance(tuple_node[0], str) else tuple_node
         for item in items:
             sources.update(
                 collect_expression_effect_sources(

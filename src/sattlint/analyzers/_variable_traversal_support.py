@@ -1,5 +1,7 @@
 """Shared traversal support helpers for the variable usage analyzer."""
 
+# pyright: reportPrivateUsage=false, reportUnusedFunction=false
+
 from __future__ import annotations
 
 import logging

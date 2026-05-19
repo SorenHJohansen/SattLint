@@ -4,7 +4,7 @@ import argparse
 import json
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sattlint.devtools import _ai_work_map_parsing as parsing_helpers
 from sattlint.devtools import _ai_work_map_planning as planning_helpers
@@ -197,18 +197,46 @@ BLOCKING_INVARIANT_RULES: tuple[dict[str, Any], ...] = (
     },
 )
 
+type JsonDict = dict[str, object]
+
+
+def _dict_entries(value: object) -> list[JsonDict]:
+    if not isinstance(value, list):
+        return []
+    items = cast(list[object], value)
+    entries: list[JsonDict] = []
+    for item in items:
+        if isinstance(item, dict):
+            entries.append(cast(JsonDict, item))
+    return entries
+
+
+def _string_entries(value: object) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    items = cast(list[object] | tuple[object, ...], value)
+    entries: list[str] = []
+    for item in items:
+        text = str(item).strip()
+        if text:
+            entries.append(text)
+    return entries
+
 
 _read_lines = parsing_helpers.read_lines
 _extract_backtick_items = parsing_helpers.extract_backtick_items
 _strip_quotes = parsing_helpers.strip_quotes
 _parse_progress_checkbox_states = parsing_helpers.parse_progress_checkbox_states
 _is_completed_exec_plan = parsing_helpers.is_completed_exec_plan
+is_completed_exec_plan = parsing_helpers.is_completed_exec_plan
 _parse_frontmatter = parsing_helpers.parse_frontmatter
 _parse_validation_routes = parsing_helpers.parse_validation_routes
 _parse_owner_suites = parsing_helpers.parse_owner_suites
 _parse_first_validation_commands = parsing_helpers.parse_first_validation_commands
 _render_json = parsing_helpers.render_json
+render_json = parsing_helpers.render_json
 _instruction_lookup = planning_helpers.instruction_lookup
+instruction_lookup = planning_helpers.instruction_lookup
 _simplify_check_catalog = planning_helpers.simplify_check_catalog
 _all_check_entries = planning_helpers.all_check_entries
 _render_check_section = planning_helpers.render_check_section
@@ -262,8 +290,8 @@ def _collect_agent_metadata(agents_dir: Path) -> list[dict[str, Any]]:
 def _merge_instruction_files_for_planning(
     work_map: dict[str, Any],
     changed_files: list[str],
-    relevant_checks: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+    relevant_checks: list[planning_helpers.JsonDict],
+) -> list[planning_helpers.PlanningInstructionEntry]:
     return planning_helpers.merge_instruction_files_for_planning(
         work_map,
         changed_files,
@@ -274,12 +302,8 @@ def _merge_instruction_files_for_planning(
 
 def render_ai_check_catalog(work_map: dict[str, Any] | None = None) -> str:
     resolved_work_map = build_ai_work_map() if work_map is None else work_map
-    pipeline_checks: list[dict[str, Any]] = [
-        entry for entry in resolved_work_map.get("pipeline_checks", []) if isinstance(entry, dict)
-    ]
-    repo_audit_checks: list[dict[str, Any]] = [
-        entry for entry in resolved_work_map.get("repo_audit_checks", []) if isinstance(entry, dict)
-    ]
+    pipeline_checks = _dict_entries(resolved_work_map.get("pipeline_checks"))
+    repo_audit_checks = _dict_entries(resolved_work_map.get("repo_audit_checks"))
     lines = [
         "# AI Check Catalog",
         "",
@@ -377,8 +401,7 @@ def build_planning_context(
         owner_surface = str(entry.get("owner_surface", "")).strip()
         if owner_surface and owner_surface not in owner_surfaces:
             owner_surfaces.append(owner_surface)
-        for target in entry.get("owner_test_targets", []):
-            target_text = str(target).strip()
+        for target_text in _string_entries(entry.get("owner_test_targets")):
             if target_text and target_text not in owner_test_targets:
                 owner_test_targets.append(target_text)
 
@@ -391,7 +414,7 @@ def build_planning_context(
     )
     first_validation_commands: list[str] = []
     for suite in nearest_owner_suites:
-        for command in suite.get("first_validation_commands", []):
+        for command in suite["first_validation_commands"]:
             command_text = str(command).strip()
             if command_text and command_text not in first_validation_commands:
                 first_validation_commands.append(command_text)

@@ -1,0 +1,10 @@
+{
+  "include": [
+    "src/sattlint/core/ast_tools.py"
+  ],
+  "strict": [
+    "src/sattlint/core/ast_tools.py"
+  ],
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false
+}

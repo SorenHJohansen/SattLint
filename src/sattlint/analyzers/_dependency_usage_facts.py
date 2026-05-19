@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -19,6 +19,69 @@ from ..grammar import constants as const
 from ..resolution.scope import ScopeContext
 from ._dependency_usage_scope_support import _DependencyUsageScopeSupportMixin
 from .sattline_builtins import get_function_signature
+
+_NodeTuple = tuple[object, ...]
+_NodeList = list[object]
+_NodeSequence = _NodeTuple | _NodeList
+_NodeDict = dict[str, object]
+
+
+def _object_tuple(node: object) -> _NodeTuple | None:
+    if isinstance(node, tuple):
+        return cast(_NodeTuple, node)
+    return None
+
+
+def _object_list(node: object) -> _NodeList | None:
+    if isinstance(node, list):
+        return cast(_NodeList, node)
+    return None
+
+
+def _object_sequence(node: object) -> _NodeSequence | None:
+    tuple_items = _object_tuple(node)
+    if tuple_items is not None:
+        return tuple_items
+    return _object_list(node)
+
+
+def _string_key_dict(node: object) -> _NodeDict | None:
+    if isinstance(node, dict):
+        return cast(_NodeDict, node)
+    return None
+
+
+def _statement_children(node: object) -> _NodeSequence | None:
+    if getattr(node, "data", None) != const.KEY_STATEMENT:
+        return None
+    return _object_sequence(getattr(node, "children", None))
+
+
+def _sequence_as_list(node: object) -> list[object]:
+    items = _object_sequence(node)
+    if items is None:
+        return []
+    return list(items)
+
+
+def _iter_branch_pairs(node: object) -> list[tuple[object, object]]:
+    branches = _object_sequence(node)
+    if branches is None:
+        return []
+    pairs: list[tuple[object, object]] = []
+    for branch in branches:
+        branch_items = _object_sequence(branch)
+        if branch_items is None or len(branch_items) < 2:
+            continue
+        pairs.append((branch_items[0], branch_items[1]))
+    return pairs
+
+
+def _object_dict_values(node: object) -> list[object]:
+    node_dict = getattr(node, "__dict__", None)
+    if not isinstance(node_dict, dict):
+        return []
+    return list(cast(_NodeDict, node_dict).values())
 
 
 @dataclass(frozen=True)
@@ -125,7 +188,7 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
 
     def _walk_sequence_nodes(
         self,
-        nodes: list[Any],
+        nodes: list[object],
         context: ScopeContext,
         module_path: list[str],
         sequence_name: str,
@@ -154,7 +217,7 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
 
     def _append_statement_fact(
         self,
-        node: Any,
+        node: object,
         context: ScopeContext,
         module_path: list[str],
         site: str,
@@ -187,7 +250,7 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
 
     def _collect_fact_items(
         self,
-        items: Any,
+        items: object,
         context: ScopeContext,
         *,
         reads: list[FactRef],
@@ -196,7 +259,7 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
         seen_reads: set[tuple[str, ...]],
         seen_writes: set[tuple[str, ...]],
     ) -> None:
-        for item in items:
+        for item in cast(list[object] | tuple[object, ...], items):
             self._collect_node_facts(
                 item,
                 context,
@@ -209,7 +272,7 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
 
     def _collect_node_facts(
         self,
-        node: Any,
+        node: object,
         context: ScopeContext,
         *,
         reads: list[FactRef],
@@ -221,16 +284,18 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
         if node is None:
             return
 
-        if isinstance(node, dict) and const.KEY_VAR_NAME in node:
-            resolved = self._resolve_ref(node, context)
+        node_dict = _string_key_dict(node)
+        if node_dict is not None and const.KEY_VAR_NAME in node_dict:
+            resolved = self._resolve_ref(node_dict, context)
             if resolved is not None and resolved.key not in seen_reads:
                 seen_reads.add(resolved.key)
                 reads.append(resolved)
             return
 
-        if hasattr(node, "data") and getattr(node, "data", None) == const.KEY_STATEMENT:
+        statement_children = _statement_children(node)
+        if statement_children is not None:
             self._collect_fact_items(
-                getattr(node, "children", []),
+                list(statement_children),
                 context,
                 reads=reads,
                 writes=writes,
@@ -240,10 +305,12 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
             )
             return
 
-        if isinstance(node, tuple) and node:
-            tag = node[0]
-            if tag == const.KEY_ASSIGN and len(node) >= 3:
-                _assign, target, expr = node[:3]
+        tuple_node = _object_tuple(node)
+        if tuple_node is not None and tuple_node:
+            tag = tuple_node[0]
+            if tag == const.KEY_ASSIGN and len(tuple_node) >= 3:
+                target = tuple_node[1]
+                expr = tuple_node[2]
                 self._collect_node_facts(
                     expr,
                     context,
@@ -259,12 +326,13 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
                     writes.append(resolved)
                 return
 
-            if tag == const.KEY_FUNCTION_CALL and len(node) == 3:
-                _call, function_name, args = node
-                call_name = str(function_name)
+            if tag == const.KEY_FUNCTION_CALL and len(tuple_node) == 3:
+                function_name = tuple_node[1]
+                args = _sequence_as_list(tuple_node[2])
+                call_name = function_name if isinstance(function_name, str) else str(function_name)
                 signature = get_function_signature(call_name)
                 resolved_args: list[FactRef | None] = []
-                for index, argument in enumerate(args or []):
+                for index, argument in enumerate(args):
                     direction = "in"
                     if signature is not None and index < len(signature.parameters):
                         direction = signature.parameters[index].direction
@@ -286,9 +354,10 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
                 calls.append(CallFact(function_name=call_name, args=tuple(resolved_args)))
                 return
 
-            if tag == const.GRAMMAR_VALUE_IF and len(node) == 3:
-                _if_tag, branches, else_block = node
-                for condition, branch_statements in branches or []:
+            if tag == const.GRAMMAR_VALUE_IF and len(tuple_node) == 3:
+                branches = tuple_node[1]
+                else_block = tuple_node[2]
+                for condition, branch_statements in _iter_branch_pairs(branches):
                     self._collect_node_facts(
                         condition,
                         context,
@@ -299,7 +368,7 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
                         seen_writes=seen_writes,
                     )
                     self._collect_fact_items(
-                        branch_statements or [],
+                        tuple(_sequence_as_list(branch_statements)),
                         context,
                         reads=reads,
                         writes=writes,
@@ -308,7 +377,7 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
                         seen_writes=seen_writes,
                     )
                 self._collect_fact_items(
-                    else_block or [],
+                    tuple(_sequence_as_list(else_block)),
                     context,
                     reads=reads,
                     writes=writes,
@@ -319,7 +388,7 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
                 return
 
             self._collect_fact_items(
-                node[1:],
+                tuple_node[1:],
                 context,
                 reads=reads,
                 writes=writes,
@@ -329,9 +398,10 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
             )
             return
 
-        if isinstance(node, list):
+        list_node = _object_list(node)
+        if list_node is not None:
             self._collect_fact_items(
-                node,
+                list_node,
                 context,
                 reads=reads,
                 writes=writes,
@@ -341,10 +411,10 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
             )
             return
 
-        children = getattr(node, "children", None)
+        children = _object_sequence(getattr(node, "children", None))
         if children is not None:
             self._collect_fact_items(
-                children,
+                list(children),
                 context,
                 reads=reads,
                 writes=writes,
@@ -354,10 +424,10 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
             )
             return
 
-        node_dict = getattr(node, "__dict__", None)
-        if node_dict is not None:
+        node_values = _object_dict_values(node)
+        if node_values:
             self._collect_fact_items(
-                node_dict.values(),
+                node_values,
                 context,
                 reads=reads,
                 writes=writes,
@@ -366,10 +436,10 @@ class DependencyUsageFactCollector(_DependencyUsageScopeSupportMixin):
                 seen_writes=seen_writes,
             )
 
-    def _resolve_ref(self, expr: Any, context: ScopeContext) -> FactRef | None:
-        if not (isinstance(expr, dict) and const.KEY_VAR_NAME in expr):
+    def _resolve_ref(self, expr: object, context: ScopeContext) -> FactRef | None:
+        expr_map = _string_key_dict(expr)
+        if expr_map is None or const.KEY_VAR_NAME not in expr_map:
             return None
-        expr_map = cast(dict[str, object], expr)
         full_name = expr_map.get(const.KEY_VAR_NAME)
         if not isinstance(full_name, str):
             return None

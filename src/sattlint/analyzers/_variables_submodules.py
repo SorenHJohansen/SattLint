@@ -312,7 +312,8 @@ def _lookup_env_var_from_varname_dict(
     env: dict[str, Variable],
 ) -> Variable | None:
     if isinstance(var_dict_or_other, dict) and const.KEY_VAR_NAME in var_dict_or_other:
-        base = varname_base(var_dict_or_other)
+        var_dict = cast(dict[str, object], var_dict_or_other)
+        base = varname_base(var_dict)
         if base is not None:
             return env.get(base)
     return None

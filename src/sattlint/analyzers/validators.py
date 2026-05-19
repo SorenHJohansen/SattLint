@@ -6,25 +6,42 @@ import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, ClassVar, Protocol
+from typing import Any, ClassVar, Protocol, cast
 
 from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
 
+from .._validation_type_helpers import (
+    assignment_type_matches as _assignment_type_matches,
+)
+from .._validation_type_helpers import (
+    extract_time_literal as _extract_time_literal,
+)
+from .._validation_type_helpers import (
+    has_time_literal_marker as _has_time_literal_marker,
+)
+from .._validation_type_helpers import (
+    infer_literal_datatype as _infer_literal_datatype,
+)
+from .._validation_type_helpers import (
+    is_string_simple_type as _is_string_simple_type,
+)
+from .._validation_type_helpers import (
+    is_valid_time_literal as _is_valid_time_literal,
+)
+from .._validation_type_helpers import (
+    literal_matches_expected_datatype as _literal_matches_expected_datatype,
+)
+from .._validation_type_helpers import (
+    resolve_variable_field_datatype as _resolve_variable_field_datatype,
+)
+from .._validation_type_helpers import (
+    split_dotted_name as _split_dotted_name,
+)
 from ..casefolding import casefold_key, is_anytype_name
 from ..grammar import constants as const
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution import TypeGraph
 from ..resolution.common import varname_full
-from ..validation import (
-    _assignment_type_matches,
-    _extract_time_literal,
-    _has_time_literal_marker,
-    _infer_literal_datatype,
-    _is_valid_time_literal,
-    _literal_matches_expected_datatype,
-    _resolve_variable_field_datatype,
-    _split_dotted_name,
-)
 
 log = logging.getLogger("SattLint")
 
@@ -96,7 +113,8 @@ class MinMaxValidator:
 
     def _mapping_name_text(self, value: Any) -> str | None:
         if isinstance(value, dict) and const.KEY_VAR_NAME in value:
-            return value[const.KEY_VAR_NAME]
+            name = cast(dict[str, object], value).get(const.KEY_VAR_NAME)
+            return name if isinstance(name, str) else None
         if isinstance(value, Variable):
             return value.name
         if isinstance(value, str):
@@ -186,7 +204,7 @@ class ContractMappingValidator:
         return str(datatype).casefold()
 
     def _is_string_simple_type(self, datatype: Simple_DataType | str | None) -> bool:
-        return isinstance(datatype, Simple_DataType) and datatype in StringMappingValidator._STRING_TYPES
+        return _is_string_simple_type(datatype)
 
     def _format_datatype(self, datatype: Simple_DataType | str | None) -> str:
         if datatype is None:
