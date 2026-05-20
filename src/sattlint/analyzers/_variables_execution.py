@@ -205,6 +205,7 @@ def run(
     limit_to_module_path: list[str] | None = None,
 ) -> list[VariableIssue]:
     self._issues = []
+    self._param_mapping_issue_indexes = {}
     self.context_builder.issues = self._issues
     self._limit_to_module_path = limit_to_module_path
     self._trace(

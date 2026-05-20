@@ -1,0 +1,29 @@
+{
+  "blocking_finding_count": 0,
+  "canonical_command": "sattlint-repo-audit --profile full --fail-on high --output-dir artifacts/audit-ci-local2",
+  "category_counts": {},
+  "error": {
+    "message": "",
+    "stage": "pipeline",
+    "type": "KeyboardInterrupt"
+  },
+  "fail_on": "high",
+  "finding_count": 0,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "generated_by": "sattlint.devtools.repo_audit",
+  "kind": "sattlint.repo_audit.status",
+  "latest_status_report": "artifacts/audit/status.json",
+  "latest_summary_report": "artifacts/audit/summary.json",
+  "max_severity": null,
+  "overall_status": "fail",
+  "pipeline_status_report": "artifacts/audit-ci-local2/pipeline/status.json",
+  "profile": "full",
+  "progress_report": "artifacts/audit-ci-local2/progress.json",
+  "severity_counts": {},
+  "status_report": "artifacts/audit-ci-local2/status.json",
+  "summary_report": "artifacts/audit-ci-local2/summary.json",
+  "top_findings": []
+}

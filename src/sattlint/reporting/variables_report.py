@@ -154,6 +154,8 @@ class VariablesReport:
     issues: list[VariableIssue]
     visible_kinds: frozenset[IssueKind] | set[IssueKind] | tuple[IssueKind, ...] | list[IssueKind] | None = None
     include_empty_sections: bool = False
+    analyzed_version: str | None = None
+    last_changed: str | None = None
 
     def __post_init__(self) -> None:
         if self.visible_kinds is not None and not isinstance(self.visible_kinds, frozenset):
@@ -478,8 +480,16 @@ class VariablesReport:
             lines = [
                 "Report: Variable issues",
                 f"Target: {self.basepicture_name}",
-                "Status: ok",
             ]
+            if self.analyzed_version is not None:
+                lines.append(f"Version: {self.analyzed_version}")
+            if self.last_changed is not None:
+                lines.append(f"Last changed: {self.last_changed}")
+            lines.extend(
+                [
+                    "Status: ok",
+                ]
+            )
             lines.append("No issues found.")
             return "\n".join(lines)
 
@@ -487,8 +497,12 @@ class VariablesReport:
         lines = [
             "Report: Variable issues",
             f"Target: {self.basepicture_name}",
-            f"Status: {status}",
         ]
+        if self.analyzed_version is not None:
+            lines.append(f"Version: {self.analyzed_version}")
+        if self.last_changed is not None:
+            lines.append(f"Last changed: {self.last_changed}")
+        lines.append(f"Status: {status}")
         lines.append(f"Issues: {len(self.issues)}")
         show_sections_overview = len(summary_kinds) > 1 or (self.visible_kinds is None and bool(summary_kinds))
         if show_sections_overview:

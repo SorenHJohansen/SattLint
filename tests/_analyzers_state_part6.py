@@ -50,26 +50,101 @@ def test_variables_report_summary_formats_string_mapping_and_minmax_tables():
     assert "TargetMax" in summary
 
 
+def test_variables_report_summary_splits_minmax_moduletype_and_singlemodule_groups():
+    min_source = Variable(name="SourceMin", datatype=Simple_DataType.REAL)
+    typedef_target = Variable(name="TypeMax", datatype=Simple_DataType.REAL)
+    singlemodule_target = Variable(name="InstanceMax", datatype=Simple_DataType.REAL)
+    report = VariablesReport(
+        basepicture_name="BasePicture",
+        issues=[
+            VariableIssue(
+                kind=IssueKind.MIN_MAX_MAPPING_MISMATCH,
+                module_path=["BasePicture", "TypeDef:PanelType"],
+                variable=typedef_target,
+                source_variable=min_source,
+            ),
+            VariableIssue(
+                kind=IssueKind.MIN_MAX_MAPPING_MISMATCH,
+                module_path=["BasePicture", "TypeDef:Soejle", "L1", "L2", "Panel"],
+                variable=singlemodule_target,
+                source_variable=min_source,
+            ),
+        ],
+    )
+
+    summary = report.summary()
+
+    assert "Min/Max mapping name mismatches" in summary
+    assert "      Moduletype:" in summary
+    assert "BasePicture.TypeDef:PanelType" in summary
+    assert "      SingleModule:" in summary
+    assert "BasePicture.Soejle.L1.L2.Panel" in summary
+    assert "BasePicture.TypeDef:Soejle.L1.L2.Panel" not in summary
+
+
+def test_variables_report_summary_splits_string_mapping_moduletype_and_singlemodule_groups():
+    string_source = Variable(name="SourceText", datatype=Simple_DataType.STRING)
+    typedef_target = Variable(name="TypeTarget", datatype=Simple_DataType.IDENTSTRING)
+    singlemodule_target = Variable(name="InstanceTarget", datatype=Simple_DataType.TAGSTRING)
+    report = VariablesReport(
+        basepicture_name="BasePicture",
+        issues=[
+            VariableIssue(
+                kind=IssueKind.STRING_MAPPING_MISMATCH,
+                module_path=["BasePicture", "TypeDef:PanelType"],
+                variable=typedef_target,
+                source_variable=string_source,
+            ),
+            VariableIssue(
+                kind=IssueKind.STRING_MAPPING_MISMATCH,
+                module_path=["BasePicture", "TypeDef:Soejle", "L1", "L2", "Panel"],
+                variable=singlemodule_target,
+                source_variable=string_source,
+            ),
+        ],
+    )
+
+    summary = report.summary()
+
+    assert "String mapping type mismatches" in summary
+    assert "      Moduletype:" in summary
+    assert "BasePicture.TypeDef:PanelType" in summary
+    assert "      SingleModule:" in summary
+    assert "BasePicture.Soejle.L1.L2.Panel" in summary
+    assert "BasePicture.TypeDef:Soejle.L1.L2.Panel" not in summary
+
+
 def test_variables_report_summary_formats_duplication_magic_numbers_and_sequence_context():
     duplicated = Variable(name="ValueA", datatype="SharedRecord")
+    duplicated_typedef = Variable(name="ValueType", datatype="SharedRecord")
     implicit = Variable(name="Stage1", datatype=Simple_DataType.BOOLEAN)
     report = VariablesReport(
         basepicture_name="BasePicture",
         issues=[
             VariableIssue(
                 kind=IssueKind.DATATYPE_DUPLICATION,
-                module_path=["BasePicture", "UnitA"],
+                module_path=["BasePicture", "TypeDef:PanelType"],
+                variable=duplicated_typedef,
+                role="localvariable",
+                duplicate_count=2,
+                duplicate_locations=[
+                    (["BasePicture", "TypeDef:PanelType"], "moduleparameter", VariableId("ParamType"))
+                ],
+            ),
+            VariableIssue(
+                kind=IssueKind.DATATYPE_DUPLICATION,
+                module_path=["BasePicture", "TypeDef:Soejle", "UnitA"],
                 variable=duplicated,
                 role="localvariable",
                 duplicate_count=3,
                 duplicate_locations=[
-                    (["BasePicture", "UnitA"], "moduleparameter", VariableId("ValueB")),
-                    (["BasePicture", "UnitB"], "localvariable", VariableId("ValueC")),
+                    (["BasePicture", "TypeDef:Soejle", "UnitA"], "moduleparameter", VariableId("ValueB")),
+                    (["BasePicture", "TypeDef:Soejle", "UnitB"], "localvariable", VariableId("ValueC")),
                 ],
             ),
             VariableIssue(
                 kind=IssueKind.MAGIC_NUMBER,
-                module_path=["BasePicture", "UnitA"],
+                module_path=["BasePicture", "TypeDef:Soejle", "UnitA"],
                 variable=None,
                 literal_value=42,
                 literal_span=SourceSpan(line=9, column=4),
@@ -89,12 +164,16 @@ def test_variables_report_summary_formats_duplication_magic_numbers_and_sequence
     summary = report.summary()
 
     assert "Duplicated complex datatypes (should be RECORD)" in summary
-    assert "Datatype 'SharedRecord' declared 3 times in BasePicture.UnitA:" in summary
+    assert "      Moduletype:" in summary
+    assert "Datatype 'SharedRecord' declared 2 times in BasePicture.TypeDef:PanelType:" in summary
+    assert "+ ParamType (moduleparameter)" in summary
+    assert "      SingleModule:" in summary
+    assert "Datatype 'SharedRecord' declared 3 times in BasePicture.Soejle.UnitA:" in summary
     assert "- ValueA (localvariable)" in summary
     assert "+ ValueB (moduleparameter)" in summary
-    assert "+ BasePicture.UnitB: ValueC (localvariable)" in summary
+    assert "+ BasePicture.Soejle.UnitB: ValueC (localvariable)" in summary
     assert "Magic numbers in code" in summary
-    assert "BasePicture.UnitA [EquationBlock] :: 42 (line 9, col 4)" in summary
+    assert "BasePicture.Soejle.UnitA [EquationBlock] :: 42 (line 9, col 4)" in summary
     assert "Implicit latching (missing matching False writes)" in summary
     assert "BasePicture.SequenceA :: localvariable Stage1 (boolean) | sequence=MainSeq | reset=ResetCmd" in summary
 
@@ -105,26 +184,26 @@ def test_variables_report_summary_includes_required_contract_layout_and_shadowin
         issues=[
             VariableIssue(
                 kind=IssueKind.REQUIRED_PARAMETER_CONNECTION,
-                module_path=["BasePicture", "ChildA"],
+                module_path=["BasePicture", "TypeDef:WorkerType"],
                 variable=None,
                 role="required parameter 'Mode' is not connected",
             ),
             VariableIssue(
                 kind=IssueKind.CONTRACT_MISMATCH,
-                module_path=["BasePicture", "ChildB"],
+                module_path=["BasePicture", "TypeDef:Soejle", "ChildB"],
                 variable=Variable(name="TargetValue", datatype=Simple_DataType.INTEGER),
                 source_variable=Variable(name="SourceValue", datatype=Simple_DataType.REAL),
                 role="source and target types differ",
             ),
             VariableIssue(
                 kind=IssueKind.LAYOUT_OVERLAP,
-                module_path=["BasePicture", "Panel"],
+                module_path=["BasePicture", "TypeDef:Soejle", "Panel"],
                 variable=None,
                 role="TextA overlaps TextB",
             ),
             VariableIssue(
                 kind=IssueKind.SHADOWING,
-                module_path=["BasePicture", "ChildC"],
+                module_path=["BasePicture", "TypeDef:Soejle", "ChildC"],
                 variable=Variable(name="Mode", datatype=Simple_DataType.INTEGER),
                 role="local shadows moduleparameter",
             ),
@@ -143,13 +222,16 @@ def test_variables_report_summary_includes_required_contract_layout_and_shadowin
 
     assert isinstance(report.visible_kinds, frozenset)
     assert "Missing required parameter connections" in summary
-    assert "BasePicture.ChildA :: required parameter 'Mode' is not connected" in summary
+    assert "      Moduletype:" in summary
+    assert "BasePicture.TypeDef:WorkerType :: required parameter 'Mode' is not connected" in summary
     assert "Cross-module contract mismatches" in summary
-    assert "BasePicture.ChildB :: TargetValue (integer) | source and target types differ" in summary
+    assert "      SingleModule:" in summary
+    assert "BasePicture.Soejle.ChildB :: TargetValue (integer) | source and target types differ" in summary
+    assert "BasePicture.TypeDef:Soejle.ChildB :: TargetValue (integer) | source and target types differ" not in summary
     assert "Overlapping layout elements" in summary
-    assert "BasePicture.Panel :: TextA overlaps TextB" in summary
+    assert "BasePicture.Soejle.Panel :: TextA overlaps TextB" in summary
     assert "Variable shadowing" in summary
-    assert "BasePicture.ChildC :: Mode (integer) | local shadows moduleparameter" in summary
+    assert "BasePicture.Soejle.ChildC :: Mode (integer) | local shadows moduleparameter" in summary
 
 
 def test_variables_report_properties_visible_kinds_and_empty_sections_cover_remaining_branches():
@@ -336,6 +418,26 @@ def test_variables_report_summary_returns_ok_when_no_issues_are_present():
 
     assert "Status: ok" in summary
     assert summary.endswith("No issues found.")
+
+
+def test_variables_report_summary_includes_metadata_and_init_values():
+    summary = VariablesReport(
+        basepicture_name="BasePicture",
+        issues=[
+            VariableIssue(
+                kind=IssueKind.UNUSED,
+                module_path=["BasePicture"],
+                variable=Variable(name="Timeout", datatype=Simple_DataType.INTEGER, init_value=10),
+                role="moduleparameter",
+            )
+        ],
+        analyzed_version="draft",
+        last_changed="2024-05-17",
+    ).summary()
+
+    assert "Version: draft" in summary
+    assert "Last changed: 2024-05-17" in summary
+    assert "BasePicture :: moduleparameter Timeout (integer, init=10)" in summary
 
 
 def test_effect_flow_tracker_computes_effective_outputs_via_reverse_edges():

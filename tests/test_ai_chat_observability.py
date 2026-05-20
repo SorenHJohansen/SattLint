@@ -3,13 +3,50 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from sattlint.devtools import _ai_chat_grounding as ai_chat_grounding
 from sattlint.devtools import ai_chat_observability
+from sattlint.devtools._semble_adapter import SembleMatch, SembleSearchResponse
 
 
-def test_ai_chat_observability_writes_fixture_artifacts(tmp_path):
+def test_ai_chat_observability_writes_fixture_artifacts(tmp_path, monkeypatch):
     fixture_root = Path(__file__).resolve().parent / "fixtures" / "ai_chat" / "sample_workspace" / "GitHub.copilot-chat"
     output_dir = tmp_path / "artifacts"
     session_db = _write_degraded_session_store(tmp_path / "session-store.sqlite3")
+    monkeypatch.setattr(
+        ai_chat_observability,
+        "build_semantic_grounding_report",
+        lambda *, transcript_report, repo_root: {
+            "status": "ok",
+            "backend": "python-library",
+            "queryable_session_count": 2,
+            "searchable_session_count": 2,
+            "grounded_session_count": 1,
+            "grounding_match_rate": 0.5,
+            "average_candidate_match_ratio": 0.25,
+            "ungrounded_session_ids": ["fixture-review"],
+            "explanation": "grounded",
+            "sessions": [
+                {
+                    "session_id": "fixture-implement-plan",
+                    "status": "ok",
+                    "query": "Implement this plan",
+                    "candidate_file_paths": ["src/sattlint/devtools/ai_chat_observability.py"],
+                    "matched_file_paths": ["src/sattlint/devtools/ai_chat_observability.py"],
+                    "match_ratio": 1.0,
+                    "explanation": "grounded",
+                },
+                {
+                    "session_id": "fixture-review",
+                    "status": "ungrounded",
+                    "query": "Review this slice",
+                    "candidate_file_paths": ["tests/test_repo_audit.py"],
+                    "matched_file_paths": [],
+                    "match_ratio": 0.0,
+                    "explanation": "ungrounded",
+                },
+            ],
+        },
+    )
 
     exit_code = ai_chat_observability.main(
         [
@@ -32,7 +69,10 @@ def test_ai_chat_observability_writes_fixture_artifacts(tmp_path):
     assert summary["transcript_corpus"]["session_count"] == 2
     assert summary["transcript_corpus"]["status"] == "degraded"
     assert summary["session_store"]["status"] == "degraded"
+    assert summary["semantic_grounding"]["status"] == "ok"
+    assert summary["semantic_grounding"]["grounding_match_rate"] == 0.5
     assert summary["health_summary"]["highest_churn_bucket"] == "implement-this-plan"
+    assert summary["health_summary"]["semantic_grounding_health"] == "ok"
     assert sessions["session_count"] == 2
     assert sessions["malformed_line_count"] == 1
 
@@ -50,6 +90,7 @@ def test_ai_chat_observability_writes_fixture_artifacts(tmp_path):
     assert implement_session["first_action_tool"] == "apply_patch"
     assert implement_session["discovery_before_action_count"] == 8
     assert implement_session["same_tool_retry_count"] == 1
+    assert implement_session["semantic_grounding"]["status"] == "ok"
 
 
 def test_ai_chat_observability_resolves_workspace_storage_root(tmp_path):
@@ -88,6 +129,63 @@ def test_ai_chat_observability_requires_transcripts_child_dir(tmp_path, capsys):
 
     assert exit_code == 2
     assert "transcripts child directory" in capsys.readouterr().err
+
+
+def test_build_semantic_grounding_report_uses_prompt_and_file_overlap(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        ai_chat_grounding,
+        "search_local_repo",
+        lambda query, *, repo_root, top_k: SembleSearchResponse(
+            available=True,
+            backend="python-library",
+            query=query,
+            repo_path=repo_root.as_posix(),
+            top_k=top_k,
+            results=(
+                SembleMatch(
+                    file_path="src/sattlint/devtools/ai_chat_observability.py",
+                    start_line=1,
+                    end_line=20,
+                    content="def build_ai_chat_observability_report(...)",
+                    score=0.77,
+                ),
+                SembleMatch(
+                    file_path="tests/test_repo_audit.py",
+                    start_line=1,
+                    end_line=20,
+                    content="def test_repo_audit(...)",
+                    score=0.61,
+                ),
+            ),
+            explanation="ok",
+        ),
+    )
+
+    report = ai_chat_grounding.build_semantic_grounding_report(
+        transcript_report={
+            "sessions": [
+                {
+                    "session_id": "session-1",
+                    "prompt_preview": "update ai chat observability",
+                    "file_reference_paths": ["src/sattlint/devtools/ai_chat_observability.py"],
+                },
+                {
+                    "session_id": "session-2",
+                    "prompt_preview": "review repo audit",
+                    "file_reference_paths": ["src/sattlint/devtools/repo_audit.py"],
+                },
+            ]
+        },
+        repo_root=tmp_path,
+    )
+
+    assert report["status"] == "ok"
+    assert report["queryable_session_count"] == 2
+    assert report["searchable_session_count"] == 2
+    assert report["grounded_session_count"] == 1
+    assert report["grounding_match_rate"] == 0.5
+    assert report["sessions"][0]["matched_file_paths"] == ["src/sattlint/devtools/ai_chat_observability.py"]
+    assert report["sessions"][1]["status"] == "ungrounded"
 
 
 def _write_degraded_session_store(path: Path) -> Path:

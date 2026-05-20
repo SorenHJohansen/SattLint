@@ -97,6 +97,104 @@ def test_min_max_mapping_mismatch_not_raised_for_aligned_names():
     assert not any(i.kind is IssueKind.MIN_MAX_MAPPING_MISMATCH for i in analyzer.issues)
 
 
+def test_string_mapping_mismatch_is_reported_when_assigning_large_string_to_small_string():
+    child = SingleModule(
+        header=_hdr("Child"),
+        moduledef=None,
+        moduleparameters=[Variable(name="TargetValue", datatype=Simple_DataType.IDENTSTRING)],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[
+            ParameterMapping(
+                target=_varref("TargetValue"),
+                source_type=const.TREE_TAG_VARIABLE_NAME,
+                is_duration=False,
+                is_source_global=False,
+                source=_varref("SourceValue"),
+                source_literal=None,
+            )
+        ],
+    )
+
+    parent = SingleModule(
+        header=_hdr("Parent"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[Variable(name="SourceValue", datatype=Simple_DataType.STRING)],
+        submodules=[child],
+        modulecode=None,
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[parent],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
+    assert len(issues) == 1
+    assert issues[0].module_path == ["Root", "Parent", "Child"]
+    assert issues[0].variable is not None
+    assert issues[0].variable.name == "TargetValue"
+    assert issues[0].source_variable is not None
+    assert issues[0].source_variable.name == "SourceValue"
+
+
+def test_string_mapping_mismatch_is_not_reported_when_assigning_small_string_to_large_string():
+    child = SingleModule(
+        header=_hdr("Child"),
+        moduledef=None,
+        moduleparameters=[Variable(name="TargetValue", datatype=Simple_DataType.STRING)],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[
+            ParameterMapping(
+                target=_varref("TargetValue"),
+                source_type=const.TREE_TAG_VARIABLE_NAME,
+                is_duration=False,
+                is_source_global=False,
+                source=_varref("SourceValue"),
+                source_literal=None,
+            )
+        ],
+    )
+
+    parent = SingleModule(
+        header=_hdr("Parent"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[Variable(name="SourceValue", datatype=Simple_DataType.IDENTSTRING)],
+        submodules=[child],
+        modulecode=None,
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[parent],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert not any(issue.kind is IssueKind.STRING_MAPPING_MISMATCH for issue in analyzer.issues)
+
+
 def test_unknown_parameter_target_detected_for_single_module_mapping():
     child = SingleModule(
         header=_hdr("Child"),

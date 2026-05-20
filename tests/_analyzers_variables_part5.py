@@ -208,6 +208,87 @@ def test_variables_execution_apply_alias_back_propagation_covers_prefixed_and_di
     assert root_parent_usage.usage_locations == [(("root", 1), "read"), (("root", 2), "write")]
 
 
+def test_program_target_dependency_mapping_marks_external_field_reads() -> None:
+    drain_dv = Variable(name="DrainDV", datatype="Z251DrainDvType")
+    dependency_typedef = ModuleTypeDef(
+        name="Valve2PortPB",
+        moduleparameters=[Variable(name="signal", datatype="Z251DrainDvType")],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="ReadSignal",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[_varref("signal.V991")],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+        origin_file="Valve2PortPB.s",
+        origin_lib="SupportLib",
+    )
+    root_typedef = ModuleTypeDef(
+        name="KaHA251ZType",
+        moduleparameters=[],
+        localvariables=[drain_dv],
+        submodules=[
+            ModuleTypeInstance(
+                header=ModuleHeader(name="Valve", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                moduletype_name="Valve2PortPB",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("signal"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("DrainDV.V991"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="WriteDrain",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[(const.KEY_ASSIGN, _varref("DrainDV.V991"), 1)],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+        origin_file="Root.s",
+        origin_lib="ProjectLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[root_typedef, dependency_typedef],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="Root.s",
+        origin_lib="ProjectLib",
+    )
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=False)
+    issues = analyzer.run()
+    usage = analyzer._get_usage(drain_dv)
+
+    assert usage.read is True
+    assert usage.written is True
+    assert usage.field_reads["V991"] == [["BasePicture", "TypeDef:KaHA251ZType"]]
+    assert not any(issue.kind is IssueKind.NEVER_READ and issue.variable is drain_dv for issue in issues)
+
+
 def test_variable_issue_collection_datatype_field_helper_covers_remaining_branches():
     external_datatype = DataType(name="ExternalPayload", description=None, datecode=None, var_list=[])
     cast(Any, external_datatype).origin_file = "external.s"

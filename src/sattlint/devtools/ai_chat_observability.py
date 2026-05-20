@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from sattlint.devtools._ai_chat_findings import build_findings
+from sattlint.devtools._ai_chat_grounding import build_semantic_grounding_report
 from sattlint.devtools._ai_chat_metrics import (
     build_sessions_report,
     build_status_report,
@@ -42,9 +43,11 @@ def build_ai_chat_observability_report(
     )
     transcript_report = load_transcript_corpus(resolved_input=resolved_input, repo_root=repo_root)
     session_store = probe_session_store(session_db, repo_root=repo_root)
+    semantic_grounding = build_semantic_grounding_report(transcript_report=transcript_report, repo_root=repo_root)
     placeholder_summary = build_summary_report(
         transcript_report=transcript_report,
         session_store=session_store,
+        semantic_grounding=semantic_grounding,
         findings=[],
         output_dir=output_dir,
         repo_root=repo_root,
@@ -59,6 +62,7 @@ def build_ai_chat_observability_report(
     summary = build_summary_report(
         transcript_report=transcript_report,
         session_store=session_store,
+        semantic_grounding=semantic_grounding,
         findings=list(findings_payload["findings"]),
         output_dir=output_dir,
         repo_root=repo_root,
@@ -71,7 +75,7 @@ def build_ai_chat_observability_report(
         output_dir=output_dir,
         repo_root=repo_root,
     )
-    sessions = build_sessions_report(transcript_report=transcript_report)
+    sessions = build_sessions_report(transcript_report=transcript_report, semantic_grounding=semantic_grounding)
     return {
         "status": status,
         "summary": summary,

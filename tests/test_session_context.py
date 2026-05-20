@@ -30,16 +30,22 @@ def test_build_planning_context_payload_uses_compact_session_map(monkeypatch, tm
 
     monkeypatch.setattr(ai_work_map, "load_session_context_map", lambda: session_map)
 
-    def fake_build_planning_context(*, changed_files, recommended_check_ids, selected_surface, work_map=None):
+    def fake_build_planning_context(
+        *, changed_files, recommended_check_ids, selected_surface, semantic_query=None, work_map=None
+    ):
         calls["changed_files"] = changed_files
         calls["recommended_check_ids"] = recommended_check_ids
         calls["selected_surface"] = selected_surface
+        calls["semantic_query"] = semantic_query
         calls["work_map"] = work_map
         return {
             "primary_agent": "CLI App Menu",
             "instruction_files": [{"name": "CLI App Instructions"}],
             "nearest_owner_suites": [{"tests": ["tests/test_app.py"]}],
             "first_validation_commands": ["pytest tests/test_app.py -x -q --tb=short"],
+            "semantic_owner_suggestions": {
+                "suggestions": [{"file_path": "src/sattlint/app.py"}],
+            },
         }
 
     monkeypatch.setattr(ai_work_map, "build_planning_context", fake_build_planning_context)
@@ -56,9 +62,11 @@ def test_build_planning_context_payload_uses_compact_session_map(monkeypatch, tm
         "instruction_names": ["CLI App Instructions"],
         "owner_test_targets": ["tests/test_app.py"],
         "first_validation_commands": ["pytest tests/test_app.py -x -q --tb=short"],
+        "semantic_suggestion_paths": ["src/sattlint/app.py"],
     }
     assert calls["recommended_check_ids"] is None
     assert calls["selected_surface"] == "session-start"
+    assert calls["semantic_query"] is None
     assert calls["work_map"] is session_map
 
 
@@ -84,6 +92,7 @@ def test_format_context_uses_compact_summary_language_and_first_validation():
         "instruction_names": ["CLI App Instructions"],
         "owner_test_targets": ["tests/test_app.py"],
         "first_validation_commands": ["pytest tests/test_app.py -x -q --tb=short"],
+        "semantic_suggestion_paths": ["src/sattlint/app.py"],
     }
 
     context = session_context._format_context(ranked, planning)
@@ -92,6 +101,7 @@ def test_format_context_uses_compact_summary_language_and_first_validation():
     assert "Relevant SattLint workstreams:" in context
     assert "current-work.md" not in context
     assert "first-validation=pytest tests/test_app.py -x -q --tb=short" in context
+    assert "semantic-paths=src/sattlint/app.py" in context
     assert "Use the compact session summary first." in context
     assert "JSON lock state" in context
 
@@ -107,6 +117,7 @@ def test_write_summary_records_first_validation_commands(tmp_path):
         "instruction_names": ["CLI App Instructions"],
         "owner_test_targets": ["tests/test_app.py"],
         "first_validation_commands": ["pytest tests/test_app.py -x -q --tb=short"],
+        "semantic_suggestion_paths": ["src/sattlint/app.py"],
     }
 
     session_context._write_summary(

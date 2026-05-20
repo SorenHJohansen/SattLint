@@ -293,7 +293,7 @@ def test_library_target_report_shows_typedef_for_same_lib_different_file_modulet
         moduledef=None,
         modulecode=None,
         parametermappings=[],
-        origin_file="InfoPanel.s",
+        origin_file="KaHAApplSupportLib.s",
         origin_lib="KaHAApplSupportLib",
     )
     bp = BasePicture(
@@ -321,6 +321,52 @@ def test_library_target_report_shows_typedef_for_same_lib_different_file_modulet
         and issue.module_path == ["BasePicture", "TypeDef:InfoPanelType"]
         for issue in analyzer.issues
     )
+
+    summary = VariablesReport(basepicture_name=bp.header.name, issues=analyzer.issues).summary()
+    assert "      Moduletype:" in summary
+    assert "BasePicture.TypeDef:InfoPanelType :: moduleparameter EnableInteraktion (boolean)" in summary
+    assert "      SingleModule:" in summary
+    assert "BasePicture.Y_Info_Panel :: moduleparameter EnableInteraktion (boolean)" not in summary
+    assert "BasePicture.X_Info_Panel :: moduleparameter EnableInteraktion (boolean)" not in summary
+
+
+def test_program_target_report_dedupes_root_owned_typedef_instance_findings():
+    typedef = ModuleTypeDef(
+        name="InfoPanelType",
+        moduleparameters=[Variable(name="EnableInteraktion", datatype=Simple_DataType.BOOLEAN)],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+        origin_file="KaHAApplSupportLib.s",
+        origin_lib="KaHAApplSupportLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[typedef],
+        localvariables=[],
+        submodules=[
+            ModuleTypeInstance(header=_hdr("Y_Info_Panel"), moduletype_name="InfoPanelType", parametermappings=[]),
+            ModuleTypeInstance(header=_hdr("X_Info_Panel"), moduletype_name="InfoPanelType", parametermappings=[]),
+        ],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAApplSupportLib.s",
+        origin_lib="KaHAApplSupportLib",
+    )
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=False)
+    analyzer.run()
+
+    matching_issues = [
+        issue
+        for issue in analyzer.issues
+        if issue.kind is IssueKind.UNUSED and issue.variable is not None and issue.variable.name == "EnableInteraktion"
+    ]
+    assert len(matching_issues) == 1
+    assert matching_issues[0].module_path == ["BasePicture", "TypeDef:InfoPanelType"]
 
     summary = VariablesReport(basepicture_name=bp.header.name, issues=analyzer.issues).summary()
     assert "      Moduletype:" in summary
@@ -434,6 +480,64 @@ def test_never_read_summary_splits_moduletype_and_singlemodule_groups():
     assert "      SingleModule:" in summary
     assert "BasePicture.Soejle.L1.L2.RPDisp :: localvariable MinMax (integer)" in summary
     assert "BasePicture.TypeDef:Soejle.L1.L2.RPDisp :: localvariable MinMax (integer)" not in summary
+
+
+def test_string_mapping_summary_dedupes_root_typedef_singlemodule_rows():
+    child_typedef = ModuleTypeDef(
+        name="ChildType",
+        moduleparameters=[Variable(name="TargetValue", datatype=Simple_DataType.IDENTSTRING)],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+    )
+    parent_typedef = ModuleTypeDef(
+        name="ParentType",
+        moduleparameters=[Variable(name="SourceValue", datatype=Simple_DataType.STRING)],
+        localvariables=[],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("Child"),
+                moduletype_name="ChildType",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("TargetValue"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("SourceValue"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[child_typedef, parent_typedef],
+        localvariables=[],
+        submodules=[ModuleTypeInstance(header=_hdr("Parent"), moduletype_name="ParentType", parametermappings=[])],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.STRING_MAPPING_MISMATCH]
+    assert len(issues) == 1
+    assert issues[0].module_path == ["Root", "TypeDef:ParentType", "Child"]
+
+    summary = VariablesReport(basepicture_name=bp.header.name, issues=analyzer.issues).summary()
+
+    assert "Root.ParentType.Child" in summary
+    assert "Root.TypeDef:ParentType.Child" not in summary
+    assert "Root.Parent.Child" not in summary
 
 
 def test_variables_execution_collect_typedef_issues_covers_branchy_typedef_roles():

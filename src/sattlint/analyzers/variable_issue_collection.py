@@ -489,9 +489,10 @@ def _collect_issues_from_module(
         ):
             return
 
-        # Library-wide reports should surface root-owned moduletype findings once
-        # under their TypeDef path rather than once per instance path.
-        if self.analyzed_target_is_library and self.limit_to_module_path is None:
+        # Root-owned moduletype findings are already collected under their TypeDef
+        # path. Avoid repeating them under every instance path unless analysis is
+        # explicitly scoped to that instance path.
+        if self.limit_to_module_path is None:
             return
 
         for variable in moduletype.moduleparameters or []:

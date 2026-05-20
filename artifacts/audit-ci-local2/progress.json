@@ -1,0 +1,52 @@
+{
+  "active_stage": null,
+  "canonical_command": "sattlint-repo-audit --profile full --fail-on high --output-dir artifacts/audit-ci-local2",
+  "completed_at": 1779260045.1314242,
+  "completed_stage_count": 0,
+  "created_at": 1779259942.9813836,
+  "failed_stage_count": 1,
+  "kind": "sattlint.repo_audit.progress",
+  "overall_status": "failed",
+  "skipped_stage_count": 0,
+  "stage_count": 4,
+  "stages": [
+    {
+      "detail": "KeyboardInterrupt",
+      "duration_seconds": 102.149,
+      "ended_at": 1779260045.1309657,
+      "key": "pipeline",
+      "label": "Run shared pipeline",
+      "started_at": 1779259942.9821289,
+      "status": "failed"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "custom_scan",
+      "label": "Run repository-specific checks",
+      "started_at": null,
+      "status": "pending"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "merge_findings",
+      "label": "Merge and normalize findings",
+      "started_at": null,
+      "status": "pending"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "write_reports",
+      "label": "Write audit reports",
+      "started_at": null,
+      "status": "pending"
+    }
+  ],
+  "title": "Repository audit",
+  "updated_at": 1779260045.1314259
+}

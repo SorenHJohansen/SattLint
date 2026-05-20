@@ -64,6 +64,7 @@ class PlanningContextPayload(TypedDict):
     instruction_names: list[str]
     owner_test_targets: list[str]
     first_validation_commands: list[str]
+    semantic_suggestion_paths: NotRequired[list[str]]
 
 
 class RankedWorkstream(TypedDict):
@@ -254,6 +255,7 @@ def _build_planning_context_payload(signals: PayloadSignals, cwd: Path) -> Plann
         changed_files=changed_files,
         recommended_check_ids=None,
         selected_surface="session-start",
+        semantic_query=signals["text"] or None,
         work_map=session_context_map,
     )
     owner_test_targets: list[str] = []
@@ -268,6 +270,11 @@ def _build_planning_context_payload(signals: PayloadSignals, cwd: Path) -> Plann
     ]
     return {
         "changed_files": changed_files,
+        "semantic_suggestion_paths": [
+            str(item.get("file_path", ""))
+            for item in planning_context.get("semantic_owner_suggestions", {}).get("suggestions", [])[:3]
+            if isinstance(item, dict) and str(item.get("file_path", "")).strip()
+        ],
         "selected_surface": "session-start",
         "primary_agent": planning_context.get("primary_agent"),
         "instruction_names": [
@@ -349,6 +356,9 @@ def _format_context(ranked: list[RankedWorkstream], planning: PlanningContextPay
             planning_bits.append(f"owner-tests={','.join(planning['owner_test_targets'][:2])}")
         if planning["first_validation_commands"]:
             planning_bits.append(f"first-validation={planning['first_validation_commands'][0]}")
+        semantic_paths = planning.get("semantic_suggestion_paths", [])
+        if semantic_paths:
+            planning_bits.append(f"semantic-paths={','.join(semantic_paths[:2])}")
         if planning_bits:
             segments.append(f"Planning context: {' | '.join(planning_bits)}.")
     segments.append("Use the compact session summary first. Check the JSON lock state before editing claimed files.")

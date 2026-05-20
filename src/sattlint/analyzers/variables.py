@@ -6,7 +6,7 @@ import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, Variable
+from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, ParameterMapping, Variable
 
 from ..reporting.variables_report import (
     DEFAULT_VARIABLE_ANALYSIS_KINDS,
@@ -181,6 +181,10 @@ def filter_variable_report(
     )
 
 
+def _issue_uses_typedef_path(issue: VariableIssue) -> bool:
+    return any(segment.startswith("TypeDef:") for segment in issue.module_path)
+
+
 class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
     """Walk the AST, record variable usage, and emit issue reports."""
 
@@ -219,6 +223,7 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         self._naming_role_patterns = configured_naming_role_patterns(config)
 
         self._issues: list[VariableIssue] = []
+        self._param_mapping_issue_indexes: dict[tuple[IssueKind, int], int] = {}
         self.usage_tracker = UsageTracker()
         self._site_stack: list[str] = []
 
@@ -412,3 +417,22 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
             field_path=issue.field_path,
             site=issue.site,
         )
+
+    def _append_param_mapping_issue(self, mapping: ParameterMapping, issue: VariableIssue) -> None:
+        dedupe_key = (issue.kind, id(mapping))
+        existing_index = self._param_mapping_issue_indexes.get(dedupe_key)
+        if existing_index is None:
+            self._param_mapping_issue_indexes[dedupe_key] = len(self._issues)
+            self._append_issue(issue)
+            return
+
+        existing_issue = self._issues[existing_index]
+        if _issue_uses_typedef_path(issue) and not _issue_uses_typedef_path(existing_issue):
+            self._issues[existing_index] = issue
+            self._trace(
+                "issue-deduped",
+                kind=issue.kind.value,
+                module_path=issue.module_path,
+                replaced_module_path=existing_issue.module_path,
+                variable=(issue.variable.name if issue.variable is not None else None),
+            )

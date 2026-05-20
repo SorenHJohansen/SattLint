@@ -74,6 +74,11 @@ class StringMappingValidator:
     def _is_string_simple_type(self, dt: Simple_DataType | str | None) -> bool:
         return isinstance(dt, Simple_DataType) and dt in self._STRING_TYPES
 
+    def _string_limit(self, dt: Simple_DataType | str | None) -> int | None:
+        if not isinstance(dt, Simple_DataType):
+            return None
+        return self._STRING_LIMITS.get(dt)
+
     def check_string_mapping(
         self,
         tgt_var: Variable,
@@ -87,12 +92,10 @@ class StringMappingValidator:
         """
         issues: list[VariableIssue] = []
 
-        # Only check when both are built-in string types
-        if (
-            self._is_string_simple_type(tgt_var.datatype)
-            and self._is_string_simple_type(src_var.datatype)
-            and tgt_var.datatype is not src_var.datatype
-        ):
+        # Only flag assignments that narrow string capacity.
+        target_limit = self._string_limit(tgt_var.datatype)
+        source_limit = self._string_limit(src_var.datatype)
+        if target_limit is not None and source_limit is not None and source_limit > target_limit:
             issue = VariableIssue(
                 kind=IssueKind.STRING_MAPPING_MISMATCH,
                 module_path=list(path),

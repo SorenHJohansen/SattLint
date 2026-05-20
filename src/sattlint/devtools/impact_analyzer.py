@@ -9,6 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
+from sattlint.devtools._semble_adapter import search_local_repo
 from sattlint.devtools.structural_reports import (
     REPO_ROOT,
     WorkspaceGraphInputs,
@@ -31,6 +32,7 @@ def _mapping_entries(value: object) -> list[dict[str, Any]]:
 
 
 DEFAULT_OUTPUT_FILENAME = "impact_analysis.json"
+SEMANTIC_QUERY_TOP_K = 5
 
 
 def _normalize_identifier_values(values: list[str]) -> list[str]:
@@ -112,12 +114,67 @@ def _sorted_impacts(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(items, key=lambda item: str(item.get("id", "")).casefold())
 
 
+def _resolve_semantic_query(
+    query: str,
+    *,
+    workspace_root: Path,
+    entry_file_index: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    search_report = search_local_repo(query, repo_root=workspace_root, top_k=SEMANTIC_QUERY_TOP_K)
+    if not search_report.available:
+        return {
+            "status": "unavailable",
+            "query": query,
+            "backend": search_report.backend,
+            "candidate_files": [],
+            "selected_entry_files": [],
+            "explanation": search_report.explanation,
+            "error": search_report.error,
+        }
+
+    candidate_files: list[dict[str, Any]] = []
+    selected_entry_files: list[str] = []
+    seen_entry_files: set[str] = set()
+    for match in search_report.results:
+        matched_entry = entry_file_index.get(match.file_path.casefold())
+        selected_entry_file = None if matched_entry is None else str(matched_entry["entry_file"])
+        if selected_entry_file is not None:
+            key = selected_entry_file.casefold()
+            if key not in seen_entry_files:
+                seen_entry_files.add(key)
+                selected_entry_files.append(selected_entry_file)
+        candidate_files.append(
+            {
+                "file_path": match.file_path,
+                "start_line": match.start_line,
+                "end_line": match.end_line,
+                "score": match.score,
+                "selected_entry_file": selected_entry_file,
+            }
+        )
+
+    status = "ok"
+    if not candidate_files:
+        status = "no-results"
+    elif not selected_entry_files:
+        status = "no-entry-file-matches"
+    return {
+        "status": status,
+        "query": query,
+        "backend": search_report.backend,
+        "candidate_files": candidate_files,
+        "selected_entry_files": selected_entry_files,
+        "explanation": search_report.explanation,
+    }
+
+
 def build_impact_analysis_selection(
     workspace_root: Path = REPO_ROOT,
     *,
     libraries: list[str] | None = None,
     modules: list[str] | None = None,
     entry_files: list[str] | None = None,
+    query: str | None = None,
     include_full_report: bool = False,
     graph_inputs: WorkspaceGraphInputs | None = None,
     dependency_graph_report: dict[str, Any] | None = None,
@@ -131,13 +188,15 @@ def build_impact_analysis_selection(
     requested_entry_files = _normalize_entry_file_values(
         list(entry_files or []), workspace_root=resolved_workspace_root
     )
+    normalized_query = "" if query is None else query.strip()
+    explicit_target_requested = bool(requested_libraries or requested_modules or requested_entry_files)
 
     request_payload = {
         "libraries": requested_libraries,
         "modules": requested_modules,
         "entry_files": requested_entry_files,
     }
-    if not any(request_payload.values()):
+    if not explicit_target_requested and not normalized_query:
         return {
             "generated_by": "sattlint.devtools.impact_analyzer",
             "report_kind": "impact-analysis-selection",
@@ -200,12 +259,52 @@ def build_impact_analysis_selection(
     library_index = _build_id_index(list(resolved_impact_report.get("library_impacts", [])))
     module_index = _build_id_index(list(resolved_impact_report.get("module_impacts", [])))
     entry_file_index = _build_entry_file_index(resolved_graph_inputs, workspace_root=resolved_workspace_root)
+    semantic_query_report: dict[str, Any] | None = None
+    if normalized_query:
+        if progress_callback is not None:
+            progress_callback("Impact analysis: resolving semantic query")
+        semantic_query_report = _resolve_semantic_query(
+            normalized_query,
+            workspace_root=resolved_workspace_root,
+            entry_file_index=entry_file_index,
+        )
+        for selected_entry_file in list(semantic_query_report.get("selected_entry_files", [])):
+            entry_text = str(selected_entry_file).strip()
+            if entry_text and entry_text not in requested_entry_files:
+                requested_entry_files.append(entry_text)
 
     selected_library_ids: set[str] = set()
     selected_module_ids: set[str] = set()
     resolved_entry_files: list[str] = []
     entry_file_expansions: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
+
+    if normalized_query and semantic_query_report is not None and not explicit_target_requested:
+        semantic_status = str(semantic_query_report.get("status", ""))
+        if semantic_status == "unavailable":
+            errors.append(
+                {
+                    "selector_kind": "query",
+                    "value": normalized_query,
+                    "message": "Semantic query could not run because Semble is unavailable.",
+                }
+            )
+        elif semantic_status == "no-results":
+            errors.append(
+                {
+                    "selector_kind": "query",
+                    "value": normalized_query,
+                    "message": f"Semantic query returned no candidate files: {normalized_query}",
+                }
+            )
+        elif semantic_status == "no-entry-file-matches":
+            errors.append(
+                {
+                    "selector_kind": "query",
+                    "value": normalized_query,
+                    "message": f"Semantic query matched files, but none mapped to workspace entry files: {normalized_query}",
+                }
+            )
 
     for requested_library in requested_libraries:
         impact = library_index.get(requested_library.casefold())
@@ -303,6 +402,8 @@ def build_impact_analysis_selection(
         "snapshot_failures": _mapping_entries(resolved_impact_report.get("snapshot_failures")),
         "errors": errors,
     }
+    if semantic_query_report is not None:
+        report["semantic_query"] = semantic_query_report
     if include_full_report:
         report["full_report"] = {
             "dependency_graph": resolved_dependency_graph,
@@ -352,6 +453,11 @@ def _parse_impact_args(argv: list[str] | None) -> argparse.Namespace:
         help="Entry file path to expand into changed libraries and modules. May be provided multiple times.",
     )
     parser.add_argument(
+        "--query",
+        default=None,
+        help="Optional semantic query that resolves matching entry files before expanding impacted libraries and modules.",
+    )
+    parser.add_argument(
         "--format",
         choices=("json",),
         default="json",
@@ -384,6 +490,7 @@ def main(argv: list[str] | None = None) -> int:
         libraries=list(args.library),
         modules=list(args.module),
         entry_files=list(args.entry_file),
+        query=None if args.query is None else str(args.query),
         include_full_report=bool(args.include_full_report),
         progress_callback=progress_callback,
     )
