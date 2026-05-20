@@ -1,0 +1,44 @@
+{
+  "task_id": "t-64-routing-doc-gardener",
+  "stage": "executor",
+  "branch": "agents/next-task-for-sattlint-ai",
+  "commit": "3aab2c8",
+  "files_changed": [
+    "docs/exec-plans/completed/64-t-wave-8-maintainer-blind-spot-reconciliation.md",
+    "docs/exec-plans/tech-debt-tracker.md",
+    "src/sattlint/devtools/doc_gardener.py",
+    "src/sattlint/devtools/_doc_gardener_scan.py",
+    "tests/_repo_audit_part5.py",
+    "tests/_repo_audit_part6.py"
+  ],
+  "summary": "Removed the hard-coded retired TODO-source list from doc-gardener, made the ledger rows authoritative for source-drift checks, updated the routing tracker and completed plan, and kept the focused repo-audit coverage green.",
+  "known_risks": [],
+  "required_tests": [
+    "python scripts/run_repo_python.py -m pytest --no-cov tests/_repo_audit_part5.py tests/_repo_audit_part6.py -x -q --tb=short",
+    "python scripts/run_repo_python.py -m sattlint.devtools.doc_gardener --check-only",
+    "python scripts/context_health.py --check",
+    ".\\.venv\\Scripts\\python.exe -m ruff check src\\sattlint\\devtools\\doc_gardener.py src\\sattlint\\devtools\\_doc_gardener_scan.py tests\\_repo_audit_part5.py tests\\_repo_audit_part6.py",
+    ".\\.venv\\Scripts\\python.exe -m pyright src\\sattlint\\devtools\\doc_gardener.py src\\sattlint\\devtools\\_doc_gardener_scan.py",
+    ".\\.venv\\Scripts\\python.exe -m pre_commit run --files docs\\exec-plans\\completed\\64-t-wave-8-maintainer-blind-spot-reconciliation.md docs\\exec-plans\\tech-debt-tracker.md"
+  ],
+  "validation_status": {
+    "state": "passed",
+    "commands": [
+      "python scripts/run_repo_python.py -m pytest --no-cov tests/_repo_audit_part5.py tests/_repo_audit_part6.py -x -q --tb=short",
+      "python scripts/run_repo_python.py -m sattlint.devtools.doc_gardener --check-only",
+      "python scripts/context_health.py --check",
+      ".\\.venv\\Scripts\\python.exe -m ruff check src\\sattlint\\devtools\\doc_gardener.py src\\sattlint\\devtools\\_doc_gardener_scan.py tests\\_repo_audit_part5.py tests\\_repo_audit_part6.py",
+      ".\\.venv\\Scripts\\python.exe -m pyright src\\sattlint\\devtools\\doc_gardener.py src\\sattlint\\devtools\\_doc_gardener_scan.py",
+      ".\\.venv\\Scripts\\python.exe -m pre_commit run --files docs\\exec-plans\\completed\\64-t-wave-8-maintainer-blind-spot-reconciliation.md docs\\exec-plans\\tech-debt-tracker.md"
+    ],
+    "notes": [
+      "Pyright stays scoped to the touched production seam because the legacy repo-audit shard test modules still carry inherited strict-typing debt unrelated to this routing slice.",
+      "The completed-plan path moved from active to completed during the AI routing artifacts hook once every progress checkbox in the plan was closed."
+    ]
+  },
+  "reviewer_notes": [
+    "The ledger rows now fully own retired TODO-source drift behavior; doc_gardener no longer carries a second canonical tuple.",
+    "The tracker now points at the completed blind-spot routing artifact and explicitly names it as the canonical home for the 2026-05-19 review."
+  ],
+  "status": "validated"
+}

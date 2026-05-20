@@ -2,7 +2,7 @@
 
 Living document of known technical debt in SattLint.
 Updated by doc-gardening agent and human developers.
-Last updated: 2026-05-19
+Last updated: 2026-05-20
 
 Active work now lives in:
 
@@ -22,6 +22,8 @@ This tracker remains valid for legacy TD-* entries, still-open tech debt, and sc
 | TODO_REFACTOR.md | retired | 2026-05-01 | retired | Program T | Legacy refactor backlog retired into the consolidated tech-debt tracker and exec-plan tracking. |
 | TODO_SATTLINT.md | retired | 2026-05-01 | retired | Program C | Legacy SattLint backlog retired into roadmap and exec-plan tracking. |
 | TODO_TOOLS.md | retired | 2026-05-01 | retired | Program D | Legacy tools backlog retired into the consolidated tech-debt tracker and exec-plan tracking. |
+
+The consolidation source ledger is the single source of truth for legacy `TODO_*.md` source status. The doc-gardener source-drift scan derives retired-source behavior from these rows rather than from a second hard-coded list.
 
 ## Program T: Technical Debt Items
 
@@ -82,7 +84,8 @@ Active follow-on plan from the 2026-05-19 CLI UX review:
 
 Active follow-on plan from the 2026-05-19 maintainability blind-spot review:
 
-- `docs/exec-plans/active/64-t-wave-8-maintainer-blind-spot-reconciliation.md` turns the broad review into one durable routing artifact, closes the remaining retired-TODO source-ledger seam in doc-gardener, records which existing active plans own the other suspicious paths, and names the active owners for duplicate abstractions, unused sophistication, disconnected systems, architecture entropy, hallucination residue, and runtime-architecture mapping.
+- `docs/exec-plans/completed/64-t-wave-8-maintainer-blind-spot-reconciliation.md` turns the broad review into one durable routing artifact, closes the remaining retired-TODO source-ledger seam in doc-gardener, records which existing active plans own the other suspicious paths, and names the active owners for duplicate abstractions, unused sophistication, disconnected systems, architecture entropy, hallucination residue, and runtime-architecture mapping.
+- Use that plan as the canonical routing artifact for the 2026-05-19 blind-spot review so suspicious maintainability findings map to an owning active plan instead of chat-only history.
 
 ---
 

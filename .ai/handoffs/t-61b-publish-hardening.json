@@ -1,0 +1,26 @@
+{
+  "task_id": "t-61b-publish-hardening",
+  "stage": "executor",
+  "branch": "agents/next-task-for-sattlint-ai",
+  "commit": "3aab2c8",
+  "files_changed": [
+    ".github/workflows/publish.yml",
+    ".github/dependabot.yml"
+  ],
+  "summary": "Scoped executor handoff stub for T 61b Publish Workflow Hardening.",
+  "known_risks": [],
+  "required_tests": [
+    "python scripts\\run_actionlint.py"
+  ],
+  "validation_status": {
+    "state": "pending",
+    "commands": [
+      "python scripts\\run_actionlint.py"
+    ],
+    "notes": [
+      "Replace placeholder scope, files_changed, and validation commands before handing off to Test Agent or Reviewer Agent."
+    ]
+  },
+  "reviewer_notes": [],
+  "status": "draft"
+}

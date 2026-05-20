@@ -1,0 +1,29 @@
+{
+  "task_id": "t-64-routing-doc-gardener",
+  "title": "T 64 Routing Doc Gardener",
+  "owner": "Copilot CLI",
+  "stage": "executor",
+  "branch": "agents/next-task-for-sattlint-ai",
+  "worktree": ".",
+  "summary": "Make doc-gardener derive retired TODO-source drift from the consolidation source ledger and keep the blind-spot routing docs in sync.",
+  "files": [
+    "docs/exec-plans/completed/64-t-wave-8-maintainer-blind-spot-reconciliation.md",
+    "docs/exec-plans/tech-debt-tracker.md",
+    "src/sattlint/devtools/doc_gardener.py",
+    "src/sattlint/devtools/_doc_gardener_scan.py",
+    "tests/_repo_audit_part5.py",
+    "tests/_repo_audit_part6.py"
+  ],
+  "acceptance_criteria": [
+    "Start from the controlling plan docs/exec-plans/completed/64-t-wave-8-maintainer-blind-spot-reconciliation.md before broader repo exploration.",
+    "Keep the scope anchored to the requested files: docs/exec-plans/completed/64-t-wave-8-maintainer-blind-spot-reconciliation.md, docs/exec-plans/tech-debt-tracker.md, src/sattlint/devtools/doc_gardener.py, src/sattlint/devtools/_doc_gardener_scan.py, tests/_repo_audit_part5.py, tests/_repo_audit_part6.py.",
+    "Run the first validation command: bash scripts/run_repo_python.sh -m pytest --no-cov tests/_repo_audit_part5.py tests/_repo_audit_part6.py -x -q --tb=short.",
+    "Deliver the expected outcome: Make doc-gardener derive retired TODO-source drift from the consolidation source ledger and keep the blind-spot routing docs in sync.."
+  ],
+  "risks": [],
+  "validation": [
+    "bash scripts/run_repo_python.sh -m pytest --no-cov tests/_repo_audit_part5.py tests/_repo_audit_part6.py -x -q --tb=short"
+  ],
+  "status": "done",
+  "handoff_path": ".ai/handoffs/t-64-routing-doc-gardener.json"
+}

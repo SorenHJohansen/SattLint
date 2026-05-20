@@ -252,7 +252,6 @@ def scan_ai_first_source_drift(
     *,
     doc_finding_cls: type[Any],
     ai_first_debt: Path,
-    ai_first_source_files: Sequence[str],
     repo_root: Path,
     read_text_fn: Callable[[Path], str],
     parse_markdown_table_fn: Callable[[list[str], str], list[tuple[int, dict[str, str]]]],
@@ -276,25 +275,35 @@ def scan_ai_first_source_drift(
             )
         ]
 
-    row_by_source = {row["Source"]: (line_no, row) for line_no, row in source_rows if row.get("Source")}
-
-    for source_name in ai_first_source_files:
-        source_path = repo_root / source_name
-        ledger_row = row_by_source.get(source_name)
-        if ledger_row is None:
+    for line_no, row in source_rows:
+        source_name = row.get("Source", "").strip()
+        if not source_name:
             findings.append(
                 doc_finding_cls(
                     relative_path_fn(ai_first_debt),
-                    1,
+                    line_no,
                     "High",
-                    "drift",
-                    f"Canonical tech debt tracker is missing a source-ledger row for {source_name}.",
+                    "structure",
+                    "Source-ledger row is missing a Source value.",
                 )
             )
             continue
 
-        line_no, row = ledger_row
-        state = row.get("State", "").strip().casefold()
+        raw_state = row.get("State", "").strip()
+        if not raw_state:
+            findings.append(
+                doc_finding_cls(
+                    relative_path_fn(ai_first_debt),
+                    line_no,
+                    "High",
+                    "structure",
+                    f"Source-ledger row for {source_name} is missing a State value.",
+                )
+            )
+            continue
+
+        source_path = repo_root / source_name
+        state = raw_state.casefold()
         sync_basis = row.get("Sync Basis", "").strip()
 
         if state == "retired":
@@ -317,7 +326,7 @@ def scan_ai_first_source_drift(
                     line_no,
                     "Medium",
                     "structure",
-                    f"Unsupported source-ledger state '{row.get('State', '')}' for {source_name}.",
+                    f"Unsupported source-ledger state '{raw_state}' for {source_name}.",
                 )
             )
             continue

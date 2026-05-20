@@ -36,12 +36,6 @@ CURRENT_WORK_TEMPLATE = REPO_ROOT / ".github" / "coordination" / "current-work.t
 AI_FIRST_PLAN = DOCS_DIR / "exec-plans" / "completed" / "ai-first-repo-hardening.md"
 AI_FIRST_DEBT = TECH_DEBT
 MAX_AGENTS_LINES = 100
-AI_FIRST_SOURCE_FILES = (
-    "TODO_GUI.md",
-    "TODO_REFACTOR.md",
-    "TODO_SATTLINT.md",
-    "TODO_TOOLS.md",
-)
 MARKDOWN_SUFFIXES = {".md", ".txt"}
 MOJIBAKE_TOKENS = (
     "\ufffd",
@@ -213,7 +207,6 @@ def scan_ai_first_source_drift() -> Sequence[DocFinding]:
     return doc_gardener_scan_module.scan_ai_first_source_drift(
         doc_finding_cls=DocFinding,
         ai_first_debt=AI_FIRST_DEBT,
-        ai_first_source_files=AI_FIRST_SOURCE_FILES,
         repo_root=REPO_ROOT,
         read_text_fn=_read_text,
         parse_markdown_table_fn=_parse_markdown_table,

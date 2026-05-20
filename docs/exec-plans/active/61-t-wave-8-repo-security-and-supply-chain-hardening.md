@@ -13,7 +13,7 @@ The observable proof is straightforward. A maintainer running the checked-in Cod
 - [x] (2026-05-19 00:00Z) Create this ExecPlan and capture the current security-review baseline across `.github/workflows/`, `.github/dependabot.yml`, `package-lock.json`, `scripts/codegraph-*.sh`, and `src/sattlint/devtools/`.
 - [x] (2026-05-19 00:00Z) Confirm that GitHub Actions are already SHA-pinned, but the repo still has concrete hardening gaps: publish-wide `id-token` scope, no protected release environment, repeated unverified `actionlint` downloads, missing `npm` Dependabot coverage, and CodeGraph scripts that bind SurrealDB to `0.0.0.0` with `root/root` credentials.
 - [x] (2026-05-19 00:00Z) Confirm that repo-audit currently checks only for CI-workflow presence in this area and does not yet enforce workflow hardening, release protection, or supply-chain policy.
-- [ ] Lock down the checked-in CodeGraph helper scripts so they do not expose a network service with default credentials or an all-interface bind.
+- [x] (2026-05-20 10:31Z) Locked down the checked-in CodeGraph helper scripts: `scripts/codegraph-start-db.sh`, `scripts/codegraph-import.sh`, and `scripts/codegraph-index-export.sh` now default to `127.0.0.1:3004`, require `CODEGRAPH_SURREAL_USER` and `CODEGRAPH_SURREAL_PASS`, and no longer embed or document `root/root` credentials or an all-interface bind.
 - [ ] Harden `.github/workflows/publish.yml` with job-scoped permissions, a protected release environment, and release-policy checks that block unreviewed publication paths.
 - [ ] Add missing Node ecosystem monitoring and vulnerability scanning so the checked-in `package-lock.json` tree is covered alongside the Python dependency tree.
 - [ ] Extend repo-audit with deterministic workflow-security and supply-chain findings for the checked-in workflows and helper scripts.
@@ -32,6 +32,8 @@ The observable proof is straightforward. A maintainer running the checked-in Cod
   Evidence: `.github/workflows/typing.yml` runs `pip-audit --skip-editable`, but `.github/dependabot.yml` only covers `pip` and `github-actions`, while `package-lock.json` contains a real Node dependency tree with `better-sqlite3` and an install script.
 - Observation: repo-audit is currently too shallow to catch the workflow-security problems identified in the review.
   Evidence: `src/sattlint/devtools/_repo_audit_reporting.py` checks for the existence of `.github/workflows/*.yml` and reports `missing-ci-workflow`, but the reviewed code does not yet add findings for workflow permissions, release protection, direct unverified binary installs, or Node dependency-monitoring gaps.
+- Observation: the first helper-script hardening milestone did not need a new shared shell helper.
+  Evidence: all insecure SurrealDB defaults were confined to `scripts/codegraph-start-db.sh`, `scripts/codegraph-import.sh`, and `scripts/codegraph-index-export.sh`, and the repo had no existing shared CodeGraph shell utility seam to extend without widening the claim surface.
 
 ## Decision Log
 
@@ -57,9 +59,9 @@ The observable proof is straightforward. A maintainer running the checked-in Cod
 
 ## Outcomes & Retrospective
 
-Planning baseline only. No code has changed yet. The intended end state is a repository whose release and helper-script trust boundaries are explicit, enforced, and narrow enough that an AI-driven maintenance workflow is less likely to publish from an unreviewed path, run opaque downloaded tooling, or expose local infrastructure carelessly.
+The first milestone is now complete. The checked-in CodeGraph helper scripts default to loopback-only SurrealDB access, require explicit credentials through `CODEGRAPH_SURREAL_USER` and `CODEGRAPH_SURREAL_PASS`, and no longer advertise or execute `0.0.0.0:3004` with `root/root`. The broader workflow hardening, dependency-monitoring, and repo-audit enforcement work remains open in this active plan.
 
-The main risk is overlap with adjacent plans. This plan must not re-own workflow deduplication, release-smoke implementation details, or broad public-doc rewrites. It should stay focused on the security contract: local helper hardening, release protection, dependency-monitoring completeness, and repo-audit enforcement for those policies.
+The main remaining risk is overlap with adjacent plans. This plan must still avoid re-owning workflow deduplication, release-smoke implementation details, or broad public-doc rewrites. After the script milestone, the next work should stay focused on the remaining security contract: release protection, dependency-monitoring completeness, and repo-audit enforcement for those policies.
 
 ## Context and Orientation
 
