@@ -1,0 +1,27 @@
+{
+  "task_id": "t-62-performance-scalability",
+  "title": "T-62 Performance Scalability — fast-cache-validation inversion fix",
+  "owner": "Copilot CLI",
+  "stage": "executor",
+  "branch": "agents/next-task-for-sattlint-ai",
+  "worktree": ".",
+  "summary": "Fix the inverted fast-cache-validation branch in ensure_ast_cache so fast_cache_validation=True uses the cheap validation path.",
+  "files": [
+    "src/sattlint/_app_analysis_loading.py",
+    "tests/test_app_analysis_project_cache.py",
+    "docs/exec-plans/active/62-t-wave-8-performance-and-scalability-hardening.md"
+  ],
+  "acceptance_criteria": [
+    "fast_cache_validation=True calls cache.validate(cached, fast=True) — not fast=False.",
+    "Two new regression tests prove the fast=True and fast=False contracts explicitly.",
+    "7 tests pass in tests/test_app_analysis_project_cache.py.",
+    "Ruff and Pyright clean on touched files.",
+    "Pre-commit passes."
+  ],
+  "risks": [],
+  "validation": [
+    ".venv\\Scripts\\python.exe -m pytest --no-cov tests/test_app_analysis_project_cache.py -x -q --tb=short"
+  ],
+  "status": "done",
+  "handoff_path": ".ai/handoffs/t-62-performance-scalability.json"
+}

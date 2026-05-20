@@ -192,7 +192,9 @@ def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypa
             return mapping[key]
 
         def validate(self, cached, fast=False):
-            return cached == {"name": "Fresh", "files": ["a"]} and fast is False
+            # fast_cache_validation=True → validate is always called with fast=True.
+            # "Fresh" is the only cache entry that passes validation.
+            return fast is True and cached.get("name") == "Fresh"
 
     def fake_load_project(_cfg, target_name=None, use_cache=True, use_file_ast_cache=True):
         resolved_target = target_name or ""
@@ -228,3 +230,78 @@ def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypa
     assert any("AST cache missing; building" in line for line in lines)
     assert any("AST cache updated" in line for line in lines)
     assert any("Failed to build AST cache for Broken: boom" in line for line in lines)
+
+
+def test_ensure_ast_cache_slow_path_passes_fast_false_to_validate(monkeypatch):
+    """When fast_cache_validation is False, validate() must receive fast=False (full stat sweep)."""
+    validate_fast_args: list[bool] = []
+
+    class FakeCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def load(self, key):
+            if key == "key:Ok":
+                return {"name": "Ok", "files": ["x"]}
+            return None
+
+        def validate(self, cached, fast=False):
+            validate_fast_args.append(fast)
+            return True
+
+    lines: list[str] = []
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    ok = app_analysis.ensure_ast_cache(
+        {
+            "analyzed_programs_and_libraries": ["Ok"],
+            "fast_cache_validation": False,
+        },
+        cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
+        load_project_fn=cast(Any, lambda *a, **kw: pytest.fail("should not rebuild")),
+        ast_cache_cls=cast(Any, FakeCache),
+        get_cache_dir_fn=lambda: Path("cache-dir"),
+    )
+
+    assert ok is True
+    assert validate_fast_args == [False], (
+        "validate() must be called with fast=False when fast_cache_validation is False"
+    )
+    assert any("AST cache OK" in line for line in lines)
+
+
+def test_ensure_ast_cache_fast_path_passes_fast_true_to_validate_when_manifest_present(monkeypatch):
+    """When fast_cache_validation is True and manifest is present, validate() must receive fast=True."""
+    validate_fast_args: list[bool] = []
+
+    class FakeCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def load(self, key):
+            if key == "key:Ok":
+                return {"name": "Ok", "files": ["x"]}
+            return None
+
+        def validate(self, cached, fast=False):
+            validate_fast_args.append(fast)
+            return True
+
+    lines: list[str] = []
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    ok = app_analysis.ensure_ast_cache(
+        {
+            "analyzed_programs_and_libraries": ["Ok"],
+            "fast_cache_validation": True,
+        },
+        cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
+        load_project_fn=cast(Any, lambda *a, **kw: pytest.fail("should not rebuild")),
+        ast_cache_cls=cast(Any, FakeCache),
+        get_cache_dir_fn=lambda: Path("cache-dir"),
+    )
+
+    assert ok is True
+    assert validate_fast_args == [True], (
+        "validate() must be called with fast=True when fast_cache_validation=True and manifest is present"
+    )
