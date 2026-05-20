@@ -180,6 +180,7 @@ def test_doc_gardener_scan_ai_first_source_drift_reports_row_and_digest_issues(t
                 "| --- | --- | --- |",
                 "| TODO_GUI.md | active | sha1:deadbeefdead |",
                 "| TODO_REFACTOR.md | retired | sha1:ignored |",
+                "| TODO_SATTLINT.md |  | retired |",
                 "| TODO_TOOLS.md | active | manual-sync |",
             ]
         ),
@@ -195,7 +196,7 @@ def test_doc_gardener_scan_ai_first_source_drift_reports_row_and_digest_issues(t
         for message in messages
     )
     assert "TODO_REFACTOR.md exists but the source ledger marks it retired." in messages
-    assert "Canonical tech debt tracker is missing a source-ledger row for TODO_SATTLINT.md." in messages
+    assert "Source-ledger row for TODO_SATTLINT.md is missing a State value." in messages
     assert "TODO_TOOLS.md is marked active in the source ledger but the file is missing." in messages
 
 

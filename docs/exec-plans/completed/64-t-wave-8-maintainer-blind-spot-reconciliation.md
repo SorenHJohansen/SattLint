@@ -14,11 +14,11 @@ The observable proof is straightforward. The review findings around version drif
 
 - [x] (2026-05-19 00:00Z) Create this ExecPlan from the blind-spot review and confirm the main routing fact pattern: release-version drift is already owned by plan 50, root-layout and architecture drift are already owned by the two plan 58 slices, workflow and release-path hardening are already owned by plans 58 and 61, and CLI truthfulness is already owned by plan 63.
 - [x] (2026-05-19 00:00Z) Confirm the remaining live uncovered seam from the review: `src/sattlint/devtools/doc_gardener.py` still hard-codes `AI_FIRST_SOURCE_FILES` even though `docs/exec-plans/tech-debt-tracker.md` marks all four legacy `TODO_*.md` sources retired.
-- [ ] Expand the routing map so duplicate abstractions, unused sophistication, disconnected systems, architecture entropy, hallucination residue, and runtime-architecture mapping all point to explicit active owners or are recorded here as genuinely uncovered.
-- [ ] Add a durable routing section to this plan and to `docs/exec-plans/tech-debt-tracker.md` so the blind-spot review no longer depends on chat history.
-- [ ] Remove the duplicated retired-TODO source list from the doc-gardener path and make the source ledger the single source of truth for `scan_ai_first_source_drift`.
-- [ ] Update the focused source-ledger drift tests so retired-source behavior remains enforced without implying that root `TODO_*.md` files are still a live repo surface.
-- [ ] Re-run focused doc-gardener and repo-audit validation and record the final routing and validation evidence in this file.
+- [x] (2026-05-20 10:13Z) Expand the routing map so duplicate abstractions, unused sophistication, disconnected systems, architecture entropy, hallucination residue, and runtime-architecture mapping all point to explicit active owners or are recorded here as genuinely uncovered.
+- [x] (2026-05-20 10:13Z) Add a durable routing section to this plan and to `docs/exec-plans/tech-debt-tracker.md` so the blind-spot review no longer depends on chat history.
+- [x] (2026-05-20 10:13Z) Remove the duplicated retired-TODO source list from the doc-gardener path and make the source ledger the single source of truth for `scan_ai_first_source_drift`.
+- [x] (2026-05-20 10:13Z) Update the focused source-ledger drift tests so retired-source behavior remains enforced without implying that root `TODO_*.md` files are still a live repo surface.
+- [x] (2026-05-20 10:13Z) Re-ran focused doc-gardener and repo-audit validation and recorded the result here: `python scripts\run_repo_python.py -m pytest --no-cov tests\_repo_audit_part5.py tests\_repo_audit_part6.py -x -q --tb=short`, `python scripts\run_repo_python.py -m sattlint.devtools.doc_gardener --check-only`, `python scripts\context_health.py --check`, `.\.venv\Scripts\python.exe -m ruff check src\sattlint\devtools\doc_gardener.py src\sattlint\devtools\_doc_gardener_scan.py tests\_repo_audit_part5.py tests\_repo_audit_part6.py`, `.\.venv\Scripts\python.exe -m pyright src\sattlint\devtools\doc_gardener.py src\sattlint\devtools\_doc_gardener_scan.py`, and `.\.venv\Scripts\python.exe -m pre_commit run --files docs\exec-plans\completed\64-t-wave-8-maintainer-blind-spot-reconciliation.md docs\exec-plans\tech-debt-tracker.md`.
 
 ## Surprises & Discoveries
 
@@ -61,9 +61,11 @@ The observable proof is straightforward. The review findings around version drif
 
 ## Outcomes & Retrospective
 
-Planning baseline only. No blind-spot review findings are resolved by this document alone. The intended outcome is a smaller and more trustworthy maintenance surface: one checked-in routing artifact for the review, one source of truth for retired TODO-source status, and no remaining confusion about whether the suspicious paths are already owned elsewhere or still lack an owner.
+The routing artifact is now explicit in both this plan and `docs/exec-plans/tech-debt-tracker.md`, and the doc-gardener source-ledger scan no longer depends on a second hard-coded tuple of retired `TODO_*.md` names. The direct implementation gap from the blind-spot review is now narrower: source-ledger behavior is owned by the ledger rows themselves, while the surrounding suspicious-path findings keep their existing owner plans.
 
-The main risk is accidental duplication. If future edits start copying the same root-clutter, version-drift, or workflow findings into this plan as if it were a second owner, the repo will be harder to maintain than before. This plan should stay focused on review reconciliation and the specific uncovered doc-gardener seam.
+The remaining risk is accidental re-duplication. If future edits reintroduce another canonical retired-source list or start copying the same root-clutter, version-drift, or workflow findings into this plan as if it were a second implementation owner, the review surface will become noisy again. The durable rule after this slice is simple: fix the ledger first, then let doc-gardener derive behavior from it.
+
+Focused validation for this slice stayed narrow and behavior-first. The repo-audit shard tests passed, `sattlint.devtools.doc_gardener --check-only` reported zero findings on the updated tree, context health stayed clean, the touched production files passed Ruff and Pyright, and the touched routing docs passed the targeted pre-commit hooks. Running Pyright on the full legacy repo-audit shard test modules still reports inherited strict-typing debt outside the scope of this routing slice, so the typed proof for this change stayed anchored to the production seam it actually changed.
 
 ## Context and Orientation
 
@@ -73,7 +75,7 @@ The broader AI-maintainability audit uses the same evidence style but groups the
 
 Most of those paths are already owned by active plans. `docs/exec-plans/active/50-t-wave-7-public-1-0-release-readiness.md` owns public version alignment, support classification, release rehearsal, and the missing `release_smoke` seam. `docs/exec-plans/active/58-t-wave-8-repo-structure-and-architecture-alignment.md` owns root-layout cleanup, root helper-script triage, stale long- and short-doc names, and the GUI plus editor-facade documentation gap. `docs/exec-plans/active/58-t-wave-8-ci-workflow-consolidation-and-release-rehearsal.md` owns duplicate full-audit workflow work, repeated `actionlint` setup logic, and publish-workflow rehearsal wiring. `docs/exec-plans/active/61-t-wave-8-repo-security-and-supply-chain-hardening.md` owns the supply-chain and workflow-trust concerns around CodeGraph scripts, publish permissions, and Node dependency monitoring. `docs/exec-plans/completed/63-t-wave-8-cli-ux-and-documentation-trustworthiness.md` owns the user-facing CLI and command-doc drift that the broader review touched only indirectly.
 
-The one live seam that still lacks a dedicated owner is the retired-TODO source-ledger wiring inside doc-gardener. `docs/exec-plans/tech-debt-tracker.md` is the canonical consolidation source ledger for the retired files `TODO_GUI.md`, `TODO_REFACTOR.md`, `TODO_SATTLINT.md`, and `TODO_TOOLS.md`. The completed plan `docs/exec-plans/completed/ai-first-repo-hardening.md` explicitly retired those files and moved their state into the ledger. Despite that, `src/sattlint/devtools/doc_gardener.py` still defines `AI_FIRST_SOURCE_FILES`, and `src/sattlint/devtools/_doc_gardener_scan.py` takes that explicit list as an argument to `scan_ai_first_source_drift`.
+At planning time, the one live seam that still lacked a dedicated owner was the retired-TODO source-ledger wiring inside doc-gardener. `docs/exec-plans/tech-debt-tracker.md` is the canonical consolidation source ledger for the retired files `TODO_GUI.md`, `TODO_REFACTOR.md`, `TODO_SATTLINT.md`, and `TODO_TOOLS.md`. The completed plan `docs/exec-plans/completed/ai-first-repo-hardening.md` explicitly retired those files and moved their state into the ledger. Before this slice landed, `src/sattlint/devtools/doc_gardener.py` still defined `AI_FIRST_SOURCE_FILES`, and `src/sattlint/devtools/_doc_gardener_scan.py` took that explicit list as an argument to `scan_ai_first_source_drift`.
 
 In this plan, a `routing artifact` means a checked-in plan that tells a future maintainer where each review finding belongs so the same scan does not need to be repeated from scratch. A `source ledger` means the Markdown table under `## Consolidation Source Ledger` in `docs/exec-plans/tech-debt-tracker.md`. A `retired TODO source` means one of the earlier root-level `TODO_*.md` backlog files that was removed from the repository and replaced by the canonical ledger. A `blind-spot finding` means a path or mismatch that looked intentionally added but incompletely reviewed, for example a committed scratch helper or a doc that still uses an old module name.
 
@@ -101,7 +103,7 @@ First, restate the routing facts and the uncovered seam before editing anything:
 
 Then edit the plan and tracker files so the blind-spot review becomes a durable artifact:
 
-    docs/exec-plans/active/64-t-wave-8-maintainer-blind-spot-reconciliation.md
+    docs/exec-plans/completed/64-t-wave-8-maintainer-blind-spot-reconciliation.md
     docs/exec-plans/tech-debt-tracker.md
 
 After that, repair the source-ledger seam in the doc-gardener path:
@@ -125,7 +127,7 @@ If that passes, run the narrow doc-gardener proof and the repo health check for 
 
 If the executor also touches the tracker or plan routing text substantially, finish with a targeted Markdown or pre-commit pass for the changed docs:
 
-    python -m pre_commit run --files docs/exec-plans/active/64-t-wave-8-maintainer-blind-spot-reconciliation.md docs/exec-plans/tech-debt-tracker.md
+    python -m pre_commit run --files docs/exec-plans/completed/64-t-wave-8-maintainer-blind-spot-reconciliation.md docs/exec-plans/tech-debt-tracker.md
 
 ## Validation and Acceptance
 
@@ -177,6 +179,6 @@ Untracked path confirmed by the same review:
 
 ## Interfaces and Dependencies
 
-The direct implementation seam for this plan is the doc-gardener source-ledger path. `src/sattlint/devtools/doc_gardener.py` currently passes `AI_FIRST_SOURCE_FILES` into `src/sattlint/devtools/_doc_gardener_scan.py`. `scan_ai_first_source_drift` in that helper module currently accepts `ai_first_source_files: Sequence[str]` and iterates those names after parsing the ledger. At the end of this plan, the authoritative inputs should be the parsed rows from `docs/exec-plans/tech-debt-tracker.md` plus the repository root path used to test file presence. The helper function may keep a small wrapper API if needed, but the data truth must come from the ledger.
+The direct implementation seam for this plan is the doc-gardener source-ledger path. `src/sattlint/devtools/doc_gardener.py` now calls `scan_ai_first_source_drift` without a second canonical file list, and `src/sattlint/devtools/_doc_gardener_scan.py` now derives retired-source checks directly from the parsed rows in `docs/exec-plans/tech-debt-tracker.md`. The authoritative inputs are the ledger rows plus the repository root path used to test file presence and active-file digests.
 
 The test interfaces that must remain green are `tests/_repo_audit_part5.py` and `tests/_repo_audit_part6.py`, because they already exercise the source-ledger drift behavior with temporary restored `TODO_*.md` files and malformed rows. The documentation interfaces that must stay aligned are `docs/exec-plans/tech-debt-tracker.md` and this plan file itself. No new external dependencies are needed for this slice.
