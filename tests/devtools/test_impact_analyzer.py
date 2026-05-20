@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 from sattlint.devtools import impact_analyzer
+from sattlint.devtools._semble_adapter import SembleMatch, SembleSearchResponse
 from sattlint.devtools.structural_reports import WorkspaceGraphInputs
 
 
@@ -116,6 +117,123 @@ def test_build_impact_analysis_selection_reports_unknown_targets(tmp_path):
             "message": "Unknown entry-file selector: Program/Missing.s",
         },
     ]
+
+
+def test_build_impact_analysis_selection_resolves_query_to_entry_files(tmp_path, monkeypatch):
+    entry_file = tmp_path / "Program" / "Main.s"
+    graph_inputs = WorkspaceGraphInputs(
+        discovery=SimpleNamespace(program_files=[entry_file], dependency_files=[]),
+        snapshots=[
+            SimpleNamespace(
+                entry_file=entry_file,
+                base_picture=SimpleNamespace(name="Main", origin_lib="main"),
+                definitions=[
+                    SimpleNamespace(field_path=None, declaration_module_path=("Main",)),
+                    SimpleNamespace(field_path=None, declaration_module_path=("Main", "Guard")),
+                ],
+            )
+        ],
+        snapshot_failures=[],
+    )
+    impact_report = {
+        "library_impacts": [{"id": "main", "direct_dependents": ["consumer"]}],
+        "module_impacts": [
+            {"id": "Main", "direct_dependents": ["Main.Guard"]},
+            {"id": "Main.Guard", "direct_dependents": []},
+        ],
+        "snapshot_failures": [],
+    }
+    monkeypatch.setattr(
+        impact_analyzer,
+        "search_local_repo",
+        lambda query, *, repo_root, top_k: SembleSearchResponse(
+            available=True,
+            backend="python-library",
+            query=query,
+            repo_path=repo_root.as_posix(),
+            top_k=top_k,
+            results=(
+                SembleMatch(
+                    file_path="Program/Main.s",
+                    start_line=12,
+                    end_line=20,
+                    content="SEQUENCE Main",
+                    score=0.83,
+                ),
+            ),
+            explanation="ok",
+        ),
+    )
+
+    report = impact_analyzer.build_impact_analysis_selection(
+        tmp_path,
+        query="guard sequence logic",
+        graph_inputs=graph_inputs,
+        dependency_graph_report={"nodes": [], "edges": [], "snapshot_failures": []},
+        call_graph_report={"nodes": [], "edges": [], "snapshot_failures": []},
+        impact_analysis_report=impact_report,
+    )
+
+    assert report["status"] == "ok"
+    assert report["resolved_targets"]["entry_files"] == ["Program/Main.s"]
+    assert report["resolved_targets"]["libraries"] == ["main"]
+    assert report["resolved_targets"]["modules"] == ["Main", "Main.Guard"]
+    assert report["semantic_query"] == {
+        "status": "ok",
+        "query": "guard sequence logic",
+        "backend": "python-library",
+        "candidate_files": [
+            {
+                "file_path": "Program/Main.s",
+                "start_line": 12,
+                "end_line": 20,
+                "score": 0.83,
+                "selected_entry_file": "Program/Main.s",
+            }
+        ],
+        "selected_entry_files": ["Program/Main.s"],
+        "explanation": "ok",
+    }
+
+
+def test_build_impact_analysis_selection_reports_unresolved_query_without_explicit_targets(tmp_path, monkeypatch):
+    graph_inputs = WorkspaceGraphInputs(
+        discovery=SimpleNamespace(program_files=[], dependency_files=[]),
+        snapshots=[],
+        snapshot_failures=[],
+    )
+    monkeypatch.setattr(
+        impact_analyzer,
+        "search_local_repo",
+        lambda query, *, repo_root, top_k: SembleSearchResponse(
+            available=True,
+            backend="python-library",
+            query=query,
+            repo_path=repo_root.as_posix(),
+            top_k=top_k,
+            results=(),
+            explanation="no hits",
+        ),
+    )
+
+    report = impact_analyzer.build_impact_analysis_selection(
+        tmp_path,
+        query="missing guard flow",
+        graph_inputs=graph_inputs,
+        dependency_graph_report={"nodes": [], "edges": [], "snapshot_failures": []},
+        call_graph_report={"nodes": [], "edges": [], "snapshot_failures": []},
+        impact_analysis_report={"library_impacts": [], "module_impacts": [], "snapshot_failures": []},
+    )
+
+    assert report["status"] == "error"
+    assert report["errors"] == [
+        {
+            "selector_kind": "query",
+            "value": "missing guard flow",
+            "message": "Semantic query returned no candidate files: missing guard flow",
+        }
+    ]
+    assert report["semantic_query"]["status"] == "no-results"
 
 
 def test_main_writes_report_json(tmp_path, monkeypatch, capsys):

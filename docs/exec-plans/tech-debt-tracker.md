@@ -72,7 +72,7 @@ Active follow-on plan from the 2026-05-19 repo-map and architecture review:
 
 Active follow-on plan from the 2026-05-19 security review:
 
-- `docs/exec-plans/active/61-t-wave-8-repo-security-and-supply-chain-hardening.md` covers release trust-boundary tightening, workflow-security policy enforcement, CodeGraph helper hardening, and complete Python-plus-Node dependency monitoring.
+- `docs/exec-plans/active/61-t-wave-8-repo-security-and-supply-chain-hardening.md` covers release trust-boundary tightening, workflow-security policy enforcement, legacy helper-script removal, and complete Python-plus-Node dependency monitoring.
 
 Active follow-on plan from the 2026-05-19 performance and scalability review:
 

@@ -12,6 +12,7 @@ from ..reporting.icf_report import ICFEntry
 _ICF_REF_RE = re.compile(r"(?:^|.*?)(?:[A-Za-z]::)?(?P<program>[^:]+):(?P<path>.+)$")
 _ICF_HEADER_RE = re.compile(r"^\[(?P<tag>[^\]\s]+)(?:\s+(?P<label>.+?))?\]$")
 _ICF_PLACEHOLDER_RE = re.compile(r"^[A-Za-z]::\.$")
+_ICF_VALUE_PREFIX_RE = re.compile(r"^(?P<prefix>[A-Za-z])::")
 _ICF_FORMATTING_SPACING: dict[str, int] = {
     "unit": 2,
     "journal": 2,
@@ -190,6 +191,14 @@ def extract_icf_sattline_ref(value: str) -> tuple[str | None, str | None]:
     return program, path
 
 
+def extract_icf_value_prefix(value: str) -> str | None:
+    """Extract the optional single-letter ICF value prefix such as ``F`` from ``F::Program:Path``."""
+    match = _ICF_VALUE_PREFIX_RE.match(value.strip())
+    if match is None:
+        return None
+    return match.group("prefix").upper()
+
+
 def is_placeholder_icf_value(value: str) -> bool:
     """Return True for intentionally unbound ICF placeholders such as ``H::.``."""
     return _ICF_PLACEHOLDER_RE.match(value.strip()) is not None
@@ -200,6 +209,7 @@ __all__ = [
     "decode_icf_text",
     "detect_icf_newline",
     "extract_icf_sattline_ref",
+    "extract_icf_value_prefix",
     "format_icf_file",
     "format_icf_text",
     "header_spacing",

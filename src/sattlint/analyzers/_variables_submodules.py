@@ -177,9 +177,6 @@ def _walk_moduletype_instance_subtree(
             moduletype = None
             external = True
 
-    if external and not self.analyzed_target_is_library:
-        return
-
     if moduletype is not None and not self.is_from_root_origin(
         getattr(moduletype, "origin_file", None),
         getattr(moduletype, "origin_lib", None),
@@ -191,7 +188,8 @@ def _walk_moduletype_instance_subtree(
                 parent_path=[*parent_path, child_name],
                 current_library=parent_context.current_library,
             )
-            return
+            moduletype = None
+            external = True
         if self.analyzed_target_is_library and not self.include_dependency_moduletype_usage:
             moduletype = None
             external = True

@@ -1,0 +1,17 @@
+{
+  "artifact_digest": "sha1:7fd5f9b002ddb17a8ff0f1bc06dcf8c076745a4b",
+  "artifact_file": "artifacts/audit-ci-local/pipeline/artifact_registry.json",
+  "artifact_kind": null,
+  "artifact_schema_version": null,
+  "generated_by": "sattlint.devtools.pipeline",
+  "kind": "sattlint.generated_output_sources",
+  "schema_version": 1,
+  "source_count": 1,
+  "sources": [
+    {
+      "digest": "sha1:4677dc55dfc036daaf3c32d8d4863a2aced36ab0",
+      "exists": true,
+      "path": "src/sattlint/devtools/pipeline.py"
+    }
+  ]
+}

@@ -84,6 +84,7 @@ def build_summary_report(
     *,
     transcript_report: dict[str, Any],
     session_store: dict[str, Any],
+    semantic_grounding: dict[str, Any],
     findings: list[dict[str, Any]],
     output_dir: Path,
     repo_root: Path,
@@ -181,6 +182,17 @@ def build_summary_report(
             ),
         },
         "session_store": session_store,
+        "semantic_grounding": {
+            "status": semantic_grounding["status"],
+            "backend": semantic_grounding.get("backend"),
+            "queryable_session_count": semantic_grounding["queryable_session_count"],
+            "searchable_session_count": semantic_grounding["searchable_session_count"],
+            "grounded_session_count": semantic_grounding["grounded_session_count"],
+            "grounding_match_rate": semantic_grounding["grounding_match_rate"],
+            "average_candidate_match_ratio": semantic_grounding["average_candidate_match_ratio"],
+            "ungrounded_session_ids": list(semantic_grounding.get("ungrounded_session_ids", [])),
+            "explanation": semantic_grounding["explanation"],
+        },
         "top_metrics": {
             "assistant_message_count": assistant_message_count,
             "empty_assistant_message_count": empty_assistant_message_count,
@@ -194,6 +206,7 @@ def build_summary_report(
         "health_summary": {
             "transcript_corpus_health": transcript_status,
             "session_store_health": session_store["status"],
+            "semantic_grounding_health": semantic_grounding["status"],
             "highest_churn_bucket": task_buckets[0]["bucket"] if task_buckets else None,
             "action_required_finding_ids": [finding["id"] for finding in findings[:5]],
         },
@@ -229,17 +242,28 @@ def build_status_report(
             "transcript_count": transcript_report["transcript_count"],
         },
         "session_store_status": session_store["status"],
+        "semantic_grounding_status": summary["semantic_grounding"]["status"],
         "finding_count": finding_count,
     }
 
 
-def build_sessions_report(*, transcript_report: dict[str, Any]) -> dict[str, Any]:
+def build_sessions_report(*, transcript_report: dict[str, Any], semantic_grounding: dict[str, Any]) -> dict[str, Any]:
+    grounding_by_session_id = {
+        str(session.get("session_id", "")): session for session in list(semantic_grounding.get("sessions", []))
+    }
+    sessions: list[dict[str, Any]] = []
+    for session in list(transcript_report["sessions"]):
+        session_entry = dict(session)
+        grounding_entry = grounding_by_session_id.get(str(session_entry.get("session_id", "")))
+        if grounding_entry is not None:
+            session_entry["semantic_grounding"] = grounding_entry
+        sessions.append(session_entry)
     return {
         "kind": "sattlint.ai_chat.sessions",
         "schema_version": 1,
-        "session_count": len(transcript_report["sessions"]),
+        "session_count": len(sessions),
         "malformed_line_count": len(transcript_report["parse_failures"]),
-        "sessions": transcript_report["sessions"],
+        "sessions": sessions,
     }
 
 

@@ -87,7 +87,6 @@ The 2026-05-19 tracked-file hygiene review produced four implementation buckets 
 - Add root ignore coverage for the `temp_pyright*` family.
 - Add root ignore coverage for root Pyright output spill such as `pyright_output*.json`, `pyright_probe*.json`, `probe_results.json`, and sibling temporary config outputs unless they are moved under a stable tool-owned path.
 - Add ignore coverage for full-audit temp directories such as `artifacts/audit-full-current.tmp-*/`.
-- Add ignore coverage for local CodeGraph output such as `codegraph-index.surql`.
 
 ### 3. Regenerate rather than commit
 
@@ -99,7 +98,7 @@ The 2026-05-19 tracked-file hygiene review produced four implementation buckets 
 
 ### 4. Contributor workflow risks
 
-- Local `npm install`, CodeGraph runs, or Pyright experiments can currently dirty the root because the ignore rules are incomplete.
+- Local `npm install` or Pyright experiments can currently dirty the root because the ignore rules are incomplete.
 - The tracked vendor and artifact trees add substantial review noise and repository weight, especially under `node_modules/` and `artifacts/analysis/`.
 - The tracked tree does not currently match the canonical root policy encoded in `TOP_LEVEL_TRACKED_ENTRY_ALLOWLIST`, which makes repo-audit guidance less trustworthy to contributors.
 - The repository currently presents at least two repo-health locations, `artifacts/health/` and `artifacts/generated/repo-health.json`, which risks stale reads by humans or automation.
@@ -124,7 +123,7 @@ Treat the root Node surface as disposable unless the executor finds a checked-in
 
 After the root cleanup, harden the ignore rules. Update `.gitignore` so the exact classes of residue found in the review are ignored at the root. At minimum, cover `node_modules/`, `tmp-pyright-*.json`, and the `temp_pyright*` family. If any reusable Pyright probe configuration truly needs to remain checked in, move it under an existing analysis or script surface and give it a stable name instead of keeping probe artifacts at the root.
 
-As part of the same pass, decide whether `codegraph-index.surql` is local-only output in this repository. If it is, ignore it explicitly so CodeGraph use does not keep reintroducing root noise. Also add ignore coverage for `artifacts/audit-full-current.tmp-*/` so future full-audit runs do not recreate tracked temp directories.
+As part of the same pass, add ignore coverage for `artifacts/audit-full-current.tmp-*/` so future full-audit runs do not recreate tracked temp directories.
 
 Then align the docs. Update `AGENTS.md` so the quick-reference purpose sentence and any repo-map guidance acknowledge the GUI surface where appropriate. Update `docs/repo-map.md` to add `src/sattlint_gui/` and to name `src/sattlint/editor_api.py` explicitly as the editor-facing compatibility facade, separate from `src/sattlint/core/`. Update `docs/architecture.md` to include the same surfaces in the short layering summary. Update `ARCHITECTURE.md` to replace `arch_linter.py` with `layer_linter.py`, keep the GUI section accurate, and make the editor-facing boundary description consistent with the short docs. As part of that same pass, add one concise actual-runtime-architecture map that starts from the checked-in entrypoints, names the first owning modules they reach, and makes preview-only or disconnected surfaces explicit instead of implied.
 
@@ -199,7 +198,6 @@ Current facts gathered during plan creation:
 
     Additional hygiene review targets:
       artifacts/audit-full-current.tmp-*/
-      codegraph-index.surql
       artifacts/generated/precommit-fast-audit/
       artifacts/generated/repo-health.json
 

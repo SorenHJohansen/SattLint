@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,7 @@ DISCOVERY_TOOL_NAMES = {
     "view_image",
     "vscode_listCodeUsages",
 }
+_PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.MULTILINE)
 
 
 class AiChatInputError(ValueError):
@@ -126,6 +128,7 @@ def _summarize_transcript(
     discovery_before_action_count = 0
     first_action_tool: str | None = None
     last_failed_tool_name: str | None = None
+    file_reference_paths: set[str] = set()
 
     for line_number, raw_line in enumerate(transcript_path.read_text(encoding="utf-8").splitlines(), start=1):
         if not raw_line.strip():
@@ -178,6 +181,8 @@ def _summarize_transcript(
             tool_call_count += 1
             tool_name = _tool_name(data)
             tool_counts[tool_name] += 1
+            for file_path in _tool_file_paths(data, repo_root=repo_root):
+                file_reference_paths.add(file_path)
             tool_call_id = _tool_call_id(data)
             if tool_call_id is not None:
                 active_tool_calls[tool_call_id] = tool_name
@@ -222,6 +227,7 @@ def _summarize_transcript(
         "first_action_tool": first_action_tool,
         "tool_counts": dict(sorted(tool_counts.items())),
         "failed_tool_counts": dict(sorted(failed_tool_counts.items())),
+        "file_reference_paths": sorted(file_reference_paths, key=str.casefold),
         "malformed_line_count": len(parse_failures),
     }, parse_failures
 
@@ -257,6 +263,45 @@ def _tool_success(data: JsonDict) -> bool | None:
         if normalized in {"error", "fail", "failed"}:
             return False
     return None
+
+
+def _tool_file_paths(data: JsonDict, *, repo_root: Path) -> list[str]:
+    arguments = _json_object(data.get("arguments"))
+    if arguments is None:
+        return []
+    discovered: list[str] = []
+    for key in ("filePath", "file_path", "old_path", "new_path"):
+        path_text = _normalize_tool_path(arguments.get(key), repo_root=repo_root)
+        if path_text and path_text not in discovered:
+            discovered.append(path_text)
+    for key in ("filePaths", "files"):
+        value = arguments.get(key)
+        if not isinstance(value, list):
+            continue
+        for item in cast(list[object], value):
+            path_text = _normalize_tool_path(item, repo_root=repo_root)
+            if path_text and path_text not in discovered:
+                discovered.append(path_text)
+    patch_input = arguments.get("input")
+    if isinstance(patch_input, str):
+        for raw_match in _PATCH_FILE_RE.findall(patch_input):
+            path_text = _normalize_tool_path(raw_match, repo_root=repo_root)
+            if path_text and path_text not in discovered:
+                discovered.append(path_text)
+    return discovered
+
+
+def _normalize_tool_path(value: object, *, repo_root: Path) -> str:
+    if not isinstance(value, str):
+        return ""
+    path_text = value.strip().replace("\\", "/")
+    if not path_text:
+        return ""
+    candidate = Path(path_text)
+    if candidate.is_absolute():
+        sanitized = sanitize_path_for_report(candidate.resolve(), repo_root=repo_root)
+        return "" if sanitized is None else sanitized
+    return path_text.lstrip("./")
 
 
 def _extract_text(value: object) -> str:

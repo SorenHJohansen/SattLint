@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import (
@@ -33,6 +34,7 @@ from ._dataflow_state import DataflowStateMixin
 from ._dataflow_traversal import DataflowTraversalMixin
 from .framework import Issue, SimpleReport
 from .sattline_builtins import get_function_signature
+from .variable_utils import same_origin_file_stem
 
 _FORMAT_EXPR_ATTR = "format_expr"
 _format_expr = cast(Callable[[Any], object], getattr(formatter_module, _FORMAT_EXPR_ATTR))
@@ -356,15 +358,17 @@ class DataflowAnalyzer(DataflowIssueReportingMixin, DataflowTraversalMixin, Data
     ) -> bool:
         if self._analyzed_target_is_library:
             root_origin_lib = getattr(self.bp, "origin_lib", None)
+            root_origin_file = getattr(self.bp, "origin_file", None)
             if root_origin_lib and origin_lib:
-                return origin_lib.casefold() == root_origin_lib.casefold()
+                try:
+                    root_stem = Path(root_origin_file).stem.casefold() if root_origin_file else None
+                except Exception:
+                    root_stem = root_origin_file.rsplit(".", 1)[0].casefold() if root_origin_file else None
 
-        if not origin_file:
-            return True
-        root_origin = getattr(self.bp, "origin_file", None)
-        if not root_origin:
-            return False
-        return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
+                if root_stem and root_origin_lib.casefold() == root_stem:
+                    return origin_lib.casefold() == root_origin_lib.casefold()
+
+        return same_origin_file_stem(origin_file, getattr(self.bp, "origin_file", None))
 
     def _site_str(self) -> str:
         return " > ".join(self._site_stack)

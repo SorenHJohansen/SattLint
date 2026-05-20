@@ -4,6 +4,7 @@ import sys
 import pytest
 
 from sattlint.devtools import ai_work_map
+from sattlint.devtools._semble_adapter import SembleMatch, SembleSearchResponse
 from sattlint.devtools.ai_work_map import (
     DEFAULT_CHECK_CATALOG_OUTPUT_PATH,
     DEFAULT_OUTPUT_PATH,
@@ -96,6 +97,7 @@ def test_build_planning_context_returns_agent_instruction_and_owner_suite_matche
     assert planning["finish_gate_template"]["selected_surface"] == "repo-audit"
     assert any(rule["id"] == "focused-validation-first" for rule in planning["blocking_invariants"])
     assert any(rule["id"] == "cli-menu-tests-stay-in-sync" for rule in planning["blocking_invariants"])
+    assert planning["semantic_owner_suggestions"]["status"] == "not_requested"
 
 
 def test_build_planning_context_session_map_supports_session_start_without_full_catalogs():
@@ -111,6 +113,61 @@ def test_build_planning_context_session_map_supports_session_start_without_full_
     assert planning["first_validation_commands"] == []
     assert planning["finish_gate_template"] is None
     assert any(rule["id"] == "focused-validation-first" for rule in planning["blocking_invariants"])
+    assert planning["semantic_owner_suggestions"]["status"] == "not_requested"
+
+
+def test_build_planning_context_includes_semantic_owner_suggestions(monkeypatch):
+    monkeypatch.setattr(
+        ai_work_map,
+        "search_local_repo",
+        lambda query, *, repo_root, top_k: SembleSearchResponse(
+            available=True,
+            backend="python-library",
+            query=query,
+            repo_path=repo_root.as_posix(),
+            top_k=top_k,
+            results=(
+                SembleMatch(
+                    file_path="src/sattlint/app.py",
+                    start_line=10,
+                    end_line=20,
+                    content="def cli(): ...",
+                    score=0.91,
+                ),
+            ),
+            explanation="ok",
+        ),
+    )
+
+    planning = build_planning_context(
+        changed_files=["docs/notes.md"],
+        recommended_check_ids=["cli"],
+        selected_surface="repo-audit",
+        semantic_query="interactive cli menu numbering",
+        work_map=build_ai_work_map(),
+    )
+
+    assert planning["semantic_owner_suggestions"] == {
+        "status": "ok",
+        "query": "interactive cli menu numbering",
+        "backend": "python-library",
+        "suggestions": [
+            {
+                "file_path": "src/sattlint/app.py",
+                "start_line": 10,
+                "end_line": 20,
+                "score": 0.91,
+                "matched_agent_names": ["CLI App Menu", "Documentation Generation", "Repo Audit"],
+                "matched_instruction_names": [
+                    "CLI App Instructions",
+                    "Repo Map Instructions",
+                    "SattLine Invariants",
+                ],
+                "matched_owner_surfaces": ["cli"],
+            }
+        ],
+        "explanation": "ok",
+    }
 
 
 def test_ai_work_map_planning_helpers_cover_empty_paths_and_unmatched_rules():
@@ -466,3 +523,4 @@ def test_build_planning_context_ignores_invalid_entries_and_matches_owner_surfac
             "matched_files": [],
         }
     ]
+    assert planning["semantic_owner_suggestions"]["status"] == "not_requested"

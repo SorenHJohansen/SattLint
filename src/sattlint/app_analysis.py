@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -49,6 +50,9 @@ emit_output: Callable[..., None] = console_module.print_output  # type: ignore[a
 compute_cache_key: Callable[[ConfigDict], str] = cache.compute_cache_key
 get_cache_dir: Callable[[], Path] = cache.get_cache_dir
 
+_DRAFT_SOURCE_SUFFIXES = frozenset({".s", ".l"})
+_OFFICIAL_SOURCE_SUFFIXES = frozenset({".x", ".z"})
+
 
 def _extract_warning_name(item: str) -> str | None:
     return cast(str | None, app_support.extract_warning_name(item))
@@ -81,6 +85,60 @@ def _normalize_report_target_name(report: Any, target_name: str) -> Any:
             setattr(report, attr_name, target_name)
         except AttributeError:
             continue
+    return report
+
+
+def _select_report_source_path(project_bp: Any, graph: Any) -> Path | None:
+    try:
+        source_paths = _source_paths_for_current_target(project_bp, graph)
+    except Exception:
+        return None
+
+    if not source_paths:
+        return None
+
+    origin_file = getattr(project_bp, "origin_file", None)
+    candidates = [path for path in source_paths if origin_file and casefold_equal(path.name, origin_file)]
+    if not candidates:
+        candidates = list(source_paths)
+
+    def _candidate_key(path: Path) -> tuple[float, str]:
+        try:
+            return (path.stat().st_mtime, str(path))
+        except OSError:
+            return (float("-inf"), str(path))
+
+    return max(candidates, key=_candidate_key)
+
+
+def _source_version_label(project_bp: Any, source_path: Path | None) -> str | None:
+    if source_path is not None:
+        suffix = source_path.suffix.casefold()
+    else:
+        origin_file = getattr(project_bp, "origin_file", None)
+        suffix = Path(origin_file).suffix.casefold() if origin_file else ""
+
+    if suffix in _DRAFT_SOURCE_SUFFIXES:
+        return "draft"
+    if suffix in _OFFICIAL_SOURCE_SUFFIXES:
+        return "official"
+    return None
+
+
+def _source_last_changed(source_path: Path | None) -> str | None:
+    if source_path is None:
+        return None
+
+    try:
+        return datetime.fromtimestamp(source_path.stat().st_mtime).strftime("%Y-%m-%d")
+    except OSError:
+        return None
+
+
+def _attach_variable_report_metadata(report: VariablesReport, project_bp: Any, graph: Any) -> VariablesReport:
+    source_path = _select_report_source_path(project_bp, graph)
+    report.analyzed_version = _source_version_label(project_bp, source_path)
+    report.last_changed = _source_last_changed(source_path)
     return report
 
 
@@ -331,6 +389,7 @@ def run_variable_analysis(
                 report = _merge_reports(report, shadowing_report)
 
         report = _normalize_report_target_name(report, target_name)
+        report = _attach_variable_report_metadata(report, project_bp, graph)
         emit_output(f"\n=== Target: {target_name} ===")
         print_validation_warnings_fn(target_validation_warnings_fn(target_name, getattr(graph, "warnings", [])))
         emit_output(report.summary())

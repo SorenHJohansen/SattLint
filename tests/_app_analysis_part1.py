@@ -71,6 +71,37 @@ def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatc
     assert out.count("Issues: 0") == 2
 
 
+def test_run_variable_analysis_includes_version_and_last_changed(noop_screen, monkeypatch, capsys, tmp_path):
+    from datetime import datetime
+
+    source_path = tmp_path / "ProgramA.s"
+    source_path.write_text("BasePicture placeholder\n", encoding="utf-8")
+    timestamp = datetime(2024, 5, 17, 12, 0, 0).timestamp()
+    os.utime(source_path, (timestamp, timestamp))
+    graph = SimpleNamespace(
+        unavailable_libraries=set(),
+        warnings=[],
+        source_files={source_path},
+    )
+    project_bp = SimpleNamespace(
+        header=SimpleNamespace(name="ProgramA"),
+        origin_file="ProgramA.s",
+    )
+    monkeypatch.setattr(
+        app_analysis,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("ProgramA", project_bp, graph)]),
+    )
+    monkeypatch.setattr(app_analysis, "analyze_variables", lambda *_, **__: make_variable_report("BasePicture"))
+    monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report("BasePicture"))
+
+    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+
+    out = capsys.readouterr().out
+    assert "Version: draft" in out
+    assert "Last changed: 2024-05-17" in out
+
+
 def test_run_variable_analysis_all_analyses_executes_real_analyzers(noop_screen, monkeypatch, capsys):
     project_bp = parser_core_parse_source_text(VALID_SINGLE_FILE)
     graph = SimpleNamespace(

@@ -1,6 +1,5 @@
-# File Reference Formatting
+# Workspace File References
 
-- The no-backticks rule applies only to workspace file references, file paths, and file line citations.
-- Use markdown links for workspace files so they stay clickable, for example [src/module.py](src/module.py) or [module.py](src/module.py#L10).
+- Use markdown links for workspace files and line references, for example [src/module.py](src/module.py#L10).
+- Do not wrap workspace paths or line citations in backticks when a clickable link is possible.
 - Keep using backticks for symbols, commands, environment variables, literals, and other non-file references.
-- Do not present a workspace file path or line location as inline code when a clickable file link is possible.

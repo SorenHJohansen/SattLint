@@ -8,6 +8,7 @@ from pathlib import Path
 from ..analyzers.framework import format_report_header
 
 _AGGREGATED_REASONS = {
+    "mixed ICF value prefix letters",
     "missing journal parameter fields",
     "unit structure drift",
 }

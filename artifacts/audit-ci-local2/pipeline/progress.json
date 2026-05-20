@@ -1,0 +1,115 @@
+{
+  "active_stage": null,
+  "canonical_command": "sattlint-analysis-pipeline --profile full --output-dir artifacts/audit-ci-local2/pipeline",
+  "completed_at": 1779260045.1274948,
+  "completed_stage_count": 4,
+  "created_at": 1779259942.9889867,
+  "failed_stage_count": 1,
+  "kind": "sattlint.pipeline.progress",
+  "overall_status": "failed",
+  "skipped_stage_count": 0,
+  "stage_count": 11,
+  "stages": [
+    {
+      "detail": null,
+      "duration_seconds": 0.016,
+      "ended_at": 1779259943.0054636,
+      "key": "environment",
+      "label": "Collect environment",
+      "started_at": 1779259942.9894195,
+      "status": "completed"
+    },
+    {
+      "detail": "0 findings",
+      "duration_seconds": 0.019,
+      "ended_at": 1779259943.0253904,
+      "key": "ruff",
+      "label": "Run Ruff",
+      "started_at": 1779259943.0059714,
+      "status": "completed"
+    },
+    {
+      "detail": "0 errors, 0 warnings",
+      "duration_seconds": 25.517,
+      "ended_at": 1779259968.542777,
+      "key": "pyright",
+      "label": "Run pyright",
+      "started_at": 1779259943.0259678,
+      "status": "completed"
+    },
+    {
+      "detail": "2046 tests, 0 failures, 0 errors",
+      "duration_seconds": 75.498,
+      "ended_at": 1779260044.0412874,
+      "key": "pytest",
+      "label": "Run pytest",
+      "started_at": 1779259968.5433285,
+      "status": "completed"
+    },
+    {
+      "detail": "KeyboardInterrupt",
+      "duration_seconds": 1.085,
+      "ended_at": 1779260045.1267562,
+      "key": "vulture",
+      "label": "Run Vulture",
+      "started_at": 1779260044.042014,
+      "status": "failed"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "bandit",
+      "label": "Run Bandit",
+      "started_at": null,
+      "status": "pending"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "structural_reports",
+      "label": "Collect structural reports",
+      "started_at": null,
+      "status": "pending"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "trace",
+      "label": "Collect trace report",
+      "started_at": null,
+      "status": "pending"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "corpus",
+      "label": "Run corpus suite",
+      "started_at": null,
+      "status": "pending"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "findings",
+      "label": "Normalize findings",
+      "started_at": null,
+      "status": "pending"
+    },
+    {
+      "detail": null,
+      "duration_seconds": null,
+      "ended_at": null,
+      "key": "write_artifacts",
+      "label": "Write artifacts",
+      "started_at": null,
+      "status": "pending"
+    }
+  ],
+  "title": "Pipeline",
+  "updated_at": 1779260045.1274962
+}

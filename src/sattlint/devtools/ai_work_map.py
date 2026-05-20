@@ -9,6 +9,7 @@ from typing import Any, cast
 from sattlint.devtools import _ai_work_map_parsing as parsing_helpers
 from sattlint.devtools import _ai_work_map_planning as planning_helpers
 from sattlint.devtools._ai_work_map_freshness import verify_ai_harness_freshness as verify_ai_harness_freshness
+from sattlint.devtools._semble_adapter import search_local_repo
 from sattlint.devtools.json_helpers import nonempty_string_entries
 from sattlint.devtools.pipeline_checks import normalize_changed_files, path_matches_globs
 
@@ -28,6 +29,7 @@ DEFAULT_CHECK_CATALOG_OUTPUT_PATH = (
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "generated" / "ai-work-map"
 REFERENCE_UPDATE_SUFFIXES = {".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
 REFERENCE_UPDATE_SKIP_ROOTS = {".git", ".venv", "artifacts", "htmlcov", "__pycache__"}
+SEMANTIC_OWNER_SUGGESTION_TOP_K = 3
 AGENT_ROUTING_RULES: tuple[dict[str, Any], ...] = (
     {
         "agent_name": "CLI App Menu",
@@ -292,6 +294,72 @@ def _merge_instruction_files_for_planning(
     )
 
 
+def _build_semantic_owner_suggestions(
+    *,
+    work_map: dict[str, Any],
+    relevant_checks: list[planning_helpers.JsonDict],
+    owner_surfaces: list[str],
+    selected_surface: str,
+    semantic_query: str | None,
+) -> dict[str, Any]:
+    normalized_query = "" if semantic_query is None else semantic_query.strip()
+    if not normalized_query:
+        return {
+            "status": "not_requested",
+            "query": None,
+            "backend": None,
+            "suggestions": [],
+            "explanation": "No semantic owner query was provided.",
+        }
+
+    search_report = search_local_repo(
+        normalized_query,
+        repo_root=REPO_ROOT,
+        top_k=SEMANTIC_OWNER_SUGGESTION_TOP_K,
+    )
+    if not search_report.available:
+        return {
+            "status": "unavailable",
+            "query": normalized_query,
+            "backend": search_report.backend,
+            "suggestions": [],
+            "explanation": search_report.explanation,
+            "error": search_report.error,
+        }
+
+    suggestions: list[dict[str, Any]] = []
+    for match in search_report.results:
+        matched_agents = _match_agents(work_map, [match.file_path], owner_surfaces, selected_surface)
+        matched_instructions = _match_instruction_files(work_map, [match.file_path])
+        matched_owner_surfaces: list[str] = []
+        for check in relevant_checks:
+            path_globs = _string_entries(check.get("path_globs"))
+            if not path_globs or not path_matches_globs(match.file_path, path_globs):
+                continue
+            owner_surface = str(check.get("owner_surface", "")).strip()
+            if owner_surface and owner_surface not in matched_owner_surfaces:
+                matched_owner_surfaces.append(owner_surface)
+        suggestions.append(
+            {
+                "file_path": match.file_path,
+                "start_line": match.start_line,
+                "end_line": match.end_line,
+                "score": match.score,
+                "matched_agent_names": [entry["name"] for entry in matched_agents[:3]],
+                "matched_instruction_names": [entry["name"] for entry in matched_instructions[:3]],
+                "matched_owner_surfaces": matched_owner_surfaces,
+            }
+        )
+
+    return {
+        "status": "ok" if suggestions else "no-results",
+        "query": normalized_query,
+        "backend": search_report.backend,
+        "suggestions": suggestions,
+        "explanation": search_report.explanation,
+    }
+
+
 def render_ai_check_catalog(work_map: dict[str, Any] | None = None) -> str:
     resolved_work_map = build_ai_work_map() if work_map is None else work_map
     pipeline_checks = _dict_entries(resolved_work_map.get("pipeline_checks"))
@@ -381,6 +449,7 @@ def build_planning_context(
     changed_files: list[str] | None,
     recommended_check_ids: list[str] | None,
     selected_surface: str,
+    semantic_query: str | None = None,
     work_map: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     resolved_work_map = load_ai_work_map() if work_map is None else work_map
@@ -412,6 +481,13 @@ def build_planning_context(
                 first_validation_commands.append(command_text)
     finish_gate_template = _select_finish_gate_template(resolved_work_map, selected_surface)
     blocking_invariants = _match_blocking_invariants(resolved_work_map, normalized_changed_files, selected_surface)
+    semantic_owner_suggestions = _build_semantic_owner_suggestions(
+        work_map=resolved_work_map,
+        relevant_checks=relevant_checks,
+        owner_surfaces=owner_surfaces,
+        selected_surface=selected_surface,
+        semantic_query=semantic_query,
+    )
 
     return {
         "default_entrypoint": dict(resolved_work_map.get("default_entrypoint", {})),
@@ -426,6 +502,7 @@ def build_planning_context(
         "first_validation_commands": first_validation_commands,
         "finish_gate_template": finish_gate_template,
         "blocking_invariants": blocking_invariants,
+        "semantic_owner_suggestions": semantic_owner_suggestions,
     }
 
 

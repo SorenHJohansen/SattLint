@@ -303,6 +303,40 @@ def test_icf_validation_placeholder_counts_as_covered_for_completeness():
     assert not any(issue.reason == "missing journal parameter fields" for issue in report.issues)
 
 
+def test_icf_validation_rejects_mixed_value_prefix_letters_in_one_file():
+    record = DataType(
+        name="Rec",
+        description=None,
+        datecode=None,
+        var_list=[Variable(name="FieldA", datatype=Simple_DataType.INTEGER)],
+    )
+    unit = SingleModule(
+        header=_header("Unit"),
+        moduledef=None,
+        localvariables=[Variable(name="T", datatype="Rec")],
+    )
+    bp = BasePicture(
+        header=_header("Program"),
+        datatype_defs=[record],
+        submodules=[unit],
+    )
+
+    entries = [
+        _entry("Tag1", "F::Program:Unit.T.FieldA", unit="Unit"),
+        _entry("Tag2", "A::Program:Unit.T.FieldA", line_no=2, unit="Unit"),
+    ]
+
+    report = validate_icf_entries_against_program(bp, entries, expected_program="Program")
+
+    assert report.valid_entries == 2
+    assert len(report.issues) == 1
+    assert report.issues[0].reason == "mixed ICF value prefix letters"
+    assert report.issues[0].detail == "found multiple ICF value prefix letters in file: A::, F::"
+    summary = report.summary()
+    assert "mixed ICF value prefix letters" in summary
+    assert "found multiple ICF value prefix letters in file: A::, F::" in summary
+
+
 def test_icf_validation_marks_unresolved_module_segment_in_detail():
     display = SingleModule(
         header=_header("Display"),

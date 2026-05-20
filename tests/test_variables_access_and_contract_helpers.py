@@ -6,8 +6,10 @@ from typing import Any, cast
 import pytest
 
 from sattline_parser.models.ast_model import Simple_DataType, Variable
+from sattlint.analyzers import _dependency_usage_scope_support as dependency_scope_module
 from sattlint.analyzers import _variables_access as variables_access_module
 from sattlint.analyzers import _variables_contracts as variables_contracts_module
+from sattlint.analyzers.dataflow import DataflowAnalyzer
 from sattlint.resolution import AccessKind, CanonicalPath
 
 
@@ -385,6 +387,34 @@ def test_variables_access_record_wide_access_and_origin_helpers() -> None:
         bp=_ns(origin_lib="Root", origin_file=BrokenPath("Root.s")),
     )
     assert variables_access_module.is_from_root_origin(broken_library_helper, "Other.s", "root") is True
+
+    strict_library_helper: Any = _ns(
+        _analyzed_target_is_library=True,
+        bp=_ns(origin_lib="ProjectLib", origin_file="RootLib.s"),
+    )
+    assert DataflowAnalyzer._is_from_root_origin(strict_library_helper, "Other.s", "projectlib") is False
+    assert (
+        dependency_scope_module._DependencyUsageScopeSupportMixin._is_from_root_origin(
+            strict_library_helper,
+            "Other.s",
+            "projectlib",
+        )
+        is False
+    )
+
+    specific_library_helper: Any = _ns(
+        _analyzed_target_is_library=True,
+        bp=_ns(origin_lib="RootLib", origin_file="RootLib.s"),
+    )
+    assert DataflowAnalyzer._is_from_root_origin(specific_library_helper, "Other.s", "rootlib") is True
+    assert (
+        dependency_scope_module._DependencyUsageScopeSupportMixin._is_from_root_origin(
+            specific_library_helper,
+            "Other.s",
+            "rootlib",
+        )
+        is True
+    )
 
 
 def test_variables_contracts_cover_guard_branches(monkeypatch: pytest.MonkeyPatch) -> None:

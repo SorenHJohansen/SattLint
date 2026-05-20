@@ -16,5 +16,10 @@
     "lsp": "allow",
     "skill": "allow"
   },
-  "mcp": {}
+  "mcp": {
+    "semble": {
+      "type": "local",
+      "command": ["uvx", "--from", "semble[mcp]", "semble"]
+    }
+  }
 }

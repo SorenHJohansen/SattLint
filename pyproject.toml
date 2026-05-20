@@ -64,6 +64,7 @@ dev = [
     "bandit>=1.8.0",   # Security analysis
     "pip-audit>=2.8.0", # Dependency vulnerability scanning
     "rich>=13.9.0",    # Optional terminal formatting
+    "semble>=0.1.10",  # Optional semantic search for AI/devtools workflows
     "twine>=5.1.1",    # Package metadata validation
     "vulture>=2.11",    # Dead code analysis
     "types-openpyxl",  # Stubs for mypy

@@ -41,6 +41,9 @@ from ._icf_file_io import (
     extract_icf_sattline_ref as _extract_icf_sattline_ref,
 )
 from ._icf_file_io import (
+    extract_icf_value_prefix as _extract_icf_value_prefix,
+)
+from ._icf_file_io import (
     format_icf_file as _format_icf_file,
 )
 from ._icf_file_io import (
@@ -504,6 +507,29 @@ def _validate_entry_context(entry: ICFEntry, path: str) -> list[ICFValidationIss
     return issues
 
 
+def _validate_value_prefix_consistency(entries: list[ICFEntry]) -> ICFValidationIssue | None:
+    prefix_letters: set[str] = set()
+    first_prefixed_entry: ICFEntry | None = None
+
+    for entry in entries:
+        prefix = _extract_icf_value_prefix(entry.value)
+        if prefix is None:
+            continue
+        if first_prefixed_entry is None:
+            first_prefixed_entry = entry
+        prefix_letters.add(prefix)
+
+    if len(prefix_letters) < 2 or first_prefixed_entry is None:
+        return None
+
+    prefix_list = ", ".join(f"{prefix}::" for prefix in sorted(prefix_letters))
+    return ICFValidationIssue(
+        entry=first_prefixed_entry,
+        reason="mixed ICF value prefix letters",
+        detail=f"found multiple ICF value prefix letters in file: {prefix_list}",
+    )
+
+
 def _validate_parameter_record_completeness(
     type_graph: TypeGraph,
     resolved_entries: list[ICFResolvedEntry],
@@ -781,6 +807,9 @@ def validate_icf_entries_against_program(
 
     issues.extend(_validate_parameter_record_completeness(type_graph, resolved_entries, placeholder_entries))
     issues.extend(_validate_unit_structure(base_picture, entries, moduletype_index=moduletype_index))
+    prefix_consistency_issue = _validate_value_prefix_consistency(entries)
+    if prefix_consistency_issue is not None:
+        issues.append(prefix_consistency_issue)
 
     return ICFValidationReport(
         icf_file=entries[0].file_path if entries else Path(""),

@@ -244,21 +244,22 @@ def _check_param_mapping(
     if src_var is None:
         src_var = self.lookup_global_variable(varname_base(source_ref))
 
-    self.issues.extend(
-        self.contract_validator.check_contract_mapping(
-            pm,
-            tgt_var,
-            src_var,
-            path,
-            owner_contract_id=owner_contract_id,
-        )
-    )
+    for issue in self.contract_validator.check_contract_mapping(
+        pm,
+        tgt_var,
+        src_var,
+        path,
+        owner_contract_id=owner_contract_id,
+    ):
+        self.append_param_mapping_issue(pm, issue)
 
     if src_var is None:
         return
 
-    self.issues.extend(self.string_validator.check_string_mapping(tgt_var, src_var, path))
-    self.issues.extend(self.min_max_validator.check_min_max_mapping(pm, tgt_var, src_var, path))
+    for issue in self.string_validator.check_string_mapping(tgt_var, src_var, path):
+        self.append_param_mapping_issue(pm, issue)
+    for issue in self.min_max_validator.check_min_max_mapping(pm, tgt_var, src_var, path):
+        self.append_param_mapping_issue(pm, issue)
 
 
 def _index_all_variables(self: VariablesAnalyzer) -> None:

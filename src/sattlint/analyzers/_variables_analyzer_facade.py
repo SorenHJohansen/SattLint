@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from sattline_parser.models.ast_model import ModuleTypeDef, Variable
+from sattline_parser.models.ast_model import ModuleTypeDef, ParameterMapping, Variable
 
 from ..models.usage import VariableUsage
 from ..reporting.variables_report import IssueKind, VariableIssue
@@ -27,6 +27,9 @@ class VariablesAnalyzerFacadeMixin(VariablesAnalyzerFacadePropertiesMixin):
 
     def append_issue(self, issue: VariableIssue) -> None:
         self._append_issue(issue)
+
+    def append_param_mapping_issue(self, mapping: ParameterMapping, issue: VariableIssue) -> None:
+        self._append_param_mapping_issue(mapping, issue)
 
     def add_issue(
         self,

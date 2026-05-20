@@ -124,6 +124,24 @@ def build_findings(
             )
         )
 
+    semantic_grounding = dict(summary.get("semantic_grounding", {}))
+    searchable_session_count = int(semantic_grounding.get("searchable_session_count", 0))
+    grounding_match_rate = float(semantic_grounding.get("grounding_match_rate", 0.0))
+    if searchable_session_count > 0 and grounding_match_rate < 0.5:
+        findings.append(
+            _finding(
+                finding_id="low-semantic-grounding",
+                severity="medium",
+                message="Prompt search hits overlap weakly with the files referenced during the session.",
+                detail=(
+                    f"Only {semantic_grounding.get('grounded_session_count', 0)} of {searchable_session_count} "
+                    "searchable sessions had any overlap between Semble hits and referenced files."
+                ),
+                suggestion="Route to the owning seam sooner or tighten prompt wording so discovery targets the files that actually get read or edited.",
+                data=semantic_grounding,
+            )
+        )
+
     return FindingCollection(tuple(findings))
 
 
