@@ -44,8 +44,16 @@ Active follow-on plans from the 2026-05-15 architecture debt review:
 - `docs/exec-plans/completed/40-t-wave-6-pipeline-and-audit-catalog-extraction.md` covers the oversized pipeline and repo-audit coordination surfaces plus adjacent pipeline test debt.
 - `docs/exec-plans/completed/41-t-wave-6-app-config-and-doc-gardener-surface-split.md` covers the app-analysis, config, and doc-gardener control-surface split.
 - `docs/exec-plans/completed/42-t-wave-6-parser-module-normalization-split.md` covers the parser module-normalization mixin split.
-- `docs/exec-plans/active/50-t-wave-7-public-1-0-release-readiness.md` covers the cross-cutting `1.0.0` public-release contract, packaging rehearsal, version alignment, and community-facing repo polish required before the first stable tag.
-- `docs/exec-plans/active/58-t-wave-8-ci-workflow-consolidation-and-release-rehearsal.md` covers GitHub Actions consolidation, shared CI setup, release rehearsal wiring, and AI-only workflow-doc alignment.
+- `docs/exec-plans/active/50-t-wave-7-public-1-0-release-readiness.md` covers the cross-cutting `1.0.0` public-release contract, packaging rehearsal, version alignment, community-facing repo polish, and public-doc truthfulness required before the first stable tag.
+- `docs/exec-plans/active/58-t-wave-8-ci-workflow-consolidation-and-release-rehearsal.md` covers GitHub Actions consolidation, shared CI setup, release rehearsal wiring, AI-only workflow-doc alignment, and stale or ceremonial automation cleanup.
+
+Active follow-on plan from the 2026-05-19 test-suite, fixture, and helper review:
+
+- `docs/exec-plans/active/59-t-wave-8-test-suite-fixture-helper-hardening.md` covers behavior-over-implementation test hardening, duplicated helper and fixture scaffolding, and the highest-count suites that still provide low confidence.
+
+Active follow-on plan from the 2026-05-19 parser, diagnostics, and rule-engine review:
+
+- `docs/exec-plans/active/60-c-wave-parser-diagnostics-and-rule-engine-hardening.md` covers parser-location fidelity, structured validation notices, diagnostic projection visibility, and consolidation of competing parser or error-reporting styles.
 
 Active follow-on plans from the 2026-05-18 strict-typing inventory review:
 
@@ -58,7 +66,7 @@ Active follow-on plans from the 2026-05-18 strict-typing inventory review:
 
 Active follow-on plan from the 2026-05-19 repo-map and architecture review:
 
-- `docs/exec-plans/active/58-t-wave-8-repo-structure-and-architecture-alignment.md` covers canonical root-layout cleanup, architecture-doc alignment, the undocumented GUI and editor-facade surfaces, and stale `arch_linter` naming.
+- `docs/exec-plans/active/58-t-wave-8-repo-structure-and-architecture-alignment.md` covers canonical root-layout cleanup, architecture-doc alignment, the undocumented GUI and editor-facade surfaces, stale `arch_linter` naming, and one explicit map of the actual runtime architecture.
 
 Active follow-on plan from the 2026-05-19 security review:
 
@@ -74,7 +82,7 @@ Active follow-on plan from the 2026-05-19 CLI UX review:
 
 Active follow-on plan from the 2026-05-19 maintainability blind-spot review:
 
-- `docs/exec-plans/active/64-t-wave-8-maintainer-blind-spot-reconciliation.md` turns the broad review into one durable routing artifact, closes the remaining retired-TODO source-ledger seam in doc-gardener, and records which existing active plans own the other suspicious paths.
+- `docs/exec-plans/active/64-t-wave-8-maintainer-blind-spot-reconciliation.md` turns the broad review into one durable routing artifact, closes the remaining retired-TODO source-ledger seam in doc-gardener, records which existing active plans own the other suspicious paths, and names the active owners for duplicate abstractions, unused sophistication, disconnected systems, architecture entropy, hallucination residue, and runtime-architecture mapping.
 
 ---
 

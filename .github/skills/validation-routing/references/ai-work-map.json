@@ -911,6 +911,29 @@
     },
     {
       "ai_instruction_files": [
+        ".github/instructions/ratchet-policy.instructions.md",
+        ".github/instructions/repo-audit.instructions.md"
+      ],
+      "ai_summary": "Use when ratchet-policy wiring, debt ledgers, or full-audit change-proof enforcement changes.",
+      "command": "sattlint-repo-audit --profile full --check ratchet-policy --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map",
+      "estimated_cost": "low",
+      "id": "ratchet-policy",
+      "label": "Run ratchet policy for change-scoped debt and size enforcement",
+      "owner_surface": "ratchet-policy",
+      "owner_test_targets": [
+        "tests/test_ratchet_policy.py"
+      ],
+      "path_globs": [
+        "scripts/check_ratchet_policy.py",
+        "artifacts/analysis/coverage_ratchet.json",
+        "artifacts/analysis/structural_budget_ratchet.json",
+        "artifacts/analysis/file_debt_ratchet.json",
+        "pyproject.toml"
+      ],
+      "source": "repo-audit"
+    },
+    {
+      "ai_instruction_files": [
         ".github/instructions/agent-customizations.instructions.md",
         ".github/instructions/repo-audit.instructions.md"
       ],

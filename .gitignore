@@ -80,6 +80,7 @@ artifacts/tmp/repo-audit-full-*.stamp
 artifacts/tmp/repo-audit-full.latest
 artifacts/tmp/repo-audit-full.latest.meta
 artifacts/tmp/repo_audit_test_slice.*
+artifacts/tmp/*/
 artifacts/tmp/*.log
 artifacts/tmp/*.exit
 artifacts/tmp-corpus-debug/

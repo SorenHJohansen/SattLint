@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 ## Purpose / Big Picture
 
-This plan turns the 2026-05-19 repo-map and architecture review into a concrete cleanup slice. After this work lands, the repository root will match the canonical top-level layout enforced by repo audit, the short and long architecture docs will name the actual shipped surfaces, and a new contributor will be able to trace the CLI, GUI, LSP, editor-facing facade, and repo-audit surfaces from documentation straight to the owning files without guessing.
+This plan turns the 2026-05-19 repo-map and architecture review into a concrete cleanup slice. After this work lands, the repository root will match the canonical top-level layout enforced by repo audit, the short and long architecture docs will name the actual shipped surfaces, and a new contributor will be able to trace the CLI, GUI, LSP, editor-facing facade, and repo-audit surfaces from documentation straight to the owning files without guessing. The same docs should also distinguish documented architecture from actual runtime architecture so a maintainer can tell which entrypoints are central, which surfaces are preview-only, and which paths are stale or merely ceremonial.
 
 The observable proof is that the repository no longer tracks undocumented scratch or generated entries at the root, `sattlint-repo-audit --profile quick` no longer reports `unexpected-tracked-root-entry` or `tracked-generated-artifacts` for the current tree, and the docs in `AGENTS.md`, `docs/repo-map.md`, `docs/architecture.md`, and `ARCHITECTURE.md` all point at the current module names and package layout.
 
@@ -13,7 +13,8 @@ The observable proof is that the repository no longer tracks undocumented scratc
 - [x] (2026-05-19) Create the ExecPlan from the repo-map and architecture review. Confirm the main mismatches: undocumented `src/sattlint_gui/`, stale `arch_linter.py` references, incomplete documentation of `src/sattlint/editor_api.py`, and tracked root clutter outside the canonical allowlist.
 - [ ] Classify the tracked root clutter into reusable tooling versus disposable probe or generated residue, then remove or relocate every non-canonical entry.
 - [ ] Add ignore coverage so local Node dependencies and Pyright probe outputs stop reappearing at the repository root.
-- [ ] Update the architecture documentation stack so `AGENTS.md`, `docs/repo-map.md`, `docs/architecture.md`, and `ARCHITECTURE.md` describe the same shipped surfaces and module names.
+- [ ] Update the architecture documentation stack so `AGENTS.md`, `docs/repo-map.md`, `docs/architecture.md`, and `ARCHITECTURE.md` describe the same shipped surfaces, module names, and actual runtime ownership.
+- [ ] Produce one concise actual-runtime-architecture map across the architecture docs so maintainers can see the real entrypoints, central modules, high-level call flow, and any preview-only or disconnected surfaces.
 - [ ] Re-run focused repo-audit, context-health, and architecture-lint proof and record the observed results in this file.
 
 ## Surprises & Discoveries
@@ -29,6 +30,9 @@ The observable proof is that the repository no longer tracks undocumented scratc
 
 - Observation: the root ignore rules do not currently protect the repo from the exact residue found in the review.
   Evidence: `.gitignore` ignores `build/`, `dist/`, `coverage.xml`, and `htmlcov/`, but it does not ignore `node_modules/` or the root-level `tmp-pyright-*` and `temp_pyright*` families that are already present in the tree.
+
+- Observation: the current architecture docs describe shipped surfaces better than they describe runtime centrality.
+  Evidence: the reviewed docs name the CLI, GUI, LSP, editor facade, and repo-audit packages, but they do not yet give one concise map from checked-in entrypoints to the first owning modules or distinguish validated central paths from preview-only or disconnected surfaces.
 
 - Observation: several tracked directories and files behave like generated or machine-local residue rather than stable source.
   Evidence: the tracked tree currently includes `node_modules/`, `artifacts/audit-full-current.tmp-g_ap8njm/`, root-level probe outputs such as `pyright_output.json` and `tmp-pyright-devtools-strict.json`, and generated reports such as `artifacts/generated/precommit-fast-audit/status.json` and `artifacts/generated/repo-health.json`.
@@ -49,6 +53,10 @@ The observable proof is that the repository no longer tracks undocumented scratc
 - Decision: document `src/sattlint/editor_api.py` as a compatibility facade distinct from `src/sattlint/core/`.
   Rationale: the review found that the editor-facing boundary is currently split across those paths. Hiding `editor_api.py` keeps the docs shorter but makes the actual entry surface harder to find.
   Date/Author: 2026-05-19 / Copilot (GPT-5.4)
+
+- Decision: add one explicit actual-runtime-architecture map instead of letting several partial docs imply it indirectly.
+  Rationale: AI-generated repositories can accumulate documented, intended, and actual architectures at the same time. One concise runtime map is cheaper to keep honest than several aspirational descriptions.
+  Date/Author: 2026-05-20 / Copilot (GPT-5.4)
 
 - Decision: rename stale doc references to `layer_linter.py` instead of restoring an `arch_linter.py` alias.
   Rationale: the current code, tests, and published entrypoint already use `layer_linter`. Reintroducing the old name would expand the compatibility surface for no user benefit.
@@ -118,7 +126,7 @@ After the root cleanup, harden the ignore rules. Update `.gitignore` so the exac
 
 As part of the same pass, decide whether `codegraph-index.surql` is local-only output in this repository. If it is, ignore it explicitly so CodeGraph use does not keep reintroducing root noise. Also add ignore coverage for `artifacts/audit-full-current.tmp-*/` so future full-audit runs do not recreate tracked temp directories.
 
-Then align the docs. Update `AGENTS.md` so the quick-reference purpose sentence and any repo-map guidance acknowledge the GUI surface where appropriate. Update `docs/repo-map.md` to add `src/sattlint_gui/` and to name `src/sattlint/editor_api.py` explicitly as the editor-facing compatibility facade, separate from `src/sattlint/core/`. Update `docs/architecture.md` to include the same surfaces in the short layering summary. Update `ARCHITECTURE.md` to replace `arch_linter.py` with `layer_linter.py`, keep the GUI section accurate, and make the editor-facing boundary description consistent with the short docs.
+Then align the docs. Update `AGENTS.md` so the quick-reference purpose sentence and any repo-map guidance acknowledge the GUI surface where appropriate. Update `docs/repo-map.md` to add `src/sattlint_gui/` and to name `src/sattlint/editor_api.py` explicitly as the editor-facing compatibility facade, separate from `src/sattlint/core/`. Update `docs/architecture.md` to include the same surfaces in the short layering summary. Update `ARCHITECTURE.md` to replace `arch_linter.py` with `layer_linter.py`, keep the GUI section accurate, and make the editor-facing boundary description consistent with the short docs. As part of that same pass, add one concise actual-runtime-architecture map that starts from the checked-in entrypoints, names the first owning modules they reach, and makes preview-only or disconnected surfaces explicit instead of implied.
 
 Do not weaken `docs/quality-gates.md`. The structural review already found that its root-hygiene rule is correct. The implementation goal is to make the repository and the other architecture docs agree with that policy, not to broaden the allowlist to fit accidental residue.
 
@@ -154,7 +162,7 @@ Inspect the resulting findings and confirm that the structural findings `unexpec
 
 ## Validation and Acceptance
 
-Acceptance is behavioral, not editorial. A human reviewer should be able to open `AGENTS.md`, `docs/repo-map.md`, `docs/architecture.md`, and `ARCHITECTURE.md` and find the CLI, GUI, LSP, editor-facing facade, repo-audit, and layer-lint surfaces without guessing or cross-correcting stale names. `git ls-tree --name-only HEAD` should no longer show `node_modules` or the reviewed root probe clutter. The quick repo-audit run for this slice must stop emitting the structural findings `unexpected-tracked-root-entry` and `tracked-generated-artifacts` for the current tracked tree. The focused pytest and context-health commands above must pass.
+Acceptance is behavioral, not editorial. A human reviewer should be able to open `AGENTS.md`, `docs/repo-map.md`, `docs/architecture.md`, and `ARCHITECTURE.md` and find the CLI, GUI, LSP, editor-facing facade, repo-audit, and layer-lint surfaces without guessing or cross-correcting stale names. Those docs must also make the actual runtime architecture legible enough that a maintainer can tell which entrypoints are live, which modules are central, what calls what at a high level, and which surfaces are preview-only or disconnected. `git ls-tree --name-only HEAD` should no longer show `node_modules` or the reviewed root probe clutter. The quick repo-audit run for this slice must stop emitting the structural findings `unexpected-tracked-root-entry` and `tracked-generated-artifacts` for the current tracked tree. The focused pytest and context-health commands above must pass.
 
 For the artifact half of the slice, acceptance also means contributors can tell which files are canonical inputs and which are regenerate-on-demand outputs. In practice that means the remaining checked-in `artifacts/analysis/` and `metrics/` files must each have an obvious policy or workflow consumer, while disposable snapshots such as temp audit directories, root probe files, and stale generated health outputs have been removed or moved behind stable generation commands.
 

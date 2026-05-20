@@ -23,6 +23,7 @@ REPO_AUDIT_FINDING_CHECK_IDS = (
     "harness-freshness",
     "coverage",
     "public-readiness",
+    "ratchet-policy",
     "verify-recommendations",
 )
 REPO_AUDIT_SPECIAL_CHECK_IDS = ("cli-consistency",)
@@ -320,6 +321,27 @@ def build_repo_audit_finding_check_definitions(
             "owner_test_targets": ("tests/test_repo_audit.py",),
             **_ai_metadata(
                 "Use when top-level repo hygiene, public metadata, or publish-facing docs may drift.",
+                ".github/instructions/repo-audit.instructions.md",
+            ),
+        },
+        {
+            "id": "ratchet-policy",
+            "label": "Run ratchet policy for change-scoped debt and size enforcement",
+            "profiles": ("full",),
+            "runner": repo_audit._run_ratchet_policy_check,
+            "owner_surface": "ratchet-policy",
+            "estimated_cost": "low",
+            "path_globs": (
+                "scripts/check_ratchet_policy.py",
+                "artifacts/analysis/coverage_ratchet.json",
+                "artifacts/analysis/structural_budget_ratchet.json",
+                "artifacts/analysis/file_debt_ratchet.json",
+                "pyproject.toml",
+            ),
+            "owner_test_targets": ("tests/test_ratchet_policy.py",),
+            **_ai_metadata(
+                "Use when ratchet-policy wiring, debt ledgers, or full-audit change-proof enforcement changes.",
+                ".github/instructions/ratchet-policy.instructions.md",
                 ".github/instructions/repo-audit.instructions.md",
             ),
         },
