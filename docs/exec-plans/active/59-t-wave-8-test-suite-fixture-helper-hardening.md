@@ -11,7 +11,7 @@ The observable proof is that the corpus, artifact-contract, LSP workspace/naviga
 ## Progress
 
 - [x] (2026-05-19) Create the ExecPlan from the test-suite, fixture, and helper review. Confirm the main risks: wrapper-style aggregator modules, direct testing of private helpers, over-coupled large fixture builders, duplicated micro-scaffolding, and missing negative-path scenarios in corpus, artifact-contract, LSP ambiguity, app integration, and GUI smoke coverage.
-- [ ] Stabilize the highest-risk helper and fixture seams in the touched areas without broad rewrites.
+- [x] (2026-05-20) Add negative-path manifest loading tests to tests/parser/test_corpus.py: malformed JSON (json.JSONDecodeError), non-object root (ValueError), missing case_id (KeyError), missing target_file (KeyError), unsupported mode captured as execution_error, discover_corpus_manifests on missing directory, and sorted-file discovery. Add artifact-contract drift-detection tests to tests/test_artifact_contracts.py: assert_findings_collection fails on wrong kind, wrong schema_version, wrong finding_count, wrong rule_ids; assert_corpus_results_report fails on wrong failed_case_ids; assert_matches_golden fails on extra or missing keys; assert_analysis_diff_report fails on wrong new_rule_ids.
 - [ ] Add the missing negative and ambiguity scenarios in the corpus, artifact-contract, LSP, app-menu, and GUI slices.
 - [ ] Identify the touched high-count, low-confidence suites and replace implementation-coupled assertions with behavior-facing coverage where a stable seam exists.
 - [ ] Reduce duplication in the variable/analyzer helper tests by centralizing repeated micro-builders used by the touched files.

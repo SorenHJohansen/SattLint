@@ -1,0 +1,36 @@
+{
+  "task_id": "t-59-test-hardening",
+  "stage": "executor",
+  "branch": "agents/next-task-for-sattlint-ai",
+  "commit": "bf2240abd83646ee267059968da643981141302b",
+  "files_changed": [
+    "tests/parser/test_corpus.py",
+    "tests/test_artifact_contracts.py",
+    "docs/exec-plans/active/59-t-wave-8-test-suite-fixture-helper-hardening.md"
+  ],
+  "summary": "Added 7 negative-path corpus manifest tests (malformed JSON, non-object root, missing case_id/target_file, unsupported mode as execution_error, missing directory, sorted discovery) and 8 artifact-contract drift-detection tests (wrong kind, schema_version, finding_count, rule_ids, failed_case_ids, extra/missing golden key, wrong new_rule_ids). 29 tests pass. Ruff and pre-commit clean.",
+  "known_risks": [],
+  "required_tests": [
+    ".venv\\Scripts\\python.exe -m pytest --no-cov tests/parser/test_corpus.py tests/test_artifact_contracts.py -x -q --tb=short"
+  ],
+  "validation_status": {
+    "state": "passed",
+    "commands": [
+      ".venv\\Scripts\\python.exe -m pytest --no-cov tests/parser/test_corpus.py tests/test_artifact_contracts.py -x -q --tb=short",
+      ".venv\\Scripts\\ruff check tests/parser/test_corpus.py tests/test_artifact_contracts.py",
+      ".venv\\Scripts\\python.exe -m pre_commit run --files tests/parser/test_corpus.py tests/test_artifact_contracts.py"
+    ],
+    "notes": [
+      "29 tests passed (14 original + 15 new).",
+      "Ruff: all checks passed.",
+      "Pre-commit: passed (CRLF normalized on first run, clean on second).",
+      "Pyright errors in test files are pre-existing tmp_path/monkeypatch unknown-type debt — same pattern at lines 100-447 in original file."
+    ]
+  },
+  "reviewer_notes": [
+    "No production code changed. Only test files and exec-plan updated.",
+    "Negative-path tests confirm exception types raised by load_corpus_manifest and execute_corpus_case.",
+    "Drift tests confirm each assertion helper in artifact_assertions.py raises AssertionError on wrong payloads."
+  ],
+  "status": "validated"
+}
