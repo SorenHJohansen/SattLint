@@ -38,6 +38,9 @@ Homepage = "https://github.com/SorenHJohansen/SattLint"
 Repository = "https://github.com/SorenHJohansen/SattLint"
 Issues = "https://github.com/SorenHJohansen/SattLint/issues"
 Documentation = "https://github.com/SorenHJohansen/SattLint#readme"
+Support = "https://github.com/SorenHJohansen/SattLint/blob/main/SUPPORT.md"
+Changelog = "https://github.com/SorenHJohansen/SattLint/blob/main/CHANGELOG.md"
+Security = "https://github.com/SorenHJohansen/SattLint/security/policy"
 
 [project.optional-dependencies]
 lsp = [

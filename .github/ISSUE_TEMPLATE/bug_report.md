@@ -1,38 +1,31 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Report a bug in a stable or preview SattLint surface
 title: ''
 labels: ''
 assignees: ''
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+Use [SUPPORT.md](../../SUPPORT.md) for issue-routing guidance and [SECURITY.md](../../SECURITY.md) if the report might involve a vulnerability, secret, or private-path exposure.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+**What happened?**
+Describe the bug clearly and include the affected surface, for example `sattlint syntax-check`, `sattlint repo-audit`, `sattlint-lsp`, the interactive menu, or the GUI.
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+**How do we reproduce it?**
+List the smallest steps or commands that reproduce the problem.
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+**What did you expect instead?**
+Describe the expected behavior.
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+**Version and environment**
+- SattLint version from `sattlint --version`:
+- Install method (`pipx`, editable install, source checkout, other):
+- Operating system:
+- Python version:
 
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
+**Relevant command or file**
+Paste the exact command, config fragment, or safe-to-share SattLine sample that triggers the issue.
 
 **Additional context**
-Add any other context about the problem here.
+Add logs, stack traces, screenshots, or other context here.
