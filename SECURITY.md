@@ -1,5 +1,7 @@
 # Security Policy
 
+For non-security bug reports, feature ideas, and usage questions, use the routing in [SUPPORT.md](SUPPORT.md) instead of this policy.
+
 ## Supported Versions
 
 Security fixes are applied to the latest released version on a best-effort basis.

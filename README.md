@@ -1,8 +1,26 @@
 # SattLint
 
-SattLint is a cross-platform tool for people who write SattLine and want help checking code, tracing dependencies, and generating Word documentation.
+SattLint is a Python toolkit for SattLine projects. It can syntax-check individual files, audit repository health, run deeper analysis, generate DOCX documentation, and expose a language-server entrypoint.
 
-This guide is written for coworkers who just want to get it running quickly. No Git knowledge is needed.
+## Public support contract
+
+- **Stable on Windows and Linux:** `sattlint --version`, `sattlint syntax-check`, `sattlint repo-audit`, and `sattlint-lsp`
+- **Preview:** the interactive CLI menu, `sattlint-gui`, config-driven analysis and documentation workflows, and the local VS Code client in [vscode/sattline-vscode](vscode/sattline-vscode)
+- **Internal-only:** AI coordination files, generated audit artifacts, and maintainer automation
+
+For the full contract, see the [public support matrix](docs/references/public-support-matrix.md). For help and issue routing, see [SUPPORT.md](SUPPORT.md). For vulnerabilities, see [SECURITY.md](SECURITY.md). For contributor expectations, see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). For development setup, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+## Quick start from a source checkout
+
+The current public branch is still installed from source. To evaluate it today:
+
+1. Clone or download this repository.
+2. Install `pipx`.
+3. Run `pipx install .` from the repository root.
+4. Verify the install with `sattlint --version`.
+5. Run `sattlint syntax-check tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s`.
 
 ---
 
@@ -51,28 +69,26 @@ SattLint can help you:
 
 ## What You Need
 
-- Windows or Linux
+- Windows or Linux for the stable public command surface
 - Python **3.13 or newer**
 - **pipx** (used to install and run SattLint cleanly)
+- macOS only on a contributor best-effort basis for now
 - A local copy of your SattLine code
 
 ---
 
-## Installation (pipx only)
+## Installation from this repository
 
-### 1. Get SattLint
+### 1. Get the source
 
-You need a local copy of the SattLint folder.
+Clone the repository:
 
-Use one of these:
+```bash
+git clone https://github.com/SorenHJohansen/SattLint.git
+cd SattLint
+```
 
-- Download the repository as a ZIP file and extract it
-- Copy the SattLint folder from a coworker or shared drive
-
-Example locations:
-
-- Linux: `~/SattLint`
-- Windows: `C:\Tools\SattLint`
+If you prefer not to use Git, download the repository ZIP from GitHub and extract it to a working folder first.
 
 ---
 
@@ -100,23 +116,32 @@ Restart your terminal after this.
 
 ### 3. Install SattLint
 
-Open a terminal **inside the SattLint folder** and run:
+Open a terminal in the repository root and run:
 
 ```bash
 pipx install .
 ```
 
-This installs SattLint globally (but isolated), so you can run it from anywhere.
+This installs SattLint globally but in an isolated environment, so you can run it from anywhere.
 
 ---
 
-### 4. Start SattLint
+### 4. Verify the stable command surface
+
+```bash
+sattlint --version
+sattlint syntax-check tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s
+```
+
+---
+
+### 5. Try the preview workflows
 
 ```bash
 sattlint
 ```
 
-That opens the interactive menu.
+That opens the interactive menu. The menu and GUI are preview surfaces in the current public contract.
 
 For the desktop GUI shell:
 
@@ -124,7 +149,7 @@ For the desktop GUI shell:
 sattlint-gui
 ```
 
-The GUI reuses the same config file and analysis helpers as the CLI. It currently covers setup editing, self-check and cache tooling, variable analysis launch, and non-interactive DOCX generation from configured targets.
+The GUI reuses the same config file and analysis helpers as the CLI. It currently covers setup editing, self-check and cache tooling, variable analysis launch, and non-interactive DOCX generation from configured targets, but it remains preview-only.
 
 For non-interactive use, SattLint also exposes subcommands:
 
@@ -148,22 +173,24 @@ sattlint --config path/to/config.toml validate-config
 sattlint --quiet repo-audit --profile quick
 ```
 
-For the full command surface and script entry points, see `docs/references/cli-commands.md`.
+For the full command surface and script entry points, see [docs/references/cli-commands.md](docs/references/cli-commands.md).
 
-For repository dashboards and AI workflow contracts, see `docs/quality-gates.md`, `docs/ai-workflows.md`, `.ai/tasks/task-contract.schema.json`, and `.ai/handoffs/handoff.schema.json`.
+For contributor-only dashboards and AI workflow contracts, see [docs/quality-gates.md](docs/quality-gates.md), [docs/ai-workflows.md](docs/ai-workflows.md), [.ai/tasks/task-contract.schema.json](.ai/tasks/task-contract.schema.json), and [.ai/handoffs/handoff.schema.json](.ai/handoffs/handoff.schema.json).
 
 ---
 
 ## Updating SattLint
 
-If you receive a newer version:
+If you installed from a source checkout:
 
-1. Replace your SattLint folder with the new version
+1. Update your local checkout.
 2. Run:
 
 ```bash
-pipx reinstall sattlint
+pipx install --force .
 ```
+
+When the published package becomes available, installed releases should use `pipx upgrade sattlint` instead.
 
 ---
 
@@ -224,6 +251,8 @@ sattlint validate-config
 sattlint-gui
 ```
 
+`syntax-check` and `repo-audit` are part of the current stable contract. The interactive menu, GUI, analysis, formatting, validation, and DOCX-generation workflows remain preview surfaces.
+
 Main menu:
 
 - `1) Analyze` -> run curated checks, variable reports, and registry-backed analyzers
@@ -269,6 +298,8 @@ Exit codes:
 
 ## Generate Word Documentation
 
+This workflow is preview-only in the current public support contract.
+
 1. Start SattLint
 2. Choose `2) Documentation`
 3. Choose `1) Generate documentation`
@@ -281,7 +312,7 @@ Output is a `.docx` file.
 
 ## Desktop GUI
 
-The SattLint Desktop GUI provides a graphical interface for core analysis and documentation workflows.
+The SattLint Desktop GUI is a preview surface that provides a graphical interface for core analysis and documentation workflows.
 
 ### Launch
 
@@ -381,7 +412,7 @@ Restart terminal.
 Install Python 3.13+ and reinstall:
 
 ```bash
-pipx reinstall sattlint
+pipx install --force .
 ```
 
 ---

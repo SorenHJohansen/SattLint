@@ -15,12 +15,12 @@ The observable proof is concrete. From a clean checkout and a built distribution
 - [x] (2026-05-15) Captured the main public-facing gaps: the README still speaks to coworkers and local-folder installs, `CODE_OF_CONDUCT.md` and `SUPPORT.md` do not exist, and the publish workflow builds and runs `twine check` but does not smoke-install the built artifact before publishing.
 - [x] (2026-05-15) Verified that the current worktree is not a clean release baseline: attempting `sattlint.devtools.repo_audit --check public-readiness` crashed because locally modified MMS analyzer files are out of sync. Release sign-off must therefore use a clean checkout or CI artifact, not the current dirty worktree.
 - [x] (2026-05-15) Chose calendar versioning for stable public releases: use PEP 440-compatible `YYYY.M` for the first stable release in a month, and `YYYY.M.N` only when multiple stable releases ship in that same month.
-- [ ] Define the stable-release support contract and classify every shipped surface as stable, preview, or internal-only.
+- [x] (2026-05-20) Published the first repo-owned support contract in `docs/references/public-support-matrix.md`, classifying stable, preview, and internal-only surfaces and narrowing stable support to Windows/Linux plus the CLI bootstrap, strict `syntax-check`, `repo-audit`, and Python LSP entrypoints.
 - [ ] Rewrite the public-facing top-level docs so an external user can install, evaluate, and support SattLint without internal context, and so release-facing docs stop describing aspirational or disconnected behavior as if it were stable.
-- [ ] Add the missing community-health files and wire them into the GitHub-facing issue and support flow.
+- [x] (2026-05-20) Added `CODE_OF_CONDUCT.md`, `SUPPORT.md`, and `.github/ISSUE_TEMPLATE/config.yml`, and rewrote the issue templates so public bug, feature, support, and security reports route to the right policy documents.
 - [ ] Align all version surfaces across package metadata, CLI, LSP, changelog, and the local VS Code client docs.
 - [ ] Add a repo-owned release rehearsal path that builds, validates, smoke-installs, and exercises the shipped artifact before any publish step runs.
-- [ ] Extend repo-audit or adjacent validation so the new calendar-version public-readiness requirements stay enforceable after the release.
+- [x] (2026-05-20) Extended the public-readiness repo-audit checks to require the new support docs and README links to support, security, and support-matrix policy docs, with focused regression coverage in `tests/_repo_audit_part3.py`.
 - [ ] Run one clean release-candidate rehearsal, record the proof, then cut the first stable calendar-version tag from the validated path.
 
 ## Surprises & Discoveries
@@ -75,9 +75,9 @@ Date/Author: 2026-05-20 / Copilot (GPT-5.4)
 
 ## Outcomes & Retrospective
 
-At creation time, no release-readiness code or docs have changed yet. The current outcome is a concrete cross-cutting plan that narrows the first stable calendar-versioned release to a realistic public contract: stable packaging, version consistency, public-facing docs, enforceable community and support policy, and a rehearsable release gate.
+The first implemented slice now defines the public support contract in-repo, adds missing community-health files, rewrites the top-level README away from coworker-only language, and routes GitHub issues through explicit support and security policy documents. Repo-audit also enforces the new public support docs and README links so later release work cannot silently drift back to an undocumented state.
 
-The main risk is over-scoping. This plan explicitly avoids waiting for every non-blocking structural cleanup, because that would delay the first stable calendar-versioned release without materially improving the first external-user experience. The follow-through work should stay focused on what an outside user and maintainer can actually observe.
+The main remaining risk is still over-scoping. This plan should keep treating release readiness as observable behavior: consistent versions, honest public docs, rehearsable build-and-install proof, and a publish path that matches the rehearsal. Larger refactors can continue separately as long as they do not weaken that contract.
 
 ## Context and Orientation
 
