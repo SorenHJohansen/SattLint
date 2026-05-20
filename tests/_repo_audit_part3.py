@@ -1,8 +1,9 @@
+# pyright: reportPrivateUsage=false
 # ruff: noqa: F403, F405
 from ._repo_audit_test_support import *
 
 
-def test_find_pipeline_findings_prefers_normalized_findings_report(tmp_path):
+def test_find_pipeline_findings_prefers_normalized_findings_report(tmp_path: Path):
     sample = tmp_path / "tests" / "test_sample.py"
     sample.parent.mkdir(parents=True)
     sample.write_text(
@@ -25,7 +26,7 @@ def test_find_pipeline_findings_prefers_normalized_findings_report(tmp_path):
     assert findings[0].detail == "Matched local dependency marker .venv/"
 
 
-def test_find_host_specific_test_assumptions_flags_skipif_and_os_branch(tmp_path):
+def test_find_host_specific_test_assumptions_flags_skipif_and_os_branch(tmp_path: Path):
     sample = tmp_path / "tests" / "test_sample.py"
     sample.parent.mkdir(parents=True)
     sample.write_text(
@@ -55,7 +56,7 @@ def test_find_host_specific_test_assumptions_flags_skipif_and_os_branch(tmp_path
     assert 'os.name == "nt"' in (findings[1].detail or "")
 
 
-def test_parse_coverage_findings_ignores_untracked_coverage_xml(tmp_path):
+def test_parse_coverage_findings_ignores_untracked_coverage_xml(tmp_path: Path):
     coverage_path = tmp_path / "coverage.xml"
     coverage_path.write_text(
         """
@@ -77,7 +78,7 @@ def test_parse_coverage_findings_ignores_untracked_coverage_xml(tmp_path):
     assert findings == []
 
 
-def test_find_public_readiness_findings_ignores_untracked_workflow(tmp_path):
+def test_find_public_readiness_findings_ignores_untracked_workflow(tmp_path: Path):
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text('[project]\nname = "demo"\nversion = "0.1.0"\n', encoding="utf-8")
     workflow_path = tmp_path / ".github" / "workflows" / "ci.yml"
@@ -92,7 +93,7 @@ def test_find_public_readiness_findings_ignores_untracked_workflow(tmp_path):
     assert any(finding.id == "missing-ci-workflow" for finding in findings)
 
 
-def test_find_public_readiness_findings_flags_unexpected_tracked_root_entries(tmp_path):
+def test_find_public_readiness_findings_flags_unexpected_tracked_root_entries(tmp_path: Path):
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
         '[project]\nname = "demo"\nversion = "0.1.0"\n[project.urls]\nRepository = "https://example.invalid/demo"\n',
@@ -120,7 +121,76 @@ def test_find_public_readiness_findings_flags_unexpected_tracked_root_entries(tm
     assert root_hygiene_finding.detail == "_coverage_check.py, _fix_cli.py"
 
 
-def test_audit_repository_leaks_only_filters_findings_and_skips_pipeline(tmp_path):
+def test_find_public_readiness_findings_flags_missing_public_support_docs(tmp_path: Path):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "demo"\nversion = "0.1.0"\n[project.urls]\nRepository = "https://example.invalid/demo"\n',
+        encoding="utf-8",
+    )
+
+    findings = repo_audit._find_public_readiness_findings(
+        tmp_path,
+        tracked_paths=(
+            "README.md",
+            "LICENSE",
+            "CONTRIBUTING.md",
+            ".gitignore",
+            "pyproject.toml",
+            ".github/workflows/ci.yml",
+        ),
+    )
+
+    support_finding = next(finding for finding in findings if finding.id == "missing-public-support-file")
+    assert support_finding.path == "SECURITY.md"
+    assert support_finding.severity == "high"
+    assert "CODE_OF_CONDUCT.md" in (support_finding.detail or "")
+    assert "docs/references/public-support-matrix.md" in (support_finding.detail or "")
+
+
+def test_find_public_readiness_findings_flags_missing_readme_public_links(tmp_path: Path):
+    (tmp_path / "README.md").write_text("# Demo\n\nInstall from source.\n", encoding="utf-8")
+    (tmp_path / "LICENSE").write_text("MIT\n", encoding="utf-8")
+    (tmp_path / "CONTRIBUTING.md").write_text("# Contributing\n", encoding="utf-8")
+    (tmp_path / "SECURITY.md").write_text("# Security\n", encoding="utf-8")
+    (tmp_path / "CODE_OF_CONDUCT.md").write_text("# Conduct\n", encoding="utf-8")
+    (tmp_path / "SUPPORT.md").write_text("# Support\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("dist/\n", encoding="utf-8")
+    workflow_path = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow_path.parent.mkdir(parents=True)
+    workflow_path.write_text("name: CI\n", encoding="utf-8")
+    support_matrix = tmp_path / "docs" / "references" / "public-support-matrix.md"
+    support_matrix.parent.mkdir(parents=True)
+    support_matrix.write_text("# Matrix\n", encoding="utf-8")
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "demo"\nversion = "0.1.0"\n[project.urls]\nRepository = "https://example.invalid/demo"\n',
+        encoding="utf-8",
+    )
+
+    findings = repo_audit._find_public_readiness_findings(
+        tmp_path,
+        tracked_paths=(
+            "README.md",
+            "LICENSE",
+            "CONTRIBUTING.md",
+            "SECURITY.md",
+            "CODE_OF_CONDUCT.md",
+            "SUPPORT.md",
+            ".gitignore",
+            "pyproject.toml",
+            ".github/workflows/ci.yml",
+            "docs/references/public-support-matrix.md",
+        ),
+    )
+
+    link_finding = next(finding for finding in findings if finding.id == "missing-readme-public-links")
+    assert link_finding.path == "README.md"
+    assert "SUPPORT.md" in (link_finding.detail or "")
+    assert "SECURITY.md" in (link_finding.detail or "")
+    assert "docs/references/public-support-matrix.md" in (link_finding.detail or "")
+
+
+def test_audit_repository_leaks_only_filters_findings_and_skips_pipeline(tmp_path: Path):
     leak_finding = repo_audit.Finding(
         "hardcoded-windows-path",
         "portability",

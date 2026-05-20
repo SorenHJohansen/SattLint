@@ -208,6 +208,26 @@ def _find_public_readiness_findings(
                 )
             )
 
+    support_files = ["SECURITY.md", "CODE_OF_CONDUCT.md", "SUPPORT.md", "docs/references/public-support-matrix.md"]
+    missing_support_files = [
+        filename
+        for filename in support_files
+        if not ((root / filename).exists() if tracked_path_set is None else filename in tracked_path_set)
+    ]
+    if missing_support_files:
+        findings.append(
+            repo_audit.Finding(
+                id="missing-public-support-file",
+                category="public-readiness",
+                severity="high",
+                confidence="high",
+                message="Public support documentation is incomplete.",
+                path=missing_support_files[0],
+                detail=", ".join(missing_support_files[:5]) + (" ..." if len(missing_support_files) > 5 else ""),
+                suggestion="Add the missing security, conduct, support, and support-matrix docs before publishing.",
+            )
+        )
+
     pyproject = repo_audit._load_pyproject(root)
     urls = pyproject.get("project", {}).get("urls", {})
     if not urls:
@@ -222,6 +242,40 @@ def _find_public_readiness_findings(
                 suggestion="Add homepage, repository, and issue tracker URLs.",
             )
         )
+
+    readme_path = root / "README.md"
+    if readme_path.exists():
+        try:
+            readme_text = readme_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            findings.append(
+                repo_audit.Finding(
+                    id="unreadable-public-file",
+                    category="public-readiness",
+                    severity="medium",
+                    confidence="medium",
+                    message="README.md could not be read to validate public support links.",
+                    path="README.md",
+                    detail=str(exc),
+                    suggestion="Ensure README.md is readable as UTF-8 text.",
+                )
+            )
+        else:
+            required_readme_links = ["SUPPORT.md", "SECURITY.md", "docs/references/public-support-matrix.md"]
+            missing_readme_links = [link for link in required_readme_links if link not in readme_text]
+            if missing_readme_links:
+                findings.append(
+                    repo_audit.Finding(
+                        id="missing-readme-public-links",
+                        category="public-readiness",
+                        severity="medium",
+                        confidence="high",
+                        message="README.md does not point users at the public support policy documents.",
+                        path="README.md",
+                        detail=", ".join(missing_readme_links),
+                        suggestion="Link README.md to SUPPORT.md, SECURITY.md, and the public support matrix.",
+                    )
+                )
 
     if tracked_path_set is None:
         workflow_dir = root / ".github" / "workflows"
