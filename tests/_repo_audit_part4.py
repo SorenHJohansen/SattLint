@@ -331,6 +331,7 @@ def test_collect_custom_findings_aggregates_scanners_and_filters_repo_audit_sour
         patch.object(repo_audit, "_find_logging_findings", return_value=[logging_finding]) as logging_findings,
         patch.object(repo_audit, "_find_ignored_repo_path_references", return_value=[]) as ignored_path_refs,
         patch.object(repo_audit, "_run_harness_freshness_check", return_value=[]),
+        patch.object(repo_audit, "_run_ratchet_policy_check", return_value=[]),
         patch.object(repo_audit_entrypoints, "_run_verify_recommendations_check", return_value=[]),
         patch.object(repo_audit, "_parse_coverage_findings", return_value=[docs_finding]) as coverage_findings,
         patch.object(
