@@ -1,0 +1,26 @@
+{
+  "task_id": "t-59-test-hardening",
+  "title": "T-59 Test Hardening — corpus negative-path and contract drift tests",
+  "owner": "Copilot CLI",
+  "stage": "executor",
+  "branch": "agents/next-task-for-sattlint-ai",
+  "worktree": ".",
+  "summary": "Add negative-path corpus manifest tests and artifact-contract drift-detection tests.",
+  "files": [
+    "tests/parser/test_corpus.py",
+    "tests/test_artifact_contracts.py",
+    "docs/exec-plans/active/59-t-wave-8-test-suite-fixture-helper-hardening.md"
+  ],
+  "acceptance_criteria": [
+    "7 new negative-path tests in test_corpus.py cover malformed JSON, non-object root, missing fields, unsupported mode, and discover_corpus_manifests edge cases.",
+    "8 new drift-detection tests in test_artifact_contracts.py prove each assertion helper raises AssertionError on incorrect payloads.",
+    "29 tests pass in both files combined.",
+    "Ruff clean; pre-commit passes."
+  ],
+  "risks": [],
+  "validation": [
+    ".venv\\Scripts\\python.exe -m pytest --no-cov tests/parser/test_corpus.py tests/test_artifact_contracts.py -x -q --tb=short"
+  ],
+  "status": "done",
+  "handoff_path": ".ai/handoffs/t-59-test-hardening.json"
+}

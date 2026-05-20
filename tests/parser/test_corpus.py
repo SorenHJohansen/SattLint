@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, SemanticIssue, SemanticRule
 from sattlint.devtools.corpus import (
     CORPUS_RESULTS_FILENAME,
@@ -527,6 +529,91 @@ def test_print_cli_summary_includes_findings_schema(capsys):
     assert "Corpus cases: 2" in output
     assert "Failed cases: 1" in output
     assert "Corpus results: <external>/analysis/corpus_results.json" in output
+
+
+# ---------------------------------------------------------------------------
+# Negative-path manifest loading
+# ---------------------------------------------------------------------------
+
+
+def test_load_corpus_manifest_raises_on_malformed_json(tmp_path):
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not valid json", encoding="utf-8")
+
+    with pytest.raises(json.JSONDecodeError):
+        load_corpus_manifest(bad)
+
+
+def test_load_corpus_manifest_raises_when_root_is_not_object(tmp_path):
+    bad = tmp_path / "array.json"
+    bad.write_text("[1, 2, 3]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Expected JSON object"):
+        load_corpus_manifest(bad)
+
+
+def test_load_corpus_manifest_raises_when_case_id_missing(tmp_path):
+    bad = tmp_path / "no-id.json"
+    bad.write_text(
+        json.dumps({"target_file": "tests/fixtures/corpus/valid/UnusedVariable.s"}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(KeyError):
+        load_corpus_manifest(bad)
+
+
+def test_load_corpus_manifest_raises_when_target_file_missing(tmp_path):
+    bad = tmp_path / "no-target.json"
+    bad.write_text(json.dumps({"case_id": "no-target"}), encoding="utf-8")
+
+    with pytest.raises(KeyError):
+        load_corpus_manifest(bad)
+
+
+def test_execute_corpus_case_captures_unsupported_mode_as_execution_error(tmp_path):
+    manifest_path = tmp_path / "bad-mode.json"
+    source = tmp_path / "Program.s"
+    source.write_text("placeholder", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "case_id": "bad-mode-case",
+                "target_file": "Program.s",
+                "mode": "turbo",
+                "expectation": {"expected_finding_ids": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = execute_corpus_case(manifest_path, tmp_path / "artifacts", repo_root=tmp_path)
+
+    assert result.execution_error is not None
+    assert "Unsupported corpus mode" in result.execution_error
+    assert result.passed is False
+
+
+def test_discover_corpus_manifests_returns_empty_when_directory_missing(tmp_path):
+    from sattlint.devtools.corpus import discover_corpus_manifests
+
+    result = discover_corpus_manifests(tmp_path / "nonexistent")
+
+    assert result == ()
+
+
+def test_discover_corpus_manifests_returns_sorted_json_files(tmp_path):
+    from sattlint.devtools.corpus import discover_corpus_manifests
+
+    manifests_dir = tmp_path / "manifests"
+    manifests_dir.mkdir()
+    (manifests_dir / "b-case.json").write_text("{}", encoding="utf-8")
+    (manifests_dir / "a-case.json").write_text("{}", encoding="utf-8")
+    (manifests_dir / "not-a-manifest.txt").write_text("ignored", encoding="utf-8")
+
+    result = discover_corpus_manifests(manifests_dir)
+
+    assert [p.name for p in result] == ["a-case.json", "b-case.json"]
 
 
 def test_checked_in_corpus_manifests_pass_against_repo_fixtures(tmp_path):

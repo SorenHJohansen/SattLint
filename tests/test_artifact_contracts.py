@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from sattlint.contracts import FindingCollection, FindingRecord
 from sattlint.devtools.artifact_registry import PIPELINE_ARTIFACTS, build_artifact_registry_report
 from sattlint.devtools.baselines import build_analysis_diff_report
@@ -265,3 +267,94 @@ def test_corpus_results_payload_matches_golden():
 
     assert_corpus_results_report(payload, case_count=1, failed_case_ids=())
     assert_matches_golden(payload, GOLDEN_DIR / "corpus_results.json")
+
+
+# ---------------------------------------------------------------------------
+# Negative-path / drift detection
+# ---------------------------------------------------------------------------
+
+
+def test_assert_findings_collection_fails_on_wrong_kind():
+
+    bad_payload = {
+        "kind": "sattlint.WRONG",
+        "schema_version": 1,
+        "finding_count": 0,
+        "findings": [],
+    }
+
+    with pytest.raises(AssertionError):
+        assert_findings_collection(bad_payload)
+
+
+def test_assert_findings_collection_fails_on_wrong_schema_version():
+
+    bad_payload = {
+        "kind": "sattlint.findings",
+        "schema_version": 99,
+        "finding_count": 0,
+        "findings": [],
+    }
+
+    with pytest.raises(AssertionError):
+        assert_findings_collection(bad_payload)
+
+
+def test_assert_findings_collection_fails_on_wrong_finding_count():
+
+    bad_payload = {
+        "kind": "sattlint.findings",
+        "schema_version": 1,
+        "finding_count": 5,
+        "findings": [],
+    }
+
+    with pytest.raises(AssertionError):
+        assert_findings_collection(bad_payload, finding_count=0)
+
+
+def test_assert_findings_collection_fails_on_wrong_rule_ids():
+
+    bad_payload = {
+        "kind": "sattlint.findings",
+        "schema_version": 1,
+        "finding_count": 1,
+        "findings": [{"rule_id": "ruff.f401"}],
+    }
+
+    with pytest.raises(AssertionError):
+        assert_findings_collection(bad_payload, rule_ids=("pyright.error",))
+
+
+def test_assert_corpus_results_report_fails_on_wrong_failed_case_ids():
+
+    payload = _build_sample_corpus_results_payload()
+
+    with pytest.raises(AssertionError):
+        assert_corpus_results_report(payload, failed_case_ids=("unexpected-failure",))
+
+
+def test_assert_matches_golden_fails_on_extra_key(tmp_path):
+
+    golden = tmp_path / "golden.json"
+    golden.write_text('{"key": "value"}', encoding="utf-8")
+
+    with pytest.raises(AssertionError):
+        assert_matches_golden({"key": "value", "extra": "drift"}, golden)
+
+
+def test_assert_matches_golden_fails_on_missing_key(tmp_path):
+
+    golden = tmp_path / "golden.json"
+    golden.write_text('{"key": "value", "required": true}', encoding="utf-8")
+
+    with pytest.raises(AssertionError):
+        assert_matches_golden({"key": "value"}, golden)
+
+
+def test_assert_analysis_diff_report_fails_on_wrong_new_count():
+
+    payload = _build_sample_analysis_diff_payload()
+
+    with pytest.raises(AssertionError):
+        assert_analysis_diff_report(payload, new_rule_ids=("nonexistent.rule",))
