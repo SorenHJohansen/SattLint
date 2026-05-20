@@ -4,7 +4,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 ## Purpose / Big Picture
 
-This plan turns the 2026-05-19 tests-and-fixtures review into a concrete hardening slice for the repository test suite. After this work lands, the highest-risk test surfaces will be easier to navigate, the most brittle helper-heavy tests will depend less on private implementation details, and the missing negative and ambiguity scenarios called out by the review will be covered by focused deterministic tests.
+This plan turns the 2026-05-19 tests-and-fixtures review into a concrete hardening slice for the repository test suite. After this work lands, the highest-risk test surfaces will be easier to navigate, the most brittle helper-heavy tests will depend less on private implementation details, and the missing negative and ambiguity scenarios called out by the review will be covered by focused deterministic tests. The goal is not more tests for their own sake; it is higher behavior confidence from the tests that remain.
 
 The observable proof is that the corpus, artifact-contract, LSP workspace/navigation, app-menu, and GUI smoke-path suites all pass with new regression coverage; the most duplicated local test scaffolding is reduced in the touched areas; and the touched top-level test files point more clearly at their owning production surfaces.
 
@@ -13,6 +13,7 @@ The observable proof is that the corpus, artifact-contract, LSP workspace/naviga
 - [x] (2026-05-19) Create the ExecPlan from the test-suite, fixture, and helper review. Confirm the main risks: wrapper-style aggregator modules, direct testing of private helpers, over-coupled large fixture builders, duplicated micro-scaffolding, and missing negative-path scenarios in corpus, artifact-contract, LSP ambiguity, app integration, and GUI smoke coverage.
 - [ ] Stabilize the highest-risk helper and fixture seams in the touched areas without broad rewrites.
 - [ ] Add the missing negative and ambiguity scenarios in the corpus, artifact-contract, LSP, app-menu, and GUI slices.
+- [ ] Identify the touched high-count, low-confidence suites and replace implementation-coupled assertions with behavior-facing coverage where a stable seam exists.
 - [ ] Reduce duplication in the variable/analyzer helper tests by centralizing repeated micro-builders used by the touched files.
 - [ ] Improve owner alignment for the touched suites so test layout more clearly mirrors the production packages it validates.
 - [ ] Run focused pytest, Ruff, and Pyright proof for the touched test and helper files, then record the results in this file.
@@ -27,6 +28,9 @@ The observable proof is that the corpus, artifact-contract, LSP workspace/naviga
 
 - Observation: some of the heaviest suites focus on private helper behavior rather than user-visible workflows.
   Evidence: `tests/test_lsp_diagnostics.py` directly exercises internal helper functions such as `_validated_text_document_uri`, `_normalize_workspace_diagnostics_mode`, `_merge_unique_diagnostics`, and `_definition_locations_from_candidates`. `tests/test_pipeline_owner_coverage.py` likewise targets private execution and parsing helpers directly.
+
+- Observation: some of the largest suites create volume without matching confidence because they assert implementation choreography rather than behavior.
+  Evidence: wrapper-shell modules, direct private-helper tests, and duplicated micro-stubs inflate count across LSP, pipeline, and analyzer areas without always proving the public request, CLI, or report paths.
 
 - Observation: large shared fixture builders already exist, but they are concentrated in a few over-coupled modules instead of smaller behavior-specific builders.
   Evidence: `tests/_docgen_fixture_builders.py` constructs large `BasePicture` graphs reused across `tests/_docgen_part1.py` and `tests/_docgen_part2.py`, while app integration relies on opt-in environment-gated fixtures in `tests/_app_analysis_test_support.py` and `tests/_app_menus_support.py`.
@@ -52,6 +56,10 @@ The observable proof is that the corpus, artifact-contract, LSP workspace/naviga
   Rationale: some helper tests are still needed, but the default should be observable behavior through public commands, report payloads, and LSP request handlers.
   Date/Author: 2026-05-19 / Copilot (GPT-5.4)
 
+- Decision: judge touched test areas by confidence gain, not by raw test count.
+  Rationale: AI-generated repositories can accumulate large volumes of repetitive or implementation-coupled tests. This slice should prefer fewer, clearer behavior-facing checks over more near-duplicate helper assertions.
+  Date/Author: 2026-05-20 / Copilot (GPT-5.4)
+
 ## Outcomes & Retrospective
 
 Fill this in after implementation. The final entry must state which missing scenarios were added, which helper duplications were consolidated, which wrapper or support files were slimmed or clarified, and whether the focused pytest, Ruff, and Pyright proof passed for the touched slice.
@@ -66,7 +74,7 @@ The plan does not require a full repository-wide migration away from split test 
 
 ## Plan of Work
 
-Start with missing scenarios, because that yields the highest stability gain without large structure churn. Extend `tests/parser/test_corpus.py` with negative-path manifest coverage for malformed JSON, missing required fields, unsupported modes, and unsafe or non-repo-relative target paths if the corpus loader accepts them today. Extend `tests/test_artifact_contracts.py` with failing-schema coverage so the suite proves how contract drift is detected instead of only proving exact golden matches.
+Start with missing scenarios, because that yields the highest stability gain without large structure churn. Extend `tests/parser/test_corpus.py` with negative-path manifest coverage for malformed JSON, missing required fields, unsupported modes, and unsafe or non-repo-relative target paths if the corpus loader accepts them today. Extend `tests/test_artifact_contracts.py` with failing-schema coverage so the suite proves how contract drift is detected instead of only proving exact golden matches. When a touched area already has many tests, prefer replacing helper-coupled assertions with behavior-facing checks over adding another near-duplicate unit around the same private helper.
 
 Then harden the LSP behavior seams. Add ambiguity and dirty-buffer coverage to the public request-path suites in `tests/test_lsp_navigation.py`, `tests/test_lsp_rename_completion.py`, and `tests/test_lsp_workspace_documents.py`. The missing case from the review is a same-name or same-filename dependency ambiguity where one document is dirty and multiple libraries provide the same apparent target. Add the new behavior tests near the current fallback and cache tests instead of expanding `tests/test_lsp_diagnostics.py`, because the goal is to cover public handler behavior rather than deepen private-helper coupling.
 
@@ -119,7 +127,7 @@ If wrapper-file cleanup is performed in a touched area, rerun the narrow owner s
 
 ## Validation and Acceptance
 
-Acceptance is behavioral. `tests/parser/test_corpus.py` must fail before the new negative manifest checks and pass after them, proving that malformed or incomplete corpus definitions are handled intentionally. `tests/test_artifact_contracts.py` must prove that schema drift is caught, not only that current goldens match. The LSP suites must demonstrate a dirty-buffer or ambiguous-dependency scenario through public request handlers, not by adding more direct assertions on helper internals. The app suites must exercise a deterministic mini-project path without requiring `SATTLINT_RUN_REAL_CONTEXT=1`. The GUI suites must include one small real smoke path in addition to the existing headless fakes.
+Acceptance is behavioral. `tests/parser/test_corpus.py` must fail before the new negative manifest checks and pass after them, proving that malformed or incomplete corpus definitions are handled intentionally. `tests/test_artifact_contracts.py` must prove that schema drift is caught, not only that current goldens match. The LSP suites must demonstrate a dirty-buffer or ambiguous-dependency scenario through public request handlers, not by adding more direct assertions on helper internals. The app suites must exercise a deterministic mini-project path without requiring `SATTLINT_RUN_REAL_CONTEXT=1`. The GUI suites must include one small real smoke path in addition to the existing headless fakes. In the touched areas, the suite should either reduce implementation-coupled assertions directly or leave an explicit note about the remaining high-count, low-confidence zone.
 
 The static acceptance bar is that every touched Python test or helper file is clean under focused Ruff and Pyright runs. The structural acceptance bar is that touched areas become more owner-aligned than before: new tests should land in package-shaped suites where possible, and duplicated local scaffolding should shrink rather than grow.
 

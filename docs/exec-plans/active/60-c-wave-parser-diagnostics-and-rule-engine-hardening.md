@@ -12,6 +12,7 @@ This plan hardens the parser, validation, semantic-rule, and diagnostic seams th
 - [ ] (2026-05-19 00:00Z) Harden parser location fidelity so parse errors and derived header metadata no longer depend on column-shifting comment stripping or header-string regex extraction.
 - [ ] (2026-05-19 00:00Z) Replace string-only validation warnings with structured notices that preserve message, line, column, and length across `validation.py` and `engine.py`.
 - [ ] (2026-05-19 00:00Z) Make semantic diagnostic projection report missing-site and missing-definition drops explicitly instead of silently skipping findings.
+- [ ] (2026-05-20 00:00Z) Consolidate competing parser, validation-warning, and semantic-diagnostic styles so new rule work reuses one declared path instead of adding another manual variant.
 - [ ] (2026-05-19 00:00Z) Consolidate semantic-rule aggregation so analyzer metadata, rule mapping, and LSP exposure are declared from one seam instead of repeated in `registry.py`, `_sattline_semantic_rules.py`, and `sattline_semantics.py`.
 - [ ] (2026-05-19 00:00Z) Add focused regression coverage in the parser, engine, LSP, and analyzer-suite tests for source mapping, warning retention, projection-drop visibility, and semantic aggregation.
 - [ ] (2026-05-19 00:00Z) Run focused pytest, Ruff, and Pyright validation for the touched slice and move this plan to `docs/exec-plans/completed/` once all boxes are checked.

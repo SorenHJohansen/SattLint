@@ -58,6 +58,7 @@ def test_main_list_checks_prints_catalog(tmp_path, capsys):
     assert exit_code == 0
     assert payload["kind"] == "sattlint.repo_audit.check_catalog"
     assert any(entry["id"] == "cli-consistency" for entry in payload["checks"])
+    assert any(entry["id"] == "ratchet-policy" for entry in payload["checks"])
 
 
 def test_main_recommend_checks_prints_catalog(tmp_path, capsys):

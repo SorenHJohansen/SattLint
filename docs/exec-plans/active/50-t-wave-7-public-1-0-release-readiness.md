@@ -6,7 +6,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 This plan makes SattLint ready for its first stable public release instead of a repo that is merely usable by its current maintainers. After this work lands, an external user should be able to read the top-level docs, install the published package without cloning the repo, run the main CLI and language-server entry points with a version string that matches the release, and understand where to get help or report problems. The maintainers should also be able to rehearse the release before tagging a calendar-versioned release such as `v2026.5`, then publish with the same validated path.
 
-The observable proof is concrete. From a clean checkout and a built distribution, the release gate must be able to build the package, pass `twine check`, install the wheel into a clean environment, run `sattlint --version`, run `sattlint syntax-check` against a checked-in sample file, boot the repo-audit CLI, and produce a passing public-readiness report. The public repository surface must also explain the support contract in plain language: what is stable, what is preview-only, which platforms are supported, and how outside users should get support or report security issues.
+The observable proof is concrete. From a clean checkout and a built distribution, the release gate must be able to build the package, pass `twine check`, install the wheel into a clean environment, run `sattlint --version`, run `sattlint syntax-check` against a checked-in sample file, boot the repo-audit CLI, and produce a passing public-readiness report. The public repository surface must also explain the support contract in plain language: what is stable, what is preview-only, which platforms are supported, how outside users should get support or report security issues, and which documented surfaces are intentionally preview-only rather than silently aspirational.
 
 ## Progress
 
@@ -16,7 +16,7 @@ The observable proof is concrete. From a clean checkout and a built distribution
 - [x] (2026-05-15) Verified that the current worktree is not a clean release baseline: attempting `sattlint.devtools.repo_audit --check public-readiness` crashed because locally modified MMS analyzer files are out of sync. Release sign-off must therefore use a clean checkout or CI artifact, not the current dirty worktree.
 - [x] (2026-05-15) Chose calendar versioning for stable public releases: use PEP 440-compatible `YYYY.M` for the first stable release in a month, and `YYYY.M.N` only when multiple stable releases ship in that same month.
 - [ ] Define the stable-release support contract and classify every shipped surface as stable, preview, or internal-only.
-- [ ] Rewrite the public-facing top-level docs so an external user can install, evaluate, and support SattLint without internal context.
+- [ ] Rewrite the public-facing top-level docs so an external user can install, evaluate, and support SattLint without internal context, and so release-facing docs stop describing aspirational or disconnected behavior as if it were stable.
 - [ ] Add the missing community-health files and wire them into the GitHub-facing issue and support flow.
 - [ ] Align all version surfaces across package metadata, CLI, LSP, changelog, and the local VS Code client docs.
 - [ ] Add a repo-owned release rehearsal path that builds, validates, smoke-installs, and exercises the shipped artifact before any publish step runs.
@@ -68,6 +68,10 @@ Date/Author: 2026-05-15 / Copilot (GPT-5.4)
 Decision: define and publish a support contract instead of implying that every existing command and UI surface is equally mature.
 Rationale: a stable calendar-versioned release still needs stable expectations. Clear `stable`, `preview`, and `internal` labels are better than optimistic silence.
 Date/Author: 2026-05-15 / Copilot (GPT-5.4)
+
+Decision: public-facing docs must describe validated artifact behavior, not aspirational architecture or dormant commands.
+Rationale: an AI-generated repo can accumulate plausible but stale docs faster than behavior changes. Stable-release docs must only promise commands and surfaces that the release rehearsal or support matrix can actually prove.
+Date/Author: 2026-05-20 / Copilot (GPT-5.4)
 
 ## Outcomes & Retrospective
 

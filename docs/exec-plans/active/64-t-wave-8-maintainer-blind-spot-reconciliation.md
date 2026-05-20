@@ -6,12 +6,15 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 This plan turns the 2026-05-19 repository review for "what maintainers forgot to review themselves" into one executable artifact. After this work lands, a maintainer or coding agent should be able to open one plan and see which suspicious findings are already owned by active plans, which paths were truly committed residue rather than local noise, and which live seams still had no clear owner when the review finished. The goal is not to reopen every adjacent slice. The goal is to make the review durable, remove duplicate ownership, and close the remaining uncovered gap so future maintainers do not have to rediscover the same blind spots.
 
+This plan also becomes the checked-in routing home for AI-generated-repo maintainability audits: duplicate abstractions, unused sophistication, disconnected or ceremonial systems, architecture entropy, hallucination residue, and the question of whether documented architecture matches the actual runtime architecture. It should record which active plan owns each category and which checks, if any, still have no correct owner.
+
 The observable proof is straightforward. The review findings around version drift, root clutter, workflow duplication, release rehearsal, and security hardening will each point at one explicit owner plan instead of living only in a chat transcript. The canonical tech-debt tracker will reference this plan directly. The `doc_gardener` source-ledger scan will stop depending on a second hard-coded list of retired `TODO_*.md` files and will instead treat the consolidation source ledger in `docs/exec-plans/tech-debt-tracker.md` as the only authority for those retired sources.
 
 ## Progress
 
 - [x] (2026-05-19 00:00Z) Create this ExecPlan from the blind-spot review and confirm the main routing fact pattern: release-version drift is already owned by plan 50, root-layout and architecture drift are already owned by the two plan 58 slices, workflow and release-path hardening are already owned by plans 58 and 61, and CLI truthfulness is already owned by plan 63.
 - [x] (2026-05-19 00:00Z) Confirm the remaining live uncovered seam from the review: `src/sattlint/devtools/doc_gardener.py` still hard-codes `AI_FIRST_SOURCE_FILES` even though `docs/exec-plans/tech-debt-tracker.md` marks all four legacy `TODO_*.md` sources retired.
+- [ ] Expand the routing map so duplicate abstractions, unused sophistication, disconnected systems, architecture entropy, hallucination residue, and runtime-architecture mapping all point to explicit active owners or are recorded here as genuinely uncovered.
 - [ ] Add a durable routing section to this plan and to `docs/exec-plans/tech-debt-tracker.md` so the blind-spot review no longer depends on chat history.
 - [ ] Remove the duplicated retired-TODO source list from the doc-gardener path and make the source ledger the single source of truth for `scan_ai_first_source_drift`.
 - [ ] Update the focused source-ledger drift tests so retired-source behavior remains enforced without implying that root `TODO_*.md` files are still a live repo surface.
@@ -24,6 +27,9 @@ The observable proof is straightforward. The review findings around version drif
 
 - Observation: the blind-spot review still surfaced one live source-of-truth duplication that no active plan named directly.
   Evidence: `src/sattlint/devtools/doc_gardener.py` defines `AI_FIRST_SOURCE_FILES` as `TODO_GUI.md`, `TODO_REFACTOR.md`, `TODO_SATTLINT.md`, and `TODO_TOOLS.md`, while `docs/exec-plans/tech-debt-tracker.md` marks all four as retired and `src/sattlint/devtools/_doc_gardener_scan.py` still iterates the hard-coded sequence rather than the parsed ledger rows.
+
+- Observation: the active plan set covered many concrete defects, but it did not yet name the AI-maintainability review lenses explicitly.
+  Evidence: current plans already own release drift, root clutter, CI duplication, supply-chain hardening, parser rule wiring, and test helper coupling, but none of them originally framed duplicate abstractions, unused sophistication, ceremonial systems, architecture entropy, or hallucination residue as first-class recurring audit categories.
 
 - Observation: several suspicious paths from the review are genuinely committed residue, not only local ignored output.
   Evidence: the review confirmed that `package.json`, `package-lock.json`, `node_modules/`, `compare.py`, `process_pyright.py`, `pyright_audit.py`, `artifacts/generated/repo-health.json`, and `artifacts/audit-full-current.tmp-g_ap8njm/` are tracked in git, while `codegraph-index.surql` is presently untracked.
@@ -49,6 +55,10 @@ The observable proof is straightforward. The review findings around version drif
   Rationale: the repo still needs to catch accidental resurrection of retired TODO files. The fix is to derive the source names from the ledger, not to stop checking the behavior entirely.
   Date/Author: 2026-05-19 / Copilot (GPT-5.4)
 
+- Decision: use this plan as the routing owner for AI-maintainability audits rather than creating parallel implementation plans for each review pass.
+  Rationale: the value of these audits is in making ownership explicit. The implementation work should still land in the nearest active owner plan instead of duplicating scope here.
+  Date/Author: 2026-05-20 / Copilot (GPT-5.4)
+
 ## Outcomes & Retrospective
 
 Planning baseline only. No blind-spot review findings are resolved by this document alone. The intended outcome is a smaller and more trustworthy maintenance surface: one checked-in routing artifact for the review, one source of truth for retired TODO-source status, and no remaining confusion about whether the suspicious paths are already owned elsewhere or still lack an owner.
@@ -58,6 +68,8 @@ The main risk is accidental duplication. If future edits start copying the same 
 ## Context and Orientation
 
 The 2026-05-19 blind-spot review covered four broad categories: suspicious inconsistencies, abandoned-looking surfaces, duplicated workflows or artifacts, and manual human-review candidates. The review named exact paths rather than abstract themes. The most important paths were `src/sattlint/__version__.py`, `src/sattlint_lsp/server.py`, `vscode/sattline-vscode/package.json`, `ARCHITECTURE.md`, `docs/repo-map.md`, `docs/architecture.md`, `AGENTS.md`, `.github/workflows/ci.yml`, `.github/workflows/repo-audit.yml`, `.github/workflows/publish.yml`, `package.json`, `package-lock.json`, `node_modules/`, `compare.py`, `process_pyright.py`, `pyright_audit.py`, `artifacts/generated/repo-health.json`, and `artifacts/audit-full-current.tmp-g_ap8njm/`.
+
+The broader AI-maintainability audit uses the same evidence style but groups the findings differently. In this plan, `duplicate abstractions` means multiple systems solving the same problem with different seams or conventions. `unused sophistication` means complexity whose payoff is unclear, such as extension points with one implementation or metrics and automation that nobody consumes. `looks real but is never used` means commands, scripts, docs, or workflows that read as official but do not connect to an actual execution path. `architecture entropy` means additive growth where several generations of design coexist. `hallucination residue` means authoritative-looking files, TODOs, config keys, imports, or classes that imply systems which are deleted, disconnected, or never shipped.
 
 Most of those paths are already owned by active plans. `docs/exec-plans/active/50-t-wave-7-public-1-0-release-readiness.md` owns public version alignment, support classification, release rehearsal, and the missing `release_smoke` seam. `docs/exec-plans/active/58-t-wave-8-repo-structure-and-architecture-alignment.md` owns root-layout cleanup, root helper-script triage, stale long- and short-doc names, and the GUI plus editor-facade documentation gap. `docs/exec-plans/active/58-t-wave-8-ci-workflow-consolidation-and-release-rehearsal.md` owns duplicate full-audit workflow work, repeated `actionlint` setup logic, and publish-workflow rehearsal wiring. `docs/exec-plans/active/61-t-wave-8-repo-security-and-supply-chain-hardening.md` owns the supply-chain and workflow-trust concerns around CodeGraph scripts, publish permissions, and Node dependency monitoring. `docs/exec-plans/completed/63-t-wave-8-cli-ux-and-documentation-trustworthiness.md` owns the user-facing CLI and command-doc drift that the broader review touched only indirectly.
 
@@ -69,7 +81,7 @@ The focused tests for the source-ledger seam already exist. `tests/_repo_audit_p
 
 ## Plan of Work
 
-Start by making the review routing explicit. Update `docs/exec-plans/tech-debt-tracker.md` so it points at this plan as the follow-on artifact from the 2026-05-19 blind-spot review. In this plan itself, keep a concise path-to-owner map for the major findings so a future executor can see immediately which active plan owns which suspicious path. Do not duplicate the full implementation details from plans 50, 58, 61, or 63; summarize only enough to route accurately.
+Start by making the review routing explicit. Update `docs/exec-plans/tech-debt-tracker.md` so it points at this plan as the follow-on artifact from the 2026-05-19 blind-spot review. In this plan itself, keep a concise path-to-owner map for the major findings so a future executor can see immediately which active plan owns which suspicious path. Expand that routing so the broader AI-maintainability categories also have explicit owners: actual-runtime-architecture and doc-versus-runtime drift go to the repo-structure plan, stale or ceremonial automation goes to the CI plan, implementation-coupled or high-count low-confidence tests go to the test-hardening plan, public-doc and command truthfulness go to the release-readiness plan, parser or error-reporting style drift goes to the parser hardening plan, security-only automation drift goes to the security plan, and performance-only sophistication goes to the performance plan. If a concrete finding still has no correct owner after that pass, record it here as uncovered instead of forcing it into the wrong slice.
 
 Then fix the uncovered source-of-truth duplication in doc-gardener. Edit `src/sattlint/devtools/doc_gardener.py` and `src/sattlint/devtools/_doc_gardener_scan.py` so `scan_ai_first_source_drift` derives the relevant source names from the parsed consolidation source ledger instead of from the separate `AI_FIRST_SOURCE_FILES` constant. The important behavior is not the constant itself. The important behavior is that the source-ledger scan should report three cases correctly: a retired source file was accidentally restored, an active source file is missing when the ledger says it should exist, and a ledger row is malformed or missing.
 
@@ -117,7 +129,7 @@ If the executor also touches the tracker or plan routing text substantially, fin
 
 ## Validation and Acceptance
 
-Acceptance is behavior and routing clarity together. A maintainer should be able to open this plan and `docs/exec-plans/tech-debt-tracker.md` and learn, without re-running the original broad review, which active plan owns each substantive blind-spot finding. The plan should explicitly route at least these categories: version drift, root-clutter and fast-doc drift, workflow duplication and release rehearsal, supply-chain hardening, and the retired-TODO source-ledger seam.
+Acceptance is behavior and routing clarity together. A maintainer should be able to open this plan and `docs/exec-plans/tech-debt-tracker.md` and learn, without re-running the original broad review, which active plan owns each substantive blind-spot finding. The plan should explicitly route at least these categories: version drift, root-clutter and fast-doc drift, workflow duplication and release rehearsal, supply-chain hardening, the retired-TODO source-ledger seam, duplicate abstractions, unused sophistication, disconnected or ceremonial systems, architecture entropy, hallucination residue, and the actual-runtime-architecture map.
 
 The doc-gardener acceptance bar is that the consolidation source ledger becomes the only source of truth for the retired `TODO_*.md` files. The implementation may still detect restored retired files and malformed rows, but it must do so from the parsed ledger rather than from a separate top-level tuple. A grep of `src/sattlint/devtools/doc_gardener.py` after the slice should no longer show a second authoritative hard-coded list of retired `TODO_*.md` source names.
 
@@ -141,6 +153,12 @@ Blind-spot finding to active owner routing captured at plan creation:
     - CodeGraph helper hardening, workflow trust boundary, npm monitoring -> plan 61
     - CLI doc and command-trust drift -> plan 63
     - retired TODO-source ledger duplication in doc-gardener -> this plan
+    - actual runtime architecture map, documented-versus-actual architecture drift, additive-versus-cohesive structure review -> repo-structure plan 58
+    - implementation-coupled or high-count low-confidence test areas -> plan 59
+    - parser-rule, warning, and diagnostic-style duplication -> plan 60
+    - unused sophistication or ceremonial automation in workflows -> CI workflow plan 58
+    - unused sophistication or ceremonial release-facing docs and commands -> plan 50
+    - unused sophistication that is only performance or scaling complexity -> plan 62
 
 Committed paths confirmed by the review that made plan 58's root-clutter cleanup concrete rather than hypothetical:
 

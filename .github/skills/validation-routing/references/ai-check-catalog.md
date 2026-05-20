@@ -268,6 +268,19 @@ Regenerate with `python -m sattlint.devtools.ai_work_map --write`.
   - `tests/test_repo_audit.py`
 - Command: `sattlint-repo-audit --profile full --check public-readiness --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
 
+### `ratchet-policy`
+
+- Label: Run ratchet policy for change-scoped debt and size enforcement
+- Owner surface: ratchet-policy
+- Estimated cost: low
+- AI summary: Use when ratchet-policy wiring, debt ledgers, or full-audit change-proof enforcement changes.
+- AI instruction files:
+  - `.github/instructions/ratchet-policy.instructions.md`
+  - `.github/instructions/repo-audit.instructions.md`
+- Owner tests:
+  - `tests/test_ratchet_policy.py`
+- Command: `sattlint-repo-audit --profile full --check ratchet-policy --skip-pipeline --fail-on high --output-dir artifacts/generated/ai-work-map`
+
 ### `verify-recommendations`
 
 - Label: Verify recommendation metadata and routing catalog coverage
