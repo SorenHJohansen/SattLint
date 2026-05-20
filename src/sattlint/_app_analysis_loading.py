@@ -234,7 +234,7 @@ def ensure_ast_cache(
         if cached:
             has_manifest = bool(cached.get("files"))
             if fast and has_manifest:
-                is_valid = cast(bool, cache.validate(cached, fast=False))
+                is_valid = cast(bool, cache.validate(cached, fast=True))
             else:
                 is_valid = cast(bool, cache.validate(cached, fast=fast))
             if is_valid:

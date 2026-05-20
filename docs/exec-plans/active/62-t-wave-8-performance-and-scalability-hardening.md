@@ -11,7 +11,7 @@ The visible proof is behavioral. `ensure_ast_cache` will stop turning "fast cach
 ## Progress
 
 - [x] (2026-05-19) Create this ExecPlan from the performance and scalability review. Capture the current hot paths in AST cache validation, workspace discovery, LSP snapshot refresh, structural graph reporting, and repo-wide inventory scans.
-- [ ] Fix the inverted fast-cache-validation branch so the fast path stays cheap and the slow path remains opt-in.
+- [x] Fix the inverted fast-cache-validation branch so the fast path stays cheap and the slow path remains opt-in.
 - [ ] Reduce parser and dependency-resolution overhead from repeated cache persistence and unnecessary file reads in the project loader path.
 - [ ] Bound workspace discovery and LSP background diagnostics so large non-source trees and unaffected entries do not dominate refresh time.
 - [ ] Rework structural graph and related report collection so the pipeline reuses shared graph inputs instead of rebuilding or retaining avoidable per-entry snapshots.
@@ -66,7 +66,15 @@ The visible proof is behavioral. `ensure_ast_cache` will stop turning "fast cach
 
 ## Outcomes & Retrospective
 
-Planning baseline only. No implementation has landed yet. The intended end state is a repo where large workspaces do not pay obviously avoidable scan or rebuild costs, cache settings behave according to their names, and the structural or audit pipelines can prove bounded work with focused tests rather than relying on best-case assumptions.
+**First milestone complete (fast-cache-validation inversion fix).**
+
+`ensure_ast_cache()` in `src/sattlint/_app_analysis_loading.py` was calling `cache.validate(cached, fast=False)` in the branch guarded by `if fast and has_manifest:`, forcing an expensive full `stat()` sweep even when the caller explicitly opted in to the cheap path with `fast_cache_validation=True`. The fix is a one-character correction: `fast=False` → `fast=True`.
+
+Two new regression tests in `tests/test_app_analysis_project_cache.py` now prove the fast contract explicitly by recording the `fast` argument passed into the `validate()` stub. One test asserts `fast=True` is passed when `fast_cache_validation=True` and the payload has a manifest; the other asserts `fast=False` is passed when `fast_cache_validation=False`. The existing behavior test was updated to reflect the corrected contract (FakeCache.validate now returns True for `fast=True`, not `fast=False`).
+
+Validation: 7 tests pass; Ruff and Pyright clean on touched files; pre-commit passes.
+
+Remaining milestones (project-loader cache, workspace discovery / LSP refresh, structural reporting, repo-audit scan pruning) stay open for subsequent slices.
 
 ## Context and Orientation
 
