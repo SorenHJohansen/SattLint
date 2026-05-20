@@ -2,6 +2,8 @@
 
 This guide covers setting up a development environment for contributing to SattLint.
 
+For public support boundaries, see [SUPPORT.md](SUPPORT.md) and [docs/references/public-support-matrix.md](docs/references/public-support-matrix.md). All contributors are expected to follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
 ## Prerequisites
 
 - Python 3.13 or newer
@@ -66,13 +68,13 @@ python scripts/run_repo_python.py -m pip install -e .[dev,lsp]
 # Recommended VS Code extensions are listed in .vscode/extensions.json
 ```
 
-To run the local SattLine VS Code extension client:
+To run the local SattLine VS Code extension client preview:
 
 ```powershell
 pip install -e .[lsp]
 ```
 
-Then copy or symlink `vscode\sattline-vscode` into your VS Code user extensions directory as `local.sattline-vscode-0.1.0` and reload the window. There is no npm or TypeScript build step in the current client.
+Then copy or symlink `vscode\sattline-vscode` into your VS Code user extensions directory under a folder such as `local.sattline-vscode-dev` and reload the window. There is no npm or TypeScript build step in the current client, and this client remains a preview-only surface until it has a public publisher and release story.
 
 If you need a packaged extension artifact, run the extension-local packaging script from WSL:
 
