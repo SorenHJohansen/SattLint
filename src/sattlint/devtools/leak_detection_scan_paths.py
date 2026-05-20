@@ -35,6 +35,7 @@ SKIP_DIRS = {
     ".git",
     ".mypy_cache",
     ".nox",
+    "node_modules",
     ".pytest_cache",
     ".ruff_cache",
     ".tox",

@@ -331,6 +331,9 @@ def is_within_directory(path: Path, directory: Path) -> bool:
         return False
 
 
+_is_within_directory = is_within_directory
+
+
 def create_sl_parser() -> Lark:
     """Compatibility wrapper that delegates parser creation to parser-core."""
     return parser_core_create_parser()
@@ -812,7 +815,7 @@ class SattLineProjectLoader(DebugMixin):
             debug=self.dbg,
         )
 
-    def _load_or_parse(self, code_path: Path) -> BasePicture:
+    def _load_or_parse(self, code_path: Path) -> BasePicture | None:
         if self.use_file_ast_cache:
             cached = self._ast_cache.load(code_path, self.mode.value)
             if isinstance(cached, BasePicture):
@@ -854,6 +857,12 @@ class SattLineProjectLoader(DebugMixin):
         try:
             validation_warnings: list[str] = []
             bp = self._load_or_parse(code_path)
+            if bp is None:
+                message = f"{root_name} transformed to no BasePicture (parse/transform issue?)"
+                if strict:
+                    raise RuntimeError(message)
+                graph.missing.append(message)
+                return graph
             validate_transformed_basepicture(
                 bp,
                 allow_unresolved_external_datatypes=not strict,
@@ -939,6 +948,12 @@ class SattLineProjectLoader(DebugMixin):
                 try:
                     validation_warnings: list[str] = []
                     bp = self._load_or_parse(code_path)
+                    if bp is None:
+                        message = f"{name} transform produced no BasePicture (skipped)"
+                        if strict:
+                            raise RuntimeError(message)
+                        graph.missing.append(message)
+                        return
                     try:
                         validate_transformed_basepicture(
                             bp,

@@ -18,70 +18,31 @@ from sattline_parser.models.ast_model import (
 from ..grammar import constants as const
 from ..resolution.scope import ScopeContext
 from ._dependency_usage_scope_support import _DependencyUsageScopeSupportMixin
+from .ast_node_helpers import (
+    iter_branch_pairs as _iter_branch_pairs,
+)
+from .ast_node_helpers import (
+    object_dict_values as _object_dict_values,
+)
+from .ast_node_helpers import (
+    object_list as _object_list,
+)
+from .ast_node_helpers import (
+    object_sequence as _object_sequence,
+)
+from .ast_node_helpers import (
+    object_tuple as _object_tuple,
+)
+from .ast_node_helpers import (
+    sequence_as_list as _sequence_as_list,
+)
+from .ast_node_helpers import (
+    statement_children as _statement_children,
+)
+from .ast_node_helpers import (
+    string_key_dict as _string_key_dict,
+)
 from .sattline_builtins import get_function_signature
-
-_NodeTuple = tuple[object, ...]
-_NodeList = list[object]
-_NodeSequence = _NodeTuple | _NodeList
-_NodeDict = dict[str, object]
-
-
-def _object_tuple(node: object) -> _NodeTuple | None:
-    if isinstance(node, tuple):
-        return cast(_NodeTuple, node)
-    return None
-
-
-def _object_list(node: object) -> _NodeList | None:
-    if isinstance(node, list):
-        return cast(_NodeList, node)
-    return None
-
-
-def _object_sequence(node: object) -> _NodeSequence | None:
-    tuple_items = _object_tuple(node)
-    if tuple_items is not None:
-        return tuple_items
-    return _object_list(node)
-
-
-def _string_key_dict(node: object) -> _NodeDict | None:
-    if isinstance(node, dict):
-        return cast(_NodeDict, node)
-    return None
-
-
-def _statement_children(node: object) -> _NodeSequence | None:
-    if getattr(node, "data", None) != const.KEY_STATEMENT:
-        return None
-    return _object_sequence(getattr(node, "children", None))
-
-
-def _sequence_as_list(node: object) -> list[object]:
-    items = _object_sequence(node)
-    if items is None:
-        return []
-    return list(items)
-
-
-def _iter_branch_pairs(node: object) -> list[tuple[object, object]]:
-    branches = _object_sequence(node)
-    if branches is None:
-        return []
-    pairs: list[tuple[object, object]] = []
-    for branch in branches:
-        branch_items = _object_sequence(branch)
-        if branch_items is None or len(branch_items) < 2:
-            continue
-        pairs.append((branch_items[0], branch_items[1]))
-    return pairs
-
-
-def _object_dict_values(node: object) -> list[object]:
-    node_dict = getattr(node, "__dict__", None)
-    if not isinstance(node_dict, dict):
-        return []
-    return list(cast(_NodeDict, node_dict).values())
 
 
 @dataclass(frozen=True)

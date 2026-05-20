@@ -67,11 +67,15 @@ _FALLBACK_CONFIG: ConfigDict = {
     "analyzed_programs_and_libraries": [],
     "mode": "draft",
 }
+_APP_MODULE: AppModuleProtocol | None = None
 _app_module: AppModuleProtocol | None = None
 
 
 def _get_app_module() -> AppModuleProtocol:
-    global _app_module
+    global _APP_MODULE, _app_module
+    if _APP_MODULE is not None:
+        _app_module = _APP_MODULE
+        return _APP_MODULE
     if _app_module is None:
         _app_module = cast(AppModuleProtocol, importlib.import_module("sattlint.app"))
     return _app_module

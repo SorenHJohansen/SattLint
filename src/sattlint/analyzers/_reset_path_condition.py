@@ -2,40 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from ..grammar import constants as const
 from ._reset_path_state import PathState as _PathState
-
-_NodeTuple = tuple[object, ...]
-_NodeList = list[object]
-_NodeSequence = _NodeTuple | _NodeList
-_NodeDict = dict[str, object]
-
-
-def _object_tuple(node: object) -> _NodeTuple | None:
-    if isinstance(node, tuple):
-        return cast(_NodeTuple, node)
-    return None
-
-
-def _object_list(node: object) -> _NodeList | None:
-    if isinstance(node, list):
-        return cast(_NodeList, node)
-    return None
-
-
-def _object_sequence(node: object) -> _NodeSequence | None:
-    tuple_items = _object_tuple(node)
-    if tuple_items is not None:
-        return tuple_items
-    return _object_list(node)
-
-
-def _string_key_dict(node: object) -> _NodeDict | None:
-    if isinstance(node, dict):
-        return cast(_NodeDict, node)
-    return None
+from .ast_node_helpers import (
+    object_list as _object_list,
+)
+from .ast_node_helpers import (
+    object_sequence as _object_sequence,
+)
+from .ast_node_helpers import (
+    object_tuple as _object_tuple,
+)
+from .ast_node_helpers import (
+    string_key_dict as _string_key_dict,
+)
 
 
 def _varref_casefold(obj: Any) -> str | None:

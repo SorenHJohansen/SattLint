@@ -40,6 +40,7 @@ pyright_output*.json
 pyright_probe*.json
 pyright_batch_probe_out.json
 pyright_results.json
+bandit_results*.json
 tmp_pyright_analyzers.json
 probe_results.json
 
@@ -55,6 +56,7 @@ artifacts/audit-check-documented-commands/
 artifacts/audit-check-my-changes/
 artifacts/audit-check-my-changes-fixed/
 artifacts/audit-cli-consistency-fix/
+artifacts/audit-debug-regression/
 artifacts/audit-leaks/
 artifacts/audit-leaks-fresh/
 artifacts/health/
@@ -64,6 +66,7 @@ artifacts/audit-ai-gc-recheck/
 artifacts/audit-full-current/
 artifacts/audit-full-*.log
 artifacts/audit-full-[0-9]*/
+artifacts/audit-pre-push-*/
 artifacts/pipeline-repro-full/
 artifacts/pytest-stage-probe/
 artifacts/pytest-stage-probe2/

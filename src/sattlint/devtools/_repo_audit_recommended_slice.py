@@ -5,20 +5,17 @@ from __future__ import annotations
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from sattlint.contracts import FindingCollection
 from sattlint.devtools import pipeline as pipeline_module
 from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS, artifact_reports_map
+from sattlint.devtools.json_helpers import json_mapping as _json_mapping
 from sattlint.devtools.pipeline_artifacts import write_json_artifact
 from sattlint.devtools.progress_reporting import ProgressReporter
 from sattlint.path_sanitizer import sanitize_path_for_report
 
 RECOMMENDED_REPO_AUDIT_MAX_WORKERS = 2
-
-
-def _json_mapping(value: object) -> dict[str, Any] | None:
-    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def _recommended_slice_entrypoints_module() -> Any:

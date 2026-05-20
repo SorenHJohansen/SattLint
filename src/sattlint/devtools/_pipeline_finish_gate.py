@@ -6,9 +6,11 @@ import shlex
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from sattlint.path_sanitizer import sanitize_path_for_report
+
+from .json_helpers import json_mapping as _json_mapping
 
 FINISH_GATE_MAX_WORKERS = 2
 _PIPELINE_REUSED_FINISH_GATE_STEP_IDS = {
@@ -355,10 +357,6 @@ def _build_finish_gate_commands(
 
 def _step_status_from_exit_code(exit_code: int | None) -> str:
     return "pass" if exit_code in (None, 0) else "fail"
-
-
-def _json_mapping(value: object) -> dict[str, Any] | None:
-    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def _pipeline_duration_seconds(pipeline_summary: dict[str, Any], pipeline_check_id: str) -> float:

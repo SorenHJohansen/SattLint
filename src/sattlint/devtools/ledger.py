@@ -11,6 +11,8 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
+from sattlint.devtools.json_helpers import json_mapping as _json_mapping
+from sattlint.devtools.json_helpers import nonempty_string_entries as _string_entries
 from sattlint.devtools.pipeline_artifacts import write_json_artifact
 from sattlint.path_sanitizer import sanitize_path_for_report
 
@@ -34,10 +36,6 @@ class FailurePatternGroup(TypedDict):
     run_ids: list[str]
 
 
-def _json_mapping(value: object) -> dict[str, Any] | None:
-    return cast(dict[str, Any], value) if isinstance(value, dict) else None
-
-
 def _mapping_entries(value: object) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -47,12 +45,6 @@ def _mapping_entries(value: object) -> list[dict[str, Any]]:
         if entry is not None:
             entries.append(entry)
     return entries
-
-
-def _string_entries(value: object) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [item_text for item in cast(list[object], value) if (item_text := str(item)).strip()]
 
 
 def _cleanup_temp_path(path: Path) -> None:

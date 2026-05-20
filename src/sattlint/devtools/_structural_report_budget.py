@@ -8,9 +8,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, cast
 
-
-def _json_mapping(value: object) -> dict[str, Any] | None:
-    return cast(dict[str, Any], value) if isinstance(value, dict) else None
+from .json_helpers import json_mapping as _json_mapping
 
 
 def _is_structural_budget_python_path(rel_path: str) -> bool:

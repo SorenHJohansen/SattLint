@@ -8,16 +8,9 @@ from typing import Any, cast
 from sattline_parser.models.ast_model import BasePicture
 
 from ._dataflow_common import OLD_PREFIX, is_scalar_value
+from ._report_defaults import empty_any_summary_data, empty_issue_list
 from .dataflow import DataflowAnalyzer
 from .framework import Issue
-
-
-def _empty_issue_list() -> list[Issue]:
-    return []
-
-
-def _empty_summary_data() -> dict[str, Any]:
-    return {}
 
 
 def _build_state_inference_summary(analyzer: DataflowAnalyzer) -> dict[str, Any]:
@@ -103,8 +96,8 @@ def collect_state_inference(
 @dataclass
 class StateInferenceReport:
     name: str
-    issues: list[Issue] = field(default_factory=_empty_issue_list)
-    summary_data: dict[str, Any] = field(default_factory=_empty_summary_data)
+    issues: list[Issue] = field(default_factory=empty_issue_list)
+    summary_data: dict[str, Any] = field(default_factory=empty_any_summary_data)
 
     def summary(self) -> str:
         lines = ["Report: State inference", f"Target: {self.name}"]

@@ -3,52 +3,29 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import cast
 
 from sattlint.resolution.scope import ScopeContext
 
 from ..grammar import constants as const
+from .ast_node_helpers import (
+    object_list as _object_list,
+)
+from .ast_node_helpers import (
+    object_sequence as _object_sequence,
+)
+from .ast_node_helpers import (
+    object_tuple as _object_tuple,
+)
+from .ast_node_helpers import (
+    sequence_as_list as _sequence_as_list,
+)
+from .ast_node_helpers import (
+    string_key_dict as _string_key_dict,
+)
 from .sattline_builtins import get_function_signature
 
 EffectKey = tuple[str, ...]
 ResolveEffectKey = Callable[[str, ScopeContext], EffectKey | None]
-
-_NodeTuple = tuple[object, ...]
-_NodeList = list[object]
-_NodeSequence = _NodeTuple | _NodeList
-_NodeDict = dict[str, object]
-
-
-def _object_tuple(node: object) -> _NodeTuple | None:
-    if isinstance(node, tuple):
-        return cast(_NodeTuple, node)
-    return None
-
-
-def _object_list(node: object) -> _NodeList | None:
-    if isinstance(node, list):
-        return cast(_NodeList, node)
-    return None
-
-
-def _object_sequence(node: object) -> _NodeSequence | None:
-    tuple_items = _object_tuple(node)
-    if tuple_items is not None:
-        return tuple_items
-    return _object_list(node)
-
-
-def _string_key_dict(node: object) -> _NodeDict | None:
-    if isinstance(node, dict):
-        return cast(_NodeDict, node)
-    return None
-
-
-def _sequence_as_list(node: object) -> list[object]:
-    items = _object_sequence(node)
-    if items is None:
-        return []
-    return list(items)
 
 
 def _var_name_from_mapping(node: object) -> str | None:

@@ -144,6 +144,17 @@ class DocumentationClassification:
         ]
 
 
+def _descendants_of(  # pyright: ignore[reportUnusedFunction]
+    entry: DocumentedModule,
+    entries: list[DocumentedModule],
+) -> list[DocumentedModule]:
+    return [
+        candidate
+        for candidate in entries
+        if candidate.path != entry.path and path_startswith_casefold(list(candidate.path), list(entry.path))
+    ]
+
+
 def _resolve_documentation_config(documentation_config: dict[str, Any] | None) -> ResolvedDocumentationConfig:
     raw_doc_cfg = config_module.get_documentation_config(documentation_config)
     raw_classifications = raw_doc_cfg.get("classifications")
@@ -309,7 +320,7 @@ def _resolve_documentation_scope(
     candidates = discover_documentation_unit_candidates(classification)
 
     if mode == "all":
-        return DocumentationScope(mode=mode, roots=[], requested_values=[], unmatched_values=[])
+        return DocumentationScope(mode=mode, roots=[])
 
     if mode == "instance_paths":
         requested_values = list(units.instance_paths)
@@ -334,7 +345,7 @@ def _resolve_documentation_scope(
             unmatched_values=unmatched,
         )
 
-    return DocumentationScope(mode="all", roots=[], requested_values=[], unmatched_values=[])
+    return DocumentationScope(mode="all", roots=[])
 
 
 def _normalize_requested_values(values: object) -> list[str]:
@@ -519,6 +530,44 @@ def _equals_pattern(text: str, patterns: list[str]) -> bool:
 
 def _rule_list(rule: DocumentationRule, key: str) -> list[str]:
     return rule.get(key, [])
+
+
+def _has_descendant_marker_match(
+    entry: DocumentedModule,
+    entries: list[DocumentedModule],
+    *,
+    name_contains: list[str],
+    label_equals: list[str],
+) -> bool:
+    entry_lookup = {candidate.path: candidate for candidate in entries}
+    for marker in entries:
+        if not _matches_direct(
+            marker,
+            name_contains=name_contains,
+            label_equals=label_equals,
+        ):
+            continue
+        anchor = _marker_anchor(marker, entry_lookup)
+        if anchor is not None and anchor.path == entry.path:
+            return True
+    return False
+
+
+def _matches_rule(  # pyright: ignore[reportUnusedFunction]
+    entry: DocumentedModule,
+    rule: DocumentationRule,
+    entries: list[DocumentedModule],
+) -> bool:
+    return _matches_direct(
+        entry,
+        name_contains=_rule_list(rule, "name_contains"),
+        label_equals=_rule_list(rule, "label_equals"),
+    ) or _has_descendant_marker_match(
+        entry,
+        entries,
+        name_contains=_rule_list(rule, "desc_name_contains"),
+        label_equals=_rule_list(rule, "desc_label_equals"),
+    )
 
 
 def _collect_category_entries(

@@ -9,22 +9,15 @@ from sattline_parser.models.ast_model import Variable
 from ..grammar import constants as const
 from ..resolution.scope import ScopeContext
 from ._dataflow_common import INITIALIZED, UNKNOWN, PendingWrite, ResolvedRef, ScalarValue, StateMap
-
-_NodeTuple = tuple[object, ...]
-_NodeList = list[object]
-_NodeDict = dict[str, object]
-
-
-def _object_tuple(node: object) -> _NodeTuple | None:
-    return cast(_NodeTuple, node) if isinstance(node, tuple) else None
-
-
-def _object_list(node: object) -> _NodeList | None:
-    return cast(_NodeList, node) if isinstance(node, list) else None
-
-
-def _string_key_dict(node: object) -> _NodeDict | None:
-    return cast(_NodeDict, node) if isinstance(node, dict) else None
+from .ast_node_helpers import (
+    object_list as _object_list,
+)
+from .ast_node_helpers import (
+    object_tuple as _object_tuple,
+)
+from .ast_node_helpers import (
+    string_key_dict as _string_key_dict,
+)
 
 
 class _DataflowStateMixin:

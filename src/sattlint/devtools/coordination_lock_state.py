@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, TypedDict, cast
 
 from sattlint.devtools import _coordination_lock_paths as lock_paths
+from sattlint.devtools.json_helpers import json_mapping as _json_mapping
 
 LEDGER_FILE_NAME = "current-work.md"
 LEDGER_TEMPLATE_NAME = "current-work.template.md"
@@ -60,10 +61,6 @@ class ClaimedFileDebtEntry(TypedDict):
 
 def utc_now_timestamp() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
-def _json_mapping(value: object) -> dict[str, Any] | None:
-    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def _json_mapping_sequence(value: object) -> list[Mapping[str, Any]]:

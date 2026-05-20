@@ -5,9 +5,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
-
-def _json_mapping(value: object) -> dict[str, Any] | None:
-    return cast(dict[str, Any], value) if isinstance(value, dict) else None
+from .json_helpers import json_mapping as _json_mapping
 
 
 def load_json_mapping(path: Path, *, read_text_fn: Callable[[Path], str]) -> dict[str, Any]:

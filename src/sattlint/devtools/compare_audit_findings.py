@@ -10,13 +10,10 @@ from typing import Any, cast
 
 from sattlint.devtools.artifact_readiness import ReadinessError, assert_artifact_dir_ready
 from sattlint.devtools.baselines import build_analysis_diff_report, load_finding_collection
+from sattlint.devtools.json_helpers import json_mapping as _json_mapping
 
 COMPARE_SCHEMA_KIND = "sattlint.audit_findings_comparison"
 COMPARE_SCHEMA_VERSION = 1
-
-
-def _json_mapping(value: object) -> dict[str, Any] | None:
-    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def _finding_entries(value: object) -> list[dict[str, Any]]:

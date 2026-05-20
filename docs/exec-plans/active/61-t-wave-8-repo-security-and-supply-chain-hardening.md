@@ -6,7 +6,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 This plan hardens the repository surfaces that can turn a release or local maintenance workflow into a security incident. After this work lands, SattLint's checked-in helper scripts will stop exposing local infrastructure with default credentials, the publish workflow will enforce a narrower trust boundary before PyPI publication, dependency monitoring will cover both the Python and Node trees, and repo-owned audit checks will start flagging workflow-hardening regressions instead of only checking whether a CI file exists.
 
-The observable proof is straightforward. A maintainer running the checked-in CodeGraph helper scripts should see SurrealDB bind only to localhost and refuse to use baked-in default credentials. A manual or tag-driven publish run should gate publication behind job-scoped permissions, an explicit protected environment, and the same smoke-validation path already required by the active release plans. The repository should also be able to prove that both `pip` and `npm` dependency trees are monitored and that repo-audit reports workflow-security defects such as excessive permissions, missing release protection, or raw unverified binary downloads.
+The observable proof is straightforward. A maintainer running the checked-in CodeGraph helper scripts should see SurrealDB bind only to a loopback interface and refuse to use baked-in default credentials. A manual or tag-driven publish run should gate publication behind job-scoped permissions, an explicit protected environment, and the same smoke-validation path already required by the active release plans. The repository should also be able to prove that both `pip` and `npm` dependency trees are monitored and that repo-audit reports workflow-security defects such as excessive permissions, missing release protection, or raw unverified binary downloads.
 
 ## Progress
 
@@ -77,7 +77,7 @@ Two active plans are adjacent and must be treated as dependencies, not duplicate
 
 ## Plan of Work
 
-Start with the checked-in CodeGraph helper scripts because they are the clearest concrete defect and the least dependent on the rest of the release pipeline. Update `scripts/codegraph-start-db.sh`, `scripts/codegraph-import.sh`, and `scripts/codegraph-index-export.sh` so SurrealDB binds to `127.0.0.1` by default, not `0.0.0.0`. Remove baked-in `root/root` credentials from the scripts and require credentials through environment variables or an explicit local-only default generation step that fails closed when no credential source is present. The scripts should keep their current developer purpose, but they must stop teaching users to expose a database service on all interfaces with predictable credentials.
+Start with the checked-in CodeGraph helper scripts because they are the clearest concrete defect and the least dependent on the rest of the release pipeline. Update `scripts/codegraph-start-db.sh`, `scripts/codegraph-import.sh`, and `scripts/codegraph-index-export.sh` so SurrealDB binds to a loopback-only address by default, not all interfaces. Remove baked-in `root/root` credentials from the scripts and require credentials through environment variables or an explicit local-only default generation step that fails closed when no credential source is present. The scripts should keep their current developer purpose, but they must stop teaching users to expose a database service on all interfaces with predictable credentials.
 
 Next, harden the publish trust boundary in `.github/workflows/publish.yml`. Move `id-token: write` from workflow scope to the smallest job that actually needs it. Add an explicit `environment:` on the publish job so the final publish step can be protected independently from the build job. Keep the artifact build and smoke-validation path aligned with the active release plans, but make this plan responsible for ensuring that publication cannot happen through a broader or less-reviewed path than the rehearsal path. If GitHub-side policy requires a named environment such as `pypi-release`, document that exact name in the plan and in the workflow comments or adjacent docs.
 
@@ -85,7 +85,7 @@ Then close the dependency-monitoring blind spot. Extend `.github/dependabot.yml`
 
 After the direct hardening changes exist, teach repo-audit to enforce them. Extend `src/sattlint/devtools/_repo_audit_reporting.py` and any needed supporting modules so repo-audit emits findings for checked-in workflow security defects such as workflow-level `id-token: write`, missing publish `environment:` protection, direct unverified binary downloads in workflows, missing npm dependency-monitoring coverage when `package-lock.json` exists, and CodeGraph helper scripts that bind a database to all interfaces or use hardcoded credentials. Keep these checks deterministic and repository-state-based. Repo-audit should not call GitHub APIs or inspect live environment settings beyond what the checked-in files can prove.
 
-Finish by aligning the nearby docs and workflow guidance. Update `AGENTS.md` and `docs/quality-gates.md` only where they describe the release or security gate incorrectly after the changes. Add or adjust a short note in the workflow or security-facing docs so a novice can see that publish is protected, local helper scripts are localhost-only by default, and both Python and Node dependency trees are monitored. Do not widen this into a full release-policy narrative; keep the docs updates narrowly tied to the new security contract.
+Finish by aligning the nearby docs and workflow guidance. Update `AGENTS.md` and `docs/quality-gates.md` only where they describe the release or security gate incorrectly after the changes. Add or adjust a short note in the workflow or security-facing docs so a novice can see that publish is protected, local helper scripts are loopback-only by default, and both Python and Node dependency trees are monitored. Do not widen this into a full release-policy narrative; keep the docs updates narrowly tied to the new security contract.
 
 ## Concrete Steps
 
@@ -95,7 +95,7 @@ Capture the baseline workflow and helper-script defects before editing:
 
     rg -n "id-token|environment:|tags:|workflow_dispatch" .github/workflows/publish.yml
     rg -n "package-ecosystem" .github/dependabot.yml
-    rg -n "0.0.0.0:3004|root --pass root|localhost:3004|SurrealDB" scripts/codegraph-*.sh
+    rg -n "0.0.0.0:3004|root --pass root|SurrealDB" scripts/codegraph-*.sh
     rg -n "missing-ci-workflow|workflow_dir = root / \".github\" / \"workflows\"" src/sattlint/devtools/_repo_audit_reporting.py
 
 After the CodeGraph script hardening lands, run a focused shell and docs sanity pass. If a small shell-test seam is added, run that exact test. At minimum, verify the scripts no longer advertise or execute all-interface bind plus literal default credentials:
@@ -121,7 +121,7 @@ For final acceptance, run one manual publish rehearsal after the workflow harden
 
 ## Validation and Acceptance
 
-Acceptance is behavioral. Running or reading the checked-in CodeGraph helper scripts must show that SurrealDB binds to localhost by default and no longer depends on hardcoded `root/root` credentials. A maintainer should not be able to follow the checked-in instructions and accidentally expose a reachable database service with known credentials.
+Acceptance is behavioral. Running or reading the checked-in CodeGraph helper scripts must show that SurrealDB binds to a loopback interface by default and no longer depends on hardcoded `root/root` credentials. A maintainer should not be able to follow the checked-in instructions and accidentally expose a reachable database service with known credentials.
 
 The publish path must show a narrower trust boundary. The final publish job in `.github/workflows/publish.yml` must be the only place that receives `id-token: write`, and that job must declare a protected `environment:`. A manual rehearsal path must still stop before publication, while a real tag push must pass through the same hardened gate before publish.
 
@@ -158,7 +158,7 @@ The implementation phase should record one concise before-and-after excerpt for 
 
 ## Interfaces and Dependencies
 
-The helper-script surface is `scripts/codegraph-start-db.sh`, `scripts/codegraph-import.sh`, and `scripts/codegraph-index-export.sh`. At the end of this slice, those scripts must expose only localhost-friendly defaults and must not embed literal production-like credentials. If environment variables are used, document their exact names in the script comments and in any touched docs.
+The helper-script surface is `scripts/codegraph-start-db.sh`, `scripts/codegraph-import.sh`, and `scripts/codegraph-index-export.sh`. At the end of this slice, those scripts must expose only loopback-friendly defaults and must not embed literal production-like credentials. If environment variables are used, document their exact names in the script comments and in any touched docs.
 
 The workflow surface is `.github/workflows/publish.yml` plus `.github/dependabot.yml`. `publish.yml` must end with job-scoped publish permissions and an explicit protected `environment:` on the final publish job. Dependabot must include `npm` coverage rooted at `/` while the checked-in Node lockfile remains present.
 

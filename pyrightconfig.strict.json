@@ -1,5 +1,0 @@
-{
-  "include": ["src/sattlint_gui/binding.py"],
-  "typeCheckingMode": "strict",
-  "reportMissingTypeStubs": false
-}

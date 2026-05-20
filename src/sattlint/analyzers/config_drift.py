@@ -6,23 +6,16 @@ from typing import cast
 
 from sattline_parser.models.ast_model import BasePicture
 
+from ._report_defaults import empty_issue_list, empty_object_summary_data
 from ._wave2_support import InstanceParameterValue, collect_instance_parameter_values
 from .framework import Issue
-
-
-def _empty_issue_list() -> list[Issue]:
-    return []
-
-
-def _empty_object_summary() -> dict[str, object]:
-    return {}
 
 
 @dataclass
 class ConfigDriftReport:
     name: str
-    issues: list[Issue] = field(default_factory=_empty_issue_list)
-    summary_data: dict[str, object] = field(default_factory=_empty_object_summary)
+    issues: list[Issue] = field(default_factory=empty_issue_list)
+    summary_data: dict[str, object] = field(default_factory=empty_object_summary_data)
 
     def summary(self) -> str:
         lines = ["Report: Config drift", f"Target: {self.name}"]

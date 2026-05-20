@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from sattlint.devtools.artifact_registry import AUDIT_ARTIFACTS
+from sattlint.devtools.json_helpers import json_mapping as _json_mapping
 
 READINESS_SCHEMA_KIND = "sattlint.artifact_readiness"
 READINESS_SCHEMA_VERSION = 1
@@ -16,10 +17,6 @@ READINESS_SCHEMA_VERSION = 1
 
 class ReadinessError(RuntimeError):
     """Raised when an artifact directory is missing or still unsafe to read."""
-
-
-def _json_mapping(value: object) -> dict[str, Any] | None:
-    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def _load_json(path: Path) -> dict[str, Any]:
