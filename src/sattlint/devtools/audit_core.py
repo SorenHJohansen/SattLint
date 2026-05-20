@@ -119,17 +119,17 @@ def find_cli_findings(
         for subparser in cast(dict[object, object], choices).values():
             if getattr(subparser, "description", None):
                 continue
-                findings.append(
-                    finding_factory(
-                        id="cli-missing-subcommand-description",
-                        category="cli-ux",
-                        severity="low",
-                        confidence="high",
-                        message="CLI subcommand is missing a description.",
-                        path="src/sattlint/app.py",
-                        suggestion="Give each subcommand a description for consistent help output.",
-                    )
+            findings.append(
+                finding_factory(
+                    id="cli-missing-subcommand-description",
+                    category="cli-ux",
+                    severity="low",
+                    confidence="high",
+                    message="CLI subcommand is missing a description.",
+                    path="src/sattlint/app.py",
+                    suggestion="Give each subcommand a description for consistent help output.",
                 )
+            )
     return findings
 
 

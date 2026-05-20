@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-
-def _json_mapping(value: object) -> dict[str, Any] | None:
-    return cast(dict[str, Any], value) if isinstance(value, dict) else None
+from .json_helpers import json_mapping as _json_mapping
 
 
 def _repo_audit_ai_gc_module() -> Any:

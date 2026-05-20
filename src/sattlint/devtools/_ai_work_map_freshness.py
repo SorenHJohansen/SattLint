@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
+from sattlint.devtools.json_helpers import nonempty_string_entries
 from sattlint.devtools.pipeline_checks import collect_repo_file_inventory, path_matches_globs
 
 type JsonDict = dict[str, object]
@@ -21,16 +23,7 @@ def _dict_entries(value: object) -> list[JsonDict]:
     return entries
 
 
-def _string_entries(value: object) -> list[str]:
-    if not isinstance(value, (list, tuple)):
-        return []
-    items = cast(list[object] | tuple[object, ...], value)
-    entries: list[str] = []
-    for item in items:
-        text = str(item).strip()
-        if text:
-            entries.append(text)
-    return entries
+_string_entries = partial(nonempty_string_entries, include_tuples=True, strip=True)
 
 
 def _string_value(value: object, default: str = "") -> str:

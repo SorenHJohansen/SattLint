@@ -15,6 +15,24 @@ def _ns(**kwargs: Any) -> Any:
     return SimpleNamespace(**kwargs)
 
 
+def _make_strict_access_helper(
+    *,
+    fail_loudly: bool = False,
+    unavailable_libraries: set[str] | None = None,
+    opaque_builtin_types: set[str] | None = None,
+    record_resolver: Any | None = None,
+    warnings: list[str] | None = None,
+) -> Any:
+    return SimpleNamespace(
+        fail_loudly=fail_loudly,
+        unavailable_libraries=unavailable_libraries or {"Lib"},
+        opaque_builtin_types=opaque_builtin_types or {"opaque"},
+        type_graph=_ns(record=record_resolver or (lambda name: None)),
+        site_stack=["site"],
+        warn=(warnings if warnings is not None else []).append,
+    )
+
+
 class _UsageStub:
     def __init__(
         self,
@@ -110,19 +128,15 @@ def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:
     assert variables_access_module._extract_field_path(helper, {"var_name": "Demo.Field"}) == ("demo", "Field")
 
 
-def test_variables_access_strict_datatype_and_leaf_helpers_cover_warning_and_error_paths() -> None:
+def test_variables_access_strict_datatype_helper_covers_warning_and_error_paths() -> None:
     warnings: list[str] = []
     record_with_known_field = _ns(
         name="RecordType",
         fields_by_key={"known": _ns(name="Known", datatype=Simple_DataType.INTEGER)},
     )
-    helper: Any = SimpleNamespace(
-        fail_loudly=False,
-        unavailable_libraries={"Lib"},
-        opaque_builtin_types={"opaque"},
-        type_graph=_ns(record=lambda name: None if name == "Unknown" else record_with_known_field),
-        site_stack=["site"],
-        warn=warnings.append,
+    helper = _make_strict_access_helper(
+        record_resolver=lambda name: None if name == "Unknown" else record_with_known_field,
+        warnings=warnings,
     )
 
     assert (
@@ -208,6 +222,18 @@ def test_variables_access_strict_datatype_and_leaf_helpers_cover_warning_and_err
     )
     assert any("Close matches" in warning for warning in warnings)
 
+
+def test_variables_access_leaf_helper_covers_unknown_and_builtin_paths() -> None:
+    warnings: list[str] = []
+    record_with_known_field = _ns(
+        name="RecordType",
+        fields_by_key={"known": _ns(name="Known", datatype=Simple_DataType.INTEGER)},
+    )
+    helper = _make_strict_access_helper(
+        record_resolver=lambda name: None if name == "Unknown" else record_with_known_field,
+        warnings=warnings,
+    )
+
     helper.fail_loudly = True
     helper.unavailable_libraries = set()
     with pytest.raises(ValueError):
@@ -258,6 +284,11 @@ def test_variables_access_strict_datatype_and_leaf_helpers_cover_warning_and_err
         syntactic_ref="Ref",
         resolved_var_name="Demo",
     ) == [()]
+
+
+def test_variables_access_leaf_helper_covers_record_and_cycle_paths() -> None:
+    warnings: list[str] = []
+    helper = _make_strict_access_helper(warnings=warnings)
 
     helper.type_graph = _ns(
         record=lambda name: (

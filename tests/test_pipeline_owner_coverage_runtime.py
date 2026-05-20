@@ -168,7 +168,7 @@ def test_run_stage_helpers_cover_fallback_and_missing_junit_branches(monkeypatch
     )
 
     assert commands[0][:3] == ["python", "-m", "ruff"]
-    assert commands[1][:3] == ["python", "-m", "pyright"]
+    assert commands[1] == ["python", "-m", "pyright", "--outputjson", "src"]
     assert ruff_report["finding_count"] == 0
     assert pyright_report["warning_count"] == 2
     assert pytest_report["errors"][0]["message"] == "JUnit XML not generated: missing junit"

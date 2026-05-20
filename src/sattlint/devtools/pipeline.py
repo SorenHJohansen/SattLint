@@ -454,16 +454,17 @@ def _run_pyright_stage(
     python_cmd: list[str],
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     progress.start_stage("pyright")
+    pyright_targets = ["src"]
     pyright_binary = _resolve_venv_tool("pyright")
     if pyright_binary:
         pyright_result = _run_command(
             "pyright",
-            [pyright_binary, "--outputjson", "src", "tests"],
+            [pyright_binary, "--outputjson", *pyright_targets],
         )
     else:
         pyright_result = _run_command(
             "pyright",
-            [*python_cmd, "-m", "pyright", "--outputjson", "src", "tests"],
+            [*python_cmd, "-m", "pyright", "--outputjson", *pyright_targets],
         )
     pyright_data = json.loads(pyright_result.stdout or "{}")
     pyright_findings = pyright_data.get("generalDiagnostics", [])

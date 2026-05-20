@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 
+from .json_helpers import nonempty_string_entries as _string_entries
+
 
 def _finding_entries(value: object) -> list[dict[str, Any]]:
     if not isinstance(value, list):
@@ -14,12 +16,6 @@ def _finding_entries(value: object) -> list[dict[str, Any]]:
         if isinstance(entry, dict):
             findings.append(cast(dict[str, Any], entry))
     return findings
-
-
-def _string_entries(value: object) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [item_text for entry in cast(list[object], value) if (item_text := str(entry)).strip()]
 
 
 def _append_structural_budget_findings(findings: list[dict[str, Any]], structural_budgets: dict[str, Any]) -> None:

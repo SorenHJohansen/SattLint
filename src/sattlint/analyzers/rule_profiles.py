@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from enum import Enum
 from typing import Protocol, cast
 
 from .issue import Issue
@@ -336,13 +337,17 @@ def _resolve_issue_rule(issue_kind: str) -> SemanticRule | None:
 
 
 def _normalized_issue_kind(issue: Issue) -> str | None:
-    kind_text = issue.kind.strip()
+    raw_kind = getattr(issue, "kind", None)
+    if isinstance(raw_kind, Enum):
+        raw_kind = raw_kind.value
+    kind_text = str(raw_kind).strip() if raw_kind is not None else ""
     return kind_text or None
 
 
 def _issue_has_rule_metadata(issue: Issue) -> bool:
-    del issue
-    return True
+    return all(
+        hasattr(issue, field_name) for field_name in ("rule_id", "severity", "confidence", "explanation", "suggestion")
+    )
 
 
 def _derived_rule_id(issue: Issue) -> str | None:
@@ -364,23 +369,23 @@ def materialize_issue_metadata(issue: Issue) -> Issue:
         return issue
     return replace(
         issue,
-        rule_id=issue.rule_id or rule.id,
-        severity=issue.severity or rule.severity,
-        confidence=issue.confidence or rule.confidence,
-        explanation=issue.explanation or rule.explanation or rule.description,
-        suggestion=issue.suggestion or rule.suggestion,
+        rule_id=getattr(issue, "rule_id", None) or rule.id,
+        severity=getattr(issue, "severity", None) or rule.severity,
+        confidence=getattr(issue, "confidence", None) or rule.confidence,
+        explanation=getattr(issue, "explanation", None) or rule.explanation or rule.description,
+        suggestion=getattr(issue, "suggestion", None) or rule.suggestion,
     )
 
 
 def apply_rule_profile_to_issue(issue: Issue, profile: RuleProfile) -> Issue | None:
     materialized = materialize_issue_metadata(issue)
-    resolved_rule_id = materialized.rule_id or _derived_rule_id(materialized)
+    resolved_rule_id = getattr(materialized, "rule_id", None) or _derived_rule_id(materialized)
     if resolved_rule_id in set(profile.disabled_rules):
         return None
-    if resolved_rule_id is None:
+    if resolved_rule_id is None or not _issue_has_rule_metadata(materialized):
         return materialized
-    severity = (profile.severity_overrides or {}).get(resolved_rule_id, materialized.severity)
-    confidence = (profile.confidence_overrides or {}).get(resolved_rule_id, materialized.confidence)
+    severity = (profile.severity_overrides or {}).get(resolved_rule_id, getattr(materialized, "severity", None))
+    confidence = (profile.confidence_overrides or {}).get(resolved_rule_id, getattr(materialized, "confidence", None))
     return replace(materialized, severity=severity, confidence=confidence)
 
 

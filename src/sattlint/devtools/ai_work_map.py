@@ -9,6 +9,7 @@ from typing import Any, cast
 from sattlint.devtools import _ai_work_map_parsing as parsing_helpers
 from sattlint.devtools import _ai_work_map_planning as planning_helpers
 from sattlint.devtools._ai_work_map_freshness import verify_ai_harness_freshness as verify_ai_harness_freshness
+from sattlint.devtools.json_helpers import nonempty_string_entries
 from sattlint.devtools.pipeline_checks import normalize_changed_files, path_matches_globs
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -211,16 +212,7 @@ def _dict_entries(value: object) -> list[JsonDict]:
     return entries
 
 
-def _string_entries(value: object) -> list[str]:
-    if not isinstance(value, (list, tuple)):
-        return []
-    items = cast(list[object] | tuple[object, ...], value)
-    entries: list[str] = []
-    for item in items:
-        text = str(item).strip()
-        if text:
-            entries.append(text)
-    return entries
+_string_entries = partial(nonempty_string_entries, include_tuples=True, strip=True)
 
 
 _read_lines = parsing_helpers.read_lines

@@ -154,10 +154,6 @@ def build_cli_parser(*, prog: str | None = None, add_help: bool = True) -> argpa
     return parser
 
 
-def _build_cli_parser() -> argparse.ArgumentParser:
-    return build_cli_parser()
-
-
 def _check_mode_conflicts(args: argparse.Namespace, parser: _ErrorCapableParser) -> None:
     if args.check and (args.recommend_checks or args.run_recommended_slice or args.run_recommended_finish_gate):
         parser.error("--check cannot be combined with --recommend-checks or --run-recommended-slice.")

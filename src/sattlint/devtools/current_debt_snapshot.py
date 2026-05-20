@@ -7,13 +7,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
+from .json_helpers import json_mapping as _json_mapping
+
 CURRENT_DEBT_SNAPSHOT_SCHEMA_KIND = "sattlint.current_debt_snapshot"
 CURRENT_DEBT_SNAPSHOT_SCHEMA_VERSION = 1
 FILE_DEBT_RATCHET_PATH = Path("artifacts") / "analysis" / "file_debt_ratchet.json"
-
-
-def _json_mapping(value: object) -> dict[str, Any] | None:
-    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def _normalize_file_debt_entries(payload: dict[str, Any]) -> dict[str, dict[str, dict[str, Any]]]:

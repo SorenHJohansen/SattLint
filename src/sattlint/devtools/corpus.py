@@ -386,6 +386,10 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if suite.passed else 1
 
 
+def _print_cli_summary(status_report: dict[str, Any]) -> None:  # pyright: ignore[reportUnusedFunction]
+    print(format_cli_summary(status_report))
+
+
 def _coerce_optional_str(value: Any) -> str | None:
     if value in (None, ""):
         return None

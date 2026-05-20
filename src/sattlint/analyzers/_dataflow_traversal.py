@@ -24,38 +24,15 @@ from ..resolution.common import resolve_moduletype_def_strict
 from ..resolution.scope import ScopeContext
 from ._dataflow_common import StateMap
 from ._dataflow_scope_support import _DataflowScopeSupportMixin
-
-_NodeTuple = tuple[object, ...]
-_NodeList = list[object]
-_NodeSequence = _NodeTuple | _NodeList
-
-
-def _object_tuple(node: object) -> _NodeTuple | None:
-    return cast(_NodeTuple, node) if isinstance(node, tuple) else None
-
-
-def _object_list(node: object) -> _NodeList | None:
-    return cast(_NodeList, node) if isinstance(node, list) else None
-
-
-def _object_sequence(node: object) -> _NodeSequence | None:
-    tuple_items = _object_tuple(node)
-    if tuple_items is not None:
-        return tuple_items
-    return _object_list(node)
-
-
-def _statement_children(node: object) -> _NodeSequence | None:
-    if getattr(node, "data", None) != const.KEY_STATEMENT:
-        return None
-    return _object_sequence(getattr(node, "children", None))
-
-
-def _sequence_as_list(node: object) -> list[object]:
-    items = _object_sequence(node)
-    if items is None:
-        return []
-    return list(items)
+from .ast_node_helpers import (
+    object_tuple as _object_tuple,
+)
+from .ast_node_helpers import (
+    sequence_as_list as _sequence_as_list,
+)
+from .ast_node_helpers import (
+    statement_children as _statement_children,
+)
 
 
 class _DataflowTraversalMixin(_DataflowScopeSupportMixin):

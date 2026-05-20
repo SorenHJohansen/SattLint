@@ -17,6 +17,17 @@ def _noop_status(_text: str) -> None:
     return None
 
 
+def _console_text(console: object) -> str:
+    get_text = getattr(console, "get_text", None)
+    if callable(get_text):
+        return str(get_text())
+    text_widget = getattr(console, "_text", None)
+    getter = getattr(text_widget, "get", None)
+    if callable(getter):
+        return str(getter("1.0", "end-1c"))
+    return ""
+
+
 class ToolsFrame(ttk.Frame):
     def __init__(
         self,
@@ -58,7 +69,7 @@ class ToolsFrame(ttk.Frame):
         analyzers = self.binding.list_enabled_analyzers()
         lines = [f"{item.key}: {item.name}" for item in analyzers]
         self.console.set_text("\n".join(lines) if lines else "No analyzers configured")
-        self.on_result("Enabled Analyzers", self.console.get_text())
+        self.on_result("Enabled Analyzers", _console_text(self.console))
         self.on_status("Listed enabled analyzers")
 
     def _finish_task(self, title: str, output: str) -> None:

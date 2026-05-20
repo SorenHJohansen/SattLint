@@ -7,21 +7,16 @@ import json
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
 from sattlint.analyzers.modules import analyze_version_drift
+from sattlint.devtools.json_helpers import string_entries as _string_entries
 from sattlint.devtools.structural_reports import REPO_ROOT, WorkspaceGraphInputs, collect_workspace_graph_inputs
 from sattlint.path_sanitizer import sanitize_path_for_report
 from sattlint.tracing import collect_ast_summary
 
 DEFAULT_OUTPUT_FILENAME = "metrics_dashboard.json"
-
-
-def _string_entries(value: object) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(entry) for entry in cast(list[object], value)]
 
 
 def _emit_metrics_progress(message: str) -> None:

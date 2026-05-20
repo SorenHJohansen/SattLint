@@ -14,6 +14,7 @@ from sattlint.devtools._repo_audit_ai_gc import (
     _filter_ai_gc_report_for_output_dir,
     _is_active_output_ai_gc_path,
 )
+from sattlint.devtools.json_helpers import json_mapping as _json_mapping
 from sattlint.devtools.pipeline_artifacts import write_json_artifact
 
 
@@ -21,10 +22,6 @@ def _repo_audit_reporting_module() -> Any:
     from sattlint.devtools import repo_audit as repo_audit_module
 
     return repo_audit_module
-
-
-def _json_mapping(value: object) -> dict[str, Any] | None:
-    return cast(dict[str, Any], value) if isinstance(value, dict) else None
 
 
 def build_coverage_summary_report(root: Path) -> dict[str, Any]:

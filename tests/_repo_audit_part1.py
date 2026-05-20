@@ -364,6 +364,9 @@ def test_iter_repo_text_entries_yields_text_and_skips_binary(tmp_path):
     text_file.write_text("VALUE = 1\n", encoding="utf-8")
     binary_file = tmp_path / "src" / "sample.txt"
     binary_file.write_bytes(b"bad\x00text")
+    node_modules_file = tmp_path / "node_modules" / "example.js"
+    node_modules_file.parent.mkdir(parents=True)
+    node_modules_file.write_text("const value = '/Users/example/project';\n", encoding="utf-8")
 
     entries = list(repo_audit._iter_repo_text_entries(tmp_path, include_generated=False, tracked_only=False))
 

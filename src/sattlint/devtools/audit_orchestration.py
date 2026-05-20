@@ -5,11 +5,9 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
-
-def _json_mapping(value: object) -> dict[str, Any] | None:
-    return cast(dict[str, Any], value) if isinstance(value, dict) else None
+from .json_helpers import json_mapping as _json_mapping
 
 
 def doc_gardener_finding_to_repo_audit(finding: Any, *, finding_factory: Callable[..., Any]) -> Any:

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from typing import Any, cast
+from typing import Any
 
 from sattline_parser.models.ast_model import Variable
 
@@ -32,53 +31,27 @@ from ._reset_path_writes import (
 from ._reset_path_writes import (
     record_mode_write as _record_mode_write,
 )
-
-_NodeTuple = tuple[object, ...]
-_NodeList = list[object]
-_NodeSequence = _NodeTuple | _NodeList
-
-
-def _object_tuple(node: object) -> _NodeTuple | None:
-    if isinstance(node, tuple):
-        return cast(_NodeTuple, node)
-    return None
-
-
-def _object_list(node: object) -> _NodeList | None:
-    if isinstance(node, list):
-        return cast(_NodeList, node)
-    return None
-
-
-def _object_sequence(node: object) -> _NodeSequence | None:
-    tuple_items = _object_tuple(node)
-    if tuple_items is not None:
-        return tuple_items
-    return _object_list(node)
-
-
-def _statement_children(node: object) -> _NodeSequence | None:
-    if getattr(node, "data", None) != const.KEY_STATEMENT:
-        return None
-    return _object_sequence(getattr(node, "children", None))
-
-
-def _sequence_as_list(node: object) -> list[object]:
-    items = _object_sequence(node)
-    if items is None:
-        return []
-    return list(items)
-
-
-def _iter_branch_pairs(node: object) -> Iterator[tuple[object, object]]:
-    branches = _object_sequence(node)
-    if branches is None:
-        return
-    for branch in branches:
-        branch_items = _object_sequence(branch)
-        if branch_items is None or len(branch_items) < 2:
-            continue
-        yield branch_items[0], branch_items[1]
+from .ast_node_helpers import (
+    NodeTuple as _NodeTuple,
+)
+from .ast_node_helpers import (
+    iter_branch_pairs as _iter_branch_pairs,
+)
+from .ast_node_helpers import (
+    object_list as _object_list,
+)
+from .ast_node_helpers import (
+    object_sequence as _object_sequence,
+)
+from .ast_node_helpers import (
+    object_tuple as _object_tuple,
+)
+from .ast_node_helpers import (
+    sequence_as_list as _sequence_as_list,
+)
+from .ast_node_helpers import (
+    statement_children as _statement_children,
+)
 
 
 def _collect_stmt_block_paths(

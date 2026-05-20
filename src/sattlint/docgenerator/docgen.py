@@ -140,6 +140,12 @@ def _value_text(value: object | None) -> str:
     return str(value)
 
 
+def _format_coord(value: tuple[float, ...] | None) -> str:  # pyright: ignore[reportUnusedFunction]
+    if value is None:
+        return "<none>"
+    return f"({', '.join(f'{part:g}' for part in value)})"
+
+
 def _prettify_name(text: str) -> str:
     if not text:
         return ""
