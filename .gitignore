@@ -34,11 +34,15 @@ htmlcov/
 dist/
 build/
 node_modules/
+.envrc
 tmp-pyright-*.json
 temp_pyright*
 pyright_output*.json
 pyright_probe*.json
 pyright_batch_probe_out.json
+pyrightconfig_probe*.json
+pyrightconfig_temp*.json
+pyrightconfig_task.json
 pyright_results.json
 bandit_results*.json
 tmp_pyright_analyzers.json
@@ -64,6 +68,7 @@ artifacts/impact-analysis/
 artifacts/audit-ai-gc-current/
 artifacts/audit-ai-gc-recheck/
 artifacts/audit-full-current/
+artifacts/audit-full-current.tmp-*/
 artifacts/audit-full-*.log
 artifacts/audit-full-[0-9]*/
 artifacts/audit-pre-push-*/

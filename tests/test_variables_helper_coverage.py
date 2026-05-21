@@ -6,7 +6,10 @@ from typing import Any, cast
 
 import pytest
 
-from sattline_parser.models.ast_model import Simple_DataType, Variable
+from sattline_parser.models.ast_model import (
+    Simple_DataType,
+    Variable,
+)
 from sattlint.analyzers import _variables_access as variables_access_module
 from sattlint.analyzers import _variables_execution as variables_execution_module
 from sattlint.analyzers import _variables_status as variables_status_module

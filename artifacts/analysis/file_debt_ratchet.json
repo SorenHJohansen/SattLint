@@ -54,15 +54,6 @@
         "touch_rule": "must_reach_target_on_touch"
       }
     },
-    "src/sattlint/analyzers/_variables_submodules.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 9405,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
     "src/sattlint/analyzers/alarm_integrity.py": {
       "coverage": {
         "allow_rebaseline": false,

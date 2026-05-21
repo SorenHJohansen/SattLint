@@ -3,6 +3,7 @@ name: Repo Audit
 
 
 on:
+  pull_request:
   push:
     branches:
       - main
@@ -11,72 +12,54 @@ permissions:
   contents: read
 
 jobs:
-  audit:
-    name: Repo Audit (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            profile: full
-            run_build: true
-            run_leak_audit: true
-          - os: windows-latest
-            profile: quick
-            run_build: false
-            run_leak_audit: false
-
+  packaging-and-leak-checks:
+    name: Packaging And Leak Checks
+    runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - name: Set up shared CI tooling
+        uses: ./.github/actions/setup-ci-tooling
         with:
-          python-version: "3.13"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-
-      - name: Install dependencies
-        run: uv pip install --system -e ".[dev]"
-
-      - name: Install Node
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: "22"
-
-      - name: Install markdownlint-cli2
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: npm install --global markdownlint-cli2@0.22.1
-
-      - name: Lint Markdown
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: python scripts/run_markdownlint.py --config .markdownlint-cli2.jsonc
+          dependency-spec: ".[dev]"
 
       - name: Build distributions
-        if: ${{ matrix.run_build }}
         run: python -m build
 
       - name: Check distribution metadata
-        if: ${{ matrix.run_build }}
         run: python -m twine check dist/*
 
-      - name: Run repository audit
-        run: python -m sattlint.devtools.repo_audit --profile ${{ matrix.profile }} --output-dir artifacts/audit --fail-on high
-
       - name: Run leak audit
-        if: ${{ matrix.run_leak_audit }}
         run: python -m sattlint.devtools.repo_audit --leaks-only --output-dir artifacts/audit-leaks --fail-on medium
 
-      - name: Upload audit reports
+      - name: Upload packaging and leak artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           if-no-files-found: ignore
-          name: repo-audit-${{ matrix.os }}
+          name: repo-audit-ubuntu-${{ github.run_id }}
           path: |
             dist/
-            artifacts/audit/
             artifacts/audit-leaks/
+
+  windows-quick-audit:
+    name: Windows Quick Audit
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up shared CI tooling
+        uses: ./.github/actions/setup-ci-tooling
+        with:
+          dependency-spec: ".[dev]"
+
+      - name: Run repository audit
+        run: python -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit --fail-on high
+
+      - name: Upload Windows audit report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          if-no-files-found: ignore
+          name: repo-audit-windows-${{ github.run_id }}
+          path: artifacts/audit/

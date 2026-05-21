@@ -68,7 +68,7 @@ Active follow-on plans from the 2026-05-18 strict-typing inventory review:
 
 Active follow-on plan from the 2026-05-19 repo-map and architecture review:
 
-- `docs/exec-plans/active/58-t-wave-8-repo-structure-and-architecture-alignment.md` covers canonical root-layout cleanup, architecture-doc alignment, the undocumented GUI and editor-facade surfaces, stale `arch_linter` naming, and one explicit map of the actual runtime architecture.
+- `docs/exec-plans/completed/58-t-wave-8-repo-structure-and-architecture-alignment.md` covers canonical root-layout cleanup, architecture-doc alignment, the undocumented GUI and editor-facade surfaces, stale `arch_linter` naming, and one explicit map of the actual runtime architecture.
 
 Active follow-on plan from the 2026-05-19 security review:
 

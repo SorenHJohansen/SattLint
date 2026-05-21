@@ -1,0 +1,321 @@
+"""Build and execute a repo-owned release smoke rehearsal against a built wheel."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess  # nosec B404 - repo-owned release smoke uses vetted subprocess calls with explicit argv
+import tempfile
+import venv
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Protocol
+
+from sattlint.devtools.pipeline_artifacts import write_json_artifact
+from sattlint.path_sanitizer import sanitize_path_for_report
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "release-smoke"
+STATUS_SCHEMA_KIND = "sattlint.release_smoke.status"
+SUMMARY_SCHEMA_KIND = "sattlint.release_smoke.summary"
+SCHEMA_VERSION = 1
+
+
+class _CommandRunner(Protocol):
+    def __call__(
+        self,
+        command: Sequence[str],
+        *,
+        cwd: Path,
+        env: Mapping[str, str],
+        text: bool,
+        capture_output: bool,
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]: ...
+
+
+class _VirtualenvCreator(Protocol):
+    def __call__(self, venv_dir: Path) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _SmokeStepDefinition:
+    step_id: str
+    display_name: str
+    command: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _SmokeStepResult:
+    step_id: str
+    display_name: str
+    command: tuple[str, ...]
+    exit_code: int
+    status: str
+    stdout: str
+    stderr: str
+
+    def to_status_payload(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "exit_code": self.exit_code,
+            "command": list(self.command),
+        }
+
+    def to_summary_payload(self) -> dict[str, Any]:
+        return {
+            "step_id": self.step_id,
+            "display_name": self.display_name,
+            "status": self.status,
+            "exit_code": self.exit_code,
+            "command": list(self.command),
+            "stdout": self.stdout,
+            "stderr": self.stderr,
+        }
+
+
+def _sanitize_path(path: Path, *, repo_root: Path) -> str:
+    resolved = path.resolve()
+    return sanitize_path_for_report(resolved, repo_root=repo_root) or resolved.as_posix()
+
+
+def _create_virtualenv(venv_dir: Path) -> None:
+    builder = venv.EnvBuilder(with_pip=True, clear=True)
+    builder.create(venv_dir)
+
+
+def _run_subprocess(
+    command: Sequence[str],
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    text: bool,
+    capture_output: bool,
+    check: bool,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # nosec B603 - commands are explicit argv sequences built from repo-controlled paths
+        list(command),
+        cwd=cwd,
+        env=dict(env),
+        text=text,
+        capture_output=capture_output,
+        check=check,
+    )
+
+
+def _venv_bin_dir(venv_dir: Path) -> Path:
+    return venv_dir / ("Scripts" if os.name == "nt" else "bin")
+
+
+def _venv_python(venv_dir: Path) -> Path:
+    return _venv_bin_dir(venv_dir) / ("python.exe" if os.name == "nt" else "python")
+
+
+def _venv_script(venv_dir: Path, name: str) -> Path:
+    suffix = ".exe" if os.name == "nt" else ""
+    return _venv_bin_dir(venv_dir) / f"{name}{suffix}"
+
+
+def _build_step_definitions(venv_dir: Path, *, wheel: Path, sample_file: Path) -> tuple[_SmokeStepDefinition, ...]:
+    python_executable = _venv_python(venv_dir)
+    sattlint_executable = _venv_script(venv_dir, "sattlint")
+    repo_audit_executable = _venv_script(venv_dir, "sattlint-repo-audit")
+    return (
+        _SmokeStepDefinition(
+            step_id="install_wheel",
+            display_name="Install built wheel",
+            command=(str(python_executable), "-m", "pip", "install", str(wheel)),
+        ),
+        _SmokeStepDefinition(
+            step_id="cli_version",
+            display_name="Boot CLI version",
+            command=(str(sattlint_executable), "--version"),
+        ),
+        _SmokeStepDefinition(
+            step_id="syntax_check",
+            display_name="Run syntax-check sample",
+            command=(str(sattlint_executable), "syntax-check", str(sample_file)),
+        ),
+        _SmokeStepDefinition(
+            step_id="repo_audit_boot",
+            display_name="Boot repo-audit CLI",
+            command=(str(repo_audit_executable), "--profile", "full", "--list-checks"),
+        ),
+    )
+
+
+def _run_step(
+    definition: _SmokeStepDefinition,
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    run_command: _CommandRunner,
+) -> _SmokeStepResult:
+    completed = run_command(
+        definition.command,
+        cwd=cwd,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return _SmokeStepResult(
+        step_id=definition.step_id,
+        display_name=definition.display_name,
+        command=definition.command,
+        exit_code=completed.returncode,
+        status="pass" if completed.returncode == 0 else "fail",
+        stdout=completed.stdout,
+        stderr=completed.stderr,
+    )
+
+
+def execute_release_smoke(
+    *,
+    wheel: Path,
+    sample_file: Path,
+    output_dir: Path,
+    repo_root: Path = REPO_ROOT,
+    run_command: _CommandRunner = _run_subprocess,
+    create_virtualenv: _VirtualenvCreator = _create_virtualenv,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    resolved_repo_root = repo_root.resolve()
+    resolved_wheel = wheel.resolve()
+    resolved_sample_file = sample_file.resolve()
+    resolved_output_dir = output_dir.resolve()
+    sanitized_output_dir = _sanitize_path(resolved_output_dir, repo_root=resolved_repo_root)
+    sanitized_wheel = _sanitize_path(resolved_wheel, repo_root=resolved_repo_root)
+    sanitized_sample = _sanitize_path(resolved_sample_file, repo_root=resolved_repo_root)
+    canonical_command = (
+        "sattlint-release-smoke "
+        f"--wheel {sanitized_wheel} --sample-file {sanitized_sample} --output-dir {sanitized_output_dir}"
+    )
+
+    executed_steps: list[_SmokeStepResult] = []
+    pending_steps: list[str] = []
+    error_message: str | None = None
+
+    if not resolved_wheel.is_file():
+        error_message = f"wheel not found: {sanitized_wheel}"
+    elif not resolved_sample_file.is_file():
+        error_message = f"sample file not found: {sanitized_sample}"
+    else:
+        with tempfile.TemporaryDirectory(prefix="release-smoke-") as temp_dir_str:
+            venv_dir = Path(temp_dir_str) / "venv"
+            try:
+                create_virtualenv(venv_dir)
+                step_definitions = _build_step_definitions(
+                    venv_dir,
+                    wheel=resolved_wheel,
+                    sample_file=resolved_sample_file,
+                )
+                env = dict(os.environ)
+                env.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
+                env.setdefault("PYTHONUTF8", "1")
+                pending_steps = [definition.step_id for definition in step_definitions]
+                for definition in step_definitions:
+                    result = _run_step(definition, cwd=resolved_repo_root, env=env, run_command=run_command)
+                    executed_steps.append(result)
+                    pending_steps = pending_steps[1:]
+                    if result.exit_code != 0:
+                        break
+            except (OSError, subprocess.SubprocessError, RuntimeError) as error:
+                error_message = str(error)
+
+    failing_steps = [result.step_id for result in executed_steps if result.status == "fail"]
+    overall_status = "pass" if not failing_steps and error_message is None else "fail"
+    step_statuses = {result.step_id: result.to_status_payload() for result in executed_steps}
+    status_report: dict[str, Any] = {
+        "kind": STATUS_SCHEMA_KIND,
+        "schema_version": SCHEMA_VERSION,
+        "entry_report": "status.json",
+        "overall_status": overall_status,
+        "output_dir": sanitized_output_dir,
+        "canonical_command": canonical_command,
+        "wheel": sanitized_wheel,
+        "sample_file": sanitized_sample,
+        "step_statuses": step_statuses,
+        "failing_steps": failing_steps,
+        "pending_steps": pending_steps,
+        "status_report": f"{sanitized_output_dir}/status.json",
+        "summary_report": f"{sanitized_output_dir}/summary.json",
+    }
+    if error_message is not None:
+        status_report["error"] = {"message": error_message}
+
+    summary_report: dict[str, Any] = {
+        "kind": SUMMARY_SCHEMA_KIND,
+        "schema_version": SCHEMA_VERSION,
+        "entry_report": "status.json",
+        "output_dir": sanitized_output_dir,
+        "canonical_command": canonical_command,
+        "wheel": sanitized_wheel,
+        "sample_file": sanitized_sample,
+        "status": {
+            "overall_status": overall_status,
+            "failing_steps": failing_steps,
+            "pending_steps": pending_steps,
+        },
+        "steps": [result.to_summary_payload() for result in executed_steps],
+    }
+    if error_message is not None:
+        summary_report["error"] = {"message": error_message}
+
+    return status_report, summary_report
+
+
+def run_release_smoke(
+    *,
+    wheel: Path,
+    sample_file: Path,
+    output_dir: Path,
+    repo_root: Path = REPO_ROOT,
+    run_command: _CommandRunner = _run_subprocess,
+    create_virtualenv: _VirtualenvCreator = _create_virtualenv,
+) -> int:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    status_report, summary_report = execute_release_smoke(
+        wheel=wheel,
+        sample_file=sample_file,
+        output_dir=output_dir,
+        repo_root=repo_root,
+        run_command=run_command,
+        create_virtualenv=create_virtualenv,
+    )
+    write_json_artifact(output_dir / "status.json", status_report, repo_root=repo_root)
+    write_json_artifact(output_dir / "summary.json", summary_report, repo_root=repo_root)
+    return 0 if status_report["overall_status"] == "pass" else 1
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run the SattLint release smoke rehearsal against a built wheel.")
+    parser.add_argument("--wheel", required=True, type=Path, help="Built wheel to install into a temporary environment")
+    parser.add_argument(
+        "--sample-file",
+        required=True,
+        type=Path,
+        help="Checked-in sample SattLine file used for syntax-check proof",
+    )
+    parser.add_argument(
+        "--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR, help="Directory for status.json and summary.json"
+    )
+    parser.add_argument(
+        "--repo-root", type=Path, default=REPO_ROOT, help="Repository root used for relative-path sanitization"
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return run_release_smoke(
+        wheel=args.wheel,
+        sample_file=args.sample_file,
+        output_dir=args.output_dir,
+        repo_root=args.repo_root,
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

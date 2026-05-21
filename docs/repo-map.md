@@ -8,11 +8,13 @@ Use it before widening into subsystem docs.
 | Path | Role | First validation |
 | --- | --- | --- |
 | `src/sattline_parser/` | Parser grammar, AST, transformer, strict syntax behavior | `sattlint syntax-check` or targeted parser pytest |
-| `src/sattlint/` | CLI, analyzers, reporting, config, documentation workflows | Targeted owner pytest, then Ruff and Pyright |
-| `src/sattlint/core/` | Shared semantic and document helpers used by editor flows | Targeted semantic pytest, then LSP restart if editor surfaces changed |
+| `src/sattlint/` | CLI flows, analyzers, reporting, config, documentation workflows, and shared app orchestration | Targeted owner pytest, then Ruff and Pyright |
+| `src/sattlint/editor_api.py` | Public editor-facing compatibility facade over `src/sattlint/core/semantic.py` | `tests/test_editor_api.py`, then LSP restart if editor surfaces changed |
+| `src/sattlint/core/` | Shared semantic and document helpers behind the editor facade and LSP | Targeted semantic pytest, then LSP restart if editor surfaces changed |
 | `src/sattlint/devtools/` | Repo audit, pipeline, ratchets, health reports, policy checks | Targeted devtools pytest, then `sattlint-repo-audit --check-my-changes` |
+| `src/sattlint_gui/` | Preview desktop GUI shell for config editing, diagnostics, and documentation helpers | `tests/test_gui.py` |
 | `src/sattlint_lsp/` | Language server and workspace loading | Targeted LSP pytest, then restart language server |
-| `vscode/sattline-vscode/` | No-build VS Code client | Workspace or extension validation plus LSP restart |
+| `vscode/sattline-vscode/` | Preview no-build VS Code client for the Python LSP | Workspace or extension validation plus LSP restart |
 | `tests/` | Owner suites and regression proofs | Narrow pytest slice first |
 | `.github/` | CI, AI instructions, prompts, agents, coordination ledger | Diagnostics or config validation, then workflow run if needed |
 | `.vscode/` | Local task runner, settings, extension recommendations | `python scripts/context_health.py --check` |
@@ -22,12 +24,25 @@ Use it before widening into subsystem docs.
 
 ## Primary Entrypoints
 
-- `python scripts/run_ai_edit_gate.py`
+- `sattlint`
+- `sattlint-gui`
+- `sattlint-lsp`
 - `sattlint-repo-audit --profile full --planning-context --output-dir artifacts/audit`
+- `python scripts/run_ai_edit_gate.py`
 - `python -m pre_commit run --all-files`
 - `sattlint-repo-audit --profile full --check-my-changes --output-dir artifacts/audit`
 - `python scripts/context_health.py --check`
 - `python scripts/repo_health.py --check --audit-dir artifacts/audit`
+
+## Actual Runtime Map
+
+- Stable CLI commands enter through `sattlint -> src/sattlint/app.py`, then route into the shared app helpers, analyzers, reporting, and parser-backed semantic loaders.
+- The preview interactive menu also starts in `src/sattlint/app.py`; it is shipped, but its UX contract is looser than `syntax-check` and `repo-audit`.
+- The preview desktop GUI enters through `sattlint-gui -> src/sattlint_gui/main.py`, then reuses the same app-level config and workflow helpers instead of a separate analysis engine.
+- Editor-facing library consumers should enter through `src/sattlint/editor_api.py`; that file is a compatibility facade over `src/sattlint/core/semantic.py`, not a second semantic implementation.
+- The stable language server enters through `sattlint-lsp -> src/sattlint_lsp/server.py`, which owns JSON-RPC, workspace snapshots, and editor protocol behavior.
+- Repo-audit and layer-lint are maintainer-facing entrypoints under `src/sattlint/devtools/`; they are runtime-adjacent tooling, not part of the editor or parser control path.
+- The VS Code client in `vscode/sattline-vscode/` is a preview repository-local client for the Python LSP, not the default owner of Python runtime logic.
 
 ## AI Workflow Anchors
 

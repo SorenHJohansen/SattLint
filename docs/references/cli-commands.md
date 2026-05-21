@@ -359,6 +359,30 @@ This command is currently advisory. CI runs it in the `Agent Review (Advisory)` 
 
 ---
 
+### sattlint-release-smoke
+
+Repo-owned release rehearsal command for built wheel artifacts. This is the smoke-validation seam used by `publish.yml` before any publish step is allowed to run.
+
+```bash
+sattlint-release-smoke --wheel dist/sattlint-2026.5-py3-none-any.whl --sample-file tests/fixtures/sample_sattline_files/SattLineFullGrammarTest.s --output-dir artifacts/release-smoke
+```
+
+Behavior:
+
+- creates an isolated temporary virtual environment
+- installs the provided wheel into that environment
+- runs `sattlint --version`
+- runs `sattlint syntax-check` against the provided checked-in sample file
+- boots `sattlint-repo-audit --profile full --list-checks`
+- writes `status.json` and `summary.json` under the chosen output directory
+
+CI behavior:
+
+- `publish.yml` runs this command for both `workflow_dispatch` rehearsals and real `v*` tag builds
+- manual `workflow_dispatch` uploads distributions and smoke artifacts but never enters the publish job
+
+---
+
 ### sattlint-observability
 
 Observability and tracing tools.

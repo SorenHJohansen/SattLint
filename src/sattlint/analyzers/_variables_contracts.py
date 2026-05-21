@@ -242,7 +242,8 @@ def _check_param_mapping(
     source_ref = cast(Any, pm).source
     src_var = self.lookup_env_var_from_varname_dict(source_ref, parent_env)
     if src_var is None:
-        src_var = self.lookup_global_variable(varname_base(source_ref))
+        source_base = varname_base(source_ref)
+        src_var = self.root_env.get(source_base) if source_base is not None else None
 
     for issue in self.contract_validator.check_contract_mapping(
         pm,
