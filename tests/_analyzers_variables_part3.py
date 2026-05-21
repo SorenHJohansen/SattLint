@@ -181,6 +181,66 @@ ENDDEF (*BasePicture*);
     )
 
 
+def test_duration_variables_are_not_flagged_as_read_only_non_const():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    DelayTimerSolveE: duration := "30s";
+    Threshold: duration := "0";
+    Expired: boolean := False;
+ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    ModuleCode
+        EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+            Expired = DelayTimerSolveE >= Threshold;
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.READ_ONLY_NON_CONST
+        and issue.variable is not None
+        and issue.variable.name in {"DelayTimerSolveE", "Threshold"}
+        for issue in analyzer.issues
+    )
+
+
+def test_opsave_and_secure_variables_are_not_flagged_as_read_only_non_const():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    SavedValue: integer OpSave := 1;
+    SecureValue: integer Secure := 2;
+    Output: integer := 0;
+ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    ModuleCode
+        EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+            Output = SavedValue + SecureValue;
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.READ_ONLY_NON_CONST
+        and issue.variable is not None
+        and issue.variable.name in {"SavedValue", "SecureValue"}
+        for issue in analyzer.issues
+    )
+
+
 def test_graphics_format_tail_keywords_do_not_log_missing_variables(caplog):
     bp = BasePicture(
         header=_hdr("BasePicture"),

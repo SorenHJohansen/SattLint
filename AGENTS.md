@@ -5,13 +5,20 @@
 
 ## Quick Reference
 
-**Purpose:** SattLint is a parser, analyzer, documentation, LSP, and repo-audit toolchain for SattLine.
+**Purpose:** SattLint is a parser, analyzer, editor-facade, GUI, documentation, LSP, and repo-audit toolchain for SattLine.
 **Audience:** AI-only repository. Design solutions, workflows, and supporting docs for agent execution rather than human-first operation.
 **Communication:** Terse. Pattern: `[thing] [action] [reason]. [next step].`
 **Machine entrypoint:** `sattlint-repo-audit --profile full --planning-context --output-dir artifacts/audit`.
 **Health checks:** `python scripts/context_health.py --check`; `python scripts/repo_health.py --check --audit-dir artifacts/audit`.
 **Naming:** task ids, worktree folders, and handoff files use lower-kebab-case.
-**Key docs:** `docs/context-loading-order.md`, `docs/repo-map.md`, `docs/architecture.md`, `docs/quality-gates.md`, `docs/ai-workflows.md`, `docs/lessons-learned/known-failure-patterns.md`, `.github/instructions/*.md`, `.ai/tasks/task-contract.schema.json`, `.ai/handoffs/handoff.schema.json`.
+
+## Repo Map
+
+- Start routing from `docs/repo-map.md` when you need the owning surface for CLI, editor facade, GUI, LSP, devtools, or the preview VS Code client.
+
+## Key Docs
+
+- `docs/context-loading-order.md`, `docs/repo-map.md`, `docs/architecture.md`, `docs/quality-gates.md`, `docs/ai-workflows.md`, `docs/lessons-learned/known-failure-patterns.md`, `.github/instructions/*.md`, `.ai/tasks/task-contract.schema.json`, `.ai/handoffs/handoff.schema.json`
 
 ## Critical Invariants (Auto-Loaded)
 
@@ -36,6 +43,7 @@
 - Safe edit flow: route -> small edit -> focused check -> finish gate -> handoff.
 - Preferred task size: one owner surface, one behavior goal, one clear validation command.
 - Executor -> Test -> Reviewer uses `.ai/tasks/*.json` and `.ai/handoffs/*.json`.
+- GitHub Actions split: `ci.yml` owns the integrated PR, `main`, manual, and nightly gate; `lint.yml`, `typing.yml`, and `repo-audit.yml` stay owner workflows; `publish.yml` supports manual release rehearsal and only publishes on real `v*` tags.
 - Chat-review starts from `<workspace-storage>/GitHub.copilot-chat/transcripts/*.jsonl`; use `debug-logs/` only as session metadata, not as the controlling content seam.
 - Testing expectation: bug fix or feature change moves with focused tests in same change.
 - Finish gate: focused proof plus touched-file Ruff and Pyright; widen to `--check-my-changes` for shared infra.

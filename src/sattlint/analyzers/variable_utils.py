@@ -12,7 +12,12 @@ if TYPE_CHECKING:
 
 
 def is_const_candidate(self: VariablesAnalyzer, variable: Variable) -> bool:
-    return isinstance(variable.datatype, Simple_DataType)
+    return (
+        isinstance(variable.datatype, Simple_DataType)
+        and variable.datatype is not Simple_DataType.DURATION
+        and not bool(variable.opsave)
+        and not bool(variable.secure)
+    )
 
 
 def same_origin_file_stem(origin_file: str | None, root_origin: str | None) -> bool:

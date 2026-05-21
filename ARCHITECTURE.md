@@ -20,6 +20,17 @@ The client can submit a small delta of input data (typically, a change to a sing
 
 The underlying engine makes sure that analysis is computed lazily (on-demand) and can be quickly updated for small modifications.
 
+## Actual Runtime Entry Map
+
+This section names the checked-in entrypoints that actually start runtime work today, the first owning modules they reach, and whether each surface is part of the stable or preview contract.
+
+- `sattlint` is the main Python CLI entrypoint. It lands in `src/sattlint/app.py`, which owns command parsing, the preview interactive menu, and routing into the shared application helpers under `src/sattlint/`.
+- `sattlint-gui` is the preview desktop shell. It lands in `src/sattlint_gui/main.py`, creates `SattLintWindow`, and reuses the same configuration, workflow, and analysis helpers as the CLI rather than a separate engine.
+- `sattlint-lsp` is the stable language-server entrypoint. It lands in `src/sattlint_lsp/server.py`, which owns JSON-RPC, document state, workspace snapshots, and editor protocol behavior.
+- `sattlint-repo-audit` and `sattlint-layer-lint` are maintainer-facing tooling entrypoints. They route into `src/sattlint/devtools/` and are operational tooling, not part of the editor or parser control loop.
+- `src/sattlint/editor_api.py` is a public compatibility facade for editor-facing library consumers. It forwards into `src/sattlint/core/semantic.py` so external consumers, the CLI, and the LSP share one semantic pipeline.
+- `vscode/sattline-vscode/` is the preview repository-local VS Code client. It talks to `sattlint-lsp`, but it is not the owner of Python-side semantic, analyzer, or audit behavior.
+
 ## Code Map
 
 This section talks briefly about various important directories and data structures. Pay attention to the **Architecture Invariant** sections. They often talk about things which are deliberately absent in the source code.
@@ -39,18 +50,18 @@ This is the **parser core** of SattLint. It contains the Lark grammar, the trans
 
 ### `src/sattlint/`
 
-This is the **main application** crate. It contains the CLI, configuration, analyzers, and reporting.
+This is the **main application** package. It contains the CLI, configuration, analyzers, reporting, and shared workflow orchestration.
 
 - `analyzers/` contains 30+ registered analysis passes
-- `core/` contains shared semantic helpers (symbol lookup, completions)
 - `models/` contains application-level data structures
 - `transformer/` contains AST transformation for analysis
 - `reporting/` contains output formatters and reporters
 - `resolution/` contains symbol resolution logic
 - `contracts/` contains contract definitions
 - `devtools/` contains developer tooling (pipeline, audit, corpus)
+- `editor_api.py` contains the public editor-facing compatibility facade
 
-**Architecture Invariant:** `sattlint/` knows about the SattLine domain but nothing about LSP or specific editor integrations. This is the **API Boundary** for library usage.
+**Architecture Invariant:** `sattlint/` knows about the SattLine domain but nothing about LSP transport details or specific editor clients. The stable command-line API boundary starts here, while editor-facing compatibility lives in `editor_api.py`.
 
 ### `src/sattlint/analyzers/`
 
@@ -66,7 +77,7 @@ Name resolution, type inference, and dataflow analysis all happen here.
 
 ### `src/sattlint_lsp/`
 
-This crate implements the **Language Server Protocol** server.
+This package implements the **Language Server Protocol** server.
 
 - `server.py` contains the LSP server implementation
 - `workspace_store.py` contains the incremental parsing and workspace snapshot logic
@@ -77,9 +88,9 @@ This crate implements the **Language Server Protocol** server.
 
 ### `src/sattlint/core/`
 
-This crate provides **shared semantic helpers** for editor integration. It contains symbol lookup, completions, and diagnostics support.
+This package provides **shared semantic helpers** for editor integration. It contains symbol lookup, completions, diagnostics support, and workspace snapshot loading.
 
-This is an **API Boundary**. If you want to use SattLint as a library for a custom editor, this is the facade you'll talk to.
+This is the implementation behind the editor-facing API boundary. External editor consumers should usually enter through `src/sattlint/editor_api.py`, which preserves a stable compatibility surface while forwarding into this shared semantic core.
 
 ### `src/sattlint/devtools/`
 
@@ -88,18 +99,20 @@ Developer tooling for analysis and validation workflows:
 - `pipeline.py` runs batch analysis
 - `repo_audit.py` checks public-readiness
 - `corpus.py` runs corpus-based tests
-- `arch_linter.py` enforces layered architecture
+- `layer_linter.py` enforces layered architecture
 - `doc_gardener.py` scans for stale documentation
 - `observability.py` collects metrics
 - `review_tool.py` runs comprehensive reviews
 
+These tools are part of the shipped repository workflow, but they are operational surfaces rather than part of the parser, CLI, GUI, or editor runtime path.
+
 ### `src/sattlint_gui/`
 
-Desktop GUI application using PyQt.
+Preview desktop GUI application. The public entrypoint is `sattlint-gui`, which lands in `main.py` and builds `SattLintWindow`.
 
 ### `vscode/sattline-vscode/`
 
-VS Code extension. No-build configuration.
+Preview VS Code extension. No-build configuration that talks to `src/sattlint_lsp/`.
 
 ### `tests/`
 
@@ -161,7 +174,7 @@ These are written to `artifacts/observability.json` for consumption by external 
 
 ### Architecture Linting
 
-We enforce architecture constraints mechanically via `arch_linter.py`:
+We enforce architecture constraints mechanically via `layer_linter.py`:
 
 - Fixed set of layers with strictly validated dependency directions
 - Parser core never imports application code

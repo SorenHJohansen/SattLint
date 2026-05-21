@@ -232,6 +232,7 @@ def _walk_moduletype_instance_subtree(
         writes = self.param_writes_by_typedef.get(mt_key, set())
 
     for mapping in child.parametermappings or []:
+        full_source_name = _mapping_source_full_ref(mapping)
         _propagate_mapping_to_parent(
             self,
             mapping,
@@ -239,7 +240,16 @@ def _walk_moduletype_instance_subtree(
             child_used_writes=writes,
             parent_env=parent_context.env,
             parent_path=parent_path,
-            external_typename=(child.moduletype_name if external else None),
+            external_typename=(
+                child.moduletype_name
+                if external
+                and (
+                    self.analyzed_target_is_library
+                    or self.include_dependency_moduletype_usage
+                    or (full_source_name is not None and "." in full_source_name)
+                )
+                else None
+            ),
             parent_context=parent_context,
             child_context=typedef_context,
         )

@@ -1,7 +1,7 @@
 {
   "servers": {
     "semble": {
-      "command": "/home/sqhj/projects/SattLint/.venv/bin/uvx",
+      "command": "${workspaceFolder}/.venv/bin/uvx",
       "args": [
         "--from",
         "semble[mcp]",

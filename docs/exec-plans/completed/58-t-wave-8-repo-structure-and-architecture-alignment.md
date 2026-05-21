@@ -11,11 +11,11 @@ The observable proof is that the repository no longer tracks undocumented scratc
 ## Progress
 
 - [x] (2026-05-19) Create the ExecPlan from the repo-map and architecture review. Confirm the main mismatches: undocumented `src/sattlint_gui/`, stale `arch_linter.py` references, incomplete documentation of `src/sattlint/editor_api.py`, and tracked root clutter outside the canonical allowlist.
-- [ ] Classify the tracked root clutter into reusable tooling versus disposable probe or generated residue, then remove or relocate every non-canonical entry.
-- [ ] Add ignore coverage so local Node dependencies and Pyright probe outputs stop reappearing at the repository root.
-- [ ] Update the architecture documentation stack so `AGENTS.md`, `docs/repo-map.md`, `docs/architecture.md`, and `ARCHITECTURE.md` describe the same shipped surfaces, module names, and actual runtime ownership.
-- [ ] Produce one concise actual-runtime-architecture map across the architecture docs so maintainers can see the real entrypoints, central modules, high-level call flow, and any preview-only or disconnected surfaces.
-- [ ] Re-run focused repo-audit, context-health, and architecture-lint proof and record the observed results in this file.
+- [x] (2026-05-20) Re-classify the remaining tracked root clutter against the live tree, confirm the original Node and root-Pyright clutter is already gone, remove the remaining local `.envrc`, delete stale generated snapshots under `artifacts/generated/`, remove stale scanner snapshots under `artifacts/analysis/`, and delete the stale full-audit temp directory `artifacts/audit-full-current.tmp-g_ap8njm/`.
+- [x] (2026-05-20) Add ignore coverage so local shell activation state, Pyright probe outputs, and full-audit temp directories stop reappearing at the repository root or under `artifacts/`.
+- [x] (2026-05-20) Update the architecture documentation stack so `AGENTS.md`, `docs/repo-map.md`, `docs/architecture.md`, and `ARCHITECTURE.md` describe the same shipped surfaces, module names, and actual runtime ownership.
+- [x] (2026-05-20) Produce one concise actual-runtime-architecture map across the architecture docs so maintainers can see the real entrypoints, central modules, high-level call flow, and the preview-only editor client and GUI surfaces.
+- [x] (2026-05-20) Re-run the focused structural proof: `bash scripts/run_repo_python.sh -m pytest --no-cov tests/_repo_audit_part3.py tests/test_recommendation_routing.py tests/test_repo_audit_entrypoints_finish_gate.py tests/devtools/test_context_health.py tests/devtools/test_layer_linter.py -x -q --tb=short` passed twice with `57 passed`; `python scripts/context_health.py --check` passed with `9/9` required paths present and `0 issues`; `sattlint-repo-audit --profile quick --output-dir artifacts/audit-plan-58` still reports unrelated existing repo debt, but the targeted findings `unexpected-tracked-root-entry` and `tracked-generated-artifacts` are no longer present in the fresh `artifacts/audit-plan-58/findings.json` output.
 
 ## Surprises & Discoveries
 
@@ -40,6 +40,15 @@ The observable proof is that the repository no longer tracks undocumented scratc
 - Observation: some checked-in artifact families are clearly policy inputs, while neighboring files in the same broad area look like stale snapshots.
   Evidence: repo docs and checks explicitly reference `artifacts/analysis/coverage_ratchet.json`, `artifacts/analysis/file_debt_ratchet.json`, `artifacts/analysis/structural_budget_ratchet.json`, and `metrics/ratchet.json`, but the same evidence trail does not justify keeping point-in-time outputs such as `artifacts/analysis/bandit.json`, `artifacts/analysis/pyright.json`, `artifacts/analysis/pytest.junit.xml`, or `metrics/history/2026-05-03-ai-first-baseline.json` as canonical checked-in sources.
 
+- Observation: the original root-clutter review over-described the live tracked tree by the time this implementation started.
+  Evidence: a fresh `git ls-tree --name-only HEAD | sort` check on 2026-05-20 showed the remaining non-allowlisted root entries were `.envrc`, `CODE_OF_CONDUCT.md`, and `SUPPORT.md`; the previously reviewed `node_modules/`, `package.json`, `package-lock.json`, and root Pyright probe files were no longer tracked.
+
+- Observation: two of the remaining root-policy mismatches are intentional public-facing files, not scratch residue.
+  Evidence: `README.md`, `CONTRIBUTING.md`, `pyproject.toml`, and `src/sattlint/devtools/_repo_audit_reporting.py` all reference `CODE_OF_CONDUCT.md` and `SUPPORT.md` as part of the public support contract, so removing them would have broken the newer public-readiness surface.
+
+- Observation: the live consumers of `artifacts/analysis/` are narrower than the directory contents suggested.
+  Evidence: current code and tests still point at the ratchet files plus the shared `status.json`, `summary.json`, `findings.json`, and artifact-registry outputs, while the scanner-specific files `bandit.json`, `pyright.json`, `pytest.json`, `pytest.junit.xml`, `ruff.json`, `vulture.json`, `environment.json`, and `impact_analysis.json` had no live code consumer outside this cleanup review.
+
 ## Decision Log
 
 - Decision: treat the root `package.json`, `package-lock.json`, and `node_modules/` tree as accidental root clutter unless this plan finds a checked-in consumer that cannot be relocated.
@@ -62,9 +71,21 @@ The observable proof is that the repository no longer tracks undocumented scratc
   Rationale: the current code, tests, and published entrypoint already use `layer_linter`. Reintroducing the old name would expand the compatibility surface for no user benefit.
   Date/Author: 2026-05-19 / Copilot (GPT-5.4)
 
+- Decision: canonicalize `CODE_OF_CONDUCT.md` and `SUPPORT.md` in the repo-audit top-level allowlist instead of deleting or relocating them.
+  Rationale: these files are now part of the repository's public-facing support contract and are referenced by the README, contributor docs, issue-template routing, and repo-audit public-readiness checks.
+  Date/Author: 2026-05-20 / Copilot (GPT-5.4)
+
+- Decision: remove `.envrc` rather than allowing it at the repository root.
+  Rationale: the file only activated the local virtual environment, carried no shared workflow contract, and represented workstation-specific shell state rather than reusable tooling.
+  Date/Author: 2026-05-20 / Copilot (GPT-5.4)
+
+- Decision: keep the shared `artifacts/analysis/` status, summary, findings, and registry outputs, but delete the scanner-specific snapshots with no current consumer.
+  Rationale: doc-gardener and pipeline consumers still rely on the shared machine-readable artifact shape, while the per-scanner snapshots created review noise without a current code or workflow reader.
+  Date/Author: 2026-05-20 / Copilot (GPT-5.4)
+
 ## Outcomes & Retrospective
 
-Fill this in after the cleanup lands. The final entry must state which root entries were removed, which reusable helpers were moved, which docs changed, and whether repo audit became clean for the targeted structural findings.
+Outcome on 2026-05-20: the implemented cleanup removed the tracked local `.envrc`, deleted the stale `artifacts/generated/precommit-fast-audit/` tree, removed the stale generated files `artifacts/generated/repo-health.json`, `artifacts/generated/ruff-current.json`, and `artifacts/generated/semantic-coverage.json`, removed stale scanner snapshots from `artifacts/analysis/`, and deleted the stale temp audit directory `artifacts/audit-full-current.tmp-g_ap8njm/`. No reusable helper had to be moved. The short and long architecture docs now call out `src/sattlint_gui/`, `src/sattlint/editor_api.py`, `src/sattlint_lsp/`, and `src/sattlint/devtools/layer_linter.py` consistently, and they include an explicit actual-runtime map. The quick repo-audit run still fails for unrelated pre-existing repo debt, but the structural findings owned by this plan, `unexpected-tracked-root-entry` and `tracked-generated-artifacts`, no longer appear in the fresh audit output for the current tree.
 
 ## Hygiene Review Inventory
 

@@ -219,7 +219,7 @@ def _build_param_map(
         if not resolved_source:
             continue
 
-        resolved[target_name] = resolved_source
+        resolved[target_name.casefold()] = resolved_source
     return resolved
 
 
@@ -292,7 +292,7 @@ def _walk_typedef(
 
             if mt_key in _INTERFACE_TARGETS:
                 for target_name, direction in sorted(_INTERFACE_TARGETS[mt_key].items()):
-                    resolved = current_map.get(target_name)
+                    resolved = current_map.get(target_name.casefold())
                     if resolved:
                         _record_interface_hit(
                             state,
@@ -360,7 +360,7 @@ def _walk_modules(
 
         if mt_key in _INTERFACE_TARGETS:
             for target_name, direction in sorted(_INTERFACE_TARGETS[mt_key].items()):
-                resolved = current_map.get(target_name)
+                resolved = current_map.get(target_name.casefold())
                 if resolved:
                     _record_interface_hit(
                         state,

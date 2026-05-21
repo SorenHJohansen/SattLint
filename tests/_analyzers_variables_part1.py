@@ -195,6 +195,62 @@ def test_string_mapping_mismatch_is_not_reported_when_assigning_small_string_to_
     assert not any(issue.kind is IssueKind.STRING_MAPPING_MISMATCH for issue in analyzer.issues)
 
 
+def test_string_mapping_mismatch_ignores_unresolved_source_name_even_when_same_name_exists_elsewhere():
+    unrelated = SingleModule(
+        header=_hdr("Unrelated"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[Variable(name="Name", datatype=Simple_DataType.STRING)],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[],
+    )
+
+    child = SingleModule(
+        header=_hdr("Child"),
+        moduledef=None,
+        moduleparameters=[Variable(name="Name", datatype=Simple_DataType.IDENTSTRING)],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[
+            ParameterMapping(
+                target=_varref("Name"),
+                source_type=const.TREE_TAG_VARIABLE_NAME,
+                is_duration=False,
+                is_source_global=False,
+                source=_varref("Name"),
+                source_literal=None,
+            )
+        ],
+    )
+
+    parent = SingleModule(
+        header=_hdr("Parent"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[],
+        submodules=[unrelated, child],
+        modulecode=None,
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[parent],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert not any(issue.kind is IssueKind.STRING_MAPPING_MISMATCH for issue in analyzer.issues)
+
+
 def test_unknown_parameter_target_detected_for_single_module_mapping():
     child = SingleModule(
         header=_hdr("Child"),

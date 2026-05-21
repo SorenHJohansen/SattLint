@@ -13,13 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Install actionlint
-        shell: bash
-        run: |
-          curl -sSL -o /tmp/actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
-          tar -xzf /tmp/actionlint.tar.gz -C /tmp
-          sudo install -m 0755 /tmp/actionlint /usr/local/bin/actionlint
-          actionlint --version
+      - name: Set up shared CI tooling
+        uses: ./.github/actions/setup-ci-tooling
+        with:
+          install-dependencies: "false"
+          install-actionlint: "true"
 
       - name: Run actionlint
         run: python scripts/run_actionlint.py
@@ -36,18 +34,13 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Install Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - name: Set up shared CI tooling
+        uses: ./.github/actions/setup-ci-tooling
         with:
-          python-version: "3.13"
+          dependency-spec: ".[dev]"
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-
-      - name: Install dependencies
-        run: |
-          uv pip install --system -e ".[dev]"
-          uv pip install --system "ruff==0.15.12"
+      - name: Pin Ruff version
+        run: uv pip install --system "ruff==0.15.12"
 
       - name: Run Ruff
         run: python -m ruff check src tests
@@ -61,16 +54,10 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Install Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - name: Set up shared CI tooling
+        uses: ./.github/actions/setup-ci-tooling
         with:
-          python-version: "3.13"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-
-      - name: Install dependencies
-        run: uv pip install --system -e ".[dev]"
+          dependency-spec: ".[dev]"
 
       - name: Run doc-gardener scan
         run: sattlint-doc-gardener
@@ -81,16 +68,10 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Install Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - name: Set up shared CI tooling
+        uses: ./.github/actions/setup-ci-tooling
         with:
-          python-version: "3.13"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-
-      - name: Install dependencies
-        run: uv pip install --system -e ".[dev]"
+          dependency-spec: ".[dev]"
 
       - name: Run layer linter
         run: sattlint-layer-lint
@@ -101,16 +82,10 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Install Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      - name: Set up shared CI tooling
+        uses: ./.github/actions/setup-ci-tooling
         with:
-          python-version: "3.13"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-
-      - name: Install dependencies
-        run: uv pip install --system -e ".[dev,test]"
+          dependency-spec: ".[dev]"
 
       - name: Run advisory agent review
         run: sattlint-review

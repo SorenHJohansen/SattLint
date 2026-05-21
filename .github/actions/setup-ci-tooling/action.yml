@@ -1,0 +1,111 @@
+name: Setup CI Tooling
+description: Set up shared Python, uv, Node, markdownlint, and actionlint tooling for SattLint workflows.
+
+inputs:
+  python-version:
+    description: Python version to install.
+    required: false
+    default: "3.13"
+  install-dependencies:
+    description: Whether to install the repository package and requested extras with uv.
+    required: false
+    default: "true"
+  dependency-spec:
+    description: Editable-install spec passed to uv pip install -e.
+    required: false
+    default: ".[dev]"
+  install-node:
+    description: Whether to install Node.js.
+    required: false
+    default: "false"
+  node-version:
+    description: Node.js version to install.
+    required: false
+    default: "22"
+  install-markdownlint:
+    description: Whether to install markdownlint-cli2 globally.
+    required: false
+    default: "false"
+  markdownlint-version:
+    description: markdownlint-cli2 version to install.
+    required: false
+    default: "0.22.1"
+  install-actionlint:
+    description: Whether to install actionlint with checksum verification.
+    required: false
+    default: "false"
+  actionlint-version:
+    description: actionlint version to install.
+    required: false
+    default: "1.7.12"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+    - name: Install Node
+      if: ${{ inputs.install-node == 'true' || inputs.install-markdownlint == 'true' }}
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install Python dependencies
+      if: ${{ inputs.install-dependencies == 'true' }}
+      shell: bash
+      run: uv pip install --system -e "${{ inputs.dependency-spec }}"
+
+    - name: Install markdownlint-cli2
+      if: ${{ inputs.install-markdownlint == 'true' }}
+      shell: bash
+      run: npm install --global "markdownlint-cli2@${{ inputs.markdownlint-version }}"
+
+    - name: Select actionlint checksum
+      if: ${{ inputs.install-actionlint == 'true' }}
+      id: actionlint-checksum
+      shell: bash
+      run: |
+        case "${{ runner.os }}:${{ runner.arch }}" in
+          Linux:X64)
+            sha256="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+            ;;
+          Linux:ARM64)
+            sha256="325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6"
+            ;;
+          macOS:X64)
+            sha256="5b44c3bc2255115c9b69e30efc0fecdf498fdb63c5d58e17084fd5f16324c644"
+            ;;
+          macOS:ARM64)
+            sha256="aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f"
+            ;;
+          Windows:X64)
+            sha256="6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9"
+            ;;
+          Windows:ARM64)
+            sha256="cadcf7ea4efe3a68728893813643cebe1185e5b1d4be5b96245f65c9a4d5ea41"
+            ;;
+          *)
+            echo "Unsupported runner platform for actionlint: ${{ runner.os }}:${{ runner.arch }}" >&2
+            exit 1
+            ;;
+        esac
+        printf 'sha256=%s\n' "$sha256" >> "$GITHUB_OUTPUT"
+
+    - name: Install actionlint
+      if: ${{ inputs.install-actionlint == 'true' }}
+      shell: bash
+      run: |
+        bin_dir="$RUNNER_TEMP/ci-bin"
+        mkdir -p "$bin_dir"
+        python scripts/install_actionlint.py \
+          --version "${{ inputs.actionlint-version }}" \
+          --sha256 "${{ steps.actionlint-checksum.outputs.sha256 }}" \
+          --bin-dir "$bin_dir"
+        printf '%s\n' "$bin_dir" >> "$GITHUB_PATH"
+        "$bin_dir/actionlint" --version
