@@ -9,11 +9,12 @@ from sattline_parser.models.ast_model import BasePicture
 from .analyzers.framework import AnalysisContext, Issue
 from .analyzers.variables import VariablesAnalyzer
 from .core.diagnostics import (
+    DiagnosticProjectionResult,
     SemanticDiagnostic,
     build_module_diagnostic_sites,
-    merge_semantic_diagnostics_by_file,
-    project_report_issues_by_file,
-    project_variable_issues_by_file,
+    merge_diagnostic_projection_results,
+    project_report_issues,
+    project_variable_issues,
 )
 from .core.semantic import SemanticAnalysisArtifacts, SymbolDefinition
 from .models.project_graph import ProjectGraph
@@ -24,7 +25,7 @@ def _project_lsp_report_diagnostics(
     base_picture: BasePicture,
     project_graph: ProjectGraph,
     debug: bool,
-) -> dict[str, tuple[SemanticDiagnostic, ...]]:
+) -> DiagnosticProjectionResult:
     from .analyzers.registry import SEMANTIC_LAYER_ANALYZER_KEY, get_default_analyzer_catalog
 
     context = AnalysisContext(
@@ -33,7 +34,7 @@ def _project_lsp_report_diagnostics(
         debug=debug,
     )
     module_sites_by_path = build_module_diagnostic_sites(base_picture)
-    projected_reports: list[dict[str, tuple[SemanticDiagnostic, ...]]] = []
+    projected_reports: list[DiagnosticProjectionResult] = []
 
     for analyzer in get_default_analyzer_catalog().analyzers:
         if not analyzer.delivery.lsp_exposed:
@@ -56,14 +57,10 @@ def _project_lsp_report_diagnostics(
             continue
 
         projected_reports.append(
-            project_report_issues_by_file(
-                report_issues,
-                module_sites_by_path,
-                analyzer_key=analyzer.spec.key,
-            )
+            project_report_issues(report_issues, module_sites_by_path, analyzer_key=analyzer.spec.key)
         )
 
-    return merge_semantic_diagnostics_by_file(*projected_reports)
+    return merge_diagnostic_projection_results(*projected_reports)
 
 
 def build_variable_semantic_artifacts(
@@ -84,6 +81,7 @@ def build_variable_semantic_artifacts(
 
     diagnostics: tuple[VariableIssue, ...] = ()
     semantic_diagnostics_by_file: dict[str, tuple[SemanticDiagnostic, ...]] = {}
+    semantic_diagnostic_drops = ()
     if collect_variable_diagnostics:
         diagnostics_analyzer = VariablesAnalyzer(
             base_picture,
@@ -92,10 +90,12 @@ def build_variable_semantic_artifacts(
             unavailable_libraries=project_graph.unavailable_libraries,
         )
         diagnostics = tuple(diagnostics_analyzer.run())
-        semantic_diagnostics_by_file = merge_semantic_diagnostics_by_file(
-            project_variable_issues_by_file(diagnostics, definitions_by_key),
+        projection_result = merge_diagnostic_projection_results(
+            project_variable_issues(diagnostics, definitions_by_key),
             _project_lsp_report_diagnostics(base_picture, project_graph, debug),
         )
+        semantic_diagnostics_by_file = projection_result.diagnostics_by_file
+        semantic_diagnostic_drops = projection_result.dropped_issues
 
     return SemanticAnalysisArtifacts(
         diagnostics=diagnostics,
@@ -105,6 +105,7 @@ def build_variable_semantic_artifacts(
         effect_flow_edges=usage_analyzer.effect_flow_edges,
         effect_flow_display_names=usage_analyzer.effect_flow_display_names,
         semantic_diagnostics_by_file=semantic_diagnostics_by_file,
+        semantic_diagnostic_drops=semantic_diagnostic_drops,
     )
 
 

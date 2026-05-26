@@ -126,6 +126,8 @@ _graphics_field_value = _graphics_module._graphics_field_value
 _graphics_layout_group_payload = _graphics_module._graphics_layout_group_payload
 _graphics_layout_entry = _graphics_module._graphics_layout_entry
 _walk_graphics_layout_children = _graphics_module._walk_graphics_layout_children
+_accumulate_graphics_layout_snapshot = _graphics_module._accumulate_graphics_layout_snapshot
+_build_graphics_layout_report = _graphics_module._build_graphics_layout_report
 GRAPHICS_LAYOUT_COMPARISON_FIELDS = _GRAPHICS_LAYOUT_COMPARISON_FIELDS
 
 
@@ -207,6 +209,34 @@ def should_emit_snapshot_progress(index: int, total: int) -> bool:
     return _should_emit_snapshot_progress(index, total)
 
 
+def accumulate_graphics_layout_snapshot(
+    snapshot: Any,
+    *,
+    workspace_root: Path,
+    entries: list[dict[str, Any]],
+) -> None:
+    _accumulate_graphics_layout_snapshot(
+        snapshot,
+        workspace_root=workspace_root,
+        entries=entries,
+    )
+
+
+def build_graphics_layout_report(
+    *,
+    workspace_root: Path,
+    entries: list[dict[str, Any]],
+    snapshot_count: int,
+    snapshot_failures: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return _build_graphics_layout_report(
+        workspace_root=workspace_root,
+        entries=entries,
+        snapshot_count=snapshot_count,
+        snapshot_failures=snapshot_failures,
+    )
+
+
 def collect_structural_budget_report(
     repo_root: Path = REPO_ROOT,
     *,
@@ -263,9 +293,11 @@ def collect_structural_reports(
     architecture_report = collect_architecture_report()
     analyzer_registry_report = collect_analyzer_registry_report()
     if graph_inputs is None:
-        resolved_graph_inputs, dependency_graph_report, call_graph_report = _stream_workspace_graph_reports(
-            workspace_root,
-            progress_callback=progress_callback,
+        resolved_graph_inputs, dependency_graph_report, call_graph_report, graphics_layout_report = (
+            _stream_workspace_graph_reports(
+                workspace_root,
+                progress_callback=progress_callback,
+            )
         )
     else:
         resolved_graph_inputs = _normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
@@ -277,10 +309,10 @@ def collect_structural_reports(
             workspace_root,
             graph_inputs=resolved_graph_inputs,
         )
-    graphics_layout_report = collect_graphics_layout_report(
-        workspace_root,
-        graph_inputs=resolved_graph_inputs,
-    )
+        graphics_layout_report = collect_graphics_layout_report(
+            workspace_root,
+            graph_inputs=resolved_graph_inputs,
+        )
     impact_analysis_report = collect_impact_analysis_report(
         workspace_root,
         graph_inputs=resolved_graph_inputs,

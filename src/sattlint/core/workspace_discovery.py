@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import overload
 
+from sattline_parser.api import read_text_with_fallback
+
 _SOURCE_EXTENSIONS = {".s", ".x", ".l", ".z"}
 _PROGRAM_EXTENSIONS = {".s", ".x"}
 _DEPENDENCY_EXTENSIONS = {".l", ".z"}
@@ -19,6 +21,8 @@ _IGNORED_DISCOVERY_DIRS = {
     "build",
     "dist",
     "htmlcov",
+    "artifacts",
+    "node_modules",
     ".pytest_cache",
     ".mypy_cache",
 }
@@ -77,6 +81,18 @@ def _path_stem_index_factory() -> dict[str, tuple[Path, ...]]:
     return {}
 
 
+def _read_dependency_names(path: Path) -> tuple[str, ...]:
+    try:
+        text = read_text_with_fallback(path)
+    except OSError:
+        return ()
+    return tuple(line.strip().casefold() for line in text.splitlines() if line.strip())
+
+
+def _referenced_program_names_factory() -> frozenset[str]:
+    return frozenset()
+
+
 @dataclass(frozen=True, slots=True)
 class WorkspaceSourceDiscovery:
     workspace_root: Path
@@ -91,6 +107,11 @@ class WorkspaceSourceDiscovery:
     )
     dependency_files_by_stem: dict[str, tuple[Path, ...]] = field(
         default_factory=_path_stem_index_factory,
+        repr=False,
+        compare=False,
+    )
+    referenced_program_names: frozenset[str] = field(
+        default_factory=_referenced_program_names_factory,
         repr=False,
         compare=False,
     )
@@ -237,6 +258,7 @@ def discover_workspace_sources(workspace_root: Path) -> WorkspaceSourceDiscovery
     source_dirs: set[Path] = set()
     program_files: list[Path] = []
     dependency_files: list[Path] = []
+    referenced_program_names: set[str] = set()
 
     for current_root, dir_names, file_names in os.walk(root):
         dir_names[:] = [name for name in dir_names if name.casefold() not in _IGNORED_DISCOVERY_DIRS]
@@ -252,6 +274,7 @@ def discover_workspace_sources(workspace_root: Path) -> WorkspaceSourceDiscovery
                 program_files.append(path)
             elif suffix in _DEPENDENCY_EXTENSIONS:
                 dependency_files.append(path)
+                referenced_program_names.update(_read_dependency_names(path))
 
     abb_candidates = sorted(
         (directory for directory in source_dirs if "abb" in directory.name.casefold()),
@@ -270,6 +293,7 @@ def discover_workspace_sources(workspace_root: Path) -> WorkspaceSourceDiscovery
         abb_lib_dir=abb_lib_dir,
         program_files_by_stem=_index_source_files(sorted_program_files),
         dependency_files_by_stem=_index_source_files(sorted_dependency_files),
+        referenced_program_names=frozenset(referenced_program_names),
     )
 
 

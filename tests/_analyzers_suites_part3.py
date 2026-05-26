@@ -259,6 +259,7 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     monkeypatch.setattr(registry_module, "analyze_naming_consistency", _record("naming-consistency"))
     monkeypatch.setattr(registry_module, "analyze_cyclomatic_complexity", _record("cyclomatic-complexity"))
     monkeypatch.setattr(registry_module, "analyze_parameter_drift", _record("parameter-drift"))
+    monkeypatch.setattr(registry_module, "analyze_picture_display_paths", _record("picture-display-paths"))
     monkeypatch.setattr(registry_module, "analyze_signal_lifecycle", _record("signal_lifecycle"))
     monkeypatch.setattr(registry_module, "analyze_loop_stability", _record("loop_stability"))
     monkeypatch.setattr(registry_module, "analyze_fault_handling", _record("fault_handling"))
@@ -284,6 +285,7 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     specs = {spec.key: spec for spec in registry_module.get_default_analyzers()}
     context: Any = SimpleNamespace(
         base_picture="bp",
+        graph=None,
         debug=True,
         unavailable_libraries={"MissingLib"},
         target_is_library=True,
@@ -292,6 +294,7 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     expected_keys = {
         registry_module.SEMANTIC_LAYER_ANALYZER_KEY,
         "variables",
+        "picture-display-paths",
         "mms-interface",
         "sfc",
         "shadowing",
@@ -328,6 +331,94 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
 
     assert set(calls) == expected_keys
     registry_module._rule_corpus_cases_by_rule_id.cache_clear()
+
+
+def test_analyze_sattline_semantics_uses_declared_semantic_contributors(monkeypatch):
+    from sattlint.analyzers.issue import Issue
+    from sattlint.analyzers.sattline_semantics import analyze_sattline_semantics
+    from sattlint.reporting.variables_report import VariableIssue
+
+    calls: list[str] = []
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[Variable(name="UnusedVar", datatype=Simple_DataType.INTEGER)],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    fake_catalog = SimpleNamespace(
+        analyzers=(
+            SimpleNamespace(
+                spec=AnalyzerSpec(
+                    key="variables",
+                    name="Variables",
+                    description="",
+                    run=lambda _context: SimpleNamespace(issues=[]),
+                    analyzer_attr="analyze_variables",
+                    semantic_mapping_kind="variable",
+                    semantic_rule_source="variables",
+                )
+            ),
+            SimpleNamespace(
+                spec=AnalyzerSpec(
+                    key="spec-compliance",
+                    name="Spec",
+                    description="",
+                    run=lambda _context: SimpleNamespace(issues=[]),
+                    analyzer_attr="analyze_spec_compliance",
+                    semantic_mapping_kind="spec",
+                    semantic_rule_source="spec-compliance",
+                )
+            ),
+            SimpleNamespace(
+                spec=AnalyzerSpec(
+                    key="ignored-analyzer",
+                    name="Ignored",
+                    description="",
+                    run=lambda _context: SimpleNamespace(issues=[]),
+                    analyzer_attr="analyze_alarm_integrity",
+                )
+            ),
+        )
+    )
+
+    monkeypatch.setattr(registry_module, "get_default_analyzer_catalog", lambda: fake_catalog)
+    monkeypatch.setattr(
+        registry_module,
+        "analyze_variables",
+        lambda *_args, **_kwargs: (
+            calls.append("variables")
+            or SimpleNamespace(
+                issues=[
+                    VariableIssue(
+                        kind=IssueKind.UNUSED,
+                        module_path=["Root"],
+                        variable=Variable(name="UnusedVar", datatype=Simple_DataType.INTEGER),
+                    )
+                ]
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        registry_module,
+        "analyze_spec_compliance",
+        lambda *_args, **_kwargs: (
+            calls.append("spec-compliance")
+            or SimpleNamespace(issues=[Issue(kind="spec.demo", message="spec issue", module_path=["Root"])])
+        ),
+    )
+    monkeypatch.setattr(
+        "sattlint.analyzers.sattline_semantics.detect_transform_invariant_violations",
+        lambda _bp: [],
+    )
+
+    report = analyze_sattline_semantics(bp)
+
+    assert calls == ["variables", "spec-compliance"]
+    assert {issue.rule.source for issue in report.issues} == {"variables", "spec-compliance"}
 
 
 def test_naming_consistency_flags_inconsistent_variable_names():

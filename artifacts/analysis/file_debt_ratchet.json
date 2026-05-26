@@ -1,14 +1,5 @@
 {
   "files": {
-    "src/sattline_parser/utils/text_processing.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 8750,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
     "src/sattlint/_validation_expression.py": {
       "coverage": {
         "allow_rebaseline": false,
@@ -169,15 +160,6 @@
         "touch_rule": "must_reach_target_on_touch"
       }
     },
-    "src/sattlint/analyzers/sattline_semantics.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 8608,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
     "src/sattlint/analyzers/scan_loop_resource_usage.py": {
       "coverage": {
         "allow_rebaseline": false,
@@ -298,28 +280,10 @@
         "touch_rule": "must_reach_target_on_touch"
       }
     },
-    "src/sattlint/cache.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 7372,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
     "src/sattlint/cli/entry.py": {
       "coverage": {
         "allow_rebaseline": false,
         "current_baseline": 9405,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
-    "src/sattlint/console.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 6329,
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
@@ -338,15 +302,6 @@
       "coverage": {
         "allow_rebaseline": false,
         "current_baseline": 7101,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
-    "src/sattlint/core/diagnostics.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 9640,
         "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
         "target": 10000,
         "touch_rule": "must_reach_target_on_touch"
@@ -522,28 +477,12 @@
       }
     },
     "src/sattlint/engine.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 9532,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      },
       "structural": {
         "allow_rebaseline": false,
         "current_baseline": 1152,
         "reason": "Engine owner surface still centralizes program loading and merge semantics.",
         "target": 500,
         "touch_rule": "must_shrink"
-      }
-    },
-    "src/sattlint/graphics_validation.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 8491,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
       }
     },
     "src/sattlint/reporting/comment_code_report.py": {
@@ -591,15 +530,6 @@
         "touch_rule": "must_reach_target_on_touch"
       }
     },
-    "src/sattlint/semantic_analysis.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 9744,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
     "src/sattlint/tracing.py": {
       "coverage": {
         "allow_rebaseline": false,
@@ -626,13 +556,6 @@
       }
     },
     "src/sattlint/validation.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 9922,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      },
       "structural": {
         "allow_rebaseline": false,
         "current_baseline": 1259,
@@ -731,15 +654,6 @@
         "touch_rule": "must_reach_target_on_touch"
       }
     },
-    "src/sattlint_lsp/_server_helpers.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 8998,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
     "src/sattlint_lsp/document_state.py": {
       "coverage": {
         "allow_rebaseline": false,
@@ -750,37 +664,12 @@
       }
     },
     "src/sattlint_lsp/local_parser.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 7898,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      },
       "structural": {
         "allow_rebaseline": false,
         "current_baseline": 555,
         "reason": "LSP owner surface still centralizes editor protocol behavior.",
         "target": 500,
         "touch_rule": "must_shrink"
-      }
-    },
-    "src/sattlint_lsp/server.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 8198,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
-      }
-    },
-    "src/sattlint_lsp/workspace_store.py": {
-      "coverage": {
-        "allow_rebaseline": false,
-        "current_baseline": 8566,
-        "reason": "Touched source coverage debt must reach full-file proof on the next edit.",
-        "target": 10000,
-        "touch_rule": "must_reach_target_on_touch"
       }
     },
     "tests/test_app_menus.py": {

@@ -1,0 +1,13 @@
+started
+config-loaded
+loaded use_cache=True
+analyzed use_cache=True issues=22576
+wrote use_cache=True rows=51
+loaded use_cache=False
+analyzed use_cache=True issues=22576
+wrote use_cache=True rows=51
+loaded use_cache=False
+analyzed use_cache=False issues=22576
+wrote use_cache=False rows=51
+analyzed use_cache=False issues=22576
+wrote use_cache=False rows=51

@@ -96,6 +96,7 @@ def test_framemodule_subtree_uses_repathed_context(monkeypatch: pytest.MonkeyPat
         repath_context=lambda context, **kwargs: repathed,
         walk_moduledef=lambda moduledef, context, path: frame_calls.append(("def", context, path)),
         walk_module_code=lambda modulecode, context, path: frame_calls.append(("code", context, path)),
+        contexts_by_module_path={},
     )
     monkeypatch.setattr(
         variables_submodules_module,
@@ -170,6 +171,7 @@ def test_dependency_mapping_distinguishes_program_and_library_targets(monkeypatc
         analyzing_typedefs=set(),
         analyze_typedef_with_context=lambda *args, **kwargs: None,
         alias_links=[],
+        contexts_by_module_path={},
     )
     monkeypatch.setattr(
         variables_submodules_module,
@@ -313,6 +315,7 @@ def test_missing_typedef_and_singlemodule_branch_gaps(monkeypatch: pytest.Monkey
         analyzing_typedefs=set(),
         analyze_typedef_with_context=lambda *args, **kwargs: None,
         alias_links=[],
+        contexts_by_module_path={},
     )
     monkeypatch.setattr(
         variables_submodules_module,
@@ -360,6 +363,7 @@ def test_missing_typedef_and_singlemodule_branch_gaps(monkeypatch: pytest.Monkey
         get_usage=lambda variable: _UsageStub(),
         alias_links=alias_links,
         check_param_mappings_for_single=lambda *args, **kwargs: None,
+        contexts_by_module_path={},
     )
     monkeypatch.setattr(variables_submodules_module, "_walk_submodules", lambda *args, **kwargs: None)
     monkeypatch.setattr(variables_submodules_module, "_propagate_mapping_to_parent", lambda *args, **kwargs: None)
@@ -426,6 +430,7 @@ def test_internal_typedef_and_frame_duplication_branch_gaps(monkeypatch: pytest.
         analyzing_typedefs=set(),
         analyze_typedef_with_context=lambda *args, **kwargs: None,
         alias_links=[],
+        contexts_by_module_path={},
     )
     monkeypatch.setattr(
         variables_submodules_module,

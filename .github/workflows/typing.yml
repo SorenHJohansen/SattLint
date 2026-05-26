@@ -68,6 +68,27 @@ jobs:
       - name: Audit dependencies
         run: pip-audit --skip-editable
 
+  npm-audit:
+    name: Npm Audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode/sattline-vscode
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up shared CI tooling
+        uses: ./.github/actions/setup-ci-tooling
+        with:
+          install-dependencies: "false"
+          install-node: "true"
+
+      - name: Materialize npm lockfile for audit
+        run: npm install --package-lock-only --ignore-scripts --no-fund --no-audit
+
+      - name: Audit VS Code client dependencies
+        run: npm audit --audit-level=high
+
   ratchet_policy:
     name: Ratchet Policy
     runs-on: ubuntu-latest

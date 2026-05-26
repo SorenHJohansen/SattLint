@@ -25,6 +25,10 @@ def _structural_entry_files(
 
 
 def _structural_report_discovery(workspace_root: Path, discovery: Any) -> Any:
+    referenced_program_names = cast(
+        frozenset[str],
+        getattr(discovery, "referenced_program_names", frozenset[str]()),
+    )
     selected_program_files = _structural_entry_files(
         workspace_root,
         tuple(discovery.program_files),
@@ -39,13 +43,15 @@ def _structural_report_discovery(workspace_root: Path, discovery: Any) -> Any:
         abb_lib_dir=discovery.abb_lib_dir,
         program_files_by_stem=discovery.program_files_by_stem,
         dependency_files_by_stem=discovery.dependency_files_by_stem,
+        referenced_program_names=referenced_program_names,
     )
 
 
 def collect_workspace_graph_inputs(workspace_root: Path) -> Any:
     from sattlint.devtools import structural_reports as structural_reports_module
 
-    discovery = structural_reports_module.discover_workspace_sources(workspace_root)
+    full_discovery = structural_reports_module.discover_workspace_sources(workspace_root)
+    discovery = structural_reports_module.structural_report_discovery(workspace_root, full_discovery)
     snapshots: list[Any] = []
     failures: list[dict[str, Any]] = []
 
@@ -54,6 +60,7 @@ def collect_workspace_graph_inputs(workspace_root: Path) -> Any:
             snapshot = structural_reports_module.load_workspace_snapshot(
                 entry_file,
                 workspace_root=workspace_root,
+                discovery=full_discovery,
                 collect_variable_diagnostics=False,
                 _analysis_provider=structural_reports_module.build_variable_semantic_artifacts,
             )
@@ -264,7 +271,7 @@ def _stream_workspace_graph_reports(
     workspace_root: Path,
     *,
     progress_callback: Callable[[str], None] | None = None,
-) -> tuple[Any, dict[str, Any], dict[str, Any]]:
+) -> tuple[Any, dict[str, Any], dict[str, Any], dict[str, Any]]:
     from sattlint.devtools import structural_reports as structural_reports_module
 
     full_discovery = structural_reports_module.discover_workspace_sources(workspace_root)
@@ -274,6 +281,7 @@ def _stream_workspace_graph_reports(
     dependency_edge_index: dict[tuple[str, str], dict[str, Any]] = {}
     call_node_index: dict[str, dict[str, Any]] = {}
     call_edge_index: dict[tuple[str, str], dict[str, Any]] = {}
+    graphics_entries: list[dict[str, Any]] = []
     total_program_files = len(discovery.program_files)
     snapshot_count = 0
 
@@ -319,6 +327,11 @@ def _stream_workspace_graph_reports(
             node_index=call_node_index,
             edge_index=call_edge_index,
         )
+        structural_reports_module.accumulate_graphics_layout_snapshot(
+            snapshot,
+            workspace_root=workspace_root,
+            entries=graphics_entries,
+        )
 
     graph_inputs = structural_reports_module.WorkspaceGraphInputs(
         discovery=discovery,
@@ -340,7 +353,13 @@ def _stream_workspace_graph_reports(
         snapshot_count=snapshot_count,
         snapshot_failures=snapshot_failures,
     )
-    return graph_inputs, dependency_graph_report, call_graph_report
+    graphics_layout_report = structural_reports_module.build_graphics_layout_report(
+        workspace_root=workspace_root,
+        entries=graphics_entries,
+        snapshot_count=snapshot_count,
+        snapshot_failures=snapshot_failures,
+    )
+    return graph_inputs, dependency_graph_report, call_graph_report, graphics_layout_report
 
 
 def collect_dependency_graph_report(

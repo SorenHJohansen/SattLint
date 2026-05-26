@@ -68,11 +68,11 @@ Validate a published audit directory with `python scripts/run_repo_python.sh -m 
 ## CI Gate
 
 - Lint and formatting stay in `lint.yml`.
-- Type, test, dependency-audit, and ratchet-policy enforcement stay in `typing.yml` under the workflow name `Typing And Quality`.
+- Type, test, pip-audit, npm-audit, and ratchet-policy enforcement stay in `typing.yml` under the workflow name `Typing And Quality`.
 - Repo-audit owner checks stay in `repo-audit.yml`, but that owner workflow now covers packaging or leak validation and the Windows quick audit instead of a second Ubuntu full audit.
 - `ci.yml` runs the fast pre-commit gate and doc-gardener, then uses `check-my-changes` on pull requests and the full repo audit on `main`, manual runs, and nightly health.
 
-`publish.yml` now supports a manual `workflow_dispatch` rehearsal that builds distributions, runs `twine check`, runs `sattlint-release-smoke`, uploads distributions and smoke artifacts, and stops before publication. Only real `v*` tag pushes enter the final publish job.
+`publish.yml` now supports a manual `workflow_dispatch` rehearsal that builds distributions, runs `twine check`, runs `sattlint-release-smoke`, uploads distributions and smoke artifacts, and stops before publication. Only real `v*` tag pushes enter the final publish job, and only that job receives `id-token: write` while targeting the protected `pypi-release` environment.
 
 When CI or local workflows need a stable long-running audit directory for later inspection, publish it through `sattlint.devtools.repo_audit_runs` and gate readers through `sattlint.devtools.artifact_readiness`.
 

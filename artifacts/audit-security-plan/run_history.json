@@ -1,0 +1,570 @@
+{
+  "failure_patterns": [
+    {
+      "finish_gate_status": null,
+      "latest_captured_at": "2026-05-21T08:49:46Z",
+      "latest_run_id": "20260521T084946-380Z",
+      "occurrence_count": 5,
+      "report_kind": "repo_audit_cli_consistency",
+      "run_ids": [
+        "20260521T084946-380Z",
+        "20260520T143446-251Z",
+        "20260520T143143-432Z",
+        "20260520T140706-181Z",
+        "20260520T140228-395Z"
+      ],
+      "selected_surface": null,
+      "signature": "repo_audit_cli_consistency|cli-consistency-undeclared-subcommand",
+      "top_failure_ids": [
+        "cli-consistency-undeclared-subcommand"
+      ],
+      "top_failure_messages": [
+        "Documented CLI subcommand 'ghost' is not declared."
+      ]
+    },
+    {
+      "finish_gate_status": null,
+      "latest_captured_at": "2026-05-20T14:03:21Z",
+      "latest_run_id": "20260520T140321-663Z",
+      "occurrence_count": 1,
+      "report_kind": "repo_audit",
+      "run_ids": [
+        "20260520T140321-663Z"
+      ],
+      "selected_surface": null,
+      "signature": "repo_audit|ratchet-policy-coverage|structural-budget-ratchet-regression|stale-generated-output-manifest|stale-generated-output-manifest|stale-generated-output-manifest",
+      "top_failure_ids": [
+        "ratchet-policy-coverage",
+        "structural-budget-ratchet-regression",
+        "stale-generated-output-manifest",
+        "stale-generated-output-manifest",
+        "stale-generated-output-manifest"
+      ],
+      "top_failure_messages": [
+        "Per-file coverage debt entry is stale for src/sattlint/analyzers/_variables_submodules.py: current coverage 100.00% meets or exceeds target 100.00%. Remove the coverage entry from artifacts/analysis/file_debt_ratchet.json.",
+        "Structural debt regressed beyond the checked-in ratchet baseline.",
+        "Generated output drifted from its source-digest manifest."
+      ]
+    },
+    {
+      "finish_gate_status": null,
+      "latest_captured_at": "2026-05-20T14:32:37Z",
+      "latest_run_id": "20260520T143237-178Z",
+      "occurrence_count": 1,
+      "report_kind": "repo_audit",
+      "run_ids": [
+        "20260520T143237-178Z"
+      ],
+      "selected_surface": null,
+      "signature": "repo_audit|ruff-f401|ruff-f401|ruff-ruf022|ruff-w292|ruff-w292",
+      "top_failure_ids": [
+        "ruff-f401",
+        "ruff-f401",
+        "ruff-ruf022",
+        "ruff-w292",
+        "ruff-w292"
+      ],
+      "top_failure_messages": [
+        "`pytest` imported but unused",
+        "`sattline_parser.models.ast_model.ModuleHeader` imported but unused",
+        "`__all__` is not sorted"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T08:50:21Z",
+  "kind": "sattlint.audit_run_history",
+  "latest_output_dir": "artifacts/audit",
+  "latest_run_id": "20260521T085021-995Z",
+  "retained_run_limit": 10,
+  "reuse_guidance": {
+    "prefer_latest_run_id": "20260521T085021-995Z",
+    "safe_to_reuse_when": [
+      "the entry is latest",
+      "likely_stale is false",
+      "git_head still matches the current workspace HEAD",
+      "the command and changed_files still match the question being answered"
+    ]
+  },
+  "run_count": 10,
+  "runs": [
+    {
+      "blocking_finding_count": 0,
+      "canonical_command": "sattlint-repo-audit --profile full --check public-readiness --skip-pipeline --fail-on high --output-dir artifacts/audit-security-plan",
+      "captured_at": "2026-05-21T08:50:21Z",
+      "changed_files": [],
+      "fail_on": "high",
+      "finding_count": 0,
+      "finish_gate_status": null,
+      "git_dirty": true,
+      "git_head": "5981b2e602e9f98e4b62621a1cf8bfc85b65a0ce",
+      "history_base": "artifacts/audit",
+      "history_path": "artifacts/audit/history/20260521T085021-995Z",
+      "latest": true,
+      "likely_stale": true,
+      "likely_stale_reasons": [
+        "workspace-dirty-at-run-time"
+      ],
+      "max_severity": null,
+      "output_dir": "artifacts/audit-security-plan",
+      "overall_status": "pass",
+      "profile": "full",
+      "report_kind": "repo_audit_selected_check",
+      "reports": {
+        "ai_gc": null,
+        "cli_consistency": null,
+        "findings": "findings.json",
+        "pipeline_status": null,
+        "pipeline_summary": null,
+        "progress": "progress.json",
+        "run_history": "run_history.json",
+        "status": "status.json",
+        "summary": "summary.json",
+        "summary_markdown": "summary.md"
+      },
+      "run_id": "20260521T085021-995Z",
+      "selected_checks": [
+        "public-readiness"
+      ],
+      "selected_surface": null,
+      "snapshot_dir_name": "20260521T085021-995Z",
+      "top_failure_ids": [],
+      "top_failure_messages": []
+    },
+    {
+      "blocking_finding_count": 0,
+      "canonical_command": "sattlint-repo-audit --profile full --check cli-consistency --skip-pipeline --fail-on high --output-dir <external>/test_main_check_cli_consistenc0",
+      "captured_at": "2026-05-21T08:49:46Z",
+      "changed_files": [],
+      "fail_on": "high",
+      "finding_count": 1,
+      "finish_gate_status": null,
+      "git_dirty": true,
+      "git_head": "5981b2e602e9f98e4b62621a1cf8bfc85b65a0ce",
+      "history_base": "artifacts/audit",
+      "history_path": "artifacts/audit/history/20260521T084946-380Z",
+      "latest": false,
+      "likely_stale": true,
+      "likely_stale_reasons": [
+        "superseded-by-newer-run"
+      ],
+      "max_severity": "medium",
+      "output_dir": "<external>/test_main_check_cli_consistenc0",
+      "overall_status": "fail",
+      "profile": "full",
+      "report_kind": "repo_audit_cli_consistency",
+      "reports": {
+        "ai_gc": null,
+        "cli_consistency": "cli_consistency.json",
+        "findings": "findings.json",
+        "pipeline_status": null,
+        "pipeline_summary": null,
+        "progress": "progress.json",
+        "run_history": "run_history.json",
+        "status": "status.json",
+        "summary": "summary.json",
+        "summary_markdown": "summary.md"
+      },
+      "run_id": "20260521T084946-380Z",
+      "selected_checks": [
+        "cli-consistency"
+      ],
+      "selected_surface": null,
+      "snapshot_dir_name": "20260521T084946-380Z",
+      "top_failure_ids": [
+        "cli-consistency-undeclared-subcommand"
+      ],
+      "top_failure_messages": [
+        "Documented CLI subcommand 'ghost' is not declared."
+      ]
+    },
+    {
+      "blocking_finding_count": 0,
+      "canonical_command": "sattlint-repo-audit --profile full --fail-on high --output-dir artifacts/audit-full-current.tmp-aa81j1du",
+      "captured_at": "2026-05-20T14:35:42Z",
+      "changed_files": [],
+      "fail_on": "high",
+      "finding_count": 0,
+      "finish_gate_status": null,
+      "git_dirty": true,
+      "git_head": "1570ee46bd58761f5df776e196f3191b072ad759",
+      "history_base": "artifacts/audit",
+      "history_path": "artifacts/audit/history/20260520T143542-170Z",
+      "latest": false,
+      "likely_stale": true,
+      "likely_stale_reasons": [
+        "superseded-by-newer-run"
+      ],
+      "max_severity": null,
+      "output_dir": "artifacts/audit-full-current.tmp-aa81j1du",
+      "overall_status": "pass",
+      "profile": "full",
+      "report_kind": "repo_audit",
+      "reports": {
+        "ai_gc": "ai_gc.json",
+        "cli_consistency": "cli_consistency.json",
+        "findings": "findings.json",
+        "pipeline_status": "pipeline/status.json",
+        "pipeline_summary": "pipeline/summary.json",
+        "progress": "progress.json",
+        "run_history": "run_history.json",
+        "status": "status.json",
+        "summary": "summary.json",
+        "summary_markdown": "summary.md"
+      },
+      "run_id": "20260520T143542-170Z",
+      "selected_checks": [],
+      "selected_surface": null,
+      "snapshot_dir_name": "20260520T143542-170Z",
+      "top_failure_ids": [],
+      "top_failure_messages": []
+    },
+    {
+      "blocking_finding_count": 0,
+      "canonical_command": "sattlint-repo-audit --profile full --check cli-consistency --skip-pipeline --fail-on high --output-dir <external>/test_main_check_cli_consistenc0",
+      "captured_at": "2026-05-20T14:34:46Z",
+      "changed_files": [],
+      "fail_on": "high",
+      "finding_count": 1,
+      "finish_gate_status": null,
+      "git_dirty": true,
+      "git_head": "1570ee46bd58761f5df776e196f3191b072ad759",
+      "history_base": "artifacts/audit",
+      "history_path": "artifacts/audit/history/20260520T143446-251Z",
+      "latest": false,
+      "likely_stale": true,
+      "likely_stale_reasons": [
+        "superseded-by-newer-run"
+      ],
+      "max_severity": "medium",
+      "output_dir": "<external>/test_main_check_cli_consistenc0",
+      "overall_status": "fail",
+      "profile": "full",
+      "report_kind": "repo_audit_cli_consistency",
+      "reports": {
+        "ai_gc": null,
+        "cli_consistency": "cli_consistency.json",
+        "findings": "findings.json",
+        "pipeline_status": null,
+        "pipeline_summary": null,
+        "progress": "progress.json",
+        "run_history": "run_history.json",
+        "status": "status.json",
+        "summary": "summary.json",
+        "summary_markdown": "summary.md"
+      },
+      "run_id": "20260520T143446-251Z",
+      "selected_checks": [
+        "cli-consistency"
+      ],
+      "selected_surface": null,
+      "snapshot_dir_name": "20260520T143446-251Z",
+      "top_failure_ids": [
+        "cli-consistency-undeclared-subcommand"
+      ],
+      "top_failure_messages": [
+        "Documented CLI subcommand 'ghost' is not declared."
+      ]
+    },
+    {
+      "blocking_finding_count": 2,
+      "canonical_command": "sattlint-repo-audit --profile full --fail-on high --output-dir artifacts/audit-full-current.tmp-golhxsjm",
+      "captured_at": "2026-05-20T14:32:37Z",
+      "changed_files": [],
+      "fail_on": "high",
+      "finding_count": 10,
+      "finish_gate_status": null,
+      "git_dirty": true,
+      "git_head": "1570ee46bd58761f5df776e196f3191b072ad759",
+      "history_base": "artifacts/audit",
+      "history_path": "artifacts/audit/history/20260520T143237-178Z",
+      "latest": false,
+      "likely_stale": true,
+      "likely_stale_reasons": [
+        "superseded-by-newer-run"
+      ],
+      "max_severity": "high",
+      "output_dir": "artifacts/audit-full-current.tmp-golhxsjm",
+      "overall_status": "fail",
+      "profile": "full",
+      "report_kind": "repo_audit",
+      "reports": {
+        "ai_gc": "ai_gc.json",
+        "cli_consistency": "cli_consistency.json",
+        "findings": "findings.json",
+        "pipeline_status": "pipeline/status.json",
+        "pipeline_summary": "pipeline/summary.json",
+        "progress": "progress.json",
+        "run_history": "run_history.json",
+        "status": "status.json",
+        "summary": "summary.json",
+        "summary_markdown": "summary.md"
+      },
+      "run_id": "20260520T143237-178Z",
+      "selected_checks": [],
+      "selected_surface": null,
+      "snapshot_dir_name": "20260520T143237-178Z",
+      "top_failure_ids": [
+        "ruff-f401",
+        "ruff-f401",
+        "ruff-ruf022",
+        "ruff-w292",
+        "ruff-w292"
+      ],
+      "top_failure_messages": [
+        "`pytest` imported but unused",
+        "`sattline_parser.models.ast_model.ModuleHeader` imported but unused",
+        "`__all__` is not sorted",
+        "No newline at end of file",
+        "No newline at end of file"
+      ]
+    },
+    {
+      "blocking_finding_count": 0,
+      "canonical_command": "sattlint-repo-audit --profile full --check cli-consistency --skip-pipeline --fail-on high --output-dir <external>/test_main_check_cli_consistenc0",
+      "captured_at": "2026-05-20T14:31:43Z",
+      "changed_files": [],
+      "fail_on": "high",
+      "finding_count": 1,
+      "finish_gate_status": null,
+      "git_dirty": true,
+      "git_head": "1570ee46bd58761f5df776e196f3191b072ad759",
+      "history_base": "artifacts/audit",
+      "history_path": "artifacts/audit/history/20260520T143143-432Z",
+      "latest": false,
+      "likely_stale": true,
+      "likely_stale_reasons": [
+        "superseded-by-newer-run"
+      ],
+      "max_severity": "medium",
+      "output_dir": "<external>/test_main_check_cli_consistenc0",
+      "overall_status": "fail",
+      "profile": "full",
+      "report_kind": "repo_audit_cli_consistency",
+      "reports": {
+        "ai_gc": null,
+        "cli_consistency": "cli_consistency.json",
+        "findings": "findings.json",
+        "pipeline_status": null,
+        "pipeline_summary": null,
+        "progress": "progress.json",
+        "run_history": "run_history.json",
+        "status": "status.json",
+        "summary": "summary.json",
+        "summary_markdown": "summary.md"
+      },
+      "run_id": "20260520T143143-432Z",
+      "selected_checks": [
+        "cli-consistency"
+      ],
+      "selected_surface": null,
+      "snapshot_dir_name": "20260520T143143-432Z",
+      "top_failure_ids": [
+        "cli-consistency-undeclared-subcommand"
+      ],
+      "top_failure_messages": [
+        "Documented CLI subcommand 'ghost' is not declared."
+      ]
+    },
+    {
+      "blocking_finding_count": 0,
+      "canonical_command": "sattlint-repo-audit --profile full --fail-on high --output-dir artifacts/audit-full-current.tmp-01hacbii",
+      "captured_at": "2026-05-20T14:08:03Z",
+      "changed_files": [],
+      "fail_on": "high",
+      "finding_count": 16,
+      "finish_gate_status": null,
+      "git_dirty": true,
+      "git_head": "1570ee46bd58761f5df776e196f3191b072ad759",
+      "history_base": "artifacts/audit",
+      "history_path": "artifacts/audit/history/20260520T140803-067Z",
+      "latest": false,
+      "likely_stale": true,
+      "likely_stale_reasons": [
+        "superseded-by-newer-run"
+      ],
+      "max_severity": "medium",
+      "output_dir": "artifacts/audit-full-current.tmp-01hacbii",
+      "overall_status": "pass",
+      "profile": "full",
+      "report_kind": "repo_audit",
+      "reports": {
+        "ai_gc": "ai_gc.json",
+        "cli_consistency": "cli_consistency.json",
+        "findings": "findings.json",
+        "pipeline_status": "pipeline/status.json",
+        "pipeline_summary": "pipeline/summary.json",
+        "progress": "progress.json",
+        "run_history": "run_history.json",
+        "status": "status.json",
+        "summary": "summary.json",
+        "summary_markdown": "summary.md"
+      },
+      "run_id": "20260520T140803-067Z",
+      "selected_checks": [],
+      "selected_surface": null,
+      "snapshot_dir_name": "20260520T140803-067Z",
+      "top_failure_ids": [
+        "structural-budget-ratchet-regression",
+        "stale-generated-output-manifest",
+        "stale-generated-output-manifest",
+        "stale-generated-output-manifest",
+        "stale-generated-output-manifest"
+      ],
+      "top_failure_messages": [
+        "Structural debt regressed beyond the checked-in ratchet baseline.",
+        "Generated output drifted from its source-digest manifest.",
+        "Generated output drifted from its source-digest manifest.",
+        "Generated output drifted from its source-digest manifest.",
+        "Generated output drifted from its source-digest manifest."
+      ]
+    },
+    {
+      "blocking_finding_count": 0,
+      "canonical_command": "sattlint-repo-audit --profile full --check cli-consistency --skip-pipeline --fail-on high --output-dir <external>/test_main_check_cli_consistenc0",
+      "captured_at": "2026-05-20T14:07:06Z",
+      "changed_files": [],
+      "fail_on": "high",
+      "finding_count": 1,
+      "finish_gate_status": null,
+      "git_dirty": true,
+      "git_head": "1570ee46bd58761f5df776e196f3191b072ad759",
+      "history_base": "artifacts/audit",
+      "history_path": "artifacts/audit/history/20260520T140706-181Z",
+      "latest": false,
+      "likely_stale": true,
+      "likely_stale_reasons": [
+        "superseded-by-newer-run"
+      ],
+      "max_severity": "medium",
+      "output_dir": "<external>/test_main_check_cli_consistenc0",
+      "overall_status": "fail",
+      "profile": "full",
+      "report_kind": "repo_audit_cli_consistency",
+      "reports": {
+        "ai_gc": null,
+        "cli_consistency": "cli_consistency.json",
+        "findings": "findings.json",
+        "pipeline_status": null,
+        "pipeline_summary": null,
+        "progress": "progress.json",
+        "run_history": "run_history.json",
+        "status": "status.json",
+        "summary": "summary.json",
+        "summary_markdown": "summary.md"
+      },
+      "run_id": "20260520T140706-181Z",
+      "selected_checks": [
+        "cli-consistency"
+      ],
+      "selected_surface": null,
+      "snapshot_dir_name": "20260520T140706-181Z",
+      "top_failure_ids": [
+        "cli-consistency-undeclared-subcommand"
+      ],
+      "top_failure_messages": [
+        "Documented CLI subcommand 'ghost' is not declared."
+      ]
+    },
+    {
+      "blocking_finding_count": 1,
+      "canonical_command": "sattlint-repo-audit --profile full --fail-on high --output-dir artifacts/audit-full-current.tmp-ithvan7e",
+      "captured_at": "2026-05-20T14:03:21Z",
+      "changed_files": [],
+      "fail_on": "high",
+      "finding_count": 17,
+      "finish_gate_status": null,
+      "git_dirty": true,
+      "git_head": "1570ee46bd58761f5df776e196f3191b072ad759",
+      "history_base": "artifacts/audit",
+      "history_path": "artifacts/audit/history/20260520T140321-663Z",
+      "latest": false,
+      "likely_stale": true,
+      "likely_stale_reasons": [
+        "superseded-by-newer-run"
+      ],
+      "max_severity": "high",
+      "output_dir": "artifacts/audit-full-current.tmp-ithvan7e",
+      "overall_status": "fail",
+      "profile": "full",
+      "report_kind": "repo_audit",
+      "reports": {
+        "ai_gc": "ai_gc.json",
+        "cli_consistency": "cli_consistency.json",
+        "findings": "findings.json",
+        "pipeline_status": "pipeline/status.json",
+        "pipeline_summary": "pipeline/summary.json",
+        "progress": "progress.json",
+        "run_history": "run_history.json",
+        "status": "status.json",
+        "summary": "summary.json",
+        "summary_markdown": "summary.md"
+      },
+      "run_id": "20260520T140321-663Z",
+      "selected_checks": [],
+      "selected_surface": null,
+      "snapshot_dir_name": "20260520T140321-663Z",
+      "top_failure_ids": [
+        "ratchet-policy-coverage",
+        "structural-budget-ratchet-regression",
+        "stale-generated-output-manifest",
+        "stale-generated-output-manifest",
+        "stale-generated-output-manifest"
+      ],
+      "top_failure_messages": [
+        "Per-file coverage debt entry is stale for src/sattlint/analyzers/_variables_submodules.py: current coverage 100.00% meets or exceeds target 100.00%. Remove the coverage entry from artifacts/analysis/file_debt_ratchet.json.",
+        "Structural debt regressed beyond the checked-in ratchet baseline.",
+        "Generated output drifted from its source-digest manifest.",
+        "Generated output drifted from its source-digest manifest.",
+        "Generated output drifted from its source-digest manifest."
+      ]
+    },
+    {
+      "blocking_finding_count": 0,
+      "canonical_command": "sattlint-repo-audit --profile full --check cli-consistency --skip-pipeline --fail-on high --output-dir <external>/test_main_check_cli_consistenc0",
+      "captured_at": "2026-05-20T14:02:28Z",
+      "changed_files": [],
+      "fail_on": "high",
+      "finding_count": 1,
+      "finish_gate_status": null,
+      "git_dirty": true,
+      "git_head": "1570ee46bd58761f5df776e196f3191b072ad759",
+      "history_base": "artifacts/audit",
+      "history_path": "artifacts/audit/history/20260520T140228-395Z",
+      "latest": false,
+      "likely_stale": true,
+      "likely_stale_reasons": [
+        "superseded-by-newer-run"
+      ],
+      "max_severity": "medium",
+      "output_dir": "<external>/test_main_check_cli_consistenc0",
+      "overall_status": "fail",
+      "profile": "full",
+      "report_kind": "repo_audit_cli_consistency",
+      "reports": {
+        "ai_gc": null,
+        "cli_consistency": "cli_consistency.json",
+        "findings": "findings.json",
+        "pipeline_status": null,
+        "pipeline_summary": null,
+        "progress": "progress.json",
+        "run_history": "run_history.json",
+        "status": "status.json",
+        "summary": "summary.json",
+        "summary_markdown": "summary.md"
+      },
+      "run_id": "20260520T140228-395Z",
+      "selected_checks": [
+        "cli-consistency"
+      ],
+      "selected_surface": null,
+      "snapshot_dir_name": "20260520T140228-395Z",
+      "top_failure_ids": [
+        "cli-consistency-undeclared-subcommand"
+      ],
+      "top_failure_messages": [
+        "Documented CLI subcommand 'ghost' is not declared."
+      ]
+    }
+  ],
+  "schema_version": 1
+}

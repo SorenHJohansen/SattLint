@@ -6,10 +6,51 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
+from .casefolding import casefold_equal, casefold_key
 from .models.project_graph import ProjectGraph
 
 ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
+
+
+def _include_configured_reverse_library_consumers(
+    cfg: ConfigDict,
+    *,
+    selected_target: str,
+    root_bp: BasePicture,
+    graph: ProjectGraph,
+    loader: Any,
+    require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
+    engine_module: Any,
+) -> None:
+    if not target_is_library(
+        cfg,
+        root_bp,
+        graph,
+        source_paths_for_current_target_fn=lambda project_bp, current_graph: source_paths_for_current_target(
+            project_bp,
+            current_graph,
+            casefold_equal_fn=casefold_equal,
+            casefold_key_fn=casefold_key,
+        ),
+        is_within_directory_fn=engine_module.is_within_directory,
+    ):
+        return
+
+    selected_key = selected_target.casefold()
+    requester_dir = Path(cfg["program_dir"])
+
+    for candidate in require_analyzed_targets_fn(cfg):
+        if candidate.casefold() == selected_key:
+            continue
+
+        deps_path = loader._find_deps_with_context(candidate, requester_dir=requester_dir)
+        candidate_dependencies = cast(list[str], loader._read_deps(deps_path) if deps_path else [])
+        if not any(dep.casefold() == selected_key for dep in candidate_dependencies):
+            continue
+
+        dependency_requester = deps_path.parent if deps_path is not None else requester_dir
+        loader._visit(candidate, graph, False, requester_dir=dependency_requester, syntax_check=False)
 
 
 def get_analyzed_targets(cfg: ConfigDict, *, app_support: Any) -> list[str]:
@@ -104,6 +145,7 @@ def load_project(
     get_cache_dir_fn: Callable[[], Path],
     ast_cache_cls: type[Any],
     engine_module: Any,
+    status_update_fn: Callable[[str], None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph]:
     targets = require_analyzed_targets_fn(cfg)
     selected_target = target_name or targets[0]
@@ -113,7 +155,7 @@ def load_project(
     key = cache_key_for_target_fn(cfg, selected_target)
     cached = cache.load(key) if use_cache else None
 
-    if cached:
+    if cached and cast(bool, cache.validate(cached, fast=False)):
         return cast(tuple[BasePicture, ProjectGraph], cached["project"])
 
     loader = engine_module.SattLineProjectLoader(
@@ -124,14 +166,20 @@ def load_project(
         scan_root_only=cfg["scan_root_only"],
         debug=cfg["debug"],
         use_file_ast_cache=use_file_ast_cache,
+        status_update_fn=status_update_fn,
     )
 
     graph = loader.resolve(selected_target, strict=False)
-    deps_path = loader._find_deps_with_context(
-        selected_target,
-        requester_dir=Path(cfg["program_dir"]),
-    )
-    direct_dependencies = cast(list[str], loader._read_deps(deps_path) if deps_path else [])
+    try:
+        deps_path = loader._find_deps_with_context(
+            selected_target,
+            requester_dir=Path(cfg["program_dir"]),
+        )
+        direct_dependencies = cast(list[str], loader._read_deps(deps_path) if deps_path else [])
+    finally:
+        flush_lookup_cache = getattr(loader, "_flush_lookup_cache", None)
+        if callable(flush_lookup_cache):
+            flush_lookup_cache()
 
     root_bp = graph.ast_by_name.get(selected_target)
     if not root_bp:
@@ -144,6 +192,16 @@ def load_project(
             warnings=graph.warnings,
             direct_dependencies=direct_dependencies,
         )
+
+    _include_configured_reverse_library_consumers(
+        cfg,
+        selected_target=selected_target,
+        root_bp=root_bp,
+        graph=graph,
+        loader=loader,
+        require_analyzed_targets_fn=require_analyzed_targets_fn,
+        engine_module=engine_module,
+    )
 
     project_bp = engine_module.merge_project_basepicture(root_bp, graph)
     cache.save(
@@ -160,6 +218,7 @@ def load_program_ast(
     *,
     force_dependency_resolution: bool,
     engine_module: Any,
+    status_update_fn: Callable[[str], None] | None = None,
 ) -> tuple[BasePicture, ProjectGraph]:
     loader = engine_module.SattLineProjectLoader(
         program_dir=Path(cfg["program_dir"]),
@@ -168,6 +227,7 @@ def load_program_ast(
         mode=engine_module.CodeMode(cfg["mode"]),
         scan_root_only=False if force_dependency_resolution else cfg["scan_root_only"],
         debug=cfg["debug"],
+        status_update_fn=status_update_fn,
     )
 
     graph = loader.resolve(program_name, strict=False)

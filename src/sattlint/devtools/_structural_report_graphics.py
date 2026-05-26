@@ -271,48 +271,55 @@ def _walk_graphics_layout_children(
             active_moduletype_keys.discard(moduletype_key)
 
 
-def collect_graphics_layout_report(
-    workspace_root: Path,
+def _accumulate_graphics_layout_snapshot(
+    snapshot: Any,
     *,
-    graph_inputs: Any = None,
+    workspace_root: Path,
+    entries: list[dict[str, Any]],
+) -> None:
+    bp = snapshot.base_picture
+    if not hasattr(bp, "header"):
+        return
+    root_path = (bp.header.name,)
+    entries.append(
+        _graphics_layout_entry(
+            workspace_root=workspace_root,
+            entry_file=snapshot.entry_file,
+            module_path=root_path,
+            module_kind="basepicture",
+            header=bp.header,
+            moduledef=bp.moduledef,
+            definition_scope="root",
+            moduledef_origin_kind="local-module",
+        )
+    )
+    _walk_graphics_layout_children(
+        bp=bp,
+        children=bp.submodules or [],
+        entry_file=snapshot.entry_file,
+        workspace_root=workspace_root,
+        snapshot=snapshot,
+        entries=entries,
+        parent_path=root_path,
+        current_library=getattr(bp, "origin_lib", None),
+        definition_scope="root",
+        active_moduletype_keys=set(),
+    )
+
+
+def _build_graphics_layout_report(
+    *,
+    workspace_root: Path,
+    entries: list[dict[str, Any]],
+    snapshot_count: int,
+    snapshot_failures: list[dict[str, Any]],
 ) -> dict[str, Any]:
     from sattlint.devtools import structural_reports as structural_reports_module
 
-    resolved_inputs = structural_reports_module.normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
-    entries: list[dict[str, Any]] = []
-
-    for snapshot in resolved_inputs.snapshots:
-        bp = snapshot.base_picture
-        root_path = (bp.header.name,)
-        entries.append(
-            _graphics_layout_entry(
-                workspace_root=workspace_root,
-                entry_file=snapshot.entry_file,
-                module_path=root_path,
-                module_kind="basepicture",
-                header=bp.header,
-                moduledef=bp.moduledef,
-                definition_scope="root",
-                moduledef_origin_kind="local-module",
-            )
-        )
-        _walk_graphics_layout_children(
-            bp=bp,
-            children=bp.submodules or [],
-            entry_file=snapshot.entry_file,
-            workspace_root=workspace_root,
-            snapshot=snapshot,
-            entries=entries,
-            parent_path=root_path,
-            current_library=getattr(bp, "origin_lib", None),
-            definition_scope="root",
-            active_moduletype_keys=set(),
-        )
-
-    entries.sort(key=lambda item: (item["entry_file"] or "", item["module_path"].casefold()))
+    sorted_entries = sorted(entries, key=lambda item: (item["entry_file"] or "", item["module_path"].casefold()))
 
     grouped_entries: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    for entry in entries:
+    for entry in sorted_entries:
         if entry["module_kind"] == "basepicture":
             continue
         grouped_entries.setdefault(
@@ -355,15 +362,42 @@ def collect_graphics_layout_report(
             repo_root=workspace_root,
         ),
         "comparison_fields": list(structural_reports_module.GRAPHICS_LAYOUT_COMPARISON_FIELDS),
-        "entries": entries,
+        "entries": sorted_entries,
         "groups": groups,
         "findings": findings,
-        "snapshot_count": len(resolved_inputs.snapshots),
-        "snapshot_failures": resolved_inputs.snapshot_failures,
+        "snapshot_count": snapshot_count,
+        "snapshot_failures": snapshot_failures,
     }
 
 
+def collect_graphics_layout_report(
+    workspace_root: Path,
+    *,
+    graph_inputs: Any = None,
+) -> dict[str, Any]:
+    from sattlint.devtools import structural_reports as structural_reports_module
+
+    resolved_inputs = structural_reports_module.normalize_graph_inputs(graph_inputs, workspace_root=workspace_root)
+    entries: list[dict[str, Any]] = []
+
+    for snapshot in resolved_inputs.snapshots:
+        structural_reports_module.accumulate_graphics_layout_snapshot(
+            snapshot,
+            workspace_root=workspace_root,
+            entries=entries,
+        )
+
+    return structural_reports_module.build_graphics_layout_report(
+        workspace_root=workspace_root,
+        entries=entries,
+        snapshot_count=len(resolved_inputs.snapshots),
+        snapshot_failures=resolved_inputs.snapshot_failures,
+    )
+
+
 __all__ = [
+    "_accumulate_graphics_layout_snapshot",
+    "_build_graphics_layout_report",
     "_graphics_field_value",
     "_graphics_layout_entry",
     "_graphics_layout_group_payload",

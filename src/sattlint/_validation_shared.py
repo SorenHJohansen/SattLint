@@ -3,16 +3,36 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from sattline_parser.models.ast_model import SourceSpan
 
 __all__ = [
     "RawSourceValidationError",
     "StructuralValidationError",
+    "ValidationNotice",
+    "ValidationWarning",
+    "ValidationWarningSink",
     "_ref_span",
     "_span_kwargs",
     "_warn_or_raise",
+    "coerce_validation_notice",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationNotice:
+    message: str
+    line: int | None = None
+    column: int | None = None
+    length: int | None = None
+
+    def __str__(self) -> str:
+        return self.message
+
+
+type ValidationWarning = ValidationNotice | str
+type ValidationWarningSink = Callable[[ValidationWarning], None]
 
 
 class StructuralValidationError(ValueError):
@@ -51,16 +71,29 @@ def _span_kwargs(span: SourceSpan | None) -> dict[str, int]:
     return {"line": span.line, "column": span.column}
 
 
+def coerce_validation_notice(value: ValidationWarning) -> ValidationNotice:
+    if isinstance(value, ValidationNotice):
+        return value
+    return ValidationNotice(message=value)
+
+
 def _warn_or_raise(
     message: str,
     *,
-    warning_sink: Callable[[str], None] | None = None,
+    warning_sink: ValidationWarningSink | None = None,
     line: int | None = None,
     column: int | None = None,
     length: int | None = None,
 ) -> None:
     if warning_sink is not None:
-        warning_sink(message)
+        warning_sink(
+            ValidationNotice(
+                message=message,
+                line=line,
+                column=column,
+                length=length,
+            )
+        )
         return
     raise StructuralValidationError(
         message,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+import os
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
@@ -170,7 +171,11 @@ RECOMMENDATION_VERIFY_SKIP_DIRS = {
     ".ruff_cache",
     ".venv",
     "__pycache__",
+    "artifacts",
+    "build",
+    "dist",
     "htmlcov",
+    "node_modules",
 }
 RECOMMENDATION_VERIFY_BROAD_MATCH_FRACTION = 0.9
 
@@ -207,13 +212,12 @@ def matching_changed_files(changed_files: Iterable[str], globs: Iterable[str]) -
 
 def collect_repo_file_inventory(repo_root: Path) -> list[str]:
     repo_files: list[str] = []
-    for path in repo_root.rglob("*"):
-        if not path.is_file():
-            continue
-        relative_parts = path.relative_to(repo_root).parts
-        if any(part in RECOMMENDATION_VERIFY_SKIP_DIRS for part in relative_parts):
-            continue
-        repo_files.append(path.relative_to(repo_root).as_posix())
+    ignored_dirs = {name.casefold() for name in RECOMMENDATION_VERIFY_SKIP_DIRS}
+    for current_root, dir_names, file_names in os.walk(repo_root):
+        dir_names[:] = sorted(name for name in dir_names if name.casefold() not in ignored_dirs)
+        current_dir = Path(current_root)
+        for file_name in file_names:
+            repo_files.append((current_dir / file_name).relative_to(repo_root).as_posix())
     return sorted(repo_files)
 
 

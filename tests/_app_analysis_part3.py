@@ -327,7 +327,6 @@ def test_analysis_menu_routes_choices_and_invalid_choice(monkeypatch):
 
 
 def test_app_analysis_wrappers_delegate_to_underlying_helpers(monkeypatch):
-    monkeypatch.setattr(app_analysis.app_support_module, "extract_warning_name", lambda item: f"name:{item}")
     monkeypatch.setattr(
         app_analysis.app_support_module,
         "target_validation_warnings",
@@ -338,7 +337,6 @@ def test_app_analysis_wrappers_delegate_to_underlying_helpers(monkeypatch):
     monkeypatch.setattr(app_analysis, "_target_is_library", lambda *_args: True)
     monkeypatch.setattr(app_analysis, "get_default_cli_analyzers", lambda: ["variables"])
 
-    assert app_analysis._extract_warning_name("warn") == "name:warn"
     assert app_analysis._target_validation_warnings("TargetA", ["a", "b"]) == ["TargetA:2"]
     assert list(app_analysis.iter_loaded_projects({})) == [("TargetA", "bp", "g")]
     assert app_analysis.source_paths_for_current_target(cast(Any, "bp"), cast(Any, "graph")) == {Path("TargetA.s")}

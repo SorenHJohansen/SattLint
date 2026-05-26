@@ -9,8 +9,10 @@ from typing import Any, cast
 import pytest
 from lark.exceptions import VisitError
 
-from sattline_parser.models.ast_model import ModuleDef, ModuleHeader
+from sattline_parser.models.ast_model import GraphObject, ModuleDef, ModuleHeader, SingleModule, SourceSpan
 from sattlint import engine
+from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
+from sattlint.picture_display_paths import PictureDisplayOccurrence
 
 
 def _make_loader(
@@ -158,6 +160,10 @@ def test_graphics_validation_to_syntax_result_merges_warnings_and_errors() -> No
         line=4,
         column=7,
         warnings=("parse warning", "graphics warning"),
+        warning_notices=(
+            engine.ValidationNotice(message="parse warning"),
+            engine.ValidationNotice(message="graphics warning"),
+        ),
     )
 
 
@@ -171,6 +177,56 @@ def test_graphics_validation_to_syntax_result_returns_ok_without_errors() -> Non
         ok=True,
         stage="ok",
         warnings=("graphics warning",),
+        warning_notices=(engine.ValidationNotice(message="graphics warning"),),
+    )
+
+
+def test_picture_display_path_warnings_include_declaring_module() -> None:
+    child = SingleModule(
+        header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        moduledef=ModuleDef(),
+    )
+    base_picture = engine.BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        name="Root",
+        position=(0.0, 0.0, 0.0, 1.0, 1.0),
+        moduledef=ModuleDef(),
+        submodules=[child],
+    )
+    occurrences = (
+        PictureDisplayOccurrence(
+            program_name="Root",
+            declaring_module_path=("Root", "L1"),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_rows=(
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token="<token>",
+                        index_value=0,
+                        kind="literal",
+                        raw_text="AbsentPanel",
+                        span=SourceSpan(line=3, column=9),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    warnings = engine._picture_display_path_warnings(base_picture, occurrences)
+
+    assert warnings == (
+        engine.ValidationNotice(
+            message=(
+                "PictureDisplay in module 'Root.L1' path 'AbsentPanel' could not be resolved: "
+                "module 'AbsentPanel' was not found under 'Root.L1'"
+            ),
+            line=3,
+            column=9,
+            length=len("AbsentPanel"),
+        ),
     )
 
 
@@ -274,7 +330,7 @@ def test_validate_single_file_syntax_reports_transform_errors_from_visit_error(m
     monkeypatch.setattr(
         engine,
         "parser_core_parse_source_text",
-        lambda _src: (_ for _ in ()).throw(VisitError("node", None, nested)),
+        lambda _src, **_kwargs: (_ for _ in ()).throw(VisitError("node", None, nested)),
     )
 
     result = engine.validate_single_file_syntax(Path("Program.s"))
@@ -287,6 +343,19 @@ def test_validate_single_file_syntax_reports_transform_errors_from_visit_error(m
         line=11,
         column=4,
     )
+
+
+def test_validate_single_file_syntax_suppresses_expected_parse_failure_logs(monkeypatch, caplog) -> None:
+    monkeypatch.setattr(engine, "_load_source_text", lambda _path: "IF X THEN")
+    monkeypatch.setattr(engine, "find_disallowed_comments", lambda _src: [])
+
+    with caplog.at_level(logging.ERROR, logger="SattLint"):
+        result = engine.validate_single_file_syntax(Path("Program.s"))
+
+    assert result.file_path == Path("Program.s")
+    assert result.ok is False
+    assert result.stage == "parse"
+    assert not caplog.records
 
 
 def test_validate_single_file_syntax_uses_parse_stage_for_generic_line_errors(monkeypatch) -> None:
@@ -319,7 +388,7 @@ def test_validate_single_file_syntax_passes_official_file_flags_to_validation(mo
 
     monkeypatch.setattr(engine, "_load_source_text", lambda _path: "source")
     monkeypatch.setattr(engine, "find_disallowed_comments", lambda _src: [])
-    monkeypatch.setattr(engine, "parser_core_parse_source_text", lambda _src: object())
+    monkeypatch.setattr(engine, "parser_core_parse_source_text", lambda _src, **_kwargs: object())
     monkeypatch.setattr(
         engine,
         "validate_transformed_basepicture",
@@ -339,7 +408,7 @@ def test_validate_single_file_syntax_validates_graphics_companion_after_parser_w
 
     monkeypatch.setattr(engine, "_load_source_text", lambda _path: "source")
     monkeypatch.setattr(engine, "find_disallowed_comments", lambda _src: [])
-    monkeypatch.setattr(engine, "parser_core_parse_source_text", lambda _src: object())
+    monkeypatch.setattr(engine, "parser_core_parse_source_text", lambda _src, **_kwargs: object())
     monkeypatch.setattr(
         engine,
         "validate_transformed_basepicture",
@@ -364,163 +433,32 @@ def test_validate_single_file_syntax_validates_graphics_companion_after_parser_w
         ok=True,
         stage="ok",
         warnings=("parser warning", "graphics warning"),
-    )
-
-
-def test_root_only_loader_records_missing_root_library(monkeypatch, tmp_path) -> None:
-    loader = _make_loader(monkeypatch, tmp_path)
-    monkeypatch.setattr(loader, "_find_code", lambda _name: None)
-
-    graph = loader.resolve("MissingRoot")
-
-    assert graph.missing == ["Missing code file for 'MissingRoot' (mode=draft)"]
-    assert graph.unavailable_libraries == {"missingroot"}
-
-
-def test_root_only_loader_records_none_basepicture_without_raising(monkeypatch, tmp_path) -> None:
-    loader = _make_loader(monkeypatch, tmp_path)
-    code_path = tmp_path / "Root.s"
-
-    monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path: None)
-
-    graph = loader.resolve("Root")
-
-    assert graph.missing == ["Root transformed to no BasePicture (parse/transform issue?)"]
-    assert graph.ast_by_name == {}
-
-
-def test_root_only_loader_records_validation_warning_before_failure(monkeypatch, tmp_path) -> None:
-    loader = _make_loader(monkeypatch, tmp_path)
-    code_path = tmp_path / "Root.s"
-
-    monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
-    monkeypatch.setattr(loader, "_load_or_parse", lambda _path: object())
-    monkeypatch.setattr(loader, "_library_name_for_path", lambda _path: "RootLib")
-    monkeypatch.setattr(
-        engine,
-        "validate_transformed_basepicture",
-        lambda _bp, warning_sink, **_kwargs: (
-            warning_sink("warning-a") or (_ for _ in ()).throw(engine.StructuralValidationError("bad root"))
+        warning_notices=(
+            engine.ValidationNotice(message="parser warning"),
+            engine.ValidationNotice(message="graphics warning"),
         ),
     )
 
-    graph = loader.resolve("Root")
 
-    assert graph.warnings == ["Root: warning-a"]
-    assert graph.missing == ["Root parse/transform error: bad root"]
-    assert graph.failures["root"].line is None
+def test_validate_single_file_syntax_preserves_structured_validation_notices(monkeypatch) -> None:
+    monkeypatch.setattr(engine, "_load_source_text", lambda _path: "source")
+    monkeypatch.setattr(engine, "find_disallowed_comments", lambda _src: [])
+    monkeypatch.setattr(engine, "parser_core_parse_source_text", lambda _src, **_kwargs: object())
 
+    def _warn_with_notice(_bp, warning_sink, **_kwargs):
+        warning_sink(engine.ValidationNotice("parser warning", line=12, column=9, length=7))
 
-def test_loader_resolve_logs_readable_debug_sections(monkeypatch, caplog, tmp_path) -> None:
-    class _FakeLookupCache:
-        def __init__(self, *_args, **_kwargs):
-            pass
+    monkeypatch.setattr(engine, "validate_transformed_basepicture", _warn_with_notice)
+    monkeypatch.setattr(engine, "resolve_graphics_companion_path", lambda *_args, **_kwargs: None)
 
-    class _FakeAstCache:
-        def __init__(self, *_args, **_kwargs):
-            pass
+    result = engine.validate_single_file_syntax(Path("Program.s"))
 
-        def load(self, *_args, **_kwargs):
-            return None
-
-        def save(self, *_args, **_kwargs):
-            return None
-
-    monkeypatch.setattr(engine, "create_sl_parser", lambda: object())
-    monkeypatch.setattr(engine, "SLTransformer", lambda: object())
-    monkeypatch.setattr(engine, "FileLookupCache", _FakeLookupCache)
-    monkeypatch.setattr(engine, "FileASTCache", _FakeAstCache)
-    monkeypatch.setattr(engine, "get_cache_dir", lambda: tmp_path)
-
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=True,
-    )
-
-    def fake_visit(root_name, graph, strict, requester_dir, syntax_check=False):
-        assert root_name == "Root"
-        assert strict is False
-        assert requester_dir == tmp_path
-        assert syntax_check is False
-        graph.ast_by_name["iconlib"] = object()
-        graph.ast_by_name["configlib"] = object()
-        graph.missing.extend(
-            [
-                "supportlib parse/transform error: BasePicture moduletype 'GetRemoteFile' equation 'Delay' uses OLD on non-STATE variable 'ExecuteLocal'",
-                "Missing code file for 'Simulation_PPLib' (draft)",
-            ]
-        )
-
-    monkeypatch.setattr(loader, "_visit", fake_visit)
-
-    caplog.clear()
-    with caplog.at_level(logging.DEBUG, logger="SattLint"):
-        loader.resolve("Root")
-
-    messages = [record.getMessage() for record in caplog.records]
-
-    assert "[DEBUG] Resolved ASTs (2):" in messages
-    assert "[DEBUG]   - iconlib" in messages
-    assert "[DEBUG]   - configlib" in messages
-    assert "[DEBUG] Missing/failed (2):" in messages
-    assert "[DEBUG]   - supportlib" in messages
-    assert (
-        "[DEBUG]     parse/transform error: BasePicture moduletype 'GetRemoteFile' equation 'Delay' uses OLD on non-STATE variable 'ExecuteLocal'"
-        in messages
-    )
-    assert "[DEBUG]   - Missing code file for 'Simulation_PPLib' (draft)" in messages
+    assert result.ok is True
+    assert result.warnings == ("parser warning",)
+    assert result.warning_notices == (engine.ValidationNotice("parser warning", line=12, column=9, length=7),)
 
 
-def test_loader_can_bypass_file_ast_cache(monkeypatch, tmp_path) -> None:
-    class _FakeLookupCache:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
-    class _FakeAstCache:
-        def __init__(self, *_args, **_kwargs):
-            self.load_calls = 0
-            self.saved = []
-
-        def load(self, *_args, **_kwargs):
-            self.load_calls += 1
-            return "cached"
-
-        def save(self, *args, **_kwargs):
-            self.saved.append(args)
-
-    monkeypatch.setattr(engine, "create_sl_parser", lambda: object())
-    monkeypatch.setattr(engine, "SLTransformer", lambda: object())
-    monkeypatch.setattr(engine, "FileLookupCache", _FakeLookupCache)
-    monkeypatch.setattr(engine, "FileASTCache", _FakeAstCache)
-    monkeypatch.setattr(engine, "get_cache_dir", lambda: tmp_path)
-
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
-        use_file_ast_cache=False,
-    )
-
-    parsed = object()
-    monkeypatch.setattr(loader, "_parse_one", lambda *_args, **_kwargs: parsed)
-
-    result = loader._load_or_parse(tmp_path / "Program.s")
-    ast_cache = cast(_FakeAstCache, loader._ast_cache)
-
-    assert result is parsed
-    assert ast_cache.load_calls == 0
-    assert len(ast_cache.saved) == 1
-
-
-def test_loader_keeps_dependency_ast_when_validation_warns(monkeypatch, tmp_path) -> None:
+def test_loader_attaches_graphics_companion_metadata_to_basepicture(monkeypatch, tmp_path) -> None:
     source_text = "\n".join(
         [
             '"SyntaxVersion"',
@@ -533,9 +471,9 @@ def test_loader_keeps_dependency_ast_when_validation_warns(monkeypatch, tmp_path
         ]
     )
     root_file = tmp_path / "Root.s"
+    graphics_file = tmp_path / "Root.g"
     root_file.write_text(source_text, encoding="utf-8")
-    root_file.with_suffix(".l").write_text("Dep\n", encoding="utf-8")
-    (tmp_path / "Dep.s").write_text(source_text, encoding="utf-8")
+    graphics_file.write_text("graphics", encoding="utf-8")
 
     loader = engine.SattLineProjectLoader(
         program_dir=tmp_path,
@@ -546,23 +484,127 @@ def test_loader_keeps_dependency_ast_when_validation_warns(monkeypatch, tmp_path
         debug=False,
     )
 
-    call_count = {"value": 0}
-    original_validate = engine.validate_transformed_basepicture
-
-    def fake_validate(*args, **kwargs):
-        call_count["value"] += 1
-        if call_count["value"] == 1:
-            raise engine.StructuralValidationError("dependency issue")
-        return original_validate(*args, **kwargs)
-
-    monkeypatch.setattr(engine, "validate_transformed_basepicture", fake_validate)
+    monkeypatch.setattr(
+        engine,
+        "validate_graphics_file",
+        lambda _path: SimpleNamespace(
+            messages=(
+                SimpleNamespace(
+                    severity="warning",
+                    message="asset missing",
+                    line=4,
+                    column=2,
+                    length=5,
+                ),
+            )
+        ),
+    )
 
     graph = loader.resolve("Root")
 
-    assert "Dep" in graph.ast_by_name
-    assert "Root" in graph.ast_by_name
-    assert graph.missing == []
-    assert any(warning == "Dep: validation warning: dependency issue" for warning in graph.warnings)
+    bp = graph.ast_by_name["Root"]
+    assert bp.graphics_file == "Root.g"
+    assert [message.message for message in bp.graphics_messages] == ["asset missing"]
+    assert graph.warnings == ["Root: graphics validation warning: asset missing"]
+    assert graph.warning_notices == [
+        (
+            "Root",
+            engine.ValidationNotice(
+                message="graphics validation warning: asset missing",
+                line=4,
+                column=2,
+                length=5,
+            ),
+        )
+    ]
+    assert root_file in graph.source_files
+    assert graphics_file not in graph.source_files
+
+
+def test_attach_graphics_companion_correlates_picturedisplay_records_by_composite_order(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    root_file = tmp_path / "Root.s"
+    graphics_file = tmp_path / "Root.g"
+    root_file.write_text("source", encoding="utf-8")
+    graphics_file.write_text("graphics", encoding="utf-8")
+
+    child = SingleModule(
+        header=ModuleHeader(name="Child", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+    )
+    bp = _make_basepicture()
+    bp.submodules = [child]
+    bp.moduledef = ModuleDef(graph_objects=[GraphObject("CompositeObject")])
+
+    monkeypatch.setattr(
+        engine,
+        "validate_graphics_file",
+        lambda _path: SimpleNamespace(
+            messages=(),
+            bindings=(),
+            picture_display_records=(PictureDisplayRecord(record_index=2, record_start_line=3, record_end_line=8),),
+        ),
+    )
+
+    graph = engine.ProjectGraph()
+
+    engine._attach_graphics_companion(
+        bp,
+        code_path=root_file,
+        mode=engine.CodeMode.DRAFT,
+        graph=graph,
+        owner_name="Root",
+    )
+
+    assert bp.graphics_file == "Root.g"
+    assert [record.record_index for record in bp.graphics_picture_display_records] == [2]
+    assert len(bp.graphics_picture_display_occurrences) == 1
+    assert bp.graphics_picture_display_occurrences[0].declaring_module_path == ("Root",)
+
+
+def test_attach_graphics_companion_reuses_cached_signature_after_pickle_roundtrip(monkeypatch, tmp_path) -> None:
+    root_file = tmp_path / "Root.s"
+    graphics_file = tmp_path / "Root.g"
+    root_file.write_text("source", encoding="utf-8")
+    graphics_file.write_text("graphics", encoding="utf-8")
+
+    graphics_calls: list[Path] = []
+    monkeypatch.setattr(
+        engine,
+        "validate_graphics_file",
+        lambda path: (
+            graphics_calls.append(path) or SimpleNamespace(messages=(), bindings=(), picture_display_records=())
+        ),
+    )
+
+    first_bp = _make_basepicture(origin_file=root_file.name)
+    first_graph = engine.ProjectGraph()
+    second_graph = engine.ProjectGraph()
+
+    first_refreshed = engine._attach_graphics_companion(
+        first_bp,
+        code_path=root_file,
+        mode=engine.CodeMode.DRAFT,
+        graph=first_graph,
+        owner_name="Root",
+    )
+    cached_bp = pickle.loads(pickle.dumps(first_bp))
+    second_refreshed = engine._attach_graphics_companion(
+        cached_bp,
+        code_path=root_file,
+        mode=engine.CodeMode.DRAFT,
+        graph=second_graph,
+        owner_name="Root",
+    )
+
+    assert first_refreshed is True
+    assert second_refreshed is False
+    assert graphics_calls == [graphics_file]
+    assert first_bp.graphics_file == "Root.g"
+    assert cached_bp.graphics_file == "Root.g"
+    assert getattr(cached_bp, "graphics_companion_signature", None) is not None
 
 
 def test_loader_strict_syntax_check_validates_root_before_reading_dependencies(monkeypatch, tmp_path) -> None:
@@ -1015,6 +1057,7 @@ def test_loader_visit_uses_cached_dependency_library_and_warns_on_non_strict_con
             moduletype_defs={},
             missing=[],
             warnings=[],
+            warning_notices=[],
             ignored_vendor=[],
             unavailable_libraries=set(),
             failures={},
@@ -1101,6 +1144,7 @@ def test_loader_visit_records_validation_warning_before_non_strict_failure(
             moduletype_defs={},
             missing=[],
             warnings=[],
+            warning_notices=[],
             ignored_vendor=[],
             unavailable_libraries=set(),
             failures={},
@@ -1123,6 +1167,10 @@ def test_loader_visit_records_validation_warning_before_non_strict_failure(
     loader._visit("Root", graph, strict=False, requester_dir=tmp_path)
 
     assert graph.warnings == ["Root: warning-a", "Root: warning-a"]
+    assert graph.warning_notices == [
+        ("Root", engine.ValidationNotice(message="warning-a")),
+        ("Root", engine.ValidationNotice(message="warning-a")),
+    ]
     assert graph.missing == ["Root parse/transform error: index failed"]
     assert "root" in graph.failures
 
@@ -1191,156 +1239,3 @@ def test_loader_visit_records_missing_dependency_with_requester_from_visit_stack
 
     assert graph.missing == ["Missing code file for dependency 'MissingDep' referenced by 'root' (draft)"]
     assert graph.unavailable_libraries == {"missingdep"}
-
-
-def test_loader_base_index_helpers_cover_missing_dirs_and_added_entries(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
-    base = tmp_path / "Lib"
-    base.mkdir()
-    code_path = base / "Program.s"
-    deps_path = base / "Program.l"
-    ignored_path = base / "Program.txt"
-    code_path.write_text("code", encoding="utf-8")
-    deps_path.write_text("deps", encoding="utf-8")
-    ignored_path.write_text("ignored", encoding="utf-8")
-
-    missing_index = loader._get_base_index(tmp_path / "MissingLib")
-    index = loader._get_base_index(base)
-    added_path = base / "Program.z"
-    loader._add_to_index(base, "Program", added_path)
-
-    assert missing_index == {}
-    assert index["program"][".s"] == code_path
-    assert index["program"][".l"] == deps_path
-    assert ".txt" not in index["program"]
-    assert loader._find_in_index(base=base, name="PROGRAM", extensions=[".x", ".s"]) == code_path
-    assert loader._find_in_index(base=base, name="Missing", extensions=[".s"]) is None
-    assert index["program"][".z"] == added_path
-
-
-def test_loader_base_and_vendor_helpers_cover_resolve_fallbacks(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
-    ignored_base = tmp_path / "IgnoredLib"
-    allowed_base = tmp_path / "AllowedLib"
-    ignored_base.mkdir()
-    allowed_base.mkdir()
-    loader._ignored_dirs = {ignored_base}
-    loader.other_lib_dirs = [allowed_base]
-    vendor_code = ignored_base / "Vendor.s"
-    vendor_deps = ignored_base / "Vendor.l"
-    vendor_code.write_text("code", encoding="utf-8")
-    vendor_deps.write_text("deps", encoding="utf-8")
-
-    original_resolve = engine.Path.resolve
-
-    def fake_resolve(path: Path, *args, **kwargs):
-        if path in {ignored_base, allowed_base}:
-            raise OSError("resolve failed")
-        return original_resolve(path, *args, **kwargs)
-
-    monkeypatch.setattr(engine.Path, "resolve", fake_resolve)
-
-    assert loader._is_ignored_base(ignored_base) is True
-    assert loader._is_allowed_base(allowed_base) is True
-    assert loader._find_vendor_code("Vendor") == vendor_code
-    assert loader._find_vendor_deps("Vendor") == vendor_deps
-
-
-def test_loader_find_in_cached_base_handles_ignored_disallowed_and_existing_paths(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
-    ignored_base = tmp_path / "IgnoredLib"
-    ignored_base.mkdir()
-    loader._ignored_dirs = {ignored_base}
-    allowed_base = tmp_path
-    success_path = allowed_base / "Program.x"
-    success_path.write_text("code", encoding="utf-8")
-    disallowed_base = tmp_path.parent / "OtherLib"
-    forget_calls: list[tuple[str, str, str]] = []
-
-    class _Cache:
-        def __init__(self, payload: dict[str, str] | None):
-            self.payload = payload
-
-        def get(self, *_args, **_kwargs):
-            return self.payload
-
-        def forget(self, kind, name, mode):
-            forget_calls.append((kind, name, mode))
-
-    loader_any = cast(Any, loader)
-
-    loader_any._lookup_cache = _Cache({"base_dir": str(ignored_base), "ext": ".x"})
-    assert loader._find_in_cached_base(kind="code", name="Program", extensions=[".x"]) is None
-
-    loader_any._lookup_cache = _Cache({"base_dir": str(disallowed_base), "ext": ".x"})
-    assert loader._find_in_cached_base(kind="code", name="Program", extensions=[".x"]) is None
-
-    loader_any._lookup_cache = _Cache({"base_dir": str(allowed_base), "ext": ".x"})
-    assert loader._find_in_cached_base(kind="code", name="Program", extensions=[".s", ".x"]) == success_path
-    assert forget_calls == [("code", "Program", "draft")]
-
-
-def test_loader_code_and_deps_lookup_cover_contextual_indexed_disk_and_miss(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    class _Cache:
-        def __init__(self):
-            self.set_calls: list[tuple[str, str, str, Path, str]] = []
-
-        def get(self, *_args, **_kwargs):
-            return None
-
-        def set(self, kind, name, mode, base, ext):
-            self.set_calls.append((kind, name, mode, base, ext))
-
-        def forget(self, *_args, **_kwargs):
-            return None
-
-    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
-    loader_any = cast(Any, loader)
-    loader_any._lookup_cache = _Cache()
-    contextual_code = tmp_path / "Ctx.s"
-    contextual_deps = tmp_path / "Ctx.l"
-    indexed_code = tmp_path / "Indexed.s"
-    disk_code = tmp_path / "Loose.s"
-    indexed_deps = tmp_path / "Indexed.l"
-    disk_deps = tmp_path / "Loose.l"
-    for path in [contextual_code, contextual_deps, indexed_code, disk_code, indexed_deps, disk_deps]:
-        path.write_text(path.stem, encoding="utf-8")
-
-    loader.contextual_lookup = lambda name, _extensions, _requester, kind: (
-        contextual_code
-        if (name, kind) == ("Ctx", "code")
-        else contextual_deps
-        if (name, kind) == ("Ctx", "deps")
-        else None
-    )
-
-    assert loader._find_code_with_context("Ctx", requester_dir=tmp_path) == contextual_code
-    assert loader._find_deps_with_context("Ctx", requester_dir=tmp_path) == contextual_deps
-    assert loader._find_code_with_context("Indexed", requester_dir=tmp_path) == indexed_code
-    assert loader._find_deps_with_context("Indexed", requester_dir=tmp_path) == indexed_deps
-
-    original_find_in_index = loader._find_in_index
-    monkeypatch.setattr(
-        loader,
-        "_find_in_index",
-        lambda *, name, **kwargs: None if name == "Loose" else original_find_in_index(name=name, **kwargs),
-    )
-
-    assert loader._find_code_with_context("Loose", requester_dir=tmp_path) == disk_code
-    assert loader._find_deps_with_context("Loose", requester_dir=tmp_path) == disk_deps
-    assert loader._find_code_with_context("Missing", requester_dir=tmp_path) is None
-    assert loader._find_deps_with_context("Missing", requester_dir=tmp_path) is None
-    assert ("code", "Indexed", "draft", tmp_path, ".s") in loader_any._lookup_cache.set_calls
-    assert ("deps", "Loose", "draft", tmp_path, ".l") in loader_any._lookup_cache.set_calls

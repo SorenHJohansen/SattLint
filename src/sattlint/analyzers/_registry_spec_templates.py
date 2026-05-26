@@ -15,6 +15,8 @@ class AnalyzerSpecTemplate:
     enabled: bool = True
     supports_live_diagnostics: bool = False
     direct_context: bool = False
+    semantic_mapping_kind: str | None = None
+    semantic_rule_source: str | None = None
 
 
 def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSpecTemplate, ...]:
@@ -40,6 +42,15 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             analyzer_attr="analyze_variables",
             context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library", "config"),
             supports_live_diagnostics=True,
+            semantic_mapping_kind="variable",
+            semantic_rule_source="variables",
+        ),
+        AnalyzerSpecTemplate(
+            key="picture-display-paths",
+            name="PictureDisplay paths",
+            description="Resolve constant PictureDisplay module paths against the loaded module tree",
+            analyzer_attr="analyze_picture_display_paths",
+            context_kwargs=("graph",),
         ),
         AnalyzerSpecTemplate(
             key="mms-interface",
@@ -54,6 +65,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Parallel-branch write race and structural dead-path detection",
             analyzer_attr="analyze_sfc",
             context_kwargs=("mutually_exclusive_steps", "step_contracts"),
+            semantic_mapping_kind="framework",
+            semantic_rule_source="sfc",
         ),
         AnalyzerSpecTemplate(
             key="comment-code",
@@ -68,6 +81,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Local variables hiding outer or global names",
             analyzer_attr="analyze_shadowing",
             context_kwargs=("debug", "unavailable_libraries"),
+            semantic_mapping_kind="variable",
+            semantic_rule_source="variables",
         ),
         AnalyzerSpecTemplate(
             key="spec-compliance",
@@ -75,6 +90,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="AST-visible checks from the application engineering spec",
             analyzer_attr="analyze_spec_compliance",
             context_kwargs=("debug", "unavailable_libraries"),
+            semantic_mapping_kind="spec",
+            semantic_rule_source="spec-compliance",
         ),
         AnalyzerSpecTemplate(
             key="loop-output-refactor",
@@ -88,6 +105,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Cross-module duplicate tag, duplicate condition, priority, and latch-style alarm checks",
             analyzer_attr="analyze_alarm_integrity",
             context_kwargs=("debug", "unavailable_libraries"),
+            semantic_mapping_kind="framework",
+            semantic_rule_source="alarm-integrity",
         ),
         AnalyzerSpecTemplate(
             key="initial-values",
@@ -95,6 +114,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Detect recipe and engineering parameter modules that do not resolve a required startup value",
             analyzer_attr="analyze_initial_values",
             context_kwargs=("debug", "unavailable_libraries"),
+            semantic_mapping_kind="framework",
+            semantic_rule_source="initial-values",
         ),
         AnalyzerSpecTemplate(
             key="interface_contracts",
@@ -135,24 +156,32 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             name="Signal lifecycle",
             description="Track reads before writes and signals that are written but never consumed",
             analyzer_attr="analyze_signal_lifecycle",
+            semantic_mapping_kind="framework",
+            semantic_rule_source="signal_lifecycle",
         ),
         AnalyzerSpecTemplate(
             key="loop_stability",
             name="Loop stability",
             description="Detect contradictory literal setpoint writes that can destabilize scan-loop behavior",
             analyzer_attr="analyze_loop_stability",
+            semantic_mapping_kind="framework",
+            semantic_rule_source="loop_stability",
         ),
         AnalyzerSpecTemplate(
             key="fault_handling",
             name="Fault handling",
             description="Detect raised alarm or fault paths that are never cleared or never consumed",
             analyzer_attr="analyze_fault_handling",
+            semantic_mapping_kind="framework",
+            semantic_rule_source="fault_handling",
         ),
         AnalyzerSpecTemplate(
             key="numeric_constraints",
             name="Numeric constraints",
             description="Validate literal assignments against visible Min/Max style bounds",
             analyzer_attr="analyze_numeric_constraints",
+            semantic_mapping_kind="framework",
+            semantic_rule_source="numeric_constraints",
         ),
         AnalyzerSpecTemplate(
             key="data_dependency",
@@ -167,6 +196,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Detect moduletype instances whose visible configuration signatures drift across the analyzed target",
             analyzer_attr="analyze_config_drift",
             context_kwargs=("unavailable_libraries",),
+            semantic_mapping_kind="framework",
+            semantic_rule_source="config_drift",
         ),
         AnalyzerSpecTemplate(
             key="scan-loop-resource-usage",
@@ -208,6 +239,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Cross-module tracing for shutdown and emergency signal propagation",
             analyzer_attr="analyze_safety_paths",
             context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
+            semantic_mapping_kind="framework",
+            semantic_rule_source="safety-paths",
         ),
         AnalyzerSpecTemplate(
             key="taint-paths",
@@ -215,12 +248,16 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Cross-module taint tracing from external inputs to safety-critical sinks",
             analyzer_attr="analyze_taint_paths",
             context_kwargs=("debug", "unavailable_libraries", "analyzed_target_is_library"),
+            semantic_mapping_kind="framework",
+            semantic_rule_source="taint-paths",
         ),
         AnalyzerSpecTemplate(
             key="unsafe-defaults",
             name="Unsafe defaults",
             description="Explicit boolean defaults that can enable logic or bypass safeguards at startup",
             analyzer_attr="analyze_unsafe_defaults",
+            semantic_mapping_kind="framework",
+            semantic_rule_source="unsafe-defaults",
         ),
         AnalyzerSpecTemplate(
             key="dataflow",
@@ -228,6 +265,8 @@ def default_spec_templates(semantic_layer_analyzer_key: str) -> tuple[AnalyzerSp
             description="Constant-condition and unreachable-path detection across branches",
             analyzer_attr="analyze_dataflow",
             context_kwargs=("unavailable_libraries", "analyzed_target_is_library"),
+            semantic_mapping_kind="framework",
+            semantic_rule_source="dataflow",
         ),
         AnalyzerSpecTemplate(
             key="state_inference",

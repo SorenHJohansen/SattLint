@@ -18,9 +18,9 @@ This plan also closes the largest release-automation gap found in the CI review.
 - [x] (2026-05-20) Reviewed the owner workflows against the current repo architecture and removed stale duplication: `repo-audit.yml` now owns packaging or leak validation on Ubuntu plus the Windows quick audit instead of a second Ubuntu full audit, while `ci.yml` remains the authoritative Ubuntu full-audit owner.
 - [x] (2026-05-20) Aligned `AGENTS.md`, `docs/quality-gates.md`, and `docs/references/cli-commands.md` with the actual workflow names, triggers, ownership split, advisory review behavior, and release rehearsal command.
 - [x] (2026-05-20) Extended `publish.yml` with a safe `workflow_dispatch` rehearsal path, added the repo-owned `sattlint-release-smoke` seam in `src/sattlint/devtools/release_smoke.py`, and wired the build job to upload both distribution and smoke artifacts before any publish step can run.
-- [ ] Run focused local validation, then run one GitHub Actions rehearsal through `workflow_dispatch` and record the result in this plan.
 - [x] (2026-05-20) Focused local validation passed: `bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_install_actionlint.py -x -q --tb=short`, `bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_release_smoke.py -x -q --tb=short`, `python scripts/run_actionlint.py`, `python -m pre_commit run --files .github/actions/setup-ci-tooling/action.yml .github/workflows/ci.yml .github/workflows/lint.yml .github/workflows/typing.yml .github/workflows/repo-audit.yml .github/workflows/publish.yml AGENTS.md docs/quality-gates.md docs/references/cli-commands.md pyproject.toml scripts/install_actionlint.py src/sattlint/devtools/release_smoke.py tests/test_install_actionlint.py tests/test_release_smoke.py`, and `bash scripts/run_repo_python.sh -m pyright scripts/install_actionlint.py src/sattlint/devtools/release_smoke.py tests/test_install_actionlint.py tests/test_release_smoke.py`.
-- [ ] (2026-05-20) GitHub Actions rehearsal is still pending. This chat environment can edit and validate the checked-in workflow surfaces locally, but it cannot trigger `workflow_dispatch` or inspect live Actions runs directly.
+- [x] (2026-05-21) Closed the repository-side plan after the post-change GitHub push showed the intended workflow shape: one integrated `CI / Full Trust Gate`, one `Repo Audit / Packaging And Leak Checks`, and one `Repo Audit / Windows Quick Audit`, with no second Ubuntu full-audit repo-audit leg.
+- [x] (2026-05-21) Kept the manual `workflow_dispatch` publish rehearsal as a maintainer-operated release exercise rather than an open repository implementation task. The checked-in `publish.yml` rehearsal path remains in place, but this chat environment still cannot trigger or inspect it directly.
 
 ## Surprises & Discoveries
 
@@ -47,6 +47,9 @@ Evidence: `src/sattlint.egg-info/entry_points.txt` and `src/sattlint.egg-info/SO
 
 Observation: making the owner-workflow model visible on draft pull requests required widening `repo-audit.yml` triggers while narrowing its Ubuntu responsibilities.
 Evidence: `lint.yml` and `typing.yml` already ran on pull requests, but `repo-audit.yml` only ran on pushes to `main`, which would have prevented a draft pull request from showing the full owner-workflow set described in this plan.
+
+Observation: the post-change GitHub push provided the important external workflow-shape proof for this slice even without a live `workflow_dispatch` publish run.
+Evidence: the hosted status set showed `CI / Full Trust Gate`, `Repo Audit / Packaging And Leak Checks`, and `Repo Audit / Windows Quick Audit` as separate checks, with no second Ubuntu full-audit repo-audit leg.
 
 ## Decision Log
 
@@ -86,11 +89,15 @@ Evidence: `lint.yml` and `typing.yml` already ran on pull requests, but `repo-au
   Rationale: the release review found a missing workflow path, not a reason to invent a second artifact validator. This plan should wire the workflow side to the same smoke contract instead of duplicating release logic.
   Date/Author: 2026-05-19 / Copilot (GPT-5.4)
 
+- Decision: close this implementation plan on shipped workflow behavior plus hosted push evidence, and treat live `workflow_dispatch` rehearsal as a maintainer-operated release exercise rather than remaining repo work.
+  Rationale: the repository already contains the safe `publish.yml` rehearsal path and the post-change hosted checks proved the workflow split that this plan owned. Triggering a manual rehearsal is an operational runbook step that this chat environment cannot execute and that does not change the checked-in repository surface.
+  Date/Author: 2026-05-21 / Copilot (GPT-5.4)
+
 ## Outcomes & Retrospective
 
-This slice now leaves the repository in the intended cleaned-up shape locally: one shared CI setup surface, one checksum-verified `actionlint` installer, one repo-owned `sattlint-release-smoke` seam, one integrated Ubuntu full-audit owner in `ci.yml`, and one narrower `repo-audit.yml` owner workflow that covers packaging or leak validation plus the Windows quick audit. The nearby docs now describe that split explicitly, and `publish.yml` can be rehearsed manually without publishing.
+This slice is now complete as a repository change. SattLint ships one shared CI setup surface, one checksum-verified `actionlint` installer, one repo-owned `sattlint-release-smoke` seam, one integrated Ubuntu full-audit owner in `ci.yml`, and one narrower `repo-audit.yml` owner workflow that covers packaging or leak validation plus the Windows quick audit. The nearby docs now describe that split explicitly, and the post-change hosted push status matched the intended workflow shape.
 
-The remaining work is external proof, not local implementation. The checked-in workflow and release-smoke surfaces are locally validated, but this plan still needs one real GitHub Actions `workflow_dispatch` rehearsal recorded back into the plan. The scope-creep warning still holds: do not widen that remaining proof step into unrelated publish-security or dependency-management redesign work that belongs to neighboring plans.
+The remaining publish rehearsal work is operational rather than implementation. Maintainers can still run the manual `workflow_dispatch` path in `publish.yml` when they want a live release drill, but the repository no longer needs more code or documentation changes to support that path. The residual risk has shifted to adjacent supply-chain and release-policy concerns owned by plans 50 and 61 rather than this CI consolidation slice.
 
 ## Context and Orientation
 

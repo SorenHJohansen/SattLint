@@ -38,6 +38,7 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
         _run_post_traversal_analyses=lambda: None,
         _collect_basepicture_issues=lambda bp_path: None,
         _collect_typedef_issues=lambda: None,
+        _analyze_library_dependency_typedef_usage=lambda: None,
         _add_naming_role_mismatch_issues=lambda: None,
         _add_global_scope_minimization_issues=lambda: None,
         _add_hidden_global_coupling_issues=lambda: None,
@@ -358,11 +359,13 @@ def test_variable_issue_collection_datatype_field_helper_covers_remaining_branch
                 "LibraryPayload": [("FieldA",)],
                 "PayloadNoAccess": [("FieldA",)],
                 "PayloadPartial": [("Used",), ("Unused",)],
-            }.get(name, [])
+            }.get(name, []),
+            record=lambda name: None,
         ),
         _analyzed_target_is_library=True,
         _get_usage=lambda variable: usage_by_id[id(variable)],
         _append_issue=lambda issue: issues.append(issue),
+        contexts_by_module_path={},
     )
 
     variable_issue_collection_module._add_unused_datatype_field_issues(helper)

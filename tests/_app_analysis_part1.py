@@ -305,7 +305,7 @@ def test_run_variable_analysis_prints_validation_warnings(noop_screen, monkeypat
 
     out = capsys.readouterr().out
     assert "Validation warnings (1):" in out
-    assert "  - ProgramA: warning one" in out
+    assert "  - warning one" in out
     assert "dep_b: warning two" not in out
     assert "Issues: 0" in out
 
@@ -391,13 +391,31 @@ def test_print_validation_warnings_truncates(monkeypatch):
     lines: list[str] = []
     monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
 
-    app_analysis._print_validation_warnings(["warn1", "warn2", "warn3"], limit=2)
+    app_analysis._print_validation_warnings(["TargetA: warn1", "TargetA: warn2", "TargetA: warn3"], limit=2)
 
     assert lines == [
         "Validation warnings (3):",
         "  - warn1",
         "  - warn2",
         "  - ... (+1 more)",
+    ]
+
+
+def test_print_validation_warnings_formats_picture_display_entries(monkeypatch):
+    lines: list[str] = []
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    app_analysis._print_validation_warnings(
+        [
+            "TargetA: PictureDisplay in module 'Root.L1' path '+MissingPanel' could not be resolved: "
+            "module 'MissingPanel' was not found under 'Root.L1'"
+        ]
+    )
+
+    assert lines == [
+        "Validation warnings (1):",
+        "  - [Root.L1] '+MissingPanel'",
+        "    module 'MissingPanel' was not found under 'Root.L1'",
     ]
 
 

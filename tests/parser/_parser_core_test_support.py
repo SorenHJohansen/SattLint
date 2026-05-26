@@ -14,10 +14,18 @@ import pytest
 from lark import Token, Tree
 from lark.exceptions import UnexpectedCharacters, UnexpectedEOF, UnexpectedToken
 
-from sattline_parser import api as parser_api
-from sattline_parser import fuzz_harness as parser_fuzz_harness
-from sattline_parser import parse_source_text as parser_core_parse_source_text
-from sattline_parser import strip_sl_comments
+from sattline_parser import (
+    api as parser_api,
+)
+from sattline_parser import (
+    fuzz_harness as parser_fuzz_harness,
+)
+from sattline_parser import (
+    parse_source_text as parser_core_parse_source_text,
+)
+from sattline_parser import (
+    strip_sl_comments,
+)
 from sattline_parser.grammar import constants as parser_const
 from sattline_parser.grammar import parser_decode as grammar_parser_decode
 from sattline_parser.models.ast_model import (
@@ -71,6 +79,7 @@ from sattline_parser.transformer.sl_transformer import (
     _meta_span as _sl_meta_span,
 )
 from sattline_parser.utils.formatter import format_expr, format_list, format_optional, format_seq_nodes
+from sattline_parser.utils.text_processing import strip_sl_comments_with_mapping
 from sattlint import constants as const
 from sattlint.engine import (
     create_sl_parser,
@@ -231,5 +240,6 @@ __all__ = [
     "parser_fuzz_harness",
     "pytest",
     "strip_sl_comments",
+    "strip_sl_comments_with_mapping",
     "sys",
 ]

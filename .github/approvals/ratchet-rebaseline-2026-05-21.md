@@ -1,0 +1,4 @@
+# Ratchet Rebaseline Approval 2026-05-21
+
+Approved-by: Repository owner via chat request
+Reason: Authorize the same-change protected-path cleanup that removes stale full-coverage entries from `artifacts/analysis/file_debt_ratchet.json` after focused coverage proof confirmed `src/sattline_parser/utils/text_processing.py`, `src/sattlint/cache.py`, `src/sattlint/console.py`, `src/sattlint/graphics_validation.py`, `src/sattlint/analyzers/sattline_semantics.py`, `src/sattlint/core/diagnostics.py`, `src/sattlint/engine.py`, `src/sattlint_lsp/_server_helpers.py`, `src/sattlint_lsp/local_parser.py`, `src/sattlint_lsp/server.py`, and `src/sattlint_lsp/workspace_store.py` now meet the 100% coverage target. This approval covers only those same-change ratchet-ledger removals and does not waive any monotonic structural, typing, or follow-up validation requirements.

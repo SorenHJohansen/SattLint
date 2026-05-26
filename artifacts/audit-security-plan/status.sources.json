@@ -1,0 +1,17 @@
+{
+  "artifact_digest": "sha1:8eee8a01ddffa2cb00bc2eb300773b901dffdfba",
+  "artifact_file": "artifacts/audit-security-plan/status.json",
+  "artifact_kind": "sattlint.repo_audit.status",
+  "artifact_schema_version": null,
+  "generated_by": "sattlint.devtools.repo_audit_entrypoints",
+  "kind": "sattlint.generated_output_sources",
+  "schema_version": 1,
+  "source_count": 1,
+  "sources": [
+    {
+      "digest": "sha1:3717a810aa1f3b75978075b14286fe4405aecabc",
+      "exists": true,
+      "path": "src/sattlint/devtools/repo_audit_entrypoints.py"
+    }
+  ]
+}

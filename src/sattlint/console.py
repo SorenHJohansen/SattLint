@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import builtins
+import sys
 from collections.abc import Iterable, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +53,36 @@ def print_output(
 ) -> None:
     """Generic output wrapper for app-facing text while preserving print() semantics."""
     builtins.print(*objects, sep=sep, end=end, file=file, flush=flush)
+
+
+class _LiveStatusLine:
+    def __init__(self, *, file: Any | None = None) -> None:
+        self._file = file if file is not None else sys.stdout
+        self._enabled = bool(getattr(self._file, "isatty", lambda: False)())
+        self._last_width = 0
+
+    def update(self, message: str) -> None:
+        if not self._enabled:
+            return
+        text = " ".join(str(message).splitlines()).strip()
+        width = max(self._last_width, len(text))
+        print_output(f"\r{text.ljust(width)}", end="", file=self._file, flush=True)
+        self._last_width = width
+
+    def clear(self) -> None:
+        if not self._enabled or self._last_width <= 0:
+            return
+        print_output(f"\r{' ' * self._last_width}\r", end="", file=self._file, flush=True)
+        self._last_width = 0
+
+
+@contextmanager
+def live_status_line(*, file: Any | None = None):
+    status_line = _LiveStatusLine(file=file)
+    try:
+        yield status_line.update
+    finally:
+        status_line.clear()
 
 
 def has_rich() -> bool:

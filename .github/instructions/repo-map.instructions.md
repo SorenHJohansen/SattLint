@@ -1,7 +1,7 @@
 ---
 description: "Use when routing work to the owning SattLint surface or choosing the closest repo area for a change. Provides the condensed repo map that was removed from AGENTS.md for context efficiency."
 name: "Repo Map Instructions"
-applyTo: ["src/**", "tests/**", "scripts/**", ".github/**", ".ai/**", "docs/**", "vscode/**", "metrics/**", "artifacts/**"]
+applyTo: ["src/**", "tests/**", "scripts/**", ".github/**", ".ai/**", "docs/**", "vscode/**", "metrics/**"]
 ---
 # Repo Map
 

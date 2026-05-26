@@ -1,4 +1,5 @@
 import json
+import logging
 
 from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, SemanticIssue, SemanticRule
 from sattlint.devtools.corpus import (
@@ -309,7 +310,7 @@ def test_run_corpus_case_reports_artifact_fragment_failures(tmp_path):
     assert result.evaluation.artifact_fragment_failures == ("summary.json.stage: expected 'semantic', got 'parse'",)
 
 
-def test_execute_corpus_case_strict_writes_case_artifacts(tmp_path):
+def test_execute_corpus_case_strict_writes_case_artifacts(tmp_path, caplog):
     manifest_path = tmp_path / "strict-case.json"
     source_path = tmp_path / "Broken.s"
     artifact_dir = tmp_path / "artifacts"
@@ -340,7 +341,8 @@ def test_execute_corpus_case_strict_writes_case_artifacts(tmp_path):
         encoding="utf-8",
     )
 
-    result = execute_corpus_case(manifest_path, artifact_dir, repo_root=tmp_path)
+    with caplog.at_level(logging.ERROR, logger="SattLint"):
+        result = execute_corpus_case(manifest_path, artifact_dir, repo_root=tmp_path)
 
     findings_report = json.loads((artifact_dir / "findings.json").read_text(encoding="utf-8"))
     status_report = json.loads((artifact_dir / "status.json").read_text(encoding="utf-8"))
@@ -359,6 +361,7 @@ def test_execute_corpus_case_strict_writes_case_artifacts(tmp_path):
     assert_findings_schema(status_report)
     assert_findings_schema(summary_report)
     assert summary_report["stage"] == "parse"
+    assert not caplog.records
 
 
 def test_execute_corpus_case_workspace_writes_semantic_findings(monkeypatch, tmp_path):

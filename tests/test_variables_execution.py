@@ -1,34 +1,17 @@
 """Focused coverage tests for _variables_execution helper branches."""
 
+# pyright: reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false
+
 from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
 
-from sattline_parser.models.ast_model import BasePicture, ModuleHeader, ModuleTypeDef, Simple_DataType, Variable
+from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, Simple_DataType, Variable
 from sattlint.analyzers import _variables_execution as variables_execution_module
 from sattlint.analyzers.variables import IssueKind
-
-
-def _hdr(name: str) -> ModuleHeader:
-    return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
-
-
-class _UsageStub:
-    def __init__(
-        self,
-        *,
-        is_unused: bool = False,
-        is_display_only: bool = False,
-        is_read_only: bool = False,
-        read: bool = False,
-        written: bool = False,
-    ) -> None:
-        self.is_unused = is_unused
-        self.is_display_only = is_display_only
-        self.is_read_only = is_read_only
-        self.read = read
-        self.written = written
+from tests.helpers.variable_test_support import UsageStub as _UsageStub
+from tests.helpers.variable_test_support import hdr as _hdr
 
 
 def test_variables_execution_collect_basepicture_issues_covers_procedure_status_branch() -> None:

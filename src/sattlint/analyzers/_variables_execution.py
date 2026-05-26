@@ -18,8 +18,9 @@ from sattline_parser.models.ast_model import (
 from sattlint.analyzers.layout_geometry import collect_layout_overlap_issues
 
 from ..grammar import constants as const
+from ..picture_display_paths import PictureDisplayOccurrence
 from ..reporting.variables_report import IssueKind, VariableIssue
-from ..resolution import decorate_segment
+from ..resolution import AccessKind, decorate_segment
 from ..resolution.common import varname_base
 from ..resolution.scope import ScopeContext
 from .reset_contamination import detect_implicit_latching, detect_reset_contamination
@@ -63,13 +64,52 @@ def _analyze_root_scope(self: VariablesAnalyzer) -> ScopeContext:
     self._trace("root-context-built", root_symbols=len(root_context.env))
 
     root_path = [self.bp.header.name]
+    self._contexts_by_module_path[tuple(root_path)] = root_context
     self._walk_module_code(self.bp.modulecode, root_context, path=root_path)
     self._walk_moduledef(self.bp.moduledef, root_context, path=root_path)
     self._walk_header_enable(self.bp.header, root_context, path=root_path)
     self._walk_header_invoke_tails(self.bp.header, root_context, path=root_path)
     self._walk_header_groupconn(self.bp.header, root_context, path=root_path)
+    for binding in self.bp.graphics_bindings or []:
+        if binding.kind not in {"var", "expr"}:
+            continue
+        self._walk_stmt_or_expr(binding.value, root_context, root_path, is_ui_read=True)
     self._walk_submodules(self.bp.submodules or [], parent_context=root_context, parent_path=root_path)
     return root_context
+
+
+def _record_picture_display_variable_occurrences(self: VariablesAnalyzer) -> None:
+    occurrences = cast(
+        tuple[PictureDisplayOccurrence, ...],
+        tuple(getattr(self.bp, "graphics_picture_display_occurrences", ()) or ()),
+    )
+    if not occurrences:
+        return
+
+    marked_count = 0
+    for occurrence in occurrences:
+        module_path = [str(segment) for segment in occurrence.declaring_module_path]
+        context = self.contexts_by_module_path.get(tuple(module_path))
+        if context is None:
+            continue
+
+        for row in occurrence.record.path_rows:
+            if row.kind != "variable":
+                continue
+            self._mark_ref_access(
+                row.raw_text,
+                context,
+                module_path,
+                AccessKind.READ,
+                is_ui_read=True,
+            )
+            marked_count += 1
+
+    self._trace(
+        "graphics-picture-display-variable-paths",
+        occurrence_count=len(occurrences),
+        marked_count=marked_count,
+    )
 
 
 def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
@@ -100,6 +140,35 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
         self._append_issue(issue)
     self._trace("layout-overlap-scan", added_issue_count=len(layout_issues))
     self._effective_output_keys = self._compute_effective_output_keys()
+
+
+def _analyze_library_dependency_typedef_usage(self: VariablesAnalyzer) -> None:
+    if self._limit_to_module_path is not None:
+        return
+    if not self.analyzed_target_is_library or not self.include_dependency_moduletype_usage:
+        return
+
+    diverted_issues = self._issues
+    diverted_indexes = self._param_mapping_issue_indexes
+    diverted_context_issues = self.context_builder.issues
+    temp_issues: list[VariableIssue] = []
+
+    self._issues = temp_issues
+    self._param_mapping_issue_indexes = {}
+    self.context_builder.issues = temp_issues
+    try:
+        for moduletype in self.bp.moduletype_defs or []:
+            if self._is_from_root_origin(
+                getattr(moduletype, "origin_file", None),
+                getattr(moduletype, "origin_lib", None),
+            ):
+                continue
+            td_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
+            self._analyze_typedef(moduletype, path=td_path)
+    finally:
+        self._issues = diverted_issues
+        self._param_mapping_issue_indexes = diverted_indexes
+        self.context_builder.issues = diverted_context_issues
 
 
 def _collect_basepicture_issues(self: VariablesAnalyzer, bp_path: list[str]) -> None:
@@ -229,6 +298,8 @@ def run(
         )
 
     self._analyze_root_scope()
+    _record_picture_display_variable_occurrences(self)
+    self._analyze_library_dependency_typedef_usage()
 
     if apply_alias_back_propagation:
         self._apply_alias_back_propagation()
@@ -427,6 +498,7 @@ def _analyze_typedef_with_context(
 
 
 analyze_root_scope = _analyze_root_scope
+analyze_library_dependency_typedef_usage = _analyze_library_dependency_typedef_usage
 analyze_single_module_with_context = _analyze_single_module_with_context
 analyze_typedef = _analyze_typedef
 analyze_typedef_with_context = _analyze_typedef_with_context
@@ -437,6 +509,7 @@ is_external_typename = _is_external_typename
 run_post_traversal_analyses = _run_post_traversal_analyses
 
 __all__ = [
+    "analyze_library_dependency_typedef_usage",
     "analyze_root_scope",
     "analyze_single_module_with_context",
     "analyze_typedef",

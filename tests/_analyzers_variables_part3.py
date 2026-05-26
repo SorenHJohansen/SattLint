@@ -211,6 +211,35 @@ ENDDEF (*BasePicture*);
     )
 
 
+def test_time_variables_are_not_flagged_as_read_only_non_const():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    ResetTime: time := "1989-03-09-15:15:00.000";
+    Output: boolean := False;
+ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    ModuleCode
+        EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+            Output = ResetTime > ResetTime;
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.READ_ONLY_NON_CONST
+        and issue.variable is not None
+        and issue.variable.name == "ResetTime"
+        for issue in analyzer.issues
+    )
+
+
 def test_opsave_and_secure_variables_are_not_flagged_as_read_only_non_const():
     code = """
 "SyntaxVersion"
@@ -356,7 +385,7 @@ def test_shadowing_ignores_external_moduletype_instance_locals_for_program_targe
     assert not any(i.kind is IssueKind.SHADOWING for i in report.issues)
 
 
-def test_variable_analysis_ignores_external_moduletype_usage_for_program_target():
+def test_variable_analysis_counts_external_moduletype_usage_for_program_target():
     library_mt = ModuleTypeDef(
         name="LibType",
         moduleparameters=[Variable(name="Input", datatype=Simple_DataType.INTEGER)],
@@ -409,7 +438,178 @@ def test_variable_analysis_ignores_external_moduletype_usage_for_program_target(
     analyzer = VariablesAnalyzer(bp)
     analyzer.run()
 
-    assert any(issue.kind is IssueKind.UNUSED and issue.variable is program_var for issue in analyzer.issues)
+    assert not any(issue.kind is IssueKind.UNUSED and issue.variable is program_var for issue in analyzer.issues)
+    assert any(
+        issue.kind is IssueKind.READ_ONLY_NON_CONST and issue.variable is program_var for issue in analyzer.issues
+    )
+
+
+def test_variable_analysis_counts_external_dependency_output_writes_for_program_target():
+    dependency_mt = ModuleTypeDef(
+        name="MES_JournalData",
+        moduleparameters=[Variable(name="Ready", datatype=Simple_DataType.BOOLEAN)],
+        localvariables=[Variable(name="Source", datatype=Simple_DataType.BOOLEAN)],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="E1",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[(const.KEY_ASSIGN, _varref("Ready"), _varref("Source"))],
+                )
+            ]
+        ),
+        parametermappings=[],
+        origin_file="MES_JournalData.x",
+        origin_lib="MESLib",
+    )
+
+    signal = Variable(name="ES_SignReady", datatype=Simple_DataType.BOOLEAN)
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[dependency_mt],
+        localvariables=[signal],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("Journal"),
+                moduletype_name="MES_JournalData",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Ready"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("ES_SignReady"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="UseReady",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[_varref("ES_SignReady")],
+                )
+            ]
+        ),
+        moduledef=None,
+        origin_file="Root.x",
+        origin_lib="ProgramLib",
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.READ_ONLY_NON_CONST and issue.variable is signal for issue in analyzer.issues
+    )
+
+
+def test_variable_analysis_counts_known_unresolved_mms_outputs_as_writes():
+    read_var = Variable(name="MMSError_2", datatype=Simple_DataType.BOOLEAN)
+    cyc_error = Variable(name="Error704X", datatype=Simple_DataType.BOOLEAN)
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[read_var, cyc_error],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("ReadCyc"),
+                moduletype_name="MMSReadVarCyc",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Error"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("Error704X"),
+                        source_literal=None,
+                    )
+                ],
+            ),
+            ModuleTypeInstance(
+                header=_hdr("ReadOnly"),
+                moduletype_name="MMSReadOnly",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("MMSReadError"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("MMSError_2"),
+                        source_literal=None,
+                    )
+                ],
+            ),
+        ],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="UseCycError",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[_varref("Error704X")],
+                ),
+                Equation(
+                    name="UseReadError",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[_varref("MMSError_2")],
+                ),
+            ]
+        ),
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.READ_ONLY_NON_CONST
+        and issue.variable is not None
+        and issue.variable.name in {"MMSError_2", "Error704X"}
+        for issue in analyzer.issues
+    )
+
+
+def test_variable_analysis_counts_unresolved_external_moduletype_usage_for_program_target():
+    program_var = Variable(name="ProgramVar", datatype=Simple_DataType.INTEGER)
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[program_var],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("UnknownExt"),
+                moduletype_name="UnknownExternalType",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("Input"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("ProgramVar"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    assert not any(issue.kind is IssueKind.UNUSED and issue.variable is program_var for issue in analyzer.issues)
 
 
 def test_variable_analysis_treats_external_moduletype_usage_as_used_for_library_target():

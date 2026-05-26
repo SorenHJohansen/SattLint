@@ -47,7 +47,7 @@ Active follow-on plans from the 2026-05-15 architecture debt review:
 - `docs/exec-plans/completed/41-t-wave-6-app-config-and-doc-gardener-surface-split.md` covers the app-analysis, config, and doc-gardener control-surface split.
 - `docs/exec-plans/completed/42-t-wave-6-parser-module-normalization-split.md` covers the parser module-normalization mixin split.
 - `docs/exec-plans/active/50-t-wave-7-public-1-0-release-readiness.md` covers the cross-cutting `1.0.0` public-release contract, packaging rehearsal, version alignment, community-facing repo polish, and public-doc truthfulness required before the first stable tag.
-- `docs/exec-plans/active/58-t-wave-8-ci-workflow-consolidation-and-release-rehearsal.md` covers GitHub Actions consolidation, shared CI setup, release rehearsal wiring, AI-only workflow-doc alignment, and stale or ceremonial automation cleanup.
+- `docs/exec-plans/completed/58-t-wave-8-ci-workflow-consolidation-and-release-rehearsal.md` covers GitHub Actions consolidation, shared CI setup, release rehearsal wiring, AI-only workflow-doc alignment, and stale or ceremonial automation cleanup.
 
 Active follow-on plan from the 2026-05-19 test-suite, fixture, and helper review:
 

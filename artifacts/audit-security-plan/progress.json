@@ -1,0 +1,34 @@
+{
+  "active_stage": null,
+  "canonical_command": "sattlint-repo-audit --profile full --check public-readiness --skip-pipeline --fail-on high --output-dir artifacts/audit-security-plan",
+  "completed_at": 1779353422.0135212,
+  "completed_stage_count": 2,
+  "created_at": 1779353420.8415732,
+  "failed_stage_count": 0,
+  "kind": "sattlint.repo_audit.progress",
+  "overall_status": "pass",
+  "skipped_stage_count": 0,
+  "stage_count": 2,
+  "stages": [
+    {
+      "detail": "0 findings",
+      "duration_seconds": 1.142,
+      "ended_at": 1779353421.9834712,
+      "key": "custom_scan",
+      "label": "Run repository-specific checks",
+      "started_at": 1779353420.8418622,
+      "status": "completed"
+    },
+    {
+      "detail": null,
+      "duration_seconds": 0.029,
+      "ended_at": 1779353422.0132937,
+      "key": "write_reports",
+      "label": "Write audit reports",
+      "started_at": 1779353421.9840786,
+      "status": "completed"
+    }
+  ],
+  "title": "Repository audit",
+  "updated_at": 1779353422.0135221
+}

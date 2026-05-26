@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTypeInstance, SingleModule
@@ -10,6 +10,10 @@ from sattline_parser.models.ast_model import BasePicture, FrameModule, ModuleTyp
 from ..analyzers.framework import Issue
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..types import ProjectPath, TargetName
+
+
+def _diagnostics_by_file_factory() -> dict[str, tuple[SemanticDiagnostic, ...]]:
+    return {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +31,22 @@ class SemanticDiagnostic:
 class DiagnosticGuidance:
     explanation: str
     suggestion: str
+
+
+@dataclass(frozen=True, slots=True)
+class DroppedDiagnosticIssue:
+    analyzer_key: str
+    reason: str
+    module_path: tuple[str, ...] = ()
+    variable_name: str | None = None
+    field_path: str | None = None
+    message: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DiagnosticProjectionResult:
+    diagnostics_by_file: dict[str, tuple[SemanticDiagnostic, ...]] = field(default_factory=_diagnostics_by_file_factory)
+    dropped_issues: tuple[DroppedDiagnosticIssue, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -311,18 +331,34 @@ def build_module_diagnostic_sites(base_picture: BasePicture) -> dict[tuple[str, 
     return sites_by_path
 
 
-def project_report_issues_by_file(
+def project_report_issues(
     issues: tuple[Issue, ...],
     module_sites_by_path: dict[tuple[str, ...], _DiagnosticSite],
     *,
     analyzer_key: str,
-) -> dict[str, tuple[SemanticDiagnostic, ...]]:
+) -> DiagnosticProjectionResult:
     by_file: dict[str, list[SemanticDiagnostic]] = {}
+    dropped_issues: list[DroppedDiagnosticIssue] = []
     for issue in issues:
         if not issue.module_path:
+            dropped_issues.append(
+                DroppedDiagnosticIssue(
+                    analyzer_key=analyzer_key,
+                    reason="missing-module-path",
+                    message=issue.message,
+                )
+            )
             continue
         site = module_sites_by_path.get(tuple(_cf(segment) for segment in issue.module_path))
         if site is None:
+            dropped_issues.append(
+                DroppedDiagnosticIssue(
+                    analyzer_key=analyzer_key,
+                    reason="missing-module-site",
+                    module_path=tuple(issue.module_path),
+                    message=issue.message,
+                )
+            )
             continue
         by_file.setdefault(site.source_file.casefold(), []).append(
             SemanticDiagnostic(
@@ -335,7 +371,23 @@ def project_report_issues_by_file(
                 analyzer_key=analyzer_key,
             )
         )
-    return _sorted_semantic_diagnostics(by_file)
+    return DiagnosticProjectionResult(
+        diagnostics_by_file=_sorted_semantic_diagnostics(by_file),
+        dropped_issues=tuple(dropped_issues),
+    )
+
+
+def project_report_issues_by_file(
+    issues: tuple[Issue, ...],
+    module_sites_by_path: dict[tuple[str, ...], _DiagnosticSite],
+    *,
+    analyzer_key: str,
+) -> dict[str, tuple[SemanticDiagnostic, ...]]:
+    return project_report_issues(
+        issues,
+        module_sites_by_path,
+        analyzer_key=analyzer_key,
+    ).diagnostics_by_file
 
 
 def merge_semantic_diagnostics_by_file(
@@ -348,13 +400,33 @@ def merge_semantic_diagnostics_by_file(
     return _sorted_semantic_diagnostics(merged)
 
 
-def project_variable_issues_by_file(
+def merge_diagnostic_projection_results(
+    *results: DiagnosticProjectionResult,
+) -> DiagnosticProjectionResult:
+    merged_maps = merge_semantic_diagnostics_by_file(*(result.diagnostics_by_file for result in results))
+    dropped_issues: list[DroppedDiagnosticIssue] = []
+    for result in results:
+        dropped_issues.extend(result.dropped_issues)
+    return DiagnosticProjectionResult(diagnostics_by_file=merged_maps, dropped_issues=tuple(dropped_issues))
+
+
+def project_variable_issues(
     issues: tuple[VariableIssue, ...],
     definitions_by_key: dict[tuple[str, ...], Any],
-) -> dict[str, tuple[SemanticDiagnostic, ...]]:
+) -> DiagnosticProjectionResult:
     by_file: dict[str, list[SemanticDiagnostic]] = {}
+    dropped_issues: list[DroppedDiagnosticIssue] = []
     for issue in issues:
         if issue.variable is None:
+            dropped_issues.append(
+                DroppedDiagnosticIssue(
+                    analyzer_key="variables",
+                    reason="missing-variable",
+                    module_path=tuple(issue.module_path),
+                    field_path=issue.field_path,
+                    message=str(issue),
+                )
+            )
             continue
 
         base_query_segments = [*list(issue.module_path), issue.variable.name]
@@ -364,7 +436,29 @@ def project_variable_issues_by_file(
         definition = definitions_by_key.get(tuple(_cf(segment) for segment in query_segments))
         if definition is None and issue.field_path:
             definition = definitions_by_key.get(tuple(_cf(segment) for segment in base_query_segments))
-        if definition is None or definition.source_file is None or definition.declaration_span is None:
+        if definition is None:
+            dropped_issues.append(
+                DroppedDiagnosticIssue(
+                    analyzer_key="variables",
+                    reason="missing-definition",
+                    module_path=tuple(issue.module_path),
+                    variable_name=issue.variable.name,
+                    field_path=issue.field_path,
+                    message=str(issue),
+                )
+            )
+            continue
+        if definition.source_file is None or definition.declaration_span is None:
+            dropped_issues.append(
+                DroppedDiagnosticIssue(
+                    analyzer_key="variables",
+                    reason="missing-definition-site",
+                    module_path=tuple(issue.module_path),
+                    variable_name=issue.variable.name,
+                    field_path=issue.field_path,
+                    message=str(issue),
+                )
+            )
             continue
 
         by_file.setdefault(definition.source_file.casefold(), []).append(
@@ -381,4 +475,14 @@ def project_variable_issues_by_file(
             )
         )
 
-    return _sorted_semantic_diagnostics(by_file)
+    return DiagnosticProjectionResult(
+        diagnostics_by_file=_sorted_semantic_diagnostics(by_file),
+        dropped_issues=tuple(dropped_issues),
+    )
+
+
+def project_variable_issues_by_file(
+    issues: tuple[VariableIssue, ...],
+    definitions_by_key: dict[tuple[str, ...], Any],
+) -> dict[str, tuple[SemanticDiagnostic, ...]]:
+    return project_variable_issues(issues, definitions_by_key).diagnostics_by_file

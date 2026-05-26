@@ -46,9 +46,18 @@ def test_print_validation_warnings_and_target_helpers_cover_edge_cases(tmp_path:
     printed: list[str] = []
     app_support.print_validation_warnings([], print_fn=printed.append)
     app_support.print_validation_warnings([f"warn-{index}" for index in range(13)], print_fn=printed.append)
+    app_support.print_validation_warnings(
+        [
+            "TargetA: PictureDisplay in module 'Root.L1' path '+MissingPanel' could not be resolved: "
+            "module 'MissingPanel' was not found under 'Root.L1'"
+        ],
+        print_fn=printed.append,
+    )
 
     assert printed[0] == "Validation warnings (13):"
-    assert printed[-1] == "  - ... (+1 more)"
+    assert printed[14] == "Validation warnings (1):"
+    assert printed[15] == "  - [Root.L1] '+MissingPanel'"
+    assert printed[16] == "    module 'MissingPanel' was not found under 'Root.L1'"
     assert app_support.extract_warning_name("plain warning") is None
     assert not app_support.is_expected_unavailable_warning(
         "TargetA: dependency 'ControlLib' unavailable: unexpected reason"

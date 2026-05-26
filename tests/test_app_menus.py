@@ -1,3 +1,5 @@
+# pyright: reportMissingParameterType=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false
+
 """Tests for app config, screen helpers, interactive menus, and CLI entry points."""
 
 import builtins
@@ -20,16 +22,7 @@ from ._app_menus_support import (
     DummyReport,
     make_input,
 )
-from ._app_menus_support import (
-    real_context as real_context_fixture,
-)
-
-_FIXTURES = (real_context_fixture,)
-
-
-@pytest.fixture(name="real_context")
-def _real_context(real_context_fixture):
-    return real_context_fixture
+from .helpers.app_projects import build_mini_project_context
 
 
 @pytest.fixture
@@ -212,7 +205,7 @@ def test_legacy_documentation_rule_keys_are_normalized():
     assert documentation_cfg["classifications"]["ops"]["desc_label_equals"] == ["CustomLib:LegacyOperation"]
 
 
-def test_variable_analysis_menu_all_options(noop_screen, monkeypatch, real_context):
+def test_variable_analysis_menu_all_options(noop_screen, monkeypatch):
     calls = []
 
     def record(name):
@@ -424,19 +417,8 @@ def test_run_checks_applies_rule_profiles_to_simple_reports(noop_screen, monkeyp
     assert "No issues found." in legacy_out
 
 
-def test_dump_menu_all_options(noop_screen, monkeypatch, real_context):
-    if real_context:
-        cfg = real_context["cfg"].copy()
-        inputs = ["1", "y", "2", "y", "3", "y", "4", "y", "b"]
-        monkeypatch.setattr(builtins, "input", make_input(inputs))
-        app.dump_menu(cfg)
-        return
-
-    monkeypatch.setattr(
-        app,
-        "_iter_loaded_projects",
-        lambda *_args, **_kwargs: iter([("TargetA", "project", SimpleNamespace())]),
-    )
+def test_dump_menu_all_options(noop_screen, monkeypatch, tmp_path):
+    cfg = cast(dict[str, object], build_mini_project_context(tmp_path)["cfg"])
 
     dump_calls = []
 
@@ -451,7 +433,7 @@ def test_dump_menu_all_options(noop_screen, monkeypatch, real_context):
     inputs = ["1", "y", "2", "y", "3", "y", "4", "y", "b"]
     monkeypatch.setattr(builtins, "input", make_input(inputs))
 
-    app.dump_menu(app.DEFAULT_CONFIG.copy())
+    app.dump_menu(cfg)
 
     assert dump_calls == ["parse", "ast", "deps"]
 
@@ -939,8 +921,8 @@ def test_documentation_menu_scope_by_moduletype(monkeypatch):
     ]
 
 
-def test_main_menu_all_options(noop_screen, monkeypatch, real_context):
-    cfg = real_context["cfg"].copy() if real_context else app.DEFAULT_CONFIG.copy()
+def test_main_menu_all_options(noop_screen, monkeypatch):
+    cfg = app.DEFAULT_CONFIG.copy()
     cfg["analyzed_programs_and_libraries"] = ["TargetA"]
 
     monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))

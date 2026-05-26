@@ -35,6 +35,44 @@ __all__ = [
 _HIGH_FAN_IN_OUT_THRESHOLD = 3
 
 
+def _record_nested_datatype_access(
+    self: VariablesAnalyzer,
+    datatype_state: dict[str, dict[str, Any]],
+    variable: Variable,
+    field_path: str,
+) -> None:
+    segments = [segment for segment in field_path.split(".") if segment]
+    if not segments:
+        return
+
+    current_type: Simple_DataType | str = variable.datatype
+    for index, segment in enumerate(segments):
+        if isinstance(current_type, Simple_DataType):
+            return
+
+        record_type = self.type_graph.record(str(current_type))
+        if record_type is None:
+            return
+
+        field_def = record_type.fields_by_key.get(segment.casefold())
+        if field_def is None:
+            return
+
+        current_type = field_def.datatype
+        if isinstance(current_type, Simple_DataType):
+            return
+
+        state = datatype_state.get(str(current_type).casefold())
+        if state is None:
+            continue
+
+        remaining_path = ".".join(segments[index + 1 :])
+        if remaining_path:
+            state["accessed_prefixes"].add(remaining_path.casefold())
+        else:
+            state["has_whole_access"] = True
+
+
 def _add_issue(
     self: VariablesAnalyzer,
     kind: IssueKind,
@@ -56,12 +94,20 @@ def _add_issue(
 
 def _iter_variables_for_datatype_field_analysis(
     self: VariablesAnalyzer,
-) -> list[tuple[list[str], Variable, str]]:
-    variables: list[tuple[list[str], Variable, str]] = []
+) -> list[tuple[list[str], Variable, str, bool]]:
+    variables: list[tuple[list[str], Variable, str, bool]] = []
+    seen_variable_ids: set[int] = set()
+
+    def _append_variable(path: list[str], variable: Variable, role: str, root_owned: bool) -> None:
+        variable_id = id(variable)
+        if variable_id in seen_variable_ids:
+            return
+        seen_variable_ids.add(variable_id)
+        variables.append((path.copy(), variable, role, root_owned))
 
     bp_path = [self.bp.header.name]
     for variable in self.bp.localvariables or []:
-        variables.append((bp_path.copy(), variable, "localvariable"))
+        _append_variable(bp_path, variable, "localvariable", True)
 
     def _collect_from_module(
         mod: SingleModule | FrameModule | ModuleTypeInstance,
@@ -70,9 +116,9 @@ def _iter_variables_for_datatype_field_analysis(
         if isinstance(mod, SingleModule):
             my_path = [*path, mod.header.name]
             for variable in mod.moduleparameters or []:
-                variables.append((my_path.copy(), variable, "moduleparameter"))
+                _append_variable(my_path, variable, "moduleparameter", True)
             for variable in mod.localvariables or []:
-                variables.append((my_path.copy(), variable, "localvariable"))
+                _append_variable(my_path, variable, "localvariable", True)
             for child in mod.submodules or []:
                 _collect_from_module(child, my_path)
         elif isinstance(mod, FrameModule):
@@ -85,16 +131,28 @@ def _iter_variables_for_datatype_field_analysis(
 
     if self.limit_to_module_path is None:
         for mt in self.bp.moduletype_defs or []:
-            if not self.is_from_root_origin(
+            root_owned = self.is_from_root_origin(
                 getattr(mt, "origin_file", None),
                 getattr(mt, "origin_lib", None),
-            ):
+            )
+            if not root_owned and not (self.analyzed_target_is_library and self.include_dependency_moduletype_usage):
                 continue
             td_path = [self.bp.header.name, f"TypeDef:{mt.name}"]
             for variable in mt.moduleparameters or []:
-                variables.append((td_path.copy(), variable, "moduleparameter"))
+                _append_variable(td_path, variable, "moduleparameter", root_owned)
             for variable in mt.localvariables or []:
-                variables.append((td_path.copy(), variable, "localvariable"))
+                _append_variable(td_path, variable, "localvariable", root_owned)
+
+    for module_path, context in self.contexts_by_module_path.items():
+        path = list(module_path)
+        param_mapping_keys = set(getattr(context, "param_mappings", {}).keys())
+        for variable_name, variable in getattr(context, "env", {}).items():
+            role = "moduleparameter" if variable_name in param_mapping_keys else "localvariable"
+            root_owned = self.is_from_root_origin(
+                getattr(variable, "origin_file", None),
+                getattr(variable, "origin_lib", None),
+            )
+            _append_variable(path, variable, role, root_owned)
 
     return variables
 
@@ -128,7 +186,7 @@ def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
     if not datatype_state:
         return
 
-    for path, variable, role in _iter_variables_for_datatype_field_analysis(self):
+    for path, variable, role, root_owned_decl in _iter_variables_for_datatype_field_analysis(self):
         if isinstance(variable.datatype, Simple_DataType):
             continue
 
@@ -138,6 +196,7 @@ def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
 
         if (
             self.analyzed_target_is_library
+            and root_owned_decl
             and role == "moduleparameter"
             and any(segment.startswith("TypeDef:") for segment in path)
         ):
@@ -151,6 +210,7 @@ def _add_unused_datatype_field_issues(self: VariablesAnalyzer) -> None:
             normalized = ".".join(segment for segment in field_path.split(".") if segment)
             if normalized:
                 state["accessed_prefixes"].add(normalized.casefold())
+                _record_nested_datatype_access(self, datatype_state, variable, normalized)
 
     for state in datatype_state.values():
         if state["externally_open"] or state["has_whole_access"]:

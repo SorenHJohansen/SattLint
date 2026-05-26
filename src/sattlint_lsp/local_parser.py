@@ -456,11 +456,10 @@ class IncrementalDocumentParserAdapter:
             cursor = cast(_ParserCursor, self._parser.parse_interactive(cleaned_text))
             checkpoints = [self._capture_checkpoint(cursor)]
         else:
-            if previous_state is None:
-                raise RuntimeError("missing previous parser state for checkpoint resume")
             checkpoint_index, checkpoint = selected
             cursor = self._resume_cursor(checkpoint, cleaned_text)
-            checkpoints = list(previous_state.checkpoints[: checkpoint_index + 1])
+            resume_state = cast(IncrementalParseState, previous_state)
+            checkpoints = list(resume_state.checkpoints[: checkpoint_index + 1])
             reused_prefix_char_pos = checkpoint.char_pos
             reused_prefix_line = checkpoint.line
 
@@ -541,7 +540,7 @@ class IncrementalDocumentParserAdapter:
             else:
                 state = self._parse_incrementally(cleaned_text, previous_state, changed_line_ranges)
         except UnexpectedInput as exc:
-            details = describe_parse_error(exc, cleaned_text)
+            details = describe_parse_error(exc, text)
             _append_unique_diagnostic(
                 diagnostics,
                 seen,
@@ -566,7 +565,6 @@ class IncrementalDocumentParserAdapter:
         # builtin-call walk is too slow for large library files. It still runs
         # in engine.parse_source_text / parse_source_file (CLI) and when the full
         # workspace snapshot is built on save.
-
         if not build_snapshot:
             return DocumentParseResult(
                 syntax_diagnostics=tuple(diagnostics),

@@ -12,12 +12,18 @@ import pytest
 from lsprotocol.types import CompletionItem as LspCompletionItem
 from lsprotocol.types import CompletionItemKind, Diagnostic, DiagnosticSeverity, Position, Range
 
-from sattline_parser.models.ast_model import SourceSpan
-from sattlint.core.diagnostics import SemanticDiagnostic
-from sattlint.core.semantic import SymbolDefinition, SymbolReference, WorkspaceSourceDiscovery
+from sattline_parser.models.ast_model import Simple_DataType, SourceSpan, Variable
+from sattlint.analyzers.framework import Issue
+from sattlint.core.diagnostics import (
+    DroppedDiagnosticIssue,
+    SemanticDiagnostic,
+    project_report_issues,
+    project_variable_issues,
+)
+from sattlint.core.semantic import SymbolDefinition, SymbolReference
 from sattlint.editor_api import load_workspace_snapshot
+from sattlint.reporting.variables_report import IssueKind, VariableIssue
 from sattlint_lsp import _server_helpers as lsp_helpers
-from sattlint_lsp import workspace_store as lsp_workspace_store
 from sattlint_lsp.local_parser import FullDocumentParserAdapter
 from sattlint_lsp.server import (
     LspSettings,
@@ -323,6 +329,30 @@ ENDDEF (*BasePicture*);
     assert len(diagnostics) >= 1
     assert "Expected one of:" in diagnostics[0].message
     assert "^" in diagnostics[0].message
+
+
+def test_collect_syntax_diagnostics_preserves_original_column_after_inline_comment(tmp_path):
+    source = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    DemoValue: integer := 0;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        DemoValue = 1; (* inline comment *) ???
+ENDDEF (*BasePicture*);
+""".strip()
+
+    diagnostics = collect_syntax_diagnostics(tmp_path / "Program.s", source)
+
+    assert len(diagnostics) >= 1
+    assert diagnostics[0].range.start.line == 10
+    assert diagnostics[0].range.start.character == source.splitlines()[10].index("?")
+    assert "(* inline comment *) ???" in diagnostics[0].message
 
 
 def test_collect_syntax_diagnostics_does_not_report_unknown_type_suggestion(tmp_path):
@@ -805,6 +835,70 @@ def test_collect_semantic_diagnostics_include_actionable_guidance_for_spec_compl
     assert "BasePicture code must stay inside frame modules" in target.message
 
 
+def test_project_report_issues_records_missing_module_site_drop():
+    issue = Issue(kind="spec.issue", message="missing site", module_path=["BasePicture", "Ghost"])
+
+    result = project_report_issues((issue,), {}, analyzer_key="spec-compliance")
+
+    assert result.diagnostics_by_file == {}
+    assert result.dropped_issues == (
+        DroppedDiagnosticIssue(
+            analyzer_key="spec-compliance",
+            reason="missing-module-site",
+            module_path=("BasePicture", "Ghost"),
+            message="missing site",
+        ),
+    )
+
+
+def test_project_variable_issues_records_missing_definition_drop():
+    issue = VariableIssue(
+        kind=IssueKind.UNUSED,
+        module_path=["BasePicture"],
+        variable=Variable(name="MissingVar", datatype=Simple_DataType.INTEGER),
+    )
+
+    result = project_variable_issues((issue,), {})
+
+    assert result.diagnostics_by_file == {}
+    assert len(result.dropped_issues) == 1
+    assert result.dropped_issues[0].analyzer_key == "variables"
+    assert result.dropped_issues[0].reason == "missing-definition"
+    assert result.dropped_issues[0].module_path == ("BasePicture",)
+    assert result.dropped_issues[0].variable_name == "MissingVar"
+
+
+def test_load_workspace_snapshot_exposes_semantic_projection_drops(monkeypatch, tmp_path):
+    entry_file = tmp_path / "Program" / "Main.s"
+    _write_text(entry_file, _source_with_unused_variable())
+
+    fake_analyzer = SimpleNamespace(
+        spec=SimpleNamespace(
+            key="fake-lsp",
+            run=lambda _context: SimpleNamespace(
+                issues=[Issue(kind="fake.rule", message="dropped issue", module_path=["BasePicture", "MissingModule"])]
+            ),
+        ),
+        delivery=SimpleNamespace(lsp_exposed=True),
+    )
+
+    monkeypatch.setattr(
+        "sattlint.analyzers.registry.get_default_analyzer_catalog",
+        lambda: SimpleNamespace(analyzers=(fake_analyzer,)),
+    )
+
+    snapshot = load_workspace_snapshot(entry_file, workspace_root=tmp_path, collect_variable_diagnostics=True)
+
+    assert snapshot.semantic_diagnostic_drops() == (
+        DroppedDiagnosticIssue(
+            analyzer_key="fake-lsp",
+            reason="missing-module-site",
+            module_path=("BasePicture", "MissingModule"),
+            message="dropped issue",
+        ),
+    )
+
+
 def test_lsp_helper_request_validation_covers_valid_and_invalid_shapes():
     assert lsp_helpers._validated_text_document_uri(SimpleNamespace(text_document=SimpleNamespace(uri=""))) is None
     assert (
@@ -1270,184 +1364,3 @@ def test_lsp_helper_location_and_edit_helpers_cover_local_workspace_and_missing_
     assert "**Value**" in hover_contents.value
     assert "Kind: field" in hover_contents.value
     assert "Path: Support.Value" in hover_contents.value
-
-
-def test_workspace_entry_files_prefers_unreferenced_programs(tmp_path):
-    prog_a = tmp_path / "Programs" / "A.s"
-    prog_b = tmp_path / "Programs" / "B.s"
-    dep = tmp_path / "Programs" / "Main.l"
-    _write_text(prog_a, '"x"\n"y"\n"z"\n')
-    _write_text(prog_b, '"x"\n"y"\n"z"\n')
-    _write_text(dep, "A\n")
-
-    discovery = WorkspaceSourceDiscovery(
-        workspace_root=tmp_path,
-        source_dirs=(prog_a.parent.resolve(),),
-        program_files=(prog_a.resolve(), prog_b.resolve()),
-        dependency_files=(dep.resolve(),),
-        program_files_by_stem={
-            "a": (prog_a.resolve(),),
-            "b": (prog_b.resolve(),),
-        },
-        dependency_files_by_stem={"main": (dep.resolve(),)},
-    )
-
-    assert lsp_workspace_store._workspace_entry_files(discovery) == (prog_b.resolve(),)
-
-
-def test_workspace_entry_files_falls_back_when_all_programs_are_referenced(tmp_path):
-    prog_a = tmp_path / "Programs" / "A.s"
-    prog_b = tmp_path / "Programs" / "B.s"
-    dep = tmp_path / "Programs" / "Main.l"
-    _write_text(prog_a, '"x"\n"y"\n"z"\n')
-    _write_text(prog_b, '"x"\n"y"\n"z"\n')
-    _write_text(dep, "A\nB\n")
-
-    discovery = WorkspaceSourceDiscovery(
-        workspace_root=tmp_path,
-        source_dirs=(prog_a.parent.resolve(),),
-        program_files=(prog_a.resolve(), prog_b.resolve()),
-        dependency_files=(dep.resolve(),),
-        program_files_by_stem={
-            "a": (prog_a.resolve(),),
-            "b": (prog_b.resolve(),),
-        },
-        dependency_files_by_stem={"main": (dep.resolve(),)},
-    )
-
-    assert lsp_workspace_store._workspace_entry_files(discovery) == tuple(
-        sorted((prog_a.resolve(), prog_b.resolve()), key=lambda p: p.as_posix().casefold())
-    )
-
-
-def test_workspace_snapshot_store_resolve_entry_file_edges(tmp_path):
-    store = lsp_workspace_store.WorkspaceSnapshotStore()
-    workspace_root = tmp_path.resolve()
-    program = tmp_path / "Programs" / "Main.s"
-    other_program = tmp_path / "Programs" / "Other.s"
-    library = tmp_path / "Libs" / "Support.l"
-
-    _write_text(program, '"x"\n"y"\n"z"\n')
-    _write_text(other_program, '"x"\n"y"\n"z"\n')
-    _write_text(library, "Support\n")
-
-    assert store.resolve_entry_file(library) is None
-
-    discovery = WorkspaceSourceDiscovery(
-        workspace_root=workspace_root,
-        source_dirs=(program.parent.resolve(), library.parent.resolve()),
-        program_files=(program.resolve(),),
-        dependency_files=(library.resolve(),),
-        program_files_by_stem={"main": (program.resolve(),)},
-        dependency_files_by_stem={"support": (library.resolve(),)},
-    )
-    store._workspace_root = workspace_root
-    store._discovery = discovery
-    store._settings = SimpleNamespace(entry_file="Programs/missing.txt")
-    store._entry_files = (program.resolve(),)
-
-    assert store.resolve_entry_file(library) == program.resolve()
-
-    store._settings = SimpleNamespace(entry_file="Programs/Main.s")
-    store._entry_files = (program.resolve(), other_program.resolve())
-    assert store.resolve_entry_file(library) == program.resolve()
-
-    store._settings = SimpleNamespace(entry_file="Programs/missing.txt")
-    assert store.resolve_entry_file(library) is None
-
-
-def test_workspace_snapshot_store_cache_prefetch_and_invalidation_edges(tmp_path, monkeypatch):
-    from concurrent.futures import Future
-
-    store = lsp_workspace_store.WorkspaceSnapshotStore()
-    workspace_root = tmp_path.resolve()
-    entry = (tmp_path / "Programs" / "Main.s").resolve()
-    sibling = (tmp_path / "Programs" / "Other.s").resolve()
-    dependency = (tmp_path / "Libs" / "Support.l").resolve()
-
-    for path in (entry, sibling, dependency):
-        _write_text(path, '"x"\n"y"\n"z"\n')
-
-    store._workspace_root = workspace_root
-    store._settings = SimpleNamespace(entry_file="", max_cached_entry_snapshots=1)
-    store._discovery = WorkspaceSourceDiscovery(
-        workspace_root=workspace_root,
-        source_dirs=(entry.parent,),
-        program_files=(entry, sibling),
-        dependency_files=(dependency,),
-        program_files_by_stem={
-            "main": (entry,),
-            "other": (sibling,),
-        },
-        dependency_files_by_stem={"support": (dependency,)},
-    )
-    store._entry_files = (entry, sibling)
-
-    state_entry = store._state_for_entry_locked(entry)
-    state_sibling = store._state_for_entry_locked(sibling)
-    bundle = SnapshotBundle(
-        snapshot=cast(Any, object()),
-        source_paths_by_name={},
-        source_paths_by_key={},
-        entry_file=entry,
-        cache_key=state_entry.cache_key,
-        source_files=(entry,),
-    )
-    state_entry.bundle = bundle
-    state_entry.stale = False
-    state_entry.last_access = 1.0
-    state_entry.last_error = RuntimeError("old error")
-    state_sibling.stale = True
-
-    sibling_bundle = SnapshotBundle(
-        snapshot=cast(Any, object()),
-        source_paths_by_name={},
-        source_paths_by_key={},
-        entry_file=sibling,
-        cache_key=state_sibling.cache_key,
-        source_files=(sibling,),
-    )
-
-    refresh_future = Future()
-    refresh_future.set_result(sibling_bundle)
-    state_sibling.future = refresh_future
-    store._source_file_to_entry_keys = {
-        entry: {state_entry.cache_key},
-    }
-    store._finalize_future(state_sibling.cache_key, refresh_future)
-
-    assert state_entry.bundle is None
-    assert state_sibling.bundle is sibling_bundle
-    assert entry not in store._source_file_to_entry_keys
-    assert store._source_file_to_entry_keys[sibling] == {state_sibling.cache_key}
-
-    submitted: list[Path] = []
-
-    def _submit_refresh(state):
-        submitted.append(state.entry_file)
-        future = Future()
-        future.set_result(bundle)
-        state.future = future
-        return future
-
-    monkeypatch.setattr(store, "_submit_refresh_locked", _submit_refresh)
-
-    assert store.prefetch_entries() == (entry,)
-    assert submitted == [entry]
-    assert state_entry.future is not None
-    store._finalize_future(state_entry.cache_key, state_entry.future)
-    assert store.get_cached_bundle(entry) is bundle
-    state_entry.stale = True
-    assert store.get_cached_bundle(entry, allow_stale=False) is None
-    assert store.get_cached_bundle(entry, allow_stale=True) is bundle
-    assert store.last_error_for_entry(entry) is state_entry.last_error
-    assert store.last_error_for_entry(tmp_path / "missing.s") is None
-
-    store._source_file_to_entry_keys[dependency] = {state_entry.cache_key, "missing"}
-    affected = store.invalidate_path(dependency)
-    assert affected == (entry,)
-    assert state_entry.stale is True
-    assert state_entry.generation == 1
-    assert state_entry.last_error is None
-
-    assert store.get_affected_entry_keys(entry) == (state_entry.cache_key,)

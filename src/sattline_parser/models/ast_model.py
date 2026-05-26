@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import textwrap
-from dataclasses import dataclass, field
+from dataclasses import MISSING, dataclass, field, fields
 from enum import Enum
 from typing import Any
 
@@ -40,6 +40,7 @@ __all__ = [
     "FloatLiteral",
     "FrameModule",
     "GraphObject",
+    "GraphicsBinding",
     "IntLiteral",
     "InteractObject",
     "ModuleCode",
@@ -75,11 +76,11 @@ class SourceSpan:
 
 
 class IntLiteral(int):
-    span: SourceSpan
+    span: SourceSpan | None
 
     def __new__(cls, value: int, span: SourceSpan | None = None):
         obj = int.__new__(cls, value)
-        obj.span = span if span is not None else SourceSpan(0, 0)
+        obj.span = span
         return obj
 
     def __reduce__(self):
@@ -87,11 +88,11 @@ class IntLiteral(int):
 
 
 class FloatLiteral(float):
-    span: SourceSpan
+    span: SourceSpan | None
 
     def __new__(cls, value: float, span: SourceSpan | None = None):
         obj = float.__new__(cls, value)
-        obj.span = span if span is not None else SourceSpan(0, 0)
+        obj.span = span
         return obj
 
     def __reduce__(self):
@@ -228,6 +229,14 @@ class GraphObject:
 class InteractObject:
     type: str
     properties: PropertyMap = field(default_factory=property_map)
+
+
+@dataclass
+class GraphicsBinding:
+    kind: str
+    raw_text: str
+    value: Any | None = None
+    span: SourceSpan | None = None
 
 
 @dataclass
@@ -379,6 +388,11 @@ class BasePicture:
     modulecode: ModuleCode | None = None
     origin_file: str | None = None
     origin_lib: str | None = None
+    graphics_file: str | None = None
+    graphics_bindings: list[GraphicsBinding] = field(default_factory=any_list)
+    graphics_messages: list[Any] = field(default_factory=any_list)
+    graphics_picture_display_records: list[Any] = field(default_factory=any_list)
+    graphics_picture_display_occurrences: list[Any] = field(default_factory=any_list)
     library_dependencies: dict[str, list[str]] = field(default_factory=library_dependency_map)
     parse_tree: Any | None = None
 
@@ -390,6 +404,15 @@ class BasePicture:
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)
+        for dataclass_field in fields(type(self)):
+            if dataclass_field.name in self.__dict__:
+                continue
+            if dataclass_field.default is not MISSING:
+                self.__dict__[dataclass_field.name] = dataclass_field.default
+                continue
+            default_factory = dataclass_field.default_factory
+            if default_factory is not MISSING:
+                self.__dict__[dataclass_field.name] = default_factory()
 
     def __str__(self) -> str:
         return render_base_picture(self)

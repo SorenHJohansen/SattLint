@@ -65,6 +65,17 @@ def default_delivery_templates(
             exposed_via=(semantic_layer_analyzer_key,),
         ),
         AnalyzerDeliveryTemplate(
+            key="picture-display-paths",
+            scope="workspace",
+            implementation_bucket="workspace-navigation",
+            cli_exposed=True,
+            acceptance_tests=(
+                "tests/analyzers/test_picture_display_paths.py",
+                "tests/test_app.py",
+            ),
+            min_fixture_set=shared_fixtures,
+        ),
+        AnalyzerDeliveryTemplate(
             key="mms-interface",
             scope="workspace",
             implementation_bucket="interface-mapping",

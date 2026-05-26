@@ -410,6 +410,7 @@ def test_variables_report_properties_visible_kinds_and_empty_sections_cover_rema
     assert "Hidden global coupling" in summary
     assert "High fan-in or fan-out variables" in summary
     assert "Reset contamination (missing reset writes)" in summary
+    assert "Warning: fields that are only consumed outside the analyzed target may still appear unused here." in summary
     assert "      none" in summary
 
 

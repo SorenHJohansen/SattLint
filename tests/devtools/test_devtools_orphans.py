@@ -319,6 +319,10 @@ def test_production_summary_helpers_cover_kloc_filtering_and_repo_allowlist(tmp_
     repo_root.mkdir()
     (repo_root / "Program.s").write_text("line\n" * 2000, encoding="utf-8")
     (repo_root / "Library.x").write_text("line\n" * 5, encoding="utf-8")
+    (repo_root / "artifacts").mkdir()
+    (repo_root / "artifacts" / "Generated.s").write_text("line\n" * 3000, encoding="utf-8")
+    (repo_root / "node_modules").mkdir()
+    (repo_root / "node_modules" / "Vendor.x").write_text("line\n" * 3000, encoding="utf-8")
     collection = FindingCollection(
         (
             _finding("unused", fingerprint="ignored-case"),

@@ -358,9 +358,6 @@
       "apply_to": [
         "scripts/check_ratchet_policy.py",
         "tests/test_ratchet_policy.py",
-        "artifacts/analysis/coverage_ratchet.json",
-        "artifacts/analysis/structural_budget_ratchet.json",
-        "artifacts/analysis/file_debt_ratchet.json",
         ".github/approvals/*.md",
         ".github/workflows/typing.yml",
         "docs/quality-gates.md",
@@ -390,8 +387,7 @@
         ".ai/**",
         "docs/**",
         "vscode/**",
-        "metrics/**",
-        "artifacts/**"
+        "metrics/**"
       ],
       "description": "Use when routing work to the owning SattLint surface or choosing the closest repo area for a change. Provides the condensed repo map that was removed from AGENTS.md for context efficiency.",
       "file_path": ".github/instructions/repo-map.instructions.md",

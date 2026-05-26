@@ -291,7 +291,7 @@ def _matches_naming_role(self: VariablesAnalyzer, name_key: str, role_name: str)
 
 
 def _add_naming_role_mismatch_issues(self: VariablesAnalyzer) -> None:
-    for decl_path, variable, _decl_role in _iter_variables_for_datatype_field_analysis(self):
+    for decl_path, variable, _decl_role, _root_owned_decl in _iter_variables_for_datatype_field_analysis(self):
         usage = self.get_usage(variable)
         reason = self.naming_role_mismatch_reason(variable, usage, decl_path)
         if reason is None:

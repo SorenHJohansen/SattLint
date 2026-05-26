@@ -11,6 +11,10 @@ from .engine import expected_unavailable_library_reason
 
 ConfigDict = dict[str, Any]
 
+_PICTURE_DISPLAY_WARNING_RE = re.compile(
+    r"^PictureDisplay in module '([^']+)' path ('.*?') could not be resolved: (.+)$"
+)
+
 
 class TargetLoadError(RuntimeError):
     def __init__(
@@ -140,10 +144,39 @@ def print_validation_warnings(warnings: list[str], *, print_fn: Callable[..., No
         return
 
     print_fn(f"Validation warnings ({len(warnings)}):")
-    for item in warnings[:limit]:
-        print_fn(f"  - {item}")
+    for item in _format_validation_warning_items(warnings[:limit]):
+        print_fn(item)
     if len(warnings) > limit:
         print_fn(f"  - ... (+{len(warnings) - limit} more)")
+
+
+def _format_validation_warning_items(warnings: Sequence[str]) -> tuple[str, ...]:
+    shared_target = _shared_warning_target(warnings)
+    lines: list[str] = []
+    for item in warnings:
+        display_item = item.split(": ", 1)[1] if shared_target and ": " in item else item
+        picture_display_match = _PICTURE_DISPLAY_WARNING_RE.match(display_item)
+        if picture_display_match is not None:
+            module_path, path_text, detail = picture_display_match.groups()
+            lines.append(f"  - [{module_path}] {path_text}")
+            lines.append(f"    {detail}")
+            continue
+        lines.append(f"  - {display_item}")
+    return tuple(lines)
+
+
+def _shared_warning_target(warnings: Sequence[str]) -> str | None:
+    target_name: str | None = None
+    for item in warnings:
+        warning_name = extract_warning_name(item)
+        if warning_name is None:
+            return None
+        if target_name is None:
+            target_name = warning_name
+            continue
+        if not casefold_equal(target_name, warning_name):
+            return None
+    return target_name
 
 
 def extract_warning_name(item: str) -> str | None:

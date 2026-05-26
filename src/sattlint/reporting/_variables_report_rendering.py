@@ -215,6 +215,9 @@ def append_unused_datatype_fields(lines: list[str], title: str, issues: list[Var
         return
 
     lines.append(section_header(title, len(issues)))
+    lines.append(
+        "      Warning: fields that are only consumed outside the analyzed target may still appear unused here."
+    )
     for issue in issues:
         location = format_location(issue.module_path)
         datatype_name = issue.datatype_name or "?"

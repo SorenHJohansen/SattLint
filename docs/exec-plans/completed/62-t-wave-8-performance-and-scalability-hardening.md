@@ -12,12 +12,14 @@ The visible proof is behavioral. `ensure_ast_cache` will stop turning "fast cach
 
 - [x] (2026-05-19) Create this ExecPlan from the performance and scalability review. Capture the current hot paths in AST cache validation, workspace discovery, LSP snapshot refresh, structural graph reporting, and repo-wide inventory scans.
 - [x] Fix the inverted fast-cache-validation branch so the fast path stays cheap and the slow path remains opt-in.
-- [ ] Reduce parser and dependency-resolution overhead from repeated cache persistence and unnecessary file reads in the project loader path.
-- [ ] Bound workspace discovery and LSP background diagnostics so large non-source trees and unaffected entries do not dominate refresh time.
-- [ ] Rework structural graph and related report collection so the pipeline reuses shared graph inputs instead of rebuilding or retaining avoidable per-entry snapshots.
-- [ ] Prune or consolidate repo-audit and pipeline full-tree scans that still walk the repository root or reread source files when shared context already exists.
-- [ ] Add focused regression coverage that proves the optimized paths stay bounded and that cache or discovery semantics do not regress.
-- [ ] Run focused pytest, Ruff, and Pyright validation for the touched slice and update this plan with the observed results.
+- [x] Reduce parser and dependency-resolution overhead from repeated cache persistence in the project loader path by batching `FileLookupCache` saves and flushing once per resolve or post-resolve lookup.
+- [x] Prune workspace discovery and LSP entry-file refresh work by ignoring `artifacts/` and `node_modules/` during discovery and caching dependency-name references on the discovery result so `_workspace_entry_files()` does not reopen dependency files.
+- [x] Scope the materialized structural graph input path to structural entry roots and preserve shared discovery metadata while keeping dependency-aware snapshot resolution on the full workspace discovery.
+- [x] Bound the remaining dependency-list-triggered LSP background diagnostics and unchanged-entry rebuild work by preserving unchanged bundles across workspace refresh and scheduling only stale or newly discovered entries after `.l` or `.z` saves.
+- [x] Rework structural graph and related report collection further so the pipeline derives dependency, call, and graphics-layout reports from one shared semantic pass instead of repeated per-entry rebuild patterns.
+- [x] Prune repo-audit and pipeline full-tree scans by switching `collect_repo_file_inventory()` to top-down pruned traversal and by making production-summary KLOC collection reuse workspace discovery instead of root-level `rglob()`.
+- [x] Add focused regression coverage that proves the optimized paths stay bounded and that cache or discovery semantics do not regress.
+- [x] Run focused pytest, Ruff, and source-file Pyright validation for the touched slice and update this plan with the observed results.
 
 ## Surprises & Discoveries
 
@@ -42,6 +44,21 @@ The visible proof is behavioral. `ensure_ast_cache` will stop turning "fast cach
 - Observation: the lookup cache is small but can become disproportionately noisy under large dependency closure.
   Evidence: `src/sattlint/cache.py` rewrites the entire `file_lookup_cache.json` on each `set()` or `forget()`, and `src/sattlint/engine.py` calls those methods directly inside the hot dependency-resolution path.
 
+- Observation: the materialized structural graph-input path was broader than the streaming path.
+  Evidence: `src/sattlint/devtools/_structural_report_graphs.py::collect_workspace_graph_inputs()` iterated every discovered program file, while `_stream_workspace_graph_reports()` already narrowed to `STRUCTURAL_ENTRY_ROOTS` via `_structural_report_discovery()`.
+
+- Observation: production-summary KLOC collection did not need its own root-level file walk.
+  Evidence: `src/sattlint/devtools/production_summary.py` was using `resolved_root.rglob()` for `.s/.x/.l/.z`, even though `src/sattlint/core/workspace_discovery.py` already provides a pruned source-file inventory with the correct SattLine suffix rules.
+
+- Observation: touched test modules still carry substantial inherited Pyright strictness debt.
+  Evidence: focused source-file Pyright is clean for the implementation files, but running Pyright across the touched test modules surfaces large pre-existing diagnostics in files such as `tests/test_editor_api.py` and `tests/parser/test_engine.py` that were not introduced by this slice.
+
+- Observation: dependency-list saves already had enough local information to avoid global LSP cache churn.
+  Evidence: `src/sattlint_lsp/workspace_store.py` maintains `_source_file_to_entry_keys`, so a saved `.l` or `.z` file can invalidate only the entry bundles that actually depended on it before the workspace refresh recomputes root entries.
+
+- Observation: the structural bundle still had one duplicated semantic walk after the earlier entry-scoping fix.
+  Evidence: `src/sattlint/devtools/structural_reports.py::collect_structural_reports()` called `_stream_workspace_graph_reports()` for dependency and call graphs but then separately called `collect_graphics_layout_report()` over the same snapshot set.
+
 ## Decision Log
 
 - Decision: treat the first milestone as a behavior-preserving performance hardening slice, not a feature rewrite.
@@ -64,6 +81,22 @@ The visible proof is behavioral. `ensure_ast_cache` will stop turning "fast cach
   Rationale: repo-audit already has a reusable `PythonSourceScanContext` seam. The better direction is to thread that context into neighboring checks and inventory paths, not to create parallel preload mechanisms.
   Date/Author: 2026-05-19 / Copilot (GPT-5.4)
 
+- Decision: align the materialized structural graph-input collector with the streaming structural-entry filter before attempting a larger graph-pipeline redesign.
+  Rationale: the mismatch was a local, behavior-preserving source of unnecessary snapshot work and peak memory. Fixing that seam reduces cost immediately and keeps the wider refactor optional.
+  Date/Author: 2026-05-21 / Copilot (GPT-5.4)
+
+- Decision: use source-only Pyright as the finish-gate proof for this slice after validating behavior with focused pytest.
+  Rationale: the implementation files are type-clean, while several touched test modules already carry unrelated Pyright debt. Paying that debt down would have widened scope away from the performance seams in this plan.
+  Date/Author: 2026-05-21 / Copilot (GPT-5.4)
+
+- Decision: treat dependency-list saves as targeted entry invalidation plus targeted workspace refresh, not as a full diagnostic reset.
+  Rationale: `.l` and `.z` saves are workspace-control events, but the snapshot store already knows which entry bundles referenced the changed file. Reusing that mapping preserves unaffected bundles and diagnostics while still rebuilding newly selected or stale entries.
+  Date/Author: 2026-05-21 / Copilot (GPT-5.4)
+
+- Decision: extend the structural streaming pass to accumulate graphics layout instead of reusing the materialized-snapshot collector.
+  Rationale: graphics layout is snapshot-derived like dependency and call graphs, so accumulating it during the existing stream removes one more per-entry semantic walk without forcing the pipeline back to an all-snapshots-in-memory design.
+  Date/Author: 2026-05-21 / Copilot (GPT-5.4)
+
 ## Outcomes & Retrospective
 
 **First milestone complete (fast-cache-validation inversion fix).**
@@ -75,6 +108,49 @@ Two new regression tests in `tests/test_app_analysis_project_cache.py` now prove
 Validation: 7 tests pass; Ruff and Pyright clean on touched files; pre-commit passes.
 
 Remaining milestones (project-loader cache, workspace discovery / LSP refresh, structural reporting, repo-audit scan pruning) stay open for subsequent slices.
+
+**Second milestone set complete (loader batching, discovery pruning, structural entry scoping, repo scan pruning).**
+
+This turn completed four additional performance hardening slices.
+
+`src/sattlint/cache.py`, `src/sattlint/engine.py`, and `src/sattlint/_app_analysis_loading.py` now batch `FileLookupCache` writes in memory and flush once at the end of `resolve()` or after the one post-resolve dependency lookup used by project loading. This removes repeated JSON rewrites from the hot dependency-resolution loop without changing lookup-cache payloads.
+
+`src/sattlint/core/workspace_discovery.py` now prunes `artifacts/` and `node_modules/` during workspace discovery and records dependency-name references in the discovery result. `src/sattlint_lsp/workspace_store.py::_workspace_entry_files()` now consumes that cached set instead of reopening dependency files while deciding which program files are roots for workspace analysis.
+
+`src/sattlint/devtools/_structural_report_graphs.py` now scopes `collect_workspace_graph_inputs()` through the same structural-entry filter already used by the streaming graph-report path, while still passing the full discovery object into `load_workspace_snapshot()` so dependency resolution remains workspace-aware.
+
+`src/sattlint/devtools/pipeline_checks.py` now uses top-down pruned traversal for repo inventory instead of `rglob("*")`, and `src/sattlint/devtools/production_summary.py` now reuses workspace discovery to collect SattLine source files for KLOC. That removes two independent full-tree walks over large irrelevant directories.
+
+Focused regression coverage was added in `tests/test_lsp_diagnostics.py`, `tests/test_editor_api.py`, `tests/parser/test_cache.py`, `tests/parser/test_engine.py`, `tests/test_recommendation_routing.py`, `tests/devtools/test_devtools_orphans.py`, and `tests/test_structural_reports.py`.
+
+Validation observed this turn:
+
+- Focused pytest slices passed for discovery/LSP entry selection, lookup-cache batching, repo inventory and production summary collection, and structural graph-input scoping.
+- Ruff passed on all edited files.
+- Pyright passed on the edited implementation files in `src/`.
+- Pyright over the touched test modules still reports inherited strictness debt in existing test files outside the scope of this performance slice.
+
+Remaining plan work is narrower now. The largest open piece is the deeper LSP refresh scheduling and broader structural-report reuse beyond entry scoping.
+
+**Third milestone set complete (targeted dependency-list refresh and streamed graphics-layout reuse).**
+
+This turn closed the remaining clean LSP refresh slice and the next structural reuse slice.
+
+`src/sattlint_lsp/workspace_store.py` now preserves unchanged cached bundles across `refresh_workspace()` and reports which entries were removed versus which entries still need work. `src/sattlint_lsp/server.py` now handles saved `.l` and `.z` files by invalidating only the entry bundles that depended on that control file, refreshing workspace discovery, clearing removed entry state, and scheduling only the union of stale and newly discovered entries. That avoids the old full-diagnostic reset and avoids rebuilding unchanged entries just because one dependency list changed.
+
+`src/sattlint/devtools/_structural_report_graphics.py`, `src/sattlint/devtools/_structural_report_graphs.py`, and `src/sattlint/devtools/structural_reports.py` now accumulate graphics-layout entries during the existing streaming graph pass. The structural bundle no longer does one pass for dependency and call graphs and then a second pass over the same snapshots for graphics layout.
+
+Focused regression coverage was added in `tests/test_lsp_diagnostics.py`, `tests/test_lsp_workspace_documents.py`, and `tests/test_structural_reports.py`.
+
+Validation observed this turn:
+
+- Focused pytest passed for unchanged-bundle preservation during workspace refresh.
+- Focused pytest passed for dependency-list saves scheduling only stale or new entries.
+- Focused pytest passed for streamed structural bundle reuse of the graphics-layout report.
+- Ruff passed on the touched implementation and test files for this slice.
+- Pyright passed on the touched implementation files for this slice.
+
+The remaining plan work is now mostly in deeper optional follow-up, not the originally identified clean local hotspots.
 
 ## Context and Orientation
 

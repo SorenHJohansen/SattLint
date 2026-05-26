@@ -104,6 +104,18 @@ class _SemanticIndexBuilder(_SemanticIndexReferenceSupportMixin):
             source_file=self.base_picture.origin_file,
             source_library=self.base_picture.origin_lib,
         )
+        self._record_scope_references(
+            self.base_picture.graphics_bindings,
+            context=root_context,
+            source_file=self.base_picture.graphics_file,
+            source_library=self.base_picture.origin_lib,
+        )
+        self._record_call_signatures(
+            self.base_picture.graphics_bindings,
+            module_path=(self.base_picture.header.name,),
+            source_file=self.base_picture.graphics_file,
+            source_library=self.base_picture.origin_lib,
+        )
         self._walk_moduletype_defs(
             self.base_picture.moduletype_defs or [],
             parent_context=root_context,

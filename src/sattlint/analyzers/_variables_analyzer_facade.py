@@ -113,6 +113,9 @@ class VariablesAnalyzerFacadeMixin(VariablesAnalyzerFacadePropertiesMixin):
     def analyze_typedef(self, moduletype: ModuleTypeDef, path: list[str]) -> None:
         self._analyze_typedef(moduletype, path)
 
+    def analyze_library_dependency_typedef_usage(self) -> None:
+        self._analyze_library_dependency_typedef_usage()
+
     def analyze_typedef_with_context(
         self,
         moduletype: ModuleTypeDef,

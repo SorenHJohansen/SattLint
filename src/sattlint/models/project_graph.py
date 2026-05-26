@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .._validation_shared import ValidationNotice
 from .ast_model import BasePicture, DataType, ModuleTypeDef
 
 
@@ -29,6 +30,10 @@ def _missing_factory() -> list[str]:
 
 
 def _warnings_factory() -> list[str]:
+    return []
+
+
+def _warning_notices_factory() -> list[tuple[str, ValidationNotice]]:
     return []
 
 
@@ -68,6 +73,7 @@ class ProjectGraph:
     library_dependencies: dict[str, set[str]] = field(default_factory=_library_dependencies_factory)
     missing: list[str] = field(default_factory=_missing_factory)
     warnings: list[str] = field(default_factory=_warnings_factory)
+    warning_notices: list[tuple[str, ValidationNotice]] = field(default_factory=_warning_notices_factory)
     failures: dict[str, ProjectFailure] = field(default_factory=_failures_factory)
     ignored_vendor: list[str] = field(default_factory=_ignored_vendor_factory)
     # Track libraries that couldn't be loaded (e.g., proprietary ABB libraries)

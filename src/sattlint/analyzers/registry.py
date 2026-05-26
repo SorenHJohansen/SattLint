@@ -21,6 +21,7 @@ from sattlint.analyzers.modules import analyze_version_drift
 from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
 from sattlint.analyzers.numeric_constraints import analyze_numeric_constraints
 from sattlint.analyzers.parameter_drift import analyze_parameter_drift
+from sattlint.analyzers.picture_display_paths import analyze_picture_display_paths
 from sattlint.analyzers.powerup import analyze_powerup
 from sattlint.analyzers.resource_usage import analyze_resource_usage
 from sattlint.analyzers.safety_paths import analyze_safety_paths
@@ -53,6 +54,7 @@ from .variables import analyze_variables
 SEMANTIC_LAYER_ANALYZER_KEY = "sattline-semantics"
 DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
     "variables",
+    "picture-display-paths",
     "mms-interface",
     "sfc",
     "comment-code",
@@ -95,6 +97,7 @@ _REGISTRY_MONKEYPATCH_SURFACE = (
     analyze_naming_consistency,
     analyze_numeric_constraints,
     analyze_parameter_drift,
+    analyze_picture_display_paths,
     analyze_powerup,
     analyze_resource_usage,
     analyze_safety_paths,
@@ -139,6 +142,8 @@ class AnalyzerMetadata:
             "description": self.spec.description,
             "enabled": self.spec.enabled,
             "supports_live_diagnostics": self.spec.supports_live_diagnostics,
+            "semantic_mapping_kind": self.spec.semantic_mapping_kind,
+            "semantic_rule_source": self.spec.semantic_rule_source,
             "summary_output": self.summary_output,
             "rule_ids": list(self.rule_ids),
         }
