@@ -19,12 +19,7 @@ from .analyzers.comment_code import analyze_comment_code_files
 from .analyzers.framework import AnalysisContext
 from .analyzers.icf import parse_icf_file, validate_icf_entries_against_program
 from .analyzers.mms import analyze_mms_interface_variables
-from .analyzers.modules import (
-    analyze_module_duplicates,
-    compare_modules,
-    debug_module_structure,
-    find_modules_by_name,
-)
+from .analyzers.modules import analyze_module_duplicates, compare_modules, debug_module_structure, find_modules_by_name
 from .analyzers.registry import get_default_cli_analyzers
 from .analyzers.rule_profiles import apply_rule_profile_to_report
 from .analyzers.shadowing import analyze_shadowing
@@ -42,7 +37,6 @@ VariableAnalysisMap = analysis_variable_analyses_module.VariableAnalysisMap
 VARIABLE_ANALYSES = analysis_variable_analyses_module.VARIABLE_ANALYSES
 HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = analysis_variable_analyses_module.HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
 LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS = analysis_variable_analyses_module.LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
-
 app_support = cast(Any, app_support_module)
 cache = cast(Any, cache_module)
 engine = cast(Any, engine_module)
@@ -54,24 +48,12 @@ _DRAFT_SOURCE_SUFFIXES = frozenset({".s", ".l"})
 _OFFICIAL_SOURCE_SUFFIXES = frozenset({".x", ".z"})
 
 
-def _extract_warning_name(item: str) -> str | None:
-    return cast(str | None, app_support.extract_warning_name(item))
-
-
 def _target_validation_warnings(target_name: str, warnings: list[str]) -> list[str]:
     return cast(list[str], app_support.target_validation_warnings(target_name, warnings))
 
 
 def _print_validation_warnings(warnings: list[str], *, limit: int = 12) -> None:
-    if not warnings:
-        return
-
-    emit_output(f"Validation warnings ({len(warnings)}):")
-    for item in warnings[:limit]:
-        _extract_warning_name(item)
-        emit_output(f"  - {item}")
-    if len(warnings) > limit:
-        emit_output(f"  - ... (+{len(warnings) - limit} more)")
+    app_support.print_validation_warnings(warnings, print_fn=emit_output, limit=limit)
 
 
 def _normalize_report_target_name(report: Any, target_name: str) -> Any:
@@ -227,18 +209,20 @@ def load_project(
     target_load_error_factory: Callable[..., Exception] | None = None,
     get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
 ) -> tuple[BasePicture, ProjectGraph]:
-    return analysis_loading_module.load_project(
-        cfg,
-        target_name=target_name,
-        use_cache=use_cache,
-        use_file_ast_cache=use_file_ast_cache,
-        require_analyzed_targets_fn=require_analyzed_targets_fn,
-        cache_key_for_target_fn=cache_key_for_target_fn,
-        target_load_error_factory=target_load_error_factory,
-        get_cache_dir_fn=get_cache_dir_fn,
-        ast_cache_cls=ASTCache,
-        engine_module=engine,
-    )
+    with console_module.live_status_line() as status_update_fn:
+        return analysis_loading_module.load_project(
+            cfg,
+            target_name=target_name,
+            use_cache=use_cache,
+            use_file_ast_cache=use_file_ast_cache,
+            require_analyzed_targets_fn=require_analyzed_targets_fn,
+            cache_key_for_target_fn=cache_key_for_target_fn,
+            target_load_error_factory=target_load_error_factory,
+            get_cache_dir_fn=get_cache_dir_fn,
+            ast_cache_cls=ASTCache,
+            engine_module=engine,
+            status_update_fn=status_update_fn,
+        )
 
 
 def load_program_ast(
@@ -247,12 +231,14 @@ def load_program_ast(
     *,
     force_dependency_resolution: bool = False,
 ) -> tuple[BasePicture, ProjectGraph]:
-    return analysis_loading_module.load_program_ast(
-        cfg,
-        program_name,
-        force_dependency_resolution=force_dependency_resolution,
-        engine_module=engine,
-    )
+    with console_module.live_status_line() as status_update_fn:
+        return analysis_loading_module.load_program_ast(
+            cfg,
+            program_name,
+            force_dependency_resolution=force_dependency_resolution,
+            engine_module=engine,
+            status_update_fn=status_update_fn,
+        )
 
 
 def force_refresh_ast(

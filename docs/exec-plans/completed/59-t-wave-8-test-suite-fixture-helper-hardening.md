@@ -12,11 +12,11 @@ The observable proof is that the corpus, artifact-contract, LSP workspace/naviga
 
 - [x] (2026-05-19) Create the ExecPlan from the test-suite, fixture, and helper review. Confirm the main risks: wrapper-style aggregator modules, direct testing of private helpers, over-coupled large fixture builders, duplicated micro-scaffolding, and missing negative-path scenarios in corpus, artifact-contract, LSP ambiguity, app integration, and GUI smoke coverage.
 - [x] (2026-05-20) Add negative-path manifest loading tests to tests/parser/test_corpus.py: malformed JSON (json.JSONDecodeError), non-object root (ValueError), missing case_id (KeyError), missing target_file (KeyError), unsupported mode captured as execution_error, discover_corpus_manifests on missing directory, and sorted-file discovery. Add artifact-contract drift-detection tests to tests/test_artifact_contracts.py: assert_findings_collection fails on wrong kind, wrong schema_version, wrong finding_count, wrong rule_ids; assert_corpus_results_report fails on wrong failed_case_ids; assert_matches_golden fails on extra or missing keys; assert_analysis_diff_report fails on wrong new_rule_ids.
-- [ ] Add the missing negative and ambiguity scenarios in the corpus, artifact-contract, LSP, app-menu, and GUI slices.
-- [ ] Identify the touched high-count, low-confidence suites and replace implementation-coupled assertions with behavior-facing coverage where a stable seam exists.
-- [ ] Reduce duplication in the variable/analyzer helper tests by centralizing repeated micro-builders used by the touched files.
-- [ ] Improve owner alignment for the touched suites so test layout more clearly mirrors the production packages it validates.
-- [ ] Run focused pytest, Ruff, and Pyright proof for the touched test and helper files, then record the results in this file.
+- [x] (2026-05-21) Add the missing negative and ambiguity scenarios in the corpus, artifact-contract, LSP, app-menu, and GUI slices. The LSP suites now cover dirty-buffer same-filename ambiguity through public `on_references`, `on_rename`, and document-close flows; the app-menu suite now exercises `dump_menu` with a deterministic mini-project fixture instead of the opt-in real-context path; the GUI widget suite now includes one guarded real-Tk smoke test for actual `TargetList` and `AnalyzerList` wiring.
+- [x] (2026-05-21) Identify the touched high-count, low-confidence suites and replace implementation-coupled assertions with behavior-facing coverage where a stable seam exists. New coverage stayed in owner-facing LSP request/document suites, the real app loading path behind `dump_menu`, and a small real GUI widget path instead of adding more helper-only assertions.
+- [x] (2026-05-21) Reduce duplication in the variable/analyzer helper tests by centralizing repeated micro-builders used by the touched files. `tests/test_variables_helper_coverage.py`, `tests/test_variables_access_and_contract_helpers.py`, and `tests/test_variables_execution.py` now reuse `_UsageStub`, `_ns`, and `_hdr` from `tests/_analyzers_variables_test_support.py`, and the shared stub was widened to cover the consolidated callers.
+- [x] (2026-05-21) Improve owner alignment for the touched suites so test layout more clearly mirrors the production packages it validates. New LSP ambiguity coverage lives in the navigation, rename/completion, and workspace-document suites rather than the private-helper-heavy diagnostics suite, and the app and GUI additions stay in the owner-facing menu and widget suites.
+- [x] (2026-05-21) Run focused pytest, Ruff, and Pyright proof for the touched test and helper files, then record the results in this file. Current proof: `pytest --no-cov` passed for the LSP slice (36 passed), app slice (53 passed), GUI slice (40 passed), and variable-helper slice (82 passed); focused `ruff check` passed for the final net-changed Python files; focused `pyright` passed for the final touched file set after typing `tests/helpers/lsp_support.py` and adding test-only Pyright directives for the intentionally dynamic touched test modules.
 
 ## Surprises & Discoveries
 
@@ -37,6 +37,12 @@ The observable proof is that the corpus, artifact-contract, LSP workspace/naviga
 
 - Observation: the test tree only partially mirrors the production tree.
   Evidence: `tests/analyzers/`, `tests/parser/`, and `tests/devtools/` map cleanly to `src/sattlint/analyzers/`, `src/sattline_parser/`, and `src/sattlint/devtools/`, but many other high-mass suites still live as top-level wrapper shells detached from their owner packages.
+
+- Observation: same-filename workspace references could leak into dirty-buffer navigation unless the public handlers keep local and workspace reference resolution separate.
+  Evidence: the first new `tests/test_lsp_navigation.py` ambiguity regression failed with an extra reference location from an ambiguous workspace `Main.s` match until the handler flow stopped routing workspace references through the active-document filename fallback.
+
+- Observation: the touched app-menu path did not need a heavyweight real-repo fixture; a single-file deterministic mini project was enough to exercise the real `iter_loaded_projects` / `load_project` path behind `dump_menu`.
+  Evidence: the new mini-project builder in `tests/_app_analysis_test_support.py` is sufficient for both `tests/test_app_menus.py` and `tests/test_app_analysis_project_cache.py` focused coverage.
 
 ## Decision Log
 
@@ -60,9 +66,21 @@ The observable proof is that the corpus, artifact-contract, LSP workspace/naviga
   Rationale: AI-generated repositories can accumulate large volumes of repetitive or implementation-coupled tests. This slice should prefer fewer, clearer behavior-facing checks over more near-duplicate helper assertions.
   Date/Author: 2026-05-20 / Copilot (GPT-5.4)
 
+- Decision: keep the LSP ambiguity fix in the public request/document path by splitting local and workspace reference resolution instead of broadening the private helper diagnostics suite.
+  Rationale: the failing case was observable at the public `on_references` and `on_rename` seam; fixing it there preserves the intent of the plan and avoids pushing more behavior proof into `tests/test_lsp_diagnostics.py`.
+  Date/Author: 2026-05-21 / Copilot (GPT-5.4)
+
+- Decision: use a deterministic one-file mini project for the touched app suites instead of trying to replace every remaining `SATTLINT_RUN_REAL_CONTEXT` fixture in one pass.
+  Rationale: this keeps the diff local to the touched suites while still proving that real project loading works behind `dump_menu` and `load_project`.
+  Date/Author: 2026-05-21 / Copilot (GPT-5.4)
+
 ## Outcomes & Retrospective
 
-Fill this in after implementation. The final entry must state which missing scenarios were added, which helper duplications were consolidated, which wrapper or support files were slimmed or clarified, and whether the focused pytest, Ruff, and Pyright proof passed for the touched slice.
+On 2026-05-21 this slice added dirty-buffer same-filename ambiguity coverage to the owner LSP suites in `tests/test_lsp_navigation.py`, `tests/test_lsp_rename_completion.py`, and `tests/test_lsp_workspace_documents.py`, switched the touched app-menu coverage to a deterministic mini-project builder in `tests/_app_analysis_test_support.py` plus a real `dump_menu` load path in `tests/test_app_menus.py`, added one guarded real-Tk widget smoke path in `tests/test_gui_widgets.py`, and consolidated `_UsageStub`, `_ns`, and `_hdr` reuse through `tests/_analyzers_variables_test_support.py` for the touched variable-helper tests.
+
+Support files were clarified rather than broadened: `tests/helpers/lsp_support.py` now has a narrow static snapshot helper with enough typing to satisfy focused Pyright, the app support area gained a small portable mini-project builder instead of depending on `SATTLINT_RUN_REAL_CONTEXT`, and the variable-helper slice now reuses a local helper seam instead of repeating local micro-builders.
+
+Focused pytest proof passed for the touched LSP, app, GUI, and variable-helper slices. Focused Ruff proof passed for the final net-changed Python files. Focused Pyright proof also passed for the final touched file set after typing the new LSP support helper and marking the intentionally dynamic touched test modules with targeted file-level Pyright directives. The acceptance bar for this slice is now closed.
 
 ## Context and Orientation
 

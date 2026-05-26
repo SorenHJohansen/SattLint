@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from pathlib import Path
+from typing import Any, Protocol, cast
 
 from sattlint_lsp.server import SnapshotBundle, build_source_path_index
+
+
+class _ProjectGraphWithSourceFiles(Protocol):
+    @property
+    def source_files(self) -> Collection[Path]: ...
+
+
+class _SnapshotWithProjectGraph(Protocol):
+    @property
+    def project_graph(self) -> _ProjectGraphWithSourceFiles: ...
 
 
 def write_text(path: Path, content: str) -> None:
@@ -12,10 +24,50 @@ def write_text(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def snapshot_bundle(snapshot, entry_file: Path) -> SnapshotBundle:
+def snapshot_bundle(snapshot: _SnapshotWithProjectGraph, entry_file: Path) -> SnapshotBundle:
     source_files = tuple(
         sorted(
             (path.resolve() for path in snapshot.project_graph.source_files),
+            key=lambda path: path.as_posix().casefold(),
+        )
+    )
+    by_name, by_key = build_source_path_index(source_files)
+    return SnapshotBundle(
+        snapshot=cast(Any, snapshot),
+        source_paths_by_name=by_name,
+        source_paths_by_key=by_key,
+        entry_file=entry_file.resolve(),
+        cache_key=entry_file.resolve().as_posix().casefold(),
+        source_files=source_files,
+    )
+
+
+class StaticSymbolSnapshot:
+    def __init__(
+        self,
+        *,
+        definitions: tuple[Any, ...] = (),
+        references: tuple[Any, ...] = (),
+        definitions_at: tuple[Any, ...] | None = None,
+    ) -> None:
+        self._definitions = definitions
+        self._references = references
+        self._definitions_at = definitions if definitions_at is None else definitions_at
+
+    def find_definitions(self, _reference_expr: str) -> list[Any]:
+        return list(self._definitions)
+
+    def find_definitions_at(self, _document_path: Path, _line: int, _column: int) -> list[Any]:
+        return list(self._definitions_at)
+
+    def find_references_to(self, _definition: Any) -> list[Any]:
+        return list(self._references)
+
+
+def snapshot_bundle_for_paths(snapshot: Any, entry_file: Path, *extra_paths: Path) -> SnapshotBundle:
+    source_files = tuple(
+        sorted(
+            {entry_file.resolve(), *(path.resolve() for path in extra_paths)},
             key=lambda path: path.as_posix().casefold(),
         )
     )

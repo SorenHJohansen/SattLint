@@ -57,6 +57,7 @@ from ._variables_contracts import (
 )
 from ._variables_effect_flow import EffectFlowTracker
 from ._variables_execution import (
+    analyze_library_dependency_typedef_usage,
     analyze_root_scope,
     analyze_single_module_with_context,
     analyze_typedef,
@@ -141,17 +142,22 @@ def analyze_variables(
     debug: bool = False,
     unavailable_libraries: set[str] | None = None,
     analyzed_target_is_library: bool = False,
-    include_dependency_moduletype_usage: bool = False,
+    include_dependency_moduletype_usage: bool | None = None,
     trace_recorder: AnalysisTraceRecorder | None = None,
     config: dict[str, Any] | None = None,
 ) -> VariablesReport:
+    effective_include_dependency_moduletype_usage = (
+        analyzed_target_is_library
+        if include_dependency_moduletype_usage is None
+        else include_dependency_moduletype_usage
+    )
     analyzer = VariablesAnalyzer(
         base_picture,
         debug=debug,
         fail_loudly=False,
         unavailable_libraries=unavailable_libraries,
         analyzed_target_is_library=analyzed_target_is_library,
-        include_dependency_moduletype_usage=include_dependency_moduletype_usage,
+        include_dependency_moduletype_usage=effective_include_dependency_moduletype_usage,
         trace_recorder=trace_recorder,
         config=config,
     )
@@ -274,6 +280,7 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
             canonical_path_fn=self._canonical_path,
             record_access_fn=self._record_access,
         )
+        self._contexts_by_module_path: dict[tuple[str, ...], ScopeContext] = {}
 
         self._root_env: dict[str, Variable] = {
             variable.name.lower(): variable for variable in (self.bp.localvariables or [])
@@ -368,6 +375,7 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
     _extract_field_path = extract_field_path
 
     _analyze_root_scope = analyze_root_scope
+    _analyze_library_dependency_typedef_usage = analyze_library_dependency_typedef_usage
     _run_post_traversal_analyses = run_post_traversal_analyses
     _collect_basepicture_issues = collect_basepicture_issues
     _collect_typedef_issues = collect_typedef_issues

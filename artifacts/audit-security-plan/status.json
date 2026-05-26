@@ -1,0 +1,32 @@
+{
+  "blocking_finding_count": 0,
+  "canonical_command": "sattlint-repo-audit --profile full --check public-readiness --skip-pipeline --fail-on high --output-dir artifacts/audit-security-plan",
+  "category_counts": {},
+  "fail_on": "high",
+  "finding_count": 0,
+  "findings_schema": {
+    "kind": "sattlint.findings",
+    "schema_version": 1
+  },
+  "generated_by": "sattlint.devtools.repo_audit_entrypoints",
+  "kind": "sattlint.repo_audit.status",
+  "latest_status_report": "artifacts/audit/status.json",
+  "latest_summary_report": "artifacts/audit/summary.json",
+  "max_severity": null,
+  "overall_status": "pass",
+  "pipeline_status_report": null,
+  "profile": "full",
+  "progress_report": "artifacts/audit-security-plan/progress.json",
+  "selected_checks": [
+    "public-readiness"
+  ],
+  "severity_counts": {
+    "critical": 0,
+    "high": 0,
+    "low": 0,
+    "medium": 0
+  },
+  "status_report": "artifacts/audit-security-plan/status.json",
+  "summary_report": "artifacts/audit-security-plan/summary.json",
+  "top_findings": []
+}

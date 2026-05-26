@@ -1,3 +1,5 @@
+# pyright: reportAttributeAccessIssue=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -11,10 +13,8 @@ from sattlint.analyzers import _variables_access as variables_access_module
 from sattlint.analyzers import _variables_contracts as variables_contracts_module
 from sattlint.analyzers.dataflow import DataflowAnalyzer
 from sattlint.resolution import AccessKind, CanonicalPath
-
-
-def _ns(**kwargs: Any) -> Any:
-    return SimpleNamespace(**kwargs)
+from tests.helpers.variable_test_support import UsageStub as _UsageStub
+from tests.helpers.variable_test_support import ns as _ns
 
 
 def _make_strict_access_helper(
@@ -33,31 +33,6 @@ def _make_strict_access_helper(
         site_stack=["site"],
         warn=(warnings if warnings is not None else []).append,
     )
-
-
-class _UsageStub:
-    def __init__(
-        self,
-        *,
-        read: bool = False,
-        written: bool = False,
-        is_unused: bool = False,
-        is_display_only: bool = False,
-        is_read_only: bool = False,
-        non_ui_read: bool = False,
-        ui_read: bool = False,
-        field_reads: dict[str, object] | None = None,
-        field_writes: dict[str, object] | None = None,
-    ) -> None:
-        self.read = read
-        self.written = written
-        self.is_unused = is_unused
-        self.is_display_only = is_display_only
-        self.is_read_only = is_read_only
-        self.non_ui_read = non_ui_read
-        self.ui_read = ui_read
-        self.field_reads = field_reads or {}
-        self.field_writes = field_writes or {}
 
 
 def test_variables_access_wrapper_helpers_delegate_and_parse_fields() -> None:

@@ -112,6 +112,11 @@ class AnalyzerSpec:
     run: Analyzer
     enabled: bool = True
     supports_live_diagnostics: bool = False
+    analyzer_attr: str = ""
+    context_kwargs: tuple[str, ...] = ()
+    direct_context: bool = False
+    semantic_mapping_kind: str | None = None
+    semantic_rule_source: str | None = None
 
 
 @dataclass(frozen=True)

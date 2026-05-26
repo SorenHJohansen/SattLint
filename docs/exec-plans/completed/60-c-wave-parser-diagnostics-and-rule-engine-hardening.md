@@ -9,13 +9,17 @@ This plan hardens the parser, validation, semantic-rule, and diagnostic seams th
 ## Progress
 
 - [x] (2026-05-19 00:00Z) Create this ExecPlan and capture the current parser, validation, analyzer-registry, semantic-aggregation, and diagnostic-projection seams.
-- [ ] (2026-05-19 00:00Z) Harden parser location fidelity so parse errors and derived header metadata no longer depend on column-shifting comment stripping or header-string regex extraction.
-- [ ] (2026-05-19 00:00Z) Replace string-only validation warnings with structured notices that preserve message, line, column, and length across `validation.py` and `engine.py`.
-- [ ] (2026-05-19 00:00Z) Make semantic diagnostic projection report missing-site and missing-definition drops explicitly instead of silently skipping findings.
-- [ ] (2026-05-20 00:00Z) Consolidate competing parser, validation-warning, and semantic-diagnostic styles so new rule work reuses one declared path instead of adding another manual variant.
-- [ ] (2026-05-19 00:00Z) Consolidate semantic-rule aggregation so analyzer metadata, rule mapping, and LSP exposure are declared from one seam instead of repeated in `registry.py`, `_sattline_semantic_rules.py`, and `sattline_semantics.py`.
-- [ ] (2026-05-19 00:00Z) Add focused regression coverage in the parser, engine, LSP, and analyzer-suite tests for source mapping, warning retention, projection-drop visibility, and semantic aggregation.
-- [ ] (2026-05-19 00:00Z) Run focused pytest, Ruff, and Pyright validation for the touched slice and move this plan to `docs/exec-plans/completed/` once all boxes are checked.
+- [x] (2026-05-21 00:00Z) Harden parser location fidelity so parse errors and derived header metadata no longer depend on column-shifting comment stripping or header-string regex extraction.
+- [x] (2026-05-21 00:00Z) Replace string-only validation warnings with structured notices that preserve message, line, column, and length across `validation.py` and `engine.py`.
+- [x] (2026-05-21 00:00Z) Make semantic diagnostic projection report missing-site and missing-definition drops explicitly instead of silently skipping findings.
+- [x] (2026-05-21 00:00Z) Consolidate competing parser, validation-warning, and semantic-diagnostic styles so new rule work reuses one declared path instead of adding another manual variant.
+- [x] (2026-05-21 00:00Z) Consolidate semantic-rule aggregation so analyzer metadata, rule mapping, and LSP exposure are declared from one seam instead of repeated in `registry.py`, `_sattline_semantic_rules.py`, and `sattline_semantics.py`.
+- [x] (2026-05-21 00:00Z) Add focused regression coverage in the parser, engine, LSP, and analyzer-suite tests for source mapping, warning retention, projection-drop visibility, and semantic aggregation.
+- [ ] (2026-05-21 00:00Z) Run focused pytest, Ruff, and Pyright validation for the touched slice and move this plan to `docs/exec-plans/completed/` once all boxes are checked.
+- [x] (2026-05-21 00:00Z) Focused pytest coverage for the touched parser, validation, LSP, cache, engine, and analyzer slices passed with `380 passed, 11 warnings`.
+- [x] (2026-05-21 00:00Z) Ruff on the touched slice passed with `All checks passed!`.
+- [x] (2026-05-21 00:00Z) Pyright on the touched source files passed with `0 errors, 0 warnings, 0 informations` after tightening local type annotations in the new diagnostic and semantic aggregation seams.
+- [ ] (2026-05-21 00:00Z) Full touched-file Pyright remains blocked by pre-existing strict-test debt in `tests/test_lsp_diagnostics.py` and `tests/parser/test_engine.py`, so this plan stays in `active/` until that unrelated backlog is handled or the finish-gate expectation is narrowed.
 
 ## Surprises & Discoveries
 
@@ -29,6 +33,12 @@ This plan hardens the parser, validation, semantic-rule, and diagnostic seams th
   Evidence: `src/sattlint/core/diagnostics.py` returns early when a site has no file or span, skips issues when `site is None`, and skips variable findings when no definition span is found.
 - Observation: semantic aggregation is extensible in theory but still hardcoded in practice.
   Evidence: `src/sattlint/analyzers/_registry_spec_templates.py` already describes analyzer registration declaratively, but `src/sattlint/analyzers/sattline_semantics.py` still manually calls each analyzer and manually maps each report into semantic issues.
+- Observation: parse-error remapping needed both caret-context rewriting and summary-suffix rewriting to stop leaking cleaned-source coordinates.
+  Evidence: `src/sattline_parser/api.py` used Lark's stock error formatting, which still embedded `at line X col Y` text even after the main caret line was rebuilt against original source.
+- Observation: warning retention changes ripple into engine tests because several test doubles emulate `ProjectGraph` with `SimpleNamespace` rather than real graph instances.
+  Evidence: `tests/parser/test_engine.py` needed compatibility updates once `warning_notices` became part of the stable graph-facing contract.
+- Observation: the practical Pyright blocker for this slice is not the new source code but legacy strictness debt in high-volume test files.
+  Evidence: source-only Pyright on the touched implementation files completed with `0 errors`, while touched-file runs that included `tests/test_lsp_diagnostics.py` and `tests/parser/test_engine.py` reported hundreds of existing `reportPrivateUsage`, unknown-parameter, and unknown-member violations in unrelated lower sections of those files.
 
 ## Decision Log
 
@@ -44,7 +54,11 @@ This plan hardens the parser, validation, semantic-rule, and diagnostic seams th
 
 ## Outcomes & Retrospective
 
-Planning baseline only. No code has changed yet. The intended end state is a parser and semantic-analysis slice where source positions survive preprocessing, warnings and diagnostics preserve structured location data, missing projection sites become observable, and new semantic rule families can be added by extending the analyzer metadata seam rather than editing several manual mapping blocks.
+This slice is implemented. Parser comment stripping now preserves a mapping back to original source so parse errors, caret output, and summary locations point at the user's real file instead of the cleaned parser input. Header `name:` extraction is deterministic rather than regex-scanned, and numeric literal spans are either real spans or explicitly absent instead of fake `(0, 0)` placeholders.
+
+Validation warnings now travel as structured notices through validation and engine flows, with string rendering delayed until the CLI/result boundary. Semantic diagnostic projection now records dropped findings explicitly, and semantic snapshots retain that evidence for tests and debug inspection. Semantic aggregation no longer relies on a manual analyzer call-and-map ladder; the registry metadata now declares semantic contributors, mapping kinds, and rule sources.
+
+Validation evidence for the completed slice is strong. Focused pytest for the touched parser, validation, engine, cache, LSP, and analyzer suites passed with `380 passed, 11 warnings`. Ruff on the touched slice passed cleanly. Pyright on the touched source files passed with `0 errors, 0 warnings, 0 informations` after local annotation fixes. The remaining finish-gate blocker is pre-existing strict-test debt in `tests/test_lsp_diagnostics.py` and `tests/parser/test_engine.py`, so the plan remains in `active/` pending a decision on whether to clean that backlog or narrow the finish-gate requirement.
 
 ## Context and Orientation
 

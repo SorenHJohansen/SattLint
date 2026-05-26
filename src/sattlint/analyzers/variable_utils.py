@@ -14,10 +14,30 @@ if TYPE_CHECKING:
 def is_const_candidate(self: VariablesAnalyzer, variable: Variable) -> bool:
     return (
         isinstance(variable.datatype, Simple_DataType)
+        and variable.datatype is not Simple_DataType.TIME
         and variable.datatype is not Simple_DataType.DURATION
         and not bool(variable.opsave)
         and not bool(variable.secure)
     )
+
+
+def external_mapping_usage(moduletype_name: str, target_name: str | None) -> tuple[bool, bool] | None:
+    mt_key = moduletype_name.casefold()
+    target_key = target_name.casefold() if target_name is not None else ""
+
+    if mt_key == "mmsreadwrite":
+        if target_key == "inputvariable":
+            return (True, False)
+        if target_key == "outputvariable":
+            return (False, True)
+
+    if mt_key.startswith("mmsread") and target_key in {"localvariable", "outputvariable", "error", "mmsreaderror"}:
+        return (False, True)
+
+    if mt_key.startswith("mmswrite") and target_key in {"localvariable", "writedata", "inputvariable"}:
+        return (True, False)
+
+    return None
 
 
 def same_origin_file_stem(origin_file: str | None, root_origin: str | None) -> bool:
@@ -31,4 +51,4 @@ def same_origin_file_stem(origin_file: str | None, root_origin: str | None) -> b
         return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
 
 
-__all__ = ["is_const_candidate", "same_origin_file_stem"]
+__all__ = ["external_mapping_usage", "is_const_candidate", "same_origin_file_stem"]

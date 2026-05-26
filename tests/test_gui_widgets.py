@@ -1,3 +1,7 @@
+# pyright: reportArgumentType=false, reportMissingParameterType=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnnecessaryCast=false
+
+import tkinter as tk
+from tkinter import ttk
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -10,6 +14,15 @@ from sattlint_gui.widgets.analyzer_list import AnalyzerList
 from sattlint_gui.widgets.report_view import _ISSUE_COUNT_RE, _TARGET_HEADER_RE, ReportView
 from sattlint_gui.widgets.target_list import TargetList
 from tests._gui_test_support import _FakeListbox, _FakeTextWidget, _FakeVar
+
+
+def _real_tk_root() -> tk.Tk:
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:
+        pytest.skip(f"real Tk root unavailable: {exc}")
+    root.withdraw()
+    return root
 
 
 def test_analyzer_list_selection():
@@ -40,6 +53,36 @@ def test_analyzer_list_selection():
 
     analyzer_list.deselect_all()
     assert analyzer_list.get_selected_keys() == []
+
+
+def test_target_and_analyzer_widgets_smoke_with_real_tk() -> None:
+    root = _real_tk_root()
+    try:
+        target_list = TargetList(root, title="Configured Targets")
+        target_list.set_targets(["TargetA", "TargetB"])
+        analyzer_list = AnalyzerList(root, title="Analyzers")
+        analyzer_list.set_analyzers(
+            [
+                binding.AnalyzerDescriptor("unused", "Unused Variables"),
+                binding.AnalyzerDescriptor("icf", "ICF Validation"),
+            ]
+        )
+        root.update_idletasks()
+
+        assert target_list._list.get(0, tk.END) == ("TargetA", "TargetB")
+        assert analyzer_list.get_selected_keys() == ["unused", "icf"]
+
+        header = next(child for child in analyzer_list.winfo_children() if isinstance(child, ttk.Frame))
+        buttons = [child for child in header.winfo_children() if isinstance(child, ttk.Button)]
+        assert len(buttons) == 2
+
+        buttons[1].invoke()
+        assert analyzer_list.get_selected_keys() == []
+
+        buttons[0].invoke()
+        assert analyzer_list.get_selected_keys() == ["unused", "icf"]
+    finally:
+        root.destroy()
 
 
 def test_analyzer_list_headless_init(monkeypatch):

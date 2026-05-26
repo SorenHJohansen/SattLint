@@ -22,7 +22,7 @@ from ._semantic_helpers import (
     path_startswith,
     source_file_key,
 )
-from .diagnostics import SemanticDiagnostic
+from .diagnostics import DroppedDiagnosticIssue, SemanticDiagnostic
 from .safety_paths import (
     DEFAULT_SAFETY_SIGNAL_KEYWORDS,
     SafetyPathTrace,
@@ -136,6 +136,10 @@ def _semantic_diagnostics_by_file_factory() -> SemanticDiagnosticsByFile:
     return {}
 
 
+def _semantic_diagnostic_drops_factory() -> tuple[DroppedDiagnosticIssue, ...]:
+    return ()
+
+
 def _symbol_definition_map_factory() -> dict[DefinitionKey, SymbolDefinition]:
     return {}
 
@@ -156,6 +160,9 @@ class SemanticAnalysisArtifacts:
     effect_flow_display_names: EffectFlowDisplayNames = field(default_factory=_effect_flow_display_names_factory)
     semantic_diagnostics_by_file: SemanticDiagnosticsByFile = field(
         default_factory=_semantic_diagnostics_by_file_factory
+    )
+    semantic_diagnostic_drops: tuple[DroppedDiagnosticIssue, ...] = field(
+        default_factory=_semantic_diagnostic_drops_factory
     )
 
 
@@ -214,6 +221,11 @@ class SemanticSnapshot:
     )
     _semantic_diagnostics_by_file: SemanticDiagnosticsByFile = field(
         default_factory=_semantic_diagnostics_by_file_factory,
+        repr=False,
+        compare=False,
+    )
+    _semantic_diagnostic_drops: tuple[DroppedDiagnosticIssue, ...] = field(
+        default_factory=_semantic_diagnostic_drops_factory,
         repr=False,
         compare=False,
     )
@@ -421,6 +433,9 @@ class SemanticSnapshot:
         if len(candidates) == 1:
             return candidates
         return ()
+
+    def semantic_diagnostic_drops(self) -> tuple[DroppedDiagnosticIssue, ...]:
+        return self._semantic_diagnostic_drops
 
     def to_snapshot_dict(self) -> dict[str, Any]:
         """Serialize symbol resolution state for invariant verification."""

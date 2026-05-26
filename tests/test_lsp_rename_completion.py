@@ -1,3 +1,5 @@
+# pyright: reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false
+
 """Rename and completion focused LSP tests."""
 
 from __future__ import annotations
@@ -9,6 +11,7 @@ from lsprotocol.types import CompletionItem as LspCompletionItem
 from lsprotocol.types import CompletionItemKind
 
 from sattlint.editor_api import load_workspace_snapshot
+from sattlint_lsp.document_state import DocumentState
 from sattlint_lsp.local_parser import FullDocumentParserAdapter
 from sattlint_lsp.server import (
     collect_completion_candidates,
@@ -17,7 +20,12 @@ from sattlint_lsp.server import (
     on_completion,
     on_rename,
 )
-from tests.helpers.lsp_support import write_text
+from tests.helpers.lsp_support import (
+    StaticSymbolSnapshot,
+    snapshot_bundle_for_paths,
+    source_with_basepicture_direct_code,
+    write_text,
+)
 
 
 def test_on_rename_falls_back_to_local_snapshot_when_workspace_snapshot_fails(monkeypatch, tmp_path):
@@ -154,6 +162,83 @@ def test_on_completion_returns_empty_list_for_invalid_params() -> None:
     result = on_completion(cast(Any, fake_ls), cast(Any, params))
 
     assert result.items == []
+
+
+def test_on_rename_ignores_ambiguous_same_name_workspace_references_for_dirty_document(monkeypatch, tmp_path):
+    source = source_with_basepicture_direct_code()
+    edited_source = source.replace("Dv: integer := 0;", "Renamed: integer := 0;").replace(
+        "        Dv = 1;",
+        "        Renamed = Renamed;",
+    )
+
+    entry_file = tmp_path / "Program" / "Main.s"
+    support_file = tmp_path / "Libs" / "Support" / "Main.s"
+    backup_file = tmp_path / "Libs" / "Backup" / "Main.s"
+    write_text(entry_file, source)
+    write_text(support_file, source)
+    write_text(backup_file, source)
+
+    document = SimpleNamespace(uri=entry_file.resolve().as_uri(), source=source, version=1)
+    fake_ls = SimpleNamespace(
+        workspace=SimpleNamespace(get_text_document=lambda uri: document),
+        document_states={
+            document.uri: DocumentState(
+                uri=document.uri,
+                path=entry_file,
+                version=2,
+                text=edited_source,
+                is_dirty=True,
+            )
+        },
+        local_parser=FullDocumentParserAdapter(),
+        settings=SimpleNamespace(max_completion_items=20),
+    )
+    target_line = edited_source.splitlines().index("        Renamed = Renamed;")
+    params = SimpleNamespace(
+        text_document=SimpleNamespace(uri=document.uri),
+        position=SimpleNamespace(
+            line=target_line,
+            character=edited_source.splitlines()[target_line].rindex("Renamed"),
+        ),
+        new_name="FinalName",
+    )
+    fake_bundle = snapshot_bundle_for_paths(
+        StaticSymbolSnapshot(
+            references=(
+                SimpleNamespace(
+                    canonical_path="BasePicture.Renamed",
+                    source_file="Main.s",
+                    source_library=None,
+                    line=40,
+                    column=8,
+                    length=len("Renamed"),
+                    text="Renamed",
+                ),
+                SimpleNamespace(
+                    canonical_path="BasePicture.Renamed",
+                    source_file="Main.s",
+                    source_library=None,
+                    line=60,
+                    column=6,
+                    length=len("Renamed"),
+                    text="Renamed",
+                ),
+            ),
+        ),
+        entry_file,
+        support_file,
+        backup_file,
+    )
+
+    monkeypatch.setattr("sattlint_lsp._server_document._load_snapshot_bundle", lambda ls, path, **kwargs: fake_bundle)
+
+    edit = on_rename(cast(Any, fake_ls), cast(Any, params))
+
+    assert edit is not None
+    changes = cast(Any, edit).changes
+    assert changes is not None
+    assert list(changes) == [document.uri]
+    assert len(changes[document.uri]) == 3
 
 
 def test_on_completion_ignores_dependency_list_documents(monkeypatch, tmp_path):

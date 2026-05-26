@@ -43,6 +43,7 @@ class _VariablesAnalyzerFacadeState(Protocol):
     _effect_flow_display_names: dict[tuple[str, ...], str]
     _analysis_warnings: list[str]
     _issues: list[VariableIssue]
+    _contexts_by_module_path: dict[tuple[str, ...], Any]
 
 
 class VariablesAnalyzerFacadePropertiesMixin:
@@ -137,6 +138,10 @@ class VariablesAnalyzerFacadePropertiesMixin:
             source_key: tuple(sorted(target_keys))
             for source_key, target_keys in self._state()._effect_flow_edges.items()
         }
+
+    @property
+    def contexts_by_module_path(self) -> dict[tuple[str, ...], Any]:
+        return self._state()._contexts_by_module_path
 
     @property
     def effect_flow_display_names(self) -> dict[tuple[str, ...], str]:

@@ -412,7 +412,7 @@ ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
 ENDDEF (*BasePicture*);
 """
     bp = _parse_to_basepicture(code)
-    warnings: list[str] = []
+    warnings = []
 
     validate_transformed_basepicture(
         bp,
@@ -421,4 +421,8 @@ ENDDEF (*BasePicture*);
     )
 
     assert len(warnings) == 1
-    assert "maps 'Flag' with datatype 'boolean' to parameter target 'Value' with datatype 'integer'" in warnings[0]
+    assert warnings[0].line == 17
+    assert warnings[0].column == 9
+    assert (
+        "maps 'Flag' with datatype 'boolean' to parameter target 'Value' with datatype 'integer'" in warnings[0].message
+    )

@@ -4,6 +4,13 @@ from ._app_analysis_test_support import *
 
 def test_load_project_saves_cache_after_successful_merge(monkeypatch):
     saved: dict[str, object] = {}
+    root_bp = SimpleNamespace(header=SimpleNamespace(name="TargetA"), origin_file="TargetA.s")
+    graph = SimpleNamespace(
+        ast_by_name={"TargetA": root_bp},
+        missing=[],
+        warnings=[],
+        source_files={Path("programs/TargetA.s")},
+    )
 
     class FakeCache:
         def __init__(self, cache_dir):
@@ -21,12 +28,7 @@ def test_load_project_saves_cache_after_successful_merge(monkeypatch):
             self.kwargs = kwargs
 
         def resolve(self, target_name, strict=False):
-            return SimpleNamespace(
-                ast_by_name={target_name: "root-bp"},
-                missing=[],
-                warnings=[],
-                source_files={Path("programs/TargetA.s")},
-            )
+            return graph
 
         def _find_deps_with_context(self, target_name, requester_dir):
             return None
@@ -51,12 +53,7 @@ def test_load_project_saves_cache_after_successful_merge(monkeypatch):
 
     assert result == (
         "merged",
-        SimpleNamespace(
-            ast_by_name={"TargetA": "root-bp"},
-            missing=[],
-            warnings=[],
-            source_files={Path("programs/TargetA.s")},
-        ),
+        graph,
     )
     assert saved["key"] == "cache-key"
     assert saved["project"] == result

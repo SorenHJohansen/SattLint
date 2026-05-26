@@ -1,3 +1,5 @@
+# pyright: reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false
+
 """Tests for app analysis project loading and AST cache behavior."""
 
 from pathlib import Path
@@ -7,11 +9,13 @@ from typing import Any, cast
 import pytest
 
 from sattlint import app_analysis
+from tests.helpers.app_projects import build_mini_project_context
 
 
 def test_load_project_returns_cached_project_without_building_loader(monkeypatch):
     cached_project = ("bp-cached", SimpleNamespace())
     seen_cache_dirs: list[Path] = []
+    validate_calls: list[tuple[object, bool]] = []
 
     class FakeCache:
         def __init__(self, cache_dir):
@@ -21,6 +25,10 @@ def test_load_project_returns_cached_project_without_building_loader(monkeypatch
         def load(self, key):
             assert key == "cache-key"
             return {"project": cached_project}
+
+        def validate(self, payload, *, fast=False):
+            validate_calls.append((payload, fast))
+            return True
 
     monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
     monkeypatch.setattr(
@@ -45,9 +53,90 @@ def test_load_project_returns_cached_project_without_building_loader(monkeypatch
 
     assert result == cached_project
     assert seen_cache_dirs == [Path("custom-cache-dir")]
+    assert validate_calls == [({"project": cached_project}, False)]
+
+
+def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
+    cached_project = ("bp-cached", SimpleNamespace())
+    loader_calls: list[dict[str, object]] = []
+    save_calls: list[tuple[str, dict[str, object]]] = []
+
+    class FakeCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def load(self, key):
+            assert key == "cache-key"
+            return {"project": cached_project, "files": {"programs/TargetA.s": (1, 1)}}
+
+        def validate(self, payload, *, fast=False):
+            assert payload["project"] == cached_project
+            assert fast is False
+            return False
+
+        def save(self, key, **kwargs):
+            save_calls.append((key, kwargs))
+
+    class FakeLoader:
+        def __init__(self, **kwargs):
+            loader_calls.append(kwargs)
+
+        def resolve(self, target_name, strict=False):
+            assert target_name == "TargetA"
+            assert strict is False
+            return SimpleNamespace(
+                ast_by_name={"TargetA": SimpleNamespace(header=SimpleNamespace(name="TargetA"))},
+                missing=[],
+                warnings=[],
+                source_files={Path("programs/TargetA.s")},
+            )
+
+        def _find_deps_with_context(self, target_name, requester_dir):
+            return None
+
+        def _read_deps(self, deps_path):
+            return []
+
+        def _flush_lookup_cache(self):
+            return None
+
+    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
+    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(
+        app_analysis.engine_module,
+        "merge_project_basepicture",
+        lambda root_bp, _graph: ("bp-fresh", root_bp.header.name),
+    )
+
+    result = app_analysis.load_project(
+        {
+            "program_dir": "programs",
+            "other_lib_dirs": [],
+            "ABB_lib_dir": "abb",
+            "mode": "draft",
+            "scan_root_only": True,
+            "debug": False,
+            "analyzed_programs_and_libraries": ["TargetA"],
+        },
+        cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
+        get_cache_dir_fn=lambda: Path("cache-dir"),
+    )
+
+    saved_bp, saved_graph = result
+    assert saved_bp == ("bp-fresh", "TargetA")
+    assert getattr(saved_graph, "source_files", None) == {Path("programs/TargetA.s")}
+    assert len(loader_calls) == 1
+    assert len(save_calls) == 1
+    assert save_calls[0][0] == "cache-key"
+    saved_project, cached_graph = cast(tuple[object, object], save_calls[0][1]["project"])
+    assert saved_project == ("bp-fresh", "TargetA")
+    assert getattr(cached_graph, "source_files", None) == {Path("programs/TargetA.s")}
+    assert save_calls[0][1]["files"] == {Path("programs/TargetA.s")}
 
 
 def test_load_project_raises_target_load_error_when_root_program_missing(monkeypatch):
+    loader_kwargs: dict[str, object] = {}
+
     class FakeCache:
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
@@ -60,6 +149,7 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
 
     class FakeLoader:
         def __init__(self, **kwargs):
+            loader_kwargs.update(kwargs)
             self.kwargs = kwargs
 
         def resolve(self, target_name, strict=False):
@@ -75,6 +165,9 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
 
         def _read_deps(self, deps_path):
             return ["Dependency"]
+
+        def _flush_lookup_cache(self):
+            return None
 
     captured: dict[str, object] = {}
 
@@ -107,6 +200,7 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
         "warnings": ["dep warning"],
         "direct_dependencies": ["Dependency"],
     }
+    assert callable(loader_kwargs.get("status_update_fn"))
 
 
 def test_load_program_ast_raises_when_program_was_not_parsed(monkeypatch):
@@ -116,6 +210,9 @@ def test_load_program_ast_raises_when_program_was_not_parsed(monkeypatch):
 
         def resolve(self, program_name, strict=False):
             return SimpleNamespace(ast_by_name={"Other": "bp-other"})
+
+        def _flush_lookup_cache(self):
+            return None
 
     monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
 
@@ -131,6 +228,105 @@ def test_load_program_ast_raises_when_program_was_not_parsed(monkeypatch):
             },
             "TargetA",
         )
+
+
+def test_load_project_parses_portable_mini_project(tmp_path):
+    context = build_mini_project_context(tmp_path)
+
+    project_bp, graph = app_analysis.load_project(
+        cast(dict[str, object], context["cfg"]),
+        use_cache=False,
+        get_cache_dir_fn=lambda: tmp_path / "cache-dir",
+    )
+
+    assert project_bp.header.name == "BasePicture"
+    assert context["target_name"] in graph.ast_by_name
+    assert cast(Path, context["target_file"]).resolve() in graph.source_files
+
+
+def test_load_project_library_target_includes_configured_reverse_consumers(monkeypatch):
+    save_calls: list[tuple[str, dict[str, object]]] = []
+    visit_calls: list[tuple[str, Path, bool]] = []
+
+    class FakeCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def load(self, key):
+            assert key == "cache-key"
+            return None
+
+        def save(self, key, **kwargs):
+            save_calls.append((key, kwargs))
+
+    root_bp = SimpleNamespace(
+        header=SimpleNamespace(name="LibraryTarget"),
+        origin_file="LibraryTarget.s",
+    )
+
+    class FakeLoader:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def resolve(self, target_name, strict=False):
+            assert target_name == "LibraryTarget"
+            assert strict is False
+            return SimpleNamespace(
+                ast_by_name={target_name: root_bp},
+                missing=[],
+                warnings=[],
+                source_files={Path("ProjectLib/LibraryTarget.s")},
+            )
+
+        def _find_deps_with_context(self, target_name, requester_dir):
+            mapping = {
+                "LibraryTarget": None,
+                "ConsumerTarget": Path("ProjectLib/ConsumerTarget.l"),
+                "OtherTarget": Path("programs/OtherTarget.l"),
+            }
+            return mapping.get(target_name)
+
+        def _read_deps(self, deps_path):
+            if deps_path == Path("ProjectLib/ConsumerTarget.l"):
+                return ["LibraryTarget"]
+            if deps_path == Path("programs/OtherTarget.l"):
+                return ["Elsewhere"]
+            return []
+
+        def _visit(self, name, graph, strict, *, requester_dir, syntax_check=False):
+            visit_calls.append((name, requester_dir, syntax_check))
+            graph.ast_by_name[name] = SimpleNamespace(header=SimpleNamespace(name=name))
+            graph.source_files.add(Path(f"ProjectLib/{name}.s"))
+
+        def _flush_lookup_cache(self):
+            return None
+
+    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
+    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(
+        app_analysis.engine_module,
+        "merge_project_basepicture",
+        lambda bp, graph: (bp.header.name, tuple(sorted(graph.ast_by_name))),
+    )
+
+    project_bp, graph = app_analysis.load_project(
+        {
+            "program_dir": "programs",
+            "other_lib_dirs": ["ProjectLib"],
+            "ABB_lib_dir": "abb",
+            "mode": "draft",
+            "scan_root_only": False,
+            "debug": False,
+            "analyzed_programs_and_libraries": ["LibraryTarget", "ConsumerTarget", "OtherTarget"],
+        },
+        cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
+        get_cache_dir_fn=lambda: Path("cache-dir"),
+    )
+
+    assert project_bp == ("LibraryTarget", ("ConsumerTarget", "LibraryTarget"))
+    assert sorted(graph.ast_by_name) == ["ConsumerTarget", "LibraryTarget"]
+    assert visit_calls == [("ConsumerTarget", Path("ProjectLib"), False)]
+    assert save_calls[0][0] == "cache-key"
 
 
 def test_force_refresh_ast_clears_cache_entries_and_reloads_all_targets():

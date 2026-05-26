@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 import tomllib
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -12,6 +13,8 @@ from typing import Any
 from urllib.parse import quote
 
 import context_health
+
+from sattlint.devtools.artifact_readiness import ReadinessError, assert_artifact_dir_ready
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AUDIT_DIR = REPO_ROOT / "artifacts" / "audit"
@@ -465,6 +468,7 @@ def _build_ratchet_inventory(
 
 
 def build_report(audit_dir: Path) -> dict[str, Any]:
+    assert_artifact_dir_ready(audit_dir)
     audit_status = _read_json(audit_dir / "status.json")
     audit_summary = _read_json(audit_dir / "summary.json")
     ruff_report = _read_json(audit_dir / "pipeline" / "ruff.json")
@@ -1363,7 +1367,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
     audit_dir = args.audit_dir if args.audit_dir.is_absolute() else REPO_ROOT / args.audit_dir
-    report = build_report(audit_dir)
+    try:
+        report = build_report(audit_dir)
+    except ReadinessError as error:
+        print(f"Audit directory not ready: {audit_dir}: {error}", file=sys.stderr)
+        return 1
 
     if args.json_output is not None:
         json_path = args.json_output if args.json_output.is_absolute() else REPO_ROOT / args.json_output

@@ -7,7 +7,6 @@ Split into responsibility-based mixins for maintainability.
 
 from __future__ import annotations
 
-import re
 from typing import Any, TypeGuard, cast
 
 from lark import Token, Transformer, Tree
@@ -44,9 +43,6 @@ def _is_tree(node: object) -> TypeGuard[TransformerTree]:
     return hasattr(node, "data") and hasattr(node, "children")
 
 
-_PROGRAM_NAME_RE = re.compile(r",\s*name:\s*(\S+)", re.IGNORECASE)
-
-
 def _iter_tree_children(node: object) -> tuple[TransformerItem, ...]:
     """Yield tree children when given a Tree-like node, otherwise return an empty tuple."""
     if not _is_tree(node):
@@ -69,10 +65,13 @@ def _extract_program_name_from_header_lines(tree: TransformerTree) -> str | None
     for child in _tree_children(tree):
         if _is_tree(child) and child.data == "program_date_line":
             for token in _iter_tree_children(child):
-                raw = str(token).strip('"')
-                match = _PROGRAM_NAME_RE.search(raw)
-                if match:
-                    return match.group(1).strip()
+                raw = _strip_quoted(str(token))
+                for field in raw.split(","):
+                    name, separator, value = field.partition(":")
+                    if separator and name.strip().casefold() == "name":
+                        program_name = value.strip()
+                        if program_name:
+                            return program_name
     return None
 
 

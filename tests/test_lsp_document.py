@@ -1,8 +1,4 @@
-"""Tests for LSP document state and request handlers.
-
-Covers incremental parsing, local snapshots, workspace diagnostics,
-and hover, reference, rename, definition, and completion handlers.
-"""
+"""Tests for LSP document state, local snapshots, and request handlers."""
 
 from pathlib import Path
 from types import SimpleNamespace

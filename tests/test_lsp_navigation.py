@@ -1,3 +1,5 @@
+# pyright: reportMissingParameterType=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false
+
 """Navigation-focused LSP tests."""
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ import pytest
 from sattline_parser.models.ast_model import SourceSpan
 from sattlint.core.semantic import SymbolDefinition
 from sattlint.editor_api import load_source_snapshot, load_workspace_snapshot
+from sattlint_lsp.document_state import DocumentState
 from sattlint_lsp.local_parser import FullDocumentParserAdapter
 from sattlint_lsp.server import (
     _overlay_definition_candidates,
@@ -19,7 +22,14 @@ from sattlint_lsp.server import (
     on_references,
     resolve_definition_path,
 )
-from tests.helpers.lsp_support import snapshot_bundle, source_with_unused_variable, write_text
+from tests.helpers.lsp_support import (
+    StaticSymbolSnapshot,
+    snapshot_bundle,
+    snapshot_bundle_for_paths,
+    source_with_basepicture_direct_code,
+    source_with_unused_variable,
+    write_text,
+)
 
 
 def test_overlay_definition_candidates_prefers_dirty_buffer_symbol(tmp_path):
@@ -162,6 +172,83 @@ ENDDEF (*BasePicture*);
     assert locations is not None
     assert len(locations) == 3
     assert all(location.uri.casefold() == document.uri.casefold() for location in locations)
+
+
+def test_on_references_ignores_ambiguous_same_name_workspace_matches_for_dirty_document(monkeypatch, tmp_path):
+    source = source_with_basepicture_direct_code()
+    edited_source = source.replace("Dv: integer := 0;", "Renamed: integer := 0;").replace(
+        "        Dv = 1;",
+        "        Renamed = Renamed;",
+    )
+
+    entry_file = tmp_path / "Program" / "Main.s"
+    support_file = tmp_path / "Libs" / "Support" / "Main.s"
+    backup_file = tmp_path / "Libs" / "Backup" / "Main.s"
+    write_text(entry_file, source)
+    write_text(support_file, source)
+    write_text(backup_file, source)
+
+    document = SimpleNamespace(uri=entry_file.resolve().as_uri(), source=source, version=1)
+    fake_ls = SimpleNamespace(
+        workspace=SimpleNamespace(get_text_document=lambda uri: document),
+        document_states={
+            document.uri: DocumentState(
+                uri=document.uri,
+                path=entry_file,
+                version=2,
+                text=edited_source,
+                is_dirty=True,
+            )
+        },
+        local_parser=FullDocumentParserAdapter(),
+        settings=SimpleNamespace(max_completion_items=20),
+    )
+    target_line = edited_source.splitlines().index("        Renamed = Renamed;")
+    params = SimpleNamespace(
+        text_document=SimpleNamespace(uri=document.uri),
+        position=SimpleNamespace(
+            line=target_line,
+            character=edited_source.splitlines()[target_line].rindex("Renamed"),
+        ),
+        context=SimpleNamespace(includeDeclaration=False),
+    )
+    workspace_definition = SymbolDefinition(
+        canonical_path="BasePicture.Renamed",
+        kind="local",
+        datatype="integer",
+        declaration_module_path=("BasePicture",),
+        display_module_path=("BasePicture",),
+        source_file="Main.s",
+        declaration_span=SourceSpan(5, 4),
+    )
+    fake_bundle = snapshot_bundle_for_paths(
+        StaticSymbolSnapshot(
+            definitions=(workspace_definition,),
+            references=(
+                SimpleNamespace(
+                    canonical_path="BasePicture.Renamed",
+                    source_file="Main.s",
+                    source_library=None,
+                    line=40,
+                    column=8,
+                    length=len("Renamed"),
+                    text="Renamed",
+                ),
+            ),
+        ),
+        entry_file,
+        support_file,
+        backup_file,
+    )
+
+    monkeypatch.setattr("sattlint_lsp._server_document._load_snapshot_bundle", lambda ls, path, **kwargs: fake_bundle)
+
+    locations = on_references(cast(Any, fake_ls), cast(Any, params))
+
+    assert locations is not None
+    assert len(locations) == 2
+    assert all(location.uri.casefold() == document.uri.casefold() for location in locations)
+    assert max(location.range.start.line for location in locations) < 20
 
 
 def test_on_definition_falls_back_to_local_snapshot_when_workspace_snapshot_fails(monkeypatch, tmp_path):

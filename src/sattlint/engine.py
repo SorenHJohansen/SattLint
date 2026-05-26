@@ -1,10 +1,12 @@
 """Parsing and project-loading engine for SattLine sources."""
 
+import contextlib
 import logging
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
+from typing import cast
 
 from lark import Lark
 from lark.exceptions import UnexpectedInput, VisitError
@@ -14,16 +16,33 @@ from sattline_parser import parse_source_file as parser_core_parse_source_file
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.api import describe_parse_error, read_text_with_fallback
 from sattline_parser.grammar.parser_decode import is_compressed, preprocess_sl_text
-from sattline_parser.models.ast_model import (
-    BasePicture,
-    DataType,
-    ModuleTypeDef,
-)
+from sattline_parser.models.ast_model import BasePicture, DataType, ModuleTypeDef
 from sattline_parser.transformer.sl_transformer import SLTransformer
 
+from ._engine_dependency_helpers import collect_dependency_version_conflicts as _collect_dependency_version_conflicts
+from ._engine_graphics_helpers import (
+    attach_graphics_companion as _attach_graphics_companion,
+)
+from ._engine_graphics_helpers import (
+    graphics_companion_needs_refresh as _graphics_companion_needs_refresh,
+)
+from ._engine_graphics_helpers import (
+    graphics_source_context_path as _graphics_source_context_path,
+)
+from ._engine_graphics_helpers import (
+    load_picture_display_source_context as _load_picture_display_source_context,
+)
+from ._engine_graphics_helpers import (
+    picture_display_path_warnings as _picture_display_path_warnings,
+)
+from ._engine_graphics_helpers import (
+    resolve_graphics_companion_path,
+)
+from ._validation_shared import ValidationNotice, ValidationWarning, coerce_validation_notice
 from .cache import FileASTCache, FileLookupCache, get_cache_dir
 from .graphics_validation import GraphicsValidationResult, validate_graphics_file
 from .models.project_graph import ProjectFailure, ProjectGraph
+from .picture_display_paths import correlate_picture_display_records
 from .utils.text_processing import find_disallowed_comments
 from .validation import (
     RawSourceValidationError,
@@ -31,12 +50,9 @@ from .validation import (
     validate_transformed_basepicture,
 )
 
-# Library module: use getLogger only; root logging config belongs to the entry point (app.py).
 log = logging.getLogger("SattLint")
 
-
 ContextualFileLookup = Callable[[str, list[str], Path | None, str], Path | None]
-
 _EXPECTED_UNAVAILABLE_LIBRARY_REASONS: dict[str, str] = {
     "controllib": "expected proprietary dependency",
 }
@@ -56,9 +72,7 @@ class CircularDependencyError(RuntimeError):
     def __init__(self, library: str, cycle_path: list[str]):
         self.library = library
         self.cycle_path = cycle_path
-        # Format the cycle as: A -> B -> C -> A
-        formatted_cycle = " -> ".join([*cycle_path, cycle_path[0]])
-        super().__init__(f"Circular dependency detected: {formatted_cycle}")
+        super().__init__(f"Circular dependency detected: {' -> '.join([*cycle_path, cycle_path[0]])}")
 
 
 class DependencyVersionCompatibilityError(RuntimeError):
@@ -66,8 +80,7 @@ class DependencyVersionCompatibilityError(RuntimeError):
 
     def __init__(self, conflicts: list[str]):
         self.conflicts = conflicts
-        details = "; ".join(conflicts)
-        super().__init__(f"Dependency version compatibility check failed: {details}")
+        super().__init__(f"Dependency version compatibility check failed: {'; '.join(conflicts)}")
 
 
 def _record_missing_library(
@@ -101,71 +114,6 @@ def _record_missing_library(
     graph.unavailable_libraries.add(name.casefold())
 
 
-def _collect_dependency_version_conflicts(
-    graph: ProjectGraph,
-    bp: BasePicture,
-    *,
-    library_name: str,
-    source_path: Path,
-) -> list[str]:
-    conflicts: list[str] = []
-    source_label = f"{library_name}/{source_path.name}"
-
-    existing_moduletype_versions: dict[str, set[int]] = {}
-    existing_moduletype_sources: dict[tuple[str, int], set[str]] = {}
-    for existing in graph.moduletype_defs.values():
-        if existing.datecode is None:
-            continue
-        name_key = existing.name.casefold()
-        existing_moduletype_versions.setdefault(name_key, set()).add(existing.datecode)
-        origin_label = f"{existing.origin_lib or 'unknown'}/{existing.origin_file or '?'}"
-        existing_moduletype_sources.setdefault((name_key, existing.datecode), set()).add(origin_label)
-
-    for moduletype in bp.moduletype_defs:
-        if moduletype.datecode is None:
-            continue
-        name_key = moduletype.name.casefold()
-        known_versions = existing_moduletype_versions.get(name_key)
-        if not known_versions or moduletype.datecode in known_versions:
-            continue
-        existing_detail = ", ".join(
-            f"{version} in {', '.join(sorted(existing_moduletype_sources.get((name_key, version), {'unknown/?'})))}"
-            for version in sorted(known_versions)
-        )
-        conflicts.append(
-            f"moduletype '{moduletype.name}' datecode {moduletype.datecode} in {source_label} "
-            f"conflicts with {existing_detail}"
-        )
-
-    existing_datatype_versions: dict[str, set[int]] = {}
-    existing_datatype_sources: dict[tuple[str, int], set[str]] = {}
-    for existing in graph.datatype_defs.values():
-        if existing.datecode is None:
-            continue
-        name_key = existing.name.casefold()
-        existing_datatype_versions.setdefault(name_key, set()).add(existing.datecode)
-        origin_label = f"{existing.origin_lib or 'unknown'}/{existing.origin_file or '?'}"
-        existing_datatype_sources.setdefault((name_key, existing.datecode), set()).add(origin_label)
-
-    for datatype in bp.datatype_defs:
-        if datatype.datecode is None:
-            continue
-        name_key = datatype.name.casefold()
-        known_versions = existing_datatype_versions.get(name_key)
-        if not known_versions or datatype.datecode in known_versions:
-            continue
-        existing_detail = ", ".join(
-            f"{version} in {', '.join(sorted(existing_datatype_sources.get((name_key, version), {'unknown/?'})))}"
-            for version in sorted(known_versions)
-        )
-        conflicts.append(
-            f"datatype '{datatype.name}' datecode {datatype.datecode} in {source_label} "
-            f"conflicts with {existing_detail}"
-        )
-
-    return conflicts
-
-
 @dataclass(frozen=True)
 class SyntaxValidationResult:
     file_path: Path
@@ -175,6 +123,7 @@ class SyntaxValidationResult:
     line: int | None = None
     column: int | None = None
     warnings: tuple[str, ...] = ()
+    warning_notices: tuple[ValidationNotice, ...] = ()
 
 
 class CodeMode(Enum):
@@ -198,7 +147,7 @@ def graphics_ext_candidates(mode: CodeMode) -> tuple[str, ...]:
     return (".y",) if mode is CodeMode.OFFICIAL else (".g", ".y")
 
 
-def _normalize_code_mode(mode: CodeMode | str | None) -> CodeMode | None:
+def normalize_code_mode(mode: CodeMode | str | None) -> CodeMode | None:
     if mode is None:
         return None
     if isinstance(mode, CodeMode):
@@ -209,38 +158,18 @@ def _normalize_code_mode(mode: CodeMode | str | None) -> CodeMode | None:
     return CodeMode(raw_mode)
 
 
-def resolve_graphics_companion_path(
-    source_path: Path,
-    *,
-    mode: CodeMode | str | None = None,
-) -> Path | None:
-    target_path = Path(source_path)
-    if target_path.suffix.lower() in {".g", ".y"}:
-        return target_path
-
-    resolved_mode = _normalize_code_mode(mode)
-    if resolved_mode is not None:
-        candidate_extensions = graphics_ext_candidates(resolved_mode)
-    elif target_path.suffix.lower() == ".x":
-        candidate_extensions = (".y",)
-    else:
-        candidate_extensions = (".g", ".y")
-
-    for extension in candidate_extensions:
-        candidate = target_path.with_suffix(extension)
-        if candidate.exists():
-            return candidate
-
-    return None
+_normalize_code_mode = normalize_code_mode
 
 
 def _graphics_validation_to_syntax_result(
     file_path: Path,
     result: GraphicsValidationResult,
     *,
-    warnings: Iterable[str] = (),
+    warnings: Iterable[ValidationWarning] = (),
 ) -> SyntaxValidationResult:
-    combined_warnings = [*warnings, *(message.message for message in result.warnings)]
+    notice_warnings = [coerce_validation_notice(warning) for warning in warnings]
+    notice_warnings.extend(ValidationNotice(message=message.message) for message in result.warnings)
+    combined_warnings = [notice.message for notice in notice_warnings]
     if result.errors:
         first_error = result.errors[0]
         return SyntaxValidationResult(
@@ -251,6 +180,7 @@ def _graphics_validation_to_syntax_result(
             line=first_error.line,
             column=first_error.column,
             warnings=tuple(combined_warnings),
+            warning_notices=tuple(notice_warnings),
         )
 
     return SyntaxValidationResult(
@@ -258,6 +188,7 @@ def _graphics_validation_to_syntax_result(
         ok=True,
         stage="ok",
         warnings=tuple(combined_warnings),
+        warning_notices=tuple(notice_warnings),
     )
 
 
@@ -280,8 +211,12 @@ def _record_project_failure(graph: ProjectGraph, name: str, exception: Exception
     )
 
 
-def _record_project_warning(graph: ProjectGraph, name: str, message: str) -> None:
-    graph.warnings.append(f"{name}: {message}")
+def _record_project_warning(graph: ProjectGraph, name: str, message: ValidationWarning) -> None:
+    notice = coerce_validation_notice(message)
+    graph.warnings.append(f"{name}: {notice.message}")
+    warning_notices = getattr(graph, "warning_notices", None)
+    if isinstance(warning_notices, list):
+        cast(list[tuple[str, ValidationNotice]], warning_notices).append((name, notice))
 
 
 def _format_debug_list(title: str, entries: Iterable[str]) -> str:
@@ -408,10 +343,17 @@ def validate_single_file_syntax(
     target_path = Path(code_path)
     if target_path.suffix.lower() in {".g", ".y"}:
         result = validate_graphics_file(target_path)
-        return _graphics_validation_to_syntax_result(target_path, result)
+        source_context = _graphics_source_context_path(target_path)
+        warnings: tuple[ValidationNotice, ...] = ()
+        if source_context is not None and (basepic := _load_picture_display_source_context(source_context)) is not None:
+            occurrences = correlate_picture_display_records(
+                basepic, tuple(getattr(result, "picture_display_records", ()))
+            )
+            warnings = _picture_display_path_warnings(basepic, occurrences)
+        return _graphics_validation_to_syntax_result(target_path, result, warnings=warnings)
 
     src = ""
-    validation_warnings: list[str] = []
+    validation_warnings: list[ValidationWarning] = []
     try:
         src = _load_source_text(target_path)
         violations = find_disallowed_comments(src)
@@ -422,7 +364,7 @@ def validate_single_file_syntax(
                 line=first.start_line,
                 column=first.start_col,
             )
-        basepic = parser_core_parse_source_text(src)
+        basepic = parser_core_parse_source_text(src, log_failures=False)
         validate_transformed_basepicture(
             basepic,
             warning_sink=validation_warnings.append,
@@ -438,6 +380,7 @@ def validate_single_file_syntax(
             message=details.message,
             line=details.line,
             column=details.column,
+            warning_notices=tuple(coerce_validation_notice(warning) for warning in validation_warnings),
         )
     except VisitError as exc:
         line, column = _extract_error_position(exc)
@@ -449,6 +392,7 @@ def validate_single_file_syntax(
             message=message,
             line=line,
             column=column,
+            warning_notices=tuple(coerce_validation_notice(warning) for warning in validation_warnings),
         )
     except StructuralValidationError as exc:
         line, column = _extract_error_position(exc)
@@ -459,6 +403,7 @@ def validate_single_file_syntax(
             message=str(exc),
             line=line,
             column=column,
+            warning_notices=tuple(coerce_validation_notice(warning) for warning in validation_warnings),
         )
     except Exception as exc:
         line, column = _extract_error_position(exc)
@@ -470,22 +415,34 @@ def validate_single_file_syntax(
             message=str(exc),
             line=line,
             column=column,
+            warning_notices=tuple(coerce_validation_notice(warning) for warning in validation_warnings),
         )
 
     companion_path = resolve_graphics_companion_path(target_path, mode=mode)
     if companion_path is not None and companion_path != target_path:
         graphics_result = validate_graphics_file(companion_path)
+        graphics_warnings = [*validation_warnings]
+        with contextlib.suppress(AttributeError):
+            graphics_warnings.extend(
+                _picture_display_path_warnings(
+                    basepic,
+                    correlate_picture_display_records(
+                        basepic, tuple(getattr(graphics_result, "picture_display_records", ()))
+                    ),
+                )
+            )
         return _graphics_validation_to_syntax_result(
             companion_path,
             graphics_result,
-            warnings=validation_warnings,
+            warnings=graphics_warnings,
         )
 
     return SyntaxValidationResult(
         file_path=target_path,
         ok=True,
         stage="ok",
-        warnings=tuple(validation_warnings),
+        warnings=tuple(coerce_validation_notice(warning).message for warning in validation_warnings),
+        warning_notices=tuple(coerce_validation_notice(warning) for warning in validation_warnings),
     )
 
 
@@ -511,6 +468,7 @@ class SattLineProjectLoader(DebugMixin):
         debug: bool,
         contextual_lookup: ContextualFileLookup | None = None,
         use_file_ast_cache: bool = True,
+        status_update_fn: Callable[[str], None] | None = None,
     ):
         self.program_dir = program_dir
         self.other_lib_dirs = list(other_lib_dirs)
@@ -520,6 +478,8 @@ class SattLineProjectLoader(DebugMixin):
         self.debug = debug
         self.contextual_lookup = contextual_lookup
         self.use_file_ast_cache = use_file_ast_cache
+        self._status_update_fn = status_update_fn
+        self._last_status_message: str | None = None
         self.parser = create_sl_parser()  # reuse your grammar setup
         self.transformer = SLTransformer()  # reuse your transformer
         self._visited: set[str] = set()
@@ -534,6 +494,15 @@ class SattLineProjectLoader(DebugMixin):
         for i, ld in enumerate(self.other_lib_dirs, start=1):
             self.dbg(f"Lib {i}: {ld}")
         self.dbg(f"ABB lib dir: {self.abb_lib_dir}")
+
+    def _update_status(self, message: str) -> None:
+        if self._status_update_fn is None:
+            return
+        text = str(message).strip()
+        if not text or text == self._last_status_message:
+            return
+        self._last_status_message = text
+        self._status_update_fn(text)
 
     def _is_ignored_base(self, base: Path) -> bool:
         try:
@@ -819,16 +788,24 @@ class SattLineProjectLoader(DebugMixin):
         if self.use_file_ast_cache:
             cached = self._ast_cache.load(code_path, self.mode.value)
             if isinstance(cached, BasePicture):
+                self._update_status(f"Loading {code_path.stem}: using cached AST from {code_path.name}")
                 self.dbg(f"Using cached AST for: {code_path}")
                 return cached
 
+        self._update_status(f"Loading {code_path.stem}: parsing {code_path.name}")
         bp = self._parse_one(code_path)
         self._ast_cache.save(code_path, self.mode.value, bp)
         return bp
 
+    def _flush_lookup_cache(self) -> None:
+        flush = getattr(self._lookup_cache, "flush", None)
+        if callable(flush):
+            flush()
+
     def resolve(self, root_name: str, strict: bool = False, *, syntax_check: bool = False) -> ProjectGraph:
         if self.scan_root_only:
             return self._resolve_root_only(root_name, strict)
+        self._update_status(f"Loading {root_name}: resolving dependency graph")
         self.dbg(f"Resolving root: {root_name}")
         graph = ProjectGraph()
         previous_root_key = getattr(self, "_active_root_key", None)
@@ -836,6 +813,7 @@ class SattLineProjectLoader(DebugMixin):
         try:
             self._visit(root_name, graph, strict, requester_dir=self.program_dir, syntax_check=syntax_check)
         finally:
+            self._flush_lookup_cache()
             self._active_root_key = previous_root_key
         self.dbg(_format_debug_list("Resolved ASTs", graph.ast_by_name.keys()))
         if graph.missing:
@@ -844,18 +822,19 @@ class SattLineProjectLoader(DebugMixin):
 
     def _resolve_root_only(self, root_name: str, strict: bool) -> ProjectGraph:
         graph = ProjectGraph()
-        code_path = self._find_code(root_name)
-        if not code_path:
-            _record_missing_library(
-                graph,
-                name=root_name,
-                mode=f"mode={self.mode.value}",
-                strict=strict,
-            )
-            return graph
-
         try:
-            validation_warnings: list[str] = []
+            self._update_status(f"Loading {root_name}: locating source file")
+            code_path = self._find_code(root_name)
+            if not code_path:
+                _record_missing_library(
+                    graph,
+                    name=root_name,
+                    mode=f"mode={self.mode.value}",
+                    strict=strict,
+                )
+                return graph
+
+            validation_warnings: list[ValidationWarning] = []
             bp = self._load_or_parse(code_path)
             if bp is None:
                 message = f"{root_name} transformed to no BasePicture (parse/transform issue?)"
@@ -863,6 +842,7 @@ class SattLineProjectLoader(DebugMixin):
                     raise RuntimeError(message)
                 graph.missing.append(message)
                 return graph
+            self._update_status(f"Loading {root_name}: validating {code_path.name}")
             validate_transformed_basepicture(
                 bp,
                 allow_unresolved_external_datatypes=not strict,
@@ -874,8 +854,19 @@ class SattLineProjectLoader(DebugMixin):
             )
             for warning in validation_warnings:
                 _record_project_warning(graph, root_name, warning)
+            if _graphics_companion_needs_refresh(bp, code_path=code_path, mode=self.mode):
+                self._update_status(f"Loading {root_name}: checking graphics companion")
+            if _attach_graphics_companion(
+                bp,
+                code_path=code_path,
+                mode=self.mode,
+                graph=graph,
+                owner_name=root_name,
+            ):
+                self._ast_cache.save(code_path, self.mode.value, bp)
             graph.ast_by_name[root_name] = bp
             lib_name = self._library_name_for_path(code_path)
+            self._update_status(f"Loading {root_name}: indexing definitions")
             graph.index_from_basepic(
                 bp, source_path=code_path, library_name=lib_name
             )  # collect any defs emitted in this files
@@ -887,6 +878,8 @@ class SattLineProjectLoader(DebugMixin):
                 raise
             _record_project_failure(graph, root_name, ex)
             return graph
+        finally:
+            self._flush_lookup_cache()
 
     def _visit(
         self,
@@ -917,17 +910,20 @@ class SattLineProjectLoader(DebugMixin):
         try:
             root_code_path: Path | None = None
             if strict and syntax_check and key == root_key:
+                self._update_status(f"Loading {name}: running syntax check")
                 root_code_path = self._find_code_with_context(name, requester_dir=requester_dir)
                 if root_code_path is not None:
                     _raise_syntax_validation_failure(validate_single_file_syntax(root_code_path, mode=self.mode))
 
             # Resolve dependencies first (from non-vendor dirs only)
+            self._update_status(f"Loading {name}: reading dependency list")
             deps_path = self._find_deps_with_context(name, requester_dir=requester_dir)
             dep_names = self._read_deps(deps_path) if deps_path else []
             dependency_requester = deps_path.parent if deps_path is not None else requester_dir
 
             # Visit each dep
-            for dep in dep_names:
+            for index, dep in enumerate(dep_names, start=1):
+                self._update_status(f"Loading {name}: resolving dependency {index}/{len(dep_names)} {dep}")
                 self._visit(dep, graph, strict, requester_dir=dependency_requester, syntax_check=syntax_check)
 
             dep_libs: list[str] = []
@@ -943,10 +939,11 @@ class SattLineProjectLoader(DebugMixin):
                     dep_libs.append(cached_lib)
 
             # Determine code path
+            self._update_status(f"Loading {name}: locating source file")
             code_path = root_code_path or self._find_code_with_context(name, requester_dir=requester_dir)
             if code_path is not None:
                 try:
-                    validation_warnings: list[str] = []
+                    validation_warnings: list[ValidationWarning] = []
                     bp = self._load_or_parse(code_path)
                     if bp is None:
                         message = f"{name} transform produced no BasePicture (skipped)"
@@ -955,6 +952,7 @@ class SattLineProjectLoader(DebugMixin):
                         graph.missing.append(message)
                         return
                     try:
+                        self._update_status(f"Loading {name}: validating {code_path.name}")
                         validate_transformed_basepicture(
                             bp,
                             external_datatypes=tuple(graph.datatype_defs.values()),
@@ -972,6 +970,16 @@ class SattLineProjectLoader(DebugMixin):
                         _record_project_warning(graph, name, f"validation warning: {ex}")
                     for warning in validation_warnings:
                         _record_project_warning(graph, name, warning)
+                    if _graphics_companion_needs_refresh(bp, code_path=code_path, mode=self.mode):
+                        self._update_status(f"Loading {name}: checking graphics companion")
+                    if _attach_graphics_companion(
+                        bp,
+                        code_path=code_path,
+                        mode=self.mode,
+                        graph=graph,
+                        owner_name=name,
+                    ):
+                        self._ast_cache.save(code_path, self.mode.value, bp)
                     graph.ast_by_name[name] = bp
                     lib_name = self._record_library_name(name, code_path)
                     version_conflicts = _collect_dependency_version_conflicts(
@@ -990,6 +998,7 @@ class SattLineProjectLoader(DebugMixin):
                                 f"version compatibility warning: {conflict}",
                             )
                     graph.add_library_dependencies(lib_name, dep_libs)
+                    self._update_status(f"Loading {name}: indexing definitions")
                     graph.index_from_basepic(
                         bp, source_path=code_path, library_name=lib_name
                     )  # aggregate defs for global analysis [2]
@@ -1036,18 +1045,10 @@ def merge_project_basepicture(root_bp: BasePicture, graph: ProjectGraph) -> Base
 
     lib_deps = {lib: sorted(deps) for lib, deps in (graph.library_dependencies or {}).items()}
 
-    return BasePicture(
-        header=root_bp.header,
-        name=root_bp.name,
-        position=root_bp.position,
+    return replace(
+        root_bp,
         datatype_defs=merged_datatypes,
         moduletype_defs=merged_modtypes,
-        localvariables=root_bp.localvariables,
-        submodules=root_bp.submodules,
-        moduledef=root_bp.moduledef,
-        modulecode=root_bp.modulecode,
-        origin_file=root_bp.origin_file,
-        origin_lib=root_bp.origin_lib,
         library_dependencies=lib_deps,
     )
 

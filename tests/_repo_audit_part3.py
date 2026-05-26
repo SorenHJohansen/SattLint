@@ -3,6 +3,27 @@
 from ._repo_audit_test_support import *
 
 
+def _write_public_readiness_baseline(tmp_path: Path) -> tuple[str, ...]:
+    files = {
+        "README.md": "# Demo\n\nSee SUPPORT.md, SECURITY.md, and docs/references/public-support-matrix.md.\n",
+        "LICENSE": "MIT\n",
+        "CONTRIBUTING.md": "# Contributing\n",
+        "SECURITY.md": "# Security\n",
+        "CODE_OF_CONDUCT.md": "# Conduct\n",
+        "SUPPORT.md": "# Support\n",
+        ".gitignore": "dist/\n",
+        "pyproject.toml": (
+            '[project]\nname = "demo"\nversion = "0.1.0"\n[project.urls]\nRepository = "https://example.invalid/demo"\n'
+        ),
+        "docs/references/public-support-matrix.md": "# Matrix\n",
+    }
+    for rel_path, text in files.items():
+        path = tmp_path / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    return tuple(files)
+
+
 def test_find_pipeline_findings_prefers_normalized_findings_report(tmp_path: Path):
     sample = tmp_path / "tests" / "test_sample.py"
     sample.parent.mkdir(parents=True)
@@ -188,6 +209,139 @@ def test_find_public_readiness_findings_flags_missing_readme_public_links(tmp_pa
     assert "SUPPORT.md" in (link_finding.detail or "")
     assert "SECURITY.md" in (link_finding.detail or "")
     assert "docs/references/public-support-matrix.md" in (link_finding.detail or "")
+
+
+def test_find_public_readiness_findings_flags_publish_workflow_security_gaps(tmp_path: Path):
+    tracked_paths = list(_write_public_readiness_baseline(tmp_path))
+    publish_workflow = tmp_path / ".github" / "workflows" / "publish.yml"
+    publish_workflow.parent.mkdir(parents=True, exist_ok=True)
+    publish_workflow.write_text(
+        "name: Publish\n\n"
+        "on:\n"
+        "  workflow_dispatch:\n\n"
+        "permissions:\n"
+        "  contents: read\n"
+        "  id-token: write\n\n"
+        "jobs:\n"
+        "  build:\n"
+        "    runs-on: ubuntu-latest\n"
+        "  publish:\n"
+        "    needs: build\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: echo publish\n",
+        encoding="utf-8",
+    )
+    tracked_paths.append(".github/workflows/publish.yml")
+
+    findings = repo_audit._find_public_readiness_findings(tmp_path, tracked_paths=tuple(tracked_paths))
+
+    findings_by_id = {finding.id: finding for finding in findings}
+    assert findings_by_id["workflow-level-id-token-write"].path == ".github/workflows/publish.yml"
+    assert findings_by_id["publish-workflow-missing-environment"].path == ".github/workflows/publish.yml"
+    assert findings_by_id["publish-workflow-missing-tag-guard"].path == ".github/workflows/publish.yml"
+
+
+def test_find_public_readiness_findings_flags_missing_npm_dependabot_monitoring(tmp_path: Path):
+    tracked_paths = list(_write_public_readiness_baseline(tmp_path))
+    workflow_path = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow_path.parent.mkdir(parents=True, exist_ok=True)
+    workflow_path.write_text("name: CI\n", encoding="utf-8")
+    dependabot_path = tmp_path / ".github" / "dependabot.yml"
+    dependabot_path.parent.mkdir(parents=True, exist_ok=True)
+    dependabot_path.write_text(
+        'version: 2\nupdates:\n  - package-ecosystem: "pip"\n    directory: "/"\n',
+        encoding="utf-8",
+    )
+    package_json = tmp_path / "vscode" / "sattline-vscode" / "package.json"
+    package_json.parent.mkdir(parents=True, exist_ok=True)
+    package_json.write_text('{"name": "demo-extension"}\n', encoding="utf-8")
+    tracked_paths.extend((".github/workflows/ci.yml", ".github/dependabot.yml", "vscode/sattline-vscode/package.json"))
+
+    findings = repo_audit._find_public_readiness_findings(tmp_path, tracked_paths=tuple(tracked_paths))
+
+    npm_finding = next(finding for finding in findings if finding.id == "missing-npm-dependabot-monitoring")
+    assert npm_finding.path == ".github/dependabot.yml"
+    assert npm_finding.detail == "/vscode/sattline-vscode"
+
+
+def test_find_public_readiness_findings_ignores_hardened_publish_and_monitored_npm(tmp_path: Path):
+    tracked_paths = list(_write_public_readiness_baseline(tmp_path))
+    publish_workflow = tmp_path / ".github" / "workflows" / "publish.yml"
+    publish_workflow.parent.mkdir(parents=True, exist_ok=True)
+    publish_workflow.write_text(
+        "name: Publish\n\n"
+        "on:\n"
+        "  push:\n"
+        "    tags:\n"
+        '      - "v*"\n'
+        "  workflow_dispatch:\n\n"
+        "permissions:\n"
+        "  contents: read\n\n"
+        "jobs:\n"
+        "  build:\n"
+        "    runs-on: ubuntu-latest\n"
+        "  publish:\n"
+        "    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}\n"
+        "    needs: build\n"
+        "    runs-on: ubuntu-latest\n"
+        "    environment: pypi-release\n"
+        "    permissions:\n"
+        "      contents: read\n"
+        "      id-token: write\n"
+        "    steps:\n"
+        "      - run: echo publish\n",
+        encoding="utf-8",
+    )
+    dependabot_path = tmp_path / ".github" / "dependabot.yml"
+    dependabot_path.parent.mkdir(parents=True, exist_ok=True)
+    dependabot_path.write_text(
+        'version: 2\nupdates:\n  - package-ecosystem: "npm"\n    directory: "/vscode/sattline-vscode"\n',
+        encoding="utf-8",
+    )
+    package_json = tmp_path / "vscode" / "sattline-vscode" / "package.json"
+    package_json.parent.mkdir(parents=True, exist_ok=True)
+    package_json.write_text('{"name": "demo-extension"}\n', encoding="utf-8")
+    tracked_paths.extend(
+        (".github/workflows/publish.yml", ".github/dependabot.yml", "vscode/sattline-vscode/package.json")
+    )
+
+    findings = repo_audit._find_public_readiness_findings(tmp_path, tracked_paths=tuple(tracked_paths))
+
+    finding_ids = {finding.id for finding in findings}
+    assert "workflow-level-id-token-write" not in finding_ids
+    assert "publish-workflow-missing-environment" not in finding_ids
+    assert "publish-workflow-missing-tag-guard" not in finding_ids
+    assert "missing-npm-dependabot-monitoring" not in finding_ids
+
+
+def test_find_public_readiness_findings_flags_unverified_workflow_downloads_and_unsafe_scripts(tmp_path: Path):
+    tracked_paths = list(_write_public_readiness_baseline(tmp_path))
+    workflow_path = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow_path.parent.mkdir(parents=True, exist_ok=True)
+    workflow_path.write_text(
+        "name: CI\n\n"
+        "on: [push]\n\n"
+        "jobs:\n"
+        "  audit:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: curl -fsSL https://example.invalid/tool.tar.gz -o tool.tar.gz\n",
+        encoding="utf-8",
+    )
+    helper_path = tmp_path / "scripts" / "unsafe-helper.sh"
+    helper_path.parent.mkdir(parents=True, exist_ok=True)
+    helper_path.write_text(
+        "surreal start --bind 0.0.0.0:3004 --user root --pass root memory\n",
+        encoding="utf-8",
+    )
+    tracked_paths.extend((".github/workflows/ci.yml", "scripts/unsafe-helper.sh"))
+
+    findings = repo_audit._find_public_readiness_findings(tmp_path, tracked_paths=tuple(tracked_paths))
+
+    findings_by_id = {finding.id: finding for finding in findings}
+    assert findings_by_id["workflow-download-without-verification"].path == ".github/workflows/ci.yml"
+    assert findings_by_id["unsafe-local-db-helper"].path == "scripts/unsafe-helper.sh"
 
 
 def test_audit_repository_leaks_only_filters_findings_and_skips_pipeline(tmp_path: Path):

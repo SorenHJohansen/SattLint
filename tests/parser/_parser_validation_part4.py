@@ -1,4 +1,6 @@
 # ruff: noqa: F403, F405
+from sattline_parser.models.ast_model import ModuleTypeInstance, SingleModule
+
 from ._parser_validation_test_support import *
 
 
@@ -302,7 +304,7 @@ def test_validation_internal_collect_sequence_labels_keeps_first_casefolded_labe
 
 
 def test_validation_internal_validate_sequence_nodes_warns_for_multiple_init_steps():
-    warnings: list[str] = []
+    warnings = []
     nodes = [
         SFCStep(kind="init", name="Start", code=SFCCodeBlocks()),
         SFCTransition(name="TrStart", condition=True),
@@ -320,8 +322,9 @@ def test_validation_internal_validate_sequence_nodes_warns_for_multiple_init_ste
         warning_sink=warnings.append,
     )
 
-    assert any("outside the first position" in warning for warning in warnings)
-    assert any("must contain exactly one SEQINITSTEP" in warning for warning in warnings)
+    assert all(hasattr(warning, "message") for warning in warnings)
+    assert any("outside the first position" in warning.message for warning in warnings)
+    assert any("must contain exactly one SEQINITSTEP" in warning.message for warning in warnings)
 
 
 def test_validation_internal_iter_sequence_node_refs_collects_step_and_transition_refs():
@@ -361,6 +364,7 @@ def test_validation_internal_step_auto_variable_refs_cover_skip_and_hold_paths()
             ],
         ),
         equations=[
+            cast(Any, object()),
             Equation(
                 name="Main",
                 position=(0.0, 0.0),
@@ -370,7 +374,7 @@ def test_validation_internal_step_auto_variable_refs_cover_skip_and_hold_paths()
                     _var_ref("Local.Reset"),
                     _var_ref("MainSeq.Hold"),
                 ],
-            )
+            ),
         ],
     )
 
@@ -380,6 +384,76 @@ def test_validation_internal_step_auto_variable_refs_cover_skip_and_hold_paths()
             {"local": Variable(name="Local", datatype=Simple_DataType.BOOLEAN)},
             "test module",
         )
+
+
+def test_validation_internal_variable_refs_skip_missing_record_field():
+    record_graph = TypeGraph.from_datatypes(
+        [
+            DataType(
+                name="RecordType",
+                description=None,
+                datecode=1,
+                var_list=[Variable(name="Present", datatype=Simple_DataType.BOOLEAN, state=True)],
+            )
+        ]
+    )
+
+    validation_module._validate_variable_refs(
+        [_var_ref("Config.Missing", state="Old")],
+        {"config": Variable(name="Config", datatype="RecordType", state=True)},
+        record_graph,
+        "test module",
+    )
+
+
+def test_validation_internal_module_code_skips_non_equation_and_sequence_entries():
+    validation_module._validate_module_code(
+        ModuleCode(
+            sequences=cast(Any, [object()]),
+            equations=cast(Any, [object()]),
+        ),
+        "test module",
+        {},
+        TypeGraph.from_datatypes([]),
+    )
+
+
+def test_validation_internal_module_recurses_into_unknown_moduletype_instance_targets():
+    validation_module._validate_module(
+        SingleModule(
+            header=ModuleHeader(name="Parent", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+            moduledef=None,
+            submodules=[
+                ModuleTypeInstance(
+                    header=ModuleHeader(name="Child", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                    moduletype_name="MissingType",
+                    parametermappings=[
+                        ParameterMapping(
+                            target=_var_ref("Value"),
+                            source_type="value",
+                            is_duration=False,
+                            is_source_global=False,
+                            source_literal=1,
+                        )
+                    ],
+                )
+            ],
+        ),
+        "BasePicture",
+        {},
+        TypeGraph.from_datatypes([]),
+        (),
+        {},
+    )
+
+
+def test_validate_transformed_basepicture_skips_non_moduletype_entries():
+    validate_transformed_basepicture(
+        BasePicture(
+            header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+            moduletype_defs=cast(Any, [object()]),
+        )
+    )
 
 
 @pytest.mark.parametrize(

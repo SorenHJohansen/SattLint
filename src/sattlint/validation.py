@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from collections.abc import Sequence as AbcSequence
 from dataclasses import dataclass
 from typing import Any, cast
@@ -51,6 +51,7 @@ from ._validation_expression import (
 from ._validation_shared import (
     RawSourceValidationError,
     StructuralValidationError,
+    ValidationWarningSink,
     _ref_span,
     _span_kwargs,
     _warn_or_raise,
@@ -134,9 +135,7 @@ def _build_reserved_identifier_keywords() -> frozenset[str]:
         if not name.startswith("GRAMMAR_VALUE_"):
             continue
         value = getattr(const, name)
-        if not isinstance(value, str):
-            continue
-        if _RESERVED_IDENTIFIER_RE.fullmatch(value) is None:
+        if not isinstance(value, str) or _RESERVED_IDENTIFIER_RE.fullmatch(value) is None:
             continue
         if value.casefold() in _ALLOWED_IDENTIFIER_KEYWORDS:
             continue
@@ -633,7 +632,7 @@ def _validate_sequence_nodes(
     env: dict[str, Variable],
     type_graph: TypeGraph,
     require_init_step: bool,
-    warning_sink: Callable[[str], None] | None = None,
+    warning_sink: ValidationWarningSink | None = None,
     allow_old_state_assignment: bool = True,
 ) -> None:
     previous_unit_name: str | None = None
@@ -760,7 +759,7 @@ def _validate_module_code(
     context: str,
     env: dict[str, Variable],
     type_graph: TypeGraph,
-    warning_sink: Callable[[str], None] | None = None,
+    warning_sink: ValidationWarningSink | None = None,
     allow_old_state_assignment: bool = True,
 ) -> None:
     if modulecode is None:
@@ -886,7 +885,7 @@ class _ModuleValidationPolicy:
     allow_parameterless_module_mappings: bool = False
     warn_unknown_parameter_targets: bool = False
     warn_incompatible_parameter_mappings: bool = False
-    warning_sink: Callable[[str], None] | None = None
+    warning_sink: ValidationWarningSink | None = None
     allow_old_state_assignment: bool = True
 
 
@@ -1127,22 +1126,24 @@ def validate_transformed_basepicture(
     allow_old_state_assignment: bool = True,
     warn_unknown_parameter_targets: bool = False,
     warn_incompatible_parameter_mappings: bool = False,
-    warning_sink: Callable[[str], None] | None = None,
+    warning_sink: ValidationWarningSink | None = None,
 ) -> None:
     _validate_identifier(basepic.header.name, "BasePicture", check_reserved_keywords=False)
     if basepic.program_name is not None:
         _validate_identifier(basepic.program_name, "BasePicture program name")
-    _ensure_unique_names(
-        [moduletype.name for moduletype in basepic.moduletype_defs or []],
-        "BasePicture",
-        "moduletype",
-    )
-
-    available_datatypes = [*(basepic.datatype_defs or []), *(external_datatypes or [])]
-    available_moduletype_defs = [
-        *(basepic.moduletype_defs or []),
-        *(external_moduletype_defs or []),
+    base_moduletype_defs = [
+        moduletype
+        for moduletype in cast(AbcSequence[object], basepic.moduletype_defs or [])
+        if isinstance(moduletype, ModuleTypeDef)
     ]
+    available_external_moduletype_defs = [
+        moduletype
+        for moduletype in cast(AbcSequence[object], external_moduletype_defs or [])
+        if isinstance(moduletype, ModuleTypeDef)
+    ]
+    _ensure_unique_names([moduletype.name for moduletype in base_moduletype_defs], "BasePicture", "moduletype")
+    available_datatypes = [*(basepic.datatype_defs or []), *(external_datatypes or [])]
+    available_moduletype_defs = [*base_moduletype_defs, *available_external_moduletype_defs]
 
     type_graph = TypeGraph.from_datatypes(available_datatypes)
     known_datatypes = tuple(
@@ -1177,9 +1178,7 @@ def validate_transformed_basepicture(
 
     base_env = _merge_env({}, basepic.localvariables)
 
-    for moduletype in cast(list[object], basepic.moduletype_defs or []):
-        if not isinstance(moduletype, ModuleTypeDef):
-            continue
+    for moduletype in base_moduletype_defs:
         _validate_identifier(moduletype.name, "BasePicture moduletype")
         moduletype_context = f"BasePicture moduletype {moduletype.name!r}"
         _validate_variable_list(

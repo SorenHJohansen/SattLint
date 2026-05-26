@@ -475,3 +475,128 @@ def test_track_items_returns_iterable_without_rich(monkeypatch):
     items = [1, 2, 3]
     result = list(console_mod.track_items(items, description="Loading"))
     assert result == [1, 2, 3]
+
+
+def test_console_rich_output_paths_and_syntax_excerpt(monkeypatch, tmp_path):
+    import sattlint.console as console_mod
+
+    class FakeConsole:
+        def __init__(self) -> None:
+            self.calls: list[object] = []
+
+        def print(self, value: object, *args: object, **kwargs: object) -> None:
+            self.calls.append((value, args, kwargs))
+
+    class FakeTable:
+        def __init__(self, *, title: str, show_lines: bool) -> None:
+            self.title = title
+            self.show_lines = show_lines
+            self.columns: list[str] = []
+            self.rows: list[tuple[str, ...]] = []
+
+        def add_column(self, column: str) -> None:
+            self.columns.append(column)
+
+        def add_row(self, *values: str) -> None:
+            self.rows.append(values)
+
+    class FakeSyntax:
+        def __init__(self, source: str, lexer: str, *, line_numbers: bool, word_wrap: bool, highlight_lines: set[int]):
+            self.source = source
+            self.lexer = lexer
+            self.line_numbers = line_numbers
+            self.word_wrap = word_wrap
+            self.highlight_lines = highlight_lines
+
+    stdout_console = FakeConsole()
+    stderr_console = FakeConsole()
+
+    monkeypatch.setattr(console_mod, "_RICH_AVAILABLE", True)
+    monkeypatch.setattr(console_mod, "_STDOUT_CONSOLE", stdout_console)
+    monkeypatch.setattr(console_mod, "_STDERR_CONSOLE", stderr_console)
+    monkeypatch.setattr(console_mod, "Panel", lambda body, title, expand=False: ("panel", title, body, expand))
+    monkeypatch.setattr(console_mod, "Table", FakeTable)
+    monkeypatch.setattr(console_mod, "Syntax", FakeSyntax)
+    monkeypatch.setattr(console_mod, "rich_track", lambda items, description: ((description, item) for item in items))
+
+    console_mod.print_status("done", level="success")
+    console_mod.print_status("warn", level="warning", stderr=True)
+    console_mod.print_panel("Panel", "Body", stderr=True)
+    console_mod.print_table("Grid", ["Name", "Value"], [["alpha", 1], ["beta", 2]])
+
+    assert stdout_console.calls[0][0] == "[bold green]OK[/bold green] done"
+    assert stderr_console.calls[0][0] == "[bold yellow]WARNING[/bold yellow] warn"
+    assert stderr_console.calls[1][0] == ("panel", "Panel", "Body", False)
+    table = stdout_console.calls[1][0]
+    assert isinstance(table, FakeTable)
+    assert table.columns == ["Name", "Value"]
+    assert table.rows == [("alpha", "1"), ("beta", "2")]
+    assert list(console_mod.track_items([1, 2], description="Load")) == [("Load", 1), ("Load", 2)]
+
+    source_path = tmp_path / "Program" / "Main.s"
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_path.write_text("line1\nline2\n", encoding="utf-8")
+    console_mod.print_syntax_excerpt(source_path, 2, 3)
+    excerpt_call = stderr_console.calls[-1][0]
+    assert excerpt_call[0] == "panel"
+    assert excerpt_call[1] == f"{source_path}:2:3"
+    assert isinstance(excerpt_call[2], FakeSyntax)
+    assert excerpt_call[2].highlight_lines == {2}
+
+    missing_path = tmp_path / "Program" / "Missing.s"
+    console_mod.print_syntax_excerpt(missing_path, 1, 1)
+    unreadable_path = tmp_path / "Program" / "Unreadable.s"
+    unreadable_path.write_bytes(b"\xff")
+    console_mod.print_syntax_excerpt(unreadable_path, 1, 1)
+    console_mod.print_syntax_excerpt(source_path, None, 1)
+    assert len(stderr_console.calls) == 3
+
+
+def test_live_status_line_handles_tty_and_disabled_output() -> None:
+    import sattlint.console as console_mod
+
+    class FakeFile:
+        def __init__(self, *, tty: bool) -> None:
+            self._tty = tty
+            self.writes: list[str] = []
+            self.flushes = 0
+
+        def isatty(self) -> bool:
+            return self._tty
+
+        def write(self, text: str) -> int:
+            self.writes.append(text)
+            return len(text)
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    tty_file = FakeFile(tty=True)
+    with console_mod.live_status_line(file=tty_file) as update:
+        update("loading\nstatus")
+
+    joined = "".join(tty_file.writes)
+    assert "loading status" in joined
+    assert tty_file.flushes >= 2
+
+    disabled_file = FakeFile(tty=False)
+    with console_mod.live_status_line(file=disabled_file) as update:
+        update("ignored")
+
+    assert disabled_file.writes == []
+    assert disabled_file.flushes == 0
+
+
+def test_print_syntax_excerpt_returns_when_stderr_console_is_missing(monkeypatch, tmp_path) -> None:
+    import sattlint.console as console_mod
+
+    source_path = tmp_path / "Program" / "Main.s"
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_path.write_text("line1\nline2\n", encoding="utf-8")
+
+    monkeypatch.setattr(console_mod, "_RICH_AVAILABLE", True)
+    monkeypatch.setattr(console_mod, "Syntax", object)
+    monkeypatch.setattr(console_mod, "Panel", object)
+    monkeypatch.setattr(console_mod, "_STDERR_CONSOLE", None)
+
+    console_mod.print_syntax_excerpt(source_path, 1, 1)

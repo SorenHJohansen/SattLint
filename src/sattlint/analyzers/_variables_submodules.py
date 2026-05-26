@@ -21,6 +21,7 @@ from ..resolution import decorate_segment
 from ..resolution.common import path_startswith_casefold, resolve_moduletype_def_strict, varname_base
 from ..resolution.scope import ScopeContext
 from ..types import VariableId
+from .variable_utils import external_mapping_usage
 
 if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
@@ -90,6 +91,7 @@ def _walk_singlemodule_subtree(
         module_path=child_path,
         display_module_path=child_display_path,
     )
+    self.contexts_by_module_path[tuple(child_path)] = child_context
 
     self.walk_moduledef(child.moduledef, child_context, child_path)
     self.walk_module_code(child.modulecode, child_context, child_path)
@@ -104,10 +106,11 @@ def _walk_singlemodule_subtree(
         full_source_name = _mapping_source_full_ref(mapping)
         source_name = varname_base(full_source_name) if full_source_name is not None else None
         target_name = _mapping_target_name(mapping)
+        resolve_variable = getattr(parent_context, "resolve_variable", None)
 
         if full_source_name is None:
             continue
-        if source_name and target_name and not mapping.is_source_global:
+        if source_name and target_name and not mapping.is_source_global and callable(resolve_variable):
             source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(full_source_name)
             target_var = child_context.env.get(target_name.casefold())
 
@@ -148,6 +151,7 @@ def _walk_framemodule_subtree(
         module_path=child_path,
         display_module_path=child_display_path,
     )
+    self.contexts_by_module_path[tuple(child_path)] = frame_context
     self.walk_moduledef(child.moduledef, frame_context, child_path)
     self.walk_module_code(child.modulecode, frame_context, child_path)
     _walk_submodules(self, child.submodules or [], frame_context, child_path)
@@ -177,26 +181,19 @@ def _walk_moduletype_instance_subtree(
             moduletype = None
             external = True
 
+    reads: set[str] | None = None
+    writes: set[str] | None = None
+    typedef_context: ScopeContext | None = None
+    dependency_owned_moduletype = False
+
     if moduletype is not None and not self.is_from_root_origin(
         getattr(moduletype, "origin_file", None),
         getattr(moduletype, "origin_lib", None),
     ):
-        if not self.analyzed_target_is_library and not self.include_dependency_moduletype_usage:
-            self.check_param_mappings_for_type_instance(
-                child,
-                parent_env=parent_context.env,
-                parent_path=[*parent_path, child_name],
-                current_library=parent_context.current_library,
-            )
-            moduletype = None
-            external = True
+        dependency_owned_moduletype = True
         if self.analyzed_target_is_library and not self.include_dependency_moduletype_usage:
             moduletype = None
             external = True
-
-    reads: set[str] | None = None
-    writes: set[str] | None = None
-    typedef_context: ScopeContext | None = None
 
     if moduletype:
         mt_key = child.moduletype_name.lower()
@@ -207,6 +204,7 @@ def _walk_moduletype_instance_subtree(
             module_path=child_path,
             display_module_path=child_display_path,
         )
+        self.contexts_by_module_path[tuple(child_path)] = typedef_context
 
         if mt_key not in self.param_reads_by_typedef and mt_key not in self.analyzing_typedefs:
             self.analyze_typedef_with_context(moduletype, typedef_context, path=child_path)
@@ -215,10 +213,11 @@ def _walk_moduletype_instance_subtree(
             full_source_name = _mapping_source_full_ref(mapping)
             source_name = varname_base(full_source_name) if full_source_name is not None else None
             target_name = _mapping_target_name(mapping)
+            resolve_variable = getattr(parent_context, "resolve_variable", None)
 
             if full_source_name is None:
                 continue
-            if source_name and target_name and not mapping.is_source_global:
+            if source_name and target_name and not mapping.is_source_global and callable(resolve_variable):
                 source_var, source_field_prefix, _decl_path, _decl_disp = parent_context.resolve_variable(
                     full_source_name
                 )
@@ -233,21 +232,31 @@ def _walk_moduletype_instance_subtree(
 
     for mapping in child.parametermappings or []:
         full_source_name = _mapping_source_full_ref(mapping)
+        target_name = _mapping_target_name(mapping)
+        mapping_reads = reads
+        mapping_writes = writes
+        known_external_usage = external_mapping_usage(child.moduletype_name, target_name) if external else None
+        needs_dependency_field_propagation = (
+            dependency_owned_moduletype and full_source_name is not None and "." in full_source_name
+        )
+        if known_external_usage is not None and target_name is not None:
+            reads_from_source, writes_to_source = known_external_usage
+            mapping_reads = set(reads or set())
+            mapping_writes = set(writes or set())
+            if reads_from_source:
+                mapping_reads.add(target_name)
+            if writes_to_source:
+                mapping_writes.add(target_name)
         _propagate_mapping_to_parent(
             self,
             mapping,
-            child_used_reads=reads,
-            child_used_writes=writes,
+            child_used_reads=mapping_reads,
+            child_used_writes=mapping_writes,
             parent_env=parent_context.env,
             parent_path=parent_path,
             external_typename=(
                 child.moduletype_name
-                if external
-                and (
-                    self.analyzed_target_is_library
-                    or self.include_dependency_moduletype_usage
-                    or (full_source_name is not None and "." in full_source_name)
-                )
+                if (external or needs_dependency_field_propagation) and known_external_usage is None
                 else None
             ),
             parent_context=parent_context,

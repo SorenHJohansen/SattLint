@@ -44,10 +44,16 @@ class _TokensMixin:
         """Grammar STRING_CRLF terminal -> string (treat like STRING but drop trailing newline)."""
         return self.STRING(tok)
 
+    def _token_span(self, tok: Token) -> SourceSpan | None:
+        line = getattr(tok, "line", None)
+        column = getattr(tok, "column", None)
+        if isinstance(line, int) and isinstance(column, int) and line > 0 and column > 0:
+            return SourceSpan(line=line, column=column)
+        return None
+
     def SIGNED_INT(self, tok: Token) -> IntLiteral:
         """Grammar SIGNED_INT terminal -> IntLiteral with source span."""
-        span = SourceSpan(line=getattr(tok, "line", 0), column=getattr(tok, "column", 0))
-        return IntLiteral(int(str(tok)), span)
+        return IntLiteral(int(str(tok)), self._token_span(tok))
 
     def SIGNED_INT_NOTAIL(self, tok: Token) -> IntLiteral:
         """Grammar SIGNED_INT_NOTAIL terminal -> IntLiteral (no trailing coordinates)."""
@@ -55,8 +61,7 @@ class _TokensMixin:
 
     def REAL(self, tok: Token) -> FloatLiteral:
         """Grammar REAL terminal -> FloatLiteral with source span."""
-        span = SourceSpan(line=getattr(tok, "line", 0), column=getattr(tok, "column", 0))
-        return FloatLiteral(float(str(tok)), span)
+        return FloatLiteral(float(str(tok)), self._token_span(tok))
 
     def REAL_NOTAIL(self, tok: Token) -> FloatLiteral:
         """Grammar REAL_NOTAIL terminal -> FloatLiteral (no trailing coordinates)."""

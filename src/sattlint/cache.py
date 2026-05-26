@@ -10,7 +10,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import cast
 
-CACHE_VERSION = 4  # Bump when the cache payload format changes.
+CACHE_VERSION = 11  # Bump when the cache payload format or cached warning content changes.
 LOOKUP_CACHE_VERSION = 1
 
 
@@ -37,6 +37,7 @@ class FileLookupCache:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.path = self.cache_dir / "file_lookup_cache.json"
         self._data: dict[str, object] = {"version": LOOKUP_CACHE_VERSION, "entries": {}}
+        self._dirty = False
         self._load()
 
     def _load(self) -> None:
@@ -85,11 +86,15 @@ class FileLookupCache:
         entries = self._data.setdefault("entries", {})
         if not isinstance(entries, dict):
             return
-        cast(dict[str, object], entries)[key] = {
+        entry_map = cast(dict[str, object], entries)
+        payload = {
             "base_dir": str(base_dir),
             "ext": ext,
         }
-        self._save()
+        if entry_map.get(key) == payload:
+            return
+        entry_map[key] = payload
+        self._dirty = True
 
     def forget(self, kind: str, name: str, mode: str) -> None:
         key = self._key(kind, name, mode)
@@ -99,7 +104,13 @@ class FileLookupCache:
         entry_map = cast(dict[str, object], entries)
         if key in entry_map:
             entry_map.pop(key, None)
-            self._save()
+            self._dirty = True
+
+    def flush(self) -> None:
+        if not self._dirty:
+            return
+        self._save()
+        self._dirty = False
 
 
 class FileASTCache:
@@ -162,12 +173,16 @@ class FileASTCache:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
+PROJECT_CACHE_SCHEMA_VERSION = "2026-05-22-reverse-library-consumers"
+
+
 def compute_cache_key(cfg: Mapping[str, object]) -> str:
     """
     Fast cache key based only on configuration.
     File changes are handled by manifest validation.
     """
     h = hashlib.sha256()
+    h.update(PROJECT_CACHE_SCHEMA_VERSION.encode())
 
     for k in (
         "analysis_target",

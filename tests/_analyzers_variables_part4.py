@@ -1,4 +1,7 @@
 # ruff: noqa: F403, F405
+from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
+from sattlint.picture_display_paths import PictureDisplayOccurrence
+
 from ._analyzers_variables_test_support import *
 
 
@@ -139,6 +142,603 @@ def test_unused_datatype_fields_are_aggregated_across_variables():
     assert unused_fields == {"C"}
 
 
+def test_unused_datatype_fields_count_nested_record_field_accesses():
+    op_type = DataType(
+        name="KaHAOPType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="LOP19", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="LOP20", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="LOP21", datatype=Simple_DataType.BOOLEAN),
+        ],
+        origin_file="Root.s",
+        origin_lib="ProjectLib",
+    )
+    config_type = DataType(
+        name="ConfigType",
+        description=None,
+        datecode=None,
+        var_list=[Variable(name="ActiveOP", datatype="KaHAOPType")],
+        origin_file="Root.s",
+        origin_lib="ProjectLib",
+    )
+    child_typedef = ModuleTypeDef(
+        name="PanelType",
+        moduleparameters=[Variable(name="ThisOPStation", datatype=Simple_DataType.BOOLEAN)],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="ReadThisOp",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[_varref("ThisOPStation")],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+        origin_file="Root.s",
+        origin_lib="ProjectLib",
+    )
+    root_typedef = ModuleTypeDef(
+        name="RootType",
+        moduleparameters=[],
+        localvariables=[Variable(name="Config", datatype="ConfigType")],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("Panel"),
+                moduletype_name="PanelType",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("ThisOPStation"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("Config.ActiveOP.LOP19"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        moduledef=None,
+        modulecode=ModuleCode(equations=[], sequences=[]),
+        parametermappings=[],
+        origin_file="Root.s",
+        origin_lib="ProjectLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[op_type, config_type],
+        moduletype_defs=[root_typedef, child_typedef],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="Root.s",
+        origin_lib="ProjectLib",
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    unused_fields = {
+        issue.field_path
+        for issue in analyzer.issues
+        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD and issue.datatype_name == "KaHAOPType"
+    }
+
+    assert unused_fields == {"LOP20", "LOP21"}
+
+
+def test_library_target_dependency_mapping_counts_root_record_field_usage_without_dependency_reads():
+    record_type = DataType(
+        name="ColumnShDataType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="TC601_AlarmDelay", datatype=Simple_DataType.INTEGER),
+            Variable(name="TC601_GlitChDelay", datatype=Simple_DataType.INTEGER),
+            Variable(name="Unused", datatype=Simple_DataType.INTEGER),
+        ],
+        origin_file="KaHASoejleLib.s",
+        origin_lib="KaHASoejleLib",
+    )
+    dependency_typedef = ModuleTypeDef(
+        name="MES_BatchControl",
+        moduleparameters=[Variable(name="AlarmDelay", datatype=Simple_DataType.INTEGER)],
+        localvariables=[],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(equations=[], sequences=[]),
+        parametermappings=[],
+        origin_file="NNEMESIFLib.s",
+        origin_lib="NNEMESIFLib",
+    )
+    root_typedef = ModuleTypeDef(
+        name="ColumnType",
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="ColumnSh", datatype="ColumnShDataType"),
+            Variable(name="Sink", datatype=Simple_DataType.INTEGER),
+        ],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("MES_BatchControl"),
+                moduletype_name="MES_BatchControl",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("AlarmDelay"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("ColumnSh.TC601_AlarmDelay"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="ReadField",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (
+                            const.KEY_ASSIGN,
+                            _varref("Sink"),
+                            _varref("ColumnSh.TC601_GlitChDelay"),
+                        )
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+        origin_file="KaHASoejleLib.s",
+        origin_lib="KaHASoejleLib",
+    )
+
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[record_type],
+        moduletype_defs=[root_typedef, dependency_typedef],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHASoejleLib.s",
+        origin_lib="KaHASoejleLib",
+    )
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True, include_dependency_moduletype_usage=True)
+    analyzer.run()
+
+    unused_fields = {
+        issue.field_path
+        for issue in analyzer.issues
+        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD and issue.datatype_name == "ColumnShDataType"
+    }
+
+    assert unused_fields == {"Unused"}
+
+
+def test_picture_display_variable_rows_count_as_field_usage_for_datatype_reporting():
+    record_type = DataType(
+        name="StepTextType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="CleanCycle", datatype=Simple_DataType.STRING),
+            Variable(name="WaitCleanCycle", datatype=Simple_DataType.STRING),
+            Variable(name="Unused", datatype=Simple_DataType.STRING),
+        ],
+        origin_file="KaHAXDiluteLib.s",
+        origin_lib="KaHAXDiluteLib",
+    )
+    module = SingleModule(
+        header=_hdr("DisplayModule"),
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+        moduleparameters=[],
+        localvariables=[Variable(name="StepTexts", datatype="StepTextType")],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[record_type],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[module],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAXDiluteLib.s",
+        origin_lib="KaHAXDiluteLib",
+    )
+    bp.graphics_picture_display_occurrences = [
+        PictureDisplayOccurrence(
+            program_name="BasePicture",
+            declaring_module_path=("BasePicture", "DisplayModule"),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_rows=(
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token="<token>",
+                        index_value=0,
+                        kind="variable",
+                        raw_text="StepTexts.CleanCycle",
+                        span=SourceSpan(line=9, column=1),
+                    ),
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token="<token>",
+                        index_value=1,
+                        kind="variable",
+                        raw_text="StepTexts.WaitCleanCycle",
+                        span=SourceSpan(line=10, column=1),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer.run()
+
+    unused_fields = {
+        issue.field_path
+        for issue in analyzer.issues
+        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD and issue.datatype_name == "StepTextType"
+    }
+
+    assert unused_fields == {"Unused"}
+
+
+def test_library_target_direct_typedef_code_counts_field_usage_for_datatype_reporting():
+    record_type = DataType(
+        name="StepTextType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="CleanCycle", datatype=Simple_DataType.STRING),
+            Variable(name="WaitCleanCycle", datatype=Simple_DataType.STRING),
+            Variable(name="Unused", datatype=Simple_DataType.STRING),
+        ],
+        origin_file="KaHAXDiluteLib.s",
+        origin_lib="KaHAXDiluteLib",
+    )
+    root_typedef = ModuleTypeDef(
+        name="DiluteType",
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="StepText", datatype="StepTextType"),
+            Variable(name="Sink", datatype=Simple_DataType.STRING),
+            Variable(name="Status", datatype=Simple_DataType.INTEGER),
+        ],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (
+                            const.KEY_FUNCTION_CALL,
+                            "CopyString",
+                            [_varref("StepText.CleanCycle"), _varref("Sink"), _varref("Status")],
+                        )
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+        origin_file="KaHAXDiluteLib.s",
+        origin_lib="KaHAXDiluteLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[record_type],
+        moduletype_defs=[root_typedef],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAXDiluteLib.s",
+        origin_lib="KaHAXDiluteLib",
+    )
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer.run()
+
+    unused_fields = {
+        issue.field_path
+        for issue in analyzer.issues
+        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD and issue.datatype_name == "StepTextType"
+    }
+
+    assert unused_fields == {"WaitCleanCycle", "Unused"}
+
+
+def test_iter_variables_for_datatype_field_analysis_includes_context_only_variables():
+    root_var = Variable(name="RootTexts", datatype="StepTextType")
+    context_var = Variable(name="StepText", datatype="StepTextType")
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[root_var],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAXDiluteLib.s",
+        origin_lib="KaHAXDiluteLib",
+    )
+    fake_analyzer = SimpleNamespace(
+        bp=bp,
+        limit_to_module_path=None,
+        analyzed_target_is_library=True,
+        include_dependency_moduletype_usage=True,
+        contexts_by_module_path={
+            ("BasePicture", "Nested", "Display"): SimpleNamespace(
+                env={"steptext": context_var},
+                param_mappings={"steptext": (root_var, "", ["BasePicture"], ["BasePicture"])},
+            )
+        },
+        is_from_root_origin=lambda origin_file, origin_lib=None: True,
+    )
+
+    collected = variable_issue_collection_module._iter_variables_for_datatype_field_analysis(fake_analyzer)
+
+    assert any(variable is root_var for _path, variable, _role, _root_owned in collected)
+    assert any(
+        variable is context_var and path == ["BasePicture", "Nested", "Display"] and role == "moduleparameter"
+        for path, variable, role, _root_owned in collected
+    )
+
+
+def test_unused_datatype_fields_include_context_only_variable_usage():
+    root_var = Variable(name="RootTexts", datatype="StepTextType")
+    context_var = Variable(name="StepText", datatype="StepTextType")
+    record_type = DataType(
+        name="StepTextType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="CleanCycle", datatype=Simple_DataType.STRING),
+            Variable(name="WaitCleanCycle", datatype=Simple_DataType.STRING),
+        ],
+        origin_file="KaHAXDiluteLib.s",
+        origin_lib="KaHAXDiluteLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[record_type],
+        moduletype_defs=[],
+        localvariables=[root_var],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAXDiluteLib.s",
+        origin_lib="KaHAXDiluteLib",
+    )
+    usage_by_id = {
+        id(root_var): _UsageStub(field_reads={"WaitCleanCycle": [object()]}),
+        id(context_var): _UsageStub(field_reads={"CleanCycle": [object()]}),
+    }
+    issues: list[VariableIssue] = []
+    fake_analyzer = SimpleNamespace(
+        bp=bp,
+        limit_to_module_path=None,
+        analyzed_target_is_library=False,
+        include_dependency_moduletype_usage=False,
+        contexts_by_module_path={
+            ("BasePicture", "Nested", "Display"): SimpleNamespace(
+                env={"steptext": context_var},
+                param_mappings={"steptext": (root_var, "", ["BasePicture"], ["BasePicture"])},
+            )
+        },
+        type_graph=SimpleNamespace(
+            iter_leaf_field_paths=lambda _datatype: [("CleanCycle",), ("WaitCleanCycle",)],
+            record=lambda _datatype: None,
+        ),
+        is_from_root_origin=lambda origin_file, origin_lib=None: True,
+        get_usage=lambda variable: usage_by_id[id(variable)],
+        append_issue=issues.append,
+    )
+
+    variable_issue_collection_module._add_unused_datatype_field_issues(fake_analyzer)
+
+    assert not any(issue.kind is IssueKind.UNUSED_DATATYPE_FIELD for issue in issues)
+
+
+def test_analyze_variables_library_target_counts_dependency_typedef_field_reads():
+    from sattlint.analyzers.variables import analyze_variables
+
+    op_text_type = DataType(
+        name="ApplOpTxtType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="LSH", datatype=Simple_DataType.STRING),
+            Variable(name="DrainPipe", datatype=Simple_DataType.STRING),
+        ],
+        origin_file="KaHAApplSupportLib.s",
+        origin_lib="KaHAApplSupportLib",
+    )
+    dependency_typedef = ModuleTypeDef(
+        name="ConsumerType",
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="OPText", datatype="ApplOpTxtType"),
+            Variable(name="Sink", datatype=Simple_DataType.STRING),
+        ],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="ReadField",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (
+                            const.KEY_ASSIGN,
+                            _varref("Sink"),
+                            _varref("OPText.LSH"),
+                        )
+                    ],
+                )
+            ]
+        ),
+        parametermappings=[],
+        origin_file="KaHAApplLib.s",
+        origin_lib="KaHAApplLib",
+    )
+    support_typedef = ModuleTypeDef(
+        name="SupportType",
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="OPText", datatype="ApplOpTxtType"),
+            Variable(name="Sink", datatype=Simple_DataType.STRING),
+        ],
+        submodules=[ModuleTypeInstance(header=_hdr("Consumer"), moduletype_name="ConsumerType", parametermappings=[])],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="ReadRootField",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (
+                            const.KEY_ASSIGN,
+                            _varref("Sink"),
+                            _varref("OPText.DrainPipe"),
+                        )
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+        origin_file="KaHAApplSupportLib.s",
+        origin_lib="KaHAApplSupportLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[op_text_type],
+        moduletype_defs=[support_typedef, dependency_typedef],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAApplSupportLib.s",
+        origin_lib="KaHAApplSupportLib",
+    )
+
+    report = analyze_variables(bp, analyzed_target_is_library=True)
+
+    unused_fields = {
+        issue.field_path
+        for issue in report.issues
+        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD and issue.datatype_name == "ApplOpTxtType"
+    }
+
+    assert "LSH" not in unused_fields
+    assert unused_fields == set()
+
+
+def test_analyze_variables_library_target_counts_reverse_consumer_typedef_field_reads():
+    from sattlint.analyzers.variables import analyze_variables
+
+    op_text_type = DataType(
+        name="ApplOpTxtType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="LSH", datatype=Simple_DataType.STRING),
+            Variable(name="DrainPipe", datatype=Simple_DataType.STRING),
+        ],
+        origin_file="KaHAApplSupportLib.s",
+        origin_lib="KaHAApplSupportLib",
+    )
+    support_typedef = ModuleTypeDef(
+        name="SupportType",
+        moduleparameters=[],
+        localvariables=[Variable(name="OPText", datatype="ApplOpTxtType")],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(equations=[], sequences=[]),
+        parametermappings=[],
+        origin_file="KaHAApplSupportLib.s",
+        origin_lib="KaHAApplSupportLib",
+    )
+    consumer_typedef = ModuleTypeDef(
+        name="ConsumerType",
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="OPText", datatype="ApplOpTxtType"),
+            Variable(name="Sink", datatype=Simple_DataType.STRING),
+        ],
+        submodules=[],
+        moduledef=None,
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="ReadLSH",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[
+                        (
+                            const.KEY_ASSIGN,
+                            _varref("Sink"),
+                            _varref("OPText.LSH"),
+                        )
+                    ],
+                )
+            ],
+            sequences=[],
+        ),
+        parametermappings=[],
+        origin_file="KaHAApplLib.s",
+        origin_lib="KaHAApplLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[op_text_type],
+        moduletype_defs=[support_typedef, consumer_typedef],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAApplSupportLib.s",
+        origin_lib="KaHAApplSupportLib",
+    )
+
+    report = analyze_variables(bp, analyzed_target_is_library=True)
+
+    unused_fields = {
+        issue.field_path
+        for issue in report.issues
+        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD and issue.datatype_name == "ApplOpTxtType"
+    }
+
+    assert "LSH" not in unused_fields
+    assert unused_fields == {"DrainPipe"}
+
+
 def test_sample_fixture_contains_common_variable_quality_issues():
     fixture = Path(__file__).parent / "fixtures" / "sample_sattline_files" / "CommonQualityIssues.s"
 
@@ -162,6 +762,32 @@ def test_sample_fixture_contains_common_variable_quality_issues():
     assert "ReadOnlyValue" in read_only_non_const
     assert "NeverReadValue" in never_read
     assert ("QualityRecord", "UnusedField") in unused_fields
+
+
+def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
+    from sattlint.engine import CodeMode, SattLineProjectLoader, merge_project_basepicture
+
+    fixture = Path(__file__).parent / "fixtures" / "sample_sattline_files" / "TestGFileParse.s"
+    loader = SattLineProjectLoader(
+        program_dir=fixture.parent,
+        other_lib_dirs=[],
+        abb_lib_dir=fixture.parent,
+        mode=CodeMode.DRAFT,
+        scan_root_only=True,
+        debug=False,
+        use_file_ast_cache=False,
+    )
+
+    graph = loader.resolve(fixture.stem, strict=False)
+    bp = merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
+    analyzer = VariablesAnalyzer(bp)
+    issues = analyzer.run()
+
+    usage_by_name = {variable.name: analyzer._get_usage(variable) for variable in bp.localvariables}
+    unused = {issue.variable.name for issue in issues if issue.kind is IssueKind.UNUSED and issue.variable is not None}
+
+    assert unused == set()
+    assert all(usage.read for usage in usage_by_name.values())
 
 
 def test_search_rec_component_found_record_output_is_not_flagged_never_read():

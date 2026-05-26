@@ -122,6 +122,7 @@ def _build_semantic_snapshot(
         _effect_flow_edges=analysis.effect_flow_edges,
         _effect_flow_display_names=analysis.effect_flow_display_names,
         _semantic_diagnostics_by_file=analysis.semantic_diagnostics_by_file,
+        _semantic_diagnostic_drops=analysis.semantic_diagnostic_drops,
     )
 
 

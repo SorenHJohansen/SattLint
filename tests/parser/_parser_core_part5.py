@@ -284,6 +284,46 @@ def test_describe_parse_error_falls_back_to_plain_exception_message():
     assert details.column == 11
 
 
+def test_describe_parse_error_remaps_locations_from_inline_comment_stripped_source():
+    source = """\
+\"SyntaxVersion\"
+\"OriginalFileDate\"
+\"ProgramDate\"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        DemoValue = 1; (* inline comment *) ???
+ENDDEF (*BasePicture*);
+"""
+    stripped = parser_api.strip_sl_comments(source)
+    cleaned_line = stripped.splitlines()[8]
+    cleaned_column = cleaned_line.index("?") + 1
+    original_column = source.splitlines()[8].index("?") + 1
+
+    class FakeUnexpectedInput(UnexpectedEOF):
+        def __init__(self) -> None:
+            pass
+
+        line = 9
+        column = cleaned_column
+        expected = cast(Any, {"NAME"})
+
+        def __str__(self) -> LiteralString:
+            return "Unexpected end of input"
+
+        def get_context(self, text: str, span: int = 40) -> str:
+            raise AssertionError("mapped parse errors should render context from the original source")
+
+    details = parser_api.describe_parse_error(FakeUnexpectedInput(), source)
+
+    assert details.line == 9
+    assert details.column == original_column
+    assert "DemoValue = 1; (* inline comment *) ???" in details.message
+    assert "^" in details.message
+
+
 def test_read_text_with_fallback_accepts_cp1252_bytes(tmp_path):
     source_file = tmp_path / "cp1252.k"
     source_file.write_bytes("Søren".encode("cp1252"))

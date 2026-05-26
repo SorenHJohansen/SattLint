@@ -398,6 +398,7 @@ _reference_locations_from_matches = _symbol_helpers._reference_locations_from_ma
 _resolve_bundle_source_path = _symbol_helpers._resolve_bundle_source_path
 _resolve_reference_path = _symbol_helpers._resolve_reference_path
 _semantic_completion_kind = _symbol_helpers._semantic_completion_kind
+_split_reference_matches = _symbol_helpers._split_reference_matches
 collect_completion_candidates = _symbol_helpers.collect_completion_candidates
 collect_local_completion_candidates = _symbol_helpers.collect_local_completion_candidates
 collect_local_definition_locations = _symbol_helpers.collect_local_definition_locations
@@ -420,6 +421,7 @@ _SYMBOL_HELPER_COMPAT_EXPORTS = (
     _resolve_bundle_source_path,
     _resolve_reference_path,
     _semantic_completion_kind,
+    _split_reference_matches,
     _semantic_diagnostics_for_path,
     collect_completion_candidates,
     collect_local_completion_candidates,
@@ -458,6 +460,7 @@ append_workspace_edit = _append_workspace_edit
 build_hover = _build_hover
 collect_reference_matches = _collect_reference_matches
 definition_locations_from_candidates = _definition_locations_from_candidates
+split_reference_matches = _split_reference_matches
 definition_uri = _definition_uri
 diagnostic_from_message = _diagnostic_from_message
 diagnostic_signature = _diagnostic_signature

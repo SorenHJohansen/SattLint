@@ -222,6 +222,10 @@ def test_collect_repo_file_inventory_skips_ignored_directories(tmp_path):
     (tmp_path / "tests" / "test_owner.py").write_text("def test_owner():\n    assert True\n", encoding="utf-8")
     (tmp_path / ".git").mkdir()
     (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (tmp_path / "artifacts").mkdir()
+    (tmp_path / "artifacts" / "status.json").write_text("ignored\n", encoding="utf-8")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "vendor.js").write_text("ignored\n", encoding="utf-8")
     (tmp_path / "htmlcov").mkdir()
     (tmp_path / "htmlcov" / "index.html").write_text("ignored\n", encoding="utf-8")
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from sattlint.contracts import FindingCollection
+from sattlint.core.workspace_discovery import discover_workspace_sources
 
 PRODUCTION_SUMMARY_FILENAME = "production_summary.json"
 PRODUCTION_SCHEMA_KIND = "sattlint.production_summary"
@@ -85,9 +86,8 @@ def build_production_summary(
 
     name = repo_name or detected_name
 
-    source_files: list[Path] = []
-    for ext in (".s", ".x", ".l", ".z"):
-        source_files.extend(resolved_root.rglob(f"*{ext}"))
+    discovery = discover_workspace_sources(resolved_root)
+    source_files = [*discovery.program_files, *discovery.dependency_files]
 
     kloc = _compute_kloc(source_files)
     findings = finding_collection.findings

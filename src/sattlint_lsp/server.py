@@ -194,6 +194,26 @@ def _clear_workspace_diagnostics(ls: SattLineLanguageServer) -> None:
         _publish_workspace_diagnostics_for_paths(ls, affected_paths)
 
 
+def _clear_workspace_entries(ls: SattLineLanguageServer, entry_files: tuple[Path, ...]) -> None:
+    if not entry_files:
+        return
+
+    affected_paths: set[Path] = set()
+    removed_keys = {entry_file.resolve().as_posix().casefold() for entry_file in entry_files}
+    for entry_key in removed_keys:
+        previous = ls.entry_diagnostics.pop(entry_key, {})
+        affected_paths.update(path.resolve() for path in previous)
+        ls.entry_scan_generation.pop(entry_key, None)
+
+    with ls.workspace_scan_condition:
+        ls.workspace_scan_pending = {
+            path for path in ls.workspace_scan_pending if path.resolve().as_posix().casefold() not in removed_keys
+        }
+
+    if affected_paths:
+        _publish_workspace_diagnostics_for_paths(ls, affected_paths)
+
+
 @server.feature("initialize")
 def on_initialize(ls: SattLineLanguageServer, params: InitializeParams) -> None:
     ls.settings = LspSettings.from_initialization_options(getattr(params, "initialization_options", None))
@@ -308,9 +328,19 @@ def on_did_save(ls: SattLineLanguageServer, params: DidSaveTextDocumentParams) -
             ls.document_paths.pop(state.path.resolve(), None)
         ls.text_document_publish_diagnostics(PublishDiagnosticsParams(uri=document.uri, diagnostics=[]))
         if workspace_control_path:
-            _clear_workspace_diagnostics(ls)
-            ls.snapshot_store.refresh_workspace()
-            _schedule_workspace_scan(ls)
+            invalidated_entries = _invalidate_cached_entries_for_path(ls, document_path)
+            refresh_result = ls.snapshot_store.refresh_workspace()
+            _clear_workspace_entries(ls, refresh_result.removed_entries)
+            refreshed_entries = tuple(
+                sorted(
+                    {
+                        *(entry.resolve() for entry in invalidated_entries),
+                        *(entry.resolve() for entry in refresh_result.affected_entries),
+                    },
+                    key=lambda path: path.as_posix().casefold(),
+                )
+            )
+            _schedule_workspace_scan(ls, refreshed_entries)
         return
 
     _record_document_open(

@@ -12,7 +12,6 @@ from typing import Any
 
 from lsprotocol.types import Diagnostic
 
-from sattline_parser.api import read_text_with_fallback
 from sattlint.core.semantic import (
     SemanticSnapshot,
     WorkspaceSourceDiscovery,
@@ -53,18 +52,8 @@ def _build_source_path_index(
     return ({name: tuple(items) for name, items in by_name.items()}, by_key)
 
 
-def _read_dependency_names(dependency_path: Path) -> tuple[str, ...]:
-    try:
-        text = read_text_with_fallback(dependency_path)
-    except OSError:
-        return ()
-    return tuple(line.strip().casefold() for line in text.splitlines() if line.strip())
-
-
 def _workspace_entry_files(discovery: WorkspaceSourceDiscovery) -> tuple[Path, ...]:
-    referenced_names: set[str] = set()
-    for dependency_path in discovery.dependency_files:
-        referenced_names.update(_read_dependency_names(dependency_path))
+    referenced_names = set(discovery.referenced_program_names)
 
     candidates = [path.resolve() for path in discovery.program_files if path.stem.casefold() not in referenced_names]
     if candidates:
@@ -98,6 +87,13 @@ class _EntrySnapshotState:
     last_access: float = 0.0
 
 
+@dataclass(frozen=True, slots=True)
+class WorkspaceRefreshResult:
+    entry_files: tuple[Path, ...]
+    affected_entries: tuple[Path, ...]
+    removed_entries: tuple[Path, ...]
+
+
 class WorkspaceSnapshotStore:
     def __init__(self) -> None:
         self._lock = threading.RLock()
@@ -110,22 +106,57 @@ class WorkspaceSnapshotStore:
         self._source_file_to_entry_keys: dict[Path, set[str]] = {}
         self._config_version = 0
 
-    def refresh_workspace(self) -> tuple[Path, ...]:
+    def _drop_entry_state_locked(self, entry_key: str) -> None:
+        state = self._states.pop(entry_key, None)
+        if state is None:
+            return
+        if state.bundle is not None:
+            self._remove_bundle_sources_locked(entry_key, state.bundle)
+
+    def refresh_workspace(self) -> WorkspaceRefreshResult:
         with self._lock:
             if self._workspace_root is None or self._settings is None:
+                removed_entries = self._entry_files
                 self._discovery = None
                 self._entry_files = ()
                 self._states.clear()
                 self._source_file_to_entry_keys.clear()
                 self._config_version += 1
-                return ()
+                return WorkspaceRefreshResult((), (), removed_entries)
 
-            self._discovery = discover_workspace_sources(self._workspace_root)
-            self._entry_files = _workspace_entry_files(self._discovery)
-            self._states.clear()
-            self._source_file_to_entry_keys.clear()
+            previous_entry_files = self._entry_files
+            refreshed_discovery = discover_workspace_sources(self._workspace_root)
+            refreshed_entry_files = _workspace_entry_files(refreshed_discovery)
+            refreshed_entry_keys = {
+                _cache_key(entry_file): entry_file.resolve() for entry_file in refreshed_entry_files
+            }
+
+            removed_entries = tuple(
+                entry_file for entry_file in previous_entry_files if _cache_key(entry_file) not in refreshed_entry_keys
+            )
+            for entry_key in tuple(self._states):
+                if entry_key not in refreshed_entry_keys:
+                    self._drop_entry_state_locked(entry_key)
+
+            affected_entries: list[Path] = []
+            for entry_file in refreshed_entry_files:
+                resolved_entry = entry_file.resolve()
+                state = self._states.get(_cache_key(resolved_entry))
+                if state is None:
+                    affected_entries.append(resolved_entry)
+                    continue
+                state.entry_file = resolved_entry
+                if state.bundle is None or state.stale:
+                    affected_entries.append(resolved_entry)
+
+            self._discovery = refreshed_discovery
+            self._entry_files = refreshed_entry_files
             self._config_version += 1
-            return self._entry_files
+            return WorkspaceRefreshResult(
+                entry_files=refreshed_entry_files,
+                affected_entries=tuple(sorted(set(affected_entries), key=_path_key)),
+                removed_entries=tuple(sorted(set(removed_entries), key=_path_key)),
+            )
 
     def ensure_configured(self, workspace_root: Path | None, settings: Any) -> bool:
         normalized_root = workspace_root.resolve() if workspace_root is not None else None

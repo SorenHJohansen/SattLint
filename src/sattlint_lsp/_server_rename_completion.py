@@ -10,10 +10,10 @@ from pygls import uris
 
 from ._server_document import resolve_symbol_context as _resolve_symbol_context
 from ._server_helpers import collect_completion_candidates
-from ._server_helpers import collect_reference_matches as _collect_reference_matches
 from ._server_helpers import is_program_path as _is_program_path
 from ._server_helpers import range_from_position as _range_from_position
 from ._server_helpers import resolve_reference_path as _resolve_reference_path
+from ._server_helpers import split_reference_matches as _split_reference_matches
 from ._server_navigation import declaration_locations as _declaration_locations
 
 if TYPE_CHECKING:
@@ -45,22 +45,28 @@ def handle_rename(
     if not _is_program_path(document_path) or not candidates:
         return None
 
-    references = _collect_reference_matches(bundle, local_snapshot, candidates)
     changes: dict[str, list[TextEdit]] = {}
+    active_uri = uris.from_fs_path(str(document_path.resolve())) or document_path.resolve().as_uri()
+    local_references, workspace_references = _split_reference_matches(bundle, local_snapshot, candidates)
 
     for location in _declaration_locations(candidates, bundle_path=document_path, bundle=bundle):
         append_workspace_edit(changes, location.uri, location.range, new_name)
 
-    for reference in references:
-        reference_uri: str | None = None
-        if (reference.source_file or "").casefold() == document_path.name.casefold():
-            reference_uri = uris.from_fs_path(str(document_path.resolve())) or document_path.resolve().as_uri()
-        elif bundle is not None:
-            target_path = _resolve_reference_path(bundle, reference)
-            if target_path is not None:
-                reference_uri = uris.from_fs_path(str(target_path)) or target_path.as_uri()
-        if reference_uri is None:
+    for reference in local_references:
+        append_workspace_edit(
+            changes,
+            active_uri,
+            _range_from_position(reference.line, reference.column, reference.length),
+            new_name,
+        )
+
+    for reference in workspace_references:
+        if bundle is None:
             continue
+        target_path = _resolve_reference_path(bundle, reference)
+        if target_path is None:
+            continue
+        reference_uri = uris.from_fs_path(str(target_path)) or target_path.as_uri()
         append_workspace_edit(
             changes,
             reference_uri,

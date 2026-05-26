@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -17,35 +19,8 @@ from sattlint.analyzers import variable_issue_collection as variable_issue_colle
 from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers.variables import IssueKind, VariableIssue, VariablesAnalyzer
 from sattlint.reporting.variables_report import VariablesReport
-
-
-def _ns(**kwargs: Any) -> Any:
-    return SimpleNamespace(**kwargs)
-
-
-class _UsageStub:
-    def __init__(
-        self,
-        *,
-        read: bool = False,
-        written: bool = False,
-        is_unused: bool = False,
-        is_display_only: bool = False,
-        is_read_only: bool = False,
-        non_ui_read: bool = False,
-        ui_read: bool = False,
-        field_reads: dict[str, object] | None = None,
-        field_writes: dict[str, object] | None = None,
-    ) -> None:
-        self.read = read
-        self.written = written
-        self.is_unused = is_unused
-        self.is_display_only = is_display_only
-        self.is_read_only = is_read_only
-        self.non_ui_read = non_ui_read
-        self.ui_read = ui_read
-        self.field_reads = field_reads or {}
-        self.field_writes = field_writes or {}
+from tests.helpers.variable_test_support import UsageStub as _UsageStub
+from tests.helpers.variable_test_support import ns as _ns
 
 
 def test_variables_status_cover_pattern_and_binding_branches(monkeypatch: pytest.MonkeyPatch) -> None:

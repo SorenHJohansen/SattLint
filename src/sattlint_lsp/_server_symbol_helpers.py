@@ -267,12 +267,16 @@ def _reference_locations_from_matches(
 
     for reference in references:
         target_uri: str | None = None
-        if (reference.source_file or "").casefold() == active_name:
-            target_uri = active_uri
-        elif bundle is not None:
+        if bundle is not None:
             target_path = _resolve_reference_path(bundle, reference)
             if target_path is not None:
                 target_uri = uris.from_fs_path(str(target_path)) or target_path.as_uri()
+            elif (reference.source_file or "").casefold() == active_name and len(
+                bundle.source_paths_by_name.get(active_name, ())
+            ) <= 1:
+                target_uri = active_uri
+        elif (reference.source_file or "").casefold() == active_name:
+            target_uri = active_uri
 
         if target_uri is None:
             continue
@@ -467,6 +471,15 @@ def _collect_reference_matches(
     local_snapshot: SemanticSnapshot | None,
     candidates: list[SymbolDefinition],
 ) -> list[SymbolReference]:
+    local_references, workspace_references = _split_reference_matches(bundle, local_snapshot, candidates)
+    return _merge_references(local_references, workspace_references)
+
+
+def _split_reference_matches(
+    bundle: SnapshotBundle | None,
+    local_snapshot: SemanticSnapshot | None,
+    candidates: list[SymbolDefinition],
+) -> tuple[list[SymbolReference], list[SymbolReference]]:
     local_references: list[SymbolReference] = []
     workspace_references: list[SymbolReference] = []
     for definition in candidates:
@@ -474,7 +487,7 @@ def _collect_reference_matches(
             local_references.extend(local_snapshot.find_references_to(definition))
         if bundle is not None:
             workspace_references.extend(bundle.snapshot.find_references_to(definition))
-    return _merge_references(local_references, workspace_references)
+    return _merge_references(local_references, []), _merge_references(workspace_references, [])
 
 
 def _definition_uri(
@@ -509,3 +522,4 @@ reference_locations_from_matches = _reference_locations_from_matches
 resolve_reference_path = _resolve_reference_path
 semantic_completion_kind = _semantic_completion_kind
 semantic_diagnostics_for_path = _semantic_diagnostics_for_path
+split_reference_matches = _split_reference_matches

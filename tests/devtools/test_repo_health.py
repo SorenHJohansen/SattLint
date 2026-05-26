@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _load_repo_health_module():
     module_path = Path(__file__).resolve().parents[2] / "scripts" / "repo_health.py"
@@ -95,6 +97,15 @@ def test_build_report_surfaces_root_junk_warning(monkeypatch, tmp_path):
     audit_dir = tmp_path / "artifacts" / "audit"
     pipeline_dir = audit_dir / "pipeline"
     _write_json(
+        audit_dir / "progress.json",
+        {
+            "kind": "sattlint.repo_audit.progress",
+            "overall_status": "pass",
+            "completed_at": 1.0,
+            "stages": [{"key": "write_reports", "status": "completed"}],
+        },
+    )
+    _write_json(
         audit_dir / "status.json",
         {
             "overall_status": "pass",
@@ -104,6 +115,14 @@ def test_build_report_surfaces_root_junk_warning(monkeypatch, tmp_path):
         },
     )
     _write_json(audit_dir / "summary.json", {"findings": []})
+    _write_json(
+        audit_dir / "findings.json",
+        {
+            "kind": "sattlint.findings",
+            "schema_version": 1,
+            "findings": [],
+        },
+    )
     _write_json(pipeline_dir / "ruff.json", {"finding_count": 0})
     _write_json(pipeline_dir / "pyright.json", {"error_count": 0, "warning_count": 0})
     _write_json(pipeline_dir / "pytest.json", {"duration_seconds": 1.25, "testcases": []})
@@ -184,6 +203,45 @@ def test_build_report_surfaces_root_junk_warning(monkeypatch, tmp_path):
     assert "## Local Hygiene Warnings" in markdown
     assert "## Ratchets" in markdown
     assert "covtest.txt" in markdown
+
+
+def test_build_report_rejects_incomplete_audit_with_pending_progress(tmp_path):
+    audit_dir = tmp_path / "artifacts" / "audit"
+    _write_json(
+        audit_dir / "progress.json",
+        {
+            "kind": "sattlint.repo_audit.progress",
+            "overall_status": "running",
+            "completed_at": None,
+            "stages": [{"key": "write_reports", "status": "running"}],
+        },
+    )
+    _write_json(
+        audit_dir / "status.json",
+        {
+            "kind": "sattlint.repo_audit.status",
+            "overall_status": "running",
+        },
+    )
+    _write_json(
+        audit_dir / "summary.json",
+        {
+            "kind": "sattlint.repo_audit.summary",
+            "profile": "full",
+            "pipeline_ran": False,
+        },
+    )
+    _write_json(
+        audit_dir / "findings.json",
+        {
+            "kind": "sattlint.findings",
+            "schema_version": 1,
+            "findings": [],
+        },
+    )
+
+    with pytest.raises(repo_health.ReadinessError, match="progress pending"):
+        repo_health.build_report(audit_dir)
 
 
 def test_build_ratchet_inventory_lists_allowlists_and_statuses() -> None:
@@ -318,3 +376,45 @@ def test_main_prints_root_junk_warning_summary(monkeypatch, capsys):
         "Warning: Repo root contains ignored or untracked scratch files. covtest.txt, .tmp-pyright-strict-summary.txt"
         in captured
     )
+
+
+def test_main_reports_incomplete_audit_dir(tmp_path, capsys):
+    audit_dir = tmp_path / "artifacts" / "audit"
+    _write_json(
+        audit_dir / "progress.json",
+        {
+            "kind": "sattlint.repo_audit.progress",
+            "overall_status": "running",
+            "completed_at": None,
+            "stages": [{"key": "write_reports", "status": "running"}],
+        },
+    )
+    _write_json(
+        audit_dir / "status.json",
+        {
+            "kind": "sattlint.repo_audit.status",
+            "overall_status": "running",
+        },
+    )
+    _write_json(
+        audit_dir / "summary.json",
+        {
+            "kind": "sattlint.repo_audit.summary",
+            "profile": "full",
+            "pipeline_ran": False,
+        },
+    )
+    _write_json(
+        audit_dir / "findings.json",
+        {
+            "kind": "sattlint.findings",
+            "schema_version": 1,
+            "findings": [],
+        },
+    )
+
+    exit_code = repo_health.main(["--audit-dir", str(audit_dir)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert f"Audit directory not ready: {audit_dir}: progress pending" in captured.err
