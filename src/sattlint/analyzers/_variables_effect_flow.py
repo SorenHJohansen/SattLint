@@ -35,11 +35,13 @@ type GetUsageCallback = Callable[[Variable], object]
 
 
 class UsageRecorder(Protocol):
-    def mark_read(self, path: list[str]) -> None: ...
+    def mark_read(self, path: list[str], *, ui: bool = False) -> None: ...
+
+    def mark_ui_read(self, path: list[str]) -> None: ...
 
     def mark_written(self, path: list[str]) -> None: ...
 
-    def mark_field_read(self, field_path: str, path: list[str]) -> None: ...
+    def mark_field_read(self, field_path: str, path: list[str], *, ui: bool = False) -> None: ...
 
     def mark_field_written(self, field_path: str, path: list[str]) -> None: ...
 
@@ -328,6 +330,8 @@ class EffectFlowTracker:
         self,
         pm: ParameterMapping,
         child_used_reads: set[str] | None,
+        child_ui_reads: set[str] | None,
+        child_non_ui_reads: set[str] | None,
         child_used_writes: set[str] | None,
         parent_env: dict[str, Variable],
         parent_path: list[str],
@@ -408,7 +412,13 @@ class EffectFlowTracker:
                 return
 
             if target_name is not None:
-                if child_used_reads is not None and target_name in child_used_reads:
+                if child_ui_reads is not None and target_name in child_ui_reads:
+                    if source_field_path:
+                        self._get_usage(src_var).mark_field_read(source_field_path, parent_path, ui=True)
+                    else:
+                        self._get_usage(src_var).mark_ui_read(parent_path)
+
+                if child_non_ui_reads is not None and target_name in child_non_ui_reads:
                     if source_field_path:
                         self._get_usage(src_var).mark_field_read(source_field_path, parent_path)
                     else:
@@ -475,8 +485,13 @@ class EffectFlowTracker:
 
         # Internal types with field-aware propagation
         if target_name is not None:
-            # If the child used the parameter for reading
-            if child_used_reads is not None and target_name in child_used_reads:
+            if child_ui_reads is not None and target_name in child_ui_reads:
+                if source_field_path:
+                    self._get_usage(src_var).mark_field_read(source_field_path, parent_path, ui=True)
+                else:
+                    self._get_usage(src_var).mark_ui_read(parent_path)
+
+            if child_non_ui_reads is not None and target_name in child_non_ui_reads:
                 if source_field_path:
                     self._get_usage(src_var).mark_field_read(source_field_path, parent_path)
                 else:

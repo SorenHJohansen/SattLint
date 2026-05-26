@@ -33,6 +33,13 @@ def _graph_properties(obj: GraphObject) -> dict[str, object]:
     return cast(dict[str, object], obj_any.properties)
 
 
+def _procedure_payload(value: Any) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    payload = cast(dict[str, object], value).get(const.KEY_PROCEDURE_CALL)
+    return cast(dict[str, object], payload) if isinstance(payload, dict) else None
+
+
 def _tree_children(tree: TransformerTree) -> list[object]:
     return cast(list[object], tree.children)
 
@@ -229,7 +236,7 @@ class _GraphicsInteractMixin:
         """Grammar combutproc_item -> InteractObject (COMBUTPROC with coordinates and procedure)."""
         props: dict[str, object] = {}
         coords: list[object] = []
-        proc: object | None = None
+        proc: dict[str, object] | None = None
         _coord_payloads, coord_tails = _coord_parts(cast(Any, self), items)
         for it in items:
             if isinstance(it, tuple):
@@ -237,12 +244,15 @@ class _GraphicsInteractMixin:
             elif isinstance(it, dict) and const.KEY_COORDS in it:
                 payload = cast(dict[str, object], it)
                 coords.append(payload[const.KEY_COORDS])
-            elif isinstance(it, dict) and const.KEY_PROCEDURE_CALL in it:
-                proc = cast(dict[str, object], it)[const.KEY_PROCEDURE_CALL]
             elif isinstance(it, list):
                 for sub in cast(list[object], it):
-                    if isinstance(sub, dict) and const.KEY_PROCEDURE_CALL in sub:
-                        proc = cast(dict[str, object], sub)[const.KEY_PROCEDURE_CALL]
+                    proc_payload = _procedure_payload(sub)
+                    if proc_payload is not None:
+                        proc = proc_payload
+            else:
+                proc_payload = _procedure_payload(it)
+                if proc_payload is not None:
+                    proc = proc_payload
         props[const.KEY_COORDS] = coords or None
         if proc:
             props[const.KEY_PROCEDURE] = proc
@@ -295,6 +305,7 @@ class _GraphicsInteractMixin:
         itype: str | None = None
         coords: list[object] = []
         body: list[object] = []
+        _coord_payloads, coord_tails = _coord_parts(cast(Any, self), items)
         for it in items:
             if isinstance(it, Token) and itype is None:
                 itype = it.value
@@ -310,7 +321,7 @@ class _GraphicsInteractMixin:
                 for child in cast(list[object], it):
                     body.append(child)
         props: dict[str, object] = {const.KEY_COORDS: coords or None, const.KEY_BODY: body or None}
-        tails = cast(list[object] | None, cast(Any, self)._collect_invar_enable_tails(items))
+        tails = _merged_tails(cast(Any, self), items, coord_tails)
         if tails:
             props[const.KEY_TAILS] = tails
         return InteractObject(type=itype or const.KEY_INTERACT, properties=props)

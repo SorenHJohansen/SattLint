@@ -207,6 +207,29 @@ ENDDEF (*BasePicture*);
     assert bp.moduledef.properties[const.KEY_TAILS] == ["PanelResize"]
 
 
+def test_parser_core_preserves_outvar_tails_in_module_invocation_arguments():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Allow: PrivilegeType := 0;
+SUBMODULES
+    Child Invocation (0.1,0.1,0.0,0.9,0.9 Module_In_View = True : OutVar_ "Allow.RecpSupParameters") : ChildType;
+ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+
+    assert len(bp.submodules) == 1
+    child = bp.submodules[0]
+    assert isinstance(child, ModuleTypeInstance)
+    assert child.header.invoke_coord_tails == ["Allow.RecpSupParameters"]
+
+
 def test_parser_core_parses_nested_submodule_fixture_through_split_module_mixins():
     fixture_path = _repo_path("tests", "fixtures", "corpus", "valid", "NestedSubmodules.s")
 

@@ -558,3 +558,69 @@ def test_required_parameter_connection_flags_unmapped_used_single_module_paramet
     assert issues[0].variable is not None
     assert issues[0].variable.name == "RequiredValue"
     assert issues[0].role == "required parameter connection missing for 'RequiredValue'"
+
+
+def test_display_only_graphics_mapping_keeps_parent_parameter_ui_only():
+    child = SingleModule(
+        header=_hdr("Child"),
+        moduledef=ModuleDef(
+            graph_objects=[
+                GraphObject(
+                    type=const.GRAMMAR_VALUE_RECTANGLEOBJECT,
+                    properties={const.KEY_TAILS: ["WindowBgColour"]},
+                )
+            ]
+        ),
+        moduleparameters=[Variable(name="WindowBgColour", datatype=Simple_DataType.INTEGER)],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[
+            ParameterMapping(
+                target=_varref("WindowBgColour"),
+                source_type=const.TREE_TAG_VARIABLE_NAME,
+                is_duration=False,
+                is_source_global=False,
+                source=_varref("WindowBgColour"),
+                source_literal=None,
+            )
+        ],
+    )
+
+    parent = SingleModule(
+        header=_hdr("Parent"),
+        moduledef=None,
+        moduleparameters=[Variable(name="WindowBgColour", datatype=Simple_DataType.INTEGER)],
+        localvariables=[],
+        submodules=[child],
+        modulecode=None,
+        parametermappings=[],
+    )
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[parent],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    ui_only = {
+        (tuple(issue.module_path), issue.variable.name)
+        for issue in analyzer.issues
+        if issue.kind is IssueKind.UI_ONLY and issue.variable is not None
+    }
+
+    assert (("Root", "Parent"), "WindowBgColour") in ui_only
+    assert (("Root", "Parent", "Child"), "WindowBgColour") in ui_only
+    assert not any(
+        issue.kind is IssueKind.REQUIRED_PARAMETER_CONNECTION
+        and issue.variable is not None
+        and issue.variable.name == "WindowBgColour"
+        for issue in analyzer.issues
+    )

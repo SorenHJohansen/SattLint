@@ -150,6 +150,13 @@ def test_modules_mixin_module_header_collects_argument_metadata():
                         parser_const.TREE_TAG_ENABLE: False,
                         parser_const.KEY_TAIL: "EnableVar",
                     },
+                    {
+                        parser_const.KEY_ASSIGN: {
+                            parser_const.KEY_NAME: "Module_In_View",
+                            parser_const.KEY_VALUE: True,
+                            parser_const.KEY_TAIL: "Allow.RecpSupParameters",
+                        },
+                    },
                     {parser_const.GRAMMAR_VALUE_ZOOMLIMITS: (0.5, 2.0)},
                     {parser_const.GRAMMAR_VALUE_ZOOMABLE: True},
                     parser_const.GRAMMAR_VALUE_IGNOREMAXMODULE,
@@ -161,7 +168,7 @@ def test_modules_mixin_module_header_collects_argument_metadata():
     assert header.name == "Motor"
     assert header.declaration_span == SourceSpan(line=5, column=2)
     assert header.invoke_coord == (1.0, 2.0, 3.0, 4.0, 5.0)
-    assert header.invoke_coord_tails == ["PosX"]
+    assert header.invoke_coord_tails == ["PosX", "Allow.RecpSupParameters"]
     assert header.layer_info == "7"
     assert header.enable is False
     assert header.enable_tail == "EnableVar"

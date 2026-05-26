@@ -5,9 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from ..grammar import constants as const
 from ..reporting.variables_report import IssueKind, VariableIssue
-from .common import varname_base
+from .common import varname_base, varname_full
 from .paths import decorate_segment
 from .scope import ScopeContext
 from .symbol_table import SymbolKind
@@ -111,11 +110,7 @@ class ContextBuilder:
             target_name = varname_base(parameter_mapping.target)
             if not target_name or parameter_mapping.is_source_global:
                 continue
-            target_display_name = (
-                parameter_mapping.target[const.KEY_VAR_NAME]
-                if isinstance(parameter_mapping.target, dict) and const.KEY_VAR_NAME in parameter_mapping.target
-                else str(parameter_mapping.target)
-            )
+            target_display_name = varname_full(parameter_mapping.target) or "<unknown>"
             target_key = target_name.casefold()
 
             if target_key not in param_keys:
@@ -129,11 +124,8 @@ class ContextBuilder:
                 )
                 continue
 
-            if isinstance(parameter_mapping.source, dict) and const.KEY_VAR_NAME in parameter_mapping.source:
-                full_source = parameter_mapping.source[const.KEY_VAR_NAME]
-            elif isinstance(parameter_mapping.source, str):
-                full_source = parameter_mapping.source
-            else:
+            full_source = varname_full(parameter_mapping.source)
+            if not full_source:
                 continue
 
             source_var, source_field_prefix, source_decl_path, source_decl_display_path = (
@@ -211,11 +203,7 @@ class ContextBuilder:
             target_name = varname_base(parameter_mapping.target)
             if not target_name or parameter_mapping.is_source_global:
                 continue
-            target_display_name = (
-                parameter_mapping.target[const.KEY_VAR_NAME]
-                if isinstance(parameter_mapping.target, dict) and const.KEY_VAR_NAME in parameter_mapping.target
-                else str(parameter_mapping.target)
-            )
+            target_display_name = varname_full(parameter_mapping.target) or "<unknown>"
             target_key = target_name.casefold()
 
             if target_key not in param_keys:
@@ -232,11 +220,8 @@ class ContextBuilder:
             if parent_context is None:
                 continue
 
-            if isinstance(parameter_mapping.source, dict) and const.KEY_VAR_NAME in parameter_mapping.source:
-                full_source = parameter_mapping.source[const.KEY_VAR_NAME]
-            elif isinstance(parameter_mapping.source, str):
-                full_source = parameter_mapping.source
-            else:
+            full_source = varname_full(parameter_mapping.source)
+            if not full_source:
                 continue
 
             source_var, source_field_prefix, source_decl_path, source_decl_display_path = (

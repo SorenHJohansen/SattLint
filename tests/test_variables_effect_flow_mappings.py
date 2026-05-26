@@ -76,12 +76,14 @@ def test_effect_flow_tracker_propagates_internal_mapping_reads_writes_and_edges(
     )
 
     tracker.propagate_mapping_to_parent(
-        mapping,
-        {"input"},
-        {"input"},
-        {"source": source},
-        ["Root", "Parent"],
-        None,
+        pm=mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={"source": source},
+        parent_path=["Root", "Parent"],
+        external_typename=None,
         child_context=child_context,
     )
 
@@ -117,21 +119,25 @@ def test_effect_flow_tracker_propagates_global_internal_field_mapping_and_ignore
     )
 
     tracker.propagate_mapping_to_parent(
-        global_internal_mapping,
-        {"input"},
-        {"input"},
-        {},
-        ["Root", "Parent"],
-        None,
+        pm=global_internal_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={},
+        parent_path=["Root", "Parent"],
+        external_typename=None,
         parent_context=parent_context,
     )
     tracker.propagate_mapping_to_parent(
-        invalid_local_mapping,
-        {"input"},
-        {"input"},
-        {},
-        ["Root", "Parent"],
-        None,
+        pm=invalid_local_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={},
+        parent_path=["Root", "Parent"],
+        external_typename=None,
     )
 
     global_usage = usage_by_name["GlobalSource"]
@@ -176,28 +182,34 @@ def test_effect_flow_tracker_propagates_lookup_global_fallbacks_and_field_extern
     )
 
     tracker.propagate_mapping_to_parent(
-        local_field_mapping,
-        {"input"},
-        {"input"},
-        {},
-        ["Root", "Parent"],
-        "ExternalType",
+        pm=local_field_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={},
+        parent_path=["Root", "Parent"],
+        external_typename="ExternalType",
     )
     tracker.propagate_mapping_to_parent(
-        global_field_mapping,
-        {"input"},
-        {"input"},
-        {},
-        ["Root", "Parent"],
-        "ExternalType",
+        pm=global_field_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={},
+        parent_path=["Root", "Parent"],
+        external_typename="ExternalType",
     )
     tracker.propagate_mapping_to_parent(
-        missing_local_mapping,
-        {"input"},
-        {"input"},
-        {},
-        ["Root", "Parent"],
-        None,
+        pm=missing_local_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={},
+        parent_path=["Root", "Parent"],
+        external_typename=None,
     )
 
     assert usage_by_name["LookupGlobal"].field_reads == [("Field", ("Root", "Parent"))]
@@ -222,12 +234,14 @@ def test_effect_flow_tracker_external_global_mapping_records_external_sink() -> 
     )
 
     tracker.propagate_mapping_to_parent(
-        external_global_mapping,
-        {"input"},
-        {"input"},
-        {"globalsource": global_source},
-        ["Root", "Parent"],
-        "ExternalType",
+        pm=external_global_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={"globalsource": global_source},
+        parent_path=["Root", "Parent"],
+        external_typename="ExternalType",
         parent_context=parent_context,
     )
 
@@ -249,12 +263,14 @@ def test_effect_flow_tracker_external_local_mapping_records_external_sink() -> N
     )
 
     tracker.propagate_mapping_to_parent(
-        external_local_mapping,
-        {"input"},
-        {"input"},
-        {"localsource": local_source},
-        ["Root", "Parent"],
-        "ExternalType",
+        pm=external_local_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={"localsource": local_source},
+        parent_path=["Root", "Parent"],
+        external_typename="ExternalType",
         parent_context=parent_context,
     )
 
@@ -309,65 +325,79 @@ def test_effect_flow_tracker_propagates_global_and_external_mappings() -> None:
     )
 
     tracker.propagate_mapping_to_parent(
-        global_mapping,
-        {"input"},
-        {"input"},
-        {},
-        ["Root", "Parent"],
-        "ExternalType",
+        pm=global_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={},
+        parent_path=["Root", "Parent"],
+        external_typename="ExternalType",
         parent_context=parent_context,
     )
     tracker.propagate_mapping_to_parent(
-        global_mapping,
-        {"input"},
-        {"input"},
-        {},
-        ["Root", "Parent"],
-        None,
+        pm=global_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={},
+        parent_path=["Root", "Parent"],
+        external_typename=None,
         parent_context=parent_context,
     )
     tracker.propagate_mapping_to_parent(
-        global_plain_mapping,
-        {"input"},
-        {"input"},
-        {},
-        ["Root", "Parent"],
-        "ExternalType",
+        pm=global_plain_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={},
+        parent_path=["Root", "Parent"],
+        external_typename="ExternalType",
         parent_context=parent_context,
     )
     tracker.propagate_mapping_to_parent(
-        global_plain_mapping,
-        {"input"},
-        {"input"},
-        {},
-        ["Root", "Parent"],
-        None,
+        pm=global_plain_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={},
+        parent_path=["Root", "Parent"],
+        external_typename=None,
         parent_context=parent_context,
     )
     tracker.propagate_mapping_to_parent(
-        missing_external_global_mapping,
-        {"input"},
-        {"input"},
-        {},
-        ["Root", "Parent"],
-        "ExternalType",
+        pm=missing_external_global_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={},
+        parent_path=["Root", "Parent"],
+        external_typename="ExternalType",
         parent_context=parent_context,
     )
     tracker.propagate_mapping_to_parent(
-        local_external_mapping,
-        {"input"},
-        {"input"},
-        {"localsource": local_source},
-        ["Root", "Parent"],
-        "ExternalType",
+        pm=local_external_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={"localsource": local_source},
+        parent_path=["Root", "Parent"],
+        external_typename="ExternalType",
     )
     tracker.propagate_mapping_to_parent(
-        missing_global_mapping,
-        {"input"},
-        {"input"},
-        {},
-        ["Root", "Parent"],
-        None,
+        pm=missing_global_mapping,
+        child_used_reads={"input"},
+        child_ui_reads=set(),
+        child_non_ui_reads={"input"},
+        child_used_writes={"input"},
+        parent_env={},
+        parent_path=["Root", "Parent"],
+        external_typename=None,
         parent_context=parent_context,
     )
 

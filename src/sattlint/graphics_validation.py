@@ -51,6 +51,7 @@ class GraphicsValidationMessage:
 class GraphicsValidationResult:
     messages: tuple[GraphicsValidationMessage, ...] = ()
     bindings: tuple[GraphicsBinding, ...] = ()
+    composite_records: tuple[GraphicsCompositeRecord, ...] = ()
     picture_display_records: tuple[PictureDisplayRecord, ...] = ()
 
     @property
@@ -79,6 +80,14 @@ class PictureDisplayRecord:
     record_end_line: int
     subtype: Literal["2"] = _PICTURE_DISPLAY_SUBTYPE
     path_rows: tuple[PictureDisplayPathRow, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class GraphicsCompositeRecord:
+    record_index: int
+    record_start_line: int
+    record_end_line: int
+    family_code: str
 
 
 @lru_cache(maxsize=1)
@@ -423,6 +432,7 @@ def validate_graphics_text(text: str, file_path: Path) -> GraphicsValidationResu
     lines = text.splitlines()
     messages: list[GraphicsValidationMessage] = []
     bindings: list[GraphicsBinding] = []
+    composite_records: list[GraphicsCompositeRecord] = []
     picture_display_records: list[PictureDisplayRecord] = []
 
     for line_number, line_text in enumerate(lines, start=1):
@@ -452,6 +462,14 @@ def validate_graphics_text(text: str, file_path: Path) -> GraphicsValidationResu
             break
 
         record_index += 1
+        composite_records.append(
+            GraphicsCompositeRecord(
+                record_index=record_index,
+                record_start_line=line_index + 1,
+                record_end_line=record_end + 1,
+                family_code=family_code,
+            )
+        )
 
         if family_code != _RECORD_FAMILY_CODE:
             line_index = record_end + 1
@@ -505,6 +523,7 @@ def validate_graphics_text(text: str, file_path: Path) -> GraphicsValidationResu
     return GraphicsValidationResult(
         messages=tuple(messages),
         bindings=tuple(bindings),
+        composite_records=tuple(composite_records),
         picture_display_records=tuple(picture_display_records),
     )
 

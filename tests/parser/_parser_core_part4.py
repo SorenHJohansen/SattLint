@@ -104,7 +104,7 @@ def test_graphics_interact_mixin_cover_interact_helpers_and_validation_errors():
     assert simple.type == "Button_"
     assert simple.properties[parser_const.KEY_COORDS] == [coords]
     assert simple.properties[parser_const.KEY_BODY] == ["body-a", "body-b"]
-    assert simple.properties[parser_const.KEY_TAILS] == ["TailVar", "EnableVar"]
+    assert simple.properties[parser_const.KEY_TAILS] == ["CoordTail", "TailVar", "EnableVar"]
 
     assert mixin.invar([Token("JUNK", "="), "VarRef"]) == "VarRef"
     assert mixin.enable([False, {parser_const.KEY_TAIL: "EnableExpr"}]) == {

@@ -65,16 +65,7 @@ def iter_call_sites(node: object) -> Iterator[CallSite]:
 
     if isinstance(node, dict):
         mapping = cast(dict[str, object], node)
-        raw_call = mapping.get(const.KEY_PROCEDURE_CALL)
-        if isinstance(raw_call, dict):
-            call = cast(dict[str, object], raw_call)
-            name = call.get(const.KEY_NAME)
-            raw_args = call.get(const.KEY_ARGS)
-            args = tuple(cast(Iterable[object], raw_args)) if isinstance(raw_args, list | tuple) else ()
-            if isinstance(name, str):
-                yield ("procedure", name, args)
-            for argument in args:
-                yield from iter_call_sites(argument)
+        if const.KEY_PROCEDURE_CALL in mapping:
             return
 
         name = mapping.get(const.KEY_NAME)

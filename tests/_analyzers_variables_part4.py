@@ -1,8 +1,12 @@
 # ruff: noqa: F403, F405
+from sattline_parser.models.ast_model import FrameModule, GraphicsBinding
 from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
 from sattlint.picture_display_paths import PictureDisplayOccurrence
 
 from ._analyzers_variables_test_support import *
+
+COLUMN_TYPE_STEP = "ColumnType"
+FIRST_RECORD_STEP = "1"
 
 
 def test_library_typedef_moduleparameter_unused_fields_are_suppressed():
@@ -73,6 +77,173 @@ def test_library_typedef_moduleparameter_unused_fields_are_suppressed():
         and issue.datatype_name == "RecType"
         and issue.field_path == "Unused"
         for issue in library_analyzer.issues
+    )
+
+
+def test_library_typedef_local_used_via_child_interact_coordinate_tail_is_not_unused():
+    child_param = Variable(name="xSize", datatype=Simple_DataType.REAL)
+    child_type = ModuleTypeDef(
+        name="ButtonType",
+        moduleparameters=[child_param],
+        localvariables=[],
+        submodules=[],
+        moduledef=ModuleDef(
+            interact_objects=[
+                InteractObject(
+                    type=const.GRAMMAR_VALUE_COMBUT,
+                    properties={
+                        const.KEY_COORDS: [((0.0, 0.0), (1.0, 1.0))],
+                        const.KEY_TAILS: [_varref("xSize")],
+                        const.KEY_BODY: [{const.KEY_NAME: "ButtonType", const.KEY_VALUE: 0}],
+                    },
+                )
+            ]
+        ),
+        modulecode=None,
+        parametermappings=[],
+        origin_file="LibraryRoot.x",
+        origin_lib="ProjectLib",
+    )
+
+    x_size = Variable(name="XSize", datatype=Simple_DataType.REAL)
+    parent_type = ModuleTypeDef(
+        name="EluMasterLinie",
+        moduleparameters=[],
+        localvariables=[x_size],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("Button"),
+                moduletype_name="ButtonType",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("xSize"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("XSize"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+        origin_file="LibraryRoot.x",
+        origin_lib="ProjectLib",
+    )
+
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[parent_type, child_type],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="LibraryRoot.x",
+        origin_lib="ProjectLib",
+    )
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.UNUSED
+        and issue.variable is x_size
+        and issue.module_path == ["BasePicture", "TypeDef:EluMasterLinie"]
+        for issue in analyzer.issues
+    )
+
+
+def test_library_typedef_local_used_via_child_combutproc_togglewindow_arg_is_not_unused():
+    child_param = Variable(name="xSize", datatype=Simple_DataType.REAL)
+    child_type = ModuleTypeDef(
+        name="RecipePicklistSecond",
+        moduleparameters=[child_param],
+        localvariables=[],
+        submodules=[],
+        moduledef=ModuleDef(
+            interact_objects=[
+                InteractObject(
+                    type=const.GRAMMAR_VALUE_COMBUTPROC,
+                    properties={
+                        const.KEY_COORDS: [((0.0, 0.0), (1.0, 1.0))],
+                        const.KEY_PROCEDURE: {
+                            const.KEY_NAME: "ToggleWindow",
+                            const.KEY_ARGS: [
+                                "",
+                                "Picklist",
+                                False,
+                                0.0,
+                                0.0,
+                                _varref("xSize"),
+                                0.0,
+                                False,
+                                0,
+                                0,
+                                False,
+                                0,
+                            ],
+                        },
+                    },
+                )
+            ]
+        ),
+        modulecode=None,
+        parametermappings=[],
+        origin_file="LibraryRoot.x",
+        origin_lib="ProjectLib",
+    )
+
+    x_size = Variable(name="XSize", datatype=Simple_DataType.REAL)
+    parent_type = ModuleTypeDef(
+        name="EluMasterLinie",
+        moduleparameters=[],
+        localvariables=[x_size],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("Picklist"),
+                moduletype_name="RecipePicklistSecond",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("xSize"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("XSize"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+        origin_file="LibraryRoot.x",
+        origin_lib="ProjectLib",
+    )
+
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[parent_type, child_type],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="LibraryRoot.x",
+        origin_lib="ProjectLib",
+    )
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.UNUSED
+        and issue.variable is x_size
+        and issue.module_path == ["BasePicture", "TypeDef:EluMasterLinie"]
+        for issue in analyzer.issues
     )
 
 
@@ -401,6 +572,344 @@ def test_picture_display_variable_rows_count_as_field_usage_for_datatype_reporti
     }
 
     assert unused_fields == {"Unused"}
+
+
+def test_library_target_picture_display_variable_rows_count_typedef_moduleparameter_usage_at_root():
+    root_typedef = ModuleTypeDef(
+        name="Soejle",
+        moduleparameters=[Variable(name="ColumnType", datatype=Simple_DataType.INTEGER)],
+        localvariables=[],
+        submodules=[],
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+        modulecode=None,
+        parametermappings=[],
+        origin_file="KaHAMPCSoejleLib.s",
+        origin_lib="KaHAMPCSoejleLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[root_typedef],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAMPCSoejleLib.s",
+        origin_lib="KaHAMPCSoejleLib",
+    )
+    bp.graphics_picture_display_occurrences = [
+        PictureDisplayOccurrence(
+            program_name="BasePicture",
+            declaring_module_path=("BasePicture", "Soejle"),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_rows=(
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token=COLUMN_TYPE_STEP,
+                        index_value=None,
+                        kind="variable",
+                        raw_text="ColumnType",
+                        span=SourceSpan(line=1, column=1),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.UNUSED
+        and issue.role == "moduleparameter"
+        and issue.variable is not None
+        and issue.variable.name == "ColumnType"
+        and issue.module_path == ["BasePicture", "TypeDef:Soejle"]
+        for issue in analyzer.issues
+    )
+
+
+def test_library_target_picture_display_index_variable_counts_typedef_moduleparameter_usage_at_root():
+    root_typedef = ModuleTypeDef(
+        name="Soejle",
+        moduleparameters=[Variable(name="ColumnType", datatype=Simple_DataType.INTEGER)],
+        localvariables=[],
+        submodules=[],
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+        modulecode=None,
+        parametermappings=[],
+        origin_file="KaHAMPCSoejleLib.s",
+        origin_lib="KaHAMPCSoejleLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[root_typedef],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAMPCSoejleLib.s",
+        origin_lib="KaHAMPCSoejleLib",
+    )
+    bp.graphics_picture_display_occurrences = [
+        PictureDisplayOccurrence(
+            program_name="BasePicture",
+            declaring_module_path=("BasePicture", "Soejle"),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_rows=(
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token=COLUMN_TYPE_STEP,
+                        index_value=None,
+                        kind="literal",
+                        raw_text="+InletMPC+++Inlet_Z2",
+                        span=SourceSpan(line=1, column=1),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.UNUSED
+        and issue.role == "moduleparameter"
+        and issue.variable is not None
+        and issue.variable.name == "ColumnType"
+        and issue.module_path == ["BasePicture", "TypeDef:Soejle"]
+        for issue in analyzer.issues
+    )
+
+
+def test_library_target_picture_display_record_binding_counts_typedef_moduleparameter_usage_at_root():
+    root_typedef = ModuleTypeDef(
+        name="Soejle",
+        moduleparameters=[Variable(name="ColumnType", datatype=Simple_DataType.INTEGER)],
+        localvariables=[],
+        submodules=[],
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+        modulecode=None,
+        parametermappings=[],
+        origin_file="KaHAMPCSoejleLib.s",
+        origin_lib="KaHAMPCSoejleLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[root_typedef],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAMPCSoejleLib.s",
+        origin_lib="KaHAMPCSoejleLib",
+    )
+    bp.graphics_bindings = [
+        GraphicsBinding(
+            kind="var",
+            raw_text="ColumnType",
+            value=_varref("ColumnType"),
+            span=SourceSpan(line=1, column=1),
+        )
+    ]
+    bp.graphics_picture_display_occurrences = [
+        PictureDisplayOccurrence(
+            program_name="BasePicture",
+            declaring_module_path=("BasePicture", "Soejle"),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_rows=(
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token=FIRST_RECORD_STEP,
+                        index_value=1,
+                        kind="literal",
+                        raw_text="+InletMPC+++Inlet_Z2",
+                        span=SourceSpan(line=2, column=1),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.UNUSED
+        and issue.role == "moduleparameter"
+        and issue.variable is not None
+        and issue.variable.name == "ColumnType"
+        and issue.module_path == ["BasePicture", "TypeDef:Soejle"]
+        for issue in analyzer.issues
+    )
+
+
+def test_library_target_picture_display_runtime_instance_path_counts_typedef_moduleparameter_usage():
+    root_typedef = ModuleTypeDef(
+        name="Soejle",
+        moduleparameters=[Variable(name="ColumnType", datatype=Simple_DataType.INTEGER)],
+        localvariables=[],
+        submodules=[
+            SingleModule(
+                header=_hdr("Panel"),
+                moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+                moduleparameters=[],
+                localvariables=[],
+                submodules=[],
+                modulecode=None,
+                parametermappings=[],
+            )
+        ],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+        origin_file="KaHAMPCSoejleLib.s",
+        origin_lib="KaHAMPCSoejleLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[root_typedef],
+        localvariables=[],
+        submodules=[
+            FrameModule(
+                header=_hdr("L1"),
+                submodules=[
+                    ModuleTypeInstance(
+                        header=_hdr("KaHASoejle"),
+                        moduletype_name="Soejle",
+                        parametermappings=[],
+                    )
+                ],
+                moduledef=None,
+                modulecode=None,
+            )
+        ],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAMPCSoejleLib.s",
+        origin_lib="KaHAMPCSoejleLib",
+    )
+    bp.graphics_bindings = [
+        GraphicsBinding(
+            kind="var",
+            raw_text="ColumnType",
+            value=_varref("ColumnType"),
+            span=SourceSpan(line=1, column=1),
+        )
+    ]
+    bp.graphics_picture_display_occurrences = [
+        PictureDisplayOccurrence(
+            program_name="BasePicture",
+            declaring_module_path=("BasePicture", "L1", "KaHASoejle", "Panel"),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_rows=(
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token=FIRST_RECORD_STEP,
+                        index_value=1,
+                        kind="literal",
+                        raw_text="+InletMPC+++Inlet_Z2",
+                        span=SourceSpan(line=2, column=1),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.UNUSED
+        and issue.role == "moduleparameter"
+        and issue.variable is not None
+        and issue.variable.name == "ColumnType"
+        for issue in analyzer.issues
+    )
+
+
+def test_library_target_picture_display_variable_rows_count_typedef_moduleparameter_usage_in_submodule():
+    root_typedef = ModuleTypeDef(
+        name="Soejle",
+        moduleparameters=[Variable(name="ColumnType", datatype=Simple_DataType.INTEGER)],
+        localvariables=[],
+        submodules=[
+            SingleModule(
+                header=_hdr("Panel"),
+                moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+                moduleparameters=[],
+                localvariables=[],
+                submodules=[],
+                modulecode=None,
+                parametermappings=[],
+            )
+        ],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+        origin_file="KaHAMPCSoejleLib.s",
+        origin_lib="KaHAMPCSoejleLib",
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[root_typedef],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="KaHAMPCSoejleLib.s",
+        origin_lib="KaHAMPCSoejleLib",
+    )
+    bp.graphics_picture_display_occurrences = [
+        PictureDisplayOccurrence(
+            program_name="BasePicture",
+            declaring_module_path=("BasePicture", "Soejle", "Panel"),
+            record=PictureDisplayRecord(
+                record_index=1,
+                record_start_line=1,
+                record_end_line=5,
+                path_rows=(
+                    PictureDisplayPathRow(
+                        record_index=1,
+                        index_token=COLUMN_TYPE_STEP,
+                        index_value=None,
+                        kind="variable",
+                        raw_text="ColumnType",
+                        span=SourceSpan(line=1, column=1),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.UNUSED
+        and issue.role == "moduleparameter"
+        and issue.variable is not None
+        and issue.variable.name == "ColumnType"
+        and issue.module_path == ["BasePicture", "TypeDef:Soejle"]
+        for issue in analyzer.issues
+    )
 
 
 def test_library_target_direct_typedef_code_counts_field_usage_for_datatype_reporting():
@@ -788,6 +1297,195 @@ def test_gfile_var_and_expr_reads_count_as_used_for_unused_analysis():
 
     assert unused == set()
     assert all(usage.read for usage in usage_by_name.values())
+
+
+def test_nested_gfile_bindings_count_as_used_end_to_end(tmp_path: Path):
+    from sattlint.engine import CodeMode, SattLineProjectLoader, merge_project_basepicture
+
+    source = """"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Shared: integer := 0;
+SUBMODULES
+    Panel Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 2
+    LOCALVARIABLES
+        NestedOnly, Shared: integer := 0;
+    ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    GraphObjects :
+        CompositeObject
+    ENDDEF (*Panel*);
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+    graphics = """" Syntax version 2.23, date: 2026-05-26-00:00:00.000 N "
+
+ 1
+ Var  True  10 NestedOnly
+ Var  True   6 Shared
+           0
+"""
+
+    fixture = tmp_path / "NestedGraphics.s"
+    fixture.write_text(source, encoding="utf-8")
+    fixture.with_suffix(".g").write_text(graphics, encoding="utf-8")
+
+    loader = SattLineProjectLoader(
+        program_dir=tmp_path,
+        other_lib_dirs=[],
+        abb_lib_dir=tmp_path,
+        mode=CodeMode.DRAFT,
+        scan_root_only=True,
+        debug=False,
+        use_file_ast_cache=False,
+    )
+
+    graph = loader.resolve(fixture.stem, strict=False)
+    bp = merge_project_basepicture(graph.ast_by_name[fixture.stem], graph)
+    analyzer = VariablesAnalyzer(bp)
+    issues = analyzer.run()
+    issue_tuples = {
+        (
+            issue.kind,
+            tuple(issue.module_path),
+            issue.variable.name if issue.variable is not None else None,
+            issue.role,
+            issue.field_path,
+        )
+        for issue in issues
+    }
+
+    assert (IssueKind.UI_ONLY, ("BasePicture", "Panel"), "NestedOnly", "localvariable", None) in issue_tuples
+    assert (IssueKind.UI_ONLY, ("BasePicture", "Panel"), "Shared", "localvariable", None) in issue_tuples
+    assert not any(
+        issue.kind is IssueKind.UI_ONLY
+        and issue.variable is not None
+        and issue.variable.name == "Shared"
+        and issue.module_path == ["BasePicture"]
+        for issue in issues
+    )
+
+
+def test_nested_composite_gfile_bindings_use_declaring_module_scope():
+    module = SingleModule(
+        header=_hdr("Panel"),
+        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="NestedOnly", datatype=Simple_DataType.INTEGER),
+            Variable(name="Shared", datatype=Simple_DataType.INTEGER),
+        ],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[
+            Variable(name="RootOnly", datatype=Simple_DataType.INTEGER),
+            Variable(name="Shared", datatype=Simple_DataType.INTEGER),
+        ],
+        submodules=[module],
+        modulecode=None,
+        moduledef=ModuleDef(),
+    )
+    bp.graphics_bindings = [
+        GraphicsBinding(
+            kind="var",
+            raw_text="NestedOnly",
+            value=_varref("NestedOnly"),
+            span=SourceSpan(line=9, column=1),
+        ),
+        GraphicsBinding(
+            kind="var",
+            raw_text="Shared",
+            value=_varref("Shared"),
+            span=SourceSpan(line=10, column=1),
+        ),
+    ]
+    bp.graphics_composite_records = [SimpleNamespace(record_index=1, record_start_line=8, record_end_line=12)]
+
+    analyzer = VariablesAnalyzer(bp)
+    issues = analyzer.run()
+    issue_tuples = {
+        (
+            issue.kind,
+            tuple(issue.module_path),
+            issue.variable.name if issue.variable is not None else None,
+            issue.role,
+            issue.field_path,
+        )
+        for issue in issues
+    }
+
+    assert not any(
+        issue.kind is IssueKind.UNUSED and issue.variable is not None and issue.variable.name == "NestedOnly"
+        for issue in issues
+    )
+    assert not any(
+        issue.kind is IssueKind.UNUSED
+        and issue.variable is not None
+        and issue.variable.name == "Shared"
+        and issue.module_path == ["BasePicture", "Panel"]
+        for issue in issues
+    )
+    assert not any(
+        issue.kind is IssueKind.UI_ONLY
+        and issue.variable is not None
+        and issue.variable.name == "Shared"
+        and issue.module_path == ["BasePicture"]
+        for issue in issues
+    )
+    assert (IssueKind.UI_ONLY, ("BasePicture", "Panel"), "NestedOnly", "localvariable", None) in issue_tuples
+    assert (IssueKind.UI_ONLY, ("BasePicture", "Panel"), "Shared", "localvariable", None) in issue_tuples
+
+
+def test_unparsed_gfile_expr_still_counts_named_variables_as_reads():
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[
+            Variable(name="Alpha", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Beta", datatype=Simple_DataType.BOOLEAN),
+        ],
+        submodules=[],
+        modulecode=None,
+        moduledef=ModuleDef(),
+    )
+    bp.graphics_bindings = [
+        GraphicsBinding(
+            kind="expr",
+            raw_text="Alpha ??? Beta",
+            value="Alpha ??? Beta",
+            span=SourceSpan(line=1, column=1),
+        )
+    ]
+
+    analyzer = VariablesAnalyzer(bp)
+    issues = analyzer.run()
+    issue_tuples = {
+        (
+            issue.kind,
+            tuple(issue.module_path),
+            issue.variable.name if issue.variable is not None else None,
+            issue.role,
+            issue.field_path,
+        )
+        for issue in issues
+    }
+
+    assert not any(
+        issue.kind is IssueKind.UNUSED and issue.variable is not None and issue.variable.name in {"Alpha", "Beta"}
+        for issue in issues
+    )
+    assert (IssueKind.UI_ONLY, ("BasePicture",), "Alpha", "localvariable", None) in issue_tuples
+    assert (IssueKind.UI_ONLY, ("BasePicture",), "Beta", "localvariable", None) in issue_tuples
 
 
 def test_search_rec_component_found_record_output_is_not_flagged_never_read():

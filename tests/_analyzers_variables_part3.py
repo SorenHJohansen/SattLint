@@ -95,6 +95,59 @@ ENDDEF (*BasePicture*);
     assert not any(issue.kind is IssueKind.READ_ONLY_NON_CONST for issue in analyzer.issues)
 
 
+def test_ui_only_variable_detected_for_graphics_coordinate_invar_reads():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    XPosSource: integer := 0;
+ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    GraphObjects :
+        RectangleObject ( 0.0 : InVar_ XPosSource , 0.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UI_ONLY]
+
+    assert len(issues) == 1
+    assert issues[0].variable is not None
+    assert issues[0].variable.name == "XPosSource"
+
+
+def test_ui_only_variable_detected_for_graphics_varname_reads():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Value: integer := 0;
+ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    GraphObjects :
+        TextObject ( 0.0 , 0.0 ) ( 1.0 , 1.0 )
+            "Value" VarName
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UI_ONLY]
+
+    assert len(issues) == 1
+    assert issues[0].variable is not None
+    assert issues[0].variable.name == "Value"
+
+
 def test_ui_only_variable_detected_for_interact_invar_reads():
     code = """
 "SyntaxVersion"
@@ -120,6 +173,89 @@ ENDDEF (*BasePicture*);
     assert len(issues) == 1
     assert issues[0].variable is not None
     assert issues[0].variable.name == "ButtonTypeSource"
+
+
+def test_ui_only_variable_detected_for_interact_value_line_var_reads():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    DisplaySource: integer := 0;
+ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    InteractObjects :
+        SimpleInteract ( 0.0 , 0.0 ) ( 1.0 , 1.0 )
+            DisplaySource
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UI_ONLY]
+
+    assert len(issues) == 1
+    assert issues[0].variable is not None
+    assert issues[0].variable.name == "DisplaySource"
+
+
+def test_ui_only_variable_detected_for_combutproc_argument_reads():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    DisplaySource: integer := 0;
+ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    InteractObjects :
+        ComButProc_ ( 0.0 , 0.0 ) ( 1.0 , 1.0 )
+            UserProc
+            DisplaySource
+            Variable = 0.0
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UI_ONLY]
+
+    assert len(issues) == 1
+    assert issues[0].variable is not None
+    assert issues[0].variable.name == "DisplaySource"
+
+
+def test_ui_only_variable_detected_for_interact_coordinate_invar_reads():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    XSize: real := 0.15;
+ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    InteractObjects :
+        ComBut_ ( 0.0 , 0.0 ) ( 1.0 , 1.0 : InVar_ "XSize" )
+            ButtonType = 0
+ENDDEF (*BasePicture*);
+"""
+
+    bp = parser_core_parse_source_text(code)
+    analyzer = VariablesAnalyzer(bp)
+    analyzer.run()
+
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.UI_ONLY]
+
+    assert len(issues) == 1
+    assert issues[0].variable is not None
+    assert issues[0].variable.name == "XSize"
 
 
 def test_ui_only_variable_detected_for_procedure_interact_windowcontent_invar_reads():

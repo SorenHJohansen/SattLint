@@ -11,6 +11,7 @@ from sattline_parser.api import read_text_with_fallback
 from sattline_parser.grammar.parser_decode import is_compressed, preprocess_sl_text
 from sattline_parser.models.ast_model import BasePicture
 
+from ._picture_display_path_runtime import correlate_composite_records
 from ._validation_shared import ValidationNotice
 from .models.project_graph import ProjectGraph
 from .picture_display_paths import (
@@ -80,6 +81,7 @@ def _has_attached_graphics_companion(bp: BasePicture) -> bool:
     return (
         getattr(bp, "graphics_file", None) is not None
         or bool(getattr(bp, "graphics_messages", ()))
+        or bool(getattr(bp, "graphics_composite_records", ()))
         or bool(getattr(bp, "graphics_picture_display_records", ()))
         or bool(getattr(bp, "graphics_picture_display_occurrences", ()))
         or _cached_graphics_companion_signature(bp) is not None
@@ -92,6 +94,8 @@ def _clear_attached_graphics_companion(bp: BasePicture) -> bool:
         ("graphics_file", None),
         ("graphics_bindings", []),
         ("graphics_messages", []),
+        ("graphics_composite_records", []),
+        ("graphics_composite_occurrences", []),
         ("graphics_picture_display_records", []),
         ("graphics_picture_display_occurrences", []),
         ("graphics_companion_signature", None),
@@ -176,6 +180,10 @@ def attach_graphics_companion(
         bp.graphics_file = companion_path.name
         bp.graphics_bindings = list(getattr(result, "bindings", ()))
         bp.graphics_messages = list(result.messages)
+        bp.graphics_composite_records = list(getattr(result, "composite_records", ()))
+        bp.graphics_composite_occurrences = list(
+            correlate_composite_records(bp, tuple(getattr(result, "composite_records", ())), graph=graph)
+        )
         bp.graphics_picture_display_records = list(getattr(result, "picture_display_records", ()))
         bp.graphics_picture_display_occurrences = list(
             correlate_picture_display_records(bp, tuple(getattr(result, "picture_display_records", ())))

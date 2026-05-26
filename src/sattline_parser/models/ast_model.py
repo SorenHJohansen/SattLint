@@ -5,7 +5,7 @@ from __future__ import annotations
 import textwrap
 from dataclasses import MISSING, dataclass, field, fields
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from ..grammar import constants as const
 from ._ast_model_support import (
@@ -200,23 +200,54 @@ class ParameterMapping:
     source_type: str
     is_duration: bool
     is_source_global: bool
-    source: AstNodeDict | Variable | None = None
+    source: AstNodeDict | str | None = None
     source_literal: Any | None = None
 
+    def __post_init__(self) -> None:
+        self.target = _normalize_variable_ref(self.target, field_name="target")
+        if self.source_type == const.TREE_TAG_VARIABLE_NAME and self.source is not None:
+            self.source = _normalize_variable_ref(self.source, field_name="source")
+
     def __str__(self) -> str:
-        tgt = self.target.get(const.KEY_VAR_NAME) if isinstance(self.target, dict) else str(self.target)
+        tgt = _variable_ref_name(self.target) or "<None>"
 
         if self.is_source_global:
             return f"{tgt} => GLOBAL"
 
         if self.source_type == const.TREE_TAG_VARIABLE_NAME and self.source:
-            src = self.source.get(const.KEY_VAR_NAME) if isinstance(self.source, dict) else str(self.source)
+            src = _variable_ref_name(self.source) or "<None>"
             return f"{tgt} => {src}"
 
         if self.source_literal is not None:
             return f"{tgt} => {self.source_literal!r}"
 
         return f"{tgt} => <None>"
+
+
+def _variable_ref_name(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, Variable):
+        return value.name
+    if isinstance(value, dict):
+        mapping = cast(AstNodeDict, value)
+        full_name = mapping.get(const.KEY_VAR_NAME)
+        if isinstance(full_name, str):
+            return full_name
+    return None
+
+
+def _normalize_variable_ref(value: object, *, field_name: str) -> AstNodeDict:
+    if isinstance(value, str):
+        return {const.KEY_VAR_NAME: value}
+    if isinstance(value, Variable):
+        return {const.KEY_VAR_NAME: value.name}
+    if isinstance(value, dict):
+        mapping = cast(AstNodeDict, value)
+        full_name = mapping.get(const.KEY_VAR_NAME)
+        if isinstance(full_name, str):
+            return mapping
+    raise TypeError(f"ParameterMapping.{field_name} must be a variable reference")
 
 
 @dataclass
@@ -391,6 +422,8 @@ class BasePicture:
     graphics_file: str | None = None
     graphics_bindings: list[GraphicsBinding] = field(default_factory=any_list)
     graphics_messages: list[Any] = field(default_factory=any_list)
+    graphics_composite_records: list[Any] = field(default_factory=any_list)
+    graphics_composite_occurrences: list[Any] = field(default_factory=any_list)
     graphics_picture_display_records: list[Any] = field(default_factory=any_list)
     graphics_picture_display_occurrences: list[Any] = field(default_factory=any_list)
     library_dependencies: dict[str, list[str]] = field(default_factory=library_dependency_map)
