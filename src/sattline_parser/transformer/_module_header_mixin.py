@@ -14,6 +14,48 @@ from sattline_parser.models.ast_model import ModuleHeader
 from ._module_shared import TransformerItem, TransformerTree, _float_tuple, _meta_span, _v_args
 
 
+def _collect_module_header_argument_tails(value: object) -> list[object]:
+    tails: list[object] = []
+
+    def visit(node: object) -> None:
+        if node is None or isinstance(node, Token):
+            return
+        if isinstance(node, dict):
+            payload = cast(dict[str, object], node)
+            if const.TREE_TAG_ENABLE in payload:
+                return
+            tail_obj = payload.get(const.KEY_TAIL)
+            if tail_obj is not None:
+                tails.append(tail_obj)
+                return
+            assign_payload = payload.get(const.KEY_ASSIGN)
+            if assign_payload is not None:
+                visit(assign_payload)
+                return
+            for nested in payload.values():
+                visit(nested)
+            return
+        if isinstance(node, Tree):
+            tree_node = cast(Tree[object], node)
+            data = tree_node.data
+            if data in (const.GRAMMAR_VALUE_INVAR_PREFIX, const.KEY_ENABLE_EXPRESSION, "invar_tail"):
+                tails.append(cast(object, tree_node))
+                return
+            for child in cast(list[object], tree_node.children):
+                visit(child)
+            return
+        if isinstance(node, list):
+            for nested in cast(list[object], node):
+                visit(nested)
+            return
+        if isinstance(node, tuple):
+            for nested in cast(tuple[object, ...], node):
+                visit(nested)
+
+    visit(value)
+    return tails
+
+
 class _ModuleHeaderMixin:
     """Mixin providing module header and argument transformation methods."""
 
@@ -95,6 +137,8 @@ class _ModuleHeaderMixin:
                             zoom_limits = cast(tuple[float, float], zoom_limits_pair)
                     elif const.GRAMMAR_VALUE_ZOOMABLE in payload:
                         zoomable = True
+                    else:
+                        coord_tails.extend(_collect_module_header_argument_tails(payload))
                 elif isinstance(child, str):
                     invocation_arguments.append(child)
 

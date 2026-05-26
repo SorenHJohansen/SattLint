@@ -32,20 +32,43 @@ def _string_source(text: str) -> Any:
     return text
 
 
+def test_parameter_mapping_normalizes_string_variable_refs() -> None:
+    mapping = ParameterMapping(
+        target="Input",
+        source_type=const.TREE_TAG_VARIABLE_NAME,
+        is_duration=False,
+        is_source_global=False,
+        source="ParentLocal.Member",
+        source_literal=None,
+    )
+
+    assert mapping.target == _varref("Input")
+    assert mapping.source == _varref("ParentLocal.Member")
+
+
 class _UsageRecorder:
     def __init__(self) -> None:
         self.read_paths: list[tuple[str, ...]] = []
+        self.ui_read_paths: list[tuple[str, ...]] = []
         self.write_paths: list[tuple[str, ...]] = []
         self.field_reads: list[tuple[str, tuple[str, ...]]] = []
         self.field_writes: list[tuple[str, tuple[str, ...]]] = []
 
-    def mark_read(self, path: list[str]) -> None:
-        self.read_paths.append(tuple(path))
+    def mark_read(self, path: list[str], *, ui: bool = False) -> None:
+        path_tuple = tuple(path)
+        self.read_paths.append(path_tuple)
+        if ui:
+            self.ui_read_paths.append(path_tuple)
+
+    def mark_ui_read(self, path: list[str]) -> None:
+        self.mark_read(path, ui=True)
 
     def mark_written(self, path: list[str]) -> None:
         self.write_paths.append(tuple(path))
 
-    def mark_field_read(self, field_path: str, path: list[str]) -> None:
+    def mark_field_read(self, field_path: str, path: list[str], *, ui: bool = False) -> None:
+        if ui:
+            self.ui_read_paths.append(tuple(path))
         self.field_reads.append((field_path, tuple(path)))
 
     def mark_field_written(self, field_path: str, path: list[str]) -> None:
@@ -364,6 +387,9 @@ def test_effect_flow_tracker_mapping_source_effect_key_covers_string_parent_and_
         source=_string_source("Unknown.Member"),
         source_literal=None,
     )
+
+    assert global_string.source == _varref("ParentGlobal.Member")
+    assert local_string.source == _varref("ParentLocal.Member")
 
     assert tracker.mapping_source_effect_key(global_string, parent_env={}, parent_context=parent_context) == (
         "root",

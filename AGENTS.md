@@ -57,7 +57,9 @@
 - No empty handoffs, empty final answers, or path-dump outputs.
 - Do not expand global instructions when scoped instructions or prompts fit.
 - Do not skip focused validation when an executable local check exists.
+- When validation, hooks, or audits fail, fix the underlying problems when feasible instead of bypassing them to force completion.
+- Never use `git commit --no-verify` or `git push --no-verify`; surface hook failures and resolve them or stop for direction.
 
 ## Last Updated
 
-2026-05-20
+2026-05-26

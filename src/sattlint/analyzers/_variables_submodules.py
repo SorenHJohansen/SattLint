@@ -18,7 +18,7 @@ from ..casefolding import is_anytype_name
 from ..grammar import constants as const
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution import decorate_segment
-from ..resolution.common import path_startswith_casefold, resolve_moduletype_def_strict, varname_base
+from ..resolution.common import path_startswith_casefold, resolve_moduletype_def_strict, varname_base, varname_full
 from ..resolution.scope import ScopeContext
 from ..types import VariableId
 from .variable_utils import external_mapping_usage
@@ -32,14 +32,7 @@ def _mapping_target_name(mapping: ParameterMapping) -> str | None:
 
 
 def _mapping_source_full_ref(mapping: ParameterMapping) -> str | None:
-    source = cast(Any, mapping).source
-    if isinstance(source, str):
-        return source
-    if not isinstance(source, dict):
-        return None
-    source_dict = cast(dict[str, object], source)
-    full_source_name = source_dict.get(const.KEY_VAR_NAME)
-    return full_source_name if isinstance(full_source_name, str) else None
+    return varname_full(cast(Any, mapping).source)
 
 
 def _should_walk_submodule_path(self: VariablesAnalyzer, child_path: list[str]) -> bool:
@@ -98,6 +91,12 @@ def _walk_singlemodule_subtree(
     _walk_submodules(self, child.submodules or [], child_context, child_path)
 
     used_reads = {variable.name.lower() for variable in (child.moduleparameters or []) if self.get_usage(variable).read}
+    used_ui_reads = {
+        variable.name.lower() for variable in (child.moduleparameters or []) if self.get_usage(variable).ui_read
+    }
+    used_non_ui_reads = {
+        variable.name.lower() for variable in (child.moduleparameters or []) if self.get_usage(variable).non_ui_read
+    }
     used_writes = {
         variable.name.lower() for variable in (child.moduleparameters or []) if self.get_usage(variable).written
     }
@@ -123,6 +122,8 @@ def _walk_singlemodule_subtree(
             self,
             mapping,
             child_used_reads=used_reads,
+            child_ui_reads=used_ui_reads,
+            child_non_ui_reads=used_non_ui_reads,
             child_used_writes=used_writes,
             parent_env=parent_context.env,
             parent_path=parent_path,
@@ -182,6 +183,8 @@ def _walk_moduletype_instance_subtree(
             external = True
 
     reads: set[str] | None = None
+    ui_reads: set[str] | None = None
+    non_ui_reads: set[str] | None = None
     writes: set[str] | None = None
     typedef_context: ScopeContext | None = None
     dependency_owned_moduletype = False
@@ -228,6 +231,8 @@ def _walk_moduletype_instance_subtree(
                     self.alias_links.append((source_var, target_var, mapping_name))
 
         reads = self.param_reads_by_typedef.get(mt_key, set())
+        ui_reads = self.param_ui_reads_by_typedef.get(mt_key, set())
+        non_ui_reads = self.param_non_ui_reads_by_typedef.get(mt_key, set())
         writes = self.param_writes_by_typedef.get(mt_key, set())
 
     for mapping in child.parametermappings or []:
@@ -251,6 +256,8 @@ def _walk_moduletype_instance_subtree(
             self,
             mapping,
             child_used_reads=mapping_reads,
+            child_ui_reads=ui_reads,
+            child_non_ui_reads=non_ui_reads,
             child_used_writes=mapping_writes,
             parent_env=parent_context.env,
             parent_path=parent_path,
@@ -304,6 +311,8 @@ def _propagate_mapping_to_parent(
     self: VariablesAnalyzer,
     pm: ParameterMapping,
     child_used_reads: set[str] | None,
+    child_ui_reads: set[str] | None,
+    child_non_ui_reads: set[str] | None,
     child_used_writes: set[str] | None,
     parent_env: dict[str, Variable],
     parent_path: list[str],
@@ -314,6 +323,8 @@ def _propagate_mapping_to_parent(
     self.effect_flow_tracker.propagate_mapping_to_parent(
         pm,
         child_used_reads,
+        child_ui_reads,
+        child_non_ui_reads,
         child_used_writes,
         parent_env,
         parent_path,

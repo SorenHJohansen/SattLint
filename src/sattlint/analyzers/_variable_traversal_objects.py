@@ -94,18 +94,16 @@ def _walk_interact_object(self: VariablesAnalyzer, io: Any, context: ScopeContex
 
     procedure = props.get(const.KEY_PROCEDURE)
     procedure_mapping = _object_mapping(procedure)
-    if procedure_mapping is not None and const.KEY_PROCEDURE_CALL in procedure_mapping:
-        call = _object_mapping(procedure_mapping.get(const.KEY_PROCEDURE_CALL))
-        if call is not None:
-            fn_name = call.get(const.KEY_NAME)
-            args = call.get(const.KEY_ARGS)
-            self._handle_function_call(
-                fn_name if isinstance(fn_name, str) else None,
-                cast(list[Any], args) if isinstance(args, list) else [],
-                context,
-                path,
-                is_ui_read=True,
-            )
+    if procedure_mapping is not None and isinstance(procedure_mapping.get(const.KEY_NAME), str):
+        fn_name = procedure_mapping.get(const.KEY_NAME)
+        args = procedure_mapping.get(const.KEY_ARGS)
+        self._handle_function_call(
+            fn_name if isinstance(fn_name, str) else None,
+            cast(list[Any], args) if isinstance(args, list) else [],
+            context,
+            path,
+            is_ui_read=True,
+        )
 
 
 __all__ = [

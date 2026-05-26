@@ -90,10 +90,13 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
     collision_issues: list[VariableIssue] = []
     helper: Any = SimpleNamespace(
         _analyzing_typedefs={"childtype"},
+        _contexts_by_module_path={},
         _append_issue=lambda issue: collision_issues.append(issue),
         _get_usage=lambda variable: usage_by_id[id(variable)],
         used_params_by_typedef={},
         param_reads_by_typedef={},
+        param_ui_reads_by_typedef={},
+        param_non_ui_reads_by_typedef={},
         param_writes_by_typedef={},
         _walk_moduledef=lambda moduledef, context, path: captured_display_paths.append(
             list(context.display_module_path)
@@ -114,13 +117,11 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
     variables_execution_module._analyze_typedef(helper, moduletype, ["Root", "TypeDef:ChildType", "Nested"])
     assert collision_issues[0].kind is IssueKind.NAME_COLLISION
     assert collision_issues[0].source_variable is colliding_param
-    assert captured_display_paths[0] == [
-        variables_execution_module.decorate_segment("Root", "BP"),
-        variables_execution_module.decorate_segment("TypeDef:ChildType", "TD"),
-        "Nested",
-    ]
+    assert captured_display_paths[0] == ["Root<BP>", "TypeDef:ChildType<TD>"]
     assert helper.used_params_by_typedef["ChildType"] == {"input"}
     assert helper.param_reads_by_typedef["childtype"] == {"input"}
+    assert helper.param_ui_reads_by_typedef["childtype"] == set()
+    assert helper.param_non_ui_reads_by_typedef["childtype"] == {"input"}
     assert helper.param_writes_by_typedef["childtype"] == set()
     assert checked_targets[0][0] is input_param
 
@@ -152,13 +153,17 @@ def test_variables_execution_run_typedef_and_context_helpers_cover_remaining_pat
         _get_usage=lambda variable: usage_by_id[id(variable)],
         _analyzing_typedefs={"childtype"},
     )
-    used_reads, used_writes = variables_execution_module._analyze_single_module_with_context(
-        simple_helper,
-        module,
-        context,
-        ["Root", "Worker"],
+    used_reads, used_ui_reads, used_non_ui_reads, used_writes = (
+        variables_execution_module._analyze_single_module_with_context(
+            simple_helper,
+            module,
+            context,
+            ["Root", "Worker"],
+        )
     )
     assert used_reads == {"readparam"}
+    assert used_ui_reads == set()
+    assert used_non_ui_reads == {"readparam"}
     assert used_writes == {"writeparam"}
 
     variables_execution_module._analyze_typedef_with_context(

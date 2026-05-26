@@ -13,6 +13,10 @@ from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
+from . import _app_analysis_from_app as app_analysis_from_app_module
+from . import _app_docs_from_app as app_docs_from_app_module
+from . import _app_graphics_from_app as app_graphics_from_app_module
+from . import _app_menus_from_app as app_menus_from_app_module
 from . import _app_startup_from_app as app_startup_module
 from . import app_analysis as app_analysis_module
 from . import app_base as app_base_module
@@ -353,11 +357,7 @@ def _discover_graphics_rule_selector_options(
     selector_field: str,
     module_kind: str,
 ) -> list[dict[str, Any]]:
-    def _iter_projects(local_cfg: ConfigDict) -> Iterator[LoadedProject]:
-        return _iter_loaded_projects(local_cfg)
-
-    del _iter_projects
-    return app_startup_module.discover_graphics_rule_selector_options_from_app(
+    return app_graphics_from_app_module.discover_graphics_rule_selector_options_from_app(
         cfg,
         selector_field=selector_field,
         module_kind=module_kind,
@@ -371,7 +371,7 @@ def _pick_or_prompt_graphics_rule_selector_value(
     *,
     cfg: ConfigDict | None = None,
 ) -> str:
-    return app_startup_module.pick_or_prompt_graphics_rule_selector_value_from_app(
+    return app_graphics_from_app_module.pick_or_prompt_graphics_rule_selector_value_from_app(
         selector_field,
         module_kind,
         cfg=cfg,
@@ -384,7 +384,7 @@ def _annotate_graphics_entries_with_structure_paths(
     project_bp: BasePicture,
     graph: ProjectGraph,
 ) -> list[dict[str, Any]]:
-    return app_startup_module.annotate_graphics_entries_with_structure_paths_from_app(
+    return app_graphics_from_app_module.annotate_graphics_entries_with_structure_paths_from_app(
         entries,
         project_bp,
         graph,
@@ -393,11 +393,14 @@ def _annotate_graphics_entries_with_structure_paths(
 
 
 def graphics_rules_menu(cfg: ConfigDict | None = None) -> None:
-    app_startup_module.graphics_rules_menu_from_app(cfg, app_module=_APP_MODULE)
+    app_graphics_from_app_module.graphics_rules_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
 def _prompt_graphics_rule_definition_with_config(cfg: ConfigDict | None) -> dict[str, Any] | None:
-    return app_startup_module.prompt_graphics_rule_definition_with_config_from_app(cfg, app_module=_APP_MODULE)
+    return app_graphics_from_app_module.prompt_graphics_rule_definition_with_config_from_app(
+        cfg,
+        app_module=_APP_MODULE,
+    )
 
 
 def _collect_graphics_layout_entries_for_target(
@@ -405,7 +408,7 @@ def _collect_graphics_layout_entries_for_target(
     project_bp: BasePicture,
     graph: ProjectGraph,
 ) -> list[dict[str, Any]]:
-    return app_startup_module.collect_graphics_layout_entries_for_target_from_app(
+    return app_graphics_from_app_module.collect_graphics_layout_entries_for_target_from_app(
         target_name,
         project_bp,
         graph,
@@ -414,38 +417,38 @@ def _collect_graphics_layout_entries_for_target(
 
 
 def run_graphics_rules_validation(cfg: ConfigDict) -> None:
-    app_startup_module.run_graphics_rules_validation_from_app(cfg, app_module=_APP_MODULE)
+    app_graphics_from_app_module.run_graphics_rules_validation_from_app(cfg, app_module=_APP_MODULE)
 
 
 def _get_documentation_unit_selection() -> DocumentationSelection:
-    return app_startup_module.get_documentation_unit_selection_from_app(app_module=_APP_MODULE)
+    return app_docs_from_app_module.get_documentation_unit_selection_from_app(app_module=_APP_MODULE)
 
 
 def preview_documentation_unit_candidates(cfg: ConfigDict) -> None:
-    app_startup_module.preview_documentation_unit_candidates_from_app(cfg, app_module=_APP_MODULE)
+    app_docs_from_app_module.preview_documentation_unit_candidates_from_app(cfg, app_module=_APP_MODULE)
 
 
 def configure_documentation_scope_by_moduletype(cfg: ConfigDict) -> bool:
     del cfg
-    return app_startup_module.configure_documentation_scope_by_moduletype_from_app(app_module=_APP_MODULE)
+    return app_docs_from_app_module.configure_documentation_scope_by_moduletype_from_app(app_module=_APP_MODULE)
 
 
 def configure_documentation_scope_by_instance_path(cfg: ConfigDict) -> bool:
     del cfg
-    return app_startup_module.configure_documentation_scope_by_instance_path_from_app(app_module=_APP_MODULE)
+    return app_docs_from_app_module.configure_documentation_scope_by_instance_path_from_app(app_module=_APP_MODULE)
 
 
 def reset_documentation_scope(cfg: ConfigDict) -> bool:
     del cfg
-    return app_startup_module.reset_documentation_scope_from_app(app_module=_APP_MODULE)
+    return app_docs_from_app_module.reset_documentation_scope_from_app(app_module=_APP_MODULE)
 
 
 def run_generate_documentation(cfg: ConfigDict) -> None:
-    app_startup_module.run_generate_documentation_from_app(cfg, app_module=_APP_MODULE)
+    app_docs_from_app_module.run_generate_documentation_from_app(cfg, app_module=_APP_MODULE)
 
 
 def documentation_menu(cfg: ConfigDict) -> bool:
-    return app_startup_module.documentation_menu_from_app(cfg, app_module=_APP_MODULE)
+    return app_docs_from_app_module.documentation_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
 def _iter_loaded_projects(
@@ -562,103 +565,31 @@ def run_datatype_usage_analysis(cfg: ConfigDict) -> None:
 
 
 def variable_usage_submenu(cfg: ConfigDict) -> None:
-    app_analysis.variable_usage_submenu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        quit_app_fn=quit_app,
-        run_variable_analysis_fn=run_variable_analysis,
-        run_datatype_usage_analysis_fn=run_datatype_usage_analysis,
-        run_debug_variable_usage_fn=run_debug_variable_usage,
-        run_module_localvar_analysis_fn=run_module_localvar_analysis,
-        pause_fn=pause,
-    )
+    app_analysis_from_app_module.variable_usage_submenu_from_app(cfg, app_module=_APP_MODULE)
 
 
 def module_analysis_submenu(cfg: ConfigDict) -> None:
-    app_analysis.module_analysis_submenu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=_print_menu,
-        menu_option_factory=_menu_option,
-        quit_app_fn=quit_app,
-        run_module_duplicates_analysis_fn=run_module_duplicates_analysis,
-        run_module_find_by_name_fn=run_module_find_by_name,
-        run_module_tree_debug_fn=run_module_tree_debug,
-        run_graphics_rules_validation_fn=run_graphics_rules_validation,
-        pause_fn=pause,
-    )
+    app_analysis_from_app_module.module_analysis_submenu_from_app(cfg, app_module=_APP_MODULE)
 
 
 def interface_communication_submenu(cfg: ConfigDict) -> None:
-    app_analysis.interface_communication_submenu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=_print_menu,
-        menu_option_factory=_menu_option,
-        quit_app_fn=quit_app,
-        run_mms_interface_analysis_fn=run_mms_interface_analysis,
-        run_icf_validation_fn=run_icf_validation,
-        run_icf_formatter_fn=run_icf_formatter,
-        pause_fn=pause,
-    )
+    app_analysis_from_app_module.interface_communication_submenu_from_app(cfg, app_module=_APP_MODULE)
 
 
 def code_quality_submenu(cfg: ConfigDict) -> None:
-    app_analysis.code_quality_submenu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=_print_menu,
-        menu_option_factory=_menu_option,
-        quit_app_fn=quit_app,
-        run_comment_code_analysis_fn=run_comment_code_analysis,
-        pause_fn=pause,
-    )
+    app_analysis_from_app_module.code_quality_submenu_from_app(cfg, app_module=_APP_MODULE)
 
 
 def analyzer_catalog_menu(cfg: ConfigDict) -> None:
-    app_analysis.analyzer_catalog_menu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=_print_menu,
-        menu_option_factory=_menu_option,
-        quit_app_fn=quit_app,
-        get_enabled_analyzers_fn=_get_enabled_analyzers,
-        run_checks_fn=_run_checks,
-        pause_fn=pause,
-    )
+    app_analysis_from_app_module.analyzer_catalog_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
 def advanced_analysis_menu(cfg: ConfigDict) -> None:
-    app_analysis.advanced_analysis_menu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=_print_menu,
-        menu_option_factory=_menu_option,
-        quit_app_fn=quit_app,
-        run_datatype_usage_analysis_fn=run_datatype_usage_analysis,
-        run_debug_variable_usage_fn=run_debug_variable_usage,
-        run_module_localvar_analysis_fn=run_module_localvar_analysis,
-        pause_fn=pause,
-    )
+    app_analysis_from_app_module.advanced_analysis_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
 def analysis_menu(cfg: ConfigDict) -> None:
-    app_analysis.analysis_menu(
-        cfg,
-        clear_screen_fn=clear_screen,
-        print_menu_fn=_print_menu,
-        menu_option_factory=_menu_option,
-        quit_app_fn=quit_app,
-        run_checks_fn=_run_checks,
-        variable_usage_submenu_fn=variable_usage_submenu,
-        module_analysis_submenu_fn=module_analysis_submenu,
-        interface_communication_submenu_fn=interface_communication_submenu,
-        code_quality_submenu_fn=code_quality_submenu,
-        analyzer_catalog_menu_fn=analyzer_catalog_menu,
-        advanced_analysis_menu_fn=advanced_analysis_menu,
-        summarize_targets_fn=_summarize_targets,
-        pause_fn=pause,
-    )
+    app_analysis_from_app_module.analysis_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
 def run_module_duplicates_analysis(cfg: ConfigDict) -> None:
@@ -773,7 +704,7 @@ def run_advanced_datatype_analysis(cfg: ConfigDict) -> None:
 
 
 def dump_menu(cfg: ConfigDict) -> None:
-    app_startup_module.dump_menu_from_app(cfg, app_module=_APP_MODULE)
+    app_menus_from_app_module.dump_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
 # ----------------------------
@@ -782,17 +713,21 @@ def dump_menu(cfg: ConfigDict) -> None:
 
 
 def config_menu(cfg: ConfigDict) -> bool:
-    return app_startup_module.config_menu_from_app(cfg, app_module=_APP_MODULE)
+    return app_menus_from_app_module.config_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
 def tools_menu(cfg: ConfigDict) -> None:
-    app_startup_module.tools_menu_from_app(cfg, app_module=_APP_MODULE)
+    app_menus_from_app_module.tools_menu_from_app(cfg, app_module=_APP_MODULE)
 
 
 # ----------------------------
 # Main loop
 # ----------------------------
 _COMPATIBILITY_HELPERS = (
+    _print_menu,
+    _menu_option,
+    _summarize_targets,
+    _graphics_rule_label,
     _simulate_target,
     _require_targets_for_menu_action,
     _split_csv_values,

@@ -899,15 +899,14 @@ def _validate_parameter_mappings(
     policy: _ModuleValidationPolicy,
 ) -> None:
     seen: dict[str, str] = {}
-
     for mapping in parametermappings or []:
         if not hasattr(mapping, "target"):
             continue
 
-        target = cast(VariableRef | str | None, getattr(mapping, "target", None))
-        target_ref = target if _is_variable_ref_node(target) else None
-        target_name = str(target_ref.get(const.KEY_VAR_NAME)) if target_ref is not None else str(target)
-        target_span = _ref_span(target_ref if target_ref is not None else (target if isinstance(target, str) else None))
+        target_ref = cast(VariableRef | None, getattr(mapping, "target", None))
+        if not _is_variable_ref_node(target_ref):
+            continue
+        target_name, target_span = str(target_ref.get(const.KEY_VAR_NAME)), _ref_span(target_ref)
         target_key = target_name.casefold()
         if target_key in seen:
             raise StructuralValidationError(

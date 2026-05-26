@@ -10,7 +10,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import cast
 
-CACHE_VERSION = 11  # Bump when the cache payload format or cached warning content changes.
+CACHE_VERSION = 13  # Bump when cached AST semantics or warning content changes.
 LOOKUP_CACHE_VERSION = 1
 
 
@@ -173,7 +173,7 @@ class FileASTCache:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-PROJECT_CACHE_SCHEMA_VERSION = "2026-05-22-reverse-library-consumers"
+PROJECT_CACHE_SCHEMA_VERSION = "2026-05-26-module-header-outvar-tail-fix"
 
 
 def compute_cache_key(cfg: Mapping[str, object]) -> str:

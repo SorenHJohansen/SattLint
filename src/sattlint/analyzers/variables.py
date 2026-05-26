@@ -261,6 +261,8 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
                 self._dependency_library_display_names.setdefault(origin_lib.casefold(), origin_lib)
         self.used_params_by_typedef: dict[str, set[str]] = {}
         self.param_reads_by_typedef: dict[str, set[str]] = {}
+        self.param_ui_reads_by_typedef: dict[str, set[str]] = {}
+        self.param_non_ui_reads_by_typedef: dict[str, set[str]] = {}
         self.param_writes_by_typedef: dict[str, set[str]] = {}
         self._alias_links: list[tuple[Variable, Variable, str]] = []
         self._effect_flow_edges: dict[tuple[str, ...], set[tuple[str, ...]]] = defaultdict(set)

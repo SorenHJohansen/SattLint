@@ -18,11 +18,14 @@ from sattline_parser.models.ast_model import (
 from sattlint.analyzers.layout_geometry import collect_layout_overlap_issues
 
 from ..grammar import constants as const
-from ..picture_display_paths import PictureDisplayOccurrence
 from ..reporting.variables_report import IssueKind, VariableIssue
-from ..resolution import AccessKind, decorate_segment
 from ..resolution.common import varname_base
 from ..resolution.scope import ScopeContext
+from ._variables_picture_display_support import (
+    build_typedef_root_context,
+    record_graphics_binding_occurrences,
+    record_picture_display_variable_occurrences,
+)
 from .reset_contamination import detect_implicit_latching, detect_reset_contamination
 
 if TYPE_CHECKING:
@@ -70,46 +73,8 @@ def _analyze_root_scope(self: VariablesAnalyzer) -> ScopeContext:
     self._walk_header_enable(self.bp.header, root_context, path=root_path)
     self._walk_header_invoke_tails(self.bp.header, root_context, path=root_path)
     self._walk_header_groupconn(self.bp.header, root_context, path=root_path)
-    for binding in self.bp.graphics_bindings or []:
-        if binding.kind not in {"var", "expr"}:
-            continue
-        self._walk_stmt_or_expr(binding.value, root_context, root_path, is_ui_read=True)
     self._walk_submodules(self.bp.submodules or [], parent_context=root_context, parent_path=root_path)
     return root_context
-
-
-def _record_picture_display_variable_occurrences(self: VariablesAnalyzer) -> None:
-    occurrences = cast(
-        tuple[PictureDisplayOccurrence, ...],
-        tuple(getattr(self.bp, "graphics_picture_display_occurrences", ()) or ()),
-    )
-    if not occurrences:
-        return
-
-    marked_count = 0
-    for occurrence in occurrences:
-        module_path = [str(segment) for segment in occurrence.declaring_module_path]
-        context = self.contexts_by_module_path.get(tuple(module_path))
-        if context is None:
-            continue
-
-        for row in occurrence.record.path_rows:
-            if row.kind != "variable":
-                continue
-            self._mark_ref_access(
-                row.raw_text,
-                context,
-                module_path,
-                AccessKind.READ,
-                is_ui_read=True,
-            )
-            marked_count += 1
-
-    self._trace(
-        "graphics-picture-display-variable-paths",
-        occurrence_count=len(occurrences),
-        marked_count=marked_count,
-    )
 
 
 def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
@@ -298,7 +263,8 @@ def run(
         )
 
     self._analyze_root_scope()
-    _record_picture_display_variable_occurrences(self)
+    record_graphics_binding_occurrences(self)
+    record_picture_display_variable_occurrences(self)
     self._analyze_library_dependency_typedef_usage()
 
     if apply_alias_back_propagation:
@@ -365,23 +331,7 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
         env = {variable.name.lower(): variable for variable in params}
         env.update({variable.name.lower(): variable for variable in locals_})
 
-        display_path: list[str] = []
-        if path:
-            display_path.append(decorate_segment(path[0], "BP"))
-            for segment in path[1:]:
-                if segment.startswith("TypeDef:"):
-                    display_path.append(decorate_segment(segment, "TD"))
-                else:
-                    display_path.append(segment)
-
-        context = ScopeContext(
-            env=env,
-            param_mappings={},
-            module_path=path.copy(),
-            display_module_path=display_path,
-            current_library=mt.origin_lib,
-            parent_context=None,
-        )
+        context = build_typedef_root_context(self, mt, path)
 
         self._walk_moduledef(mt.moduledef, context, path)
         self._walk_module_code(mt.modulecode, context, path)
@@ -391,6 +341,12 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
         used_reads = {
             variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).read
         }
+        used_ui_reads = {
+            variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).ui_read
+        }
+        used_non_ui_reads = {
+            variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).non_ui_read
+        }
         used_writes = {
             variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).written
         }
@@ -398,6 +354,8 @@ def _analyze_typedef(self: VariablesAnalyzer, mt: ModuleTypeDef, path: list[str]
         used_params = used_reads | used_writes
         self.used_params_by_typedef[mt.name] = used_params
         self.param_reads_by_typedef[mt.name.lower()] = used_reads
+        self.param_ui_reads_by_typedef[mt.name.lower()] = used_ui_reads
+        self.param_non_ui_reads_by_typedef[mt.name.lower()] = used_non_ui_reads
         self.param_writes_by_typedef[mt.name.lower()] = used_writes
 
         for mapping in mt.parametermappings or []:
@@ -412,6 +370,7 @@ def _apply_alias_back_propagation(self: VariablesAnalyzer) -> None:
     for parent_var, child_var, field_prefix in self._alias_links:
         parent_usage = self._get_usage(parent_var)
         child_usage = self._get_usage(child_var)
+        ui_read_locations = {tuple(location) for location in child_usage.ui_usage_locations}
 
         for field_path, locations in (child_usage.field_reads or {}).items():
             if field_prefix and field_path:
@@ -422,7 +381,11 @@ def _apply_alias_back_propagation(self: VariablesAnalyzer) -> None:
                 full_field_path = field_path
 
             for location in locations:
-                parent_usage.mark_field_read(full_field_path, location)
+                parent_usage.mark_field_read(
+                    full_field_path,
+                    location,
+                    ui=tuple(location) in ui_read_locations,
+                )
 
         for field_path, locations in (child_usage.field_writes or {}).items():
             if field_prefix and field_path:
@@ -436,14 +399,18 @@ def _apply_alias_back_propagation(self: VariablesAnalyzer) -> None:
                 parent_usage.mark_field_written(full_field_path, location)
 
         for location, kind in child_usage.usage_locations or []:
+            is_ui_read = tuple(location) in ui_read_locations
             if field_prefix:
                 if kind == "read":
-                    parent_usage.mark_field_read(field_prefix, location)
+                    parent_usage.mark_field_read(field_prefix, location, ui=is_ui_read)
                 elif kind == "write":
                     parent_usage.mark_field_written(field_prefix, location)
             else:
                 if kind == "read":
-                    parent_usage.mark_read(location)
+                    if is_ui_read:
+                        parent_usage.mark_ui_read(location)
+                    else:
+                        parent_usage.mark_read(location)
                 elif kind == "write":
                     parent_usage.mark_written(location)
 
@@ -453,16 +420,22 @@ def _analyze_single_module_with_context(
     mod: _ModuleWithParameters,
     context: ScopeContext,
     path: list[str],
-) -> tuple[set[str], set[str]]:
+) -> tuple[set[str], set[str], set[str], set[str]]:
     self._walk_moduledef(mod.moduledef, context, path)
     self._walk_module_code(mod.modulecode, context, path)
     self._walk_submodules(mod.submodules or [], parent_context=context, parent_path=path)
 
     used_reads = {variable.name.lower() for variable in (mod.moduleparameters or []) if self._get_usage(variable).read}
+    used_ui_reads = {
+        variable.name.lower() for variable in (mod.moduleparameters or []) if self._get_usage(variable).ui_read
+    }
+    used_non_ui_reads = {
+        variable.name.lower() for variable in (mod.moduleparameters or []) if self._get_usage(variable).non_ui_read
+    }
     used_writes = {
         variable.name.lower() for variable in (mod.moduleparameters or []) if self._get_usage(variable).written
     }
-    return used_reads, used_writes
+    return used_reads, used_ui_reads, used_non_ui_reads, used_writes
 
 
 def _analyze_typedef_with_context(
@@ -486,12 +459,20 @@ def _analyze_typedef_with_context(
         used_reads = {
             variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).read
         }
+        used_ui_reads = {
+            variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).ui_read
+        }
+        used_non_ui_reads = {
+            variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).non_ui_read
+        }
         used_writes = {
             variable.name.lower() for variable in (mt.moduleparameters or []) if self._get_usage(variable).written
         }
 
         self.used_params_by_typedef[mt.name] = used_reads | used_writes
         self.param_reads_by_typedef[mt_key] = used_reads
+        self.param_ui_reads_by_typedef[mt_key] = used_ui_reads
+        self.param_non_ui_reads_by_typedef[mt_key] = used_non_ui_reads
         self.param_writes_by_typedef[mt_key] = used_writes
     finally:
         self._analyzing_typedefs.discard(mt_key)

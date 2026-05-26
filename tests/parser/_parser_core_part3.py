@@ -149,8 +149,10 @@ def test_modules_mixin_transfer_and_variable_helpers_cover_fallback_branches():
     assert duration_transfer.source_literal == {parser_const.GRAMMAR_VALUE_TIME_VALUE: "T#5S"}
     assert object_transfer.source_literal is not None
     assert object_transfer.source_literal.startswith("<object object at")
-    assert mixin.moduletype_par_transfer(["TargetLiteral", "SourceLiteral"]).target == "TargetLiteral"
-    assert mixin.moduletype_par_transfer([123, "SourceLiteral"]).target == "123"
+    assert mixin.moduletype_par_transfer(["TargetLiteral", "SourceLiteral"]).target == {
+        parser_const.KEY_VAR_NAME: "TargetLiteral"
+    }
+    assert mixin.moduletype_par_transfer([123, "SourceLiteral"]).target == {parser_const.KEY_VAR_NAME: "123"}
     assert mixin.moduletype_par_list([duration_transfer]).data == parser_const.TREE_TAG_MODULETYPE_PAR_LIST
 
     assert mixin.variable_group([]) == []
