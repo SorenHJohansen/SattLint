@@ -20,6 +20,13 @@ def _as_mapping(value: object) -> Mapping[str, object] | None:
     return cast(Mapping[str, object], value)
 
 
+def _safe_stat(path: Path) -> os.stat_result | None:
+    try:
+        return path.stat()
+    except OSError:
+        return None
+
+
 def get_cache_dir() -> Path:
     if os.name == "nt":
         base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
@@ -118,6 +125,9 @@ class FileASTCache:
         self.cache_dir = cache_dir / "file_ast"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
+    def _stat(self, code_path: Path) -> os.stat_result | None:
+        return _safe_stat(code_path)
+
     def _key(self, code_path: Path, mode: str) -> str:
         h = hashlib.sha256()
         h.update(str(code_path).encode("utf-8", errors="ignore"))
@@ -148,17 +158,18 @@ class FileASTCache:
         if meta.get("mode") != mode:
             return None
 
-        if not code_path.exists():
+        st = self._stat(code_path)
+        if st is None:
             return None
-
-        st = code_path.stat()
         if meta.get("mtime_ns") != st.st_mtime_ns or meta.get("size") != st.st_size:
             return None
 
         return payload_map.get("ast")
 
     def save(self, code_path: Path, mode: str, ast: object) -> None:
-        st = code_path.stat()
+        st = self._stat(code_path)
+        if st is None:
+            return
         payload: dict[str, object] = {
             "version": CACHE_VERSION,
             "meta": {
@@ -225,7 +236,12 @@ class ASTCache:
         project: object,
         files: Iterable[Path],
     ) -> None:
-        manifest = {str(p): (p.stat().st_mtime_ns, p.stat().st_size) for p in files}
+        manifest: dict[str, tuple[int, int]] = {}
+        for path in files:
+            stat_result = _safe_stat(path)
+            if stat_result is None:
+                return
+            manifest[str(path)] = (stat_result.st_mtime_ns, stat_result.st_size)
 
         payload: dict[str, object] = {
             "version": CACHE_VERSION,
@@ -262,7 +278,9 @@ class ASTCache:
             if not p.exists():
                 return False
 
-            st = p.stat()
+            st = _safe_stat(p)
+            if st is None:
+                return False
             if st.st_mtime_ns != mtime or st.st_size != size:
                 return False
 

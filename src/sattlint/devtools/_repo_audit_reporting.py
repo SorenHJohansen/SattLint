@@ -29,6 +29,22 @@ def build_coverage_summary_report(root: Path) -> dict[str, Any]:
     return _coverage_reports_module.build_coverage_summary_report(root)
 
 
+def _load_json_payload(path: Path) -> object | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
+def _normalize_pipeline_finding_path(path: object) -> str | None:
+    if not isinstance(path, str):
+        return None
+    normalized = path.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized or None
+
+
 def _parse_coverage_findings(
     root: Path,
     *,
@@ -42,7 +58,11 @@ def _parse_coverage_findings(
         return []
 
     findings: list[Any] = []
-    root_xml = _coverage_reports_module.ElementTree.fromstring(coverage_path.read_text(encoding="utf-8"))
+    try:
+        coverage_xml = coverage_path.read_text(encoding="utf-8")
+        root_xml = _coverage_reports_module.ElementTree.fromstring(coverage_xml)
+    except (OSError, UnicodeDecodeError, _coverage_reports_module.ElementTree.ParseError):
+        return []
     for class_node in root_xml.findall(".//class"):
         filename = class_node.attrib.get("filename", "")
         line_rate = float(class_node.attrib.get("line-rate", "0"))
@@ -259,40 +279,42 @@ def _find_pipeline_findings(output_dir: Path) -> list[Any]:
     repo_audit = _repo_audit_reporting_module()
     findings_path = output_dir / "findings.json"
     if findings_path.exists():
-        payload = _json_mapping(json.loads(findings_path.read_text(encoding="utf-8"))) or {}
-        normalized_findings: list[Any] = []
-        finding_entries = payload.get("findings")
-        for entry_obj in cast(list[object], finding_entries) if isinstance(finding_entries, list) else []:
-            entry = _json_mapping(entry_obj)
-            if entry is None:
-                continue
-            finding_id = str(entry.get("id") or entry.get("rule_id") or "pipeline-finding")
-            if finding_id in repo_audit.STRUCTURAL_DEBT_FINDING_IDS:
-                continue
-            location = _json_mapping(entry.get("location")) or {}
-            path = location.get("path")
-            if repo_audit._should_ignore_normalized_pipeline_finding(finding_id, path):
-                continue
-            normalized_findings.append(
-                repo_audit.Finding(
-                    id=finding_id,
-                    category=str(entry.get("category") or "unknown"),
-                    severity=str(entry.get("severity") or "medium"),
-                    confidence=str(entry.get("confidence") or "medium"),
-                    message=str(entry.get("message") or "Pipeline reported a finding."),
-                    path=path,
-                    line=location.get("line"),
-                    detail=entry.get("detail"),
-                    suggestion=entry.get("suggestion"),
-                    source=str(entry.get("source") or "pipeline"),
+        payload_obj = _load_json_payload(findings_path)
+        if payload_obj is not None:
+            payload = _json_mapping(payload_obj) or {}
+            normalized_findings: list[Any] = []
+            finding_entries = payload.get("findings")
+            for entry_obj in cast(list[object], finding_entries) if isinstance(finding_entries, list) else []:
+                entry = _json_mapping(entry_obj)
+                if entry is None:
+                    continue
+                finding_id = str(entry.get("id") or entry.get("rule_id") or "pipeline-finding")
+                if finding_id in repo_audit.STRUCTURAL_DEBT_FINDING_IDS:
+                    continue
+                location = _json_mapping(entry.get("location")) or {}
+                path = _normalize_pipeline_finding_path(location.get("path"))
+                if repo_audit._should_ignore_normalized_pipeline_finding(finding_id, path):
+                    continue
+                normalized_findings.append(
+                    repo_audit.Finding(
+                        id=finding_id,
+                        category=str(entry.get("category") or "unknown"),
+                        severity=str(entry.get("severity") or "medium"),
+                        confidence=str(entry.get("confidence") or "medium"),
+                        message=str(entry.get("message") or "Pipeline reported a finding."),
+                        path=path,
+                        line=location.get("line"),
+                        detail=entry.get("detail"),
+                        suggestion=entry.get("suggestion"),
+                        source=str(entry.get("source") or "pipeline"),
+                    )
                 )
-            )
-        return normalized_findings
+            return normalized_findings
 
     findings: list[Any] = []
     vulture_path = output_dir / "vulture.json"
     if vulture_path.exists():
-        payload = _json_mapping(json.loads(vulture_path.read_text(encoding="utf-8"))) or {}
+        payload = _json_mapping(_load_json_payload(vulture_path)) or {}
         finding_entries = payload.get("findings")
         for entry_obj in cast(list[object], finding_entries) if isinstance(finding_entries, list) else []:
             entry = _json_mapping(entry_obj)
@@ -313,30 +335,37 @@ def _find_pipeline_findings(output_dir: Path) -> list[Any]:
 
     bandit_path = output_dir / "bandit.json"
     if bandit_path.exists():
-        payload = json.loads(bandit_path.read_text(encoding="utf-8"))
-        for entry in payload.get("findings", []):
-            issue_severity = str(entry.get("issue_severity", "medium")).lower()
-            filename = str(entry.get("filename", ""))
-            issue_text = str(entry.get("issue_text", ""))
+        payload = _json_mapping(_load_json_payload(bandit_path)) or {}
+        for entry in cast(list[object], payload.get("findings")) if isinstance(payload.get("findings"), list) else []:
+            entry_map = _json_mapping(entry)
+            if entry_map is None:
+                continue
+            issue_severity = str(entry_map.get("issue_severity", "medium")).lower()
+            filename = _normalize_pipeline_finding_path(entry_map.get("filename")) or ""
+            issue_text = str(entry_map.get("issue_text", ""))
             if filename.replace("\\", "/").endswith("src/sattlint/cache.py") and "pickle" in issue_text.lower():
                 issue_severity = "low"
+            test_id = str(entry_map.get("test_id", "")).lower()
+            finding_id = f"bandit-{test_id}" if test_id else "bandit-finding"
+            if repo_audit._should_ignore_normalized_pipeline_finding(finding_id, filename or None):
+                continue
             findings.append(
                 repo_audit.Finding(
-                    id="bandit-finding",
+                    id=finding_id,
                     category="secrets-pii",
                     severity=issue_severity if issue_severity in repo_audit.SEVERITY_RANK else "medium",
-                    confidence=str(entry.get("issue_confidence", "medium")).lower(),
+                    confidence=str(entry_map.get("issue_confidence", "medium")).lower(),
                     message=issue_text or "Bandit reported a security issue.",
                     path=filename,
-                    line=entry.get("line_number"),
+                    line=entry_map.get("line_number"),
                     source="bandit",
                 )
             )
 
     pytest_path = output_dir / "pytest.json"
     if pytest_path.exists():
-        payload = json.loads(pytest_path.read_text(encoding="utf-8"))
-        summary = payload.get("summary", {})
+        payload = _json_mapping(_load_json_payload(pytest_path)) or {}
+        summary = _json_mapping(payload.get("summary")) or {}
         failures = int(summary.get("failures", 0))
         errors = int(summary.get("errors", 0))
         if failures or errors:
@@ -363,6 +392,7 @@ __all__ = [
     "_find_public_readiness_findings",
     "_find_structural_report_findings",
     "_is_active_output_ai_gc_path",
+    "_normalize_pipeline_finding_path",
     "_parse_coverage_findings",
     "_structural_report_location_detail",
     "apply_ai_gc",

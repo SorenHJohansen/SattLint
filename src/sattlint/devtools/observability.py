@@ -2,6 +2,7 @@
 
 import json
 import subprocess  # nosec B404 - internal devtool wrapper runs trusted local commands only
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -134,13 +135,21 @@ def read_metrics() -> dict[str, Any]:
 def main() -> int:
     """Main entry point: collect and write metrics."""
     metrics = collect_all_metrics()
-    write_metrics(metrics)
-    print(f"Observability metrics written to {OBSERVABILITY_FILE}")
+    output_error: OSError | None = None
+    try:
+        write_metrics(metrics)
+    except OSError as exc:
+        output_error = exc
+    else:
+        print(f"Observability metrics written to {OBSERVABILITY_FILE}")
     # Print a summary
     print(f"Line coverage: {metrics['coverage']['line_coverage']:.1f}%")
     print(f"Branch coverage: {metrics['coverage']['branch_coverage']:.1f}%")
     print(f"Lint warnings: {metrics['lint']['ruff_warnings']}")
     print(f"Lint errors: {metrics['lint']['ruff_errors']}")
+    if output_error is not None:
+        print(f"Observability metrics write error: {output_error}", file=sys.stderr)
+        return 1
     return 0
 
 

@@ -123,3 +123,27 @@ def test_run_release_smoke_stops_after_first_failure(tmp_path: Path) -> None:
     steps = cast(list[object], summary_report["steps"])
     assert isinstance(steps, list)
     assert len(steps) == 3
+
+
+def test_run_release_smoke_returns_failure_when_output_dir_cannot_be_created(tmp_path: Path, capsys) -> None:
+    wheel_path = tmp_path / "dist" / "sattlint-2026.5-py3-none-any.whl"
+    sample_path = tmp_path / "tests" / "fixtures" / "sample.s"
+    blocked_parent = tmp_path / "artifacts"
+    output_dir = blocked_parent / "release-smoke"
+    wheel_path.parent.mkdir(parents=True, exist_ok=True)
+    sample_path.parent.mkdir(parents=True, exist_ok=True)
+    wheel_path.write_bytes(b"wheel")
+    sample_path.write_text("sample", encoding="utf-8")
+    blocked_parent.write_text("not-a-directory", encoding="utf-8")
+
+    exit_code = release_smoke.run_release_smoke(
+        wheel=wheel_path,
+        sample_file=sample_path,
+        output_dir=output_dir,
+        repo_root=tmp_path,
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "release smoke output error" in captured.err
+    assert not (output_dir / "status.json").exists()

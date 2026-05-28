@@ -1,5 +1,5 @@
 ---
-description: "Use when: changing DOCX generation, documentation classification, FS grouping, unit-scope selection, docgen CLI workflow, or GUI documentation generation in SattLint"
+description: "Use when: changing DOCX generation, documentation classification, FS grouping, unit-scope selection, or docgen CLI workflow in SattLint"
 name: "Documentation Generation"
 tools: [execute, read, search, edit, todo]
 user-invocable: true
@@ -10,7 +10,7 @@ You are the documentation-generation specialist for SattLint. Your job is to kee
 
 - Start from the owning docgen module or entry point and read the nearest classification or generation test before the first edit.
 - Keep grouping and classification logic inside the existing config-driven docgen surfaces.
-- Use focused repo-venv pytest for docgen behavior; add app or GUI tests only when the entry point changed.
+- Use focused repo-venv pytest for docgen behavior; add app tests only when the entry point changed.
 - Keep changes narrow to docgen and related entry points unless validation proves the issue is elsewhere.
 
 ## Constraints
@@ -29,7 +29,7 @@ You are the documentation-generation specialist for SattLint. Your job is to kee
 ## Validation Routing
 
 - Docgen or classification: `python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen.py -x -q --tb=short`
-- Add `tests/test_app.py` or `tests/test_gui.py` when docgen entry points changed.
+- Add `tests/test_app_docgen.py` or `tests/test_app_menus.py` when docgen entry points changed.
 
 ## Output Format
 

@@ -361,6 +361,40 @@ def test_cli_owner_run_docgen_command_uses_explicit_output_path(monkeypatch):
     assert generated == ["custom.docx"]
 
 
+def test_cli_owner_run_docgen_command_creates_parent_dirs_for_output_path(tmp_path, monkeypatch):
+    generated: list[str] = []
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "generate_docx",
+        lambda _bp, out_name, documentation_config, unavailable_libraries: generated.append(out_name),
+    )
+
+    cfg = {"documentation": {"classifications": {}}}
+    target_bp: BasePicture = cast(Any, object())
+    target_graph = ProjectGraph()
+    output_path = tmp_path / "nested" / "docs" / "custom.docx"
+    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
+
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(projects)
+
+    exit_code = app.app_cli_commands_module.run_docgen_command(
+        cfg,
+        use_cache=True,
+        output_dir=None,
+        output_path=str(output_path),
+        iter_loaded_projects_fn=cast(Any, iter_projects),
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    assert output_path.parent.exists()
+    assert generated == [str(output_path)]
+
+
 def test_cli_owner_run_docgen_command_writes_output_dir_file(tmp_path, monkeypatch):
     generated: list[tuple[str, set[str]]] = []
 
@@ -430,6 +464,38 @@ def test_cli_owner_run_docgen_command_uses_default_filename(monkeypatch):
     assert generated == ["TargetA_FS.docx"]
 
 
+def test_cli_owner_run_docgen_command_reports_write_errors(capsys, tmp_path, monkeypatch):
+    def fail_docgen(_bp, out_name, documentation_config, unavailable_libraries):
+        raise PermissionError(f"permission denied: {out_name}")
+
+    monkeypatch.setattr(app.app_cli_commands_module, "generate_docx", fail_docgen)
+
+    cfg = {"documentation": {"classifications": {}}}
+    target_bp: BasePicture = cast(Any, object())
+    target_graph = ProjectGraph()
+    output_path = tmp_path / "protected" / "custom.docx"
+    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
+
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(projects)
+
+    exit_code = app.app_cli_commands_module.run_docgen_command(
+        cfg,
+        use_cache=True,
+        output_dir=None,
+        output_path=str(output_path),
+        iter_loaded_projects_fn=cast(Any, iter_projects),
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert f"Documentation generation failed for {output_path}" in out
+    assert "permission denied" in out
+
+
 def test_cli_owner_run_simulate_command_writes_json_output(tmp_path):
     output_path = tmp_path / "simulation.json"
 
@@ -469,6 +535,50 @@ def test_cli_owner_run_simulate_command_writes_json_output(tmp_path):
     payload = output_path.read_text(encoding="utf-8")
     assert '"target": "Main"' in payload
     assert '"steady_state_reached": true' in payload
+
+
+def test_cli_owner_run_simulate_command_reports_output_write_errors(capsys, tmp_path):
+    output_path = tmp_path / "protected" / "simulation.json"
+
+    class _FakeResult:
+        def to_dict(self):
+            return {"target": "Main"}
+
+        def render_summary(self):
+            return "steady state reached"
+
+    original_write_text = Path.write_text
+
+    def fail_write_text(self: Path, *args: object, **kwargs: object) -> int:
+        if self == output_path:
+            raise PermissionError("locked")
+        return original_write_text(self, *args, **kwargs)
+
+    from pathlib import Path as _Path
+
+    # Monkeypatch the concrete Path type used by app_cli_commands.
+    _Path.write_text = fail_write_text
+    try:
+        exit_code = app.app_cli_commands_module.run_simulate_command(
+            {"debug": False},
+            target_path="program.s",
+            module_name="Main",
+            mode="steady-state",
+            max_scans=25,
+            output_format="json",
+            output_path=str(output_path),
+            use_cache=False,
+            simulate_fn=lambda cfg, **kwargs: _FakeResult(),
+            exit_success=app.EXIT_SUCCESS,
+            exit_usage_error=app.EXIT_USAGE_ERROR,
+        )
+    finally:
+        _Path.write_text = original_write_text
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert f"Failed to write simulation output to {output_path}" in out
+    assert "locked" in out
 
 
 def test_cli_owner_run_simulate_command_reports_usage_errors(capsys):

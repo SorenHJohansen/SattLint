@@ -7,8 +7,7 @@ For deeper design rationale, use `ARCHITECTURE.md` and `docs/design-docs/`.
 
 ```text
 VS Code client -> LSP -> editor facade / semantic core -> analyzers / engine -> parser core
-Preview GUI ------------------------------^            -> reporting / documentation
-CLI + repo audit -------------------------------------> app / devtools helpers
+CLI + repo audit -------------------------------------> app / devtools helpers -> reporting / documentation
 ```
 
 - `vscode/sattline-vscode/` hosts the preview editor client for the Python LSP.
@@ -16,7 +15,6 @@ CLI + repo audit -------------------------------------> app / devtools helpers
 - `src/sattlint/editor_api.py` is the public editor-facing compatibility facade.
 - `src/sattlint/core/` owns the semantic helpers behind that facade.
 - `src/sattlint/` owns CLI flows, analyzers, reporting, config, and documentation generation.
-- `src/sattlint_gui/` hosts the preview desktop GUI shell.
 - `src/sattline_parser/` owns grammar, parse tree transformation, and AST models.
 
 ## Operational Layer
@@ -29,7 +27,6 @@ CLI + repo audit -------------------------------------> app / devtools helpers
 ## Actual Runtime Entry Map
 
 - `sattlint` enters at `src/sattlint/app.py`. Stable command-mode flows and the preview menu both start there, then fan into app helpers, analyzers, reporting, and parser-backed semantic loading.
-- `sattlint-gui` enters at `src/sattlint_gui/main.py`, builds `SattLintWindow`, and reuses the same config and workflow helpers as the CLI. This GUI is shipped but still preview-only.
 - `sattlint-lsp` enters at `src/sattlint_lsp/server.py`, which owns the language server, snapshot store, and document lifecycle hooks.
 - External editor integrations should enter through `src/sattlint/editor_api.py`; that module intentionally forwards into `src/sattlint/core/semantic.py` so compatibility consumers and the LSP share one semantic pipeline.
 - `sattlint-repo-audit` and `sattlint-layer-lint` enter through `src/sattlint/devtools/`. They are repository tooling surfaces, not part of the parser or editor runtime loop.

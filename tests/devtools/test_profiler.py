@@ -197,3 +197,46 @@ def test_main_writes_report_and_progress(tmp_path, monkeypatch, capsys):
     assert "Profiler: discovering workspace sources" in captured.err
     assert json.loads(captured.out) == expected_report
     assert json.loads((output_dir / profiler.DEFAULT_OUTPUT_FILENAME).read_text(encoding="utf-8")) == expected_report
+
+
+def test_main_returns_failure_when_output_report_write_fails(tmp_path, monkeypatch, capsys):
+    expected_report = {
+        "generated_by": "sattlint.devtools.profiler",
+        "report_kind": "workspace-profile",
+        "status": "ok",
+        "workspace_root": ".",
+        "summary": {
+            "program_file_count": 1,
+            "profiled_entry_count": 1,
+            "successful_entry_count": 1,
+            "snapshot_failure_count": 0,
+            "analyzer_count": 1,
+            "total_duration_ms": 5.0,
+        },
+        "source_files": {"program_files": ["Program/Main.s"], "dependency_file_count": 0},
+        "phase_timings": [{"phase": "discovery", "duration_ms": 5.0}],
+        "entries": [],
+        "bottlenecks": {"slowest_entries": [], "slowest_analyzers": [], "slowest_phases": []},
+        "snapshot_failures": [],
+    }
+    monkeypatch.setattr(profiler, "profile_workspace", lambda *_args, **_kwargs: expected_report)
+    monkeypatch.setattr(
+        profiler,
+        "_write_profiler_report",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("locked")),
+    )
+
+    exit_code = profiler.main(
+        [
+            "--workspace-root",
+            str(tmp_path),
+            "--no-progress",
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert json.loads(captured.out) == expected_report
+    assert "profiler output error: locked" in captured.err

@@ -494,11 +494,18 @@ def main(argv: list[str] | None = None) -> int:
         include_full_report=bool(args.include_full_report),
         progress_callback=progress_callback,
     )
+    output_error: OSError | None = None
 
     if args.output_dir:
-        _write_impact_report(Path(args.output_dir).resolve(), report)
+        try:
+            _write_impact_report(Path(args.output_dir).resolve(), report)
+        except OSError as exc:
+            output_error = exc
 
     print(json.dumps(report, indent=2, sort_keys=True))
+    if output_error is not None:
+        print(f"impact analysis output error: {output_error}", file=sys.stderr, flush=True)
+        return 1
     return 0 if report["status"] == "ok" else 2
 
 

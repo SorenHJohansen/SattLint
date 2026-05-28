@@ -40,9 +40,9 @@ def variable_usage_submenu(
             name, _ = VARIABLE_ANALYSES[key]
             emit_output_fn(f"{key}) {name}")
         emit_output_fn("\nInvestigation tools:")
-        emit_output_fn("22) Datatype usage analysis           Trace field-level usage for one variable name")
-        emit_output_fn("23) Variable usage trace              Show fields and locations for one variable name")
-        emit_output_fn("24) Module local variable analysis    Inspect field usage inside one module path")
+        emit_output_fn("23) Datatype usage analysis           Trace field-level usage for one variable name")
+        emit_output_fn("24) Variable usage trace              Show fields and locations for one variable name")
+        emit_output_fn("25) Module local variable analysis    Inspect field usage inside one module path")
         emit_output_fn("b) Back")
         emit_output_fn("q) Quit")
 
@@ -51,11 +51,11 @@ def variable_usage_submenu(
             return
         if choice == "q":
             quit_app_fn()
-        if choice == "22":
+        if choice == "23":
             run_datatype_usage_analysis_fn(cfg)
-        elif choice == "23":
-            run_debug_variable_usage_fn(cfg)
         elif choice == "24":
+            run_debug_variable_usage_fn(cfg)
+        elif choice == "25":
             run_module_localvar_analysis_fn(cfg)
         elif choice in VARIABLE_ANALYSES:
             _name, kinds = VARIABLE_ANALYSES[choice]

@@ -205,106 +205,6 @@ def test_legacy_documentation_rule_keys_are_normalized():
     assert documentation_cfg["classifications"]["ops"]["desc_label_equals"] == ["CustomLib:LegacyOperation"]
 
 
-def test_variable_analysis_menu_all_options(noop_screen, monkeypatch):
-    calls = []
-
-    def record(name):
-        calls.append(name)
-
-    monkeypatch.setattr(app, "_run_checks", lambda *_: record("checks"))
-    monkeypatch.setattr(app, "run_variable_analysis", lambda *_: record("variable"))
-    monkeypatch.setattr(app, "run_datatype_usage_analysis", lambda *_: record("datatype"))
-    monkeypatch.setattr(app, "run_debug_variable_usage", lambda *_: record("debug"))
-    monkeypatch.setattr(app, "run_module_localvar_analysis", lambda *_: record("module"))
-    monkeypatch.setattr(app, "run_module_duplicates_analysis", lambda *_: record("module-compare"))
-    monkeypatch.setattr(app, "run_module_find_by_name", lambda *_: record("module-find"))
-    monkeypatch.setattr(app, "run_module_tree_debug", lambda *_: record("module-tree"))
-    monkeypatch.setattr(app, "run_mms_interface_analysis", lambda *_: record("mms"))
-    monkeypatch.setattr(app, "run_icf_validation", lambda *_: record("icf"))
-    monkeypatch.setattr(app, "run_icf_formatter", lambda *_: record("icf-format"))
-    monkeypatch.setattr(app, "run_comment_code_analysis", lambda *_: record("comment"))
-    monkeypatch.setattr(
-        app,
-        "_get_enabled_analyzers",
-        lambda: [
-            SimpleNamespace(
-                key="variables",
-                name="Variable issues",
-                description="Unused and never-read variables",
-            )
-        ],
-    )
-
-    inputs = [
-        "1",
-        "2",
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-        "10",
-        "11",
-        "12",
-        "13",
-        "14",
-        "15",
-        "16",
-        "17",
-        "18",
-        "19",
-        "20",
-        "21",
-        "22",
-        "23",
-        "24",
-        "b",
-        "3",
-        "1",
-        "2",
-        "3",
-        "b",
-        "4",
-        "1",
-        "2",
-        "3",
-        "b",
-        "5",
-        "1",
-        "b",
-        "6",
-        "1",
-        "2",
-        "b",
-        "7",
-        "1",
-        "2",
-        "3",
-        "b",
-        "b",
-    ]
-    monkeypatch.setattr(builtins, "input", make_input(inputs))
-
-    app.analysis_menu(app.DEFAULT_CONFIG.copy())
-
-    assert calls.count("variable") == 21
-    assert calls.count("checks") == 3
-    assert "datatype" in calls
-    assert "debug" in calls
-    assert "module" in calls
-    assert "module-compare" in calls
-    assert "module-find" in calls
-    assert "module-tree" in calls
-    assert "mms" in calls
-    assert "icf" in calls
-    assert "icf-format" in calls
-    assert "comment" in calls
-
-
 def test_analyzer_catalog_menu_runs_selected_checks(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(
@@ -614,6 +514,65 @@ def test_graphics_rules_menu_adds_and_saves_rule(noop_screen, monkeypatch, tmp_p
 
     assert len(saved_rules) == 1
     assert saved_rules[0]["rules"][0]["relative_module_path"] == "Equipmentmoduler.Stop.L1"
+
+
+def test_graphics_rules_menu_reports_explicit_save_failure(noop_screen, monkeypatch, tmp_path, capsys):
+    rules_path = tmp_path / "graphics_rules.json"
+    rules = {"schema_version": 1, "rules": []}
+
+    monkeypatch.setattr(app, "get_graphics_rules_path", lambda: rules_path)
+    monkeypatch.setattr(app, "load_graphics_rules", lambda _path=None: (rules, False))
+    monkeypatch.setattr(
+        app,
+        "save_graphics_rules",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("read-only filesystem")),
+    )
+    monkeypatch.setattr(builtins, "input", make_input(["3", "", "b"]))
+
+    app.graphics_rules_menu()
+
+    out = capsys.readouterr().out
+    assert f"Failed to save graphics rules to {rules_path}" in out
+    assert "read-only filesystem" in out
+
+
+def test_graphics_rules_menu_stays_open_when_save_before_back_fails(noop_screen, monkeypatch, tmp_path, capsys):
+    rules_path = tmp_path / "graphics_rules.json"
+    rules = {"schema_version": 1, "rules": []}
+    save_attempts: list[str] = []
+    confirm_answers = iter([True, False])
+
+    monkeypatch.setattr(app, "get_graphics_rules_path", lambda: rules_path)
+    monkeypatch.setattr(app, "load_graphics_rules", lambda _path=None: (rules, False))
+    monkeypatch.setattr(
+        app,
+        "save_graphics_rules",
+        lambda *_args, **_kwargs: (save_attempts.append("save"), (_ for _ in ()).throw(PermissionError("locked")))[1],
+    )
+    monkeypatch.setattr(
+        app,
+        "_prompt_graphics_rule_definition_with_config",
+        lambda _cfg=None: {
+            "module_name": "L1",
+            "module_kind": "frame",
+            "relative_module_path": "Equipmentmoduler.Stop.L1",
+            "moduletype_name": "",
+            "description": "House rule",
+            "expected": {
+                "invocation": {"coords": [1.43, 1.35, 0.0, 0.56, 0.56]},
+                "moduledef": {"clipping_size": [1.0, 0.21429]},
+            },
+        },
+    )
+    monkeypatch.setattr(app, "confirm", lambda *_args, **_kwargs: next(confirm_answers))
+    monkeypatch.setattr(builtins, "input", make_input(["1", "", "b", "b"]))
+
+    app.graphics_rules_menu()
+
+    out = capsys.readouterr().out
+    assert save_attempts == ["save"]
+    assert f"Failed to save graphics rules to {rules_path}" in out
+    assert "locked" in out
 
 
 def test_prompt_optional_float_list_raises_skipped_on_blank(monkeypatch):
@@ -943,6 +902,36 @@ def test_main_menu_all_options(noop_screen, monkeypatch):
     app.main()
 
     assert calls == ["analysis", "documentation", "setup", "tools", "help", "save"]
+
+
+def test_main_menu_stays_open_on_save_before_quit_error(noop_screen, monkeypatch, tmp_path, capsys):
+    cfg = app.DEFAULT_CONFIG.copy()
+    cfg["analyzed_programs_and_libraries"] = ["TargetA"]
+    save_calls: list[str] = []
+
+    monkeypatch.setattr(app, "CONFIG_PATH", tmp_path / "config.toml")
+    monkeypatch.setattr(app, "load_config", lambda *_: (cfg, False))
+    monkeypatch.setattr(app, "self_check", lambda *_: True)
+    monkeypatch.setattr(app, "analysis_menu", lambda *_: None)
+    monkeypatch.setattr(app, "documentation_menu", lambda *_: False)
+    monkeypatch.setattr(app, "config_menu", lambda *_: True)
+    monkeypatch.setattr(app, "tools_menu", lambda *_: None)
+    monkeypatch.setattr(app, "show_help", lambda *_: None)
+
+    def fail_save(*_args, **_kwargs):
+        save_calls.append("save")
+        raise PermissionError("read-only filesystem")
+
+    monkeypatch.setattr(app, "save_config", fail_save)
+    monkeypatch.setattr(builtins, "input", make_input(["3", "q", "y", "q", "n"]))
+
+    exit_code = app.main()
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert save_calls == ["save"]
+    assert f"Failed to save config to {tmp_path / 'config.toml'}" in out
+    assert "read-only filesystem" in out
 
 
 def test_tools_menu_all_options(noop_screen, monkeypatch):

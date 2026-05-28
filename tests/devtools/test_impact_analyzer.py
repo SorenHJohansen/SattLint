@@ -275,6 +275,48 @@ def test_main_writes_report_json(tmp_path, monkeypatch, capsys):
     )
 
 
+def test_main_returns_failure_when_output_report_write_fails(tmp_path, monkeypatch, capsys):
+    expected_report = {
+        "generated_by": "sattlint.devtools.impact_analyzer",
+        "report_kind": "impact-analysis-selection",
+        "status": "ok",
+        "workspace_root": ".",
+        "requested_targets": {"libraries": ["support"], "modules": [], "entry_files": []},
+        "resolved_targets": {
+            "libraries": ["support"],
+            "modules": [],
+            "entry_files": [],
+            "entry_file_expansions": [],
+        },
+        "selected_impacts": {"libraries": [{"id": "support"}], "modules": []},
+        "snapshot_failures": [],
+        "errors": [],
+    }
+    monkeypatch.setattr(impact_analyzer, "build_impact_analysis_selection", lambda *args, **kwargs: expected_report)
+    monkeypatch.setattr(
+        impact_analyzer,
+        "_write_impact_report",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("locked")),
+    )
+
+    exit_code = impact_analyzer.main(
+        [
+            "--workspace-root",
+            str(tmp_path),
+            "--library",
+            "support",
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+            "--no-progress",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert json.loads(captured.out) == expected_report
+    assert "impact analysis output error: locked" in captured.err
+
+
 def test_main_returns_error_code_for_invalid_selection(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
         impact_analyzer,

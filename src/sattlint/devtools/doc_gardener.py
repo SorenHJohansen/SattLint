@@ -340,8 +340,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         pipeline_snapshot, pipeline_message = load_pipeline_snapshot(args.pipeline_output_dir)
         if pipeline_message is not None:
             print(f"\nPipeline snapshot unavailable: {pipeline_message}")
-        update_quality_score(findings, pipeline_snapshot)
-        update_tech_debt_scan_log(findings)
+        try:
+            update_quality_score(findings, pipeline_snapshot)
+            update_tech_debt_scan_log(findings)
+        except OSError as exc:
+            print(f"\nTracking file update error: {exc}")
+            return 1
         print("\nTracking files updated.")
 
     if findings:

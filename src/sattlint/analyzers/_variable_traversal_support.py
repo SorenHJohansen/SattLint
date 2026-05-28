@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 from sattline_parser.models.ast_model import FloatLiteral, IntLiteral, Variable
 
+from ..casefolding import is_anytype_name
 from ..grammar import constants as const
+from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution import AccessKind
 from ..resolution.scope import ScopeContext
 from ._variable_traversal_objects import (
@@ -40,6 +42,13 @@ _IGNORED_GRAPHICS_TAIL_BASENAMES = {
     "relative_",
     "rightaligned",
     "setapp_",
+}
+
+_POSITIONAL_RECORD_COMPONENT_BUILTINS: dict[str, str] = {
+    "getrecordcomponent": "reads",
+    "getrecordcompnosort": "reads",
+    "putrecordcomponent": "writes",
+    "putrecordcompnosort": "writes",
 }
 
 type _StmtBranch = tuple[Any, list[Any]]
@@ -122,6 +131,106 @@ def _walk_extra_call_arguments(
         self._walk_stmt_or_expr(extra, context, path, is_ui_read=is_ui_read)
 
 
+def _literal_component_index(value: Any) -> int | None:
+    if isinstance(value, IntLiteral | int) and not isinstance(value, bool):
+        return int(value)
+    return None
+
+
+def _record_component_field_name(
+    self: VariablesAnalyzer,
+    *,
+    variable: Variable,
+    field_path: str,
+    component_index: int,
+    fn_name: str,
+    syntactic_ref: str,
+    path: list[str],
+) -> str | None:
+    if component_index <= 0:
+        return None
+
+    current_type: object = variable.datatype
+    if field_path:
+        try:
+            current_type = self._strict_datatype_at_field_prefix(
+                variable.datatype,
+                field_path,
+                fn_name=fn_name,
+                syntactic_ref=syntactic_ref,
+                resolved_var_name=variable.name,
+                use_path=path,
+            )
+        except ValueError:
+            return None
+
+    if isinstance(current_type, str) and is_anytype_name(current_type):
+        return None
+    if not isinstance(current_type, str):
+        return None
+
+    record_type = self.type_graph.record(current_type)
+    if record_type is None:
+        return None
+
+    fields = list(record_type.fields_by_key.values())
+    if component_index > len(fields):
+        return None
+    return fields[component_index - 1].name
+
+
+def _append_record_component_order_issue(
+    self: VariablesAnalyzer,
+    fn_name: str,
+    args: list[Any],
+    context: ScopeContext,
+    path: list[str],
+) -> None:
+    if len(args) < 2:
+        return
+
+    record_ref = _var_name_of(args[0])
+    if record_ref is None:
+        return
+
+    variable, field_path, _decl_module_path, _decl_display = context.resolve_variable(record_ref)
+    if variable is None:
+        return
+
+    fn_key = fn_name.casefold()
+    action = _POSITIONAL_RECORD_COMPONENT_BUILTINS.get(fn_key)
+    if action is None:
+        return
+
+    role = f"{fn_name} {action} record components by numeric position; reordering datatype fields can change behavior"
+    component_index = _literal_component_index(args[1])
+    if component_index is not None:
+        field_name = _record_component_field_name(
+            self,
+            variable=variable,
+            field_path=field_path,
+            component_index=component_index,
+            fn_name=fn_name,
+            syntactic_ref=record_ref,
+            path=path,
+        )
+        if field_name is None:
+            role = f"{role} (index {component_index})"
+        else:
+            role = f"{role} (index {component_index} => field '{field_name}')"
+
+    self.append_issue(
+        VariableIssue(
+            kind=IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE,
+            module_path=path.copy(),
+            variable=variable,
+            role=role,
+            site=self._site_str() or None,
+            field_path=field_path or None,
+        )
+    )
+
+
 def _handle_function_call(
     self: VariablesAnalyzer,
     fn_name: str | None,
@@ -140,6 +249,9 @@ def _handle_function_call(
     self._record_procedure_status_bindings(fn_name, args or [], context)
     self._record_ignorable_output_bindings(fn_name, args or [], context)
     fn_key = fn_name.casefold()
+    if fn_key in _POSITIONAL_RECORD_COMPONENT_BUILTINS:
+        _append_record_component_order_issue(self, fn_name, args or [], context, path)
+
     if fn_key in ("copyvariable", "copyvarnosort"):
         if len(args or []) < 2:
             raise ValueError(f"{fn_name}: expected at least 2 arguments (Source, Destination)")

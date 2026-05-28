@@ -23,7 +23,6 @@ def test_run_ratchet_policy_check_converts_errors_to_findings(monkeypatch, tmp_p
             "ratchet-policy: blocked",
             "- Touched coverage debt file must reach target: src/sattlint/engine.py is 13.70% but target is 100.00%.",
             "- Touched structural debt file did not shrink: src/sattlint/engine.py remains 1157 lines against baseline 1142.",
-            "- Touched coverage debt file must reach target: src/sattlint_gui/binding.py is 29.95% but target is 100.00%.",
         ]
     )
     monkeypatch.setattr(
@@ -34,15 +33,10 @@ def test_run_ratchet_policy_check_converts_errors_to_findings(monkeypatch, tmp_p
 
     findings = repo_audit._run_ratchet_policy_check(SimpleNamespace(root=tmp_path))
 
-    assert [finding.id for finding in findings] == [
-        "ratchet-policy-coverage",
-        "ratchet-policy-structural",
-        "ratchet-policy-coverage",
-    ]
-    assert [finding.category for finding in findings] == ["coverage", "architecture", "coverage"]
+    assert [finding.id for finding in findings] == ["ratchet-policy-coverage", "ratchet-policy-structural"]
+    assert [finding.category for finding in findings] == ["coverage", "architecture"]
     assert [finding.path for finding in findings] == [
         "src/sattlint/engine.py",
         "src/sattlint/engine.py",
-        "src/sattlint_gui/binding.py",
     ]
     assert all(finding.severity == "high" for finding in findings)

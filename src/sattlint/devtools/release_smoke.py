@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import subprocess  # nosec B404 - repo-owned release smoke uses vetted subprocess calls with explicit argv
+import sys
 import tempfile
 import venv
 from collections.abc import Mapping, Sequence
@@ -274,17 +275,21 @@ def run_release_smoke(
     run_command: _CommandRunner = _run_subprocess,
     create_virtualenv: _VirtualenvCreator = _create_virtualenv,
 ) -> int:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    status_report, summary_report = execute_release_smoke(
-        wheel=wheel,
-        sample_file=sample_file,
-        output_dir=output_dir,
-        repo_root=repo_root,
-        run_command=run_command,
-        create_virtualenv=create_virtualenv,
-    )
-    write_json_artifact(output_dir / "status.json", status_report, repo_root=repo_root)
-    write_json_artifact(output_dir / "summary.json", summary_report, repo_root=repo_root)
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        status_report, summary_report = execute_release_smoke(
+            wheel=wheel,
+            sample_file=sample_file,
+            output_dir=output_dir,
+            repo_root=repo_root,
+            run_command=run_command,
+            create_virtualenv=create_virtualenv,
+        )
+        write_json_artifact(output_dir / "status.json", status_report, repo_root=repo_root)
+        write_json_artifact(output_dir / "summary.json", summary_report, repo_root=repo_root)
+    except OSError as error:
+        print(f"release smoke output error: {error}", file=sys.stderr)
+        return 1
     return 0 if status_report["overall_status"] == "pass" else 1
 
 

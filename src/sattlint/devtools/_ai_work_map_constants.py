@@ -40,7 +40,7 @@ AGENT_ROUTING_RULES: tuple[dict[str, Any], ...] = (
         "path_globs": (
             "src/sattlint/docgenerator/**",
             "tests/test_docgen.py",
-            "tests/test_gui.py",
+            "tests/test_app_docgen.py",
         ),
     },
     {

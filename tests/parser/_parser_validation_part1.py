@@ -36,6 +36,33 @@ ENDDEF (*BasePicture*);
     assert "only allowed inside EQUATIONBLOCK or SEQUENCE/OPENSEQUENCE blocks" in result.message
 
 
+def test_validate_single_file_syntax_rejects_single_field_datatype(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+    SensorType = RECORD DateCode_ 1
+        RawValue: real := 0.0;
+    ENDDEF (*SensorType*);
+LOCALVARIABLES
+    Sensor: SensorType;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "SingleFieldDatatype.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert "datatype 'SensorType' must declare at least 2 fields" in result.message
+
+
 def test_validate_single_file_syntax_allows_comment_inside_equation_block(tmp_path):
     code = """
 "SyntaxVersion"

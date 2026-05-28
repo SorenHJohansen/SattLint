@@ -647,7 +647,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         config = _collect_config(args)
         result = bootstrap_slice(config)
-    except BootstrapError as error:
+    except (BootstrapError, OSError) as error:
         print(f"bootstrap-ai-slice: {error}", file=sys.stderr)
         return 1
 

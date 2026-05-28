@@ -129,8 +129,39 @@ def _summarize_transcript(
     first_action_tool: str | None = None
     last_failed_tool_name: str | None = None
     file_reference_paths: set[str] = set()
+    sanitized_path = sanitize_path_for_report(transcript_path, repo_root=repo_root) or transcript_path.name
 
-    for line_number, raw_line in enumerate(transcript_path.read_text(encoding="utf-8").splitlines(), start=1):
+    try:
+        transcript_lines = transcript_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        parse_failures.append(
+            TranscriptParseFailure(
+                transcript_path=sanitized_path,
+                line_number=0,
+                error=str(exc),
+            )
+        )
+        return {
+            "session_id": transcript_path.stem,
+            "transcript_path": sanitized_path,
+            "event_count": 0,
+            "user_message_count": 0,
+            "assistant_message_count": 0,
+            "empty_assistant_message_count": 0,
+            "tool_call_count": 0,
+            "failed_tool_call_count": 0,
+            "same_tool_retry_count": 0,
+            "prompt_preview": None,
+            "prompt_bucket": _prompt_bucket(None),
+            "discovery_before_action_count": None,
+            "first_action_tool": None,
+            "tool_counts": {},
+            "failed_tool_counts": {},
+            "file_reference_paths": [],
+            "malformed_line_count": len(parse_failures),
+        }, parse_failures
+
+    for line_number, raw_line in enumerate(transcript_lines, start=1):
         if not raw_line.strip():
             continue
         try:
@@ -209,8 +240,6 @@ def _summarize_transcript(
                 failed_tool_call_count += 1
                 failed_tool_counts[tool_name] += 1
                 last_failed_tool_name = tool_name
-
-    sanitized_path = sanitize_path_for_report(transcript_path, repo_root=repo_root) or transcript_path.name
     return {
         "session_id": transcript_path.stem,
         "transcript_path": sanitized_path,

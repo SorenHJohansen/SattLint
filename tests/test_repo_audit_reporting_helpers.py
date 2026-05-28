@@ -86,6 +86,26 @@ def test_build_coverage_summary_report_includes_avg_line_rate(tmp_path):
     assert report["summary"]["avg_line_rate"] == pytest.approx(0.5, abs=0.01)
 
 
+def test_build_coverage_summary_report_skips_unreadable_coverage_xml(monkeypatch, tmp_path):
+    coverage_path = tmp_path / "coverage.xml"
+    coverage_path.write_text("placeholder", encoding="utf-8")
+
+    original_read_text = Path.read_text
+
+    def fake_read_text(self: Path, *args: object, **kwargs: object) -> str:
+        if self == coverage_path:
+            raise PermissionError("permission denied")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fake_read_text)
+
+    report = repo_audit.build_coverage_summary_report(tmp_path)
+
+    assert report["skipped"] is True
+    assert report["skip_reason"] == "coverage.xml unreadable"
+    assert report["ratchet"]["error_type"] == "OSError"
+
+
 def test_build_cli_consistency_report_has_required_schema_fields():
     report = repo_audit.build_cli_consistency_report()
 

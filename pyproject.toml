@@ -100,7 +100,6 @@ precision = 2
 
 [project.scripts]
 sattlint = "sattlint.app:cli"
-sattlint-gui = "sattlint_gui.main:gui"
 sattlint-lsp = "sattlint_lsp.server:cli"
 sattlint-analysis-pipeline = "sattlint.devtools.pipeline:main"
 sattlint-corpus-runner = "sattlint.devtools.corpus:main"

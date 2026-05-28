@@ -154,7 +154,11 @@ def _save_configuration(
     confirm_fn: Callable[[str], bool],
 ) -> bool:
     if confirm_fn("Save config to disk?"):
-        save_config_fn(config_path, cfg)
+        try:
+            save_config_fn(config_path, cfg)
+        except OSError as exc:
+            emit_output(f"Failed to save config to {config_path}: {exc}")
+            return True
         return False
     return dirty
 
@@ -169,7 +173,11 @@ def _handle_config_menu_exit(
     quit_app_fn: Callable[[], None],
 ) -> None:
     if dirty and confirm_fn("Unsaved config changes. Save before quitting?"):
-        save_config_fn(config_path, cfg)
+        try:
+            save_config_fn(config_path, cfg)
+        except OSError as exc:
+            emit_output(f"Failed to save config to {config_path}: {exc}")
+            return
     quit_app_fn()
     sys.exit(0)
 
@@ -514,7 +522,11 @@ def run_main_loop(
 
         elif choice == "q":
             if dirty and confirm_fn("Unsaved config changes. Save before quitting?"):
-                save_config_fn(config_path, cfg)
+                try:
+                    save_config_fn(config_path, cfg)
+                except OSError as exc:
+                    emit_output(f"Failed to save config to {config_path}: {exc}")
+                    continue
             quit_app_fn()
 
         else:

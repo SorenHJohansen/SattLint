@@ -145,7 +145,7 @@ def generate_random_text(
     *,
     seed: int | None = None,
 ) -> str:
-    rng = random.Random(seed) if seed is not None else random
+    rng = random.Random(seed) if seed is not None else random  # nosec B311
     tokens = [
         "PROGRAM",
         "ENDPROGRAM",

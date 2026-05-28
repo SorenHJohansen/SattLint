@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -130,3 +131,33 @@ def test_run_staged_repo_audit_rejects_forwarded_output_dir_override(tmp_path):
             final_output_dir=tmp_path / "audit-full-current",
             forwarded_args=["--output-dir", "somewhere-else"],
         )
+
+
+def test_run_staged_repo_audit_keeps_archived_output_when_cleanup_fails(monkeypatch, tmp_path):
+    final_output_dir = tmp_path / "audit-quick-current"
+    _write_complete_staged_audit(final_output_dir)
+    (final_output_dir / "marker.txt").write_text("previous", encoding="utf-8")
+
+    def audit_main(argv: list[str] | None) -> int:
+        assert argv is not None
+        staged_output_dir = Path(argv[argv.index("--output-dir") + 1])
+        _write_complete_staged_audit(staged_output_dir)
+        (staged_output_dir / "marker.txt").write_text("current", encoding="utf-8")
+        return 0
+
+    def fail_rmtree(path: Path, ignore_errors: bool = False, onerror=None) -> None:
+        raise OSError(f"cleanup failed for {path}")
+
+    monkeypatch.setattr(shutil, "rmtree", fail_rmtree)
+
+    result = run_staged_repo_audit(
+        final_output_dir=final_output_dir,
+        forwarded_args=["--profile", "quick"],
+        audit_main=audit_main,
+    )
+
+    assert result.audit_exit_code == 0
+    assert (final_output_dir / "marker.txt").read_text(encoding="utf-8") == "current"
+    assert result.archived_output_dir is not None
+    assert result.archived_output_dir.exists()
+    assert (result.archived_output_dir / "marker.txt").read_text(encoding="utf-8") == "previous"

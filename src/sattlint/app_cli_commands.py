@@ -63,6 +63,16 @@ def run_simulate_command(
     exit_success: int,
     exit_usage_error: int,
 ) -> int:
+    def _write_output(destination: Path, content: str) -> bool:
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(content + "\n", encoding="utf-8")
+        except OSError as exc:
+            emit_output(f"Failed to write simulation output to {destination}: {exc}")
+            return False
+        emit_output(f"Wrote {destination}")
+        return True
+
     try:
         result = simulate_fn(
             cfg,
@@ -83,9 +93,8 @@ def run_simulate_command(
         payload = json.dumps(result.to_dict(), indent=2)
         if output_path:
             destination = Path(output_path)
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(payload + "\n", encoding="utf-8")
-            emit_output(f"Wrote {destination}")
+            if not _write_output(destination, payload):
+                return exit_usage_error
         else:
             emit_output(payload)
         return exit_success
@@ -93,9 +102,8 @@ def run_simulate_command(
     summary = result.render_summary()
     if output_path:
         destination = Path(output_path)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(summary + "\n", encoding="utf-8")
-        emit_output(f"Wrote {destination}")
+        if not _write_output(destination, summary):
+            return exit_usage_error
     else:
         emit_output(summary)
     return exit_success
@@ -137,12 +145,18 @@ def run_docgen_command(
         else:
             destination = Path(f"{target_name}_FS.docx")
 
-        generate_docx(
-            project_bp,
-            str(destination),
-            documentation_config=documentation_cfg,
-            unavailable_libraries=cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set()))),
-        )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            generate_docx(
+                project_bp,
+                str(destination),
+                documentation_config=documentation_cfg,
+                unavailable_libraries=cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set()))),
+            )
+        except OSError as exc:
+            emit_output(f"Documentation generation failed for {destination}: {exc}")
+            return exit_usage_error
         emit_output(f"Generated {destination}")
 
     return exit_success

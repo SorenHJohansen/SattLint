@@ -10,10 +10,10 @@ Canonical first-check command source for SattLint customization surfaces. Use fi
 - CLI routing or argparse behavior:
   `python scripts/run_repo_python.py -m pytest --no-cov tests/test_cli.py -x -q --tb=short`
 - CLI menu, prompt, or interactive app behavior:
-  `python scripts/run_repo_python.py -m pytest --no-cov tests/test_app.py tests/test_app_menus.py tests/test_app_analysis.py -x -q --tb=short`
+  `python scripts/run_repo_python.py -m pytest --no-cov tests/test_app_menus.py tests/test_app_analysis.py tests/test_cli.py -x -q --tb=short`
 - Documentation generation or classification behavior:
   `python scripts/run_repo_python.py -m pytest --no-cov tests/test_docgen.py -x -q --tb=short`
-  add `tests/test_app.py` or `tests/test_gui.py` when docgen entry points changed.
+  add `tests/test_app_docgen.py` or `tests/test_app_menus.py` when docgen entry points changed.
 - Repo audit or devtools pipeline:
   `python scripts/run_repo_python.py -m sattlint.devtools.repo_audit --profile quick --output-dir artifacts/audit`
   or focused pytest such as `tests/test_repo_audit.py` or `tests/test_pipeline.py` when that is narrower.

@@ -22,7 +22,7 @@ Part of harness-engineering progressive disclosure strategy.
 | Plan | Purpose | Status | Owner |
 | ------ | --------- | -------- | ------- |
 | [../exec-plans/tech-debt-tracker.md](../exec-plans/tech-debt-tracker.md) | Known technical debt | Active | Doc-gardening agent |
-| (add active plans here as `../exec-plans/active/*.md`) | | | |
+| [../exec-plans/completed/65-c-wave-9-record-component-order-dependence-check.md](../exec-plans/completed/65-c-wave-9-record-component-order-dependence-check.md) | Detect order-dependent record component access before datatype field reordering breaks behavior | Completed | Analyzer agent |
 
 ## References
 

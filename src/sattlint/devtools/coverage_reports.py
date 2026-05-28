@@ -431,7 +431,10 @@ def build_coverage_summary_report(
     if not resolved_coverage_path.exists():
         return skipped_report("coverage.xml not found", "FileNotFoundError")
 
-    coverage_xml = resolved_coverage_path.read_text(encoding="utf-8")
+    try:
+        coverage_xml = resolved_coverage_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return skipped_report("coverage.xml unreadable", "OSError")
     if not coverage_xml.strip():
         return skipped_report("coverage.xml was empty", "ParseError")
 

@@ -125,27 +125,36 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
+    output_dir = args.output_dir.resolve()
     try:
         report = build_ai_chat_observability_report(
             transcripts_dir=args.transcripts_dir,
             workspace_storage=args.workspace_storage,
             session_db=args.session_db,
-            output_dir=args.output_dir.resolve(),
+            output_dir=output_dir,
         )
     except AiChatInputError as exc:
         print(str(exc), file=sys.stderr)
         return 2
 
-    write_ai_chat_observability_artifacts(report, output_dir=args.output_dir.resolve())
+    output_summary = {
+        "overall_status": report["status"]["overall_status"],
+        "output_dir": report["status"]["output_dir"],
+        "finding_count": report["findings"]["finding_count"],
+        "transcript_count": report["summary"]["transcript_corpus"]["transcript_count"],
+        "session_store_status": report["summary"]["session_store"]["status"],
+    }
+
+    try:
+        write_ai_chat_observability_artifacts(report, output_dir=output_dir)
+    except OSError as exc:
+        print(json.dumps(output_summary, indent=2, sort_keys=True))
+        print(f"ai chat observability output error: {exc}", file=sys.stderr, flush=True)
+        return 1
+
     print(
         json.dumps(
-            {
-                "overall_status": report["status"]["overall_status"],
-                "output_dir": report["status"]["output_dir"],
-                "finding_count": report["findings"]["finding_count"],
-                "transcript_count": report["summary"]["transcript_corpus"]["transcript_count"],
-                "session_store_status": report["summary"]["session_store"]["status"],
-            },
+            output_summary,
             indent=2,
             sort_keys=True,
         )

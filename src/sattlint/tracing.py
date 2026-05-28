@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from collections import Counter
 from collections.abc import Sequence as SequenceABC
@@ -295,8 +296,16 @@ def trace_source_file_analysis(
         payload["events"] = recorder.events
 
     if output_path is not None:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        except OSError as exc:
+            payload["output_error"] = {
+                "path": sanitize_path_for_report(output_path.resolve(), repo_root=REPO_ROOT)
+                or output_path.resolve().as_posix(),
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            }
 
     return payload
 
@@ -314,6 +323,9 @@ def cli(argv: list[str] | None = None) -> int:
         debug=args.debug,
     )
     if args.output:
+        if payload.get("output_error"):
+            print(f"Trace output error: {payload['output_error']['error']}", file=sys.stderr, flush=True)
+            return 1
         print(f"Trace written to {Path(args.output).resolve()}")
     else:
         print(json.dumps(payload, indent=2, sort_keys=True))

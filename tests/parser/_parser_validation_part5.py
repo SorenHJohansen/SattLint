@@ -150,6 +150,23 @@ def test_validation_internal_parameter_mappings_reject_invalid_literal_shapes(
         )
 
 
+def test_validation_internal_datatypes_reject_single_field_record():
+    datatype = DataType(
+        name="SingleFieldType",
+        description=None,
+        datecode=1,
+        var_list=[Variable(name="OnlyField", datatype=Simple_DataType.INTEGER)],
+    )
+
+    with pytest.raises(StructuralValidationError, match=r"datatype 'SingleFieldType' must declare at least 2 fields"):
+        validation_module._validate_datatypes(
+            [datatype],
+            "test module",
+            type_graph=TypeGraph.from_datatypes([]),
+            known_datatypes=(),
+        )
+
+
 def test_validate_single_file_syntax_rejects_old_on_non_state_record_field(tmp_path):
     code = """
 "SyntaxVersion"
@@ -192,9 +209,11 @@ BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
 TYPEDEFINITIONS
     RegressionType = RECORD DateCode_ 1
         Running: boolean;
+        Enabled: boolean;
     ENDDEF (*RegressionType*);
     SelfType = RECORD DateCode_ 1
         Regression: RegressionType;
+        Mirror: RegressionType;
     ENDDEF (*SelfType*);
 LOCALVARIABLES
     Self: SelfType;
@@ -319,6 +338,7 @@ BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
 TYPEDEFINITIONS
     DummyType = RECORD DateCode_ 1
         StepText: string;
+        StepIndex: integer;
     ENDDEF (*DummyType*);
 LOCALVARIABLES
     Dummy: boolean := False;

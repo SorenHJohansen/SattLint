@@ -74,3 +74,18 @@ def test_migration_script_writes_lock_state_and_removes_legacy_markdown(tmp_path
         ".github/coordination/current-work.md",
     ]
     assert not ledger_path.exists()
+
+
+def test_migration_script_returns_failure_when_lock_write_fails(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(
+        migrate_current_work_ledger.coordination_lock_state,
+        "migrate_current_work_ledger",
+        lambda _repo_root: (_ for _ in ()).throw(PermissionError("read-only filesystem")),
+    )
+
+    exit_code = migrate_current_work_ledger.main(["--repo-root", str(tmp_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "migrate-current-work-ledger: read-only filesystem" in captured.err

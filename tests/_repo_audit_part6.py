@@ -168,6 +168,36 @@ def test_doc_gardener_main_updates_logs_without_exit_when_clean(monkeypatch, cap
     assert "Tracking files updated." in out
 
 
+def test_doc_gardener_main_returns_failure_when_tracking_update_fails(monkeypatch, capsys):
+    monkeypatch.setattr(
+        doc_gardener,
+        "run_scan",
+        lambda: {
+            "total_findings": 0,
+            "by_severity": dict.fromkeys(doc_gardener.SEVERITY_ORDER, 0),
+            "by_category": dict.fromkeys(doc_gardener.CATEGORY_ORDER, 0),
+            "findings": [],
+        },
+    )
+    monkeypatch.setattr(
+        doc_gardener,
+        "update_quality_score",
+        lambda findings, pipeline_snapshot=None: (_ for _ in ()).throw(PermissionError("read-only filesystem")),
+    )
+    monkeypatch.setattr(
+        doc_gardener,
+        "update_tech_debt_scan_log",
+        lambda findings: pytest.fail("scan log update should not run after quality score write failure"),
+    )
+
+    assert doc_gardener.main() == 1
+
+    out = capsys.readouterr().out
+    assert "Doc-gardening scan complete: 0 findings" in out
+    assert "Tracking file update error: read-only filesystem" in out
+    assert "Tracking files updated." not in out
+
+
 def test_doc_gardener_main_reports_findings_without_opening_pr_by_default(monkeypatch, capsys):
     finding = doc_gardener.DocFinding("docs/index.md", 2, "Medium", "dead_link", "Broken link")
     monkeypatch.setattr(

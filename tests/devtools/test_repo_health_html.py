@@ -4,6 +4,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _load_repo_health_module():
     module_path = Path(__file__).resolve().parents[2] / "scripts" / "repo_health.py"
@@ -287,3 +289,87 @@ def test_main_writes_html_output(monkeypatch, tmp_path, capsys):
     assert 'id="ratchet-sort-direction"' in ratchet_html
     assert "src/demo.py" in ratchet_html
     assert "Repository health: pass" in captured
+
+
+def test_main_returns_failure_when_html_output_write_fails(monkeypatch, tmp_path, capsys):
+    html_output = tmp_path / "repo-health.html"
+    report = {
+        "status": "pass",
+        "generated_at": "2026-05-11T12:00:00+00:00",
+        "audit_dir": "tests/fixtures/repo_health/audit-sample",
+        "audit_status": {"overall_status": "pass", "max_severity": "medium"},
+        "context_status": {"status": "pass", "issue_count": 0},
+        "metrics": {
+            "finding_count": 0,
+            "blocking_finding_count": 0,
+            "coverage_total_line_rate": 1.0,
+            "coverage_min_line_rate": 1.0,
+            "auto_loaded_context_lines": 10,
+            "context_auto_loaded_budget": 80,
+            "scoped_context_file_count": 0,
+            "ruff_issue_count": 0,
+            "pyright_issue_count": 0,
+            "pytest_failure_count": 0,
+            "vulture_issue_count": 0,
+            "bandit_issue_count": 0,
+            "architecture_issue_count": 0,
+            "pending_handoff_count": 0,
+            "stale_handoff_count": 0,
+            "largest_file_lines": 0,
+            "largest_file_path": None,
+            "root_junk_file_count": 0,
+            "ai_task_throughput": 0,
+        },
+        "branch_health": {"branch": "main", "dirty_files": 0, "ahead_by": 0, "behind_by": 0, "tracked_worktrees": 1},
+        "handoffs": {"handoff_count": 0, "merge_success_rate": None},
+        "trend_summary": {
+            "history_count": 0,
+            "coverage_delta": None,
+            "finding_delta": None,
+            "context_delta": None,
+            "largest_file_delta": None,
+        },
+        "ratchet_status": {
+            "overall_status": "pass",
+            "coverage": {
+                "status": "pass",
+                "current_line_rate": 1.0,
+                "minimum_line_rate": 1.0,
+                "minimum_changed_line_rate": 1.0,
+                "minimum_touched_file_line_rate": 1.0,
+            },
+            "structural": {
+                "status": "pass",
+                "structural_budget_regression": False,
+                "function_over_budget_count": 0,
+                "class_over_budget_count": 0,
+                "file_exception_count": 0,
+            },
+        },
+        "warnings": [],
+        "top_findings": [],
+        "largest_files": [],
+        "slowest_tests": [],
+        "ratchet_inventory": {
+            "allow_lists": {"typing_debt_allowlist": [], "structural_file_exceptions": []},
+            "ratcheted_file_statuses": [],
+        },
+    }
+
+    monkeypatch.setattr(repo_health, "build_report", lambda _audit_dir: report)
+
+    def _raise_on_html(path: Path, text: str) -> None:
+        if path == html_output:
+            raise PermissionError("locked")
+        pytest.fail(f"Unexpected write to {path}")
+
+    monkeypatch.setattr(repo_health, "_write_text", _raise_on_html)
+
+    exit_code = repo_health.main(
+        ["--audit-dir", "tests/fixtures/repo_health/audit-sample", "--html-output", str(html_output)]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Repository health: pass" in captured.out
+    assert "repo health output error: locked" in captured.err

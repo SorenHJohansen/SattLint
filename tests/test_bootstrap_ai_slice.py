@@ -319,6 +319,22 @@ def test_bootstrap_slice_updates_existing_entry_skips_worktree_add_and_removes_l
     ]
 
 
+def test_bootstrap_main_returns_failure_when_bootstrap_write_fails(monkeypatch, capsys):
+    monkeypatch.setattr(bootstrap_ai_slice, "_collect_config", lambda _args: object())
+    monkeypatch.setattr(
+        bootstrap_ai_slice,
+        "bootstrap_slice",
+        lambda _config: (_ for _ in ()).throw(PermissionError("read-only filesystem")),
+    )
+
+    exit_code = bootstrap_ai_slice.main([])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "bootstrap-ai-slice: read-only filesystem" in captured.err
+
+
 def test_load_lock_state_prunes_stale_entries_without_artifacts_or_worktrees(tmp_path):
     _write_templates(tmp_path)
     supported_task_path = tmp_path / ".ai" / "tasks" / "supported-entry.json"
@@ -399,3 +415,12 @@ def test_load_lock_state_keeps_recent_unbacked_entry(tmp_path):
     entries = bootstrap_ai_slice.coordination_lock_state.load_lock_state(tmp_path)
 
     assert [entry["workstream_id"] for entry in entries] == ["recent-manual-entry"]
+
+
+def test_load_lock_state_returns_empty_for_malformed_json(tmp_path):
+    _write_templates(tmp_path)
+    lock_state_path = bootstrap_ai_slice.coordination_lock_state.lock_state_path(tmp_path)
+    lock_state_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_state_path.write_text("{bad-json", encoding="utf-8")
+
+    assert bootstrap_ai_slice.coordination_lock_state.load_lock_state(tmp_path) == []

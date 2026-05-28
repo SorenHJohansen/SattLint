@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from sattlint.devtools import refactoring
 
@@ -88,6 +89,40 @@ def test_build_refactoring_report_applies_safe_changes(tmp_path):
     assert "\n\n\n" not in source_file.read_text(encoding="utf-8")
 
 
+def test_build_refactoring_report_reports_apply_write_failure(tmp_path, monkeypatch):
+    source_file = tmp_path / "Program" / "Main.s"
+    source_file.parent.mkdir(parents=True, exist_ok=True)
+    source_file.write_text(_program_source(), encoding="utf-8")
+
+    path_type = type(source_file)
+    original_write_text = path_type.write_text
+
+    def fail_for_target(self: Path, text: str, *args: object, **kwargs: object) -> int:
+        if self == source_file:
+            raise PermissionError("locked")
+        return original_write_text(self, text, *args, **kwargs)
+
+    monkeypatch.setattr(path_type, "write_text", fail_for_target)
+
+    report = refactoring.build_refactoring_report(
+        tmp_path,
+        apply=True,
+    )
+
+    assert report["status"] == "partial"
+    assert report["summary"] == {
+        "selected_entry_count": 1,
+        "changed_candidate_count": 1,
+        "safe_candidate_count": 1,
+        "applied_change_count": 0,
+        "error_count": 1,
+    }
+    assert report["candidates"][0]["status"] == "error"
+    assert report["candidates"][0]["applied"] is False
+    assert report["candidates"][0]["errors"][-1] == {"error": "locked", "error_type": "PermissionError"}
+    assert "  \n" in source_file.read_text(encoding="utf-8")
+
+
 def test_main_writes_report_and_progress(tmp_path, monkeypatch, capsys):
     expected_report = {
         "generated_by": "sattlint.devtools.refactoring",
@@ -131,3 +166,46 @@ def test_main_writes_report_and_progress(tmp_path, monkeypatch, capsys):
     assert "Refactoring: discovering workspace sources" in captured.err
     assert json.loads(captured.out) == expected_report
     assert json.loads((output_dir / refactoring.DEFAULT_OUTPUT_FILENAME).read_text(encoding="utf-8")) == expected_report
+
+
+def test_main_returns_failure_when_output_report_write_fails(tmp_path, monkeypatch, capsys):
+    expected_report = {
+        "generated_by": "sattlint.devtools.refactoring",
+        "report_kind": "refactoring-preview",
+        "status": "ok",
+        "workspace_root": ".",
+        "refactoring_kind": "normalize-layout",
+        "apply_mode": "dry-run",
+        "summary": {
+            "selected_entry_count": 1,
+            "changed_candidate_count": 0,
+            "safe_candidate_count": 1,
+            "applied_change_count": 0,
+            "error_count": 0,
+        },
+        "candidates": [],
+        "selection_errors": [],
+    }
+
+    monkeypatch.setattr(refactoring, "build_refactoring_report", lambda *_args, **_kwargs: expected_report)
+    monkeypatch.setattr(
+        refactoring,
+        "_write_refactoring_report",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("locked")),
+    )
+
+    exit_code = refactoring.main(
+        [
+            "--workspace-root",
+            str(tmp_path),
+            "--dry-run",
+            "--no-progress",
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert json.loads(captured.out) == expected_report
+    assert "refactoring output error: locked" in captured.err

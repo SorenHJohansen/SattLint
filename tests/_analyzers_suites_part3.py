@@ -228,6 +228,7 @@ def test_registry_rule_corpus_cache_and_default_runner_closures_cover_remaining_
     manifest_dir = tmp_path / "manifests"
     manifest_dir.mkdir()
     (manifest_dir / "skip.json").mkdir()
+    (manifest_dir / "broken.json").write_text("{not-json", encoding="utf-8")
     (manifest_dir / "case-a.json").write_text(
         json.dumps({"expectation": {"expected_finding_ids": ["rule-A"]}}),
         encoding="utf-8",

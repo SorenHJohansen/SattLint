@@ -5,7 +5,7 @@ SattLint is a Python toolkit for SattLine projects. It can syntax-check individu
 ## Public support contract
 
 - **Stable on Windows and Linux:** `sattlint --version`, `sattlint syntax-check`, `sattlint repo-audit`, and `sattlint-lsp`
-- **Preview:** the interactive CLI menu, `sattlint-gui`, config-driven analysis and documentation workflows, and the local VS Code client in [vscode/sattline-vscode](vscode/sattline-vscode)
+- **Preview:** the interactive CLI menu, config-driven analysis and documentation workflows, and the local VS Code client in [vscode/sattline-vscode](vscode/sattline-vscode)
 - **Internal-only:** AI coordination files, generated audit artifacts, and maintainer automation
 
 For the full contract, see the [public support matrix](docs/references/public-support-matrix.md). For help and issue routing, see [SUPPORT.md](SUPPORT.md). For vulnerabilities, see [SECURITY.md](SECURITY.md). For contributor expectations, see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). For development setup, see [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -141,15 +141,7 @@ sattlint syntax-check tests/fixtures/sample_sattline_files/SattLineFullGrammarTe
 sattlint
 ```
 
-That opens the interactive menu. The menu and GUI are preview surfaces in the current public contract.
-
-For the desktop GUI shell:
-
-```bash
-sattlint-gui
-```
-
-The GUI reuses the same config file and analysis helpers as the CLI. It currently covers setup editing, self-check and cache tooling, variable analysis launch, and non-interactive DOCX generation from configured targets, but it remains preview-only.
+That opens the interactive menu. The menu and other config-driven workflows are preview surfaces in the current public contract.
 
 For non-interactive use, SattLint also exposes subcommands:
 
@@ -248,10 +240,9 @@ sattlint syntax-check FILE
 sattlint analyze
 sattlint format-icf
 sattlint validate-config
-sattlint-gui
 ```
 
-`syntax-check` and `repo-audit` are part of the current stable contract. The interactive menu, GUI, analysis, formatting, validation, and DOCX-generation workflows remain preview surfaces.
+`syntax-check` and `repo-audit` are part of the current stable contract. The interactive menu, analysis, formatting, validation, and DOCX-generation workflows remain preview surfaces.
 
 Main menu:
 
@@ -296,77 +287,8 @@ Exit codes:
 
 ---
 
-## Generate Word Documentation
-
-This workflow is preview-only in the current public support contract.
-
-1. Start SattLint
-2. Choose `2) Documentation`
-3. Choose `1) Generate documentation`
-
-You can optionally scope by units before generating.
-
-Output is a `.docx` file.
-
----
-
-## Desktop GUI
-
-The SattLint Desktop GUI is a preview surface that provides a graphical interface for core analysis and documentation workflows.
-
-### Launch
-
-```bash
-sattlint-gui
-```
-
-The GUI opens with a dark-themed interface. It reuses the same config file, analyzers, and analysis engine as the CLI. No separate installation is needed.
-
-### Features
-
-#### Analyze View
-
-- Load and review configured targets
-- Browse and enable/disable individual analyzers
-- Run Variable Analysis to find unused and written-but-never-read variables
-- Run Checks to execute all enabled analyzers in sequence
-- Run Bundle to combine Variable Analysis + Checks output
-- Stream results and output directly to the Results view
-
-#### Config View
-
-- Edit and save configuration in a focused JSON editor
-- Load config from disk
-- No need to restart the app after changes
-
-#### Documentation View
-
-- Preview configured targets and output location
-- Choose an output directory for `.docx` files
-- Generate Word documentation for all configured targets in one step
-- Watch generation progress and output in real-time
-
-#### Tools View
-
-- Run self-check diagnostics
-- Review enabled analyzers
-- Ensure AST cache is populated for fast analysis
-
-#### Results View
-
-- History of all analysis and documentation runs (timestamped)
-- Detailed output viewer showing target summaries and issue counts
-- Auto-formatted summaries with syntax highlighting
-
-### Typical Workflow
-
-1. **Start the GUI**: `sattlint-gui`
-2. **Load Config**: The app loads your standard SattLint config automatically
-3. **Review Targets**: Analyze view shows all configured targets
-4. **Choose Analyzers**: Select which checks to run (default: all enabled)
-5. **Run Analysis**: Click "Run Bundle" to run Variable Analysis + Checks
-6. **View Results**: Auto-switches to Results view with formatted output
-7. **Generate Docs**: Switch to Documentation view and click "Generate DOCX"
+1. **View Results**: Auto-switches to Results view with formatted output
+2. **Generate Docs**: Switch to Documentation view and click "Generate DOCX"
 
 ### Keyboard & Mouse
 
