@@ -21,6 +21,7 @@ class CommentCodeHit:
     end_col: int
     text: str
     indicators: tuple[str, ...]
+    module_path: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -267,6 +268,21 @@ def _is_at_keyword(text: str, pos: int, keyword: str) -> bool:
     return True
 
 
+def _is_identifier_start(ch: str) -> bool:
+    return ch.isalpha() or ch == "_"
+
+
+def _is_identifier_char(ch: str) -> bool:
+    return ch.isalnum() or ch == "_"
+
+
+def _consume_identifier(text: str, pos: int) -> tuple[str, int]:
+    end = pos + 1
+    while end < len(text) and _is_identifier_char(text[end]):
+        end += 1
+    return text[pos:end], end
+
+
 def _is_valid_enddef_label_comment(comment_text: str) -> bool:
     stripped = comment_text.strip()
     return bool(stripped) and "\n" not in stripped and "\r" not in stripped
@@ -450,9 +466,12 @@ def find_comments_with_code(text: str) -> list[CommentCodeHit]:
     comment_start_col = 1
     comment_text: list[str] = []
 
-    # Track ModuleCode section state
-    in_module_code = False
-    module_code_depth = 0  # Track nesting level when ModuleCode was seen
+    # Track module and ModuleCode nesting from raw source text.
+    module_stack: list[str] = []
+    module_code_paths: list[tuple[str, ...]] = []
+    candidate_definition_name: str | None = None
+    pending_definition_name: str | None = None
+    pending_definition_mode: str | None = None
 
     while i < n:
         ch = text[i]
@@ -460,22 +479,94 @@ def find_comments_with_code(text: str) -> list[CommentCodeHit]:
 
         if depth == 0:
             if not in_string:
-                # Check for ModuleCode keyword (only when not in comments)
-                if not in_module_code and _is_at_keyword(text, i, "ModuleCode"):
-                    in_module_code = True
-                    module_code_depth = 0
-                    i += len("ModuleCode")
-                    col += len("ModuleCode")
+                if _is_identifier_start(ch):
+                    token, token_end = _consume_identifier(text, i)
+                    token_cf = token.casefold()
+
+                    if pending_definition_mode == "header_postcolon":
+                        if token_cf == "moduledefinition" and pending_definition_name is not None:
+                            module_stack.append(pending_definition_name)
+                        pending_definition_name = None
+                        pending_definition_mode = None
+                    elif pending_definition_mode == "typedef_after_equals":
+                        if token_cf == "private_":
+                            i = token_end
+                            col += len(token)
+                            continue
+                        if token_cf == "moduledefinition" and pending_definition_name is not None:
+                            module_stack.append(f"TypeDef:{pending_definition_name}")
+                        pending_definition_name = None
+                        pending_definition_mode = None
+
+                    if token_cf == "modulecode":
+                        if module_stack:
+                            module_code_paths.append(tuple(module_stack))
+                        candidate_definition_name = None
+                        i = token_end
+                        col += len(token)
+                        continue
+
+                    if token_cf == "enddef":
+                        if module_code_paths and len(module_code_paths[-1]) == len(module_stack):
+                            module_code_paths.pop()
+                        if module_stack:
+                            module_stack.pop()
+                        candidate_definition_name = None
+                        pending_definition_name = None
+                        pending_definition_mode = None
+                        i = token_end
+                        col += len(token)
+                        continue
+
+                    if token_cf == "invocation":
+                        if candidate_definition_name is not None:
+                            pending_definition_name = candidate_definition_name
+                            pending_definition_mode = "header_precolon"
+                        candidate_definition_name = None
+                        i = token_end
+                        col += len(token)
+                        continue
+
+                    if token_cf == "basepicture":
+                        candidate_definition_name = token
+                        i = token_end
+                        col += len(token)
+                        continue
+
+                    if token_cf in {
+                        "moduledefinition",
+                        "modulecode",
+                        "enddef",
+                        "private_",
+                        "submodules",
+                        "typedefinitions",
+                        "moduleparameters",
+                        "localvariables",
+                    }:
+                        candidate_definition_name = None
+                    else:
+                        candidate_definition_name = token
+
+                    i = token_end
+                    col += len(token)
                     continue
 
-                # Check for ENDDEF to exit ModuleCode section
-                if in_module_code and _is_at_keyword(text, i, "ENDDEF"):
-                    # Only exit if we're at the same nesting level as ModuleCode
-                    if module_code_depth == 0:
-                        in_module_code = False
-                    i += len("ENDDEF")
-                    col += len("ENDDEF")
+                if pending_definition_mode == "header_precolon" and ch == ":":
+                    pending_definition_mode = "header_postcolon"
+                    i += 1
+                    col += 1
                     continue
+
+                if not module_code_paths and candidate_definition_name is not None and ch == "=":
+                    pending_definition_name = candidate_definition_name
+                    pending_definition_mode = "typedef_after_equals"
+                    candidate_definition_name = None
+                    i += 1
+                    col += 1
+                    continue
+
+                if candidate_definition_name is not None and not ch.isspace():
+                    candidate_definition_name = None
 
                 if ch == '"' or ch == "'":
                     in_string = True
@@ -520,19 +611,16 @@ def find_comments_with_code(text: str) -> list[CommentCodeHit]:
         else:
             if ch == "(" and next_ch == "*":
                 depth += 1
-                module_code_depth += 1  # Track nesting inside ModuleCode
                 i += 2
                 col += 2
                 continue
             if ch == "*" and next_ch == ")":
                 depth -= 1
-                if depth > 0:
-                    module_code_depth -= 1
                 i += 2
                 col += 2
                 if depth == 0:
                     # Comment closed - only check for code if inside ModuleCode
-                    if in_module_code:
+                    if module_code_paths:
                         indicators = _comment_code_indicators("".join(comment_text))
                         if indicators:
                             hits.append(
@@ -543,6 +631,7 @@ def find_comments_with_code(text: str) -> list[CommentCodeHit]:
                                     end_col=col,
                                     text="".join(comment_text),
                                     indicators=indicators,
+                                    module_path=module_code_paths[-1],
                                 )
                             )
                     comment_text = []

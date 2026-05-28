@@ -13,6 +13,19 @@ from .analyzers.variables import IssueKind
 ConfigDict = dict[str, Any]
 
 
+def _run_analysis_menu_action(
+    action_fn: Callable[[], None],
+    *,
+    pause_fn: Callable[[], None],
+    emit_output_fn: Callable[..., None],
+) -> None:
+    try:
+        action_fn()
+    except KeyboardInterrupt:
+        emit_output_fn("\nOperation canceled. Returning to the menu.")
+        pause_fn()
+
+
 def variable_usage_submenu(
     cfg: ConfigDict,
     *,
@@ -52,14 +65,30 @@ def variable_usage_submenu(
         if choice == "q":
             quit_app_fn()
         if choice == "23":
-            run_datatype_usage_analysis_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_datatype_usage_analysis_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "24":
-            run_debug_variable_usage_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_debug_variable_usage_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "25":
-            run_module_localvar_analysis_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_module_localvar_analysis_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice in VARIABLE_ANALYSES:
             _name, kinds = VARIABLE_ANALYSES[choice]
-            run_variable_analysis_fn(cfg, kinds)
+            _run_analysis_menu_action(
+                lambda kinds=kinds: run_variable_analysis_fn(cfg, kinds),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         else:
             emit_output_fn("Invalid choice.")
             pause_fn()
@@ -103,13 +132,29 @@ def module_analysis_submenu(
             quit_app_fn()
 
         if choice == "1":
-            run_module_duplicates_analysis_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_module_duplicates_analysis_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "2":
-            run_module_find_by_name_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_module_find_by_name_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "3":
-            run_module_tree_debug_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_module_tree_debug_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "4":
-            run_graphics_rules_validation_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_graphics_rules_validation_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         else:
             emit_output_fn("Invalid choice.")
             pause_fn()
@@ -155,11 +200,23 @@ def interface_communication_submenu(
             quit_app_fn()
 
         if choice == "1":
-            run_mms_interface_analysis_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_mms_interface_analysis_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "2":
-            run_icf_validation_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_icf_validation_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "3":
-            run_icf_formatter_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_icf_formatter_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         else:
             emit_output_fn("Invalid choice.")
             pause_fn()
@@ -195,7 +252,11 @@ def code_quality_submenu(
             quit_app_fn()
 
         if choice == "1":
-            run_comment_code_analysis_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_comment_code_analysis_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         else:
             emit_output_fn("Invalid choice.")
             pause_fn()
@@ -241,11 +302,19 @@ def analyzer_catalog_menu(
             quit_app_fn()
 
         if choice == "1":
-            run_checks_fn(cfg, None)
+            _run_analysis_menu_action(
+                lambda: run_checks_fn(cfg, None),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice.isdigit():
             index = int(choice) - 2
             if 0 <= index < len(analyzers):
-                run_checks_fn(cfg, [analyzers[index].key])
+                _run_analysis_menu_action(
+                    lambda analyzers=analyzers, index=index: run_checks_fn(cfg, [analyzers[index].key]),
+                    pause_fn=pause_fn,
+                    emit_output_fn=emit_output_fn,
+                )
             else:
                 emit_output_fn("Invalid choice.")
                 pause_fn()
@@ -294,11 +363,23 @@ def advanced_analysis_menu(
             quit_app_fn()
 
         if choice == "1":
-            run_datatype_usage_analysis_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_datatype_usage_analysis_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "2":
-            run_debug_variable_usage_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_debug_variable_usage_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "3":
-            run_module_localvar_analysis_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: run_module_localvar_analysis_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         else:
             emit_output_fn("Invalid choice.")
             pause_fn()
@@ -355,19 +436,47 @@ def analysis_menu(
             quit_app_fn()
 
         if choice == "1":
-            run_checks_fn(cfg, None)
+            _run_analysis_menu_action(
+                lambda: run_checks_fn(cfg, None),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "2":
-            variable_usage_submenu_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: variable_usage_submenu_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "3":
-            module_analysis_submenu_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: module_analysis_submenu_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "4":
-            interface_communication_submenu_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: interface_communication_submenu_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "5":
-            code_quality_submenu_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: code_quality_submenu_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "6":
-            analyzer_catalog_menu_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: analyzer_catalog_menu_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         elif choice == "7":
-            advanced_analysis_menu_fn(cfg)
+            _run_analysis_menu_action(
+                lambda: advanced_analysis_menu_fn(cfg),
+                pause_fn=pause_fn,
+                emit_output_fn=emit_output_fn,
+            )
         else:
             emit_output_fn("Invalid choice.")
             pause_fn()

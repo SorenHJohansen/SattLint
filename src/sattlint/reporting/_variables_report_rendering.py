@@ -289,3 +289,22 @@ def append_min_max_mapping_mismatch(lines: list[str], title: str, issues: list[V
 
 def append_magic_numbers(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
     append_grouped_issue_blocks(lines, title, issues, render_formatted_issue_rows)
+
+
+def append_record_component_order_dependence(lines: list[str], title: str, issues: list[VariableIssue]) -> None:
+    datatype_names = sorted(
+        {
+            issue.datatype_name
+            for issue in issues
+            if issue.datatype_name is not None and issue.datatype_name.casefold() != "anytype"
+        },
+        key=str.casefold,
+    )
+
+    if not datatype_names:
+        append_empty_section(lines, title)
+        return
+
+    lines.append(section_header(title, len(datatype_names)))
+    for datatype_name in datatype_names:
+        lines.append(f"      * {datatype_name}")

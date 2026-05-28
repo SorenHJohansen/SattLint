@@ -104,8 +104,10 @@ def preview_documentation_unit_candidates(
     pause_fn: Callable[[], None],
 ) -> None:
     emit_output("\n--- Documentation Unit Candidates ---")
-    for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-        preview_documentation_candidates_for_target(target_name, project_bp, graph, cfg)
+    with console_module.live_status_line() as status_update_fn:
+        for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
+            status_update_fn(f"Documentation candidates: scanning {target_name}")
+            preview_documentation_candidates_for_target(target_name, project_bp, graph, cfg)
     pause_fn()
 
 
@@ -173,31 +175,36 @@ def run_generate_documentation(
     documentation_cfg = config_module.get_documentation_config(cfg)
     documentation_cfg["units"] = get_documentation_unit_selection()
 
-    for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-        unavailable_libraries = cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set())))
-        classification = classify_documentation_structure(
-            project_bp,
-            documentation_config=documentation_cfg,
-            unavailable_libraries=unavailable_libraries,
-        )
-        scope = classification.scope
-        if scope and scope.mode != "all" and not (scope.roots or []):
-            emit_output(f"\n=== Target: {target_name} ===")
-            emit_output("⚠ No unit roots matched the configured documentation scope; skipping target.")
-            if scope.unmatched_values:
-                emit_output("Unmatched scope filters: " + ", ".join(scope.unmatched_values))
-            continue
+    with console_module.live_status_line() as status_update_fn:
+        for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
+            unavailable_libraries = cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set())))
+            status_update_fn(f"Documentation: classifying {target_name}")
+            classification = classify_documentation_structure(
+                project_bp,
+                documentation_config=documentation_cfg,
+                unavailable_libraries=unavailable_libraries,
+            )
+            scope = classification.scope
+            if scope and scope.mode != "all" and not (scope.roots or []):
+                emit_output(f"\n=== Target: {target_name} ===")
+                emit_output("⚠ No unit roots matched the configured documentation scope; skipping target.")
+                if scope.unmatched_values:
+                    emit_output("Unmatched scope filters: " + ", ".join(scope.unmatched_values))
+                continue
 
-        default_name = f"{target_name}_FS.docx"
-        out_name = prompt_fn(f"Output DOCX for {target_name}", default_name)
-        if scope and scope.roots:
-            emit_output(f"Selected units for {target_name}: " + ", ".join(entry.short_path for entry in scope.roots))
-        generate_docx(
-            project_bp,
-            out_name,
-            documentation_config=documentation_cfg,
-            unavailable_libraries=unavailable_libraries,
-        )
+            default_name = f"{target_name}_FS.docx"
+            out_name = prompt_fn(f"Output DOCX for {target_name}", default_name)
+            if scope and scope.roots:
+                emit_output(
+                    f"Selected units for {target_name}: " + ", ".join(entry.short_path for entry in scope.roots)
+                )
+            status_update_fn(f"Documentation: generating {target_name}")
+            generate_docx(
+                project_bp,
+                out_name,
+                documentation_config=documentation_cfg,
+                unavailable_libraries=unavailable_libraries,
+            )
 
     pause_fn()
 
@@ -215,6 +222,15 @@ def documentation_menu(
     prompt_fn: Callable[[str, str | None], str],
 ) -> bool:
     dirty = False
+
+    def _run_documentation_action(action_fn: Callable[[], Any], *, default: bool = False) -> bool:
+        try:
+            return cast(bool, action_fn())
+        except KeyboardInterrupt:
+            emit_output("\nOperation canceled. Returning to the menu.")
+            pause_fn()
+            return default
+
     while True:
         clear_screen_fn()
         selection = get_documentation_unit_selection()
@@ -252,29 +268,39 @@ def documentation_menu(
             quit_app_fn()
 
         if c == "1":
-            run_generate_documentation(
-                cfg,
-                iter_loaded_projects_fn=iter_loaded_projects_fn,
-                prompt_fn=prompt_fn,
-                pause_fn=pause_fn,
+            _run_documentation_action(
+                lambda: run_generate_documentation(
+                    cfg,
+                    iter_loaded_projects_fn=iter_loaded_projects_fn,
+                    prompt_fn=prompt_fn,
+                    pause_fn=pause_fn,
+                )
             )
         elif c == "2":
-            preview_documentation_unit_candidates(
-                cfg,
-                iter_loaded_projects_fn=iter_loaded_projects_fn,
-                pause_fn=pause_fn,
+            _run_documentation_action(
+                lambda: preview_documentation_unit_candidates(
+                    cfg,
+                    iter_loaded_projects_fn=iter_loaded_projects_fn,
+                    pause_fn=pause_fn,
+                )
             )
         elif c == "3":
-            dirty |= reset_documentation_scope(pause_fn=pause_fn)
+            dirty |= _run_documentation_action(lambda: reset_documentation_scope(pause_fn=pause_fn), default=False)
         elif c == "4":
-            dirty |= configure_documentation_scope_by_moduletype(
-                split_csv_values_fn=split_csv_values_fn,
-                pause_fn=pause_fn,
+            dirty |= _run_documentation_action(
+                lambda: configure_documentation_scope_by_moduletype(
+                    split_csv_values_fn=split_csv_values_fn,
+                    pause_fn=pause_fn,
+                ),
+                default=False,
             )
         elif c == "5":
-            dirty |= configure_documentation_scope_by_instance_path(
-                split_csv_values_fn=split_csv_values_fn,
-                pause_fn=pause_fn,
+            dirty |= _run_documentation_action(
+                lambda: configure_documentation_scope_by_instance_path(
+                    split_csv_values_fn=split_csv_values_fn,
+                    pause_fn=pause_fn,
+                ),
+                default=False,
             )
         else:
             emit_output("Invalid choice.")

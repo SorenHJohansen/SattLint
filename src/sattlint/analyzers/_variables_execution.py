@@ -128,6 +128,7 @@ def _analyze_library_dependency_typedef_usage(self: VariablesAnalyzer) -> None:
                 getattr(moduletype, "origin_lib", None),
             ):
                 continue
+            self._update_status(f"scanning dependency typedef {moduletype.name}")
             td_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
             self._analyze_typedef(moduletype, path=td_path)
     finally:
@@ -177,6 +178,7 @@ def _collect_typedef_issues(self: VariablesAnalyzer) -> None:
             getattr(moduletype, "origin_lib", None),
         ):
             continue
+        self._update_status(f"collecting typedef issues for {moduletype.name}")
         td_path = [self.bp.header.name, f"TypeDef:{moduletype.name}"]
         current_library = moduletype.origin_lib or getattr(self.bp, "origin_lib", None)
 
@@ -262,22 +264,30 @@ def run(
             len(self.bp.moduletype_defs or []),
         )
 
+    self._update_status("building root scope")
     self._analyze_root_scope()
+    self._update_status("recording display bindings")
     record_graphics_binding_occurrences(self)
     record_picture_display_variable_occurrences(self)
+    self._update_status("analyzing dependency typedef usage")
     self._analyze_library_dependency_typedef_usage()
 
     if apply_alias_back_propagation:
+        self._update_status("propagating aliases")
         self._apply_alias_back_propagation()
         self._propagate_procedure_status_bindings()
         self._trace("alias-back-propagation", alias_link_count=len(self._alias_links))
 
+    self._update_status("running post-traversal checks")
     self._run_post_traversal_analyses()
 
     bp_path = [self.bp.header.name]
+    self._update_status("collecting base picture issues")
     self._collect_basepicture_issues(bp_path)
+    self._update_status("collecting typedef issues")
     self._collect_typedef_issues()
 
+    self._update_status("finalizing findings")
     self._add_naming_role_mismatch_issues()
     self._add_global_scope_minimization_issues()
     self._add_hidden_global_coupling_issues()

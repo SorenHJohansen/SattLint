@@ -71,6 +71,74 @@ def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatc
     assert out.count("Issues: 0") == 2
 
 
+def test_run_variable_analysis_updates_live_status(monkeypatch):
+    updates: list[str] = []
+
+    class FakeLiveStatusLine:
+        def __enter__(self):
+            return updates.append
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        app_analysis,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter(
+            [("TargetA", "bp-a", SimpleNamespace(unavailable_libraries=set(), warnings=[]))]
+        ),
+    )
+
+    def _fake_analyze_variables(*_args, **kwargs):
+        status_update_fn = kwargs.get("status_update_fn")
+        if callable(status_update_fn):
+            status_update_fn("Analyzing variable issues for TargetA: walking module path TargetA > StopOprLogic")
+        return make_variable_report("BasePicture")
+
+    monkeypatch.setattr(app_analysis, "analyze_variables", _fake_analyze_variables)
+    monkeypatch.setattr(app_analysis.console_module, "live_status_line", lambda: FakeLiveStatusLine())
+
+    app_analysis.run_variable_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        {app_analysis.IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE},
+    )
+
+    assert updates == [
+        "Analyzing variable issues for TargetA",
+        "Analyzing variable issues for TargetA: walking module path TargetA > StopOprLogic",
+    ]
+
+
+def test_run_variable_analysis_real_analyzer_emits_detailed_status_updates(monkeypatch):
+    updates: list[str] = []
+
+    class FakeLiveStatusLine:
+        def __enter__(self):
+            return updates.append
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    project_bp = parser_core_parse_source_text(VALID_SINGLE_FILE)
+    graph = SimpleNamespace(unavailable_libraries=set(), warnings=[], source_files=set())
+
+    monkeypatch.setattr(
+        app_analysis,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("SmokeTarget", project_bp, graph)]),
+    )
+    monkeypatch.setattr(app_analysis.console_module, "live_status_line", lambda: FakeLiveStatusLine())
+
+    app_analysis.run_variable_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        {app_analysis.IssueKind.UNUSED},
+    )
+
+    assert updates[0] == "Analyzing variable issues for SmokeTarget"
+    assert any("building root scope" in update for update in updates)
+    assert any("finalizing findings" in update for update in updates)
+
+
 def test_run_variable_analysis_includes_version_and_last_changed(noop_screen, monkeypatch, capsys, tmp_path):
     from datetime import datetime
 
@@ -487,6 +555,33 @@ def test_run_datatype_usage_analysis_reports_errors_and_pauses(monkeypatch):
 
     assert any("Error during analysis for TargetA: boom" in line for line in lines)
     assert pauses == ["pause"]
+
+
+def test_run_datatype_usage_analysis_updates_live_status(monkeypatch):
+    updates: list[str] = []
+
+    class FakeLiveStatusLine:
+        def __enter__(self):
+            return updates.append
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": "FlowVar")
+    monkeypatch.setattr(
+        app_analysis,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter(
+            [("TargetA", "bp-a", SimpleNamespace(unavailable_libraries=set(), warnings=[]))]
+        ),
+    )
+    monkeypatch.setattr(variables_reporting_module, "analyze_datatype_usage", lambda *_args, **_kwargs: "report")
+    monkeypatch.setattr(app_analysis.console_module, "live_status_line", lambda: FakeLiveStatusLine())
+    monkeypatch.setattr(app_analysis, "emit_output", lambda *_args, **_kwargs: None)
+
+    app_analysis.run_datatype_usage_analysis(app.DEFAULT_CONFIG.copy(), pause_fn=None)
+
+    assert updates == ["Analyzing datatype usage for TargetA: FlowVar"]
 
 
 def test_parse_index_selection_supports_ranges_and_filters_invalid_tokens():

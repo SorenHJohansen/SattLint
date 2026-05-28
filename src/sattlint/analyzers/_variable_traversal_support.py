@@ -203,6 +203,16 @@ def _append_record_component_order_issue(
         return
 
     role = f"{fn_name} {action} record components by numeric position; reordering datatype fields can change behavior"
+    datatype_name: str | None = None
+    if isinstance(variable.datatype, str) and not is_anytype_name(variable.datatype):
+        datatype_name = variable.datatype
+    if datatype_name is None:
+        return
+
+    datatype_key = datatype_name.casefold()
+    if datatype_key in self._record_component_order_datatypes_seen:
+        return
+
     component_index = _literal_component_index(args[1])
     if component_index is not None:
         field_name = _record_component_field_name(
@@ -219,11 +229,13 @@ def _append_record_component_order_issue(
         else:
             role = f"{role} (index {component_index} => field '{field_name}')"
 
+    self._record_component_order_datatypes_seen.add(datatype_key)
     self.append_issue(
         VariableIssue(
             kind=IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE,
             module_path=path.copy(),
             variable=variable,
+            datatype_name=datatype_name,
             role=role,
             site=self._site_str() or None,
             field_path=field_path or None,

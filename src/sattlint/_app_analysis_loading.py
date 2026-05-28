@@ -13,7 +13,40 @@ ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
 
-def _include_configured_reverse_library_consumers(
+def _workspace_dependency_suffixes(mode: str) -> tuple[str, ...]:
+    return (".l", ".z") if casefold_equal(mode, "draft") else (".z",)
+
+
+def _iter_workspace_reverse_library_consumer_dependency_files(
+    cfg: ConfigDict,
+) -> Iterator[tuple[str, Path]]:
+    seen_targets: set[str] = set()
+    base_dirs = [Path(cfg["program_dir"]), *(Path(path) for path in cfg["other_lib_dirs"])]
+    suffixes = _workspace_dependency_suffixes(str(cfg.get("mode", "draft")))
+
+    for base_dir in base_dirs:
+        if not base_dir.exists() or not base_dir.is_dir():
+            continue
+        try:
+            files = sorted(
+                (path for path in base_dir.iterdir() if path.is_file()), key=lambda path: path.name.casefold()
+            )
+        except OSError:
+            continue
+
+        for suffix in suffixes:
+            for deps_path in files:
+                if deps_path.suffix.casefold() != suffix:
+                    continue
+                target_name = deps_path.stem
+                target_key = target_name.casefold()
+                if target_key in seen_targets:
+                    continue
+                seen_targets.add(target_key)
+                yield target_name, deps_path
+
+
+def _include_reverse_library_consumers(
     cfg: ConfigDict,
     *,
     selected_target: str,
@@ -39,6 +72,17 @@ def _include_configured_reverse_library_consumers(
 
     selected_key = selected_target.casefold()
     requester_dir = Path(cfg["program_dir"])
+    queued_targets: set[tuple[str, str]] = set()
+
+    def _queue_reverse_consumer(target_name: str, deps_path: Path | None) -> None:
+        if deps_path is None or target_name.casefold() == selected_key:
+            return
+
+        queue_key = (target_name.casefold(), str(deps_path.parent).casefold())
+        if queue_key in queued_targets:
+            return
+        queued_targets.add(queue_key)
+        loader._visit(target_name, graph, False, requester_dir=deps_path.parent, syntax_check=False)
 
     for candidate in require_analyzed_targets_fn(cfg):
         if candidate.casefold() == selected_key:
@@ -49,8 +93,17 @@ def _include_configured_reverse_library_consumers(
         if not any(dep.casefold() == selected_key for dep in candidate_dependencies):
             continue
 
-        dependency_requester = deps_path.parent if deps_path is not None else requester_dir
-        loader._visit(candidate, graph, False, requester_dir=dependency_requester, syntax_check=False)
+        _queue_reverse_consumer(candidate, deps_path)
+
+    for candidate, deps_path in _iter_workspace_reverse_library_consumer_dependency_files(cfg):
+        if candidate.casefold() == selected_key:
+            continue
+
+        candidate_dependencies = cast(list[str], loader._read_deps(deps_path))
+        if not any(dep.casefold() == selected_key for dep in candidate_dependencies):
+            continue
+
+        _queue_reverse_consumer(candidate, deps_path)
 
 
 def get_analyzed_targets(cfg: ConfigDict, *, app_support: Any) -> list[str]:
@@ -193,7 +246,7 @@ def load_project(
             direct_dependencies=direct_dependencies,
         )
 
-    _include_configured_reverse_library_consumers(
+    _include_reverse_library_consumers(
         cfg,
         selected_target=selected_target,
         root_bp=root_bp,

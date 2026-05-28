@@ -286,6 +286,7 @@ def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeyp
                 pause_fn=lambda: outputs.append("pause"),
                 require_targets_for_menu_action_fn=lambda *_: False,
                 dump_menu_fn=lambda *_: None,
+                run_source_diff_report_fn=lambda *_: None,
                 confirm_fn=lambda *_: False,
                 force_refresh_ast_fn=lambda *_: None,
             )
@@ -311,6 +312,7 @@ def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeyp
                 config_menu_fn=lambda *_: False,
                 tools_menu_fn=lambda *_: None,
                 show_help_fn=lambda *_: None,
+                pause_fn=lambda: outputs.append("pause"),
                 confirm_fn=lambda *_: False,
                 save_config_fn=lambda *_: None,
                 config_path=Path("config.json"),
@@ -319,3 +321,30 @@ def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeyp
     finally:
         app_menus.emit_output = original_emit
     assert outputs == ["Invalid choice."]
+
+
+def test_menu_helpers_handle_keyboard_interrupt_and_return_to_current_menu(monkeypatch: pytest.MonkeyPatch) -> None:
+    outputs: list[str] = []
+    original_emit = app_menus.emit_output
+    app_menus.emit_output = _capture_output(outputs)
+    try:
+        monkeypatch.setattr(builtins, "input", make_input(["1", "b"]))
+        app_menus.tools_menu(
+            {"analyzed_programs_and_libraries": ["TargetA"]},
+            clear_screen_fn=lambda: None,
+            print_menu_fn=lambda *args, **kwargs: None,
+            menu_option_factory=_option,
+            quit_app_fn=lambda: (_ for _ in ()).throw(_QuitSignalError()),
+            self_check_fn=lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()),
+            pause_fn=lambda: outputs.append("pause"),
+            require_targets_for_menu_action_fn=lambda *_: True,
+            dump_menu_fn=lambda *_: None,
+            run_source_diff_report_fn=lambda *_: None,
+            confirm_fn=lambda *_: True,
+            force_refresh_ast_fn=lambda *_: None,
+        )
+    finally:
+        app_menus.emit_output = original_emit
+
+    assert any("Operation canceled. Returning to the menu." in line for line in outputs)
+    assert outputs.count("pause") == 1

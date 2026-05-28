@@ -18,6 +18,20 @@ ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
 
+def _run_menu_action(
+    action_fn: Callable[[], Any],
+    *,
+    pause_fn: Callable[[], None],
+    default: Any = None,
+) -> Any:
+    try:
+        return action_fn()
+    except KeyboardInterrupt:
+        emit_output("\nOperation canceled. Returning to the menu.")
+        pause_fn()
+        return default
+
+
 def _build_config_menu_options(menu_option_factory: Callable[[str, str, str], Any]) -> list[Any]:
     return [
         menu_option_factory("1", "Add analysis target", "Add a program or library name without file extension"),
@@ -35,6 +49,19 @@ def _build_config_menu_options(menu_option_factory: Callable[[str, str, str], An
         menu_option_factory("b", "Back", ""),
         menu_option_factory("q", "Quit", ""),
     ]
+
+
+def _run_targeted_status_action(
+    cfg: ConfigDict,
+    *,
+    status_prefix: str,
+    iter_loaded_projects_fn: Callable[..., Iterator[LoadedProject]],
+    action_fn: Callable[[str, BasePicture, ProjectGraph, Callable[[str], None]], None],
+) -> None:
+    with console_module.live_status_line() as status_update_fn:
+        for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
+            status_update_fn(f"{status_prefix}: {target_name}")
+            action_fn(target_name, project_bp, graph, status_update_fn)
 
 
 def _add_analysis_target(
@@ -218,26 +245,64 @@ def dump_menu(
             quit_app_fn()
 
         if choice == "1" and confirm_fn("Dump parse tree?"):
-            for _target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-                engine_module.dump_parse_tree((project_bp, graph))
+            _run_menu_action(
+                lambda: _run_targeted_status_action(
+                    cfg,
+                    status_prefix="Dump parse tree",
+                    iter_loaded_projects_fn=iter_loaded_projects_fn,
+                    action_fn=lambda _target_name, project_bp, graph, _status_update_fn: engine_module.dump_parse_tree(
+                        (project_bp, graph)
+                    ),
+                ),
+                pause_fn=lambda: None,
+            )
         elif choice == "2" and confirm_fn("Dump AST?"):
-            for _target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-                engine_module.dump_ast((project_bp, graph))
+            _run_menu_action(
+                lambda: _run_targeted_status_action(
+                    cfg,
+                    status_prefix="Dump AST",
+                    iter_loaded_projects_fn=iter_loaded_projects_fn,
+                    action_fn=lambda _target_name, project_bp, graph, _status_update_fn: engine_module.dump_ast(
+                        (project_bp, graph)
+                    ),
+                ),
+                pause_fn=lambda: None,
+            )
         elif choice == "3" and confirm_fn("Dump dependency graph?"):
-            for _target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-                engine_module.dump_dependency_graph((project_bp, graph))
+            _run_menu_action(
+                lambda: _run_targeted_status_action(
+                    cfg,
+                    status_prefix="Dump dependency graph",
+                    iter_loaded_projects_fn=iter_loaded_projects_fn,
+                    action_fn=lambda _target_name, project_bp, graph, _status_update_fn: (
+                        engine_module.dump_dependency_graph((project_bp, graph))
+                    ),
+                ),
+                pause_fn=lambda: None,
+            )
         elif choice == "4" and confirm_fn("Dump variable report?"):
-            for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-                unavailable_libraries = cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set())))
-                emit_output(f"\n=== Target: {target_name} ===")
-                emit_output(
-                    analyze_variables_fn(
-                        project_bp,
-                        debug=cfg.get("debug", False),
-                        unavailable_libraries=unavailable_libraries,
-                        config=cfg,
-                    ).summary()
-                )
+            _run_menu_action(
+                lambda: _run_targeted_status_action(
+                    cfg,
+                    status_prefix="Dump variable report",
+                    iter_loaded_projects_fn=iter_loaded_projects_fn,
+                    action_fn=lambda target_name, project_bp, graph, status_update_fn: (
+                        emit_output(f"\n=== Target: {target_name} ==="),
+                        emit_output(
+                            analyze_variables_fn(
+                                project_bp,
+                                debug=cfg.get("debug", False),
+                                unavailable_libraries=cast(
+                                    set[str], getattr(graph, "unavailable_libraries", cast(set[str], set()))
+                                ),
+                                config=cfg,
+                                status_update_fn=status_update_fn,
+                            ).summary()
+                        ),
+                    ),
+                ),
+                pause_fn=lambda: None,
+            )
         else:
             emit_output("Invalid choice.")
 
@@ -286,124 +351,176 @@ def config_menu(
             )
 
         if choice == "1":
-            dirty = (
-                _add_analysis_target(
-                    cfg,
-                    prompt_fn=prompt_fn,
-                    target_exists_fn=target_exists_fn,
-                    confirm_fn=confirm_fn,
-                    pause_fn=pause_fn,
-                )
-                or dirty
+            dirty = _run_menu_action(
+                lambda dirty=dirty: (
+                    _add_analysis_target(
+                        cfg,
+                        prompt_fn=prompt_fn,
+                        target_exists_fn=target_exists_fn,
+                        confirm_fn=confirm_fn,
+                        pause_fn=pause_fn,
+                    )
+                    or dirty
+                ),
+                pause_fn=pause_fn,
+                default=dirty,
             )
 
         elif choice == "2":
-            dirty = (
-                _remove_analysis_target(
-                    cfg,
-                    prompt_fn=prompt_fn,
-                    confirm_fn=confirm_fn,
-                    pause_fn=pause_fn,
-                )
-                or dirty
+            dirty = _run_menu_action(
+                lambda dirty=dirty: (
+                    _remove_analysis_target(
+                        cfg,
+                        prompt_fn=prompt_fn,
+                        confirm_fn=confirm_fn,
+                        pause_fn=pause_fn,
+                    )
+                    or dirty
+                ),
+                pause_fn=pause_fn,
+                default=dirty,
             )
 
         elif choice == "3":
-            new = "draft" if cfg["mode"] == "official" else "official"
-            if confirm_fn(f"Switch mode to '{new}'?"):
-                cfg["mode"] = new
-                dirty = True
+            dirty = _run_menu_action(
+                lambda dirty=dirty: (
+                    _toggle_config_value(
+                        cfg,
+                        "mode",
+                        confirm_message=f"Switch mode to '{'draft' if cfg['mode'] == 'official' else 'official'}'?",
+                        confirm_fn=confirm_fn,
+                        on_change_fn=lambda local_cfg: local_cfg.__setitem__(
+                            "mode", "draft" if local_cfg["mode"] == "official" else "official"
+                        ),
+                    )
+                    or dirty
+                ),
+                pause_fn=pause_fn,
+                default=dirty,
+            )
 
         elif choice == "4":
-            dirty = (
-                _toggle_config_value(
-                    cfg,
-                    "scan_root_only",
-                    confirm_message="Toggle scan_root_only?",
-                    confirm_fn=confirm_fn,
-                )
-                or dirty
+            dirty = _run_menu_action(
+                lambda dirty=dirty: (
+                    _toggle_config_value(
+                        cfg,
+                        "scan_root_only",
+                        confirm_message="Toggle scan_root_only?",
+                        confirm_fn=confirm_fn,
+                    )
+                    or dirty
+                ),
+                pause_fn=pause_fn,
+                default=dirty,
             )
 
         elif choice == "5":
-            dirty = (
-                _toggle_config_value(
-                    cfg,
-                    "fast_cache_validation",
-                    confirm_message="Toggle fast_cache_validation?",
-                    confirm_fn=confirm_fn,
-                )
-                or dirty
+            dirty = _run_menu_action(
+                lambda dirty=dirty: (
+                    _toggle_config_value(
+                        cfg,
+                        "fast_cache_validation",
+                        confirm_message="Toggle fast_cache_validation?",
+                        confirm_fn=confirm_fn,
+                    )
+                    or dirty
+                ),
+                pause_fn=pause_fn,
+                default=dirty,
             )
 
         elif choice == "6":
-            dirty = (
-                _update_config_value(
-                    cfg,
-                    "program_dir",
-                    prompt_message="New program_dir",
-                    confirm_message="Change program_dir?",
-                    prompt_fn=prompt_fn,
-                    confirm_fn=confirm_fn,
-                )
-                or dirty
+            dirty = _run_menu_action(
+                lambda dirty=dirty: (
+                    _update_config_value(
+                        cfg,
+                        "program_dir",
+                        prompt_message="New program_dir",
+                        confirm_message="Change program_dir?",
+                        prompt_fn=prompt_fn,
+                        confirm_fn=confirm_fn,
+                    )
+                    or dirty
+                ),
+                pause_fn=pause_fn,
+                default=dirty,
             )
 
         elif choice == "7":
-            dirty = (
-                _update_config_value(
-                    cfg,
-                    "ABB_lib_dir",
-                    prompt_message="New ABB_lib_dir",
-                    confirm_message="Change ABB_lib_dir?",
-                    prompt_fn=prompt_fn,
-                    confirm_fn=confirm_fn,
-                )
-                or dirty
+            dirty = _run_menu_action(
+                lambda dirty=dirty: (
+                    _update_config_value(
+                        cfg,
+                        "ABB_lib_dir",
+                        prompt_message="New ABB_lib_dir",
+                        confirm_message="Change ABB_lib_dir?",
+                        prompt_fn=prompt_fn,
+                        confirm_fn=confirm_fn,
+                    )
+                    or dirty
+                ),
+                pause_fn=pause_fn,
+                default=dirty,
             )
 
         elif choice == "8":
-            dirty = (
-                _edit_other_lib_dirs(
-                    cfg,
-                    prompt_fn=prompt_fn,
-                    confirm_fn=confirm_fn,
-                )
-                or dirty
+            dirty = _run_menu_action(
+                lambda dirty=dirty: (
+                    _edit_other_lib_dirs(
+                        cfg,
+                        prompt_fn=prompt_fn,
+                        confirm_fn=confirm_fn,
+                    )
+                    or dirty
+                ),
+                pause_fn=pause_fn,
+                default=dirty,
             )
         elif choice == "9":
-            dirty = _save_configuration(
-                cfg,
-                dirty=dirty,
-                config_path=config_path,
-                save_config_fn=save_config_fn,
-                confirm_fn=confirm_fn,
+            dirty = _run_menu_action(
+                lambda dirty=dirty: _save_configuration(
+                    cfg,
+                    dirty=dirty,
+                    config_path=config_path,
+                    save_config_fn=save_config_fn,
+                    confirm_fn=confirm_fn,
+                ),
+                pause_fn=pause_fn,
+                default=dirty,
             )
         elif choice == "10":
-            dirty = (
-                _update_config_value(
-                    cfg,
-                    "icf_dir",
-                    prompt_message="New ICF_dir",
-                    confirm_message="Change ICF_dir?",
-                    prompt_fn=prompt_fn,
-                    confirm_fn=confirm_fn,
-                )
-                or dirty
+            dirty = _run_menu_action(
+                lambda dirty=dirty: (
+                    _update_config_value(
+                        cfg,
+                        "icf_dir",
+                        prompt_message="New ICF_dir",
+                        confirm_message="Change ICF_dir?",
+                        prompt_fn=prompt_fn,
+                        confirm_fn=confirm_fn,
+                    )
+                    or dirty
+                ),
+                pause_fn=pause_fn,
+                default=dirty,
             )
         elif choice == "11":
-            dirty = (
-                _toggle_config_value(
-                    cfg,
-                    "debug",
-                    confirm_message="Toggle debug?",
-                    confirm_fn=confirm_fn,
-                    on_change_fn=apply_debug_fn,
-                )
-                or dirty
+            dirty = _run_menu_action(
+                lambda dirty=dirty: (
+                    _toggle_config_value(
+                        cfg,
+                        "debug",
+                        confirm_message="Toggle debug?",
+                        confirm_fn=confirm_fn,
+                        on_change_fn=apply_debug_fn,
+                    )
+                    or dirty
+                ),
+                pause_fn=pause_fn,
+                default=dirty,
             )
         elif choice == "12":
-            graphics_rules_menu_fn(cfg)
+            _run_menu_action(lambda: graphics_rules_menu_fn(cfg), pause_fn=pause_fn)
         else:
             emit_output("Invalid choice.", flush=True)
             pause_fn()
@@ -420,6 +537,7 @@ def tools_menu(
     pause_fn: Callable[[], None],
     require_targets_for_menu_action_fn: Callable[[ConfigDict, str], bool],
     dump_menu_fn: Callable[[ConfigDict], None],
+    run_source_diff_report_fn: Callable[[ConfigDict], None],
     confirm_fn: Callable[[str], bool],
     force_refresh_ast_fn: Callable[[ConfigDict], Any],
 ) -> None:
@@ -430,7 +548,12 @@ def tools_menu(
             [
                 menu_option_factory("1", "Self-check diagnostics", "Verify configuration and path setup"),
                 menu_option_factory("2", "Diagnostics & dumps", "Inspect parser, AST, and dependency output"),
-                menu_option_factory("3", "Refresh cached ASTs", "Rebuild cached ASTs when results look stale"),
+                menu_option_factory(
+                    "3",
+                    "Source diff report",
+                    "Compare draft .s and official .x files for all configured analysis targets",
+                ),
+                menu_option_factory("4", "Refresh cached ASTs", "Rebuild cached ASTs when results look stale"),
                 menu_option_factory("b", "Back", ""),
                 menu_option_factory("q", "Quit", ""),
             ],
@@ -447,18 +570,21 @@ def tools_menu(
             quit_app_fn()
 
         if choice == "1":
-            clear_screen_fn()
-            self_check_fn(cfg)
-            pause_fn()
+            _run_menu_action(
+                lambda: (clear_screen_fn(), self_check_fn(cfg), pause_fn()),
+                pause_fn=pause_fn,
+            )
         elif choice == "2":
             if require_targets_for_menu_action_fn(cfg, "using diagnostics and dumps"):
-                dump_menu_fn(cfg)
+                _run_menu_action(lambda: dump_menu_fn(cfg), pause_fn=pause_fn)
         elif choice == "3":
+            if require_targets_for_menu_action_fn(cfg, "generating source diff reports"):
+                _run_menu_action(lambda: run_source_diff_report_fn(cfg), pause_fn=pause_fn)
+        elif choice == "4":
             if require_targets_for_menu_action_fn(cfg, "refreshing cached ASTs") and confirm_fn(
                 "Force refresh cached AST?"
             ):
-                force_refresh_ast_fn(cfg)
-                pause_fn()
+                _run_menu_action(lambda: (force_refresh_ast_fn(cfg), pause_fn()), pause_fn=pause_fn)
         else:
             emit_output("Invalid choice.")
             pause_fn()
@@ -477,6 +603,7 @@ def run_main_loop(
     config_menu_fn: Callable[[ConfigDict], bool],
     tools_menu_fn: Callable[[ConfigDict], None],
     show_help_fn: Callable[[ConfigDict], None],
+    pause_fn: Callable[[], None],
     confirm_fn: Callable[[str], bool],
     save_config_fn: Callable[[Path, ConfigDict], None],
     config_path: Path,
@@ -505,20 +632,22 @@ def run_main_loop(
 
         if choice == "1":
             if require_targets_for_menu_action_fn(cfg, "running analyses"):
-                analysis_menu_fn(cfg)
+                _run_menu_action(lambda: analysis_menu_fn(cfg), pause_fn=pause_fn)
 
         elif choice == "2":
             if require_targets_for_menu_action_fn(cfg, "using documentation tools"):
-                dirty |= documentation_menu_fn(cfg)
+                dirty |= cast(
+                    bool, _run_menu_action(lambda: documentation_menu_fn(cfg), pause_fn=pause_fn, default=False)
+                )
 
         elif choice == "3":
-            dirty |= config_menu_fn(cfg)
+            dirty |= cast(bool, _run_menu_action(lambda: config_menu_fn(cfg), pause_fn=pause_fn, default=False))
 
         elif choice == "4":
-            tools_menu_fn(cfg)
+            _run_menu_action(lambda: tools_menu_fn(cfg), pause_fn=pause_fn)
 
         elif choice == "5":
-            show_help_fn(cfg)
+            _run_menu_action(lambda: show_help_fn(cfg), pause_fn=pause_fn)
 
         elif choice == "q":
             if dirty and confirm_fn("Unsaved config changes. Save before quitting?"):

@@ -20,6 +20,12 @@ DocumentationSelection = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 
 
+def _run_with_live_status(status_text: str, run_fn: Callable[[], Any]) -> Any:
+    with console_module.live_status_line() as status_update_fn:
+        status_update_fn(status_text)
+        return run_fn()
+
+
 def run_validate_config_command(
     cfg: ConfigDict,
     *,
@@ -74,13 +80,16 @@ def run_simulate_command(
         return True
 
     try:
-        result = simulate_fn(
-            cfg,
-            target_path=target_path,
-            module_name=module_name,
-            mode=mode,
-            max_scans=max_scans,
-            use_cache=use_cache,
+        result = _run_with_live_status(
+            f"Simulating {module_name} from {target_path}",
+            lambda: simulate_fn(
+                cfg,
+                target_path=target_path,
+                module_name=module_name,
+                mode=mode,
+                max_scans=max_scans,
+                use_cache=use_cache,
+            ),
         )
     except (FileNotFoundError, ValueError) as exc:
         emit_output(str(exc))
@@ -148,11 +157,17 @@ def run_docgen_command(
         destination.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            generate_docx(
-                project_bp,
-                str(destination),
-                documentation_config=documentation_cfg,
-                unavailable_libraries=cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set()))),
+            _run_with_live_status(
+                f"Generating documentation for {target_name}",
+                lambda project_bp=project_bp, destination=destination, graph=graph: generate_docx(
+                    project_bp,
+                    str(destination),
+                    documentation_config=documentation_cfg,
+                    unavailable_libraries=cast(
+                        set[str],
+                        getattr(graph, "unavailable_libraries", cast(set[str], set())),
+                    ),
+                ),
             )
         except OSError as exc:
             emit_output(f"Documentation generation failed for {destination}: {exc}")

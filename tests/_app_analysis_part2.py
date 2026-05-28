@@ -111,6 +111,34 @@ def test_run_module_find_by_name_lists_matches_and_reports_errors(monkeypatch):
     assert pauses == ["pause"]
 
 
+def test_run_module_find_by_name_updates_live_status(monkeypatch):
+    updates: list[str] = []
+
+    class FakeLiveStatusLine:
+        def __enter__(self):
+            return updates.append
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": "Pump")
+    monkeypatch.setattr(app_analysis, "emit_output", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(app_analysis.console_module, "live_status_line", lambda: FakeLiveStatusLine())
+    monkeypatch.setattr(
+        app_analysis,
+        "find_modules_by_name",
+        lambda *_args, **_kwargs: [(["Root", "PumpA"], SimpleNamespace(datecode=101))],
+    )
+
+    app_analysis.run_module_find_by_name(
+        app.DEFAULT_CONFIG.copy(),
+        iter_loaded_projects_fn=cast(Any, lambda *_args, **_kwargs: iter([("TargetA", "bp", SimpleNamespace())])),
+        pause_fn=None,
+    )
+
+    assert updates == ["Finding module instances in TargetA: Pump"]
+
+
 def test_run_module_tree_debug_uses_default_depth_on_invalid_input(monkeypatch):
     lines: list[str] = []
     pauses: list[str] = []
@@ -195,6 +223,84 @@ def test_run_checks_runs_selected_non_default_cli_exposed_analyzer(monkeypatch):
     assert any("State inference (state_inference)" in line for line in lines)
     assert any("state inference summary for TargetA" in line for line in lines)
     assert not any("state inference summary for BasePicture" in line for line in lines)
+
+
+def test_run_checks_updates_live_status_for_active_analyzer(monkeypatch):
+    updates: list[str] = []
+
+    class FakeLiveStatusLine:
+        def __enter__(self):
+            return updates.append
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda _message: None)
+    monkeypatch.setattr(app_analysis.console_module, "live_status_line", lambda: FakeLiveStatusLine())
+
+    app_analysis.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["state_inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
+                        SimpleNamespace(unavailable_libraries=set()),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state_inference",
+                name="State inference",
+                run=lambda _context: SimpleNamespace(summary=lambda: "state inference summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert updates == ["Analyzing TargetA: State inference (state_inference)"]
+
+
+def test_run_checks_handles_keyboard_interrupt_and_pauses(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+
+    app_analysis.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["state_inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
+                        SimpleNamespace(unavailable_libraries=set()),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state_inference",
+                name="State inference",
+                run=lambda _context: (_ for _ in ()).throw(KeyboardInterrupt()),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("Operation canceled. Returning to the menu." in line for line in lines)
+    assert pauses == ["pause"]
 
 
 def test_run_icf_validation_covers_missing_dir_invalid_dir_and_empty_file_list(monkeypatch, tmp_path):

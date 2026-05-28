@@ -75,6 +75,34 @@ def test_preview_documentation_unit_candidates_lists_targets_and_pauses(monkeypa
     assert pauses == ["pause"]
 
 
+def test_preview_documentation_unit_candidates_updates_live_status(monkeypatch):
+    updates: list[str] = []
+
+    class FakeLiveStatusLine:
+        def __enter__(self):
+            return updates.append
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(app_docs.console_module, "live_status_line", lambda: FakeLiveStatusLine())
+    monkeypatch.setattr(
+        app_docs,
+        "preview_documentation_candidates_for_target",
+        lambda *_args, **_kwargs: None,
+    )
+
+    target_bp = cast(BasePicture, SimpleNamespace())
+    target_graph = cast(ProjectGraph, SimpleNamespace())
+    app_docs.preview_documentation_unit_candidates(
+        {"documentation": {}},
+        iter_loaded_projects_fn=lambda _cfg: iter([("TargetA", target_bp, target_graph)]),
+        pause_fn=lambda: None,
+    )
+
+    assert updates == ["Documentation candidates: scanning TargetA"]
+
+
 def test_run_generate_documentation_skips_unmatched_scoped_target(monkeypatch, capsys):
     class _Scope(SimpleNamespace):
         mode = "instance_paths"
@@ -149,6 +177,39 @@ def test_run_generate_documentation_generates_selected_units(monkeypatch, capsys
         ("chosen.docx", {"ControlLib"}, {"mode": "instance_paths", "instance_paths": ["UnitA"], "moduletype_names": []})
     ]
     assert pauses == ["pause"]
+
+
+def test_run_generate_documentation_updates_live_status(monkeypatch):
+    updates: list[str] = []
+
+    class FakeLiveStatusLine:
+        def __enter__(self):
+            return updates.append
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _Scope(SimpleNamespace):
+        mode = "all"
+        roots = ()
+        unmatched_values = ()
+
+    classification = SimpleNamespace(scope=_Scope())
+    monkeypatch.setattr(app_docs.console_module, "live_status_line", lambda: FakeLiveStatusLine())
+    monkeypatch.setattr(app_docs, "classify_documentation_structure", lambda *_args, **_kwargs: classification)
+    monkeypatch.setattr(app_docs, "generate_docx", lambda *_args, **_kwargs: None)
+
+    target_bp: BasePicture = cast(Any, object())
+    target_graph = ProjectGraph()
+
+    app_docs.run_generate_documentation(
+        cfg={"documentation": {"classifications": {}}},
+        iter_loaded_projects_fn=lambda _cfg: iter([("TargetA", target_bp, target_graph)]),
+        prompt_fn=lambda _message, default: default or "out.docx",
+        pause_fn=lambda: None,
+    )
+
+    assert updates == ["Documentation: classifying TargetA", "Documentation: generating TargetA"]
 
 
 def test_configure_documentation_scope_by_moduletype_rejects_empty_input(monkeypatch):

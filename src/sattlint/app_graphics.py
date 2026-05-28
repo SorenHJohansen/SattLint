@@ -405,22 +405,25 @@ def run_graphics_rules_validation(
         pause_fn()
         return
 
-    for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-        try:
-            entries = collect_graphics_layout_entries_for_target_fn(
-                target_name,
-                project_bp,
-                graph,
-            )
-            report = graphics_rules_module.validate_graphics_layout_entries(
-                entries,
-                rules,
-                target_name=target_name,
-                rules_path=rules_path,
-            )
-            emit_output(f"\n=== Target: {target_name} ===")
-            emit_output(report.summary())
-        except Exception as exc:
-            emit_output(f"? Error during graphics rules validation for {target_name}: {exc}")
+    with console_module.live_status_line() as status_update_fn:
+        for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
+            try:
+                status_update_fn(f"Graphics rules: collecting layout entries for {target_name}")
+                entries = collect_graphics_layout_entries_for_target_fn(
+                    target_name,
+                    project_bp,
+                    graph,
+                )
+                status_update_fn(f"Graphics rules: validating {target_name}")
+                report = graphics_rules_module.validate_graphics_layout_entries(
+                    entries,
+                    rules,
+                    target_name=target_name,
+                    rules_path=rules_path,
+                )
+                emit_output(f"\n=== Target: {target_name} ===")
+                emit_output(report.summary())
+            except Exception as exc:
+                emit_output(f"? Error during graphics rules validation for {target_name}: {exc}")
 
     pause_fn()

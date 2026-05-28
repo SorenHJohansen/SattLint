@@ -56,7 +56,7 @@ def _list_analyzer_keys() -> None:
 def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sattlint",
-        description="Interactive SattLine analysis app with non-interactive syntax-check, analysis, documentation, simulation, and repo-audit commands.",
+        description="Interactive SattLine analysis app with non-interactive syntax-check, analysis, documentation, simulation, source-diff, and repo-audit commands.",
     )
     parser.add_argument("--version", action="version", version=f"sattlint {version}")
     parser.add_argument("--config", default=None, metavar="PATH", help="Path to a SattLint config file")
@@ -157,6 +157,15 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help="Report whether configured .icf files would change without rewriting them.",
     )
 
+    subparsers.add_parser(
+        "source-diff",
+        help="Build a review-friendly report for draft .s versus official .x source pairs",
+        description=(
+            "Forward to the source diff reporting tool that compares one explicit draft and official "
+            "source pair or discovers same-basename .s/.x pairs under a workspace root."
+        ),
+    )
+
     from ..devtools import repo_audit_cli
 
     repo_audit_parent = repo_audit_cli.build_cli_parser(prog="sattlint repo-audit", add_help=False)
@@ -221,6 +230,18 @@ def run_cli(
         context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
         with context:
             return repo_audit.main(remaining) or exit_success
+
+    if command == "source-diff":
+        from ..devtools import source_diff_report
+
+        try:
+            idx = next(i for i, arg in enumerate(argv) if arg == "source-diff")
+            remaining = list(argv[idx + 1 :])
+        except StopIteration:
+            remaining = []
+        context = redirect_stdout(io.StringIO()) if quiet else nullcontext()
+        with context:
+            return source_diff_report.main(remaining) or exit_success
 
     if leftover:
         print_output(f"sattlint: error: unrecognized arguments: {' '.join(leftover)}", file=sys.stderr)

@@ -1,5 +1,7 @@
 """Focused tests for positional record component analyzer findings."""
 
+# pyright: reportPrivateUsage=false
+
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -85,6 +87,7 @@ def test_getrecordcomponent_reports_record_component_order_dependence():
     ]
 
     assert len(issues) == 1
+    assert issues[0].datatype_name == "RecType"
     assert (
         issues[0].role
         == "GetRecordComponent reads record components by numeric position; reordering datatype fields can change behavior (index 2 => field 'Second')"
@@ -151,6 +154,7 @@ def test_putrecordcomponent_reports_record_component_order_dependence():
     ]
 
     assert len(issues) == 1
+    assert issues[0].datatype_name == "RecType"
     assert (
         issues[0].role
         == "PutRecordComponent writes record components by numeric position; reordering datatype fields can change behavior (index 1 => field 'First')"
@@ -160,7 +164,69 @@ def test_putrecordcomponent_reports_record_component_order_dependence():
     assert analyzer._get_usage(status).written is True
 
 
-def test_positional_record_component_wrapper_reports_anytype_order_dependence():
+def test_repeated_positional_access_reports_each_datatype_once():
+    dt = DataType(
+        name="RecType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="First", datatype=Simple_DataType.INTEGER),
+            Variable(name="Second", datatype=Simple_DataType.REAL),
+        ],
+    )
+
+    rec_a = Variable(name="RecA", datatype="RecType")
+    rec_b = Variable(name="RecB", datatype="RecType")
+    result = Variable(name="ResultRec", datatype="AnyType")
+    status = Variable(name="Status", datatype=Simple_DataType.INTEGER)
+
+    module = SingleModule(
+        header=_hdr("M1"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[rec_a, rec_b, result, status],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                _eq(
+                    [
+                        (
+                            const.KEY_FUNCTION_CALL,
+                            "GetRecordComponent",
+                            [_varref("RecA"), 1, _varref("ResultRec"), _varref("Status")],
+                        ),
+                        (
+                            const.KEY_FUNCTION_CALL,
+                            "GetRecordComponent",
+                            [_varref("RecB"), 2, _varref("ResultRec"), _varref("Status")],
+                        ),
+                    ]
+                )
+            ]
+        ),
+        parametermappings=[],
+    )
+
+    analyzer = VariablesAnalyzer(
+        BasePicture(
+            header=_hdr("Root"),
+            datatype_defs=[dt],
+            moduletype_defs=[],
+            localvariables=[],
+            submodules=[module],
+            modulecode=None,
+            moduledef=None,
+        )
+    )
+    analyzer.run()
+
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE]
+
+    assert len(issues) == 1
+    assert issues[0].datatype_name == "RecType"
+
+
+def test_positional_record_component_wrapper_ignores_anytype_for_datatype_list():
     picklist_type = ModuleTypeDef(
         name="PicklistType",
         moduleparameters=[
@@ -214,17 +280,6 @@ def test_positional_record_component_wrapper_reports_anytype_order_dependence():
     )
     analyzer.run()
 
-    issues = [
-        issue
-        for issue in analyzer.issues
-        if issue.kind is IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE
-        and issue.variable is not None
-        and issue.variable.name == "RecipeRecord"
-    ]
+    issues = [issue for issue in analyzer.issues if issue.kind is IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE]
 
-    assert len(issues) == 1
-    assert issues[0].module_path == ["Root", "TypeDef:PicklistType"]
-    assert (
-        issues[0].role
-        == "GetRecordComponent reads record components by numeric position; reordering datatype fields can change behavior"
-    )
+    assert issues == []

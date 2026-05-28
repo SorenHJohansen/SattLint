@@ -10,6 +10,7 @@ from ._variables_report_rendering import (
     append_datatype_duplication,
     append_magic_numbers,
     append_min_max_mapping_mismatch,
+    append_record_component_order_dependence,
     append_string_mapping_mismatch,
     append_unused_datatype_fields,
     append_unused_variable_issue_list,
@@ -91,7 +92,7 @@ SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.UI_ONLY: "UI/display-only variables",
     IssueKind.PROCEDURE_STATUS: "Procedure status handling",
     IssueKind.NEVER_READ: "Written but never read variables",
-    IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE: "Positional record component access",
+    IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE: "Sorting-sensitive datatypes",
     IssueKind.WRITE_WITHOUT_EFFECT: "Write-without-effect variables",
     IssueKind.GLOBAL_SCOPE_MINIMIZATION: "Global scope minimization candidates",
     IssueKind.HIDDEN_GLOBAL_COUPLING: "Hidden global coupling",
@@ -371,7 +372,7 @@ class VariablesReport:
             )
             return
         if kind is IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE:
-            append_variable_issue_list(
+            append_record_component_order_dependence(
                 lines,
                 SECTION_TITLES[IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE],
                 self.record_component_order_dependence,

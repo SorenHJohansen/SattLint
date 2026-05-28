@@ -8,7 +8,18 @@ from typing import Any, cast
 
 import pytest
 
+from sattline_parser.models.ast_model import (
+    BasePicture,
+    DataType,
+    Equation,
+    ModuleCode,
+    ModuleHeader,
+    Simple_DataType,
+    Variable,
+)
 from sattlint import app_analysis
+from sattlint import constants as const
+from sattlint.analyzers.variables import IssueKind, analyze_variables
 from tests.helpers.app_projects import build_mini_project_context
 
 
@@ -327,6 +338,233 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
     assert sorted(graph.ast_by_name) == ["ConsumerTarget", "LibraryTarget"]
     assert visit_calls == [("ConsumerTarget", Path("ProjectLib"), False)]
     assert save_calls[0][0] == "cache-key"
+
+
+def test_load_project_library_target_includes_workspace_reverse_consumers(monkeypatch, tmp_path):
+    save_calls: list[tuple[str, dict[str, object]]] = []
+    visit_calls: list[tuple[str, Path, bool]] = []
+
+    programs_dir = tmp_path / "programs"
+    project_lib_dir = tmp_path / "ProjectLib"
+    programs_dir.mkdir()
+    project_lib_dir.mkdir()
+    (programs_dir / "ProgramConsumer.l").write_text("LibraryTarget\n", encoding="utf-8")
+
+    class FakeCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def load(self, key):
+            assert key == "cache-key"
+            return None
+
+        def save(self, key, **kwargs):
+            save_calls.append((key, kwargs))
+
+    root_bp = SimpleNamespace(
+        header=SimpleNamespace(name="LibraryTarget"),
+        origin_file="LibraryTarget.s",
+    )
+
+    class FakeLoader:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def resolve(self, target_name, strict=False):
+            assert target_name == "LibraryTarget"
+            assert strict is False
+            return SimpleNamespace(
+                ast_by_name={target_name: root_bp},
+                missing=[],
+                warnings=[],
+                source_files={project_lib_dir / "LibraryTarget.s"},
+            )
+
+        def _find_deps_with_context(self, target_name, requester_dir):
+            if target_name == "LibraryTarget":
+                return None
+            return requester_dir / f"{target_name}.l"
+
+        def _read_deps(self, deps_path):
+            return [line.strip() for line in deps_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        def _visit(self, name, graph, strict, *, requester_dir, syntax_check=False):
+            visit_calls.append((name, requester_dir, syntax_check))
+            graph.ast_by_name[name] = SimpleNamespace(header=SimpleNamespace(name=name))
+            graph.source_files.add(requester_dir / f"{name}.s")
+
+        def _flush_lookup_cache(self):
+            return None
+
+    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
+    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(
+        app_analysis.engine_module,
+        "merge_project_basepicture",
+        lambda bp, graph: (bp.header.name, tuple(sorted(graph.ast_by_name))),
+    )
+
+    project_bp, graph = app_analysis.load_project(
+        {
+            "program_dir": str(programs_dir),
+            "other_lib_dirs": [str(project_lib_dir)],
+            "ABB_lib_dir": str(tmp_path / "abb"),
+            "mode": "draft",
+            "scan_root_only": False,
+            "debug": False,
+            "analyzed_programs_and_libraries": ["LibraryTarget"],
+        },
+        cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
+        get_cache_dir_fn=lambda: tmp_path / "cache-dir",
+    )
+
+    assert project_bp == ("LibraryTarget", ("LibraryTarget", "ProgramConsumer"))
+    assert sorted(graph.ast_by_name) == ["LibraryTarget", "ProgramConsumer"]
+    assert visit_calls == [("ProgramConsumer", programs_dir, False)]
+    assert save_calls[0][0] == "cache-key"
+
+
+def test_load_project_library_target_workspace_program_usage_suppresses_unused_datatype_field(monkeypatch, tmp_path):
+    programs_dir = tmp_path / "programs"
+    project_lib_dir = tmp_path / "ProjectLib"
+    programs_dir.mkdir()
+    project_lib_dir.mkdir()
+    (programs_dir / "ProgramConsumer.l").write_text("LibraryTarget\n", encoding="utf-8")
+
+    def _hdr(name: str) -> ModuleHeader:
+        return ModuleHeader(name=name, invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0))
+
+    def _varref(name: str) -> dict[str, str]:
+        return {const.KEY_VAR_NAME: name}
+
+    library_datatype = DataType(
+        name="ApplOpTxtType",
+        description=None,
+        datecode=None,
+        var_list=[
+            Variable(name="LSH", datatype=Simple_DataType.STRING),
+            Variable(name="DrainPipe", datatype=Simple_DataType.STRING),
+        ],
+        origin_file="LibraryTarget.s",
+        origin_lib="LibraryTarget",
+    )
+    root_bp = BasePicture(
+        header=_hdr("LibraryTarget"),
+        datatype_defs=[library_datatype],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="LibraryTarget.s",
+        origin_lib="LibraryTarget",
+    )
+    program_bp = BasePicture(
+        header=_hdr("ProgramConsumer"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[
+            Variable(name="OPText", datatype="ApplOpTxtType"),
+            Variable(name="Sink", datatype=Simple_DataType.STRING),
+        ],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="ReadField",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[(const.KEY_ASSIGN, _varref("Sink"), _varref("OPText.LSH"))],
+                )
+            ],
+            sequences=[],
+        ),
+        moduledef=None,
+        origin_file="ProgramConsumer.s",
+        origin_lib="Programs",
+    )
+
+    class FakeCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def load(self, key):
+            assert key == "cache-key"
+            return None
+
+        def save(self, key, **kwargs):
+            assert key == "cache-key"
+
+    class FakeLoader:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def resolve(self, target_name, strict=False):
+            assert target_name == "LibraryTarget"
+            assert strict is False
+            return SimpleNamespace(
+                ast_by_name={target_name: root_bp},
+                missing=[],
+                warnings=[],
+                source_files={project_lib_dir / "LibraryTarget.s"},
+            )
+
+        def _find_deps_with_context(self, target_name, requester_dir):
+            if target_name == "LibraryTarget":
+                return None
+            return requester_dir / f"{target_name}.l"
+
+        def _read_deps(self, deps_path):
+            return [line.strip() for line in deps_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        def _visit(self, name, graph, strict, *, requester_dir, syntax_check=False):
+            assert name == "ProgramConsumer"
+            graph.ast_by_name[name] = program_bp
+            graph.source_files.add(requester_dir / f"{name}.s")
+
+        def _flush_lookup_cache(self):
+            return None
+
+    def _merge_project_basepicture(bp, graph):
+        consumer_bp = graph.ast_by_name.get("ProgramConsumer")
+        return BasePicture(
+            header=bp.header,
+            datatype_defs=bp.datatype_defs,
+            moduletype_defs=bp.moduletype_defs,
+            localvariables=[] if consumer_bp is None else consumer_bp.localvariables,
+            submodules=[],
+            modulecode=None if consumer_bp is None else consumer_bp.modulecode,
+            moduledef=None,
+            origin_file=bp.origin_file,
+            origin_lib=bp.origin_lib,
+        )
+
+    monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
+    monkeypatch.setattr(app_analysis.engine_module, "SattLineProjectLoader", FakeLoader)
+    monkeypatch.setattr(app_analysis.engine_module, "merge_project_basepicture", _merge_project_basepicture)
+
+    project_bp, _graph = app_analysis.load_project(
+        {
+            "program_dir": str(programs_dir),
+            "other_lib_dirs": [str(project_lib_dir)],
+            "ABB_lib_dir": str(tmp_path / "abb"),
+            "mode": "draft",
+            "scan_root_only": False,
+            "debug": False,
+            "analyzed_programs_and_libraries": ["LibraryTarget"],
+        },
+        cache_key_for_target_fn=lambda _cfg, _target: "cache-key",
+        get_cache_dir_fn=lambda: tmp_path / "cache-dir",
+    )
+
+    report = analyze_variables(project_bp, analyzed_target_is_library=True)
+    unused_fields = {
+        issue.field_path
+        for issue in report.issues
+        if issue.kind is IssueKind.UNUSED_DATATYPE_FIELD and issue.datatype_name == "ApplOpTxtType"
+    }
+
+    assert unused_fields == {"DrainPipe"}
 
 
 def test_force_refresh_ast_clears_cache_entries_and_reloads_all_targets():
