@@ -175,7 +175,10 @@ def load_file_debt_state(repo_root: Path) -> dict[str, dict[str, dict[str, Any]]
     if not ratchet_path.exists():
         return {}
 
-    payload = _json_mapping(json.loads(ratchet_path.read_text(encoding="utf-8")))
+    try:
+        payload = _json_mapping(json.loads(ratchet_path.read_text(encoding="utf-8")))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
     if payload is None:
         return {}
     raw_files = payload.get("files", {})
@@ -409,7 +412,10 @@ def parse_markdown_ledger(
 
 
 def _load_state_entries(repo_root: Path, state_file: Path, *, default_updated_at: str) -> list[LockStateEntry]:
-    payload: object = json.loads(state_file.read_text(encoding="utf-8"))
+    try:
+        payload: object = json.loads(state_file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
     if isinstance(payload, dict):
         raw_entries_obj: object = cast(dict[str, Any], payload).get("workstreams", [])
     elif isinstance(payload, list):

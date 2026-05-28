@@ -79,25 +79,6 @@ sattlint --quiet [subcommand]
 sattlint --no-cache [subcommand]
 ```
 
----
-
-### sattlint-gui
-
-Desktop GUI shell for SattLint operations.
-
-```bash
-sattlint-gui
-```
-
-Features:
-
-- Configuration editing
-- Self-check and cache tools
-- Variable analysis launcher
-- Non-interactive DOCX generation
-
----
-
 ### sattlint-lsp
 
 Language Server Protocol (LSP) server for SattLine support in editors like VS Code.

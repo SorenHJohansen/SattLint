@@ -226,6 +226,149 @@ def test_main_writes_report_json(tmp_path, monkeypatch, capsys):
         "entries": [],
         "snapshot_failures": [],
     }
+    monkeypatch.setattr(metrics_dashboard, "build_metrics_dashboard", lambda *args, **kwargs: expected_report)
+
+    output_dir = tmp_path / "artifacts"
+    exit_code = metrics_dashboard.main(
+        [
+            "--workspace-root",
+            str(tmp_path),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out) == expected_report
+    assert (
+        json.loads((output_dir / metrics_dashboard.DEFAULT_OUTPUT_FILENAME).read_text(encoding="utf-8"))
+        == expected_report
+    )
+
+
+def test_main_returns_failure_when_output_report_write_fails(tmp_path, monkeypatch, capsys):
+    expected_report = {
+        "generated_by": "sattlint.devtools.metrics_dashboard",
+        "report_kind": "metrics-dashboard",
+        "status": "ok",
+        "workspace_root": ".",
+        "summary": {
+            "program_file_count": 1,
+            "snapshot_count": 1,
+            "snapshot_failure_count": 0,
+            "complexity_issue_count": 0,
+            "version_drift_issue_count": 0,
+        },
+        "metrics": {
+            "workspace": {
+                "program_file_count": 1,
+                "dependency_file_count": 0,
+                "snapshot_count": 1,
+                "snapshot_failure_count": 0,
+            },
+            "structure": {
+                "datatype_definition_count": 0,
+                "moduletype_definition_count": 0,
+                "root_localvariable_count": 0,
+                "submodule_count": 0,
+                "single_module_count": 0,
+                "frame_module_count": 0,
+                "moduletype_instance_count": 0,
+                "moduleparameter_count": 0,
+                "module_localvariable_count": 0,
+                "sequence_count": 0,
+                "equation_count": 0,
+            },
+            "complexity": {
+                "issue_count": 0,
+                "module_issue_count": 0,
+                "step_issue_count": 0,
+                "max_complexity": 0,
+                "top_findings": [],
+            },
+            "version_drift": {
+                "issue_count": 0,
+                "affected_module_count": 0,
+                "max_unique_variants": 0,
+                "modules": [],
+            },
+        },
+        "entries": [],
+        "snapshot_failures": [],
+    }
+    monkeypatch.setattr(metrics_dashboard, "build_metrics_dashboard", lambda *args, **kwargs: expected_report)
+    monkeypatch.setattr(
+        metrics_dashboard,
+        "_write_metrics_report",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("locked")),
+    )
+
+    exit_code = metrics_dashboard.main(
+        [
+            "--workspace-root",
+            str(tmp_path),
+            "--no-progress",
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert json.loads(captured.out) == expected_report
+    assert "metrics dashboard output error: locked" in captured.err
+
+
+def test_main_reports_progress_on_stderr(tmp_path, monkeypatch, capsys):
+    expected_report = {
+        "generated_by": "sattlint.devtools.metrics_dashboard",
+        "report_kind": "metrics-dashboard",
+        "status": "ok",
+        "workspace_root": ".",
+        "summary": {
+            "program_file_count": 1,
+            "snapshot_count": 1,
+            "snapshot_failure_count": 0,
+            "complexity_issue_count": 0,
+            "version_drift_issue_count": 0,
+        },
+        "metrics": {
+            "workspace": {
+                "program_file_count": 1,
+                "dependency_file_count": 0,
+                "snapshot_count": 1,
+                "snapshot_failure_count": 0,
+            },
+            "structure": {
+                "datatype_definition_count": 0,
+                "moduletype_definition_count": 0,
+                "root_localvariable_count": 0,
+                "submodule_count": 0,
+                "single_module_count": 0,
+                "frame_module_count": 0,
+                "moduletype_instance_count": 0,
+                "moduleparameter_count": 0,
+                "module_localvariable_count": 0,
+                "sequence_count": 0,
+                "equation_count": 0,
+            },
+            "complexity": {
+                "issue_count": 0,
+                "module_issue_count": 0,
+                "step_issue_count": 0,
+                "max_complexity": 0,
+                "top_findings": [],
+            },
+            "version_drift": {
+                "issue_count": 0,
+                "affected_module_count": 0,
+                "max_unique_variants": 0,
+                "modules": [],
+            },
+        },
+        "entries": [],
+        "snapshot_failures": [],
+    }
 
     def _build_metrics_dashboard(*_args, **kwargs):
         progress_callback = kwargs.get("progress_callback")

@@ -177,6 +177,44 @@ def test_menu_remove_and_other_lib_dir_success_and_invalid_remove_paths() -> Non
     assert cfg["other_lib_dirs"] == ["/one"]
 
 
+def test_save_configuration_keeps_dirty_on_save_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = {"analyzed_programs_and_libraries": ["Demo"], "other_lib_dirs": []}
+    config_path = tmp_path / "config.json"
+
+    dirty = app_menus._save_configuration(
+        cfg,
+        dirty=True,
+        config_path=config_path,
+        save_config_fn=lambda *_: (_ for _ in ()).throw(PermissionError("read-only filesystem")),
+        confirm_fn=lambda *_: True,
+    )
+
+    out = capsys.readouterr().out
+    assert dirty is True
+    assert f"Failed to save config to {config_path}" in out
+    assert "read-only filesystem" in out
+
+
+def test_handle_config_menu_exit_stays_open_on_save_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = {"analyzed_programs_and_libraries": ["Demo"], "other_lib_dirs": []}
+    config_path = tmp_path / "config.json"
+    quit_calls: list[str] = []
+
+    app_menus._handle_config_menu_exit(
+        cfg,
+        dirty=True,
+        config_path=config_path,
+        save_config_fn=lambda *_: (_ for _ in ()).throw(PermissionError("read-only filesystem")),
+        confirm_fn=lambda *_: True,
+        quit_app_fn=lambda: quit_calls.append("quit"),
+    )
+
+    out = capsys.readouterr().out
+    assert quit_calls == []
+    assert f"Failed to save config to {config_path}" in out
+    assert "read-only filesystem" in out
+
+
 def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(builtins, "input", make_input(["x", "q"]))
     outputs: list[str] = []

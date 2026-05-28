@@ -193,3 +193,11 @@ def test_bootstrap_slice_emits_request_contract_and_prompt_for_implement_plan(tm
         (tmp_path / ".ai" / "tasks" / "request-contract-bootstrap.json").read_text(encoding="utf-8")
     )
     assert task_contract["acceptance_criteria"] == request_contract["success_criteria"]
+
+
+def test_load_file_debt_state_returns_empty_for_malformed_json(tmp_path: Path) -> None:
+    ratchet_path = tmp_path / "artifacts" / "analysis" / "file_debt_ratchet.json"
+    ratchet_path.parent.mkdir(parents=True, exist_ok=True)
+    ratchet_path.write_text("{bad-json", encoding="utf-8")
+
+    assert bootstrap_ai_slice.coordination_lock_state.load_file_debt_state(tmp_path) == {}

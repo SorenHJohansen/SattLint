@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
@@ -417,63 +418,68 @@ def execute_pipeline_cli(
             )
         )
         return 0
-    if args.run_recommended_finish_gate:
-        finish_gate = run_recommended_pipeline_finish_gate_fn(
+    try:
+        if args.run_recommended_finish_gate:
+            finish_gate = run_recommended_pipeline_finish_gate_fn(
+                output_dir,
+                trace_target=Path(args.trace_target).resolve() if args.trace_target else None,
+                profile=args.profile,
+                include_vulture=False if args.skip_vulture else None,
+                include_bandit=False if args.skip_bandit else None,
+                baseline_findings=Path(args.baseline_findings).resolve() if args.baseline_findings else None,
+                corpus_manifest_dir=Path(args.corpus_manifest_dir).resolve() if args.corpus_manifest_dir else None,
+                changed_files=args.changed_file,
+                slow_phase_threshold_ms=args.slow_phase_threshold_ms,
+                phase_budget_ms=args.phase_budget_ms,
+                total_budget_ms=args.total_budget_ms,
+                fail_on_drift=args.fail_on_drift,
+                fail_on_budget=args.fail_on_budget,
+                pytest_workers=args.pytest_workers,
+            )
+            summary = finish_gate["pipeline_summary"]
+            print_cli_summary_fn(_build_cli_summary_payload(summary, overall_status=finish_gate["overall_status"]))
+            return 1 if finish_gate["overall_status"] == "fail" else 0
+
+        trace_target = Path(args.trace_target).resolve() if args.trace_target else None
+        mutation_target = Path(args.mutation_target).resolve() if args.mutation_target else None
+        baseline_findings = Path(args.baseline_findings).resolve() if args.baseline_findings else None
+        corpus_manifest_dir = Path(args.corpus_manifest_dir).resolve() if args.corpus_manifest_dir else None
+        save_baseline = Path(args.save_baseline).resolve() if args.save_baseline else None
+        selected_checks = args.check
+        if args.run_recommended_slice:
+            selected_checks = build_pipeline_check_recommendations_fn(
+                profile=args.profile,
+                output_dir=output_dir,
+                changed_files=args.changed_file,
+            )["recommended_check_ids"]
+        summary = run_pipeline_fn(
             output_dir,
-            trace_target=Path(args.trace_target).resolve() if args.trace_target else None,
+            trace_target=trace_target,
+            mutation_target=mutation_target,
             profile=args.profile,
             include_vulture=False if args.skip_vulture else None,
             include_bandit=False if args.skip_bandit else None,
-            baseline_findings=Path(args.baseline_findings).resolve() if args.baseline_findings else None,
-            corpus_manifest_dir=Path(args.corpus_manifest_dir).resolve() if args.corpus_manifest_dir else None,
+            baseline_findings=baseline_findings,
+            corpus_manifest_dir=corpus_manifest_dir,
             changed_files=args.changed_file,
             slow_phase_threshold_ms=args.slow_phase_threshold_ms,
             phase_budget_ms=args.phase_budget_ms,
             total_budget_ms=args.total_budget_ms,
             fail_on_drift=args.fail_on_drift,
             fail_on_budget=args.fail_on_budget,
+            selected_checks=selected_checks,
+            run_mutation_analysis=(args.run_mutation_analysis or bool(args.mutation_target)),
             pytest_workers=args.pytest_workers,
         )
-        summary = finish_gate["pipeline_summary"]
-        print_cli_summary_fn(_build_cli_summary_payload(summary, overall_status=finish_gate["overall_status"]))
-        return 1 if finish_gate["overall_status"] == "fail" else 0
+        if save_baseline is not None:
+            findings_src = output_dir / "findings.json"
+            if findings_src.exists():
+                save_baseline.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(findings_src, save_baseline)
+    except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError) as error:
+        print(str(error), file=sys.stderr)
+        return 1
 
-    trace_target = Path(args.trace_target).resolve() if args.trace_target else None
-    mutation_target = Path(args.mutation_target).resolve() if args.mutation_target else None
-    baseline_findings = Path(args.baseline_findings).resolve() if args.baseline_findings else None
-    corpus_manifest_dir = Path(args.corpus_manifest_dir).resolve() if args.corpus_manifest_dir else None
-    save_baseline = Path(args.save_baseline).resolve() if args.save_baseline else None
-    selected_checks = args.check
-    if args.run_recommended_slice:
-        selected_checks = build_pipeline_check_recommendations_fn(
-            profile=args.profile,
-            output_dir=output_dir,
-            changed_files=args.changed_file,
-        )["recommended_check_ids"]
-    summary = run_pipeline_fn(
-        output_dir,
-        trace_target=trace_target,
-        mutation_target=mutation_target,
-        profile=args.profile,
-        include_vulture=False if args.skip_vulture else None,
-        include_bandit=False if args.skip_bandit else None,
-        baseline_findings=baseline_findings,
-        corpus_manifest_dir=corpus_manifest_dir,
-        changed_files=args.changed_file,
-        slow_phase_threshold_ms=args.slow_phase_threshold_ms,
-        phase_budget_ms=args.phase_budget_ms,
-        total_budget_ms=args.total_budget_ms,
-        fail_on_drift=args.fail_on_drift,
-        fail_on_budget=args.fail_on_budget,
-        selected_checks=selected_checks,
-        run_mutation_analysis=(args.run_mutation_analysis or bool(args.mutation_target)),
-        pytest_workers=args.pytest_workers,
-    )
-    if save_baseline is not None:
-        findings_src = output_dir / "findings.json"
-        if findings_src.exists():
-            save_baseline.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(findings_src, save_baseline)
     print_cli_summary_fn(_build_cli_summary_payload(summary))
     return 1 if summary["status"]["overall_status"] == "fail" else 0
 
@@ -493,5 +499,4 @@ __all__ = [
     "build_pipeline_parser",
     "evaluate_change_scoped_coverage_proof",
     "execute_pipeline_cli",
-    "run_recommended_pipeline_finish_gate",
 ]

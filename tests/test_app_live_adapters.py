@@ -9,7 +9,7 @@ from typing import Any, cast
 import pytest
 
 from sattline_parser.models.ast_model import BasePicture
-from sattlint import _app_startup_from_app, app
+from sattlint import _app_startup_from_app, app, app_graphics
 from sattlint.models.project_graph import ProjectGraph
 
 
@@ -272,6 +272,20 @@ def test_graphics_and_documentation_wrappers_delegate(monkeypatch: pytest.Monkey
         ("reset", None, app),
         ("generate", cfg, app),
     ]
+
+
+def test_load_graphics_rules_wrapper_falls_back_to_defaults_on_invalid_rules(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rules_path = tmp_path / "graphics_rules.json"
+    rules_path.write_text("{bad-json", encoding="utf-8")
+
+    loaded, created = app_graphics.load_graphics_rules(tmp_path / "config.toml", rules_path)
+
+    out = capsys.readouterr().out
+    assert created is False
+    assert loaded == {"schema_version": 1, "rules": []}
+    assert f"Graphics rules unavailable at {rules_path}" in out
 
 
 def test_simulation_and_analysis_wrappers_delegate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

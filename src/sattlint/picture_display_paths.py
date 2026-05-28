@@ -15,6 +15,7 @@ from ._picture_display_path_runtime import (
     find_best_suffix_node,
     find_nearest_descendant,
     find_node,
+    find_suffix_nodes,
 )
 from .graphics_validation import (
     PictureDisplayPathRow,
@@ -33,6 +34,8 @@ class PictureDisplayOccurrence:
     declaring_module_path: tuple[str, ...]
     record: PictureDisplayRecord
     parent_step_adjustment: int = 0
+    resolution_module_path: tuple[str, ...] | None = None
+    resolution_parent_step_adjustment: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +84,8 @@ def correlate_picture_display_records(
             declaring_module_path=placeholder.module_path,
             record=record,
             parent_step_adjustment=placeholder.parent_step_adjustment,
+            resolution_module_path=placeholder.resolution_module_path,
+            resolution_parent_step_adjustment=placeholder.resolution_parent_step_adjustment,
         )
         for record in records
         if (placeholder := placeholders.get(record.record_index)) is not None
@@ -99,12 +104,25 @@ def diagnose_picture_display_paths(
         for path_row in occurrence.record.path_rows:
             if path_row.kind != "literal":
                 continue
+            resolution_module_path = (
+                getattr(occurrence, "resolution_module_path", None) or occurrence.declaring_module_path
+            )
+            resolution_parent_step_adjustment_value = getattr(
+                occurrence,
+                "resolution_parent_step_adjustment",
+                None,
+            )
+            resolution_parent_step_adjustment = (
+                resolution_parent_step_adjustment_value
+                if isinstance(resolution_parent_step_adjustment_value, int)
+                else occurrence.parent_step_adjustment
+            )
             resolution = resolve_picture_display_path(
                 path_row.raw_text,
                 base_picture=base_picture,
-                declaring_module_path=occurrence.declaring_module_path,
+                declaring_module_path=resolution_module_path,
                 graph=graph,
-                parent_step_adjustment=occurrence.parent_step_adjustment,
+                parent_step_adjustment=resolution_parent_step_adjustment,
                 _runtime_trees=runtime_trees,
             )
             if resolution.ok:
@@ -166,10 +184,26 @@ def resolve_picture_display_path(
         root = build_runtime_tree(target_picture, graph=graph)
         if _runtime_trees is not None:
             _runtime_trees[runtime_tree_key] = root
+    same_program = program_name.casefold() == base_picture.header.name.casefold()
+    exact_current = root if not same_program else find_node(root, module_path)
+    suffix_current = None
+    suffix_candidates: tuple[RuntimeModuleNode, ...] = ()
+    if same_program:
+        suffix_candidates = find_suffix_nodes(
+            root,
+            module_path,
+            exclude_path=module_path if exact_current is not None else None,
+        )
+        suffix_current = find_best_suffix_node(
+            root,
+            module_path,
+            exclude_path=module_path if exact_current is not None else None,
+        )
+
     used_suffix_recovery = False
-    current = root if program_name.casefold() != base_picture.header.name.casefold() else find_node(root, module_path)
-    if current is None and program_name.casefold() == base_picture.header.name.casefold():
-        current = find_best_suffix_node(root, module_path)
+    current = exact_current
+    if current is None and same_program:
+        current = suffix_current
         used_suffix_recovery = current is not None
     if current is None:
         return PictureDisplayPathResolution(
@@ -181,6 +215,62 @@ def resolve_picture_display_path(
             detail=f"declaring module {'.'.join(module_path)!r} is not present in the resolved module tree",
         )
 
+    resolution = _resolve_picture_display_path_from_current(
+        root,
+        current,
+        raw_path,
+        path_text=path_text,
+        program_name=program_name,
+        declaring_module_path=module_path,
+        parent_step_adjustment=parent_step_adjustment,
+        used_suffix_recovery=used_suffix_recovery,
+    )
+    if resolution.ok or not same_program or exact_current is None or suffix_current is None:
+        return resolution
+
+    retry_parent_step_adjustment = parent_step_adjustment
+    retry_used_suffix_recovery = True
+    if parent_step_adjustment < 0:
+        retry_candidates = (suffix_current,)
+    elif resolution.failure_reason == "missing_parent":
+        retry_candidates = tuple(
+            candidate for candidate in suffix_candidates if len(candidate.path) > len(exact_current.path)
+        )
+        retry_parent_step_adjustment = -1
+        retry_used_suffix_recovery = False
+    else:
+        return resolution
+
+    for retry_candidate in retry_candidates:
+        retry_resolution = _resolve_picture_display_path_from_current(
+            root,
+            retry_candidate,
+            raw_path,
+            path_text=path_text,
+            program_name=program_name,
+            declaring_module_path=module_path,
+            parent_step_adjustment=retry_parent_step_adjustment,
+            used_suffix_recovery=retry_used_suffix_recovery,
+        )
+        if retry_resolution.ok:
+            return retry_resolution
+
+    return resolution
+
+
+def _resolve_picture_display_path_from_current(
+    root: RuntimeModuleNode,
+    current: RuntimeModuleNode,
+    raw_path: str,
+    *,
+    path_text: str,
+    program_name: str,
+    declaring_module_path: tuple[str, ...],
+    parent_step_adjustment: int,
+    used_suffix_recovery: bool,
+) -> PictureDisplayPathResolution:
+    raw_path = raw_path
+
     parent_steps = 0
     while raw_path.startswith("-"):
         parent_steps += 1
@@ -189,13 +279,14 @@ def resolve_picture_display_path(
         effective_parent_step_adjustment = parent_step_adjustment
         if used_suffix_recovery and effective_parent_step_adjustment < 0:
             effective_parent_step_adjustment = 0
+        extra_parent_step = 0 if raw_path.startswith("+") and effective_parent_step_adjustment >= 0 else 1
         parent_result = _ascend_parent_steps(
             root,
             current,
-            steps=max(parent_steps + 1 + effective_parent_step_adjustment, 0),
+            steps=max(parent_steps + extra_parent_step + effective_parent_step_adjustment, 0),
             path_text=path_text,
             program_name=program_name,
-            declaring_module_path=module_path,
+            declaring_module_path=declaring_module_path,
         )
         if isinstance(parent_result, PictureDisplayPathResolution):
             return parent_result
@@ -209,7 +300,7 @@ def resolve_picture_display_path(
         return PictureDisplayPathResolution(
             path_text=path_text,
             program_name=program_name,
-            declaring_module_path=module_path,
+            declaring_module_path=declaring_module_path,
             resolved_module_path=current.path,
         )
 
@@ -228,7 +319,7 @@ def resolve_picture_display_path(
                 steps=implicit_steps,
                 path_text=path_text,
                 program_name=program_name,
-                declaring_module_path=module_path,
+                declaring_module_path=declaring_module_path,
             )
             if isinstance(implicit_result, PictureDisplayPathResolution):
                 return implicit_result
@@ -242,7 +333,7 @@ def resolve_picture_display_path(
                 return PictureDisplayPathResolution(
                     path_text=path_text,
                     program_name=program_name,
-                    declaring_module_path=module_path,
+                    declaring_module_path=declaring_module_path,
                     resolved_module_path=None,
                     failure_reason="wildcard_miss",
                     detail=f"wildcard '*{token}' found no descendant under {'.'.join(current.path)!r}",
@@ -256,7 +347,7 @@ def resolve_picture_display_path(
             return PictureDisplayPathResolution(
                 path_text=path_text,
                 program_name=program_name,
-                declaring_module_path=module_path,
+                declaring_module_path=declaring_module_path,
                 resolved_module_path=None,
                 failure_reason="missing_named_child",
                 detail=f"module {token!r} was not found under {'.'.join(current.path)!r}",
@@ -265,7 +356,7 @@ def resolve_picture_display_path(
             return PictureDisplayPathResolution(
                 path_text=path_text,
                 program_name=program_name,
-                declaring_module_path=module_path,
+                declaring_module_path=declaring_module_path,
                 resolved_module_path=None,
                 failure_reason="ambiguous_named_child",
                 detail=f"module {token!r} is ambiguous under {'.'.join(current.path)!r}",
@@ -275,7 +366,7 @@ def resolve_picture_display_path(
     return PictureDisplayPathResolution(
         path_text=path_text,
         program_name=program_name,
-        declaring_module_path=module_path,
+        declaring_module_path=declaring_module_path,
         resolved_module_path=current.path,
     )
 

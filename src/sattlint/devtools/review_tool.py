@@ -183,9 +183,12 @@ def run_full_review() -> dict[str, Any]:
     }
 
     # Write report to artifacts
-    ARTIFACTS_DIR.mkdir(exist_ok=True)
-    with open(REVIEW_FILE, "w") as f:
-        json.dump(report, f, indent=2)
+    try:
+        ARTIFACTS_DIR.mkdir(exist_ok=True)
+        with open(REVIEW_FILE, "w") as f:
+            json.dump(report, f, indent=2)
+    except OSError as exc:
+        report["output_error"] = str(exc)
 
     return report
 
@@ -248,6 +251,9 @@ def main() -> None:
     """Main entry point: run review and print results."""
     report = run_full_review()
     print_review(report)
+    if isinstance(report.get("output_error"), str):
+        print(f"\nReview report write error: {report['output_error']}", file=sys.stderr)
+        sys.exit(1)
     print(f"\nFull report written to {REVIEW_FILE}")
     sys.exit(0 if report["overall_passed"] else 1)
 

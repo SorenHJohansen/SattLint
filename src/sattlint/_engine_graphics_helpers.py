@@ -186,7 +186,11 @@ def attach_graphics_companion(
         )
         bp.graphics_picture_display_records = list(getattr(result, "picture_display_records", ()))
         bp.graphics_picture_display_occurrences = list(
-            correlate_picture_display_records(bp, tuple(getattr(result, "picture_display_records", ())))
+            correlate_picture_display_records(
+                bp,
+                tuple(getattr(result, "picture_display_records", ())),
+                graph=graph,
+            )
         )
         cast(Any, bp).graphics_companion_signature = signature
         refreshed = True

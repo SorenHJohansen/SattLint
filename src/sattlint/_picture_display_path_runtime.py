@@ -23,6 +23,8 @@ class _CompositePlaceholder:
     moduletype_name: str | None = None
     moduletype_relative_path: tuple[str, ...] = ()
     parent_step_adjustment: int = 0
+    resolution_module_path: tuple[str, ...] | None = None
+    resolution_parent_step_adjustment: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,10 +75,20 @@ def collect_concrete_composite_placeholders(
     graph: ProjectGraph | None,
 ) -> tuple[_CompositePlaceholder, ...]:
     placeholders: list[_CompositePlaceholder] = []
+    local_instance_resolution_paths: dict[tuple[str, tuple[str, ...]], tuple[tuple[str, ...], int]] = {}
     record_index = 0
     root_path = (base_picture.header.name,)
 
-    def visit_moduledef(moduledef: object, path: tuple[str, ...], *, parent_step_adjustment: int) -> None:
+    def visit_moduledef(
+        moduledef: object,
+        path: tuple[str, ...],
+        *,
+        parent_step_adjustment: int,
+        moduletype_name: str | None = None,
+        moduletype_relative_path: tuple[str, ...] = (),
+        resolution_module_path: tuple[str, ...] | None = None,
+        resolution_parent_step_adjustment: int | None = None,
+    ) -> None:
         nonlocal record_index
         graph_objects = getattr(moduledef, "graph_objects", None)
         if not isinstance(graph_objects, list):
@@ -94,8 +106,73 @@ def collect_concrete_composite_placeholders(
                 _CompositePlaceholder(
                     record_index=record_index,
                     module_path=path,
+                    moduletype_name=moduletype_name,
+                    moduletype_relative_path=moduletype_relative_path,
                     parent_step_adjustment=parent_step_adjustment,
+                    resolution_module_path=resolution_module_path,
+                    resolution_parent_step_adjustment=resolution_parent_step_adjustment,
                 )
+            )
+
+    def _local_instance_key(moduletype_name: str, relative_path: tuple[str, ...]) -> tuple[str, tuple[str, ...]]:
+        return (moduletype_name.casefold(), tuple(segment.casefold() for segment in relative_path))
+
+    def register_local_instance_path(
+        moduletype_name: str,
+        *,
+        relative_path: tuple[str, ...],
+        instance_path: tuple[str, ...],
+        parent_step_adjustment: int,
+    ) -> None:
+        key = _local_instance_key(moduletype_name, relative_path)
+        local_instance_resolution_paths.setdefault(key, (instance_path, parent_step_adjustment))
+
+    def register_local_instance_resolution_paths(
+        moduletype: ModuleTypeDef,
+        *,
+        instance_path: tuple[str, ...],
+    ) -> None:
+        def visit_template_moduledef(
+            moduledef: object, *, relative_path: tuple[str, ...], current_path: tuple[str, ...]
+        ) -> None:
+            graph_objects = getattr(moduledef, "graph_objects", None)
+            if not isinstance(graph_objects, list):
+                return
+            for graph_object in cast(list[object], graph_objects):
+                graph_object_type = getattr(graph_object, "type", None)
+                if not isinstance(graph_object_type, str):
+                    continue
+                if graph_object_type.casefold() != const.GRAMMAR_VALUE_COMPOSITEOBJECT.casefold():
+                    continue
+                register_local_instance_path(
+                    moduletype.name,
+                    relative_path=relative_path,
+                    instance_path=current_path,
+                    parent_step_adjustment=-1,
+                )
+                break
+
+        def visit_template_child(
+            child: SingleModule | FrameModule, *, relative_path: tuple[str, ...], current_path: tuple[str, ...]
+        ) -> None:
+            for nested in child.submodules or []:
+                if not isinstance(nested, SingleModule | FrameModule):
+                    continue
+                visit_template_child(
+                    nested,
+                    relative_path=(*relative_path, nested.header.name),
+                    current_path=(*current_path, nested.header.name),
+                )
+            visit_template_moduledef(child.moduledef, relative_path=relative_path, current_path=current_path)
+
+        visit_template_moduledef(moduletype.moduledef, relative_path=(), current_path=instance_path)
+        for nested in moduletype.submodules or []:
+            if not isinstance(nested, SingleModule | FrameModule):
+                continue
+            visit_template_child(
+                nested,
+                relative_path=(nested.header.name,),
+                current_path=(*instance_path, nested.header.name),
             )
 
     def visit_runtime_child(
@@ -140,6 +217,10 @@ def collect_concrete_composite_placeholders(
         if resolved_moduletype is None:
             return
 
+        if _is_local_moduletype_def(base_picture, resolved_moduletype):
+            register_local_instance_resolution_paths(resolved_moduletype, instance_path=path)
+            return
+
         moduletype_key = (
             (resolved_moduletype.origin_lib or current_library or "").casefold(),
             resolved_moduletype.name.casefold(),
@@ -168,6 +249,65 @@ def collect_concrete_composite_placeholders(
             parent_step_adjustment=child_parent_step_adjustment,
         )
 
+    def visit_local_moduletype_def(
+        moduletype: ModuleTypeDef,
+        *,
+        active_moduletype_keys: set[tuple[str, str, str]],
+    ) -> None:
+        moduletype_key = (
+            (moduletype.origin_lib or getattr(base_picture, "origin_lib", None) or "").casefold(),
+            moduletype.name.casefold(),
+            (moduletype.origin_file or getattr(base_picture, "origin_file", None) or "").casefold(),
+        )
+        if moduletype_key in active_moduletype_keys:
+            return
+
+        nested_keys = set(active_moduletype_keys)
+        nested_keys.add(moduletype_key)
+        moduletype_path = (*root_path, moduletype.name)
+
+        def resolution_context(relative_path: tuple[str, ...]) -> tuple[tuple[str, ...] | None, int | None]:
+            return local_instance_resolution_paths.get(
+                _local_instance_key(moduletype.name, relative_path), (None, None)
+            )
+
+        def visit_template_moduledef(
+            moduledef: object, *, relative_path: tuple[str, ...], current_path: tuple[str, ...]
+        ) -> None:
+            resolution_module_path, resolution_parent_step_adjustment = resolution_context(relative_path)
+            visit_moduledef(
+                moduledef,
+                current_path,
+                parent_step_adjustment=0,
+                moduletype_name=moduletype.name,
+                moduletype_relative_path=relative_path,
+                resolution_module_path=resolution_module_path,
+                resolution_parent_step_adjustment=resolution_parent_step_adjustment,
+            )
+
+        def visit_template_child(
+            child: SingleModule | FrameModule, *, relative_path: tuple[str, ...], current_path: tuple[str, ...]
+        ) -> None:
+            for nested in child.submodules or []:
+                if not isinstance(nested, SingleModule | FrameModule):
+                    continue
+                visit_template_child(
+                    nested,
+                    relative_path=(*relative_path, nested.header.name),
+                    current_path=(*current_path, nested.header.name),
+                )
+            visit_template_moduledef(child.moduledef, relative_path=relative_path, current_path=current_path)
+
+        for nested in moduletype.submodules or []:
+            if not isinstance(nested, SingleModule | FrameModule):
+                continue
+            visit_template_child(
+                nested,
+                relative_path=(nested.header.name,),
+                current_path=(*moduletype_path, nested.header.name),
+            )
+        visit_template_moduledef(moduletype.moduledef, relative_path=(), current_path=moduletype_path)
+
     for child in base_picture.submodules or []:
         visit_runtime_child(
             child,
@@ -177,6 +317,8 @@ def collect_concrete_composite_placeholders(
             active_moduletype_keys=set(),
             parent_step_adjustment=0,
         )
+    for moduletype in _local_moduletype_defs(base_picture):
+        visit_local_moduletype_def(moduletype, active_moduletype_keys=set())
     visit_moduledef(base_picture.moduledef, root_path, parent_step_adjustment=0)
     return tuple(placeholders)
 
@@ -402,12 +544,23 @@ def find_node(root: RuntimeModuleNode, path: tuple[str, ...]) -> RuntimeModuleNo
     return None
 
 
-def find_best_suffix_node(root: RuntimeModuleNode, path: tuple[str, ...]) -> RuntimeModuleNode | None:
+def find_best_suffix_node(
+    root: RuntimeModuleNode,
+    path: tuple[str, ...],
+    *,
+    exclude_path: tuple[str, ...] | None = None,
+) -> RuntimeModuleNode | None:
     best_match: RuntimeModuleNode | None = None
     best_suffix_length = 0
     best_path_length = 0
     ambiguous = False
+    lowered_exclude_path = tuple(segment.casefold() for segment in exclude_path) if exclude_path is not None else None
     for candidate in _iter_runtime_nodes(root):
+        if (
+            lowered_exclude_path is not None
+            and tuple(segment.casefold() for segment in candidate.path) == lowered_exclude_path
+        ):
+            continue
         suffix_length = _common_suffix_length(candidate.path, path)
         if suffix_length < 2:
             continue
@@ -429,6 +582,26 @@ def find_best_suffix_node(root: RuntimeModuleNode, path: tuple[str, ...]) -> Run
     if ambiguous:
         return None
     return best_match
+
+
+def find_suffix_nodes(
+    root: RuntimeModuleNode,
+    path: tuple[str, ...],
+    *,
+    exclude_path: tuple[str, ...] | None = None,
+) -> tuple[RuntimeModuleNode, ...]:
+    lowered_exclude_path = tuple(segment.casefold() for segment in exclude_path) if exclude_path is not None else None
+    matches: list[tuple[int, int, tuple[str, ...], RuntimeModuleNode]] = []
+    for candidate in _iter_runtime_nodes(root):
+        lowered_candidate_path = tuple(segment.casefold() for segment in candidate.path)
+        if lowered_exclude_path is not None and lowered_candidate_path == lowered_exclude_path:
+            continue
+        suffix_length = _common_suffix_length(candidate.path, path)
+        if suffix_length < 2:
+            continue
+        matches.append((suffix_length, len(candidate.path), lowered_candidate_path, candidate))
+    matches.sort(key=lambda item: (-item[0], item[1], item[2]))
+    return tuple(candidate for *_rest, candidate in matches)
 
 
 def _iter_runtime_nodes(root: RuntimeModuleNode) -> tuple[RuntimeModuleNode, ...]:

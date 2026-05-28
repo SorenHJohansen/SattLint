@@ -17,16 +17,17 @@ VARIABLE_ANALYSES: VariableAnalysisMap = {
     "9": ("Min/Max mapping name mismatches", {IssueKind.MIN_MAX_MAPPING_MISMATCH}),
     "10": ("Magic numbers", {IssueKind.MAGIC_NUMBER}),
     "11": ("Name collisions", {IssueKind.NAME_COLLISION}),
-    "12": ("Reset contamination", {IssueKind.RESET_CONTAMINATION}),
-    "13": ("Variable shadowing", {IssueKind.SHADOWING}),
-    "14": ("UI/display-only variables", {IssueKind.UI_ONLY}),
-    "15": ("Procedure status handling", {IssueKind.PROCEDURE_STATUS}),
-    "16": ("Write-without-effect variables", {IssueKind.WRITE_WITHOUT_EFFECT}),
-    "17": ("Cross-module contract mismatches", {IssueKind.CONTRACT_MISMATCH}),
-    "18": ("Implicit latching", {IssueKind.IMPLICIT_LATCH}),
-    "19": ("Global scope minimization", {IssueKind.GLOBAL_SCOPE_MINIMIZATION}),
-    "20": ("Hidden global coupling", {IssueKind.HIDDEN_GLOBAL_COUPLING}),
-    "21": ("High fan-in or fan-out variables", {IssueKind.HIGH_FAN_IN_OUT}),
+    "12": ("Positional record component access", {IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE}),
+    "13": ("Reset contamination", {IssueKind.RESET_CONTAMINATION}),
+    "14": ("Variable shadowing", {IssueKind.SHADOWING}),
+    "15": ("UI/display-only variables", {IssueKind.UI_ONLY}),
+    "16": ("Procedure status handling", {IssueKind.PROCEDURE_STATUS}),
+    "17": ("Write-without-effect variables", {IssueKind.WRITE_WITHOUT_EFFECT}),
+    "18": ("Cross-module contract mismatches", {IssueKind.CONTRACT_MISMATCH}),
+    "19": ("Implicit latching", {IssueKind.IMPLICIT_LATCH}),
+    "20": ("Global scope minimization", {IssueKind.GLOBAL_SCOPE_MINIMIZATION}),
+    "21": ("Hidden global coupling", {IssueKind.HIDDEN_GLOBAL_COUPLING}),
+    "22": ("High fan-in or fan-out variables", {IssueKind.HIGH_FAN_IN_OUT}),
 }
 
 HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
@@ -42,10 +43,10 @@ HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
     "11",
     "12",
     "13",
+    "14",
 )
 
 LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
-    "14",
     "15",
     "16",
     "17",
@@ -53,4 +54,5 @@ LOW_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = (
     "19",
     "20",
     "21",
+    "22",
 )

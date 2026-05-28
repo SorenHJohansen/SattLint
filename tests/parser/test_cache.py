@@ -1,6 +1,7 @@
 """Regression tests for AST cache serialization."""
 
 import json
+import os
 import pickle
 from pathlib import Path, PosixPath
 from types import SimpleNamespace
@@ -243,3 +244,75 @@ def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path) -> 
         ast_cache.validate({"version": CACHE_VERSION, "files": {str(manifest_path): (manifest[0], manifest[1] + 1)}})
         is False
     )
+
+
+def test_file_ast_cache_save_skips_missing_source(tmp_path: Path) -> None:
+    source_path = tmp_path / "Program" / "Main.s"
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    file_ast_cache = FileASTCache(tmp_path)
+
+    file_ast_cache.save(source_path, "draft", "ast")
+
+    assert file_ast_cache._path(source_path, "draft").exists() is False
+
+
+def test_file_ast_cache_load_tolerates_stat_race(tmp_path: Path, monkeypatch) -> None:
+    source_path = tmp_path / "Program" / "Main.s"
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_path.write_text('"a"\n"b"\n"c"\n', encoding="utf-8")
+    file_ast_cache = FileASTCache(tmp_path)
+    file_ast_cache.save(source_path, "draft", "ast")
+
+    path_type = type(source_path)
+    original_exists = path_type.exists
+    original_stat = path_type.stat
+
+    def fake_exists(self: Path) -> bool:
+        if self == source_path:
+            return True
+        return original_exists(self)
+
+    def fake_stat(self: Path) -> os.stat_result:
+        if self == source_path:
+            raise PermissionError("simulated stat race")
+        return original_stat(self)
+
+    monkeypatch.setattr(path_type, "exists", fake_exists)
+    monkeypatch.setattr(path_type, "stat", fake_stat)
+
+    assert file_ast_cache.load(source_path, "draft") is None
+
+
+def test_ast_cache_save_skips_missing_manifest_file(tmp_path: Path) -> None:
+    ast_cache = ASTCache(tmp_path / "project-cache-race")
+    manifest_path = tmp_path / "missing-manifest.s"
+
+    ast_cache.save("project", project=SimpleNamespace(name="project"), files=[manifest_path])
+
+    assert ast_cache._path("project").exists() is False
+
+
+def test_ast_cache_validate_tolerates_stat_race(tmp_path: Path, monkeypatch) -> None:
+    ast_cache = ASTCache(tmp_path / "project-cache-race")
+    manifest_path = tmp_path / "manifest-race.s"
+    manifest_path.write_text('"x"\n"y"\n"z"\n', encoding="utf-8")
+    manifest = (manifest_path.stat().st_mtime_ns, manifest_path.stat().st_size)
+
+    path_type = type(manifest_path)
+    original_exists = path_type.exists
+    original_stat = path_type.stat
+
+    def fake_exists(self: Path) -> bool:
+        if self == manifest_path:
+            return True
+        return original_exists(self)
+
+    def fake_stat(self: Path):
+        if self == manifest_path:
+            raise PermissionError("simulated stat race")
+        return original_stat(self)
+
+    monkeypatch.setattr(path_type, "exists", fake_exists)
+    monkeypatch.setattr(path_type, "stat", fake_stat)
+
+    assert ast_cache.validate({"version": CACHE_VERSION, "files": {str(manifest_path): manifest}}) is False

@@ -25,7 +25,6 @@ The underlying engine makes sure that analysis is computed lazily (on-demand) an
 This section names the checked-in entrypoints that actually start runtime work today, the first owning modules they reach, and whether each surface is part of the stable or preview contract.
 
 - `sattlint` is the main Python CLI entrypoint. It lands in `src/sattlint/app.py`, which owns command parsing, the preview interactive menu, and routing into the shared application helpers under `src/sattlint/`.
-- `sattlint-gui` is the preview desktop shell. It lands in `src/sattlint_gui/main.py`, creates `SattLintWindow`, and reuses the same configuration, workflow, and analysis helpers as the CLI rather than a separate engine.
 - `sattlint-lsp` is the stable language-server entrypoint. It lands in `src/sattlint_lsp/server.py`, which owns JSON-RPC, document state, workspace snapshots, and editor protocol behavior.
 - `sattlint-repo-audit` and `sattlint-layer-lint` are maintainer-facing tooling entrypoints. They route into `src/sattlint/devtools/` and are operational tooling, not part of the editor or parser control loop.
 - `src/sattlint/editor_api.py` is a public compatibility facade for editor-facing library consumers. It forwards into `src/sattlint/core/semantic.py` so external consumers, the CLI, and the LSP share one semantic pipeline.
@@ -104,11 +103,7 @@ Developer tooling for analysis and validation workflows:
 - `observability.py` collects metrics
 - `review_tool.py` runs comprehensive reviews
 
-These tools are part of the shipped repository workflow, but they are operational surfaces rather than part of the parser, CLI, GUI, or editor runtime path.
-
-### `src/sattlint_gui/`
-
-Preview desktop GUI application. The public entrypoint is `sattlint-gui`, which lands in `main.py` and builds `SattLintWindow`.
+These tools are part of the shipped repository workflow, but they are operational surfaces rather than part of the parser, CLI, or editor runtime path.
 
 ### `vscode/sattline-vscode/`
 

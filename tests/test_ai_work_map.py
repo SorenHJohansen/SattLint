@@ -1,5 +1,6 @@
 import json
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -299,6 +300,12 @@ def test_load_and_write_work_maps_cover_fallback_and_persistence(tmp_path, monke
     assert ai_work_map.load_ai_work_map(work_path) == {"kind": "stored-work"}
     assert ai_work_map.load_session_context_map(session_path) == {"kind": "stored-session"}
 
+    work_path.write_text("{bad-json", encoding="utf-8")
+    session_path.write_text("{bad-json", encoding="utf-8")
+
+    assert ai_work_map.load_ai_work_map(work_path) == {"kind": "built-work"}
+    assert ai_work_map.load_session_context_map(session_path) == {"kind": "built-session"}
+
     monkeypatch.setattr(ai_work_map, "render_ai_work_map", lambda: '{"kind": "written-work"}\n')
     monkeypatch.setattr(ai_work_map, "render_session_context_map", lambda: '{"kind": "written-session"}\n')
 
@@ -403,6 +410,43 @@ def test_main_write_check_and_stdout_modes(tmp_path, monkeypatch, capsys):
     )
     assert json.loads(capsys.readouterr().out) == {"kind": "work", "archived": True}
     assert archived_state["calls"] == 1
+
+
+def test_main_returns_failure_when_write_output_fails(tmp_path, monkeypatch, capsys):
+    output_path = tmp_path / "ai-work-map.json"
+    session_output_path = tmp_path / "ai-session-context-map.json"
+    reference_output_path = tmp_path / "ai-check-catalog.md"
+
+    monkeypatch.setattr(ai_work_map, "archive_completed_exec_plans", lambda: [])
+    monkeypatch.setattr(ai_work_map, "render_ai_work_map", lambda: '{"kind": "work"}\n')
+    monkeypatch.setattr(ai_work_map, "render_session_context_map", lambda: '{"kind": "session"}\n')
+    monkeypatch.setattr(ai_work_map, "render_ai_check_catalog", lambda: "# Reference\n")
+
+    original_write_text = Path.write_text
+
+    def _write_text(self: Path, *args, **kwargs):
+        if self == output_path:
+            raise PermissionError("locked")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", _write_text)
+
+    exit_code = ai_work_map.main(
+        [
+            "--write",
+            "--output",
+            str(output_path),
+            "--session-output",
+            str(session_output_path),
+            "--reference-output",
+            str(reference_output_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "ai work map output error: locked" in captured.err
 
 
 def test_build_planning_context_ignores_invalid_entries_and_matches_owner_surfaces():

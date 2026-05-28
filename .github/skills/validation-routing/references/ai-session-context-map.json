@@ -29,7 +29,7 @@
       "path_globs": [
         "src/sattlint/docgenerator/**",
         "tests/test_docgen.py",
-        "tests/test_gui.py"
+        "tests/test_app_docgen.py"
       ],
       "selected_surfaces": [
         "repo-audit",
@@ -127,7 +127,7 @@
       "user_invocable": true
     },
     {
-      "description": "Use when: changing DOCX generation, documentation classification, FS grouping, unit-scope selection, docgen CLI workflow, or GUI documentation generation in SattLint",
+      "description": "Use when: changing DOCX generation, documentation classification, FS grouping, unit-scope selection, or docgen CLI workflow in SattLint",
       "file_path": ".github/agents/documentation-generation.agent.md",
       "name": "Documentation Generation",
       "user_invocable": true
@@ -326,9 +326,9 @@
       "apply_to": [
         "src/sattlint/docgenerator/**",
         "tests/test_docgen.py",
-        "tests/test_gui.py"
+        "tests/test_app_docgen.py"
       ],
-      "description": "Use when changing DOCX generation, documentation classification, FS grouping, unit scope selection, or GUI documentation workflows in SattLint. Covers docgen-specific boundaries and tests.",
+      "description": "Use when changing DOCX generation, documentation classification, FS grouping, unit scope selection, or app documentation workflows in SattLint. Covers docgen-specific boundaries and tests.",
       "file_path": ".github/instructions/docgen.instructions.md",
       "name": "Documentation Generation Instructions"
     },

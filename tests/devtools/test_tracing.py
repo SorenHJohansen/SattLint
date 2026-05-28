@@ -68,6 +68,48 @@ def test_trace_source_file_analysis_includes_timing_summary(tmp_path):
     assert payload["timing_summary"]["variables"]["span_ms"] >= 0.0
 
 
+def test_trace_source_file_analysis_reports_output_write_error(monkeypatch, tmp_path):
+    source_file = _sample_program_path()
+    output_path = tmp_path / "trace.json"
+    original_write_text = Path.write_text
+
+    def fail_write_text(self: Path, *args: object, **kwargs: object) -> int:
+        if self == output_path:
+            raise PermissionError("locked")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_write_text)
+
+    payload = trace_source_file_analysis(source_file, output_path=output_path)
+
+    assert payload["syntax_validation"]["ok"] is True
+    assert payload["output_error"] == {
+        "path": "<external>/trace.json",
+        "error": "locked",
+        "error_type": "PermissionError",
+    }
+
+
+def test_tracing_cli_returns_failure_when_output_write_fails(monkeypatch, tmp_path, capsys):
+    source_file = str(_sample_program_path())
+    output_path = tmp_path / "trace.json"
+    original_write_text = Path.write_text
+
+    def fail_write_text(self: Path, *args: object, **kwargs: object) -> int:
+        if self == output_path:
+            raise PermissionError("locked")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_write_text)
+
+    exit_code = tracing.cli([source_file, "--output", str(output_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "Trace output error: locked" in captured.err
+
+
 def test_collect_trace_report_delegates_to_trace_source_file_analysis(tmp_path):
     source_file = _sample_program_path()
 

@@ -263,9 +263,14 @@ def build_refactoring_report(
         ):
             if transformed_text is None:
                 raise RuntimeError("Refactoring candidate was marked safe to apply without transformed text.")
-            source_file.write_text(transformed_text, encoding="utf-8")
-            candidate["applied"] = True
-            applied_change_count += 1
+            try:
+                source_file.write_text(transformed_text, encoding="utf-8")
+            except OSError as exc:
+                candidate["status"] = "error"
+                candidate["errors"].append({"error": str(exc), "error_type": type(exc).__name__})
+            else:
+                candidate["applied"] = True
+                applied_change_count += 1
         candidates.append(candidate)
 
     changed_candidate_count = sum(1 for candidate in candidates if candidate["changed"])
@@ -385,13 +390,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         apply=apply,
         progress_callback=progress_callback,
     )
+    output_error: OSError | None = None
     if args.output_dir:
-        _write_refactoring_report(Path(args.output_dir).resolve(), report)
+        try:
+            _write_refactoring_report(Path(args.output_dir).resolve(), report)
+        except OSError as exc:
+            output_error = exc
 
     if args.format == "text":
         print(_render_text_report(report))
     else:
         print(json.dumps(report, indent=2, sort_keys=True))
+    if output_error is not None:
+        print(f"refactoring output error: {output_error}", file=sys.stderr, flush=True)
+        return 1
     return 0 if report["status"] in {"ok", "partial"} else 2
 
 

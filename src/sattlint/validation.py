@@ -848,6 +848,11 @@ def _validate_datatypes(
     _ensure_unique_names([datatype.name for datatype in datatypes or []], context, "datatype")
     for datatype in datatypes or []:
         _validate_identifier(datatype.name, f"{context} datatype")
+        if len(datatype.var_list or []) < 2:
+            raise StructuralValidationError(
+                f"{context} datatype {datatype.name!r} must declare at least 2 fields",
+                **_span_kwargs(datatype.declaration_span),
+            )
         _validate_variable_list(
             datatype.var_list,
             f"{context} datatype {datatype.name!r}",

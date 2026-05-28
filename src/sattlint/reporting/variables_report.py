@@ -25,6 +25,7 @@ class IssueKind(Enum):
     UI_ONLY = "ui_only"
     PROCEDURE_STATUS = "procedure_status"
     NEVER_READ = "never_read"
+    RECORD_COMPONENT_ORDER_DEPENDENCE = "record_component_order_dependence"
     WRITE_WITHOUT_EFFECT = "write_without_effect"
     GLOBAL_SCOPE_MINIMIZATION = "global_scope_minimization"
     HIDDEN_GLOBAL_COUPLING = "hidden_global_coupling"
@@ -48,6 +49,7 @@ DEFAULT_VARIABLE_ANALYSIS_KINDS: tuple[IssueKind, ...] = (
     IssueKind.UNUSED_DATATYPE_FIELD,
     IssueKind.READ_ONLY_NON_CONST,
     IssueKind.NEVER_READ,
+    IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE,
     IssueKind.UNKNOWN_PARAMETER_TARGET,
     IssueKind.REQUIRED_PARAMETER_CONNECTION,
     IssueKind.STRING_MAPPING_MISMATCH,
@@ -89,6 +91,7 @@ SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.UI_ONLY: "UI/display-only variables",
     IssueKind.PROCEDURE_STATUS: "Procedure status handling",
     IssueKind.NEVER_READ: "Written but never read variables",
+    IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE: "Positional record component access",
     IssueKind.WRITE_WITHOUT_EFFECT: "Write-without-effect variables",
     IssueKind.GLOBAL_SCOPE_MINIMIZATION: "Global scope minimization candidates",
     IssueKind.HIDDEN_GLOBAL_COUPLING: "Hidden global coupling",
@@ -194,6 +197,10 @@ class VariablesReport:
         return [i for i in self.issues if i.kind is IssueKind.NEVER_READ]
 
     @property
+    def record_component_order_dependence(self) -> list[VariableIssue]:
+        return [i for i in self.issues if i.kind is IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE]
+
+    @property
     def write_without_effect(self) -> list[VariableIssue]:
         return [i for i in self.issues if i.kind is IssueKind.WRITE_WITHOUT_EFFECT]
 
@@ -277,6 +284,8 @@ class VariablesReport:
             return self.procedure_status
         if kind is IssueKind.NEVER_READ:
             return self.never_read
+        if kind is IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE:
+            return self.record_component_order_dependence
         if kind is IssueKind.WRITE_WITHOUT_EFFECT:
             return self.write_without_effect
         if kind is IssueKind.GLOBAL_SCOPE_MINIMIZATION:
@@ -359,6 +368,13 @@ class VariablesReport:
                 lines,
                 SECTION_TITLES[IssueKind.NEVER_READ],
                 self.never_read,
+            )
+            return
+        if kind is IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE:
+            append_variable_issue_list(
+                lines,
+                SECTION_TITLES[IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE],
+                self.record_component_order_dependence,
             )
             return
         if kind is IssueKind.WRITE_WITHOUT_EFFECT:

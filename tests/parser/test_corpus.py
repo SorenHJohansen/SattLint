@@ -1,5 +1,6 @@
 import json
 import logging
+from pathlib import Path
 
 from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, SemanticIssue, SemanticRule
 from sattlint.devtools.corpus import (
@@ -453,6 +454,50 @@ def test_execute_corpus_case_workspace_preserves_guidance_for_semantic_findings(
     assert findings_report["findings"][0]["suggestion"] == "Initialize the variable before the first possible read."
 
 
+def test_execute_corpus_case_returns_execution_error_when_findings_evaluation_read_fails(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "strict-case.json"
+    source_path = tmp_path / "Broken.s"
+    artifact_dir = tmp_path / "artifacts"
+    source_path.write_text("this is not valid sattline", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "case_id": "strict-evaluation-read-failure",
+                "target_file": "Broken.s",
+                "mode": "strict",
+                "expectation": {
+                    "expected_finding_ids": ["syntax.parse"],
+                },
+                "required_artifacts": ["status.json", "summary.json", "findings.json"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = load_corpus_manifest(manifest_path)
+    findings_path = artifact_dir / "findings.json"
+    original_read_text = Path.read_text
+
+    def fake_read_text(self: Path, *args: object, **kwargs: object) -> str:
+        if self == findings_path:
+            raise PermissionError("locked")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fake_read_text)
+
+    result = execute_corpus_case(manifest_path, artifact_dir, repo_root=tmp_path, manifest=manifest)
+
+    status_report = json.loads(original_read_text(artifact_dir / "status.json", encoding="utf-8"))
+    findings_report = json.loads(original_read_text(artifact_dir / "findings.json", encoding="utf-8"))
+
+    assert result.passed is False
+    assert result.execution_error == "Failed to evaluate corpus case strict-evaluation-read-failure: locked"
+    assert result.evaluation.passed is True
+    assert status_report["execution_status"] == "error"
+    assert status_report["error"] == "Failed to evaluate corpus case strict-evaluation-read-failure: locked"
+    assert_findings_collection(findings_report, finding_count=1)
+    assert findings_report["findings"][0]["rule_id"] == "corpus.execution-error"
+
+
 def test_run_corpus_suite_aggregates_case_results_and_writes_report(tmp_path):
     manifest_dir = tmp_path / "manifests"
     manifest_dir.mkdir()
@@ -506,3 +551,86 @@ def test_run_corpus_suite_aggregates_case_results_and_writes_report(tmp_path):
         "execution_error_count": 0,
         "missing_artifact_case_count": 0,
     }
+
+
+def test_run_corpus_suite_keeps_running_when_manifest_is_malformed(tmp_path):
+    manifest_dir = tmp_path / "manifests"
+    manifest_dir.mkdir()
+    broken_file = tmp_path / "Broken.s"
+    broken_file.write_text("still invalid", encoding="utf-8")
+
+    valid_manifest = manifest_dir / "expected.json"
+    valid_manifest.write_text(
+        json.dumps(
+            {
+                "case_id": "expected-parse-error",
+                "target_file": "../Broken.s",
+                "mode": "strict",
+                "expectation": {"expected_finding_ids": ["syntax.parse"]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    broken_manifest = manifest_dir / "broken.json"
+    broken_manifest.write_text("{not-json", encoding="utf-8")
+
+    suite = run_corpus_suite(
+        tmp_path / "out",
+        manifest_dir=manifest_dir,
+        repo_root=tmp_path,
+        write_results=True,
+    )
+
+    report = json.loads(((tmp_path / "out") / CORPUS_RESULTS_FILENAME).read_text(encoding="utf-8"))
+    broken_case = next(case for case in report["cases"] if case["case_id"] == "broken")
+
+    assert suite.passed is False
+    assert_corpus_results_report(report, case_count=2, failed_case_ids=("broken",))
+    assert report["summary"] == {
+        "case_count": 2,
+        "passed_count": 1,
+        "failed_count": 1,
+        "execution_error_count": 1,
+        "missing_artifact_case_count": 0,
+    }
+    assert broken_case["execution_error"].startswith("Failed to load corpus manifest")
+    assert broken_case["findings_schema"] == {"kind": "sattlint.findings", "schema_version": 1}
+    assert ((tmp_path / "out") / "corpus_cases" / "broken" / "status.json").exists()
+
+
+def test_main_returns_failure_when_results_report_write_fails(tmp_path, monkeypatch, capsys):
+    fake_suite = type(
+        "FakeSuite",
+        (),
+        {
+            "passed": True,
+            "to_dict": lambda self: {
+                "summary": {
+                    "case_count": 1,
+                    "failed_count": 0,
+                },
+            },
+        },
+    )()
+
+    monkeypatch.setattr("sattlint.devtools.corpus.run_corpus_suite", lambda *args, **kwargs: fake_suite)
+    monkeypatch.setattr(
+        "sattlint.devtools.corpus._write_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("locked")),
+    )
+
+    exit_code = __import__("sattlint.devtools.corpus", fromlist=["main"]).main(
+        [
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--manifest-dir",
+            str(tmp_path / "manifests"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Corpus cases: 1" in captured.out
+    assert "Failed cases: 0" in captured.out
+    assert "Corpus results:" in captured.out
+    assert "corpus output error: locked" in captured.err

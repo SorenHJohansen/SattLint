@@ -492,6 +492,15 @@ def graphics_rules_menu(
     rules, _created = load_graphics_rules_fn(rules_path)
     dirty = False
 
+    def _save_rules() -> bool:
+        try:
+            save_graphics_rules_fn(rules_path, rules)
+        except OSError as exc:
+            emit_output_fn(f"? Failed to save graphics rules to {rules_path}: {exc}")
+            pause_fn()
+            return False
+        return True
+
     while True:
         clear_screen_fn()
         print_graphics_rules_summary_fn(rules_path, rules, dirty=dirty)
@@ -514,12 +523,12 @@ def graphics_rules_menu(
         choice = input("> ").strip().lower()
 
         if choice == "b":
-            if dirty and confirm_fn("Unsaved graphics rule changes. Save before leaving?"):
-                save_graphics_rules_fn(rules_path, rules)
+            if dirty and confirm_fn("Unsaved graphics rule changes. Save before leaving?") and not _save_rules():
+                continue
             return
         if choice == "q":
-            if dirty and confirm_fn("Unsaved graphics rule changes. Save before quitting?"):
-                save_graphics_rules_fn(rules_path, rules)
+            if dirty and confirm_fn("Unsaved graphics rule changes. Save before quitting?") and not _save_rules():
+                continue
             quit_app_fn()
 
         if choice == "1":
@@ -547,7 +556,8 @@ def graphics_rules_menu(
             dirty = True
             pause_fn()
         elif choice == "3":
-            save_graphics_rules_fn(rules_path, rules)
+            if not _save_rules():
+                continue
             dirty = False
             pause_fn()
         else:

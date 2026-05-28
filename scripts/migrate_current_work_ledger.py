@@ -28,7 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    result = coordination_lock_state.migrate_current_work_ledger(args.repo_root.resolve())
+    try:
+        result = coordination_lock_state.migrate_current_work_ledger(args.repo_root.resolve())
+    except OSError as error:
+        print(f"migrate-current-work-ledger: {error}", file=sys.stderr)
+        return 1
     print(json.dumps(result, indent=2))
     return 0
 

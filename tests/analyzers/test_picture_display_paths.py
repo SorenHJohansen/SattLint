@@ -347,3 +347,154 @@ def test_resolve_picture_display_path_leading_dash_supports_followup_wildcard() 
         "AlarmsAndWarnings",
         "Form",
     )
+
+
+def test_resolve_picture_display_path_single_dash_plus_climbs_to_parent_module() -> None:
+    base_picture = BasePicture(
+        header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        name="BasePicture",
+        moduledef=ModuleDef(),
+        submodules=[
+            SingleModule(
+                header=ModuleHeader(name="XAppl_231XY", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                moduledef=ModuleDef(),
+                submodules=[
+                    SingleModule(
+                        header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                        moduledef=ModuleDef(),
+                        submodules=[
+                            SingleModule(
+                                header=ModuleHeader(name="L2", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                                moduledef=ModuleDef(),
+                                submodules=[
+                                    SingleModule(
+                                        header=ModuleHeader(name="OpMessage1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                                        moduledef=ModuleDef(),
+                                    ),
+                                    SingleModule(
+                                        header=ModuleHeader(name="UnitControl", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                                        moduledef=ModuleDef(),
+                                        submodules=[
+                                            SingleModule(
+                                                header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                                                moduledef=ModuleDef(),
+                                                submodules=[
+                                                    SingleModule(
+                                                        header=ModuleHeader(
+                                                            name="L2", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)
+                                                        ),
+                                                        moduledef=ModuleDef(),
+                                                        submodules=[
+                                                            SingleModule(
+                                                                header=ModuleHeader(
+                                                                    name="Operations",
+                                                                    invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0),
+                                                                ),
+                                                                moduledef=ModuleDef(),
+                                                                submodules=[
+                                                                    SingleModule(
+                                                                        header=ModuleHeader(
+                                                                            name="L2",
+                                                                            invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0),
+                                                                        ),
+                                                                        moduledef=ModuleDef(),
+                                                                        submodules=[
+                                                                            SingleModule(
+                                                                                header=ModuleHeader(
+                                                                                    name="OpMessage",
+                                                                                    invoke_coord=(
+                                                                                        0.0,
+                                                                                        0.0,
+                                                                                        0.0,
+                                                                                        1.0,
+                                                                                        1.0,
+                                                                                    ),
+                                                                                ),
+                                                                                moduledef=ModuleDef(),
+                                                                                submodules=[
+                                                                                    SingleModule(
+                                                                                        header=ModuleHeader(
+                                                                                            name="L1",
+                                                                                            invoke_coord=(
+                                                                                                0.0,
+                                                                                                0.0,
+                                                                                                0.0,
+                                                                                                1.0,
+                                                                                                1.0,
+                                                                                            ),
+                                                                                        ),
+                                                                                        moduledef=ModuleDef(),
+                                                                                        submodules=[
+                                                                                            SingleModule(
+                                                                                                header=ModuleHeader(
+                                                                                                    name="L2",
+                                                                                                    invoke_coord=(
+                                                                                                        0.0,
+                                                                                                        0.0,
+                                                                                                        0.0,
+                                                                                                        1.0,
+                                                                                                        1.0,
+                                                                                                    ),
+                                                                                                ),
+                                                                                                moduledef=ModuleDef(),
+                                                                                                submodules=[
+                                                                                                    SingleModule(
+                                                                                                        header=ModuleHeader(
+                                                                                                            name="OperatorMessage1",
+                                                                                                            invoke_coord=(
+                                                                                                                0.0,
+                                                                                                                0.0,
+                                                                                                                0.0,
+                                                                                                                1.0,
+                                                                                                                1.0,
+                                                                                                            ),
+                                                                                                        ),
+                                                                                                        moduledef=ModuleDef(),
+                                                                                                    )
+                                                                                                ],
+                                                                                            )
+                                                                                        ],
+                                                                                    )
+                                                                                ],
+                                                                            )
+                                                                        ],
+                                                                    )
+                                                                ],
+                                                            )
+                                                        ],
+                                                    )
+                                                ],
+                                            )
+                                        ],
+                                    ),
+                                ],
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+
+    resolution = resolve_picture_display_path(
+        "-+UnitControl+l1+l2+Operations+l2+Opmessage+l1+l2+Operatormessage1",
+        base_picture=base_picture,
+        declaring_module_path=("BasePicture", "XAppl_231XY", "L1", "L2", "OpMessage1"),
+    )
+
+    assert resolution.ok is True
+    assert resolution.resolved_module_path == (
+        "BasePicture",
+        "XAppl_231XY",
+        "L1",
+        "L2",
+        "UnitControl",
+        "L1",
+        "L2",
+        "Operations",
+        "L2",
+        "OpMessage",
+        "L1",
+        "L2",
+        "OperatorMessage1",
+    )

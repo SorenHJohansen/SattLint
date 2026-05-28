@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from sattlint.devtools import _ai_chat_grounding as ai_chat_grounding
+from sattlint.devtools import _ai_chat_transcripts as ai_chat_transcripts
 from sattlint.devtools import ai_chat_observability
 from sattlint.devtools._semble_adapter import SembleMatch, SembleSearchResponse
 
@@ -129,6 +130,84 @@ def test_ai_chat_observability_requires_transcripts_child_dir(tmp_path, capsys):
 
     assert exit_code == 2
     assert "transcripts child directory" in capsys.readouterr().err
+
+
+def test_ai_chat_observability_returns_failure_when_output_write_fails(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(
+        ai_chat_observability,
+        "build_ai_chat_observability_report",
+        lambda **_kwargs: {
+            "status": {"overall_status": "ok", "output_dir": str((tmp_path / "artifacts").resolve())},
+            "summary": {
+                "transcript_corpus": {"transcript_count": 1},
+                "session_store": {"status": "ok"},
+            },
+            "sessions": {"session_count": 1},
+            "findings": {"finding_count": 0, "findings": []},
+        },
+    )
+    monkeypatch.setattr(
+        ai_chat_observability,
+        "write_ai_chat_observability_artifacts",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("locked")),
+    )
+
+    exit_code = ai_chat_observability.main(
+        [
+            "--transcripts-dir",
+            str(tmp_path / "transcripts"),
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert json.loads(captured.out) == {
+        "finding_count": 0,
+        "output_dir": str((tmp_path / "artifacts").resolve()),
+        "overall_status": "ok",
+        "session_store_status": "ok",
+        "transcript_count": 1,
+    }
+    assert "ai chat observability output error: locked" in captured.err
+
+
+def test_load_transcript_corpus_tolerates_unreadable_transcript(monkeypatch, tmp_path):
+    transcripts_dir = tmp_path / "transcripts"
+    transcripts_dir.mkdir()
+    readable = transcripts_dir / "readable.jsonl"
+    unreadable = transcripts_dir / "unreadable.jsonl"
+    readable.write_text('{"type":"user.message","data":{"content":"hello"}}\n', encoding="utf-8")
+    unreadable.write_text('{"type":"user.message","data":{"content":"secret"}}\n', encoding="utf-8")
+
+    original_read_text = Path.read_text
+
+    def fake_read_text(self: Path, *args: object, **kwargs: object) -> str:
+        if self == unreadable:
+            raise PermissionError("permission denied")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fake_read_text)
+
+    report = ai_chat_transcripts.load_transcript_corpus(
+        resolved_input={
+            "input_kind": "transcripts-dir",
+            "input_path": "transcripts",
+            "transcripts_dir": "transcripts",
+            "resolved_transcripts_dir": transcripts_dir,
+            "wrong_log_seam_risk": False,
+        },
+        repo_root=tmp_path,
+    )
+
+    assert report["transcript_count"] == 2
+    assert len(report["sessions"]) == 2
+    unreadable_session = next(session for session in report["sessions"] if session["session_id"] == "unreadable")
+    assert unreadable_session["event_count"] == 0
+    assert unreadable_session["malformed_line_count"] == 1
+    assert report["parse_failures"][0]["transcript_path"].endswith("transcripts/unreadable.jsonl")
+    assert report["parse_failures"][0]["line_number"] == 0
 
 
 def test_build_semantic_grounding_report_uses_prompt_and_file_overlap(monkeypatch, tmp_path):

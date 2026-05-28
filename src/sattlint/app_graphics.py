@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,7 +42,12 @@ def get_graphics_rules_path(config_path: Path) -> Path:
 
 
 def load_graphics_rules(config_path: Path, path: Path | None = None) -> tuple[GraphicsRulesConfig, bool]:
-    return graphics_rules_module.load_graphics_rules(path or get_graphics_rules_path(config_path))
+    rules_path = path or get_graphics_rules_path(config_path)
+    try:
+        return graphics_rules_module.load_graphics_rules(rules_path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        emit_output(f"Graphics rules unavailable at {rules_path}: {exc}. Using defaults.")
+        return graphics_rules_module.normalize_graphics_rules(None), False
 
 
 def save_graphics_rules(path: Path, rules: GraphicsRulesConfig) -> None:

@@ -5,7 +5,7 @@
 
 ## Quick Reference
 
-**Purpose:** SattLint is a parser, analyzer, editor-facade, GUI, documentation, LSP, and repo-audit toolchain for SattLine.
+**Purpose:** SattLint is a parser, analyzer, editor-facade, documentation, LSP, and repo-audit toolchain for SattLine.
 **Audience:** AI-only repository. Design solutions, workflows, and supporting docs for agent execution rather than human-first operation.
 **Communication:** Terse. Pattern: `[thing] [action] [reason]. [next step].`
 **Machine entrypoint:** `sattlint-repo-audit --profile full --planning-context --output-dir artifacts/audit`.
@@ -14,7 +14,7 @@
 
 ## Repo Map
 
-- Start routing from `docs/repo-map.md` when you need the owning surface for CLI, editor facade, GUI, LSP, devtools, or the preview VS Code client.
+- Start routing from `docs/repo-map.md` when you need the owning surface for CLI, editor facade, LSP, devtools, or the preview VS Code client.
 
 ## Key Docs
 

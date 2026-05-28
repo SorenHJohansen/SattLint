@@ -262,7 +262,10 @@ def _rule_corpus_cases_by_rule_id() -> dict[str, tuple[str, ...]]:
         if not manifest_path.is_file():
             continue
 
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
         case_id = str(payload.get("case_id") or manifest_path.stem)
         expectation_payload = payload.get("expectation")
         expectation: dict[str, object] = (

@@ -113,6 +113,54 @@ def test_find_pipeline_findings_ignores_allowlisted_bandit_noise(tmp_path):
     assert findings[0].id == "bandit-b314"
 
 
+def test_find_pipeline_findings_ignores_allowlisted_bandit_noise_from_bandit_report(tmp_path):
+    (tmp_path / "bandit.json").write_text(
+        json.dumps(
+            {
+                "findings": [
+                    {
+                        "filename": "./src/sattline_parser/fuzz_harness.py",
+                        "issue_confidence": "HIGH",
+                        "issue_severity": "LOW",
+                        "issue_text": "Standard pseudo-random generators are not suitable for security/cryptographic purposes.",
+                        "line_number": 148,
+                        "test_id": "B311",
+                    },
+                    {
+                        "filename": "./src/sattlint/devtools/observability.py",
+                        "issue_confidence": "HIGH",
+                        "issue_severity": "MEDIUM",
+                        "issue_text": "Unsafe XML parse.",
+                        "line_number": 49,
+                        "test_id": "B314",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    findings = repo_audit._find_pipeline_findings(tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0].id == "bandit-b314"
+    assert findings[0].path == "src/sattlint/devtools/observability.py"
+
+
+def test_find_pipeline_findings_skips_malformed_optional_json_artifacts(tmp_path):
+    (tmp_path / "findings.json").write_text("{not-json", encoding="utf-8")
+    (tmp_path / "bandit.json").write_text("{also-bad", encoding="utf-8")
+    (tmp_path / "pytest.json").write_text(
+        json.dumps({"summary": {"failures": 1, "errors": 0}}),
+        encoding="utf-8",
+    )
+
+    findings = repo_audit._find_pipeline_findings(tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0].id == "pytest-failures"
+
+
 def test_audit_repository_writes_status_file_and_forwards_profile(tmp_path):
     pipeline_summary = {
         "profile": "quick",

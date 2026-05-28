@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from functools import partial
 from pathlib import Path
 from typing import Any, cast
@@ -264,13 +265,19 @@ def build_session_context_map(work_map: dict[str, Any] | None = None) -> dict[st
 
 def load_ai_work_map(path: Path = DEFAULT_OUTPUT_PATH) -> dict[str, Any]:
     if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return build_ai_work_map()
     return build_ai_work_map()
 
 
 def load_session_context_map(path: Path = DEFAULT_SESSION_CONTEXT_OUTPUT_PATH) -> dict[str, Any]:
     if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return build_session_context_map()
     return build_session_context_map()
 
 
@@ -396,15 +403,22 @@ def main(argv: list[str] | None = None) -> int:
         )
         if existing != rendered or session_existing != session_rendered or reference_existing != reference_rendered:
             return 1
+    write_error: OSError | None = None
     if args.write:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(rendered, encoding="utf-8", newline="\n")
-        args.session_output.parent.mkdir(parents=True, exist_ok=True)
-        args.session_output.write_text(session_rendered, encoding="utf-8", newline="\n")
-        args.reference_output.parent.mkdir(parents=True, exist_ok=True)
-        args.reference_output.write_text(reference_rendered, encoding="utf-8", newline="\n")
+        try:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(rendered, encoding="utf-8", newline="\n")
+            args.session_output.parent.mkdir(parents=True, exist_ok=True)
+            args.session_output.write_text(session_rendered, encoding="utf-8", newline="\n")
+            args.reference_output.parent.mkdir(parents=True, exist_ok=True)
+            args.reference_output.write_text(reference_rendered, encoding="utf-8", newline="\n")
+        except OSError as exc:
+            write_error = exc
     if args.stdout or (not args.write and not args.check):
         print(rendered, end="")
+    if write_error is not None:
+        print(f"ai work map output error: {write_error}", file=sys.stderr, flush=True)
+        return 1
     return 0
 
 

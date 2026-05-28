@@ -272,13 +272,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         Path(args.workspace_root).resolve(),
         progress_callback=progress_callback,
     )
+    output_error: OSError | None = None
     if args.output_dir:
-        _write_metrics_report(Path(args.output_dir).resolve(), report)
+        try:
+            _write_metrics_report(Path(args.output_dir).resolve(), report)
+        except OSError as exc:
+            output_error = exc
 
     if args.format == "text":
         print(_render_text_report(report))
     else:
         print(json.dumps(report, indent=2, sort_keys=True))
+    if output_error is not None:
+        print(f"metrics dashboard output error: {output_error}", file=sys.stderr, flush=True)
+        return 1
     return 0 if report["status"] in {"ok", "partial"} else 2
 
 

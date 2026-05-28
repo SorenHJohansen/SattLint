@@ -174,6 +174,42 @@ def test_run_stage_helpers_cover_fallback_and_missing_junit_branches(monkeypatch
     assert pytest_report["errors"][0]["message"] == "JUnit XML not generated: missing junit"
 
 
+def test_run_pytest_stage_reports_unreadable_junit(monkeypatch, tmp_path):
+    class ProgressStub:
+        def start_stage(self, key: str) -> None:
+            return None
+
+        def complete_stage(self, key: str, detail: str | None = None) -> None:
+            return None
+
+    typed_progress = cast(Any, ProgressStub())
+
+    monkeypatch.setattr(
+        pipeline,
+        "_run_command",
+        lambda name, command, cwd=pipeline.REPO_ROOT: pipeline.CommandResult(
+            name=name,
+            command=command,
+            exit_code=1,
+            duration_seconds=0.0,
+            stdout="",
+            stderr="broken junit",
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_parse_pytest_junit",
+        lambda _path: (_ for _ in ()).throw(pipeline.pipeline_parsing_helpers.ElementTree.ParseError("malformed xml")),
+    )
+
+    pytest_report = pipeline._run_pytest_stage(
+        typed_progress, output_dir=tmp_path, python_cmd=["python"], profile="quick"
+    )
+
+    assert pytest_report["summary"] == {"tests": 0, "failures": 0, "errors": 1, "skipped": 0}
+    assert pytest_report["errors"][0]["message"] == "JUnit XML unreadable: malformed xml"
+
+
 def test_prepare_pipeline_run_covers_missing_baseline_and_worker_command(monkeypatch, tmp_path):
     missing_baseline = tmp_path / "missing.json"
     with pytest.raises(FileNotFoundError, match="Baseline findings file does not exist"):

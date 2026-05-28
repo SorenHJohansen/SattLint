@@ -88,7 +88,10 @@ def publish_completed_run(
             archived_output_dir.rename(final_output_dir)
         raise
     if keep_history_dir is None and archived_output_dir is not None:
-        shutil.rmtree(archived_output_dir)
+        try:
+            shutil.rmtree(archived_output_dir)
+        except OSError:
+            return archived_output_dir
         return None
     return archived_output_dir
 

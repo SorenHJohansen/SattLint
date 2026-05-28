@@ -65,6 +65,7 @@ _ISSUE_LABELS = {
     IssueKind.UI_ONLY: "Variable is only used by UI or display wiring",
     IssueKind.PROCEDURE_STATUS: "Procedure status output is not handled",
     IssueKind.NEVER_READ: "Variable is written but never read",
+    IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE: "Positional record component access",
     IssueKind.WRITE_WITHOUT_EFFECT: "Variable write has no observable output effect",
     IssueKind.GLOBAL_SCOPE_MINIMIZATION: "Root global can be localized",
     IssueKind.HIDDEN_GLOBAL_COUPLING: "Root global creates hidden coupling",
@@ -105,6 +106,10 @@ _ISSUE_GUIDANCE = {
     IssueKind.NEVER_READ: DiagnosticGuidance(
         explanation="Writes that are never observed usually mean dead logic or a missing connection to the real output path.",
         suggestion="Remove the dead write, or connect the variable to the code, parameter mapping, or output that should consume it.",
+    ),
+    IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE: DiagnosticGuidance(
+        explanation="These builtins make record field declaration order part of the runtime contract, so reordering datatype fields can silently read from or write to a different field.",
+        suggestion="Replace ordinal record-component access with named-field logic, or document and isolate the order-dependent contract if it cannot be removed.",
     ),
     IssueKind.WRITE_WITHOUT_EFFECT: DiagnosticGuidance(
         explanation="The value changes internally but never escapes to a root-visible output or module contract.",

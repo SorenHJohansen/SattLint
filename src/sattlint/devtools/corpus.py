@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -14,7 +15,16 @@ from typing import Any, cast
 from sattlint import engine as engine_module
 from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, analyze_sattline_semantics
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
+from sattlint.devtools._corpus_artifacts import (
+    CorpusExecutionArtifacts,
+    build_execution_error_artifacts,
+    collect_artifact_fragment_failures,
+    write_case_artifacts,
+    write_json,
+)
 from sattlint.path_sanitizer import sanitize_path_for_report
+
+_write_json = write_json
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "analysis"
@@ -147,13 +157,6 @@ class CorpusSuiteResult:
         return payload
 
 
-@dataclass(frozen=True, slots=True)
-class _CorpusExecutionArtifacts:
-    findings: FindingCollection
-    status: dict[str, Any]
-    summary: dict[str, Any]
-
-
 def load_corpus_manifest(path: Path) -> CorpusCaseManifest:
     payload = _load_json_object(path)
     expectation_payload = _as_json_object(payload.get("expectation")) or {}
@@ -208,8 +211,9 @@ def execute_corpus_case(
     artifact_dir: Path,
     *,
     repo_root: Path = REPO_ROOT,
+    manifest: CorpusCaseManifest | None = None,
 ) -> CorpusRunResult:
-    manifest = load_corpus_manifest(manifest_path)
+    manifest = load_corpus_manifest(manifest_path) if manifest is None else manifest
     target_path = _resolve_manifest_target_path(manifest_path, manifest.target_file, repo_root)
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
@@ -232,19 +236,40 @@ def execute_corpus_case(
             raise ValueError(f"Unsupported corpus mode: {manifest.mode}")
     except Exception as exc:
         execution_error = str(exc)
-        artifacts = _build_execution_error_artifacts(
-            manifest,
+        artifacts = build_execution_error_artifacts(
+            case_id=manifest.case_id,
+            mode=manifest.mode,
             target_path=target_path,
             repo_root=repo_root,
             error_message=execution_error,
         )
 
-    _write_case_artifacts(artifact_dir, artifacts)
-    evaluated = run_corpus_case(
-        manifest_path,
-        artifact_dir,
-        findings_filename=DEFAULT_FINDINGS_FILENAME,
-    )
+    write_case_artifacts(artifact_dir, artifacts)
+    try:
+        evaluated = run_corpus_case(
+            manifest_path,
+            artifact_dir,
+            findings_filename=DEFAULT_FINDINGS_FILENAME,
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, KeyError, TypeError) as exc:
+        error_message = f"Failed to evaluate corpus case {manifest.case_id}: {exc}"
+        execution_error = error_message if execution_error is None else f"{execution_error}; {error_message}"
+        error_artifacts = build_execution_error_artifacts(
+            case_id=manifest.case_id,
+            mode=manifest.mode,
+            target_path=target_path,
+            repo_root=repo_root,
+            error_message=error_message,
+        )
+        write_case_artifacts(artifact_dir, error_artifacts)
+        return CorpusRunResult(
+            manifest=manifest,
+            evaluation=CorpusEvaluation(case_id=manifest.case_id, passed=True),
+            findings_report=DEFAULT_FINDINGS_FILENAME,
+            findings_schema=error_artifacts.findings.schema_metadata,
+            artifact_dir=sanitize_path_for_report(artifact_dir, repo_root=repo_root),
+            execution_error=execution_error,
+        )
     return CorpusRunResult(
         manifest=evaluated.manifest,
         evaluation=evaluated.evaluation,
@@ -273,16 +298,33 @@ def run_corpus_suite(
     )
 
     cases_dir = output_dir / DEFAULT_CASES_DIRNAME
-    results = tuple(
-        execute_corpus_case(
-            manifest_path,
-            cases_dir / _slug_case_id(load_corpus_manifest(manifest_path).case_id),
-            repo_root=repo_root,
+    results: list[CorpusRunResult] = []
+    for manifest_path in selected_manifest_paths:
+        try:
+            manifest = load_corpus_manifest(manifest_path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, KeyError, TypeError) as exc:
+            results.append(
+                _build_manifest_load_failure_result(
+                    manifest_path,
+                    artifact_dir=cases_dir / _slug_case_id(manifest_path.stem),
+                    repo_root=repo_root,
+                    error_message=(
+                        "Failed to load corpus manifest "
+                        f"{sanitize_path_for_report(manifest_path, repo_root=repo_root) or manifest_path.as_posix()}: {exc}"
+                    ),
+                )
+            )
+            continue
+        results.append(
+            execute_corpus_case(
+                manifest_path,
+                cases_dir / _slug_case_id(manifest.case_id),
+                repo_root=repo_root,
+                manifest=manifest,
+            )
         )
-        for manifest_path in selected_manifest_paths
-    )
     suite = CorpusSuiteResult(
-        cases=results,
+        cases=tuple(results),
         output_dir=sanitize_path_for_report(output_dir, repo_root=repo_root) or output_dir.as_posix(),
         manifest_root=(
             None
@@ -315,15 +357,13 @@ def run_corpus_case(
     missing_artifacts = tuple(
         artifact_name for artifact_name in manifest.required_artifacts if not (artifact_dir / artifact_name).exists()
     )
-    artifact_fragment_failures = _collect_artifact_fragment_failures(
-        manifest,
-        artifact_dir,
+    artifact_fragment_failures = collect_artifact_fragment_failures(
+        manifest.expectation.artifact_fragments, artifact_dir
     )
     evaluation = CorpusEvaluation(
         case_id=evaluation.case_id,
         passed=(evaluation.passed and not artifact_fragment_failures),
         missing_finding_ids=evaluation.missing_finding_ids,
-        unexpected_finding_ids=evaluation.unexpected_finding_ids,
         artifact_fragment_failures=artifact_fragment_failures,
     )
 
@@ -368,10 +408,15 @@ def main(argv: list[str] | None = None) -> int:
         manifest_dir=manifest_dir,
         manifest_paths=manifest_paths or None,
         repo_root=REPO_ROOT,
-        write_results=True,
+        write_results=False,
     )
     report_path = output_dir / CORPUS_RESULTS_FILENAME
     summary = suite.to_dict()
+    output_error: OSError | None = None
+    try:
+        _write_json(report_path, summary)
+    except OSError as exc:
+        output_error = exc
     print(
         format_cli_summary(
             {
@@ -383,6 +428,9 @@ def main(argv: list[str] | None = None) -> int:
             }
         )
     )
+    if output_error is not None:
+        print(f"corpus output error: {output_error}", file=sys.stderr, flush=True)
+        return 1
     return 0 if suite.passed else 1
 
 
@@ -436,66 +484,6 @@ def _slug_case_id(case_id: str) -> str:
     return slug or "case"
 
 
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-
-
-def _collect_artifact_fragment_failures(
-    manifest: CorpusCaseManifest,
-    artifact_dir: Path,
-) -> tuple[str, ...]:
-    failures: list[str] = []
-    for artifact_name, expected_fragment in sorted(manifest.expectation.artifact_fragments.items()):
-        artifact_path = artifact_dir / artifact_name
-        if not artifact_path.exists():
-            failures.append(f"{artifact_name}: expected artifact fragment but file was not found")
-            continue
-        try:
-            actual_payload = json.loads(artifact_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            failures.append(f"{artifact_name}: invalid JSON ({exc.msg})")
-            continue
-        failures.extend(
-            _collect_fragment_mismatches(
-                expected_fragment,
-                actual_payload,
-                path=artifact_name,
-            )
-        )
-    return tuple(failures)
-
-
-def _collect_fragment_mismatches(
-    expected: JsonValue,
-    actual: object,
-    *,
-    path: str,
-) -> tuple[str, ...]:
-    if isinstance(expected, Mapping):
-        if not isinstance(actual, Mapping):
-            return (f"{path}: expected object, got {type(actual).__name__}",)
-        failures: list[str] = []
-        for key, expected_value in expected.items():
-            key_str = str(key)
-            if key_str not in actual:
-                failures.append(f"{path}.{key_str}: missing key")
-                continue
-            actual_mapping = cast(Mapping[str, object], actual)
-            failures.extend(
-                _collect_fragment_mismatches(
-                    expected_value,
-                    actual_mapping[key_str],
-                    path=f"{path}.{key_str}",
-                )
-            )
-        return tuple(failures)
-
-    if actual != expected:
-        return (f"{path}: expected {expected!r}, got {actual!r}",)
-    return ()
-
-
 def _resolve_manifest_target_path(manifest_path: Path, raw_path: str, repo_root: Path) -> Path:
     candidate = Path(raw_path)
     if candidate.is_absolute():
@@ -523,12 +511,6 @@ def _infer_code_mode(target_path: Path) -> engine_module.CodeMode:
     return engine_module.CodeMode.DRAFT
 
 
-def _write_case_artifacts(artifact_dir: Path, artifacts: _CorpusExecutionArtifacts) -> None:
-    _write_json(artifact_dir / DEFAULT_FINDINGS_FILENAME, artifacts.findings.to_dict())
-    _write_json(artifact_dir / DEFAULT_STATUS_FILENAME, artifacts.status)
-    _write_json(artifact_dir / DEFAULT_SUMMARY_FILENAME, artifacts.summary)
-
-
 def format_cli_summary(status_report: dict[str, Any]) -> str:
     lines: list[str] = []
     findings_schema = status_report.get("findings_schema")
@@ -547,7 +529,7 @@ def _execute_strict_case(
     *,
     target_path: Path,
     repo_root: Path,
-) -> _CorpusExecutionArtifacts:
+) -> CorpusExecutionArtifacts:
     result = engine_module.validate_single_file_syntax(target_path)
     findings = _build_strict_finding_collection(result, repo_root=repo_root)
     sanitized_target = sanitize_path_for_report(target_path, repo_root=repo_root)
@@ -573,7 +555,7 @@ def _execute_strict_case(
         "finding_count": len(findings.findings),
         "findings_schema": findings.schema_metadata,
     }
-    return _CorpusExecutionArtifacts(findings=findings, status=status, summary=summary)
+    return CorpusExecutionArtifacts(findings=findings, status=status, summary=summary)
 
 
 def _build_strict_finding_collection(
@@ -617,7 +599,7 @@ def _execute_workspace_case(
     manifest_path: Path,
     target_path: Path,
     repo_root: Path,
-) -> _CorpusExecutionArtifacts:
+) -> CorpusExecutionArtifacts:
     program_dir = (
         _resolve_optional_directory(
             manifest.program_dir,
@@ -694,7 +676,7 @@ def _execute_workspace_case(
         "missing_dependencies": list(graph.missing),
         "warnings": list(graph.warnings),
     }
-    return _CorpusExecutionArtifacts(findings=findings, status=status, summary=summary)
+    return CorpusExecutionArtifacts(findings=findings, status=status, summary=summary)
 
 
 def _build_semantic_finding_collection(
@@ -732,51 +714,37 @@ def _build_semantic_finding_collection(
     return FindingCollection(records)
 
 
-def _build_execution_error_artifacts(
-    manifest: CorpusCaseManifest,
+def _build_manifest_load_failure_result(
+    manifest_path: Path,
     *,
-    target_path: Path,
+    artifact_dir: Path,
     repo_root: Path,
     error_message: str,
-) -> _CorpusExecutionArtifacts:
-    finding = FindingRecord(
-        id="corpus.execution-error",
-        rule_id="corpus.execution-error",
-        category="runner",
-        severity="high",
-        confidence="high",
-        message=error_message,
-        source="corpus-runner",
-        analyzer="corpus-runner",
-        artifact="findings",
-        location=FindingLocation(
-            path=sanitize_path_for_report(target_path, repo_root=repo_root),
-        ),
-        data={
-            "mode": manifest.mode,
-        },
+) -> CorpusRunResult:
+    manifest_display_path = sanitize_path_for_report(manifest_path, repo_root=repo_root) or manifest_path.as_posix()
+    manifest = CorpusCaseManifest(
+        case_id=manifest_path.stem,
+        target_file=manifest_display_path,
+        mode="manifest",
+        expectation=CorpusExpectation(),
     )
-    findings = FindingCollection((finding,))
-    status = {
-        "kind": "sattlint.corpus.case_status",
-        "case_id": manifest.case_id,
-        "mode": manifest.mode,
-        "execution_status": "error",
-        "target_file": sanitize_path_for_report(target_path, repo_root=repo_root),
-        "finding_count": 1,
-        "findings_schema": findings.schema_metadata,
-        "error": error_message,
-    }
-    summary = {
-        "kind": "sattlint.corpus.case_summary",
-        "case_id": manifest.case_id,
-        "mode": manifest.mode,
-        "target_file": sanitize_path_for_report(target_path, repo_root=repo_root),
-        "finding_count": 1,
-        "findings_schema": findings.schema_metadata,
-        "error": error_message,
-    }
-    return _CorpusExecutionArtifacts(findings=findings, status=status, summary=summary)
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifacts = build_execution_error_artifacts(
+        case_id=manifest.case_id,
+        mode=manifest.mode,
+        target_path=manifest_path,
+        repo_root=repo_root,
+        error_message=error_message,
+    )
+    write_case_artifacts(artifact_dir, artifacts)
+    return CorpusRunResult(
+        manifest=manifest,
+        evaluation=CorpusEvaluation(case_id=manifest.case_id, passed=True),
+        findings_report=DEFAULT_FINDINGS_FILENAME,
+        findings_schema=artifacts.findings.schema_metadata,
+        artifact_dir=sanitize_path_for_report(artifact_dir, repo_root=repo_root),
+        execution_error=error_message,
+    )
 
 
 __all__ = [

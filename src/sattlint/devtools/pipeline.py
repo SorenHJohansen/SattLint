@@ -514,21 +514,20 @@ def _run_pytest_stage(
             os.environ["COVERAGE_FILE"] = previous_coverage_file
     try:
         pytest_parsed = _parse_pytest_junit(junit_path)
-    except FileNotFoundError:
+    except (FileNotFoundError, OSError, UnicodeDecodeError, pipeline_parsing_helpers.ElementTree.ParseError) as exc:
+        message = (
+            f"JUnit XML not generated: {pytest_result.stderr}"
+            if isinstance(exc, FileNotFoundError)
+            else f"JUnit XML unreadable: {exc}"
+        )
         pytest_parsed = {
             "testcases": [],
             "summary": {"tests": 0, "failures": 0, "errors": 1, "skipped": 0},
-            "errors": [{"message": f"JUnit XML not generated: {pytest_result.stderr}"}],
+            "errors": [{"message": message}],
         }
     pytest_report = _command_payload(pytest_result, **pytest_parsed)
-    progress.complete_stage(
-        "pytest",
-        detail=(
-            f"{pytest_report['summary']['tests']} tests, "
-            f"{pytest_report['summary']['failures']} failures, "
-            f"{pytest_report['summary']['errors']} errors"
-        ),
-    )
+    detail = "{tests} tests, {failures} failures, {errors} errors".format(**pytest_report["summary"])
+    progress.complete_stage("pytest", detail=detail)
     return pytest_report
 
 

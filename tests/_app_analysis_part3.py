@@ -61,7 +61,7 @@ def test_variable_usage_submenu_exposes_unknown_parameter_target_report(noop_scr
 def test_variable_usage_submenu_exposes_reset_contamination_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
-    monkeypatch.setattr(builtins, "input", make_input(["12", "b"]))
+    monkeypatch.setattr(builtins, "input", make_input(["13", "b"]))
 
     app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
 
@@ -71,7 +71,7 @@ def test_variable_usage_submenu_exposes_reset_contamination_report(noop_screen, 
 def test_variable_usage_submenu_exposes_implicit_latch_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
-    monkeypatch.setattr(builtins, "input", make_input(["18", "b"]))
+    monkeypatch.setattr(builtins, "input", make_input(["19", "b"]))
 
     app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
 
@@ -81,7 +81,7 @@ def test_variable_usage_submenu_exposes_implicit_latch_report(noop_screen, monke
 def test_variable_usage_submenu_exposes_shadowing_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
-    monkeypatch.setattr(builtins, "input", make_input(["13", "b"]))
+    monkeypatch.setattr(builtins, "input", make_input(["14", "b"]))
 
     app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
 
@@ -91,7 +91,7 @@ def test_variable_usage_submenu_exposes_shadowing_report(noop_screen, monkeypatc
 def test_variable_usage_submenu_exposes_hidden_global_coupling_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
-    monkeypatch.setattr(builtins, "input", make_input(["20", "b"]))
+    monkeypatch.setattr(builtins, "input", make_input(["21", "b"]))
 
     app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
 
@@ -101,7 +101,7 @@ def test_variable_usage_submenu_exposes_hidden_global_coupling_report(noop_scree
 def test_variable_usage_submenu_exposes_global_scope_minimization_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
-    monkeypatch.setattr(builtins, "input", make_input(["19", "b"]))
+    monkeypatch.setattr(builtins, "input", make_input(["20", "b"]))
 
     app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
 
@@ -111,7 +111,7 @@ def test_variable_usage_submenu_exposes_global_scope_minimization_report(noop_sc
 def test_variable_usage_submenu_exposes_high_fan_in_out_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
-    monkeypatch.setattr(builtins, "input", make_input(["21", "b"]))
+    monkeypatch.setattr(builtins, "input", make_input(["22", "b"]))
 
     app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
 
@@ -121,7 +121,7 @@ def test_variable_usage_submenu_exposes_high_fan_in_out_report(noop_screen, monk
 def test_variable_usage_submenu_exposes_procedure_status_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
-    monkeypatch.setattr(builtins, "input", make_input(["15", "b"]))
+    monkeypatch.setattr(builtins, "input", make_input(["16", "b"]))
 
     app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
 
@@ -131,7 +131,7 @@ def test_variable_usage_submenu_exposes_procedure_status_report(noop_screen, mon
 def test_variable_usage_submenu_exposes_write_without_effect_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
-    monkeypatch.setattr(builtins, "input", make_input(["16", "b"]))
+    monkeypatch.setattr(builtins, "input", make_input(["17", "b"]))
 
     app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
 
@@ -141,7 +141,7 @@ def test_variable_usage_submenu_exposes_write_without_effect_report(noop_screen,
 def test_variable_usage_submenu_exposes_contract_mismatch_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
-    monkeypatch.setattr(builtins, "input", make_input(["17", "b"]))
+    monkeypatch.setattr(builtins, "input", make_input(["18", "b"]))
 
     app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
 
@@ -152,7 +152,7 @@ def test_app_analysis_variable_usage_submenu_routes_investigation_tools_and_inva
     calls: list[str] = []
     pauses: list[str] = []
 
-    monkeypatch.setattr(builtins, "input", make_input(["22", "23", "24", "invalid", "b"]))
+    monkeypatch.setattr(builtins, "input", make_input(["23", "24", "25", "invalid", "b"]))
     monkeypatch.setattr(app_analysis, "emit_output", lambda *_args, **_kwargs: None)
 
     app_analysis.variable_usage_submenu(

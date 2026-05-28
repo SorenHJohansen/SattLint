@@ -1373,30 +1373,36 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Audit directory not ready: {audit_dir}: {error}", file=sys.stderr)
         return 1
 
-    if args.json_output is not None:
-        json_path = args.json_output if args.json_output.is_absolute() else REPO_ROOT / args.json_output
-        _write_text(json_path, json.dumps(report, indent=2, sort_keys=True) + "\n")
-    if args.markdown_output is not None:
-        markdown_path = args.markdown_output if args.markdown_output.is_absolute() else REPO_ROOT / args.markdown_output
-        _write_text(markdown_path, _render_markdown(report))
-    if args.html_output is not None:
-        html_path = args.html_output if args.html_output.is_absolute() else REPO_ROOT / args.html_output
-        ratchet_html_path = _ratchet_inventory_path(html_path)
-        _write_text(
-            html_path,
-            _render_html(report, current_page_path=html_path.name, ratchet_page_path=ratchet_html_path.name),
-        )
-        _write_text(
-            ratchet_html_path,
-            _render_ratchet_html(
-                report,
-                current_page_path=ratchet_html_path.name,
-                main_page_path=html_path.name,
-            ),
-        )
-    if args.history_output is not None:
-        history_path = args.history_output if args.history_output.is_absolute() else REPO_ROOT / args.history_output
-        _write_text(history_path, json.dumps(report, indent=2, sort_keys=True) + "\n")
+    output_error: OSError | None = None
+    try:
+        if args.json_output is not None:
+            json_path = args.json_output if args.json_output.is_absolute() else REPO_ROOT / args.json_output
+            _write_text(json_path, json.dumps(report, indent=2, sort_keys=True) + "\n")
+        if args.markdown_output is not None:
+            markdown_path = (
+                args.markdown_output if args.markdown_output.is_absolute() else REPO_ROOT / args.markdown_output
+            )
+            _write_text(markdown_path, _render_markdown(report))
+        if args.html_output is not None:
+            html_path = args.html_output if args.html_output.is_absolute() else REPO_ROOT / args.html_output
+            ratchet_html_path = _ratchet_inventory_path(html_path)
+            _write_text(
+                html_path,
+                _render_html(report, current_page_path=html_path.name, ratchet_page_path=ratchet_html_path.name),
+            )
+            _write_text(
+                ratchet_html_path,
+                _render_ratchet_html(
+                    report,
+                    current_page_path=ratchet_html_path.name,
+                    main_page_path=html_path.name,
+                ),
+            )
+        if args.history_output is not None:
+            history_path = args.history_output if args.history_output.is_absolute() else REPO_ROOT / args.history_output
+            _write_text(history_path, json.dumps(report, indent=2, sort_keys=True) + "\n")
+    except OSError as error:
+        output_error = error
 
     if args.stdout_json:
         print(json.dumps(report, indent=2, sort_keys=True))
@@ -1414,6 +1420,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             if len(warning.get("paths", [])) > 5:
                 paths += ", ..."
             print(f"Warning: {warning['message']} {paths}".rstrip())
+
+    if output_error is not None:
+        print(f"repo health output error: {output_error}", file=sys.stderr, flush=True)
+        return 1
 
     return 1 if args.check and report["status"] == "fail" else 0
 
