@@ -17,7 +17,7 @@ VARIABLE_ANALYSES: VariableAnalysisMap = {
     "9": ("Min/Max mapping name mismatches", {IssueKind.MIN_MAX_MAPPING_MISMATCH}),
     "10": ("Magic numbers", {IssueKind.MAGIC_NUMBER}),
     "11": ("Name collisions", {IssueKind.NAME_COLLISION}),
-    "12": ("Positional record component access", {IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE}),
+    "12": ("Sorting-sensitive datatypes", {IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE}),
     "13": ("Reset contamination", {IssueKind.RESET_CONTAMINATION}),
     "14": ("Variable shadowing", {IssueKind.SHADOWING}),
     "15": ("UI/display-only variables", {IssueKind.UI_ONLY}),

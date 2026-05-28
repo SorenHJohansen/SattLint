@@ -38,9 +38,16 @@ def test_build_cli_parser_has_descriptions():
     action = next(action for action in parser._actions if getattr(action, "choices", None))
     choices = cast(dict[str, object], action.choices)
     syntax_parser = cast(object, choices["syntax-check"])
-    assert {"syntax-check", "analyze", "simulate", "docgen", "validate-config", "format-icf", "repo-audit"} <= set(
-        choices
-    )
+    assert {
+        "syntax-check",
+        "analyze",
+        "simulate",
+        "docgen",
+        "validate-config",
+        "format-icf",
+        "source-diff",
+        "repo-audit",
+    } <= set(choices)
     assert getattr(syntax_parser, "description", None)
 
 
@@ -310,6 +317,38 @@ def test_run_cli_repo_audit_passes_through_args(monkeypatch):
     assert seen["argv"] == ["--profile", "quick", "--fail-on", "high"]
 
 
+def test_run_cli_source_diff_passes_through_args(monkeypatch):
+    seen = {}
+
+    def mock_source_diff_main(argv=None):
+        seen.update({"argv": argv})
+        return app_base.EXIT_SUCCESS
+
+    monkeypatch.setattr("sattlint.devtools.source_diff_report.main", mock_source_diff_main)
+
+    exit_code = _run_base_cli(
+        [
+            "source-diff",
+            "--workspace-root",
+            "tests/fixtures/source_diff",
+            "--draft-file",
+            "WidgetReview.s",
+            "--official-file",
+            "WidgetReview.x",
+        ],
+    )
+
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert seen["argv"] == [
+        "--workspace-root",
+        "tests/fixtures/source_diff",
+        "--draft-file",
+        "WidgetReview.s",
+        "--official-file",
+        "WidgetReview.x",
+    ]
+
+
 def test_run_cli_quiet_suppresses_forwarded_repo_audit_stdout(monkeypatch, capsys):
     monkeypatch.setattr(
         "sattlint.devtools.repo_audit.main",
@@ -317,6 +356,20 @@ def test_run_cli_quiet_suppresses_forwarded_repo_audit_stdout(monkeypatch, capsy
     )
 
     exit_code = _run_base_cli(["--quiet", "repo-audit", "--list-checks"])
+
+    captured = capsys.readouterr()
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_run_cli_quiet_suppresses_forwarded_source_diff_stdout(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "sattlint.devtools.source_diff_report.main",
+        lambda argv=None: print("visible") or app_base.EXIT_SUCCESS,
+    )
+
+    exit_code = _run_base_cli(["--quiet", "source-diff", "--discover-pairs"])
 
     captured = capsys.readouterr()
     assert exit_code == app_base.EXIT_SUCCESS

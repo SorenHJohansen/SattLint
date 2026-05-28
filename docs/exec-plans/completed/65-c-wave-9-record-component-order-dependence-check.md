@@ -17,6 +17,8 @@ The observable proof is simple. A focused analyzer test that models `GetRecordCo
 - [x] (2026-05-28 06:48Z) Added traversal handling for `GetRecordComponent`, `GetRecordCompNoSort`, `PutRecordComponent`, and `PutRecordCompNoSort`. The analyzer now emits an additive variable issue on the affected record variable, preserves the existing signature-based read/write accounting, and includes the ordinal index plus resolved field name when the index is a literal on a concrete record type.
 - [x] (2026-05-28 06:48Z) Added focused regression coverage for direct `GetRecordComponent` and `PutRecordComponent` calls, an `AnyType` wrapper that mirrors the KaHARecipePicklist dynamic-index shape, a rendered variables-report check, an interactive menu routing check, and an editor-diagnostics guidance check.
 - [x] (2026-05-28 06:48Z) Validation passed with focused pytest slices for builtin semantics, report rendering, menu routing, and diagnostics guidance, plus touched-file Ruff and Pyright on the final edited file set.
+- [x] (2026-05-28 10:32Z) Changed the positional record-component report output from usage-site rows to a deduplicated datatype-only list. Concrete record accesses now carry `datatype_name`, and unresolved `AnyType` wrappers remain available as analyzer findings without adding noisy `AnyType` rows to the report summary.
+- [x] (2026-05-28 10:36Z) Renamed the report/menu label to `Sorting-sensitive datatypes` and reduced analysis work by recording at most one positional-record finding per concrete datatype. `AnyType`-only wrappers are now skipped for this report because they cannot contribute a concrete datatype to the output list.
 
 ## Surprises & Discoveries
 
@@ -57,6 +59,14 @@ Decision: keep the builtin-semantics proof in `tests/analyzers/test_builtin_reco
 Rationale: that kept the behavior proof narrow while also allowing touched-file Pyright to validate the feature slice without pulling in unrelated strict-typing debt from legacy aggregate test modules.
 Date/Author: 2026-05-28 / Copilot (GPT-5.4)
 
+Decision: render positional record-component findings in the CLI/report as a deduplicated datatype list instead of as usage-site rows.
+Rationale: the maintenance question for this analysis is which datatypes become order-sensitive, not which module path happened to trigger the builtin. Aggregating by datatype removes location noise while preserving the real hazard signal.
+Date/Author: 2026-05-28 / Copilot (GPT-5.4)
+
+Decision: dedupe positional record-component findings in the analyzer itself, one issue per concrete datatype, and skip unresolved `AnyType` cases for this report.
+Rationale: once the output contract became a datatype-only list, emitting one issue per builtin call only added traversal and issue-list overhead. Early dedupe keeps the result identical for concrete datatypes while reducing work on modules that repeatedly access the same record type by ordinal position.
+Date/Author: 2026-05-28 / Copilot (GPT-5.4)
+
 ## Outcomes & Retrospective
 
 At plan creation time, SattLint can already detect named-field usage, unused datatype fields, whole-record copy semantics, and several cross-module variable hazards, but it has no warning for positional record access. The implementation described here closes that blind spot with a focused rule that matches the real production pattern found through the active workstation config.
@@ -64,6 +74,8 @@ At plan creation time, SattLint can already detect named-field usage, unused dat
 The main risk is overfitting the rule to the `KaHARecipePicklist` wrapper instead of the builtin. This plan deliberately avoids that trap: the wrapper is motivating evidence, not the detection surface.
 
 After implementation, the variables analyzer emits `RECORD_COMPONENT_ORDER_DEPENDENCE` findings for all four positional record-component builtins, reports them by default, and renders diagnostics that explain the compatibility hazard and suggested remediation. Literal ordinal accesses on concrete records now mention the resolved field name, while `AnyType` wrappers still produce a generic but actionable warning.
+
+After the follow-up output adjustment, the CLI/report no longer enumerates those findings by module path or variable name. It now renders a unique list of concrete record datatypes whose runtime behavior depends on declaration order, which matches the user-facing review goal more directly.
 
 The final proof stayed behavior-scoped: builtin AST tests cover direct `Get...` and `Put...` calls plus the dynamic `AnyType` wrapper shape, and dedicated report/menu/diagnostic tests cover user-facing output without widening the slice into unrelated analyzer or workspace behavior.
 

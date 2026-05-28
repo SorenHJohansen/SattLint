@@ -63,6 +63,14 @@ sattlint format-icf --check              # Check mode only
 sattlint format-icf --config path/to/config.toml
 ```
 
+**source-diff**  -  Build a review-friendly report between draft `.s` and official `.x` source pairs:
+
+```bash
+sattlint source-diff --workspace-root tests/fixtures/source_diff --draft-file WidgetReview.s --official-file WidgetReview.x
+sattlint source-diff --workspace-root tests/fixtures/source_diff --discover-pairs --format markdown
+sattlint source-diff --workspace-root tests/fixtures/source_diff --discover-pairs --output-dir artifacts/tmp/source-diff-report
+```
+
 **repo-audit**  -  Audit repository structure and health:
 
 ```bash

@@ -172,6 +172,30 @@ def test_app_analysis_variable_usage_submenu_routes_investigation_tools_and_inva
     assert pauses == ["pause"]
 
 
+def test_variable_usage_submenu_handles_keyboard_interrupt_and_returns_to_menu(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(builtins, "input", make_input(["1", "b"]))
+    monkeypatch.setattr(
+        app_analysis, "emit_output", lambda *args, **_kwargs: lines.append(" ".join(str(arg) for arg in args))
+    )
+
+    app_analysis.variable_usage_submenu(
+        app.DEFAULT_CONFIG.copy(),
+        clear_screen_fn=lambda: None,
+        quit_app_fn=lambda: pytest.fail("quit should not be called"),
+        run_variable_analysis_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt()),
+        run_datatype_usage_analysis_fn=lambda _cfg: pytest.fail("datatype should not be called"),
+        run_debug_variable_usage_fn=lambda _cfg: pytest.fail("debug should not be called"),
+        run_module_localvar_analysis_fn=lambda _cfg: pytest.fail("localvar should not be called"),
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("Operation canceled. Returning to the menu." in line for line in lines)
+    assert pauses == ["pause"]
+
+
 def test_module_analysis_submenu_routes_choices_and_invalid_choice(monkeypatch):
     calls: list[str] = []
     pauses: list[str] = []
@@ -323,6 +347,36 @@ def test_analysis_menu_routes_choices_and_invalid_choice(monkeypatch):
     assert calls.count("quality") == 1
     assert calls.count("catalog") == 1
     assert calls.count("advanced") == 1
+    assert pauses == ["pause"]
+
+
+def test_analysis_menu_handles_keyboard_interrupt_from_submenu_and_returns_to_menu(monkeypatch):
+    lines: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(builtins, "input", make_input(["2", "b"]))
+    monkeypatch.setattr(
+        app_analysis, "emit_output", lambda *args, **_kwargs: lines.append(" ".join(str(arg) for arg in args))
+    )
+
+    app_analysis.analysis_menu(
+        app.DEFAULT_CONFIG.copy(),
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda key, label, detail: (key, label, detail),
+        quit_app_fn=lambda: pytest.fail("quit should not be called"),
+        run_checks_fn=lambda _cfg, _selected: pytest.fail("checks should not be called"),
+        variable_usage_submenu_fn=lambda _cfg: (_ for _ in ()).throw(KeyboardInterrupt()),
+        module_analysis_submenu_fn=lambda _cfg: pytest.fail("modules should not be called"),
+        interface_communication_submenu_fn=lambda _cfg: pytest.fail("interfaces should not be called"),
+        code_quality_submenu_fn=lambda _cfg: pytest.fail("quality should not be called"),
+        analyzer_catalog_menu_fn=lambda _cfg: pytest.fail("catalog should not be called"),
+        advanced_analysis_menu_fn=lambda _cfg: pytest.fail("advanced should not be called"),
+        summarize_targets_fn=lambda _cfg: "TargetA",
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("Operation canceled. Returning to the menu." in line for line in lines)
     assert pauses == ["pause"]
 
 

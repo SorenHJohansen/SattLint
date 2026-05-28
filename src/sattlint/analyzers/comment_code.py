@@ -34,6 +34,12 @@ def _comment_preview(text: str, max_len: int = _COMMENT_PREVIEW_MAX_LEN) -> str:
     return preview
 
 
+def _format_line_range(start_line: int, end_line: int) -> str:
+    if start_line == end_line:
+        return str(start_line)
+    return f"{start_line}-{end_line}"
+
+
 def analyze_comment_code_files(
     paths: Iterable[Path],
     basepicture_name: str,
@@ -69,16 +75,16 @@ def analyze_comment_code_files(
                     start_col=hit.start_col,
                     end_col=hit.end_col,
                     indicators=hit.indicators,
+                    module_path=hit.module_path,
                     preview=_comment_preview(hit.text),
                 )
             )
             issues.append(
                 Issue(
                     kind="comment_code",
-                    message=(
-                        f"{path.name}:{hit.start_line}-{hit.end_line} "
-                        f"{', '.join(hit.indicators) if hit.indicators else 'code'}"
-                    ),
+                    message=f"{path.name}:{_format_line_range(hit.start_line, hit.end_line)} "
+                    f"{', '.join(hit.indicators) if hit.indicators else 'code'}",
+                    module_path=list(hit.module_path) if hit.module_path else None,
                     data={
                         "path": str(path),
                         "start_line": hit.start_line,
@@ -90,7 +96,7 @@ def analyze_comment_code_files(
                 )
             )
 
-    hits.sort(key=lambda h: (h.file_path.name.casefold(), h.start_line, h.start_col))
+    hits.sort(key=lambda h: (h.module_path, h.file_path.name.casefold(), h.start_line, h.start_col))
 
     return CommentCodeReport(
         basepicture_name=basepicture_name,

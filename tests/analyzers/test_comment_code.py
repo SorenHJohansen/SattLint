@@ -45,6 +45,7 @@ ENDDEF (*BasePicture*);
     assert report.files_scanned == 1
     assert len(report.hits) == 1
     assert report.hits[0].file_path.name == "Program.s"
+    assert report.hits[0].module_path == ("BasePicture",)
     assert "control" in report.hits[0].indicators
 
 
@@ -181,6 +182,28 @@ ENDDEF (*BasePicture*);
 
     # Both comments in nested ModuleCode sections should be detected
     assert len(hits) == 2
+    assert hits[0].module_path == ("BasePicture", "Sub1")
+    assert hits[1].module_path == ("BasePicture", "Sub1", "Sub2")
+
+
+def test_find_comments_with_code_tracks_typedef_module_paths():
+    text = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
+TYPEDEFINITIONS
+    WorkerType = MODULEDEFINITION DateCode_ 456
+    ModuleCode
+        (* Result = InputValue + 1; *)
+    ENDDEF (*WorkerType*);
+ENDDEF (*BasePicture*);
+"""
+
+    hits = find_comments_with_code(text)
+
+    assert len(hits) == 1
+    assert hits[0].module_path == ("BasePicture", "TypeDef:WorkerType")
 
 
 def test_invalid_code_not_detected():
@@ -504,11 +527,12 @@ def test_comment_code_report_summary_with_single_line_hit():
         end_col=20,
         indicators=("IF", "THEN"),
         preview="IF x THEN",
+        module_path=("BasePicture", "Pump"),
     )
     report = CommentCodeReport(basepicture_name="Main", hits=[hit], issues=[], files_scanned=1)
     result = report.summary()
     assert "Findings:" in result
-    assert "Main.s:10" in result
+    assert "BasePicture.Pump (Main.s:10)" in result
     assert "IF, THEN" in result
 
 
@@ -525,10 +549,11 @@ def test_comment_code_report_summary_with_multi_line_hit():
         end_col=0,
         indicators=(),
         preview="",
+        module_path=("BasePicture", "TypeDef:WorkerType"),
     )
     report = CommentCodeReport(basepicture_name="Main", hits=[hit], issues=[], files_scanned=1)
     result = report.summary()
-    assert "Main.s:5-8" in result
+    assert "BasePicture.WorkerType (Main.s:5-8)" in result
     assert "<empty>" in result
     assert "unknown" in result
 

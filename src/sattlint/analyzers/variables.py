@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, ParameterMapping, Variable
@@ -145,6 +146,7 @@ def analyze_variables(
     include_dependency_moduletype_usage: bool | None = None,
     trace_recorder: AnalysisTraceRecorder | None = None,
     config: dict[str, Any] | None = None,
+    status_update_fn: Callable[[str], None] | None = None,
 ) -> VariablesReport:
     effective_include_dependency_moduletype_usage = (
         analyzed_target_is_library
@@ -160,6 +162,7 @@ def analyze_variables(
         include_dependency_moduletype_usage=effective_include_dependency_moduletype_usage,
         trace_recorder=trace_recorder,
         config=config,
+        status_update_fn=status_update_fn,
     )
     issues = analyzer.run()
     return VariablesReport(
@@ -216,6 +219,7 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         trace_recorder: AnalysisTraceRecorder | None = None,
         build_anytype_contracts: bool = True,
         config: dict[str, Any] | None = None,
+        status_update_fn: Callable[[str], None] | None = None,
     ):
         self.bp = base_picture
         self.debug = debug
@@ -225,11 +229,14 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         self._include_dependency_moduletype_usage = include_dependency_moduletype_usage
         self._analysis_warnings: list[str] = []
         self._trace_recorder = trace_recorder
+        self._status_update_fn = status_update_fn
+        self._last_status_message: str | None = None
         self._limit_to_module_path: list[str] | None = None
         self._naming_role_patterns = configured_naming_role_patterns(config)
 
         self._issues: list[VariableIssue] = []
         self._param_mapping_issue_indexes: dict[tuple[IssueKind, int], int] = {}
+        self._record_component_order_datatypes_seen: set[str] = set()
         self.usage_tracker = UsageTracker()
         self._site_stack: list[str] = []
 
@@ -415,6 +422,15 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         if self._trace_recorder is None:
             return
         self._trace_recorder.event("variables", action, **data)
+
+    def _update_status(self, detail: str) -> None:
+        if self._status_update_fn is None:
+            return
+        text = f"Analyzing variable issues for {self.bp.header.name}: {detail}".strip()
+        if text == self._last_status_message:
+            return
+        self._last_status_message = text
+        self._status_update_fn(text)
 
     def _append_issue(self, issue: VariableIssue) -> None:
         self._issues.append(issue)

@@ -291,6 +291,11 @@ def _walk_submodules(
         if not _should_walk_submodule_path(self, child_path):
             continue
 
+        display_path = " > ".join(child_path[-4:])
+        if len(child_path) > 4:
+            display_path = f"... > {display_path}"
+        self._update_status(f"walking module path {display_path}")
+
         child_display_path = _display_path_for_child(self, child, parent_context)
         inst_context = self.repath_context(
             parent_context,

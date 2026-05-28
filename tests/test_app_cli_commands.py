@@ -464,6 +464,46 @@ def test_cli_owner_run_docgen_command_uses_default_filename(monkeypatch):
     assert generated == ["TargetA_FS.docx"]
 
 
+def test_cli_owner_run_docgen_command_updates_live_status(monkeypatch):
+    updates: list[str] = []
+
+    class FakeLiveStatusLine:
+        def __enter__(self):
+            return updates.append
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(app.app_cli_commands_module.console_module, "live_status_line", lambda: FakeLiveStatusLine())
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "generate_docx",
+        lambda _bp, out_name, documentation_config, unavailable_libraries: None,
+    )
+
+    cfg = {"documentation": {"classifications": {}}}
+    target_bp: BasePicture = cast(Any, object())
+    target_graph = ProjectGraph()
+    projects: list[tuple[str, BasePicture, ProjectGraph]] = [("TargetA", target_bp, target_graph)]
+
+    def iter_projects(_cfg: dict[Any, Any], _use_cache: bool) -> Iterator[tuple[str, BasePicture, ProjectGraph]]:
+        return iter(projects)
+
+    exit_code = app.app_cli_commands_module.run_docgen_command(
+        cfg,
+        use_cache=True,
+        output_dir=None,
+        output_path=None,
+        iter_loaded_projects_fn=cast(Any, iter_projects),
+        documentation_unit_selection_fn=lambda: {"mode": "all", "instance_paths": [], "moduletype_names": []},
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    assert updates == ["Generating documentation for TargetA"]
+
+
 def test_cli_owner_run_docgen_command_reports_write_errors(capsys, tmp_path, monkeypatch):
     def fail_docgen(_bp, out_name, documentation_config, unavailable_libraries):
         raise PermissionError(f"permission denied: {out_name}")
@@ -535,6 +575,44 @@ def test_cli_owner_run_simulate_command_writes_json_output(tmp_path):
     payload = output_path.read_text(encoding="utf-8")
     assert '"target": "Main"' in payload
     assert '"steady_state_reached": true' in payload
+
+
+def test_cli_owner_run_simulate_command_updates_live_status(monkeypatch):
+    updates: list[str] = []
+
+    class FakeLiveStatusLine:
+        def __enter__(self):
+            return updates.append
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _FakeResult:
+        def to_dict(self):
+            return {"target": "Main"}
+
+        def render_summary(self):
+            return "steady state reached"
+
+    monkeypatch.setattr(app.app_cli_commands_module.console_module, "live_status_line", lambda: FakeLiveStatusLine())
+    monkeypatch.setattr(app.app_cli_commands_module, "emit_output", lambda *_args, **_kwargs: None)
+
+    exit_code = app.app_cli_commands_module.run_simulate_command(
+        {"debug": False},
+        target_path="program.s",
+        module_name="Main",
+        mode="steady-state",
+        max_scans=25,
+        output_format="text",
+        output_path=None,
+        use_cache=False,
+        simulate_fn=lambda cfg, **kwargs: _FakeResult(),
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    assert updates == ["Simulating Main from program.s"]
 
 
 def test_cli_owner_run_simulate_command_reports_output_write_errors(capsys, tmp_path):

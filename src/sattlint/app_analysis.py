@@ -289,6 +289,12 @@ def _unavailable_libraries(graph: ProjectGraph) -> set[str]:
     return cast(set[str], getattr(graph, "unavailable_libraries", set[str]()))
 
 
+def _run_with_live_status(status_text: str, run_fn: Callable[[], Any]) -> Any:
+    with console_module.live_status_line() as status_update_fn:
+        status_update_fn(status_text)
+        return run_fn()
+
+
 def run_variable_analysis(
     cfg: ConfigDict,
     kinds: set[IssueKind] | None,
@@ -342,13 +348,16 @@ def run_variable_analysis(
     for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
         produced_output = True
         target_is_library = target_is_library_fn(cfg, project_bp, graph)
-        report = analyze_variables_fn(
-            project_bp,
-            debug=_debug_enabled(cfg),
-            unavailable_libraries=_unavailable_libraries(graph),
-            analyzed_target_is_library=target_is_library,
-            config=cfg,
-        )
+        with console_module.live_status_line() as status_update_fn:
+            status_update_fn(f"Analyzing variable issues for {target_name}")
+            report = analyze_variables_fn(
+                project_bp,
+                debug=_debug_enabled(cfg),
+                unavailable_libraries=_unavailable_libraries(graph),
+                analyzed_target_is_library=target_is_library,
+                config=cfg,
+                status_update_fn=status_update_fn,
+            )
 
         include_shadowing = IssueKind.SHADOWING in requested_kinds
         standard_kinds = requested_kinds - {IssueKind.SHADOWING}
@@ -364,10 +373,13 @@ def run_variable_analysis(
             )
 
         if include_shadowing:
-            shadowing_report = analyze_shadowing_fn(
-                project_bp,
-                debug=_debug_enabled(cfg),
-                unavailable_libraries=_unavailable_libraries(graph),
+            shadowing_report = _run_with_live_status(
+                f"Analyzing variable shadowing for {target_name}",
+                lambda project_bp=project_bp, graph=graph: analyze_shadowing_fn(
+                    project_bp,
+                    debug=_debug_enabled(cfg),
+                    unavailable_libraries=_unavailable_libraries(graph),
+                ),
             )
             if requested_kinds == {IssueKind.SHADOWING}:
                 report = shadowing_report
@@ -407,11 +419,14 @@ def run_datatype_usage_analysis(
 
     for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
         try:
-            report = variables_reporting_module.analyze_datatype_usage(
-                project_bp,
-                var_name,
-                debug=_debug_enabled(cfg),
-                unavailable_libraries=_unavailable_libraries(graph),
+            report = _run_with_live_status(
+                f"Analyzing datatype usage for {target_name}: {var_name}",
+                lambda project_bp=project_bp, graph=graph: variables_reporting_module.analyze_datatype_usage(
+                    project_bp,
+                    var_name,
+                    debug=_debug_enabled(cfg),
+                    unavailable_libraries=_unavailable_libraries(graph),
+                ),
             )
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report)
@@ -633,7 +648,14 @@ def run_module_duplicates_analysis(
         emit_output(f"\n=== Target: {target_name} ===")
         for module_name in module_names:
             try:
-                matches = find_modules_by_name(project_bp, module_name, debug=_debug_enabled(cfg))
+                matches = _run_with_live_status(
+                    f"Searching module variants in {target_name}: {module_name}",
+                    lambda project_bp=project_bp, module_name=module_name: find_modules_by_name(
+                        project_bp,
+                        module_name,
+                        debug=_debug_enabled(cfg),
+                    ),
+                )
                 if not matches:
                     emit_output(f"\n⚠ No modules found with name {module_name!r}.")
                     continue
@@ -654,9 +676,19 @@ def run_module_duplicates_analysis(
                         emit_output("⚠ Need at least two instances to compare; skipping.")
                         continue
                     selected = [matches[i - 1] for i in indices]
-                    result = compare_modules(selected)
+                    result = _run_with_live_status(
+                        f"Comparing module variants in {target_name}: {module_name}",
+                        lambda selected=selected: compare_modules(selected),
+                    )
                 else:
-                    result = analyze_module_duplicates(project_bp, module_name, debug=_debug_enabled(cfg))
+                    result = _run_with_live_status(
+                        f"Comparing module variants in {target_name}: {module_name}",
+                        lambda project_bp=project_bp, module_name=module_name: analyze_module_duplicates(
+                            project_bp,
+                            module_name,
+                            debug=_debug_enabled(cfg),
+                        ),
+                    )
 
                 emit_output("\n" + result.summary())
             except Exception as exc:
@@ -687,7 +719,14 @@ def run_module_find_by_name(
         for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
             emit_output(f"\n=== Target: {target_name} ===")
             for module_name in module_names:
-                matches = find_modules_by_name(project_bp, module_name, debug=_debug_enabled(cfg))
+                matches = _run_with_live_status(
+                    f"Finding module instances in {target_name}: {module_name}",
+                    lambda project_bp=project_bp, module_name=module_name: find_modules_by_name(
+                        project_bp,
+                        module_name,
+                        debug=_debug_enabled(cfg),
+                    ),
+                )
                 if not matches:
                     emit_output(f"\nNo modules found with name {module_name!r}.")
                     continue
@@ -721,7 +760,10 @@ def run_module_tree_debug(
     try:
         for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
             emit_output(f"\n=== Target: {target_name} ===")
-            debug_module_structure(project_bp, max_depth=max_depth)
+            _run_with_live_status(
+                f"Inspecting module tree for {target_name}",
+                lambda project_bp=project_bp: debug_module_structure(project_bp, max_depth=max_depth),
+            )
     except Exception as exc:
         emit_output(f"❌ Error during debug: {exc}")
 
@@ -769,11 +811,14 @@ def run_module_localvar_analysis(
 
     for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
         try:
-            report = analyze_module_localvar_fields(
-                project_bp,
-                module_path,
-                var_name,
-                debug=_debug_enabled(cfg),
+            report = _run_with_live_status(
+                f"Analyzing module local variable in {target_name}: {module_path}.{var_name}",
+                lambda project_bp=project_bp: analyze_module_localvar_fields(
+                    project_bp,
+                    module_path,
+                    var_name,
+                    debug=_debug_enabled(cfg),
+                ),
             )
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report)
@@ -786,6 +831,16 @@ def run_module_localvar_analysis(
 
 def _get_enabled_analyzers() -> list[Any]:
     return cast(list[Any], get_default_cli_analyzers())
+
+
+def _analysis_status_text(target_name: str, spec: Any) -> str:
+    return f"Analyzing {target_name}: {spec.name} ({spec.key})"
+
+
+def _handle_analysis_cancellation(*, pause_fn: Callable[[], None] | None) -> None:
+    emit_output("\nOperation canceled. Returning to the menu.")
+    if pause_fn is not None:
+        pause_fn()
 
 
 def _run_checks(
@@ -809,21 +864,28 @@ def _run_checks(
         return
 
     emit_output("\n--- Running checks ---")
-    for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-        context = AnalysisContext(
-            base_picture=project_bp,
-            graph=graph,
-            debug=_debug_enabled(cfg),
-            target_is_library=target_is_library_fn(cfg, project_bp, graph),
-            config=cfg,
-        )
-        emit_output(f"\n=== Target: {target_name} ===")
-        for spec in analyzers:
-            emit_output(f"\n=== {spec.name} ({spec.key}) ===")
-            report = spec.run(context)
-            report = apply_rule_profile_to_report(spec.key, report, cfg)
-            report = _normalize_report_target_name(report, target_name)
-            emit_output(report.summary())
+    try:
+        for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
+            context = AnalysisContext(
+                base_picture=project_bp,
+                graph=graph,
+                debug=_debug_enabled(cfg),
+                target_is_library=target_is_library_fn(cfg, project_bp, graph),
+                config=cfg,
+            )
+            emit_output(f"\n=== Target: {target_name} ===")
+            for spec in analyzers:
+                emit_output(f"\n=== {spec.name} ({spec.key}) ===")
+                report = _run_with_live_status(
+                    _analysis_status_text(target_name, spec),
+                    lambda spec=spec, context=context: spec.run(context),
+                )
+                report = apply_rule_profile_to_report(spec.key, report, cfg)
+                report = _normalize_report_target_name(report, target_name)
+                emit_output(report.summary())
+    except KeyboardInterrupt:
+        _handle_analysis_cancellation(pause_fn=pause_fn)
+        return
 
     if pause_fn is not None:
         pause_fn()
@@ -866,10 +928,13 @@ def run_mms_interface_analysis(
 
     for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
         try:
-            report = analyze_mms_interface_variables(
-                project_bp,
-                debug=_debug_enabled(cfg),
-                config=cfg,
+            report = _run_with_live_status(
+                f"Analyzing MMS interface variables for {target_name}",
+                lambda project_bp=project_bp: analyze_mms_interface_variables(
+                    project_bp,
+                    debug=_debug_enabled(cfg),
+                    config=cfg,
+                ),
             )
             report = _normalize_report_target_name(report, target_name)
             emit_output(f"\n=== Target: {target_name} ===")
@@ -937,12 +1002,17 @@ def run_icf_validation(
                 key = mt.name.casefold()
                 moduletype_index.setdefault(key, []).append(mt)
 
-        report = validate_icf_entries_against_program_fn(
-            program_bp,
-            entries,
-            expected_program=program_name,
-            debug=cfg.get("debug", False),
-            moduletype_index=moduletype_index,
+        report = _run_with_live_status(
+            f"Validating ICF entries for {program_name}",
+            lambda program_bp=program_bp, entries=entries, program_name=program_name, moduletype_index=moduletype_index: (
+                validate_icf_entries_against_program_fn(
+                    program_bp,
+                    entries,
+                    expected_program=program_name,
+                    debug=cfg.get("debug", False),
+                    moduletype_index=moduletype_index,
+                )
+            ),
         )
         emit_output(report.summary())
         emit_output("")
@@ -982,7 +1052,10 @@ def run_debug_variable_usage(
 
     for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
         try:
-            report = debug_variable_usage(project_bp, var_name, debug=_debug_enabled(cfg))
+            report = _run_with_live_status(
+                f"Tracing variable usage for {target_name}: {var_name}",
+                lambda project_bp=project_bp: debug_variable_usage(project_bp, var_name, debug=_debug_enabled(cfg)),
+            )
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report)
         except Exception as exc:
@@ -1004,7 +1077,10 @@ def run_comment_code_analysis(
     emit_output("\n--- Commented-out Code ---")
     for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
         paths = source_paths_for_current_target_fn(project_bp, graph)
-        report = analyze_comment_code_files(paths, target_name)
+        report = _run_with_live_status(
+            f"Analyzing commented-out code for {target_name}",
+            lambda paths=paths, target_name=target_name: analyze_comment_code_files(paths, target_name),
+        )
         report = _normalize_report_target_name(report, target_name)
         emit_output(f"\n=== Target: {target_name} ===")
         emit_output(report.summary())
@@ -1034,11 +1110,14 @@ def run_advanced_datatype_analysis(
         var_name = input("Enter variable name: ").strip()
         if var_name:
             for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-                report = variables_reporting_module.analyze_datatype_usage(
-                    project_bp,
-                    var_name,
-                    debug=_debug_enabled(cfg),
-                    unavailable_libraries=_unavailable_libraries(graph),
+                report = _run_with_live_status(
+                    f"Analyzing datatype usage for {target_name}: {var_name}",
+                    lambda project_bp=project_bp, graph=graph: variables_reporting_module.analyze_datatype_usage(
+                        project_bp,
+                        var_name,
+                        debug=_debug_enabled(cfg),
+                        unavailable_libraries=_unavailable_libraries(graph),
+                    ),
                 )
                 emit_output(f"\n=== Target: {target_name} ===")
                 emit_output(report)
@@ -1052,10 +1131,13 @@ def run_advanced_datatype_analysis(
         var_name = input("Enter variable name to debug: ").strip()
         if var_name:
             for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
-                report = variables_reporting_module.debug_variable_usage(
-                    project_bp,
-                    var_name,
-                    debug=_debug_enabled(cfg),
+                report = _run_with_live_status(
+                    f"Tracing variable usage for {target_name}: {var_name}",
+                    lambda project_bp=project_bp: variables_reporting_module.debug_variable_usage(
+                        project_bp,
+                        var_name,
+                        debug=_debug_enabled(cfg),
+                    ),
                 )
                 emit_output(f"\n=== Target: {target_name} ===")
                 emit_output(report)

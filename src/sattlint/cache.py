@@ -184,7 +184,7 @@ class FileASTCache:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-PROJECT_CACHE_SCHEMA_VERSION = "2026-05-26-module-header-outvar-tail-fix"
+PROJECT_CACHE_SCHEMA_VERSION = "2026-05-28-library-reverse-consumer-scan"
 
 
 def compute_cache_key(cfg: Mapping[str, object]) -> str:

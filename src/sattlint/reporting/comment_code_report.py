@@ -15,6 +15,21 @@ class CommentCodeHit:
     end_col: int
     indicators: tuple[str, ...]
     preview: str
+    module_path: tuple[str, ...] = ()
+
+
+def _format_module_path(module_path: tuple[str, ...]) -> str:
+    if not module_path:
+        return ""
+    return ".".join(
+        segment.removeprefix("TypeDef:") if segment.startswith("TypeDef:") else segment for segment in module_path
+    )
+
+
+def _format_source_location(file_path: Path, start_line: int, end_line: int) -> str:
+    if start_line == end_line:
+        return f"{file_path.name}:{start_line}"
+    return f"{file_path.name}:{start_line}-{end_line}"
 
 
 @dataclass
@@ -52,12 +67,13 @@ class CommentCodeReport:
             lines.append("Findings:")
             for hit in self.hits:
                 indicator_txt = ", ".join(hit.indicators) if hit.indicators else "unknown"
-                if hit.start_line == hit.end_line:
-                    location = f"{hit.file_path.name}:{hit.start_line}"
-                else:
-                    location = f"{hit.file_path.name}:{hit.start_line}-{hit.end_line}"
+                source_location = _format_source_location(hit.file_path, hit.start_line, hit.end_line)
+                module_location = _format_module_path(hit.module_path)
                 preview = hit.preview or "<empty>"
-                lines.append(f"  - {location} [{indicator_txt}] {preview}")
+                if module_location:
+                    lines.append(f"  - {module_location} ({source_location}) [{indicator_txt}] {preview}")
+                else:
+                    lines.append(f"  - {source_location} [{indicator_txt}] {preview}")
 
         # Only show actual read errors (not duplicate comment code entries)
         read_errors = [issue for issue in self.issues if issue.kind == "comment_code_read_error"]

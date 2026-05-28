@@ -390,6 +390,7 @@ def main(
             config_menu_fn=config_menu_fn,
             tools_menu_fn=tools_menu_fn,
             show_help_fn=show_help_fn,
+            pause_fn=pause_fn,
             confirm_fn=confirm_fn,
             save_config_fn=save_config_fn,
             config_path=config_path,

@@ -386,7 +386,7 @@ Main areas:
 - Analyze: run curated reports, the full analyzer suite, or registry-backed checks.
 - Documentation: preview unit candidates, choose scope, and generate DOCX output.
 - Setup: edit directories, targets, mode, caching, and debug settings.
-- Tools: self-check, dumps, and AST cache refresh for troubleshooting.
+- Tools: self-check, dumps, source diff reports across configured targets, and AST cache refresh.
 
 Quick single-file validation:
   sattlint syntax-check /path/to/Program.s
