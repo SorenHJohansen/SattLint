@@ -38,6 +38,33 @@ def _snapshot_manifest(files: Iterable[Path]) -> dict[str, tuple[int, int]] | No
     return manifest
 
 
+def _load_manifest_payload(path: Path) -> dict[str, tuple[int, int]] | None:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            loaded = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(loaded, dict):
+        return None
+
+    manifest: dict[str, tuple[int, int]] = {}
+    for raw_path, raw_meta in cast(dict[object, object], loaded).items():
+        if not isinstance(raw_path, str):
+            return None
+        if not isinstance(raw_meta, list | tuple):
+            return None
+        meta_values = cast(list[object] | tuple[object, ...], raw_meta)
+        if len(meta_values) != 2:
+            return None
+        mtime, size = meta_values
+        if not isinstance(mtime, int) or not isinstance(size, int):
+            return None
+        manifest[raw_path] = (mtime, size)
+
+    return manifest
+
+
 def _validate_manifest(files: object) -> bool:
     if not isinstance(files, dict):
         return False
@@ -267,6 +294,9 @@ class ASTCache:
     def _path(self, key: str) -> Path:
         return self.cache_dir / f"{key}.pickle"
 
+    def _manifest_path(self, key: str) -> Path:
+        return self.cache_dir / f"{key}.manifest.json"
+
     def load(self, key: str) -> object | None:
         p = self._path(key)
         if not p.exists():
@@ -276,6 +306,21 @@ class ASTCache:
                 return pickle.load(f)  # nosec B301 - loading SattLint-owned local cache files only
         except (OSError, pickle.UnpicklingError, TypeError, AttributeError, EOFError):
             return None
+
+    def has_payload(self, key: str) -> bool:
+        return self._path(key).exists()
+
+    def load_manifest(self, key: str) -> dict[str, tuple[int, int]] | None:
+        return _load_manifest_payload(self._manifest_path(key))
+
+    def has_manifest(self, key: str) -> bool:
+        return self.load_manifest(key) is not None
+
+    def manifest_paths(self, key: str) -> frozenset[Path]:
+        manifest = self.load_manifest(key)
+        if manifest is None:
+            return frozenset()
+        return frozenset(Path(path_str) for path_str in manifest)
 
     def save(
         self,
@@ -291,27 +336,35 @@ class ASTCache:
         payload: dict[str, object] = {
             "version": CACHE_VERSION,
             "project": project,
-            "files": manifest,
         }
+
+        with self._manifest_path(key).open("w", encoding="utf-8") as handle:
+            json.dump(manifest, handle, ensure_ascii=True, indent=2, sort_keys=True)
 
         with self._path(key).open("wb") as f:
             pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-    def validate(self, payload: object, *, fast: bool = False) -> bool:
-        payload_map = _as_mapping(payload)
-        if payload_map is None or payload_map.get("version") != CACHE_VERSION:
+    def validate(self, key: str, *, fast: bool = False) -> bool:
+        manifest = self.load_manifest(key)
+        if manifest is None:
+            return False
+
+        if not self.has_payload(key):
             return False
 
         if fast:
-            return "project" in payload_map
+            return True
 
-        return _validate_manifest(payload_map.get("files"))
+        return _validate_manifest(manifest)
 
     def clear(self, key: str) -> None:
         """Remove cache file for the given key."""
         p = self._path(key)
         if p.exists():
             p.unlink()
+        manifest_path = self._manifest_path(key)
+        if manifest_path.exists():
+            manifest_path.unlink()
 
 
 class AnalysisReportCache:

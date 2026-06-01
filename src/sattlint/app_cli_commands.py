@@ -26,6 +26,17 @@ def _run_with_live_status(status_text: str, run_fn: Callable[[], Any]) -> Any:
         return run_fn()
 
 
+def _write_output_file(destination: Path, content: str, *, label: str) -> bool:
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(content + "\n", encoding="utf-8")
+    except OSError as exc:
+        emit_output(f"Failed to write {label} to {destination}: {exc}")
+        return False
+    emit_output(f"Wrote {destination}")
+    return True
+
+
 def run_validate_config_command(
     cfg: ConfigDict,
     *,
@@ -69,16 +80,6 @@ def run_simulate_command(
     exit_success: int,
     exit_usage_error: int,
 ) -> int:
-    def _write_output(destination: Path, content: str) -> bool:
-        try:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(content + "\n", encoding="utf-8")
-        except OSError as exc:
-            emit_output(f"Failed to write simulation output to {destination}: {exc}")
-            return False
-        emit_output(f"Wrote {destination}")
-        return True
-
     try:
         result = _run_with_live_status(
             f"Simulating {module_name} from {target_path}",
@@ -102,7 +103,7 @@ def run_simulate_command(
         payload = json.dumps(result.to_dict(), indent=2)
         if output_path:
             destination = Path(output_path)
-            if not _write_output(destination, payload):
+            if not _write_output_file(destination, payload, label="simulation output"):
                 return exit_usage_error
         else:
             emit_output(payload)
@@ -111,7 +112,7 @@ def run_simulate_command(
     summary = result.render_summary()
     if output_path:
         destination = Path(output_path)
-        if not _write_output(destination, summary):
+        if not _write_output_file(destination, summary, label="simulation output"):
             return exit_usage_error
     else:
         emit_output(summary)
@@ -174,4 +175,38 @@ def run_docgen_command(
             return exit_usage_error
         emit_output(f"Generated {destination}")
 
+    return exit_success
+
+
+def run_telemetry_summary_command(
+    cfg: ConfigDict,
+    *,
+    config_path: Path,
+    output_format: str,
+    output_path: str | None,
+    telemetry_output_path_fn: Callable[[Path], Path],
+    summarize_telemetry_fn: Callable[[Path], dict[str, Any]],
+    render_text_summary_fn: Callable[[dict[str, Any]], str],
+    exit_success: int,
+    exit_usage_error: int,
+) -> int:
+    del cfg
+
+    telemetry_path = telemetry_output_path_fn(config_path)
+    try:
+        summary = summarize_telemetry_fn(telemetry_path)
+    except FileNotFoundError:
+        emit_output(f"Telemetry file not found: {telemetry_path}")
+        return exit_usage_error
+    except (OSError, ValueError) as exc:
+        emit_output(f"Telemetry summary failed: {exc}")
+        return exit_usage_error
+
+    content = json.dumps(summary, indent=2) if output_format == "json" else render_text_summary_fn(summary)
+
+    if output_path:
+        if not _write_output_file(Path(output_path), content, label="telemetry summary"):
+            return exit_usage_error
+    else:
+        emit_output(content)
     return exit_success

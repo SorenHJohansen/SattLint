@@ -157,6 +157,23 @@ def build_cli_parser(*, version: str = __version__) -> argparse.ArgumentParser:
         help="Report whether configured .icf files would change without rewriting them.",
     )
 
+    telemetry_summary_parser = subparsers.add_parser(
+        "telemetry-summary",
+        help="Summarize local app telemetry bottlenecks",
+        description="Read local app telemetry and summarize slowest operations, stages, analyzers, and nested phases.",
+    )
+    telemetry_summary_parser.add_argument(
+        "--format",
+        default="text",
+        choices=["text", "json"],
+        help="Output format",
+    )
+    telemetry_summary_parser.add_argument(
+        "--output",
+        default=None,
+        help="Optional path to write the telemetry summary",
+    )
+
     subparsers.add_parser(
         "source-diff",
         help="Build a review-friendly report for draft .s versus official .x source pairs",
@@ -191,6 +208,7 @@ def run_cli(
     run_analyze_command_fn: AppCommandFn | None = None,
     run_simulate_command_fn: AppCommandFn | None = None,
     run_docgen_command_fn: AppCommandFn | None = None,
+    run_telemetry_summary_command_fn: AppCommandFn | None = None,
     run_format_icf_command_fn: AppCommandFn | None = None,
     exit_success: int = EXIT_SUCCESS,
     exit_usage_error: int = EXIT_USAGE_ERROR,
@@ -253,7 +271,7 @@ def run_cli(
             _list_analyzer_keys()
         return exit_success
 
-    if command in ("validate-config", "analyze", "simulate", "docgen", "format-icf"):
+    if command in ("validate-config", "analyze", "simulate", "docgen", "telemetry-summary", "format-icf"):
         try:
             if load_config_fn is None or apply_debug_fn is None:
                 raise RuntimeError("CLI config handlers are required for this command")
@@ -306,6 +324,19 @@ def run_cli(
                     use_cache=use_cache,
                     output_dir=getattr(args, "output_dir", None),
                     output_path=getattr(args, "output_path", None),
+                ),
+                fallback=exit_success,
+            )
+
+        if command == "telemetry-summary":
+            if run_telemetry_summary_command_fn is None:
+                raise RuntimeError("telemetry-summary handler is required")
+            return _exit_code(
+                run_telemetry_summary_command_fn(
+                    cfg,
+                    config_path=resolved_config_path,
+                    output_format=args.format,
+                    output_path=args.output,
                 ),
                 fallback=exit_success,
             )

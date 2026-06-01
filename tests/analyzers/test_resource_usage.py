@@ -15,9 +15,9 @@ def _varref(name: str) -> dict[str, str]:
 def test_resource_usage_analyzer_is_registered_and_opt_in_for_cli() -> None:
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
-    assert "resource_usage" in specs
-    assert specs["resource_usage"].enabled is True
-    assert "resource_usage" not in get_actual_cli_analyzer_keys()
+    assert "resource-usage" in specs
+    assert specs["resource-usage"].enabled is True
+    assert "resource-usage" not in get_actual_cli_analyzer_keys()
 
 
 def test_resource_usage_reports_release_without_acquire() -> None:

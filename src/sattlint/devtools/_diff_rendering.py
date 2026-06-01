@@ -8,7 +8,7 @@ from pathlib import Path
 from sattlint.path_sanitizer import sanitize_path_for_report
 
 
-def _sanitize_repo_path(path: Path, *, workspace_root: Path) -> str:
+def _diff_render_label(path: Path, *, workspace_root: Path) -> str:
     return sanitize_path_for_report(path, repo_root=workspace_root) or path.as_posix()
 
 
@@ -37,7 +37,7 @@ def build_unified_diff_lines(
     transformed: str,
     to_file: str | None = None,
 ) -> list[str]:
-    from_label = _sanitize_repo_path(source_file, workspace_root=workspace_root)
+    from_label = _diff_render_label(source_file, workspace_root=workspace_root)
     to_label = from_label if to_file is None else to_file
     return list(
         difflib.unified_diff(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Sequence
 from typing import Any
 
@@ -24,10 +25,16 @@ def run_cli_from_app(argv: list[str], *, app_module: Any) -> int:
         run_analyze_command_fn=app_module.run_analyze_command,
         run_simulate_command_fn=app_module.run_simulate_command,
         run_docgen_command_fn=app_module.run_docgen_command,
+        run_telemetry_summary_command_fn=app_module.run_telemetry_summary_command,
         run_format_icf_command_fn=app_module.run_format_icf_command,
         exit_success=app_module.EXIT_SUCCESS,
         exit_usage_error=app_module.EXIT_USAGE_ERROR,
     )
+
+
+def cli_from_app(*, app_module: Any) -> int:
+    argv_source = getattr(app_module, "sys", sys).argv
+    return main_from_app(list(argv_source[1:]), app_module=app_module)
 
 
 def run_validate_config_command_from_app(
@@ -113,6 +120,28 @@ def run_docgen_command_from_app(
         run_docgen_command_fn=app_module.app_cli_commands.run_docgen_command,
         iter_loaded_projects_fn=app_module._iter_loaded_projects,
         documentation_unit_selection_fn=app_module._get_documentation_unit_selection,
+        exit_success=app_module.EXIT_SUCCESS,
+        exit_usage_error=app_module.EXIT_USAGE_ERROR,
+    )
+
+
+def run_telemetry_summary_command_from_app(
+    cfg: ConfigDict,
+    *,
+    config_path: startup_core.Path,
+    output_format: str,
+    output_path: str | None,
+    app_module: Any,
+) -> int:
+    return startup_core.run_telemetry_summary_command(
+        cfg,
+        config_path=config_path,
+        output_format=output_format,
+        output_path=output_path,
+        run_telemetry_summary_command_fn=app_module.app_cli_commands.run_telemetry_summary_command,
+        telemetry_output_path_fn=app_module.app_telemetry.telemetry_output_path_for_config,
+        summarize_telemetry_fn=app_module.telemetry_summary.summarize_telemetry_file,
+        render_text_summary_fn=app_module.telemetry_summary.render_text_summary,
         exit_success=app_module.EXIT_SUCCESS,
         exit_usage_error=app_module.EXIT_USAGE_ERROR,
     )

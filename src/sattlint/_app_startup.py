@@ -45,6 +45,7 @@ def run_cli(
     run_analyze_command_fn: Callable[..., int],
     run_simulate_command_fn: Callable[..., int],
     run_docgen_command_fn: Callable[..., int],
+    run_telemetry_summary_command_fn: Callable[..., int],
     run_format_icf_command_fn: Callable[..., int],
     exit_success: int,
     exit_usage_error: int,
@@ -60,7 +61,34 @@ def run_cli(
         run_analyze_command_fn=run_analyze_command_fn,
         run_simulate_command_fn=run_simulate_command_fn,
         run_docgen_command_fn=run_docgen_command_fn,
+        run_telemetry_summary_command_fn=run_telemetry_summary_command_fn,
         run_format_icf_command_fn=run_format_icf_command_fn,
+        exit_success=exit_success,
+        exit_usage_error=exit_usage_error,
+    )
+
+
+def run_telemetry_summary_command(
+    cfg: ConfigDict,
+    *,
+    config_path: Path,
+    output_format: str,
+    output_path: str | None,
+    run_telemetry_summary_command_fn: Callable[..., int],
+    telemetry_output_path_fn: Callable[[Path], Path],
+    summarize_telemetry_fn: Callable[[Path], dict[str, Any]],
+    render_text_summary_fn: Callable[[dict[str, Any]], str],
+    exit_success: int,
+    exit_usage_error: int,
+) -> int:
+    return run_telemetry_summary_command_fn(
+        cfg,
+        config_path=config_path,
+        output_format=output_format,
+        output_path=output_path,
+        telemetry_output_path_fn=telemetry_output_path_fn,
+        summarize_telemetry_fn=summarize_telemetry_fn,
+        render_text_summary_fn=render_text_summary_fn,
         exit_success=exit_success,
         exit_usage_error=exit_usage_error,
     )

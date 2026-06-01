@@ -112,3 +112,71 @@ def test_variable_analysis_menu_all_options(noop_screen, monkeypatch):
     assert "icf" in calls
     assert "icf-format" in calls
     assert "comment" in calls
+
+
+def test_analyzer_catalog_menu_runs_selected_checks(noop_screen, monkeypatch):
+    captured: list[object] = []
+    monkeypatch.setattr(
+        app,
+        "_get_enabled_analyzers",
+        lambda: [
+            SimpleNamespace(
+                key="variables",
+                name="Variable issues",
+                description="Unused and never-read variables",
+            ),
+            SimpleNamespace(
+                key="spec-compliance",
+                name="Engineering spec compliance",
+                description="Engineering rule checks",
+            ),
+        ],
+    )
+    monkeypatch.setattr(app, "_run_checks", lambda _cfg, selected: captured.append(selected))
+    monkeypatch.setattr(builtins, "input", make_input(["2", "1", "b"]))
+
+    app.analyzer_catalog_menu(app.DEFAULT_CONFIG.copy())
+
+    assert captured == [["variables"], None]
+
+
+def test_get_enabled_analyzers_returns_default_cli_subset(monkeypatch):
+    monkeypatch.setattr(
+        app,
+        "get_default_cli_analyzers",
+        lambda: [SimpleNamespace(key="variables"), SimpleNamespace(key="sfc")],
+    )
+
+    analyzers = app._get_enabled_analyzers()
+
+    assert [spec.key for spec in analyzers] == ["variables", "sfc"]
+
+
+def test_module_analysis_submenu_runs_graphics_rules_check(noop_screen, monkeypatch):
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        app,
+        "run_module_duplicates_analysis",
+        lambda *_: calls.append("compare"),
+    )
+    monkeypatch.setattr(
+        app,
+        "run_module_find_by_name",
+        lambda *_: calls.append("find"),
+    )
+    monkeypatch.setattr(
+        app,
+        "run_module_tree_debug",
+        lambda *_: calls.append("tree"),
+    )
+    monkeypatch.setattr(
+        app,
+        "run_graphics_rules_validation",
+        lambda *_: calls.append("graphics"),
+    )
+    monkeypatch.setattr(builtins, "input", make_input(["1", "2", "3", "4", "b"]))
+
+    app.module_analysis_submenu(app.DEFAULT_CONFIG.copy())
+
+    assert calls == ["compare", "find", "tree", "graphics"]

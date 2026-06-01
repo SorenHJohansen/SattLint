@@ -205,44 +205,6 @@ def test_legacy_documentation_rule_keys_are_normalized():
     assert documentation_cfg["classifications"]["ops"]["desc_label_equals"] == ["CustomLib:LegacyOperation"]
 
 
-def test_analyzer_catalog_menu_runs_selected_checks(noop_screen, monkeypatch):
-    captured: list[object] = []
-    monkeypatch.setattr(
-        app,
-        "_get_enabled_analyzers",
-        lambda: [
-            SimpleNamespace(
-                key="variables",
-                name="Variable issues",
-                description="Unused and never-read variables",
-            ),
-            SimpleNamespace(
-                key="spec-compliance",
-                name="Engineering spec compliance",
-                description="Engineering rule checks",
-            ),
-        ],
-    )
-    monkeypatch.setattr(app, "_run_checks", lambda _cfg, selected: captured.append(selected))
-    monkeypatch.setattr(builtins, "input", make_input(["2", "1", "b"]))
-
-    app.analyzer_catalog_menu(app.DEFAULT_CONFIG.copy())
-
-    assert captured == [["variables"], None]
-
-
-def test_get_enabled_analyzers_returns_default_cli_subset(monkeypatch):
-    monkeypatch.setattr(
-        app,
-        "get_default_cli_analyzers",
-        lambda: [SimpleNamespace(key="variables"), SimpleNamespace(key="sfc")],
-    )
-
-    analyzers = app._get_enabled_analyzers()
-
-    assert [spec.key for spec in analyzers] == ["variables", "sfc"]
-
-
 def test_run_checks_reaches_every_default_cli_analyzer(noop_screen, monkeypatch):
     invoked: list[str] = []
     analyzer_specs = [
@@ -393,6 +355,8 @@ def test_config_menu_all_options(noop_screen, monkeypatch, tmp_path):
         "y",
         "11",
         "y",
+        "12",
+        "y",
         "9",
         "y",
         "b",
@@ -404,6 +368,29 @@ def test_config_menu_all_options(noop_screen, monkeypatch, tmp_path):
     assert dirty is False
     assert cfg["analyzed_programs_and_libraries"] == ["NewTarget"]
     assert cfg["mode"] in ("official", "draft")
+    assert cfg["telemetry"]["enabled"] is True
+    assert "path" not in cfg["telemetry"]
+
+
+def test_config_menu_can_update_telemetry_without_touching_other_settings(noop_screen, monkeypatch, tmp_path):
+    cfg = deepcopy(app.DEFAULT_CONFIG)
+    monkeypatch.setattr(
+        builtins,
+        "input",
+        make_input(
+            [
+                "12",
+                "y",
+                "b",
+            ]
+        ),
+    )
+
+    dirty = app.config_menu(cfg)
+
+    assert dirty is True
+    assert cfg["telemetry"] == {"enabled": True}
+    assert cfg["mode"] == app.DEFAULT_CONFIG["mode"]
 
 
 def test_show_config_uses_sectioned_layout(capsys, monkeypatch, tmp_path):
@@ -423,6 +410,9 @@ def test_show_config_uses_sectioned_layout(capsys, monkeypatch, tmp_path):
     )
 
     monkeypatch.setattr(app, "get_graphics_rules_path", lambda: tmp_path / "graphics_rules.json")
+    monkeypatch.setattr(
+        app.app_graphics.graphics_reports_module, "telemetry_output_path", lambda: tmp_path / "telemetry.jsonl"
+    )
     monkeypatch.setattr(
         app,
         "load_graphics_rules",
@@ -458,6 +448,10 @@ def test_show_config_uses_sectioned_layout(capsys, monkeypatch, tmp_path):
     assert "General" in out
     assert "scan_root_only" in out
     assert "fast_cache_validation" in out
+    assert "Telemetry" in out
+    assert "enabled" in out
+    assert "path" in out
+    assert str(tmp_path / "telemetry.jsonl") in out
     assert "Directories" in out
     assert r"Projects\Program" in out
     assert "Other" in out and "Library" in out
@@ -469,36 +463,6 @@ def test_show_config_uses_sectioned_layout(capsys, monkeypatch, tmp_path):
     assert "equipment_module_structure_path=L1.L2.EquipModPanelShort" in out
     assert "Documentation Classifications" in out
     assert "desc_label_equals  nnestruct:EquipModCoordinate" in out
-
-
-def test_module_analysis_submenu_runs_graphics_rules_check(noop_screen, monkeypatch):
-    calls: list[str] = []
-
-    monkeypatch.setattr(
-        app,
-        "run_module_duplicates_analysis",
-        lambda *_: calls.append("compare"),
-    )
-    monkeypatch.setattr(
-        app,
-        "run_module_find_by_name",
-        lambda *_: calls.append("find"),
-    )
-    monkeypatch.setattr(
-        app,
-        "run_module_tree_debug",
-        lambda *_: calls.append("tree"),
-    )
-    monkeypatch.setattr(
-        app,
-        "run_graphics_rules_validation",
-        lambda *_: calls.append("graphics"),
-    )
-    monkeypatch.setattr(builtins, "input", make_input(["1", "2", "3", "4", "b"]))
-
-    app.module_analysis_submenu(app.DEFAULT_CONFIG.copy())
-
-    assert calls == ["compare", "find", "tree", "graphics"]
 
 
 def test_graphics_rules_menu_adds_and_saves_rule(noop_screen, monkeypatch, tmp_path):

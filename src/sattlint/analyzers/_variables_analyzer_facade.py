@@ -9,8 +9,8 @@ from sattline_parser.models.ast_model import ModuleTypeDef, ParameterMapping, Va
 from ..models.usage import VariableUsage
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution.scope import ScopeContext
+from ._validators import AnyTypeFieldContract
 from ._variables_facade_properties import VariablesAnalyzerFacadePropertiesMixin
-from .validators import AnyTypeFieldContract
 
 
 class VariablesAnalyzerFacadeMixin(VariablesAnalyzerFacadePropertiesMixin):

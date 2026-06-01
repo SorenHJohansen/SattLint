@@ -6,8 +6,18 @@ import pickle
 from pathlib import Path, PosixPath
 from types import SimpleNamespace
 
+import pytest
+
 from sattline_parser.models.ast_model import FloatLiteral, IntLiteral, SourceSpan
-from sattlint.cache import CACHE_VERSION, LOOKUP_CACHE_VERSION, ASTCache, FileASTCache, FileLookupCache
+from sattlint.cache import (
+    ANALYSIS_REPORT_CACHE_VERSION,
+    CACHE_VERSION,
+    LOOKUP_CACHE_VERSION,
+    AnalysisReportCache,
+    ASTCache,
+    FileASTCache,
+    FileLookupCache,
+)
 
 
 def test_int_literal_pickle_round_trip_preserves_span():
@@ -149,26 +159,37 @@ def test_cache_helpers_cover_lookup_env_and_validation_edges(tmp_path: Path, mon
     assert ast_cache.load(project_key) is None
     ast_cache._path(project_key).write_bytes(b"bad-pickle")
     assert ast_cache.load(project_key) is None
+    assert ast_cache.has_payload(project_key) is True
+    assert ast_cache.has_manifest(project_key) is False
 
     manifest_path = tmp_path / "manifest.s"
     manifest_path.write_text('"x"\n"y"\n"z"\n', encoding="utf-8")
     manifest = {str(manifest_path): (manifest_path.stat().st_mtime_ns, manifest_path.stat().st_size)}
-    assert ast_cache.validate({"version": CACHE_VERSION, "project": object()}, fast=True) is True
-    assert ast_cache.validate({"version": CACHE_VERSION}, fast=True) is False
-    assert ast_cache.validate({"version": CACHE_VERSION, "files": []}) is False
-    assert ast_cache.validate({"version": CACHE_VERSION, "files": {1: (1, 2)}}) is False
-    assert ast_cache.validate({"version": CACHE_VERSION, "files": {str(manifest_path): [1, 2]}}) is False
-    assert ast_cache.validate({"version": CACHE_VERSION, "files": {str(manifest_path): ("bad", 2)}}) is False
-    assert ast_cache.validate({"version": CACHE_VERSION, "files": manifest}) is True
+    ast_cache._manifest_path(project_key).write_text("[]", encoding="utf-8")
+    assert ast_cache.has_manifest(project_key) is False
+    ast_cache._manifest_path(project_key).write_text(json.dumps({"version": CACHE_VERSION}), encoding="utf-8")
+    assert ast_cache.has_manifest(project_key) is False
+    ast_cache._manifest_path(project_key).write_text(
+        json.dumps({"version": CACHE_VERSION, "files": {str(manifest_path): ["bad", 2]}}),
+        encoding="utf-8",
+    )
+    assert ast_cache.has_manifest(project_key) is False
 
     ast_cache.save(project_key, project=SimpleNamespace(name="project"), files=[manifest_path])
     payload = ast_cache.load(project_key)
     assert payload is not None
-    assert ast_cache.validate(payload) is True
+    assert payload == {"version": CACHE_VERSION, "project": SimpleNamespace(name="project")}
+    assert ast_cache.has_payload(project_key) is True
+    assert ast_cache.has_manifest(project_key) is True
+    assert ast_cache.load_manifest(project_key) == manifest
+    assert ast_cache.manifest_paths(project_key) == frozenset({manifest_path})
+    assert ast_cache.validate(project_key) is True
+    assert ast_cache.validate(project_key, fast=True) is True
     manifest_path.unlink()
-    assert ast_cache.validate(payload) is False
+    assert ast_cache.validate(project_key) is False
     ast_cache.clear(project_key)
     assert not ast_cache._path(project_key).exists()
+    assert not ast_cache._manifest_path(project_key).exists()
 
 
 def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path) -> None:
@@ -240,12 +261,15 @@ def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path) -> 
     manifest_path = tmp_path / "manifest-extra.s"
     manifest_path.write_text('"x"\n"y"\n"z"\n', encoding="utf-8")
     manifest = (manifest_path.stat().st_mtime_ns, manifest_path.stat().st_size)
-    assert ast_cache.validate({"version": CACHE_VERSION + 1, "files": {str(manifest_path): manifest}}) is False
-    assert ast_cache.validate({"version": CACHE_VERSION, "files": {str(manifest_path): (1,)}}) is False
-    assert (
-        ast_cache.validate({"version": CACHE_VERSION, "files": {str(manifest_path): (manifest[0], manifest[1] + 1)}})
-        is False
+    ast_cache._manifest_path("project").write_text(
+        json.dumps({str(manifest_path): [manifest[0], manifest[1] + 1]}),
+        encoding="utf-8",
     )
+    assert ast_cache.validate("project") is False
+    ast_cache._path("project").write_bytes(
+        pickle.dumps({"version": CACHE_VERSION + 1}, protocol=pickle.HIGHEST_PROTOCOL)
+    )
+    assert ast_cache.validate("project") is False
 
 
 def test_file_ast_cache_save_skips_missing_source(tmp_path: Path) -> None:
@@ -299,6 +323,7 @@ def test_ast_cache_validate_tolerates_stat_race(tmp_path: Path, monkeypatch) -> 
     manifest_path = tmp_path / "manifest-race.s"
     manifest_path.write_text('"x"\n"y"\n"z"\n', encoding="utf-8")
     manifest = (manifest_path.stat().st_mtime_ns, manifest_path.stat().st_size)
+    ast_cache._path("project").write_bytes(pickle.dumps({"version": CACHE_VERSION}, protocol=pickle.HIGHEST_PROTOCOL))
 
     path_type = type(manifest_path)
     original_exists = path_type.exists
@@ -317,4 +342,59 @@ def test_ast_cache_validate_tolerates_stat_race(tmp_path: Path, monkeypatch) -> 
     monkeypatch.setattr(path_type, "exists", fake_exists)
     monkeypatch.setattr(path_type, "stat", fake_stat)
 
-    assert ast_cache.validate({"version": CACHE_VERSION, "files": {str(manifest_path): manifest}}) is False
+    ast_cache._manifest_path("project").write_text(json.dumps({str(manifest_path): list(manifest)}), encoding="utf-8")
+
+    assert ast_cache.validate("project") is False
+
+
+def test_cache_manifest_and_analysis_report_edge_branches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import sattlint.cache as cache_mod
+
+    manifest_file = tmp_path / "manifest-edge.s"
+    manifest_file.write_text('"x"\n"y"\n"z"\n', encoding="utf-8")
+    manifest = (manifest_file.stat().st_mtime_ns, manifest_file.stat().st_size)
+
+    bad_manifest_payloads = [
+        {str(manifest_file): "bad"},
+        {str(manifest_file): [manifest[0]]},
+        {str(manifest_file): ["bad", manifest[1]]},
+    ]
+    for index, payload in enumerate(bad_manifest_payloads):
+        manifest_path = tmp_path / f"bad-manifest-{index}.json"
+        manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+        assert cache_mod._load_manifest_payload(manifest_path) is None
+
+    manifest_path = tmp_path / "bad-manifest-non-string-key.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(cache_mod.json, "load", lambda _handle: {1: [manifest[0], manifest[1]]})
+    assert cache_mod._load_manifest_payload(manifest_path) is None
+
+    assert cache_mod._validate_manifest([]) is False
+    assert cache_mod._validate_manifest({1: manifest}) is False
+    assert cache_mod._validate_manifest({str(manifest_file): [manifest[0], manifest[1]]}) is False
+    assert cache_mod._validate_manifest({str(manifest_file): (manifest[0],)}) is False
+    assert cache_mod._validate_manifest({str(manifest_file): ("bad", manifest[1])}) is False
+
+    ast_cache = ASTCache(tmp_path / "project-cache-manifest-edges")
+    assert ast_cache.manifest_paths("missing") == frozenset()
+    assert ast_cache.validate("missing") is False
+
+    report_cache = AnalysisReportCache(tmp_path)
+    key = "report-key"
+    assert report_cache.load(key) is None
+    assert report_cache.save(key, report={"issues": []}, files=[tmp_path / "missing-source.s"]) is False
+
+    report_cache._path(key).write_bytes(b"not-a-pickle")
+    assert report_cache.load(key) is None
+
+    source_path = tmp_path / "report-source.s"
+    source_path.write_text("code", encoding="utf-8")
+    assert report_cache.save(key, report={"issues": []}, files=[source_path]) is True
+    loaded = report_cache.load(key)
+    assert loaded is not None
+    assert report_cache.validate({"version": ANALYSIS_REPORT_CACHE_VERSION, "files": {}}, fast=True) is False
+    assert (
+        report_cache.validate({"version": ANALYSIS_REPORT_CACHE_VERSION, "report": {}, "files": {}}, fast=True) is True
+    )
+    report_cache.clear(key)
+    assert report_cache._path(key).exists() is False

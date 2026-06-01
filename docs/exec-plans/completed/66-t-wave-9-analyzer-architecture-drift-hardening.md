@@ -14,13 +14,13 @@ The result must be observable from the repository root. A maintainer should be a
 - [x] (2026-06-01) Verified the main owner surfaces: `src/sattlint/analyzers/_registry_spec_templates.py` contains mixed kebab-case and snake_case analyzer keys, `src/sattlint/analyzers/registry.py` mixes absolute and relative imports, and `src/sattlint/analyzers/variable_usage_reporting.py` exposes two public `analyze_*` helpers that are not registry-backed analyzers.
 - [x] (2026-06-01) Verified that the proposed private-module rename is repo-wide rather than purely internal: `src/sattlint/analyzers/variables.py`, `src/sattlint/analyzers/_variables_execution.py`, and multiple tests import `reset_contamination`, `validators`, `usage_tracker`, `variable_traversal`, or `variable_issue_collection` directly.
 - [x] (2026-06-01) Verified that the current test baseline already encodes legacy underscore analyzer keys in `tests/_analyzers_suites_part3.py`, so naming enforcement must be staged instead of introduced as an immediate all-or-nothing break.
-- [ ] Add analyzer-specific drift-prevention guidance in a scoped instruction file plus one short pointer in `AGENTS.md`, without expanding global instructions into another oversized policy surface.
-- [ ] Add focused analyzer-architecture tests that ratchet naming, registry completeness, and import-style consistency before refactoring implementation details.
-- [ ] Normalize analyzer entry-point naming and registry key naming, with compatibility aliases for legacy underscore keys during the transition.
-- [ ] Rename the clearly internal analyzer helper modules to underscore-prefixed names and update all imports plus helper-coverage tests in one mechanical slice.
-- [ ] Extract one canonical recursive module-walk seam and one canonical root-origin seam, then migrate the highest-duplication analyzer call sites first.
-- [ ] Reassess `symbolic_lite`, `_REGISTRY_MONKEYPATCH_SURFACE`, and overlapping empty-list or casefold helpers only after the enforcement and rename slices are stable.
-- [ ] Finish with focused pytest proof for each slice plus touched-file Ruff and Pyright.
+- [x] (2026-06-01) Added analyzer-specific drift-prevention guidance in `.github/instructions/analyzer-architecture.instructions.md` and kept `AGENTS.md` to one short routing pointer.
+- [x] (2026-06-01) Added `tests/test_analyzer_architecture.py` to ratchet registry key style, non-registry `analyze_*` exceptions, and analyzer-package import-style consistency.
+- [x] (2026-06-01) Normalized the canonical registry-facing analyzer keys to kebab-case, kept legacy underscore spellings selectable through centralized alias normalization, and renamed the app-facing reporting helpers to `report_*` names.
+- [x] (2026-06-01) Renamed the clearly internal variable helper modules to underscore-prefixed paths and updated source plus test imports in one mechanical slice.
+- [x] (2026-06-01) Added `src/sattlint/analyzers/_walk_utils.py` and expanded `src/sattlint/analyzers/variable_utils.py` with `matches_root_origin(...)`, then migrated the first low-risk traversal and origin callers to those shared seams.
+- [x] (2026-06-01) Reassessed `symbolic_lite`, `_REGISTRY_MONKEYPATCH_SURFACE`, and the `_report_defaults` overlap after the structural slices stabilized; no deletion was warranted because each seam still has active registry, artifact, or helper-report callers.
+- [x] (2026-06-01) Finished with focused pytest proof for each slice plus touched-file Ruff and source-slice Pyright.
 
 ## Surprises & Discoveries
 
@@ -38,6 +38,9 @@ Evidence: `src/sattlint/analyzers/_registry_delivery_data.py` includes a `symbol
 
 Observation: a shared root-origin helper already exists, but some analyzer paths still bypass it or wrap it inconsistently.
 Evidence: `src/sattlint/analyzers/variable_utils.py` exports `same_origin_file_stem(...)`, and some analyzer modules use it directly, while other code paths still define their own `is_from_root_origin(...)` or `_same_origin_file_stem(...)` logic.
+
+Observation: the first safe traversal extraction was smaller than the original duplication inventory because only a subset of walkers could share a read-only path-yielding contract without dragging along analyzer-owned env state.
+Evidence: `src/sattlint/analyzers/variable_usage_reporting.py` and `src/sattlint/analyzers/_sfc_module_walk.py` migrated cleanly to `src/sattlint/analyzers/_walk_utils.py`, while env-carrying walkers such as `src/sattlint/analyzers/_wave2_support.py` still need a different seam if they are consolidated later.
 
 ## Decision Log
 
@@ -65,15 +68,23 @@ Decision: remove apparently dead analyzer metadata only after proving that no ac
 Rationale: the initial drift report correctly identified orphan-like seams, but `symbolic_lite` and `_REGISTRY_MONKEYPATCH_SURFACE` already have repository-local test or compatibility history. Premature deletion would turn an architecture cleanup into a behavioral break.
 Date/Author: 2026-06-01 / Copilot (GPT-5.4)
 
+Decision: stop the first traversal extraction at the read-only walkers that already agree on a node-plus-path contract.
+Rationale: reworking env-carrying walkers in the same slice would have turned a structural hardening plan into a broader behavior refactor. `variable_usage_reporting` and `_sfc_module_walk` were enough to establish the shared seam without forcing unrelated analyzers through an unproven abstraction.
+Date/Author: 2026-06-01 / Copilot (GPT-5.4)
+
 ## Outcomes & Retrospective
 
-This section is intentionally incomplete until implementation finishes. The intended outcome is not only a cleaner analyzer tree, but a package that now explains and enforces its own conventions. The main risk is overreach: if the work expands into every duplicated helper and every `.casefold()` call in the repository, the highest-value drift-prevention slices will stall. Success for this plan is narrower and more concrete: new analyzer drift becomes difficult to introduce, registry naming becomes coherent, internal helper ownership becomes legible, and the most copied traversal and origin seams gain one canonical home.
+The analyzer package now enforces its own high-signal structure instead of relying on convention memory. The canonical registry-facing analyzer keys are kebab-case, legacy underscore spellings still resolve through one centralized alias seam, reporting-only variable usage helpers no longer look like registry analyzers, and the internal variable helper modules now advertise their private status directly through underscore-prefixed filenames.
+
+The architectural ratchet is observable from the repository root. `tests/test_analyzer_architecture.py` now fails on new underscore registry keys, on new non-registry `analyze_*` functions unless they are explicitly exempted, and on mixed absolute/relative analyzer-package imports. The first shared traversal seam lives in `src/sattlint/analyzers/_walk_utils.py`, and the first shared analyzer-owned origin seam now lives in `src/sattlint/analyzers/variable_utils.py` as `matches_root_origin(...)`.
+
+The deferred cleanup review did not justify deletion. `symbolic_lite` still has delivery metadata and artifact-registry references, `_REGISTRY_MONKEYPATCH_SURFACE` still protects test and helper monkeypatch seams, and `_report_defaults` still has active analyzer callers. The main lesson from execution was scope control: the plan succeeded because it hardened structure first and only extracted the smallest shared seams that could be validated with existing owner suites.
 
 ## Context and Orientation
 
 The analyzer package lives under `src/sattlint/analyzers/`. In this repository, an `analyzer` is a callable exposed through the shared registry so CLI or reporting surfaces can select it by key. The registry owner file is `src/sattlint/analyzers/registry.py`. It imports public analyzer entry points, exposes default analyzer subsets, and builds analyzer metadata from `src/sattlint/analyzers/_registry_specs.py`. The spec-template source of truth is `src/sattlint/analyzers/_registry_spec_templates.py`, where each `AnalyzerSpecTemplate` row defines the analyzer key, description, and registry attribute name. A `registry key` is the string a user or internal caller selects, such as `variables` or `picture-display-paths`.
 
-The variables analyzer has grown into a particularly important owner surface for this plan. `src/sattlint/analyzers/variables.py` is the public analyzer entry point. It already delegates many responsibilities into sibling helper modules such as `src/sattlint/analyzers/_variables_submodules.py`, `src/sattlint/analyzers/_variables_execution.py`, `src/sattlint/analyzers/_variables_access.py`, `src/sattlint/analyzers/usage_tracker.py`, `src/sattlint/analyzers/validators.py`, `src/sattlint/analyzers/variable_issue_collection.py`, and `src/sattlint/analyzers/variable_traversal.py`. Some of those helpers are effectively private but still use public module names. That matters because public module names invite future imports and make the package boundary look less intentional than it is.
+The variables analyzer has grown into a particularly important owner surface for this plan. `src/sattlint/analyzers/variables.py` is the public analyzer entry point. It already delegates many responsibilities into sibling helper modules such as `src/sattlint/analyzers/_variables_submodules.py`, `src/sattlint/analyzers/_variables_execution.py`, `src/sattlint/analyzers/_variables_access.py`, `src/sattlint/analyzers/_usage_tracker.py`, `src/sattlint/analyzers/_validators.py`, `src/sattlint/analyzers/_variable_issue_collection.py`, and `src/sattlint/analyzers/_variable_traversal.py`. Those helpers are intentionally private now, which makes the package boundary more legible than the pre-plan public-looking module names.
 
 `src/sattlint/analyzers/variable_usage_reporting.py` is related but different. It does not currently behave like a shared analyzer registry surface. Instead, it contains reporting helpers that build human-readable strings for variable usage inspection workflows in `src/sattlint/app_analysis.py`. This distinction matters because the architecture test for public `analyze_*` entry points must not force every reporting helper into the analyzer registry by accident.
 
@@ -193,6 +204,14 @@ Key files the executor will touch during this plan:
     - `src/sattlint/analyzers/_walk_utils.py`
     - `tests/test_analyzer_architecture.py`
     - the nearest existing variable and reset-contamination helper suites under `tests/`
+
+Validation executed during implementation:
+
+    - `bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_analyzer_architecture.py tests/test_analyzers_suites.py tests/test_cli.py::test_run_cli_analyze_passes_opt_in_state_inference_key tests/test_app_analysis.py::test_run_checks_runs_selected_non_default_cli_exposed_analyzer tests/test_app_analysis.py::test_run_checks_updates_live_status_for_active_analyzer tests/test_app_analysis.py::test_run_checks_uses_cached_report_when_available tests/test_app_analysis.py::test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale tests/test_app_analysis.py::test_run_checks_handles_keyboard_interrupt_and_pauses tests/test_app_analysis.py::test_run_checks_accepts_legacy_underscore_analyzer_key tests/analyzers/test_data_dependency.py tests/analyzers/test_signal_lifecycle.py tests/analyzers/test_loop_stability.py tests/analyzers/test_fault_handling.py tests/analyzers/test_numeric_constraints.py tests/analyzers/test_resource_usage.py tests/analyzers/test_scan_concurrency.py tests/analyzers/test_interface_contracts.py tests/analyzers/test_dataflow.py tests/analyzers/test_sattline_semantics_tail.py tests/test_docgen.py -x -q --tb=short`
+    - `bash scripts/run_repo_python.sh -m pytest --no-cov tests/test_variables_helper_coverage.py tests/test_variables_access_and_contract_helpers.py tests/test_reset_contamination_ratchet.py tests/test_reset_contamination_ratchet_helpers.py tests/test_reset_contamination_latching_helpers.py tests/analyzers/test_reset_contamination.py -x -q --tb=short`
+    - `bash scripts/run_repo_python.sh -m pytest --no-cov tests/analyzers/test_variable_usage_reporting.py tests/analyzers/test_sfc.py::test_iter_sfc_modulecodes_covers_root_nested_modules_and_typedefs tests/devtools/test_tracing.py::test_iter_sfc_modulecodes_yields_root_and_nested tests/devtools/test_tracing.py::test_iter_sfc_modulecodes_yields_moduletype_defs tests/test_variables_access_and_contract_helpers.py tests/test_reset_contamination_ratchet.py -x -q --tb=short`
+    - `bash scripts/run_repo_python.sh -m ruff check <touched plan-66 python files>`
+    - `bash scripts/run_repo_python.sh -m pyright <touched plan-66 source files>`
 
 Expected steady-state conventions after implementation:
 

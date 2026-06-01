@@ -420,6 +420,25 @@ def test_variable_issue_collection_direct_global_helpers_cover_remaining_branche
     issues.clear()
     helper.access_graph = SimpleNamespace(
         events=[
+            _access_event(
+                ("root", "shared", "field"), ["Root", "Writer"], variable_issue_collection_module.AccessKind.WRITE
+            ),
+            _access_event(
+                ("root", "shared", "otherfield"),
+                ["Root", "Reader"],
+                variable_issue_collection_module.AccessKind.READ,
+            ),
+        ]
+    )
+    variable_issue_collection_module._add_hidden_global_coupling_issues(helper)
+
+    assert len(issues) == 1
+    assert "Writer (write)" in (issues[0].role or "")
+    assert "Reader (read)" in (issues[0].role or "")
+
+    issues.clear()
+    helper.access_graph = SimpleNamespace(
+        events=[
             _access_event(("root", "shared"), ["Root", "ReaderA"], variable_issue_collection_module.AccessKind.READ),
             _access_event(("root", "shared"), ["Root", "ReaderB"], variable_issue_collection_module.AccessKind.READ),
         ]
@@ -460,6 +479,84 @@ def test_variable_issue_collection_direct_global_helpers_cover_remaining_branche
     assert len(issues) == 1
     assert "module subtree Worker" in (issues[0].role or "")
     assert "Worker.Nested" in (issues[0].role or "")
+
+
+def _mapped_root_variable_read_module(name: str) -> SingleModule:
+    return SingleModule(
+        header=_hdr(name),
+        moduledef=None,
+        moduleparameters=[Variable(name="Signal", datatype=Simple_DataType.INTEGER)],
+        localvariables=[Variable(name="Copy", datatype=Simple_DataType.INTEGER)],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                Equation(
+                    name="Main",
+                    position=(0.0, 0.0),
+                    size=(1.0, 1.0),
+                    code=[(const.KEY_ASSIGN, _varref("Copy"), _varref("Signal"))],
+                )
+            ]
+        ),
+        parametermappings=[
+            ParameterMapping(
+                target=_varref("Signal"),
+                source_type=const.TREE_TAG_VARIABLE_NAME,
+                is_duration=False,
+                is_source_global=False,
+                source=_varref("Shared"),
+                source_literal=None,
+            )
+        ],
+    )
+
+
+def test_variables_analyzer_records_root_variable_access_summary_phase_timing():
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[Variable(name="Shared", datatype=Simple_DataType.INTEGER)],
+        submodules=[_mapped_root_variable_read_module("Reader"), _mapped_root_variable_read_module("Writer")],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(
+        bp,
+        selected_issue_kinds=frozenset({IssueKind.HIDDEN_GLOBAL_COUPLING}),
+    )
+    analyzer.run()
+
+    phases = [entry["phase"] for entry in analyzer.phase_timings]
+    assert "root-variable-access-summary-build" in phases
+    assert "final-issue-synthesis" in phases
+
+
+def test_variables_analyzer_reuse_resets_access_state_for_limited_rerun():
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[Variable(name="Shared", datatype=Simple_DataType.INTEGER)],
+        submodules=[_mapped_root_variable_read_module("ReaderA"), _mapped_root_variable_read_module("ReaderB")],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    analyzer = VariablesAnalyzer(
+        bp,
+        selected_issue_kinds=frozenset({IssueKind.HIDDEN_GLOBAL_COUPLING}),
+    )
+    analyzer.run()
+
+    first_paths = {event.use_module_path for event in analyzer.access_graph.events}
+    assert first_paths == {("Root", "ReaderA"), ("Root", "ReaderB")}
+
+    analyzer.run(limit_to_module_path=["Root", "ReaderA"])
+
+    second_paths = {event.use_module_path for event in analyzer.access_graph.events}
+    assert second_paths == {("Root", "ReaderA")}
 
 
 def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_branches():
@@ -542,3 +639,132 @@ def test_variable_issue_collection_collect_module_issue_helper_covers_remaining_
         "localvariable",
         None,
     ) in issues
+
+
+def test_variable_issue_collection_nested_scope_and_magic_helpers_cover_remaining_branches(monkeypatch):
+    nested_param = Variable(name="NestedParam", datatype="OuterPayload")
+    nested_local = Variable(name="NestedLocal", datatype=Simple_DataType.INTEGER)
+    child_local = Variable(name="ChildLocal", datatype=Simple_DataType.INTEGER)
+    whole_access_var = Variable(name="WholeAccess", datatype="WholePayload")
+    primitive_var = Variable(name="Primitive", datatype=Simple_DataType.INTEGER)
+    missing_field_var = Variable(name="MissingField", datatype="MissingFieldPayload")
+    detached_var = Variable(name="Detached", datatype="DetachedPayload")
+
+    nested_state = {
+        "innerpayload": {
+            "accessed_prefixes": set(),
+            "has_whole_access": False,
+        }
+    }
+    type_records = {
+        "OuterPayload": SimpleNamespace(fields_by_key={"inner": SimpleNamespace(datatype="InnerPayload")}),
+        "MissingFieldPayload": SimpleNamespace(fields_by_key={}),
+        "DetachedPayload": SimpleNamespace(fields_by_key={"inner": SimpleNamespace(datatype="DetachedInner")}),
+        "WholePayload": SimpleNamespace(fields_by_key={"inner": SimpleNamespace(datatype="InnerPayload")}),
+    }
+    issues: list[VariableIssue] = []
+    helper: Any = SimpleNamespace(
+        bp=BasePicture(
+            header=_hdr("Root"),
+            datatype_defs=[
+                DataType(
+                    name="WholePayload",
+                    description=None,
+                    datecode=None,
+                    var_list=[Variable(name="Inner", datatype="InnerPayload")],
+                )
+            ],
+            moduletype_defs=[],
+            localvariables=[],
+            submodules=[
+                SingleModule(
+                    header=_hdr("Parent"),
+                    moduledef=None,
+                    moduleparameters=[nested_param],
+                    localvariables=[nested_local],
+                    submodules=[
+                        SingleModule(
+                            header=_hdr("Child"),
+                            moduledef=None,
+                            moduleparameters=[],
+                            localvariables=[child_local],
+                            submodules=[],
+                            modulecode=None,
+                            parametermappings=[],
+                        )
+                    ],
+                    modulecode=None,
+                    parametermappings=[],
+                )
+            ],
+            modulecode=None,
+            moduledef=None,
+        ),
+        analyzed_target_is_library=False,
+        include_dependency_moduletype_usage=False,
+        limit_to_module_path=None,
+        contexts_by_module_path={},
+        is_from_root_origin=lambda *args, **kwargs: True,
+        type_graph=SimpleNamespace(
+            record=lambda name: type_records.get(name),
+            iter_leaf_field_paths=lambda name: {"WholePayload": [("Inner", "Leaf")]}.get(name, []),
+        ),
+        get_usage=lambda variable: {
+            id(whole_access_var): _UsageStub(usage_locations=[("Root", "read")]),
+        }.get(id(variable), _UsageStub()),
+        append_issue=lambda issue: issues.append(issue),
+        trace=lambda *args, **kwargs: None,
+        site_str=lambda: "Root > Worker",
+    )
+
+    collected = variable_issue_collection_module._iter_variables_for_datatype_field_analysis(helper)
+    collected_names = [variable.name for _, variable, _, _ in collected]
+    assert collected_names == ["NestedParam", "NestedLocal", "ChildLocal"]
+
+    variable_issue_collection_module._record_nested_datatype_access(helper, nested_state, nested_param, "")
+    variable_issue_collection_module._record_nested_datatype_access(helper, nested_state, primitive_var, "Inner")
+    variable_issue_collection_module._record_nested_datatype_access(helper, nested_state, missing_field_var, "Inner")
+    variable_issue_collection_module._record_nested_datatype_access(helper, nested_state, detached_var, "Inner")
+    variable_issue_collection_module._record_nested_datatype_access(helper, nested_state, nested_param, "Inner")
+    assert nested_state["innerpayload"]["accessed_prefixes"] == set()
+    assert nested_state["innerpayload"]["has_whole_access"] is True
+
+    helper.bp.localvariables = [whole_access_var]
+    helper.bp.submodules = []
+    variable_issue_collection_module._add_unused_datatype_field_issues(helper)
+    assert issues == []
+
+    summary_without_modules = variable_issue_collection_module._RootVariableAccessSummary()
+    divergent_summary = variable_issue_collection_module._RootVariableAccessSummary(
+        access_module_keys={("left", "branch"), ("right", "branch")},
+        display_paths={
+            ("left", "branch"): ("Left", "Branch"),
+            ("right", "branch"): ("Right", "Branch"),
+        },
+    )
+    shared = Variable(name="Shared", datatype=Simple_DataType.INTEGER)
+    helper.bp.localvariables = [shared]
+
+    monkeypatch.setattr(
+        variable_issue_collection_module,
+        "_build_root_variable_access_summaries",
+        lambda _self: {"shared": summary_without_modules},
+    )
+    variable_issue_collection_module._add_global_scope_minimization_issues(helper)
+    assert issues == []
+
+    monkeypatch.setattr(
+        variable_issue_collection_module,
+        "_build_root_variable_access_summaries",
+        lambda _self: {"shared": divergent_summary},
+    )
+    variable_issue_collection_module._add_global_scope_minimization_issues(helper)
+    assert issues == []
+
+    variable_issue_collection_module._add_magic_number_issue(helper, ["Root", "Worker"], 0, None)
+    variable_issue_collection_module._add_magic_number_issue(helper, ["Root", "Worker"], 7, None)
+
+    assert len(issues) == 1
+    assert issues[0].kind is IssueKind.MAGIC_NUMBER
+    assert issues[0].literal_value == 7
+    assert issues[0].site == "Root > Worker"

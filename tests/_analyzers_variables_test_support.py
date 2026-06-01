@@ -28,8 +28,8 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
+from sattlint.analyzers import _variable_issue_collection as variable_issue_collection_module
 from sattlint.analyzers import _variables_execution as variables_execution_module
-from sattlint.analyzers import variable_issue_collection as variable_issue_collection_module
 from sattlint.analyzers.shadowing import analyze_shadowing
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 from sattlint.engine import parse_source_file

@@ -426,3 +426,92 @@ ENDDEF (*BasePicture*);
     assert (
         "maps 'Flag' with datatype 'boolean' to parameter target 'Value' with datatype 'integer'" in warnings[0].message
     )
+
+
+def test_validate_transformed_basepicture_locally_warns_incompatible_parameter_mapping():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+    ChildType = MODULEDEFINITION DateCode_ 2
+    MODULEPARAMETERS
+        Value: integer;
+    ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    ENDDEF (*ChildType*);
+LOCALVARIABLES
+    Flag: boolean := False;
+SUBMODULES
+    Child Invocation (0.0,0.0,0.0,1.0,1.0) : ChildType (
+        Value => Flag
+    );
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+    bp = _parse_to_basepicture(code)
+    warnings = []
+
+    validate_transformed_basepicture_locally(
+        bp,
+        warning_sink=warnings.append,
+    )
+
+    assert len(warnings) == 1
+    assert warnings[0].line == 17
+    assert warnings[0].column == 9
+    assert (
+        "maps 'Flag' with datatype 'boolean' to parameter target 'Value' with datatype 'integer'" in warnings[0].message
+    )
+
+
+def test_validate_transformed_basepicture_locally_ignores_incompatible_parameter_mapping_without_sink():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+    ChildType = MODULEDEFINITION DateCode_ 2
+    MODULEPARAMETERS
+        Value: integer;
+    ModuleDef
+    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+    ENDDEF (*ChildType*);
+LOCALVARIABLES
+    Flag: boolean := False;
+SUBMODULES
+    Child Invocation (0.0,0.0,0.0,1.0,1.0) : ChildType (
+        Value => Flag
+    );
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+    bp = _parse_to_basepicture(code)
+
+    validate_transformed_basepicture_locally(bp)
+
+
+def test_validate_transformed_basepicture_locally_ignores_builtin_arity_mismatch_without_sink():
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+LOCALVARIABLES
+    Name1: string;
+    Name2: string;
+    Match: boolean := False;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :
+        Match = EqualStrings(Name1, Name2);
+ENDDEF (*BasePicture*);
+"""
+    bp = _parse_to_basepicture(code)
+
+    validate_transformed_basepicture_locally(bp)

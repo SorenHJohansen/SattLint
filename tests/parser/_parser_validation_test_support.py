@@ -32,6 +32,7 @@ from sattlint.engine import (
     create_sl_parser,
     validate_single_file_syntax,
     validate_transformed_basepicture,
+    validate_transformed_basepicture_locally,
 )
 from sattlint.resolution.type_graph import TypeGraph
 
@@ -90,5 +91,6 @@ __all__ = [
     "strip_sl_comments",
     "validate_single_file_syntax",
     "validate_transformed_basepicture",
+    "validate_transformed_basepicture_locally",
     "validation_module",
 ]

@@ -37,6 +37,65 @@ def test_scope_context_resolve_global_name_walks_parent():
     assert var is parent_var
 
 
+def test_scope_context_resolve_variable_caches_parent_lookup_result():
+    from sattline_parser.models.ast_model import Variable
+    from sattlint.resolution.scope import ScopeContext
+
+    parent_var = Variable(name="Sig", datatype="Integer")
+    parent_ctx = ScopeContext(
+        env={"sig": parent_var},
+        param_mappings={},
+        module_path=["Root"],
+        display_module_path=["Root"],
+    )
+    child_ctx = ScopeContext(
+        env={},
+        param_mappings={},
+        module_path=["Root", "Child"],
+        display_module_path=["Root", "Child"],
+        parent_context=parent_ctx,
+    )
+
+    first = child_ctx.resolve_variable("SIG.Field")
+    second = child_ctx.resolve_variable("sig.field")
+
+    assert first == second
+    assert child_ctx._resolve_cache["sig.field"] == first
+
+
+def test_scope_context_resolve_variable_prefix_plus_field_and_unresolved_paths():
+    from sattline_parser.models.ast_model import Variable
+    from sattlint.resolution.scope import ScopeContext
+
+    src_var = Variable(name="Dv", datatype="UserType")
+    ctx = ScopeContext(
+        env={},
+        param_mappings={"sig": (src_var, "I.WT001", ["Lib", "Main"], ["Lib", "Main"])},
+        module_path=["Main"],
+        display_module_path=["Main"],
+    )
+
+    resolved = ctx.resolve_variable("sig.Comp_signal.value")
+    unresolved = ctx.resolve_variable("missing.Field")
+
+    assert resolved == (src_var, "I.WT001.Comp_signal.value", ["Lib", "Main"], ["Lib", "Main"])
+    assert unresolved == (None, "Field", ["Main"], ["Main"])
+    assert ctx._resolve_cache["missing.field"] == unresolved
+
+
+def test_scope_context_resolve_global_name_unresolved_without_parent_uses_local_paths():
+    from sattlint.resolution.scope import ScopeContext
+
+    ctx = ScopeContext(
+        env={},
+        param_mappings={},
+        module_path=["Root", "Child"],
+        display_module_path=["Root", "Child"],
+    )
+
+    assert ctx.resolve_global_name("Unknown") == (None, ["Root", "Child"], ["Root", "Child"])
+
+
 # --- contracts/findings.py ---
 def test_finding_location_to_dict_and_from_mapping():
     from sattlint.contracts.findings import FindingLocation
@@ -398,6 +457,45 @@ def test_simple_report_summary_with_issues():
     summary = report.summary()
     assert "Findings:" in summary
     assert "Something is wrong" in summary
+
+
+def test_simple_report_summary_formats_metadata_and_analysis_context_fallback():
+    from types import SimpleNamespace
+
+    from sattline_parser.models.ast_model import BasePicture, ModuleHeader
+    from sattlint.analyzers.framework import AnalysisContext, Issue, SimpleReport
+
+    issue = Issue(
+        kind="test.issue",
+        message="Something is wrong",
+        module_path=["Main", "Guard"],
+        severity="high",
+        confidence="medium",
+        rule_id="TEST-001",
+        explanation="Because this path is invalid.",
+        suggestion="Fix the configuration.",
+    )
+    report = SimpleReport(name="TestReport", issues=[issue])
+    summary = report.summary()
+
+    assert "[high | medium | TEST-001]" in summary
+    assert "Why it matters: Because this path is invalid." in summary
+    assert "Suggested fix: Fix the configuration." in summary
+
+    bp = BasePicture(
+        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 0.0, 0.0)),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+    with_graph = AnalysisContext(base_picture=bp, graph=SimpleNamespace(unavailable_libraries={"ControlLib"}))
+    without_graph = AnalysisContext(base_picture=bp)
+
+    assert with_graph.unavailable_libraries == {"ControlLib"}
+    assert without_graph.unavailable_libraries == set()
 
 
 # --- models/usage.py: all branches ---

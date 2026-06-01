@@ -2,6 +2,7 @@
 
 """Tests for app analysis project loading and AST cache behavior."""
 
+import json
 import pickle
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,10 +28,11 @@ from tests.helpers.app_projects import build_mini_project_context
 
 def test_load_project_returns_cached_project_without_building_loader(monkeypatch):
     cached_graph = SimpleNamespace()
-    cached_project = ("bp-cached", cached_graph)
+    cached_root = SimpleNamespace(header=SimpleNamespace(name="TargetA"))
     seen_cache_dirs: list[Path] = []
-    validate_calls: list[tuple[object, bool]] = []
-    cached_payload = {"project": cached_project, "files": {"programs/TargetA.s": (1, 1)}}
+    validate_calls: list[tuple[str, bool]] = []
+    merge_calls: list[tuple[object, object]] = []
+    cached_payload = {"project": (cached_root, cached_graph)}
 
     class FakeCache:
         def __init__(self, cache_dir):
@@ -41,15 +43,24 @@ def test_load_project_returns_cached_project_without_building_loader(monkeypatch
             assert key == "cache-key"
             return cached_payload
 
-        def validate(self, payload, *, fast=False):
-            validate_calls.append((payload, fast))
+        def validate(self, key, *, fast=False):
+            validate_calls.append((key, fast))
             return True
+
+        def manifest_paths(self, key):
+            assert key == "cache-key"
+            return frozenset({Path("programs/TargetA.s")})
 
     monkeypatch.setattr(app_analysis, "ASTCache", FakeCache)
     monkeypatch.setattr(
         app_analysis.engine_module,
         "SattLineProjectLoader",
         lambda **_kwargs: pytest.fail("loader should not be created"),
+    )
+    monkeypatch.setattr(
+        app_analysis.engine_module,
+        "merge_project_basepicture",
+        lambda root_bp, graph: merge_calls.append((root_bp, graph)) or ("bp-cached", graph),
     )
 
     result = app_analysis.load_project(
@@ -66,9 +77,10 @@ def test_load_project_returns_cached_project_without_building_loader(monkeypatch
         get_cache_dir_fn=lambda: Path("custom-cache-dir"),
     )
 
-    assert result == cached_project
+    assert result == (("bp-cached", cached_graph), cached_graph)
     assert seen_cache_dirs == [Path("custom-cache-dir")]
-    assert validate_calls == [(cached_payload, False)]
+    assert validate_calls == [("cache-key", False)]
+    assert merge_calls == [(cached_root, cached_graph)]
     assert cached_graph.analysis_cache_key == "cache-key"
     assert cached_graph.analysis_manifest_files == frozenset({Path("programs/TargetA.s")})
 
@@ -84,10 +96,10 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
 
         def load(self, key):
             assert key == "cache-key"
-            return {"project": cached_project, "files": {"programs/TargetA.s": (1, 1)}}
+            return {"project": cached_project}
 
-        def validate(self, payload, *, fast=False):
-            assert payload["project"] == cached_project
+        def validate(self, key, *, fast=False):
+            assert key == "cache-key"
             assert fast is False
             return False
 
@@ -148,7 +160,7 @@ def test_load_project_rebuilds_when_cached_project_is_invalid(monkeypatch):
     assert len(save_calls) == 1
     assert save_calls[0][0] == "cache-key"
     saved_project, cached_graph = cast(tuple[object, object], save_calls[0][1]["project"])
-    assert saved_project == ("bp-fresh", "TargetA")
+    assert getattr(saved_project, "header", None).name == "TargetA"
     assert getattr(cached_graph, "source_files", None) == {Path("programs/TargetA.s")}
     assert save_calls[0][1]["files"] == {Path("programs/TargetA.s")}
 
@@ -329,6 +341,15 @@ def test_load_project_saves_full_mode_file_family_in_cache_manifest(
             assert key == "cache-key"
             return None
 
+        def validate(self, key, *, fast=False):
+            assert key == "cache-key"
+            assert fast is False
+            return False
+
+        def manifest_paths(self, key):
+            assert key == "cache-key"
+            return frozenset()
+
         def save(self, key, **kwargs):
             save_calls.append((key, kwargs))
 
@@ -386,7 +407,7 @@ def test_load_project_saves_full_mode_file_family_in_cache_manifest(
         (
             "cache-key",
             {
-                "project": (("bp-fresh", "TargetA"), saved_graph),
+                "project": (root_bp, saved_graph),
                 "files": {code_path, deps_path, graphics_path},
             },
         )
@@ -402,6 +423,13 @@ def test_load_project_raises_target_load_error_when_root_program_missing(monkeyp
 
         def load(self, key):
             return None
+
+        def validate(self, key, *, fast=False):
+            assert fast is False
+            return False
+
+        def manifest_paths(self, key):
+            return frozenset()
 
         def save(self, key, **kwargs):
             pytest.fail("cache should not be saved when root program is missing")
@@ -515,6 +543,15 @@ def test_load_project_library_target_includes_configured_reverse_consumers(monke
             assert key == "cache-key"
             return None
 
+        def validate(self, key, *, fast=False):
+            assert key == "cache-key"
+            assert fast is False
+            return False
+
+        def manifest_paths(self, key):
+            assert key == "cache-key"
+            return frozenset()
+
         def save(self, key, **kwargs):
             save_calls.append((key, kwargs))
 
@@ -605,6 +642,15 @@ def test_load_project_library_target_includes_workspace_reverse_consumers(monkey
         def load(self, key):
             assert key == "cache-key"
             return None
+
+        def validate(self, key, *, fast=False):
+            assert key == "cache-key"
+            assert fast is False
+            return False
+
+        def manifest_paths(self, key):
+            assert key == "cache-key"
+            return frozenset()
 
         def save(self, key, **kwargs):
             save_calls.append((key, kwargs))
@@ -739,6 +785,15 @@ def test_load_project_library_target_workspace_program_usage_suppresses_unused_d
         def load(self, key):
             assert key == "cache-key"
             return None
+
+        def validate(self, key, *, fast=False):
+            assert key == "cache-key"
+            assert fast is False
+            return False
+
+        def manifest_paths(self, key):
+            assert key == "cache-key"
+            return frozenset()
 
         def save(self, key, **kwargs):
             assert key == "cache-key"
@@ -876,6 +931,7 @@ def test_force_refresh_ast_emits_stage_timing_summary_in_debug_mode(monkeypatch)
 
     graph = SimpleNamespace(
         load_stage_timings={"load_or_parse": 1.25, "validate": 0.75, "ast_cache_save": 0.25},
+        graphics_load_timings={"validate-graphics-file": 0.4, "picture-display-warnings": 0.1},
     )
 
     result = app_analysis.force_refresh_ast(
@@ -901,6 +957,80 @@ def test_force_refresh_ast_emits_stage_timing_summary_in_debug_mode(monkeypatch)
     assert result == ("bp", graph)
 
 
+def test_force_refresh_ast_collects_stage_timings_and_writes_telemetry_when_enabled(tmp_path, monkeypatch):
+    lines: list[str] = []
+    load_calls: list[tuple[str, str, bool]] = []
+
+    class FakeCache:
+        def __init__(self, cache_dir):
+            self.cache_dir = cache_dir
+
+        def clear(self, _key):
+            return None
+
+    telemetry_path = tmp_path / "telemetry.jsonl"
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(str(message)))
+    monkeypatch.setattr(app_analysis.telemetry_module, "get_config_path", lambda: tmp_path / "config.toml")
+
+    graph = SimpleNamespace(
+        load_stage_timings={"load_or_parse": 1.25, "validate": 0.75, "ast_cache_save": 0.25},
+        graphics_load_timings={"validate-graphics-file": 0.4, "picture-display-warnings": 0.1},
+    )
+
+    result = app_analysis.force_refresh_ast(
+        {
+            "analyzed_programs_and_libraries": ["TargetA"],
+            "debug": False,
+            "telemetry": {"enabled": True},
+        },
+        cache_key_for_target_fn=lambda _cfg, target_name: f"key:{target_name}",
+        load_project_fn=cast(
+            Any,
+            lambda _cfg, target_name=None, use_cache=True, use_file_ast_cache=True, refresh_mode="full", collect_stage_timings=False: (
+                load_calls.append((target_name or "", refresh_mode, collect_stage_timings)) or ("bp", graph)
+            ),
+        ),
+        ast_cache_cls=cast(Any, FakeCache),
+        get_cache_dir_fn=lambda: Path("cache-dir"),
+    )
+
+    events = [json.loads(line) for line in telemetry_path.read_text(encoding="utf-8").splitlines()]
+
+    assert load_calls == [("TargetA", "ast-only", True)]
+    assert any("AST refresh stage totals:" in line for line in lines)
+    assert len(events) == 1
+    assert events[0]["kind"] == "sattlint.app.telemetry"
+    assert events[0]["operation"] == "ast-refresh"
+    assert events[0]["target_name"] == "TargetA"
+    assert events[0]["success"] is True
+    assert events[0]["payload"]["stage_timings_s"] == {
+        "ast_cache_save": 0.25,
+        "load_or_parse": 1.25,
+        "validate": 0.75,
+    }
+    assert events[0]["payload"]["stage_timings_ms"] == {
+        "ast_cache_save": 250.0,
+        "load_or_parse": 1250.0,
+        "validate": 750.0,
+    }
+    assert events[0]["payload"]["stage_bottleneck"] == {
+        "kind": "stage",
+        "name": "load_or_parse",
+        "duration_ms": 1250.0,
+    }
+    assert events[0]["payload"]["graphics_timings_ms"] == {
+        "picture-display-warnings": 100.0,
+        "validate-graphics-file": 400.0,
+    }
+    assert events[0]["payload"]["graphics_bottleneck"] == {
+        "kind": "graphics-phase",
+        "name": "validate-graphics-file",
+        "duration_ms": 400.0,
+    }
+    assert events[0]["payload"]["bottleneck_kind"] == "stage"
+    assert result == ("bp", graph)
+
+
 def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypatch):
     lines: list[str] = []
     load_calls: list[str] = []
@@ -911,17 +1041,23 @@ def test_ensure_ast_cache_handles_valid_fast_path_rebuilds_and_failures(monkeypa
 
         def load(self, key):
             mapping = {
-                "key:Fresh": {"name": "Fresh", "files": ["a"]},
-                "key:Stale": {"name": "Stale", "files": ["a"]},
+                "key:Fresh": {"name": "Fresh"},
+                "key:Stale": {"name": "Stale"},
                 "key:Old": {"name": "Old"},
                 "key:Broken": None,
             }
             return mapping[key]
 
-        def validate(self, cached, fast=False):
+        def has_payload(self, key):
+            return self.load(key) is not None
+
+        def has_manifest(self, key):
+            return key in {"key:Fresh", "key:Stale"}
+
+        def validate(self, key, fast=False):
             # fast_cache_validation=True → validate is always called with fast=True.
             # "Fresh" is the only cache entry that passes validation.
-            return fast is True and cached.get("name") == "Fresh"
+            return fast is True and key == "key:Fresh"
 
     def fake_load_project(_cfg, target_name=None, use_cache=True, use_file_ast_cache=True):
         resolved_target = target_name or ""
@@ -967,12 +1103,14 @@ def test_ensure_ast_cache_slow_path_passes_fast_false_to_validate(monkeypatch):
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def load(self, key):
-            if key == "key:Ok":
-                return {"name": "Ok", "files": ["x"]}
-            return None
+        def has_payload(self, key):
+            return key == "key:Ok"
 
-        def validate(self, cached, fast=False):
+        def has_manifest(self, key):
+            return key == "key:Ok"
+
+        def validate(self, key, fast=False):
+            assert key == "key:Ok"
             validate_fast_args.append(fast)
             return True
 
@@ -1005,12 +1143,14 @@ def test_ensure_ast_cache_fast_path_passes_fast_true_to_validate_when_manifest_p
         def __init__(self, cache_dir):
             self.cache_dir = cache_dir
 
-        def load(self, key):
-            if key == "key:Ok":
-                return {"name": "Ok", "files": ["x"]}
-            return None
+        def has_payload(self, key):
+            return key == "key:Ok"
 
-        def validate(self, cached, fast=False):
+        def has_manifest(self, key):
+            return key == "key:Ok"
+
+        def validate(self, key, fast=False):
+            assert key == "key:Ok"
             validate_fast_args.append(fast)
             return True
 

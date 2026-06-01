@@ -1,19 +1,14 @@
 """Parsing and project-loading engine for SattLine sources."""
 
-import contextlib
 import inspect
 import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
-from enum import Enum
 from pathlib import Path
 from time import perf_counter
-from typing import cast
 
 from lark import Lark
-from lark.exceptions import UnexpectedInput, VisitError
 
-from sattline_parser import create_parser as parser_core_create_parser
 from sattline_parser import parse_source_file as parser_core_parse_source_file
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.api import describe_parse_error, read_text_with_fallback
@@ -21,6 +16,7 @@ from sattline_parser.grammar.parser_decode import is_compressed, preprocess_sl_t
 from sattline_parser.models.ast_model import BasePicture, DataType, ModuleTypeDef
 from sattline_parser.transformer.sl_transformer import SLTransformer
 
+from . import _engine_syntax_helpers as engine_syntax_helpers
 from ._engine_dependency_helpers import collect_dependency_version_conflicts as _collect_dependency_version_conflicts
 from ._engine_graphics_helpers import (
     attach_graphics_companion as _attach_graphics_companion,
@@ -42,31 +38,25 @@ from ._engine_graphics_helpers import (
 )
 from ._validation_shared import ValidationNotice, ValidationWarning, coerce_validation_notice
 from .cache import FileASTCache, FileLookupCache, get_cache_dir
-from .graphics_validation import GraphicsValidationResult, validate_graphics_file
-from .models.project_graph import ProjectFailure, ProjectGraph
+from .graphics_validation import validate_graphics_file
+from .models.project_graph import ProjectGraph
 from .picture_display_paths import correlate_picture_display_records
 from .utils.text_processing import find_disallowed_comments
 from .validation import (
-    RawSourceValidationError,
+    LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION,
     StructuralValidationError,
     validate_transformed_basepicture,
+    validate_transformed_basepicture_dependency_context,
+    validate_transformed_basepicture_locally,
 )
 
 log = logging.getLogger("SattLint")
 
 ContextualFileLookup = Callable[[str, list[str], Path | None, str], Path | None]
 LoadStageTimingSink = Callable[[str, str, float], None]
-_EXPECTED_UNAVAILABLE_LIBRARY_REASONS: dict[str, str] = {
-    "controllib": "expected proprietary dependency",
-}
-
-
-def is_expected_unavailable_library(name: str) -> bool:
-    return name.casefold() in _EXPECTED_UNAVAILABLE_LIBRARY_REASONS
-
-
-def expected_unavailable_library_reason(name: str) -> str | None:
-    return _EXPECTED_UNAVAILABLE_LIBRARY_REASONS.get(name.casefold())
+GraphicsLoadTimingSink = Callable[[str, str, float], None]
+is_expected_unavailable_library = engine_syntax_helpers.is_expected_unavailable_library
+expected_unavailable_library_reason = engine_syntax_helpers.expected_unavailable_library_reason
 
 
 class CircularDependencyError(RuntimeError):
@@ -117,135 +107,38 @@ def _record_missing_library(
     graph.unavailable_libraries.add(name.casefold())
 
 
+SyntaxValidationResult = engine_syntax_helpers.SyntaxValidationResult
+
+
 @dataclass(frozen=True)
-class SyntaxValidationResult:
-    file_path: Path
-    ok: bool
-    stage: str
-    message: str | None = None
-    line: int | None = None
-    column: int | None = None
-    warnings: tuple[str, ...] = ()
-    warning_notices: tuple[ValidationNotice, ...] = ()
+class _PrefetchedDependencyCandidate:
+    name: str
+    requester_dir: Path | None
+    code_path: Path | None
+    deps_path: Path | None
 
 
-class CodeMode(Enum):
-    OFFICIAL = "official"  # .x code, .z deps
-    DRAFT = "draft"  # .s code, .l deps
+@dataclass(frozen=True)
+class _PrefetchedLoadResult:
+    basepicture: BasePicture
+    load_or_parse_duration_s: float
+    ast_cache_save_required: bool
 
 
-def code_ext(mode: CodeMode) -> str:
-    return ".x" if mode is CodeMode.OFFICIAL else ".s"
-
-
-def deps_ext(mode: CodeMode) -> str:
-    return ".z" if mode is CodeMode.OFFICIAL else ".l"
-
-
-def graphics_ext(mode: CodeMode) -> str:
-    return ".y" if mode is CodeMode.OFFICIAL else ".g"
-
-
-def graphics_ext_candidates(mode: CodeMode) -> tuple[str, ...]:
-    return (".y",) if mode is CodeMode.OFFICIAL else (".g", ".y")
-
-
-def normalize_code_mode(mode: CodeMode | str | None) -> CodeMode | None:
-    if mode is None:
-        return None
-    if isinstance(mode, CodeMode):
-        return mode
-    raw_mode = str(mode).strip().lower()
-    if not raw_mode:
-        return None
-    return CodeMode(raw_mode)
+CodeMode = engine_syntax_helpers.CodeMode
+code_ext = engine_syntax_helpers.code_ext
+deps_ext = engine_syntax_helpers.deps_ext
+graphics_ext = engine_syntax_helpers.graphics_ext
+graphics_ext_candidates = engine_syntax_helpers.graphics_ext_candidates
+normalize_code_mode = engine_syntax_helpers.normalize_code_mode
 
 
 _normalize_code_mode = normalize_code_mode
-
-
-def _graphics_validation_to_syntax_result(
-    file_path: Path,
-    result: GraphicsValidationResult,
-    *,
-    warnings: Iterable[ValidationWarning] = (),
-) -> SyntaxValidationResult:
-    notice_warnings = [coerce_validation_notice(warning) for warning in warnings]
-    notice_warnings.extend(ValidationNotice(message=message.message) for message in result.warnings)
-    combined_warnings = [notice.message for notice in notice_warnings]
-    if result.errors:
-        first_error = result.errors[0]
-        return SyntaxValidationResult(
-            file_path=file_path,
-            ok=False,
-            stage="graphics",
-            message=first_error.message,
-            line=first_error.line,
-            column=first_error.column,
-            warnings=tuple(combined_warnings),
-            warning_notices=tuple(notice_warnings),
-        )
-
-    return SyntaxValidationResult(
-        file_path=file_path,
-        ok=True,
-        stage="ok",
-        warnings=tuple(combined_warnings),
-        warning_notices=tuple(notice_warnings),
-    )
-
-
-def _record_project_failure(graph: ProjectGraph, name: str, exception: Exception) -> None:
-    message = f"{name} parse/transform error: {exception}"
-    line = getattr(exception, "line", None)
-    column = getattr(exception, "column", None)
-    length = getattr(exception, "length", None)
-    if isinstance(exception, VisitError):
-        line = line if line is not None else getattr(exception.orig_exc, "line", None)
-        column = column if column is not None else getattr(exception.orig_exc, "column", None)
-        length = length if length is not None else getattr(exception.orig_exc, "length", None)
-    graph.missing.append(message)
-    graph.failures[name.casefold()] = ProjectFailure(
-        name=name,
-        message=message,
-        line=line,
-        column=column,
-        length=length,
-    )
-
-
-def _record_project_warning(graph: ProjectGraph, name: str, message: ValidationWarning) -> None:
-    notice = coerce_validation_notice(message)
-    graph.warnings.append(f"{name}: {notice.message}")
-    warning_notices = getattr(graph, "warning_notices", None)
-    if isinstance(warning_notices, list):
-        cast(list[tuple[str, ValidationNotice]], warning_notices).append((name, notice))
-
-
-def _format_debug_list(title: str, entries: Iterable[str]) -> str:
-    items = [str(entry) for entry in entries]
-    if not items:
-        return f"{title}: none"
-
-    lines = [f"{title} ({len(items)}):"]
-    lines.extend(f"  - {item}" for item in items)
-    return "\n".join(lines)
-
-
-def _format_debug_missing_entries(entries: Iterable[str]) -> str:
-    items = [str(entry) for entry in entries]
-    if not items:
-        return "Missing/failed: none"
-
-    lines = [f"Missing/failed ({len(items)}):"]
-    for item in items:
-        library_name, separator, detail = item.partition(" parse/transform error: ")
-        if separator:
-            lines.append(f"  - {library_name}")
-            lines.append(f"    parse/transform error: {detail}")
-            continue
-        lines.append(f"  - {item}")
-    return "\n".join(lines)
+_graphics_validation_to_syntax_result = engine_syntax_helpers.graphics_validation_to_syntax_result
+_record_project_failure = engine_syntax_helpers.record_project_failure
+_record_project_warning = engine_syntax_helpers.record_project_warning
+_format_debug_list = engine_syntax_helpers.format_debug_list
+_format_debug_missing_entries = engine_syntax_helpers.format_debug_missing_entries
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -261,20 +154,13 @@ class DebugMixin:
                 log.debug(f"[DEBUG] {line}")
 
 
-def is_within_directory(path: Path, directory: Path) -> bool:
-    try:
-        path.resolve().relative_to(directory.resolve())
-        return True
-    except ValueError:
-        return False
-
-
+is_within_directory = engine_syntax_helpers.is_within_directory
 _is_within_directory = is_within_directory
 
 
-def create_sl_parser() -> Lark:
-    """Compatibility wrapper that delegates parser creation to parser-core."""
-    return parser_core_create_parser()
+create_sl_parser = engine_syntax_helpers.create_sl_parser
+_LOCAL_VALIDATION_MARKER_ATTR = engine_syntax_helpers.LOCAL_VALIDATION_MARKER_ATTR
+_ENGINE_PUBLIC_REEXPORTS = (ValidationNotice, LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION)
 
 
 def _load_source_text(
@@ -282,16 +168,13 @@ def _load_source_text(
     *,
     debug: Callable[[str], None] | None = None,
 ) -> str:
-    source_path = Path(code_path)
-    if debug is not None:
-        debug(f"Parsing file: {source_path}")
-
-    src = read_text_with_fallback(source_path)
-    if is_compressed(src):
-        if debug is not None:
-            debug("Compressed format detected; decoding before parsing")
-        src, _ = preprocess_sl_text(src)
-    return src
+    return engine_syntax_helpers.load_source_text(
+        code_path,
+        debug=debug,
+        read_text_with_fallback_fn=read_text_with_fallback,
+        is_compressed_fn=is_compressed,
+        preprocess_sl_text_fn=preprocess_sl_text,
+    )
 
 
 def parse_source_text(
@@ -301,15 +184,14 @@ def parse_source_text(
     transformer: SLTransformer | None = None,
     debug: Callable[[str], None] | None = None,
 ) -> BasePicture:
-    basepic = parser_core_parse_source_text(
+    return engine_syntax_helpers.parse_source_text(
         src,
         parser=parser,
         transformer=transformer,
         debug=debug,
+        parser_core_parse_source_text_fn=parser_core_parse_source_text,
+        validate_transformed_basepicture_fn=validate_transformed_basepicture,
     )
-    validate_transformed_basepicture(basepic)
-
-    return basepic
 
 
 def parse_source_file(
@@ -319,23 +201,35 @@ def parse_source_file(
     transformer: SLTransformer | None = None,
     debug: Callable[[str], None] | None = None,
 ) -> BasePicture:
-    basepic = parser_core_parse_source_file(
+    return engine_syntax_helpers.parse_source_file(
         code_path,
         parser=parser,
         transformer=transformer,
         debug=debug,
+        parser_core_parse_source_file_fn=parser_core_parse_source_file,
+        validate_transformed_basepicture_fn=validate_transformed_basepicture,
     )
-    validate_transformed_basepicture(basepic)
-    return basepic
 
 
-def _extract_error_position(exc: Exception) -> tuple[int | None, int | None]:
-    line = getattr(exc, "line", None)
-    column = getattr(exc, "column", None)
-    if isinstance(exc, VisitError):
-        line = line if line is not None else getattr(exc.orig_exc, "line", None)
-        column = column if column is not None else getattr(exc.orig_exc, "column", None)
-    return line, column
+_has_current_local_validation = engine_syntax_helpers.has_current_local_validation
+_mark_local_validation = engine_syntax_helpers.mark_local_validation
+
+
+def _ensure_local_validation(
+    basepic: BasePicture,
+    *,
+    warning_sink: list[ValidationWarning] | None = None,
+) -> bool:
+    return engine_syntax_helpers.ensure_local_validation(
+        basepic,
+        warning_sink=warning_sink,
+        has_current_local_validation_fn=_has_current_local_validation,
+        mark_local_validation_fn=_mark_local_validation,
+        validate_transformed_basepicture_locally_fn=validate_transformed_basepicture_locally,
+    )
+
+
+_extract_error_position = engine_syntax_helpers.extract_error_position
 
 
 def validate_single_file_syntax(
@@ -343,120 +237,27 @@ def validate_single_file_syntax(
     *,
     mode: CodeMode | str | None = None,
 ) -> SyntaxValidationResult:
-    target_path = Path(code_path)
-    if target_path.suffix.lower() in {".g", ".y"}:
-        result = validate_graphics_file(target_path)
-        source_context = _graphics_source_context_path(target_path)
-        warnings: tuple[ValidationNotice, ...] = ()
-        if source_context is not None and (basepic := _load_picture_display_source_context(source_context)) is not None:
-            occurrences = correlate_picture_display_records(
-                basepic, tuple(getattr(result, "picture_display_records", ()))
-            )
-            warnings = _picture_display_path_warnings(basepic, occurrences)
-        return _graphics_validation_to_syntax_result(target_path, result, warnings=warnings)
-
-    src = ""
-    validation_warnings: list[ValidationWarning] = []
-    try:
-        src = _load_source_text(target_path)
-        violations = find_disallowed_comments(src)
-        if violations:
-            first = violations[0]
-            raise RawSourceValidationError(
-                "comment is only allowed inside EQUATIONBLOCK or SEQUENCE/OPENSEQUENCE blocks",
-                line=first.start_line,
-                column=first.start_col,
-            )
-        basepic = parser_core_parse_source_text(src, log_failures=False)
-        validate_transformed_basepicture(
-            basepic,
-            warning_sink=validation_warnings.append,
-            allow_old_state_assignment=target_path.suffix.lower() in {".x", ".z"},
-            allow_unresolved_external_datatypes=target_path.suffix.lower() in {".x", ".z"},
-        )
-    except UnexpectedInput as exc:
-        details = describe_parse_error(exc, src)
-        return SyntaxValidationResult(
-            file_path=target_path,
-            ok=False,
-            stage="parse",
-            message=details.message,
-            line=details.line,
-            column=details.column,
-            warning_notices=tuple(coerce_validation_notice(warning) for warning in validation_warnings),
-        )
-    except VisitError as exc:
-        line, column = _extract_error_position(exc)
-        message = str(exc.orig_exc)
-        return SyntaxValidationResult(
-            file_path=target_path,
-            ok=False,
-            stage="transform",
-            message=message,
-            line=line,
-            column=column,
-            warning_notices=tuple(coerce_validation_notice(warning) for warning in validation_warnings),
-        )
-    except StructuralValidationError as exc:
-        line, column = _extract_error_position(exc)
-        return SyntaxValidationResult(
-            file_path=target_path,
-            ok=False,
-            stage="validation",
-            message=str(exc),
-            line=line,
-            column=column,
-            warning_notices=tuple(coerce_validation_notice(warning) for warning in validation_warnings),
-        )
-    except Exception as exc:
-        line, column = _extract_error_position(exc)
-        stage = "parse" if line is not None or column is not None else "validation"
-        return SyntaxValidationResult(
-            file_path=target_path,
-            ok=False,
-            stage=stage,
-            message=str(exc),
-            line=line,
-            column=column,
-            warning_notices=tuple(coerce_validation_notice(warning) for warning in validation_warnings),
-        )
-
-    companion_path = resolve_graphics_companion_path(target_path, mode=mode)
-    if companion_path is not None and companion_path != target_path:
-        graphics_result = validate_graphics_file(companion_path)
-        graphics_warnings = [*validation_warnings]
-        with contextlib.suppress(AttributeError):
-            graphics_warnings.extend(
-                _picture_display_path_warnings(
-                    basepic,
-                    correlate_picture_display_records(
-                        basepic, tuple(getattr(graphics_result, "picture_display_records", ()))
-                    ),
-                )
-            )
-        return _graphics_validation_to_syntax_result(
-            companion_path,
-            graphics_result,
-            warnings=graphics_warnings,
-        )
-
-    return SyntaxValidationResult(
-        file_path=target_path,
-        ok=True,
-        stage="ok",
-        warnings=tuple(coerce_validation_notice(warning).message for warning in validation_warnings),
-        warning_notices=tuple(coerce_validation_notice(warning) for warning in validation_warnings),
+    return engine_syntax_helpers.validate_single_file_syntax(
+        code_path,
+        mode=mode,
+        load_source_text_fn=_load_source_text,
+        find_disallowed_comments_fn=find_disallowed_comments,
+        parser_core_parse_source_text_fn=parser_core_parse_source_text,
+        validate_transformed_basepicture_fn=validate_transformed_basepicture,
+        describe_parse_error_fn=describe_parse_error,
+        validate_graphics_file_fn=validate_graphics_file,
+        graphics_source_context_path_fn=_graphics_source_context_path,
+        load_picture_display_source_context_fn=_load_picture_display_source_context,
+        correlate_picture_display_records_fn=correlate_picture_display_records,
+        picture_display_path_warnings_fn=_picture_display_path_warnings,
+        resolve_graphics_companion_path_fn=resolve_graphics_companion_path,
+        extract_error_position_fn=_extract_error_position,
+        graphics_validation_to_syntax_result_fn=_graphics_validation_to_syntax_result,
+        coerce_validation_notice_fn=coerce_validation_notice,
     )
 
 
-def _raise_syntax_validation_failure(result: SyntaxValidationResult) -> None:
-    if result.ok:
-        return
-    raise StructuralValidationError(
-        result.message or "Syntax validation failed",
-        line=result.line,
-        column=result.column,
-    )
+_raise_syntax_validation_failure = engine_syntax_helpers.raise_syntax_validation_failure
 
 
 # ---------- Loader with recursive resolution ----------
@@ -474,6 +275,7 @@ class SattLineProjectLoader(DebugMixin):
         status_update_fn: Callable[[str], None] | None = None,
         refresh_mode: str = "full",
         stage_timing_sink: LoadStageTimingSink | None = None,
+        graphics_timing_sink: GraphicsLoadTimingSink | None = None,
     ):
         self.program_dir = program_dir
         self.other_lib_dirs = list(other_lib_dirs)
@@ -488,16 +290,20 @@ class SattLineProjectLoader(DebugMixin):
         if self.refresh_mode not in {"full", "ast-only"}:
             raise ValueError(f"Unsupported refresh mode: {refresh_mode!r}")
         self._stage_timing_sink = stage_timing_sink
+        self._graphics_timing_sink = graphics_timing_sink
         self._last_status_message: str | None = None
         self.parser = create_sl_parser()  # reuse your grammar setup
         self.transformer = SLTransformer()  # reuse your transformer
         self._visited: set[str] = set()
         self._visit_stack: list[str] = []  # ordered stack for cycle detection and path reporting
         self._ignored_dirs: set[Path] = set()
-        self._lookup_cache = FileLookupCache(get_cache_dir())
-        self._ast_cache = FileASTCache(get_cache_dir())
+        self._cache_dir = get_cache_dir()
+        self._lookup_cache = FileLookupCache(self._cache_dir)
+        self._ast_cache = FileASTCache(self._cache_dir)
         self._base_indexes: dict[Path, dict[str, dict[str, Path]]] = {}
         self._lib_by_name: dict[str, str] = {}
+        self._prefetched_dependency_candidates: dict[tuple[str, str | None], _PrefetchedDependencyCandidate] = {}
+        self._prefetched_load_results_by_path: dict[Path, _PrefetchedLoadResult] = {}
         self.dbg(f"Selected mode={mode.value}, code_ext={code_ext(mode)}, deps_ext={deps_ext(mode)}")
         self.dbg(f"Programs dir: {self.program_dir}")
         for i, ld in enumerate(self.other_lib_dirs, start=1):
@@ -508,6 +314,11 @@ class SattLineProjectLoader(DebugMixin):
         if self._stage_timing_sink is None:
             return
         self._stage_timing_sink(owner_name, stage, perf_counter() - started_at)
+
+    def _record_stage_duration(self, owner_name: str, stage: str, duration: float) -> None:
+        if self._stage_timing_sink is None:
+            return
+        self._stage_timing_sink(owner_name, stage, duration)
 
     def _update_status(self, message: str) -> None:
         if self._status_update_fn is None:
@@ -627,6 +438,10 @@ class SattLineProjectLoader(DebugMixin):
         *,
         requester_dir: Path | None,
     ) -> Path | None:
+        prefetched = self._prefetched_dependency_candidates.get(self._prefetched_dependency_key(name, requester_dir))
+        if prefetched is not None and prefetched.code_path is not None:
+            return prefetched.code_path
+
         extensions = [".s", ".x"] if self.mode == CodeMode.DRAFT else [".x"]
 
         if self.contextual_lookup is not None:
@@ -683,6 +498,10 @@ class SattLineProjectLoader(DebugMixin):
         *,
         requester_dir: Path | None,
     ) -> Path | None:
+        prefetched = self._prefetched_dependency_candidates.get(self._prefetched_dependency_key(name, requester_dir))
+        if prefetched is not None and prefetched.deps_path is not None:
+            return prefetched.deps_path
+
         extensions = [".l", ".z"] if self.mode == CodeMode.DRAFT else [".z"]
 
         if self.contextual_lookup is not None:
@@ -801,9 +620,26 @@ class SattLineProjectLoader(DebugMixin):
     def _load_or_parse(self, code_path: Path, *, owner_name: str | None = None) -> BasePicture | None:
         resolved_owner_name = owner_name or code_path.stem
         started_at = perf_counter()
+        prefetched_result = self._prefetched_load_results_by_path.pop(code_path, None)
+        if prefetched_result is not None:
+            if prefetched_result.ast_cache_save_required:
+                cache_save_started_at = perf_counter()
+                self._ast_cache.save(code_path, self.mode.value, prefetched_result.basepicture)
+                self._record_stage_timing(resolved_owner_name, "ast_cache_save", cache_save_started_at)
+            self._record_stage_duration(
+                resolved_owner_name,
+                "load_or_parse",
+                prefetched_result.load_or_parse_duration_s,
+            )
+            return prefetched_result.basepicture
         if self.use_file_ast_cache:
             cached = self._ast_cache.load(code_path, self.mode.value)
             if isinstance(cached, BasePicture):
+                upgraded_cache_entry = _ensure_local_validation(cached)
+                if upgraded_cache_entry:
+                    cache_save_started_at = perf_counter()
+                    self._ast_cache.save(code_path, self.mode.value, cached)
+                    self._record_stage_timing(resolved_owner_name, "ast_cache_save", cache_save_started_at)
                 self._update_status(f"Loading {code_path.stem}: using cached AST from {code_path.name}")
                 self.dbg(f"Using cached AST for: {code_path}")
                 self._record_stage_timing(resolved_owner_name, "load_or_parse", started_at)
@@ -811,11 +647,96 @@ class SattLineProjectLoader(DebugMixin):
 
         self._update_status(f"Loading {code_path.stem}: parsing {code_path.name}")
         bp = self._parse_one(code_path)
+        if self.refresh_mode == "ast-only":
+            _ensure_local_validation(bp)
         cache_save_started_at = perf_counter()
         self._ast_cache.save(code_path, self.mode.value, bp)
         self._record_stage_timing(resolved_owner_name, "ast_cache_save", cache_save_started_at)
         self._record_stage_timing(resolved_owner_name, "load_or_parse", started_at)
         return bp
+
+    def _prefetched_dependency_key(self, name: str, requester_dir: Path | None) -> tuple[str, str | None]:
+        requester_key = None if requester_dir is None else str(requester_dir)
+        return name.casefold(), requester_key.casefold() if requester_key is not None else None
+
+    def _prime_base_indexes(self) -> None:
+        for base in [self.program_dir, *self.other_lib_dirs, self.abb_lib_dir]:
+            self._get_base_index(base)
+
+    def _find_in_bases_without_cache(self, name: str, extensions: list[str]) -> Path | None:
+        for base in [self.program_dir, *self.other_lib_dirs, self.abb_lib_dir]:
+            if self._is_ignored_base(base):
+                continue
+
+            index = self._base_indexes.get(base, {})
+            entries = index.get(name.casefold())
+            if entries:
+                for ext in extensions:
+                    indexed = entries.get(ext)
+                    if indexed is not None:
+                        return indexed
+
+            for ext in extensions:
+                candidate = base / f"{name}{ext}"
+                if candidate.exists():
+                    return candidate
+
+        return None
+
+    def _prefetch_ast_candidates(self, code_paths: list[Path]) -> dict[Path, _PrefetchedLoadResult]:
+        if not self.use_file_ast_cache or len(code_paths) < 2:
+            return {}
+
+        prefetched: dict[Path, _PrefetchedLoadResult] = {}
+        for code_path in code_paths:
+            started_at = perf_counter()
+            cached = self._ast_cache.load(code_path, self.mode.value)
+            if not isinstance(cached, BasePicture):
+                continue
+            save_required = _ensure_local_validation(cached)
+            prefetched[code_path] = _PrefetchedLoadResult(
+                basepicture=cached,
+                load_or_parse_duration_s=perf_counter() - started_at,
+                ast_cache_save_required=save_required,
+            )
+        return prefetched
+
+    def _prefetch_dependency_candidates(self, dep_names: list[str], *, requester_dir: Path | None) -> None:
+        if self.contextual_lookup is not None or len(dep_names) < 2:
+            return
+
+        unique_dep_names: list[str] = []
+        seen: set[str] = set()
+        for dep_name in dep_names:
+            dep_key = dep_name.casefold()
+            if dep_key in seen:
+                continue
+            seen.add(dep_key)
+            unique_dep_names.append(dep_name)
+
+        if len(unique_dep_names) < 2:
+            return
+
+        self._prime_base_indexes()
+        code_extensions = [".s", ".x"] if self.mode == CodeMode.DRAFT else [".x"]
+        deps_extensions = [".l", ".z"] if self.mode == CodeMode.DRAFT else [".z"]
+        code_paths_to_prefetch: list[Path] = []
+        for dep_name in unique_dep_names:
+            code_path = self._find_in_bases_without_cache(dep_name, code_extensions)
+            deps_path = self._find_in_bases_without_cache(dep_name, deps_extensions)
+            candidate = _PrefetchedDependencyCandidate(
+                name=dep_name,
+                requester_dir=requester_dir,
+                code_path=code_path,
+                deps_path=deps_path,
+            )
+            self._prefetched_dependency_candidates[
+                self._prefetched_dependency_key(candidate.name, candidate.requester_dir)
+            ] = candidate
+            if code_path is not None:
+                code_paths_to_prefetch.append(code_path)
+
+        self._prefetched_load_results_by_path.update(self._prefetch_ast_candidates(code_paths_to_prefetch))
 
     def _load_or_parse_for_owner(self, code_path: Path, *, owner_name: str) -> BasePicture | None:
         load_or_parse = self._load_or_parse
@@ -902,6 +823,7 @@ class SattLineProjectLoader(DebugMixin):
                 mode=self.mode,
                 graph=graph,
                 owner_name=root_name,
+                timing_sink=self._graphics_timing_sink,
             ):
                 self._ast_cache.save(code_path, self.mode.value, bp)
             self._record_stage_timing(root_name, "attach_graphics", graphics_started_at)
@@ -962,6 +884,7 @@ class SattLineProjectLoader(DebugMixin):
             deps_path = self._find_deps_with_context(name, requester_dir=requester_dir)
             dep_names = self._read_deps(deps_path) if deps_path else []
             dependency_requester = deps_path.parent if deps_path is not None else requester_dir
+            self._prefetch_dependency_candidates(dep_names, requester_dir=dependency_requester)
 
             # Visit each dep
             for index, dep in enumerate(dep_names, start=1):
@@ -996,21 +919,38 @@ class SattLineProjectLoader(DebugMixin):
                     try:
                         self._update_status(f"Loading {name}: validating {code_path.name}")
                         validation_started_at = perf_counter()
-                        validate_transformed_basepicture(
-                            bp,
-                            external_datatypes=()
-                            if self.refresh_mode == "ast-only"
-                            else tuple(graph.datatype_defs.values()),
-                            external_moduletype_defs=()
-                            if self.refresh_mode == "ast-only"
-                            else tuple(graph.moduletype_defs.values()),
-                            allow_unresolved_external_datatypes=True if self.refresh_mode == "ast-only" else not strict,
-                            enforce_unique_submodule_names=False,
-                            allow_parameterless_module_mappings=True,
-                            warn_unknown_parameter_targets=self.refresh_mode != "ast-only",
-                            warn_incompatible_parameter_mappings=self.refresh_mode != "ast-only",
-                            warning_sink=validation_warnings.append,
-                        )
+                        if key != root_key and _has_current_local_validation(bp):
+                            validate_transformed_basepicture_dependency_context(
+                                bp,
+                                external_datatypes=()
+                                if self.refresh_mode == "ast-only"
+                                else tuple(graph.datatype_defs.values()),
+                                external_moduletype_defs=()
+                                if self.refresh_mode == "ast-only"
+                                else tuple(graph.moduletype_defs.values()),
+                                allow_parameterless_module_mappings=True,
+                                warn_unknown_parameter_targets=self.refresh_mode != "ast-only",
+                                warn_incompatible_parameter_mappings=self.refresh_mode != "ast-only",
+                                warning_sink=validation_warnings.append,
+                            )
+                        else:
+                            validate_transformed_basepicture(
+                                bp,
+                                external_datatypes=()
+                                if self.refresh_mode == "ast-only"
+                                else tuple(graph.datatype_defs.values()),
+                                external_moduletype_defs=()
+                                if self.refresh_mode == "ast-only"
+                                else tuple(graph.moduletype_defs.values()),
+                                allow_unresolved_external_datatypes=True
+                                if self.refresh_mode == "ast-only"
+                                else not strict,
+                                enforce_unique_submodule_names=False,
+                                allow_parameterless_module_mappings=True,
+                                warn_unknown_parameter_targets=self.refresh_mode != "ast-only",
+                                warn_incompatible_parameter_mappings=self.refresh_mode != "ast-only",
+                                warning_sink=validation_warnings.append,
+                            )
                         self._record_stage_timing(name, "validate", validation_started_at)
                     except StructuralValidationError as ex:
                         if key == root_key:
@@ -1030,6 +970,7 @@ class SattLineProjectLoader(DebugMixin):
                         mode=self.mode,
                         graph=graph,
                         owner_name=name,
+                        timing_sink=self._graphics_timing_sink,
                     ):
                         self._ast_cache.save(code_path, self.mode.value, bp)
                     self._record_stage_timing(name, "attach_graphics", graphics_started_at)

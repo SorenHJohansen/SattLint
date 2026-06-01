@@ -69,9 +69,9 @@ from sattlint.analyzers.sfc import analyze_sfc
 from sattlint.analyzers.taint_paths import analyze_taint_paths
 from sattlint.analyzers.variable_usage_reporting import (
     _find_module_instances,
-    analyze_datatype_usage,
-    analyze_module_localvar_fields,
     debug_variable_usage,
+    report_datatype_usage,
+    report_module_localvar_fields,
 )
 from sattlint.analyzers.variables import IssueKind, VariablesAnalyzer
 
@@ -172,9 +172,7 @@ __all__ = [
     "_varref",
     "analyze_alarm_integrity",
     "analyze_dataflow",
-    "analyze_datatype_usage",
     "analyze_initial_values",
-    "analyze_module_localvar_fields",
     "analyze_naming_consistency",
     "analyze_safety_paths",
     "analyze_sfc",
@@ -189,4 +187,6 @@ __all__ = [
     "get_default_analyzers",
     "json",
     "registry_module",
+    "report_datatype_usage",
+    "report_module_localvar_fields",
 ]

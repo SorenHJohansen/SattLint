@@ -52,5 +52,5 @@ def test_loop_stability_detects_conflicting_literal_setpoints():
 def test_loop_stability_analyzer_is_enabled_by_default():
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
-    assert "loop_stability" in specs
-    assert specs["loop_stability"].enabled is True
+    assert "loop-stability" in specs
+    assert specs["loop-stability"].enabled is True

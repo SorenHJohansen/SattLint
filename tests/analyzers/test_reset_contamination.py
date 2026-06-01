@@ -12,6 +12,7 @@ from sattline_parser.models.ast_model import (
 )
 from sattlint import constants as const
 from sattlint.analyzers import reset_contamination as reset_contamination_module
+from sattlint.analyzers.framework import AnalysisSharedArtifacts
 from sattlint.reporting.variables_report import VariableIssue
 
 
@@ -242,3 +243,65 @@ def test_detection_walks_frame_submodules_for_reset_and_latching() -> None:
     assert [(issue.module_path, issue.variable.name) for issue in latch_issues if issue.variable is not None] == [
         (["Root", "Frame", "Child"], "Latch")
     ]
+
+
+def test_reset_contamination_can_consume_shared_indexes() -> None:
+    child = SingleModule(
+        header=_hdr("Child"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[
+            Variable(name="Counter", datatype=Simple_DataType.INTEGER),
+            Variable(name="Other", datatype=Simple_DataType.INTEGER),
+            Variable(name="ResetValue", datatype=Simple_DataType.INTEGER),
+            Variable(name="SeqResetOld", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Start", datatype=Simple_DataType.BOOLEAN),
+            Variable(name="Latch", datatype=Simple_DataType.BOOLEAN),
+        ],
+        submodules=[],
+        modulecode=ModuleCode(
+            equations=[
+                _eq(
+                    "ResetEq",
+                    [
+                        (
+                            const.GRAMMAR_VALUE_IF,
+                            [
+                                (
+                                    (const.GRAMMAR_VALUE_NOT, _varref("OpSeq.Reset")),
+                                    [(const.KEY_ASSIGN, _varref("Counter"), _varref("ResetValue"))],
+                                ),
+                                (
+                                    (const.GRAMMAR_VALUE_NOT, _varref("SeqResetOld")),
+                                    [(const.KEY_ASSIGN, _varref("Other"), _varref("ResetValue"))],
+                                ),
+                            ],
+                            [],
+                        ),
+                        (const.KEY_ASSIGN, _varref("SeqResetOld"), _varref("OpSeq.Reset")),
+                    ],
+                ),
+                _eq(
+                    "LatchEq",
+                    [
+                        (
+                            const.GRAMMAR_VALUE_IF,
+                            [(_varref("Start"), [(const.KEY_ASSIGN, _varref("Latch"), True)])],
+                            [],
+                        )
+                    ],
+                ),
+            ],
+            sequences=[_seq("OpSeq", [])],
+        ),
+        parametermappings=[],
+    )
+    picture = BasePicture(header=_hdr("Root"), submodules=[FrameModule(header=_hdr("Frame"), submodules=[child])])
+    shared_artifacts = AnalysisSharedArtifacts()
+
+    reset_contamination_module.detect_reset_contamination(picture, [], shared_artifacts=shared_artifacts)
+    first_build_count = shared_artifacts.counters.local_env_builds
+    reset_contamination_module.detect_implicit_latching(picture, [], shared_artifacts=shared_artifacts)
+
+    assert first_build_count == 1
+    assert shared_artifacts.counters.local_env_builds == 1

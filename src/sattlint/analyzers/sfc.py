@@ -33,7 +33,7 @@ from ._sfc_guard_logic import (
 )
 from ._sfc_module_walk import iter_sfc_modulecodes
 from ._sfc_step_contracts import StepContract, _SfcStepContractCollector
-from .framework import Issue, SimpleReport
+from .framework import AnalysisContext, Issue, SimpleReport
 
 type StepSet = frozenset[str]
 type ExclusiveStepGroup = tuple[str, ...]
@@ -368,6 +368,7 @@ def _format_terminator(terminated_by: dict[str, Any]) -> str:
 
 def analyze_sfc(
     base_picture: BasePicture,
+    analysis_context: AnalysisContext | None = None,
     mutually_exclusive_steps: Iterable[Iterable[str]] | None = None,
     step_contracts: Mapping[str, object] | None = None,
     selected_issue_kinds: AbstractSet[str] | None = None,
@@ -379,7 +380,10 @@ def analyze_sfc(
 
     collector: _SfcAccessCollector | None = None
     if _should_collect_any_issue_kinds(_SFC_PARALLEL_WRITE_RACE_ISSUE_KINDS):
-        collector = _SfcAccessCollector(base_picture)
+        if analysis_context is not None and analysis_context.shared_artifacts is not None:
+            collector = _SfcAccessCollector(base_picture, shared_artifacts=analysis_context.shared_artifacts)
+        else:
+            collector = _SfcAccessCollector(base_picture)
         collector.run()
 
     normalized_groups = (

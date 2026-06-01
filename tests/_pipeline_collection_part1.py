@@ -42,8 +42,8 @@ def test_collect_architecture_report_includes_shadowing_cli_filter():
     assert report["declared_lsp_analyzers"] == list(get_declared_lsp_analyzer_keys())
     assert report["actual_lsp_analyzers"] == list(get_actual_lsp_analyzer_keys())
     assert report["declared_cli_analyzers"] == report["actual_cli_analyzers"]
-    assert "state_inference" not in report["declared_cli_analyzers"]
-    assert "state_inference" not in report["actual_cli_analyzers"]
+    assert "state-inference" not in report["declared_cli_analyzers"]
+    assert "state-inference" not in report["actual_cli_analyzers"]
     assert report["declared_lsp_analyzers"] == report["actual_lsp_analyzers"]
     assert report["analyzers_missing_exposure"] == []
     assert report["analyzers_missing_acceptance_tests"] == []
@@ -118,8 +118,8 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
     naming_consistency = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "naming-consistency")
     timing = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "timing")
     powerup = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "powerup")
-    scan_concurrency = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "scan_concurrency")
-    interface_contracts = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "interface_contracts")
+    scan_concurrency = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "scan-concurrency")
+    interface_contracts = next(analyzer for analyzer in report["analyzers"] if analyzer["key"] == "interface-contracts")
 
     duplicate_alarm_tag = next(rule for rule in report["rules"] if rule["id"] == "semantic.duplicate-alarm-tag")
     read_before_write = next(rule for rule in report["rules"] if rule["id"] == "semantic.read-before-write")
@@ -208,11 +208,11 @@ def test_collect_analyzer_registry_report_includes_semantic_rule_mappings():
     assert "timing" in scan_cycle_stale_read["analyzers"]
     assert "timing.summary" in scan_cycle_stale_read["outputs"]
     assert parallel_write_race["source"] == "sfc"
-    assert "scan_concurrency" in parallel_write_race["analyzers"]
-    assert "scan_concurrency.summary" in parallel_write_race["outputs"]
+    assert "scan-concurrency" in parallel_write_race["analyzers"]
+    assert "scan-concurrency.summary" in parallel_write_race["outputs"]
     assert cross_module_contract_mismatch["source"] == "variables"
-    assert "interface_contracts" in cross_module_contract_mismatch["analyzers"]
-    assert "interface_contracts.summary" in cross_module_contract_mismatch["outputs"]
+    assert "interface-contracts" in cross_module_contract_mismatch["analyzers"]
+    assert "interface-contracts.summary" in cross_module_contract_mismatch["outputs"]
     assert unconsumed_safety_signal["source"] == "safety-paths"
     assert "safety-paths" in unconsumed_safety_signal["analyzers"]
     assert "safety-paths.summary" in unconsumed_safety_signal["outputs"]

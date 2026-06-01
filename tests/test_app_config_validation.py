@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from pathlib import Path
+from pathlib import Path, PosixPath
 from types import SimpleNamespace
 from typing import ClassVar
 
@@ -26,6 +26,7 @@ def test_validate_config_reports_key_mode_analysis_and_documentation_errors():
             "invalid_key": True,
             "mode": "bad_mode",
             "analysis": "bad",
+            "telemetry": "bad",
             "documentation": "bad",
         }
     )
@@ -35,7 +36,27 @@ def test_validate_config_reports_key_mode_analysis_and_documentation_errors():
         "invalid_key",
         "mode",
         "analysis",
+        "telemetry",
         "documentation",
+    }
+
+
+def test_validate_config_reports_unknown_telemetry_keys_and_invalid_shapes():
+    result = config_module.validate_config(
+        {
+            "telemetry": {
+                "extra": True,
+                "enabled": "yes",
+                "path": "legacy.jsonl",
+            }
+        }
+    )
+
+    assert result.passed is False
+    assert {error.key_path for error in result.errors} == {
+        "telemetry.extra",
+        "telemetry.enabled",
+        "telemetry.path",
     }
 
 
@@ -64,6 +85,7 @@ def test_validate_config_passes_valid_config_and_serializes_result():
     valid = config_module.validate_config(
         {
             "mode": "draft",
+            "telemetry": {"enabled": True},
             "analysis": {"naming": {"variables": {"style": "snake"}}},
         }
     )
@@ -106,6 +128,86 @@ def test_load_config_warns_on_invalid_keys_and_normalizes_legacy_documentation_k
     assert loaded["documentation"]["classifications"]["em"]["name_contains"] == ["Tank"]
     assert loaded["documentation"]["classifications"]["em"]["desc_label_equals"] == ["nnestruct:EquipModCoordinate"]
     assert "equipment_modules" not in loaded["documentation"]["classifications"]
+
+
+def test_load_config_backfills_missing_telemetry_section_without_overwriting_existing_keys(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('mode = "draft"\nprogram_dir = "programs"', encoding="utf-8")
+
+    loaded, created = config_module.load_config(config_path)
+
+    persisted_text = config_path.read_text(encoding="utf-8")
+    assert created is False
+    assert loaded["mode"] == "draft"
+    assert loaded["program_dir"] == "programs"
+    assert loaded["telemetry"] == {"enabled": False}
+    assert 'mode = "draft"' in persisted_text
+    assert 'program_dir = "programs"' in persisted_text
+    assert "[telemetry]" in persisted_text
+    assert "enabled = false" in persisted_text
+    assert 'path = ""' not in persisted_text
+
+
+def test_load_config_strips_legacy_telemetry_path_from_existing_file(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('[telemetry]\nenabled = true\npath = "legacy.jsonl"\n', encoding="utf-8")
+
+    loaded, created = config_module.load_config(config_path)
+
+    persisted_text = config_path.read_text(encoding="utf-8")
+    assert created is False
+    assert loaded["telemetry"] == {"enabled": True}
+    assert "enabled = true" in persisted_text
+    assert 'path = "legacy.jsonl"' not in persisted_text
+
+
+def test_config_io_helper_guards_cover_empty_legacy_text_windows_path_and_non_table_save(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_io_module = config_module._config_io_module
+
+    class _NonTableConfig:
+        def get(self, _key: str, _default: object | None = None) -> object | None:
+            return None
+
+    assert config_io_module._strip_legacy_telemetry_path("") == ""
+
+    monkeypatch.setattr(config_io_module.os, "name", "nt", raising=False)
+    monkeypatch.setattr(config_io_module, "Path", PosixPath)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
+    assert config_module.get_config_path() == tmp_path / "AppData" / "sattlint" / "config.toml"
+
+    monkeypatch.setattr(config_io_module, "deepcopy", lambda _value: _NonTableConfig())
+    with pytest.raises(ValueError, match="Config serialization must produce a table/object"):
+        config_module.save_config(tmp_path / "bad-config.toml", {"mode": "draft"})
+
+
+def test_config_io_helper_branches_cover_missing_load_passthrough_and_save_guards(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_io_module = config_module._config_io_module
+    config_path = tmp_path / "config.toml"
+
+    loaded, created = config_module.load_config(config_path)
+
+    out = capsys.readouterr().out
+    assert created is True
+    assert loaded["telemetry"] == {"enabled": False}
+    assert config_path.exists()
+    assert "No config found, creating default" in out
+
+    unchanged_cfg = {"telemetry": {"enabled": True}}
+    config_path.write_text("[telemetry]\nenabled = true\n", encoding="utf-8")
+    assert config_io_module._normalize_telemetry_section(config_path, unchanged_cfg) == unchanged_cfg
+
+    save_path = tmp_path / "saved-config.toml"
+    config_module.save_config(save_path, {"mode": "draft", "telemetry": {"enabled": True, "path": "old.jsonl"}})
+    assert 'path = "old.jsonl"' not in save_path.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Cannot serialize None"):
+        config_module.save_config(tmp_path / "invalid-config.toml", {"mode": None})
 
 
 def test_target_exists_honors_mode_and_available_directories(tmp_path):
@@ -211,6 +313,38 @@ def test_config_helpers_normalize_legacy_conflicts_and_serialize_paths(tmp_path,
         )
         is False
     )
+
+
+def test_config_helper_branches_cover_defaults_and_deduplication() -> None:
+    helper_module = config_module._config_validation_module
+
+    assert helper_module._object_list(("A", "B")) == ["A", "B"]
+    assert helper_module._object_list("not-a-sequence") == []
+
+    assert helper_module._normalize_documentation_rule_keys({"analysis": {}}) == {"analysis": {}}
+    assert helper_module._normalize_documentation_rule_keys({"documentation": {}}) == {"documentation": {}}
+
+    normalized = helper_module._normalize_documentation_rule_keys(
+        {
+            "documentation": {
+                "classifications": {
+                    "ops": ["not-a-dict"],
+                }
+            }
+        }
+    )
+    assert normalized["documentation"]["classifications"]["ops"] == ["not-a-dict"]
+
+    default_docs = helper_module.get_documentation_config()
+    assert default_docs == app.DEFAULT_CONFIG["documentation"]
+
+    duplicate_error = helper_module.ConfigValidationError(key_path="analysis", message="duplicate")
+    merged = helper_module._merge_validation_results(
+        helper_module.ConfigValidationResult(passed=False, errors=(duplicate_error,)),
+        helper_module.ConfigValidationResult(passed=False, errors=(duplicate_error,)),
+    )
+
+    assert merged == helper_module.ConfigValidationResult(passed=False, errors=(duplicate_error,))
 
 
 def test_self_check_reports_top_level_section_shapes_and_valid_graphics_rules(tmp_path, monkeypatch, capsys):

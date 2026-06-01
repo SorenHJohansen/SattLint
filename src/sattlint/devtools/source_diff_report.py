@@ -44,7 +44,7 @@ def _emit_progress(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
-def _sanitize_repo_path(path: Path, *, workspace_root: Path) -> str:
+def _source_diff_repo_path(path: Path, *, workspace_root: Path) -> str:
     return sanitize_path_for_report(path, repo_root=workspace_root) or path.as_posix()
 
 
@@ -69,11 +69,14 @@ def _stable_signature_value(value: object) -> object:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, tuple):
-        return tuple(_stable_signature_value(item) for item in value)
+        tuple_value = cast(tuple[object, ...], value)
+        return tuple(_stable_signature_value(item) for item in tuple_value)
     if isinstance(value, list):
-        return tuple(_stable_signature_value(item) for item in value)
-    if isinstance(value, dict):
-        return tuple(sorted((str(key), _stable_signature_value(item)) for key, item in value.items()))
+        list_value = cast(list[object], value)
+        return tuple(_stable_signature_value(item) for item in list_value)
+    if isinstance(value, Mapping):
+        mapping_value = cast(Mapping[object, object], value)
+        return tuple(sorted((str(key), _stable_signature_value(item)) for key, item in mapping_value.items()))
     return _stable_signature_text(value)
 
 
@@ -763,7 +766,8 @@ def _build_module_entry(
             "code_diffs": code_diffs,
         }
 
-    assert draft is not None and official is not None
+    if draft is None or official is None:
+        raise ValueError("module entry diff requires both draft and official details")
     details.extend(
         _diff_variable_details(
             "parameter",
@@ -1161,8 +1165,8 @@ def _resolve_explicit_pair(
     if not resolved_draft.is_file() or not resolved_official.is_file():
         errors.append(
             {
-                "draft_file": _sanitize_repo_path(resolved_draft, workspace_root=workspace_root),
-                "official_file": _sanitize_repo_path(resolved_official, workspace_root=workspace_root),
+                "draft_file": _source_diff_repo_path(resolved_draft, workspace_root=workspace_root),
+                "official_file": _source_diff_repo_path(resolved_official, workspace_root=workspace_root),
                 "message": "Draft or official source file does not exist.",
             }
         )
@@ -1179,8 +1183,8 @@ def build_pair_report(
     resolved_workspace_root = workspace_root.resolve()
     resolved_draft = draft_file.resolve()
     resolved_official = official_file.resolve()
-    sanitized_draft = _sanitize_repo_path(resolved_draft, workspace_root=resolved_workspace_root)
-    sanitized_official = _sanitize_repo_path(resolved_official, workspace_root=resolved_workspace_root)
+    sanitized_draft = _source_diff_repo_path(resolved_draft, workspace_root=resolved_workspace_root)
+    sanitized_official = _source_diff_repo_path(resolved_official, workspace_root=resolved_workspace_root)
 
     errors: list[dict[str, str]] = []
     draft_text: str | None = None
@@ -1300,7 +1304,7 @@ def build_source_diff_report(
     for index, (resolved_draft, resolved_official) in enumerate(pairs, start=1):
         if progress_callback is not None:
             progress_callback(
-                f"Source diff: comparing {index}/{len(pairs)} {_sanitize_repo_path(resolved_draft, workspace_root=resolved_workspace_root)}"
+                f"Source diff: comparing {index}/{len(pairs)} {_source_diff_repo_path(resolved_draft, workspace_root=resolved_workspace_root)}"
             )
         pair_reports.append(
             build_pair_report(
@@ -1321,7 +1325,7 @@ def build_source_diff_report(
         "generated_by": "sattlint.devtools.source_diff_report",
         "report_kind": "source-diff-report",
         "status": status,
-        "workspace_root": _sanitize_repo_path(resolved_workspace_root, workspace_root=resolved_workspace_root),
+        "workspace_root": _source_diff_repo_path(resolved_workspace_root, workspace_root=resolved_workspace_root),
         "summary": {
             "compared_pair_count": len(pair_reports),
             "changed_pair_count": sum(1 for report in pair_reports if report["changed"]),

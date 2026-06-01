@@ -16,7 +16,7 @@ from sattline_parser.models.ast_model import (
 from ..casefolding import casefold_key, is_anytype_name
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution.common import resolve_moduletype_def_strict, varname_base
-from .validators import AnyTypeFieldContract
+from ._validators import AnyTypeFieldContract
 
 if TYPE_CHECKING:
     from .variables import VariablesAnalyzer

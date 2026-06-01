@@ -16,7 +16,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
-from sattlint.analyzers.variable_usage_reporting import analyze_module_localvar_fields
+from sattlint.analyzers.variable_usage_reporting import report_module_localvar_fields
 
 
 def _varref(s: str) -> dict:
@@ -83,13 +83,13 @@ def test_module_localvar_strict_path_and_case_insensitive():
         moduledef=None,
     )
 
-    report = analyze_module_localvar_fields(bp, "StartMaster.KaHA251A", "Dv", debug=False)
+    report = report_module_localvar_fields(bp, "StartMaster.KaHA251A", "Dv", debug=False)
     assert "Module type: KaHAApplLib:ApplTank" in report
     assert "FIELD-LEVEL ACCESSES" in report
     assert "acktext" in report.lower()
 
     # Case-insensitive path + variable
-    report2 = analyze_module_localvar_fields(bp, "startmaster.kaha251a", "dv", debug=False)
+    report2 = report_module_localvar_fields(bp, "startmaster.kaha251a", "dv", debug=False)
     assert "FIELD-LEVEL ACCESSES" in report2
 
 
@@ -105,7 +105,7 @@ def test_module_localvar_strict_path_fails_loudly():
     )
 
     with pytest.raises(ValueError):
-        analyze_module_localvar_fields(bp, "StartMaster.KaHA251A", "Dv", debug=False)
+        report_module_localvar_fields(bp, "StartMaster.KaHA251A", "Dv", debug=False)
 
 
 def test_module_localvar_alias_prefix_uses_source_fields_only():
@@ -167,7 +167,7 @@ def test_module_localvar_alias_prefix_uses_source_fields_only():
         moduledef=None,
     )
 
-    report = analyze_module_localvar_fields(bp, "StartMaster", "Dv", debug=False)
+    report = report_module_localvar_fields(bp, "StartMaster", "Dv", debug=False)
     assert "Dv.empty.cmd" in report
     assert "Dv.control" not in report
 
@@ -267,7 +267,7 @@ def test_module_localvar_param_mapping_does_not_override_localvariable_same_name
         moduledef=None,
     )
 
-    report = analyze_module_localvar_fields(bp, "StartMaster", "Dv", debug=False, fail_loudly=False)
+    report = report_module_localvar_fields(bp, "StartMaster", "Dv", debug=False, fail_loudly=False)
     # The analysis should not produce "unknown field" warnings from the child module's
     # local variable DV (those should not be resolved to parent Dv via mapping).
     assert "unknown field 'Active'" not in report

@@ -35,6 +35,7 @@ from . import _reset_latching as _reset_latching_module
 from . import _reset_path_collection as _reset_path_collection_module
 from . import _reset_path_state as _reset_path_state_module
 from ._reset_path_state import WriteMap
+from ._shared_analysis import AnalysisSharedArtifacts
 from .variable_utils import same_origin_file_stem
 
 _PathCollectionDebug = _reset_path_state_module.PathCollectionDebug
@@ -98,6 +99,7 @@ def detect_reset_contamination(
     *,
     debug: bool = False,
     trace_fn: Callable[..., None] | None = None,
+    shared_artifacts: AnalysisSharedArtifacts | None = None,
 ) -> None:
     """Scan all SingleModules and ModuleTypeDefs for reset-contaminated variables."""
     root_path = [bp.header.name]
@@ -106,7 +108,14 @@ def detect_reset_contamination(
     reset_check = partial(_check_for_modulecode, path_debug=path_debug)
 
     for mod in bp.submodules or []:
-        _collect_from_module(mod, root_path, issues, limit_to_module_path, check_fn=reset_check)
+        _collect_from_module(
+            mod,
+            root_path,
+            issues,
+            limit_to_module_path,
+            check_fn=reset_check,
+            shared_artifacts=shared_artifacts,
+        )
 
     if limit_to_module_path is not None:
         return
@@ -115,24 +124,33 @@ def detect_reset_contamination(
         if not same_origin_file_stem(getattr(mt, "origin_file", None), root_origin):
             continue
         td_path = [bp.header.name, f"TypeDef:{mt.name}"]
-        _check_for_typedef(mt, td_path, issues, check_fn=reset_check)
+        _check_for_typedef(mt, td_path, issues, check_fn=reset_check, shared_artifacts=shared_artifacts)
 
 
 def detect_implicit_latching(
     bp: BasePicture,
     issues: list[VariableIssue],
     limit_to_module_path: list[str] | None = None,
+    *,
+    shared_artifacts: AnalysisSharedArtifacts | None = None,
 ) -> None:
     """Scan module code for boolean latch patterns across branches and steps."""
     root_path = [bp.header.name]
     root_origin = getattr(bp, "origin_file", None)
 
     if bp.modulecode is not None and _should_analyze_path(root_path, limit_to_module_path):
-        env = _build_local_env(None, bp.localvariables)
+        env = _build_local_env(bp, None, bp.localvariables, shared_artifacts=shared_artifacts)
         _check_for_modulecode_latching(bp.modulecode, env, root_path, issues)
 
     for mod in bp.submodules or []:
-        _collect_from_module(mod, root_path, issues, limit_to_module_path, check_fn=_check_for_modulecode_latching)
+        _collect_from_module(
+            mod,
+            root_path,
+            issues,
+            limit_to_module_path,
+            check_fn=_check_for_modulecode_latching,
+            shared_artifacts=shared_artifacts,
+        )
 
     if limit_to_module_path is not None:
         return
@@ -141,7 +159,9 @@ def detect_implicit_latching(
         if not same_origin_file_stem(getattr(mt, "origin_file", None), root_origin):
             continue
         td_path = [bp.header.name, f"TypeDef:{mt.name}"]
-        _check_for_typedef(mt, td_path, issues, check_fn=_check_for_modulecode_latching)
+        _check_for_typedef(
+            mt, td_path, issues, check_fn=_check_for_modulecode_latching, shared_artifacts=shared_artifacts
+        )
 
 
 def is_from_root_origin(origin_file: str | None, root_origin: str | None) -> bool:
@@ -161,46 +181,83 @@ def _collect_from_module(
     limit_to_module_path: list[str] | None,
     *,
     check_fn: Callable[..., None],
+    shared_artifacts: AnalysisSharedArtifacts | None = None,
 ) -> None:
     if isinstance(mod, SingleModule):
         mod_path = [*path, mod.header.name]
         if _should_analyze_path(mod_path, limit_to_module_path):
-            _check_for_single(mod, mod_path, issues, check_fn=check_fn)
+            _check_for_single(mod, mod_path, issues, check_fn=check_fn, shared_artifacts=shared_artifacts)
         for child in mod.submodules or []:
-            _collect_from_module(child, mod_path, issues, limit_to_module_path, check_fn=check_fn)
+            _collect_from_module(
+                child,
+                mod_path,
+                issues,
+                limit_to_module_path,
+                check_fn=check_fn,
+                shared_artifacts=shared_artifacts,
+            )
     elif isinstance(mod, FrameModule):
         mod_path = [*path, mod.header.name]
         for child in mod.submodules or []:
-            _collect_from_module(child, mod_path, issues, limit_to_module_path, check_fn=check_fn)
+            _collect_from_module(
+                child,
+                mod_path,
+                issues,
+                limit_to_module_path,
+                check_fn=check_fn,
+                shared_artifacts=shared_artifacts,
+            )
 
 
 def _build_local_env(
+    owner: object,
     moduleparameters: list[Variable] | None,
     localvariables: list[Variable] | None,
+    *,
+    shared_artifacts: AnalysisSharedArtifacts | None = None,
 ) -> dict[str, Variable]:
+    if shared_artifacts is not None:
+        cached = shared_artifacts.local_variable_envs.get(id(owner))
+        if cached is not None:
+            return cached
+
     env: dict[str, Variable] = {}
     for var in moduleparameters or []:
         env[var.name.casefold()] = var
     for var in localvariables or []:
         env[var.name.casefold()] = var
+
+    if shared_artifacts is not None:
+        shared_artifacts.local_variable_envs[id(owner)] = env
+        shared_artifacts.counters.local_env_builds += 1
     return env
 
 
 def _check_for_single(
-    mod: SingleModule, path: list[str], issues: list[VariableIssue], *, check_fn: Callable[..., None]
+    mod: SingleModule,
+    path: list[str],
+    issues: list[VariableIssue],
+    *,
+    check_fn: Callable[..., None],
+    shared_artifacts: AnalysisSharedArtifacts | None = None,
 ) -> None:
     if mod.modulecode is None:
         return
-    env = _build_local_env(mod.moduleparameters, mod.localvariables)
+    env = _build_local_env(mod, mod.moduleparameters, mod.localvariables, shared_artifacts=shared_artifacts)
     check_fn(mod.modulecode, env, path, issues)
 
 
 def _check_for_typedef(
-    mt: ModuleTypeDef, path: list[str], issues: list[VariableIssue], *, check_fn: Callable[..., None]
+    mt: ModuleTypeDef,
+    path: list[str],
+    issues: list[VariableIssue],
+    *,
+    check_fn: Callable[..., None],
+    shared_artifacts: AnalysisSharedArtifacts | None = None,
 ) -> None:
     if mt.modulecode is None:
         return
-    env = _build_local_env(mt.moduleparameters, mt.localvariables)
+    env = _build_local_env(mt, mt.moduleparameters, mt.localvariables, shared_artifacts=shared_artifacts)
     check_fn(mt.modulecode, env, path, issues)
 
 

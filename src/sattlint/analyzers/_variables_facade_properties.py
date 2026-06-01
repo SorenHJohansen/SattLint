@@ -10,9 +10,9 @@ from sattline_parser.models.ast_model import Variable
 
 from ..reporting.variables_report import VariableIssue
 from ..resolution import AccessGraph
+from ._validators import ContractMappingValidator, MinMaxValidator, StringMappingValidator
 from ._variables_effect_flow import EffectFlowTracker
 from ._variables_status import ProcedureStatusBinding
-from .validators import ContractMappingValidator, MinMaxValidator, StringMappingValidator
 
 
 class _UsageTrackerView(Protocol):

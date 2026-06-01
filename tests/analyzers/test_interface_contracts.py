@@ -39,9 +39,9 @@ def _eq(code: list[object]) -> Equation:
 def test_interface_contracts_analyzer_is_registered() -> None:
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
-    assert "interface_contracts" in specs
-    assert specs["interface_contracts"].enabled is True
-    assert "interface_contracts" not in get_actual_cli_analyzer_keys()
+    assert "interface-contracts" in specs
+    assert specs["interface-contracts"].enabled is True
+    assert "interface-contracts" not in get_actual_cli_analyzer_keys()
 
 
 def test_interface_contracts_reports_missing_required_parameter_connection() -> None:

@@ -196,6 +196,7 @@ def test_state_integrity_top_level_detection_covers_typedef_origin_limit_and_roo
 
 def test_reset_contamination_helper_guard_paths_and_write_filters(monkeypatch: Any) -> None:
     env = reset_contamination_module._build_local_env(
+        object(),
         [Variable(name="Param", datatype=Simple_DataType.INTEGER)],
         [
             Variable(name="Flag", datatype=Simple_DataType.BOOLEAN),

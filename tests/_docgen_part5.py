@@ -208,7 +208,7 @@ def test_get_example_fixtures_for_analyzer_returns_expected_rule_ids():
     example = shadowing_examples[0]
     assert "semantic.shadowing" in example["expected_rule_ids"]
 
-    config_drift_examples = get_example_fixtures_for_analyzer("config_drift")
+    config_drift_examples = get_example_fixtures_for_analyzer("config-drift")
     assert len(config_drift_examples) == 1
     assert config_drift_examples[0]["expected_rule_ids"] == ["semantic.instance-configuration-drift"]
 
@@ -263,11 +263,11 @@ def test_build_full_analyzer_reference_includes_wave2_analyzers_with_rules_and_e
     analyzers = {entry["key"]: entry for entry in reference["analyzers"]}
 
     for key in (
-        "signal_lifecycle",
-        "loop_stability",
-        "fault_handling",
-        "numeric_constraints",
-        "config_drift",
+        "signal-lifecycle",
+        "loop-stability",
+        "fault-handling",
+        "numeric-constraints",
+        "config-drift",
     ):
         assert key in analyzers
         assert analyzers[key]["rules"]

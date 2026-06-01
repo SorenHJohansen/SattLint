@@ -2,6 +2,29 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+_KEYWORD_MODULEDEFINITION = "moduledefinition"  # nosec B105 - SattLine grammar keyword
+_KEYWORD_PRIVATE = "private_"  # nosec B105 - SattLine grammar keyword
+_KEYWORD_MODULECODE = "modulecode"  # nosec B105 - SattLine grammar keyword
+_KEYWORD_ENDDEF = "enddef"  # nosec B105 - SattLine grammar keyword
+_KEYWORD_INVOCATION = "invocation"  # nosec B105 - SattLine grammar keyword
+_KEYWORD_BASEPICTURE = "basepicture"  # nosec B105 - SattLine grammar keyword
+_KEYWORD_SUBMODULES = "submodules"
+_KEYWORD_TYPEDEFINITIONS = "typedefinitions"
+_KEYWORD_MODULEPARAMETERS = "moduleparameters"
+_KEYWORD_LOCALVARIABLES = "localvariables"
+_MODULE_PATH_BREAK_KEYWORDS = frozenset(
+    {
+        _KEYWORD_MODULEDEFINITION,
+        _KEYWORD_MODULECODE,
+        _KEYWORD_ENDDEF,
+        _KEYWORD_PRIVATE,
+        _KEYWORD_SUBMODULES,
+        _KEYWORD_TYPEDEFINITIONS,
+        _KEYWORD_MODULEPARAMETERS,
+        _KEYWORD_LOCALVARIABLES,
+    }
+)
+
 
 def scan_disallowed_comments[TViolation](
     text: str,
@@ -187,21 +210,21 @@ def scan_comments_with_code[THit](
                     token_cf = token.casefold()
 
                     if pending_definition_mode == "header_postcolon":
-                        if token_cf == "moduledefinition" and pending_definition_name is not None:
+                        if token_cf == _KEYWORD_MODULEDEFINITION and pending_definition_name is not None:
                             module_stack.append(pending_definition_name)
                         pending_definition_name = None
                         pending_definition_mode = None
                     elif pending_definition_mode == "typedef_after_equals":
-                        if token_cf == "private_":
+                        if token_cf == _KEYWORD_PRIVATE:
                             i = token_end
                             col += len(token)
                             continue
-                        if token_cf == "moduledefinition" and pending_definition_name is not None:
+                        if token_cf == _KEYWORD_MODULEDEFINITION and pending_definition_name is not None:
                             module_stack.append(f"TypeDef:{pending_definition_name}")
                         pending_definition_name = None
                         pending_definition_mode = None
 
-                    if token_cf == "modulecode":
+                    if token_cf == _KEYWORD_MODULECODE:
                         if module_stack:
                             module_code_paths.append(tuple(module_stack))
                         candidate_definition_name = None
@@ -209,7 +232,7 @@ def scan_comments_with_code[THit](
                         col += len(token)
                         continue
 
-                    if token_cf == "enddef":
+                    if token_cf == _KEYWORD_ENDDEF:
                         if module_code_paths and len(module_code_paths[-1]) == len(module_stack):
                             module_code_paths.pop()
                         if module_stack:
@@ -221,7 +244,7 @@ def scan_comments_with_code[THit](
                         col += len(token)
                         continue
 
-                    if token_cf == "invocation":
+                    if token_cf == _KEYWORD_INVOCATION:
                         if candidate_definition_name is not None:
                             pending_definition_name = candidate_definition_name
                             pending_definition_mode = "header_precolon"
@@ -230,25 +253,13 @@ def scan_comments_with_code[THit](
                         col += len(token)
                         continue
 
-                    if token_cf == "basepicture":
+                    if token_cf == _KEYWORD_BASEPICTURE:
                         candidate_definition_name = token
                         i = token_end
                         col += len(token)
                         continue
 
-                    if token_cf in {
-                        "moduledefinition",
-                        "modulecode",
-                        "enddef",
-                        "private_",
-                        "submodules",
-                        "typedefinitions",
-                        "moduleparameters",
-                        "localvariables",
-                    }:
-                        candidate_definition_name = None
-                    else:
-                        candidate_definition_name = token
+                    candidate_definition_name = None if token_cf in _MODULE_PATH_BREAK_KEYWORDS else token
 
                     i = token_end
                     col += len(token)

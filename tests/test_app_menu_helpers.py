@@ -215,6 +215,32 @@ def test_handle_config_menu_exit_stays_open_on_save_error(tmp_path: Path, capsys
     assert "read-only filesystem" in out
 
 
+def test_handle_config_menu_exit_calls_quit_and_exits_when_save_not_needed() -> None:
+    quit_calls: list[str] = []
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_menus._handle_config_menu_exit(
+            {},
+            dirty=False,
+            config_path=Path("config.json"),
+            save_config_fn=lambda *_: pytest.fail("save_config_fn should not be called"),
+            confirm_fn=lambda *_: pytest.fail("confirm_fn should not be called"),
+            quit_app_fn=lambda: quit_calls.append("quit"),
+        )
+
+    assert quit_calls == ["quit"]
+    assert exc_info.value.code == 0
+
+
+def test_toggle_telemetry_enabled_returns_false_without_confirmation() -> None:
+    cfg: dict[str, object] = {}
+
+    dirty = app_menus._toggle_telemetry_enabled(cfg, confirm_fn=lambda *_: False)
+
+    assert dirty is False
+    assert cfg["telemetry"] == {"enabled": False}
+
+
 def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(builtins, "input", make_input(["x", "q"]))
     outputs: list[str] = []
@@ -237,7 +263,11 @@ def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeyp
 
     assert outputs == ["Invalid choice."]
 
-    monkeypatch.setattr(builtins, "input", make_input(["12", "6", "new-dir", "y", "2", "1", "n", "q", "y"]))
+    monkeypatch.setattr(
+        builtins,
+        "input",
+        make_input(["12", "y", "6", "new-dir", "y", "13", "2", "1", "n", "q", "y"]),
+    )
     saves: list[tuple[Path, dict[str, object]]] = []
     graphics_calls: list[dict[str, object]] = []
     with pytest.raises(SystemExit):
@@ -265,10 +295,12 @@ def test_dump_menu_tools_menu_and_main_loop_cover_invalid_and_quit_paths(monkeyp
             save_config_fn=lambda path, cfg: saves.append((path, dict(cfg))),
             apply_debug_fn=lambda *_: None,
             graphics_rules_menu_fn=lambda cfg: graphics_calls.append(dict(cfg)),
-            quit_app_fn=lambda: None,
+            quit_app_fn=lambda: (_ for _ in ()).throw(SystemExit()),
         )
     assert graphics_calls
     assert saves and saves[0][0] == Path("config.json")
+    assert saves[0][1]["program_dir"] == "new-dir"
+    assert saves[0][1]["telemetry"] == {"enabled": True}
 
     monkeypatch.setattr(builtins, "input", make_input(["x", "q"]))
     outputs = []

@@ -14,7 +14,7 @@ from typing import Any, cast
 from sattlint import app as app_module
 from sattlint import config as config_module
 from sattlint.analyzers.framework import AnalysisContext
-from sattlint.analyzers.registry import get_default_analyzer_catalog
+from sattlint.analyzers.registry import canonicalize_analyzer_key, get_default_analyzer_catalog
 from sattlint.app_analysis import source_paths_for_current_target
 from sattlint.core.semantic import (
     discover_workspace_sources,
@@ -71,7 +71,7 @@ def _selected_analyzer_specs(analyzer_keys: Sequence[str] | None) -> list[Any]:
     if not analyzer_keys:
         return enabled
 
-    requested = {key.casefold() for key in analyzer_keys if key.strip()}
+    requested = {canonicalize_analyzer_key(key) for key in analyzer_keys if key.strip()}
     return [spec for spec in enabled if spec.key.casefold() in requested]
 
 

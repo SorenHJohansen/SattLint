@@ -1,4 +1,7 @@
 # ruff: noqa: F403, F405
+from sattlint.analyzers import _validators as validators_module
+from sattlint.resolution.type_graph import TypeGraph
+
 from ._analyzers_variables_test_support import *
 
 
@@ -624,3 +627,251 @@ def test_display_only_graphics_mapping_keeps_parent_parameter_ui_only():
         and issue.variable.name == "WindowBgColour"
         for issue in analyzer.issues
     )
+
+
+def test_validator_helper_branches_cover_string_and_minmax_helpers():
+    string_validator = validators_module.StringMappingValidator()
+    minmax_validator = validators_module.MinMaxValidator()
+
+    assert string_validator._is_string_simple_type(Simple_DataType.STRING) is True
+    assert string_validator._is_string_simple_type("String") is False
+    assert string_validator._string_limit("String") is None
+    assert (
+        string_validator.check_string_mapping(
+            Variable(name="Target", datatype=Simple_DataType.INTEGER),
+            Variable(name="Source", datatype=Simple_DataType.STRING),
+            ["Root"],
+        )
+        == []
+    )
+
+    assert minmax_validator._mapping_name_text({const.KEY_VAR_NAME: 5}) is None
+    assert (
+        minmax_validator._mapping_name_text(Variable(name="MinLimit", datatype=Simple_DataType.INTEGER)) == "MinLimit"
+    )
+    assert minmax_validator._mapping_name_text("MaxLimit") == "MaxLimit"
+    assert minmax_validator._mapping_name_text(5) is None
+    assert minmax_validator._tokenize_name("MaxPressure2Limit") == {"max", "pressure", "2", "limit"}
+    assert minmax_validator._tokenize_name(".Min") == {"min"}
+    assert minmax_validator._minmax_flags("MinMaxWindow") == (True, True, True)
+
+    ambiguous_mapping = ParameterMapping(
+        target=_varref("MinMaxWindow"),
+        source_type=const.TREE_TAG_VARIABLE_NAME,
+        is_duration=False,
+        is_source_global=False,
+        source=_varref("MinSource"),
+        source_literal=None,
+    )
+    assert (
+        minmax_validator.check_min_max_mapping(
+            ambiguous_mapping,
+            Variable(name="MinMaxWindow", datatype=Simple_DataType.INTEGER),
+            Variable(name="MinSource", datatype=Simple_DataType.INTEGER),
+            ["Root"],
+        )
+        == []
+    )
+
+    blank_mapping = ParameterMapping(
+        target={const.KEY_VAR_NAME: ""},
+        source_type=const.TREE_TAG_VARIABLE_NAME,
+        is_duration=False,
+        is_source_global=False,
+        source={const.KEY_VAR_NAME: ""},
+        source_literal=None,
+    )
+    assert (
+        minmax_validator.check_min_max_mapping(
+            blank_mapping,
+            Variable(name="", datatype=Simple_DataType.INTEGER),
+            Variable(name="", datatype=Simple_DataType.INTEGER),
+            ["Root"],
+        )
+        == []
+    )
+
+
+def test_contract_mapping_validator_helper_branches(monkeypatch):
+    validator = validators_module.ContractMappingValidator(
+        TypeGraph({}),
+        anytype_field_contracts={
+            1: {"AnyParam": validators_module.AnyTypeFieldContract(field_paths=("missing.field",))},
+            2: {"AnyParam": validators_module.AnyTypeFieldContract(field_paths=())},
+        },
+    )
+    source_var = Variable(name="Source", datatype=Simple_DataType.INTEGER)
+    target_var = Variable(name="AnyParam", datatype="AnyType")
+    mapping = ParameterMapping(
+        target=_varref("AnyParam"),
+        source_type=const.TREE_TAG_VARIABLE_NAME,
+        is_duration=False,
+        is_source_global=False,
+        source=_varref("Source"),
+        source_literal=None,
+    )
+
+    assert validator._datatype_key(None) is None
+    assert validator._datatype_key(Simple_DataType.INTEGER) == "integer"
+    assert validator._datatype_key("CustomType") == "customtype"
+    assert validator._format_datatype(None) == "unknown"
+    assert validator._format_datatype(Simple_DataType.INTEGER) == "integer"
+    assert validator._format_datatype("CustomType") == "CustomType"
+    assert (
+        validator._resolve_source_required_field_datatype(
+            ParameterMapping(
+                target=_varref("AnyParam"),
+                source_type=const.TREE_TAG_VARIABLE_NAME,
+                is_duration=False,
+                is_source_global=False,
+                source=None,
+                source_literal=None,
+            ),
+            source_var,
+            "field",
+        )
+        is None
+    )
+    assert validator._resolve_source_required_field_datatype(mapping, source_var, "") == Simple_DataType.INTEGER
+
+    monkeypatch.setattr(
+        validators_module,
+        "_resolve_variable_field_datatype",
+        lambda _var, field_path, _graph: Simple_DataType.BOOLEAN if tuple(field_path) == ("child",) else None,
+    )
+    assert validator._resolve_source_required_field_datatype(mapping, source_var, "child") == Simple_DataType.BOOLEAN
+    assert (
+        validator._check_anytype_field_contracts(mapping, target_var, source_var, ["Root"], owner_contract_id=None)
+        == []
+    )
+    assert validator._check_anytype_field_contracts(mapping, target_var, None, ["Root"], owner_contract_id=1) == []
+    assert (
+        validator._check_anytype_field_contracts(
+            ParameterMapping(
+                target=_varref("AnyParam"),
+                source_type=const.KEY_VALUE,
+                is_duration=False,
+                is_source_global=False,
+                source=None,
+                source_literal=1,
+            ),
+            target_var,
+            source_var,
+            ["Root"],
+            owner_contract_id=1,
+        )
+        == []
+    )
+    assert (
+        validator._check_anytype_field_contracts(mapping, target_var, source_var, ["Root"], owner_contract_id=999) == []
+    )
+    assert (
+        validator._check_anytype_field_contracts(mapping, target_var, source_var, ["Root"], owner_contract_id=2) == []
+    )
+    validator._anytype_field_contracts[3] = {"anyparam": validators_module.AnyTypeFieldContract(field_paths=("child",))}
+    assert (
+        validator._check_anytype_field_contracts(mapping, target_var, source_var, ["Root"], owner_contract_id=3) == []
+    )
+
+    issues = validator._check_anytype_field_contracts(mapping, target_var, source_var, ["Root"], owner_contract_id=1)
+    assert len(issues) == 1
+    assert issues[0].field_path == "missing.field"
+    assert "missing required field 'missing.field'" in (issues[0].role or "")
+
+    assert validator._resolve_target_datatype("AnyParam", target_var) == ("AnyType", None)
+    assert validator._resolve_target_datatype("AnyParam.child", target_var) == (Simple_DataType.BOOLEAN, "child")
+    assert validator._resolve_source_datatype(
+        ParameterMapping(
+            target=_varref("AnyParam"),
+            source_type=const.KEY_VALUE,
+            is_duration=False,
+            is_source_global=False,
+            source=None,
+            source_literal=1,
+        ),
+        None,
+    ) == (Simple_DataType.INTEGER, "1")
+    assert validator._resolve_source_datatype(mapping, None) == (None, "Source")
+    assert validator._resolve_source_datatype(mapping, source_var) == (Simple_DataType.INTEGER, "Source")
+    assert validator._resolve_source_datatype(
+        ParameterMapping(
+            target=_varref("AnyParam"),
+            source_type=const.TREE_TAG_VARIABLE_NAME,
+            is_duration=False,
+            is_source_global=False,
+            source=_varref("Source.child"),
+            source_literal=None,
+        ),
+        source_var,
+    ) == (Simple_DataType.BOOLEAN, "Source.child")
+
+
+def test_contract_mapping_validator_check_contract_mapping_branches(monkeypatch):
+    validator = validators_module.ContractMappingValidator(TypeGraph({}))
+    target_var = Variable(name="Target", datatype=Simple_DataType.INTEGER)
+    source_var = Variable(name="Source", datatype=Simple_DataType.STRING)
+    mapping = ParameterMapping(
+        target=_varref("Target"),
+        source_type=const.TREE_TAG_VARIABLE_NAME,
+        is_duration=False,
+        is_source_global=False,
+        source=_varref("Source"),
+        source_literal=None,
+    )
+    anytype_issue = VariableIssue(kind=IssueKind.CONTRACT_MISMATCH, module_path=["Root"], variable=target_var)
+
+    monkeypatch.setattr(validator, "_resolve_target_datatype", lambda *_args: (None, None))
+    assert validator.check_contract_mapping(mapping, target_var, source_var, ["Root"]) == []
+
+    monkeypatch.setattr(validator, "_resolve_target_datatype", lambda *_args: (Simple_DataType.INTEGER, None))
+    monkeypatch.setattr(validator, "_resolve_source_datatype", lambda *_args: (None, "Source"))
+    assert validator.check_contract_mapping(mapping, target_var, source_var, ["Root"]) == []
+
+    monkeypatch.setattr(validator, "_resolve_source_datatype", lambda *_args: (Simple_DataType.INTEGER, "Source"))
+    assert validator.check_contract_mapping(mapping, target_var, source_var, ["Root"]) == []
+
+    monkeypatch.setattr(validator, "_resolve_target_datatype", lambda *_args: ("AnyType", None))
+    monkeypatch.setattr(validator, "_resolve_source_datatype", lambda *_args: (Simple_DataType.INTEGER, "Source"))
+    monkeypatch.setattr(validator, "_check_anytype_field_contracts", lambda *_args, **_kwargs: [anytype_issue])
+    assert validator.check_contract_mapping(mapping, target_var, source_var, ["Root"], owner_contract_id=1) == [
+        anytype_issue
+    ]
+
+    literal_mapping = ParameterMapping(
+        target=_varref("Target"),
+        source_type=const.KEY_VALUE,
+        is_duration=False,
+        is_source_global=False,
+        source=None,
+        source_literal=1,
+    )
+    monkeypatch.setattr(validator, "_resolve_target_datatype", lambda *_args: (Simple_DataType.INTEGER, None))
+    monkeypatch.setattr(validator, "_resolve_source_datatype", lambda *_args: ("CustomLiteral", "1"))
+    monkeypatch.setattr(validators_module, "_literal_matches_expected_datatype", lambda *_args, **_kwargs: True)
+    assert validator.check_contract_mapping(literal_mapping, target_var, None, ["Root"]) == []
+
+    monkeypatch.setattr(validator, "_resolve_source_datatype", lambda *_args: (Simple_DataType.STRING, "Source"))
+    monkeypatch.setattr(validator, "_resolve_target_datatype", lambda *_args: (Simple_DataType.IDENTSTRING, None))
+    monkeypatch.setattr(validators_module, "_literal_matches_expected_datatype", lambda *_args, **_kwargs: False)
+    assert validator.check_contract_mapping(mapping, target_var, source_var, ["Root"]) == []
+
+    time_mapping = ParameterMapping(
+        target=_varref("Target"),
+        source_type=const.KEY_VALUE,
+        is_duration=False,
+        is_source_global=False,
+        source=None,
+        source_literal="1:00",
+    )
+    monkeypatch.setattr(validator, "_resolve_target_datatype", lambda *_args: ("CustomTimeTarget", None))
+    monkeypatch.setattr(validator, "_resolve_source_datatype", lambda *_args: (const.GRAMMAR_VALUE_TIME_VALUE, "1:00"))
+    monkeypatch.setattr(validators_module, "_assignment_type_matches", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(validators_module, "_has_time_literal_marker", lambda *_args, **_kwargs: False)
+    assert validator.check_contract_mapping(time_mapping, target_var, None, ["Root"]) == []
+
+    monkeypatch.setattr(validator, "_resolve_target_datatype", lambda *_args: (Simple_DataType.INTEGER, "field"))
+    monkeypatch.setattr(validator, "_resolve_source_datatype", lambda *_args: (Simple_DataType.STRING, "Source"))
+    issue_list = validator.check_contract_mapping(mapping, target_var, source_var, ["Root"])
+    assert len(issue_list) == 1
+    assert issue_list[0].field_path == "field"
+    assert "Source (string) => Target (integer)" in (issue_list[0].role or "")

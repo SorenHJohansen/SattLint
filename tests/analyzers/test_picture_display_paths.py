@@ -2,11 +2,14 @@ from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleDef,
     ModuleHeader,
+    ModuleTypeDef,
+    ModuleTypeInstance,
     SingleModule,
     SourceSpan,
 )
 from sattlint.analyzers.picture_display_paths import analyze_picture_display_paths
 from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
+from sattlint.models.project_graph import ProjectGraph
 from sattlint.picture_display_paths import (
     PictureDisplayOccurrence,
     resolve_picture_display_path,
@@ -167,6 +170,61 @@ def test_resolve_picture_display_path_reports_unimplemented_emf_asset() -> None:
     assert resolution.ok is False
     assert resolution.failure_reason == "unimplemented_asset"
     assert resolution.detail == ".emf and .wmf resolution is not implemented"
+
+
+def test_resolve_picture_display_path_keeps_local_moduletype_defs_when_graph_has_dependencies() -> None:
+    panel = SingleModule(
+        header=ModuleHeader(name="Panel", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        moduledef=ModuleDef(),
+    )
+    local_typedef = ModuleTypeDef(
+        name="LocalType",
+        moduledef=ModuleDef(),
+        submodules=[
+            SingleModule(
+                header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                moduledef=ModuleDef(),
+                submodules=[panel],
+            )
+        ],
+        origin_lib="RootLib",
+        origin_file="RootLib.s",
+    )
+    dependency_typedef = ModuleTypeDef(
+        name="DependencyType",
+        moduledef=ModuleDef(),
+        origin_lib="DepLib",
+        origin_file="DepLib.s",
+    )
+    base_picture = BasePicture(
+        header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        name="BasePicture",
+        moduledef=ModuleDef(),
+        submodules=[
+            ModuleTypeInstance(
+                header=ModuleHeader(name="Instance", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+                moduletype_name="LocalType",
+            )
+        ],
+        moduletype_defs=[local_typedef],
+        origin_lib="RootLib",
+        origin_file="RootLib.s",
+    )
+    graph = ProjectGraph(
+        moduletype_defs={
+            ("deplib", "dependencytype", "deplib.s"): dependency_typedef,
+        }
+    )
+
+    resolution = resolve_picture_display_path(
+        "++Panel",
+        base_picture=base_picture,
+        declaring_module_path=("BasePicture", "Instance"),
+        graph=graph,
+    )
+
+    assert resolution.ok is True
+    assert resolution.resolved_module_path == ("BasePicture", "Instance", "L1", "Panel")
 
 
 def test_resolve_picture_display_path_implicit_plus_uses_first_declared_child() -> None:

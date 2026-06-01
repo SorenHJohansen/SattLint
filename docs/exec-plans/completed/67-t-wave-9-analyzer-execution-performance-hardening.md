@@ -12,12 +12,13 @@ The observable proof is partly behavioral and partly performance-oriented. Behav
 
 - [x] (2026-06-01 06:55Z) Created this ExecPlan and captured the current hot paths: `src/sattlint/app_analysis.py` runs analyzers in a strict target-by-analyzer loop, `src/sattlint/analyzers/sattline_semantics.py` reruns semantic-mapped analyzers directly, and `src/sattlint/analyzers/_sfc_collectors.py` subclasses `VariablesAnalyzer`.
 - [x] (2026-06-01 09:10Z) Confirmed that the previous active `62` path conflicted with an already completed `62` plan, so this analyzer-execution follow-on now uses a new active identifier.
-- [ ] Add low-noise profiling and reuse counters to the analyzer execution path so the implementation can prove reduced duplicate work without relying on flaky wall-clock thresholds.
-- [ ] Add a per-target shared analysis-artifact seam that lives with `AnalysisContext` and can be reused by hot analyzer families during one batch run.
-- [ ] Eliminate semantic-layer double execution by allowing `analyze_sattline_semantics(...)` to reuse reports that were already produced for the same target in the same batch.
-- [ ] Extract and reuse variable-analysis hot artifacts for `variables`, `sfc`, and the nearby reset-contamination path without changing report contents.
-- [ ] Measure the remaining standalone subsystems (`graphics_validation`, `graphics_rules`, `layout_geometry`, `icf`) and record whether they need separate follow-on plans or fit into this one without widening the first milestone.
-- [ ] Validate the slice with focused pytest, touched-file Pyright, and a profiling smoke that shows reduced duplicate builds on a representative target.
+- [x] (2026-06-01 11:20Z) Added low-noise profiling and reuse counters through `AnalysisSharedArtifacts`, plus opt-in `SATTLINT_PROFILE_ANALYZERS=1` summary output from `src/sattlint/app_analysis.py`.
+- [x] (2026-06-01 11:20Z) Added a per-target shared analysis-artifact seam on `AnalysisContext` via `src/sattlint/analyzers/_shared_analysis.py` and threaded it through `_run_checks(...)`.
+- [x] (2026-06-01 11:20Z) Eliminated semantic-layer double execution for already-produced same-target reports by teaching `src/sattlint/analyzers/sattline_semantics.py` to reuse `reports_by_analyzer_key` and only fall back to reruns when a mapped analyzer report is missing.
+- [x] (2026-06-01 11:20Z) Extracted and reused variable-analysis hot artifacts for `variables`, `sfc`, and the nearby reset or implicit-latch path without changing report contents.
+- [x] (2026-06-01 10:10Z) Measured the remaining standalone subsystems on real HA inputs. `graphics_validation` stayed tiny (13.2 ms cold, 1.7 ms warm on `KaHAMPCSøjleLib.g`), `layout_geometry` stayed modest (147.1 ms median on `KaHAMPCSøjleLib`), and ICF stayed modest (`2.2 ms` parse, `0.8 ms` moduletype-index build, `273.3 ms` validation on `KaHAOPS2Z4.icf`). `graphics_rules` validation itself also stayed moderate (`549.3 ms` median for a synthetic 32-rule sample), but the real layout-entry collection path was material at `25.2 s` median for `31,537` entries, so that cost is recorded as a separate follow-on candidate instead of widening this milestone.
+- [x] (2026-06-01 09:57Z) Re-ran the representative profiling smoke against `KaHAMPCSøjleLib` and captured a successful reuse-profile line: `shared-artifact-holders=1, variable-foundation-builds=1, semantic-precomputed-reports=0, semantic-reruns=0, local-env-builds=3`.
+- [x] (2026-06-01 11:28Z) Focused regression tests passed for `tests/analyzers/test_sattline_semantics.py`, `tests/analyzers/test_sfc.py`, `tests/analyzers/test_reset_contamination.py`, and `tests/_app_analysis_part2.py`, and touched production-file Pyright passed for the edited analyzer and app-analysis modules.
 
 ## Surprises & Discoveries
 
@@ -29,8 +30,18 @@ The observable proof is partly behavioral and partly performance-oriented. Behav
   Evidence: `src/sattlint/analyzers/sattline_semantics.py` iterates `registry_module.get_default_analyzer_catalog().analyzers`, rebuilds analyzer arguments, and invokes analyzer functions again for any enabled analyzer that exposes `semantic_mapping_kind`.
 - Observation: `sfc` sits on the same expensive variable-analysis foundation as `variables`.
   Evidence: `_SfcAccessCollector` in `src/sattlint/analyzers/_sfc_collectors.py` subclasses `VariablesAnalyzer`, so both analyzers currently pay the `VariablesAnalyzer` initialization cost and related AST walking in the same batch.
+- Observation: same-batch semantic reuse also required analyzer ordering, not just a shared report map.
+  Evidence: `sattline-semantics` appears before many analyzers in the full catalog order, so `_run_checks(...)` had to move the semantic layer to the end of the selected batch order for already-produced reports to exist when semantic aggregation runs.
 - Observation: the previous active `62` path conflicted with an existing completed `62` plan and also contained two separate plan bodies.
   Evidence: `docs/exec-plans/completed/62-t-wave-8-performance-and-scalability-hardening.md` already exists, while the former `docs/exec-plans/active/62-t-wave-8-performance-and-scalability-hardening.md` held both analyzer-execution and loader-pipeline follow-on content.
+- Observation: after the external HA dependency fix, the representative `KaHAMPCSøjleLib` smoke now runs through analyzer execution and emits the reuse counters needed for this milestone.
+  Evidence: `artifacts/tmp/profile-kahampcsoejlelib_measure.json` records `Analyzer reuse profile for KaHAMPCSøjleLib: shared-artifact-holders=1, variable-foundation-builds=1, semantic-precomputed-reports=0, semantic-reruns=0, local-env-builds=3`.
+- Observation: `graphics_validation` already benefits from an effective parser-factory cache and is not a material standalone hotspot on the representative graphics file.
+  Evidence: `artifacts/tmp/plan67_standalone_subsystem_measurements.json` records `13.2 ms` cold and `1.7 ms` warm medians for `src/sattlint/graphics_validation.py` on `/home/sqhj/Projects/Libs/HA/ProjectLib/KaHAMPCSøjleLib.g`.
+- Observation: `graphics_rules` cost is dominated by layout-entry collection, not by rule matching or mismatch comparison.
+  Evidence: `artifacts/tmp/plan67_standalone_subsystem_measurements.json` records `25.2 s` median for `app_graphics.collect_graphics_layout_entries_for_target(...)` over `31,537` entries, versus `8.9 ms` with the current empty `graphics_rules.json` and `549.3 ms` for a synthetic 32-rule validation sample.
+- Observation: `layout_geometry` and ICF validation are real but comparatively modest on representative inputs and do not justify widening this plan.
+  Evidence: `artifacts/tmp/plan67_standalone_subsystem_measurements.json` records `147.1 ms` median for `collect_layout_overlap_issues(...)` on `KaHAMPCSøjleLib`, plus `273.3 ms` median ICF validation after `2.2 ms` parse and `0.8 ms` moduletype-index build on `KaHAOPS2Z4.icf`.
 
 ## Decision Log
 
@@ -49,10 +60,19 @@ The observable proof is partly behavioral and partly performance-oriented. Behav
 - Decision: leave `graphics_validation`, `graphics_rules`, `layout_geometry`, and `icf` out of the first implementation milestone.
   Rationale: those are related to performance, but they do not flow through the same analyzer-registry hot loop. They should be measured after the registry-path work lands, not used to widen the initial change.
   Date/Author: 2026-06-01 / Copilot (GPT-5.4)
+- Decision: close plan 67 after measurement rather than widening it to optimize graphics-layout collection.
+  Rationale: the only remaining material standalone cost sits in `src/sattlint/app_graphics.py` and `src/sattlint/devtools/structural_reports.py` during layout-entry collection for graphics rules, which is outside the analyzer-registry reuse seam this plan owns. The other measured standalone subsystems were small enough on representative inputs to avoid a new milestone here.
+  Date/Author: 2026-06-01 / Copilot (GPT-5.4)
 
 ## Outcomes & Retrospective
 
-This section is intentionally incomplete until implementation finishes. The intended outcome is a targeted performance hardening slice that keeps analyzer behavior stable while removing repeated work from the hottest execution path. The main risk is false sharing: if shared artifacts become too broad or mutable, analyzers could start leaking state across reports. The implementation must therefore prefer immutable or lazily memoized artifacts and preserve per-analyzer issue collection boundaries.
+This implementation landed the target-scoped reuse seam described above. `src/sattlint/analyzers/framework.py` now carries `AnalysisSharedArtifacts` on `AnalysisContext`; `src/sattlint/app_analysis.py` creates one holder per target, stores same-batch reports on it, emits opt-in reuse counters, and schedules `sattline-semantics` after the analyzers it can aggregate. `src/sattlint/analyzers/sattline_semantics.py` now reuses precomputed mapped-analyzer reports when present and only reruns missing analyzers in standalone or partial-report cases.
+
+The variable-family hot path now reuses a shared `VariableAnalysisArtifacts` foundation across `variables` and `sfc`, while `_reset_contamination.py` reuses cached local env maps across the reset-contamination and implicit-latch scans. Focused proof landed in the owner suites: `tests/_app_analysis_part2.py`, `tests/analyzers/test_sattline_semantics.py`, `tests/analyzers/test_sfc.py`, and `tests/analyzers/test_reset_contamination.py`. Focused pytest passed, and touched production-file Pyright passed.
+
+Standalone measurement is now complete. `graphics_validation`, `layout_geometry`, and ICF validation all stayed comparatively modest on representative real inputs, so they do not need another optimization pass inside this milestone. `graphics_rules` itself also stayed moderate once entries existed, but the layout-entry collection path used by `app_graphics.collect_graphics_layout_entries_for_target(...)` was materially expensive and should be handled as a separate follow-on on the graphics or structural-reporting surface rather than reopening this analyzer-execution plan.
+
+With those measurements captured and the representative profiling smoke complete, plan 67 is complete and can move to `docs/exec-plans/completed/`.
 
 ## Context and Orientation
 
@@ -155,6 +175,7 @@ Target evidence to capture during implementation:
     - a short profiling transcript showing shared-artifact build counts and semantic rerun counts before and after the change
     - one or more focused tests that monkeypatch hot constructors or builder functions and assert reduced call counts
     - a narrow diff or notes section showing which analyzer families now consume shared artifacts
+    - `artifacts/tmp/plan67_standalone_subsystem_measurements.json` and `artifacts/tmp/plan67_standalone_subsystem_measurements.txt`, which record the representative standalone-subsystem timings used to close out this plan
 
 ## Interfaces and Dependencies
 

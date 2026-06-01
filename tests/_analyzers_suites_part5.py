@@ -222,7 +222,7 @@ def test_taint_paths_analyzer_is_enabled_by_default():
 def test_state_inference_analyzer_is_not_in_default_cli_subset():
     from sattlint.analyzers.registry import get_actual_cli_analyzer_keys
 
-    assert "state_inference" not in get_actual_cli_analyzer_keys()
+    assert "state-inference" not in get_actual_cli_analyzer_keys()
 
 
 def test_mms_tag_helpers_normalize_external_tags_and_family_keys():
@@ -290,7 +290,7 @@ def test_variable_usage_datatype_report_returns_not_found_message():
         moduledef=None,
     )
 
-    report = analyze_datatype_usage(bp, "MissingValue")
+    report = report_datatype_usage(bp, "MissingValue")
 
     assert report == "Variable 'MissingValue' not found."
 
@@ -343,7 +343,7 @@ def test_variable_usage_reports_include_field_and_whole_variable_accesses():
         moduledef=None,
     )
 
-    datatype_report = analyze_datatype_usage(bp, "Dv")
+    datatype_report = report_datatype_usage(bp, "Dv")
     debug_report = debug_variable_usage(bp, "Dv")
 
     assert "Field usage analysis for variable 'Dv':" in datatype_report

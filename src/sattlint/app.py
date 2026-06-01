@@ -8,6 +8,7 @@ import os
 import sys
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
@@ -25,10 +26,12 @@ from . import app_docs as app_docs_module
 from . import app_graphics as app_graphics_module
 from . import app_menus as app_menus_module
 from . import app_support as app_support_module
+from . import app_telemetry as app_telemetry_module
 from . import cache as cache_module
 from . import config as _config_module
 from . import console as console_module
 from . import engine as engine_module_impl
+from . import telemetry_summary as telemetry_summary_module
 from .analyzers.registry import get_default_analyzers, get_default_cli_analyzers
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variables import (
@@ -58,8 +61,10 @@ app_docs = cast(Any, app_docs_module)
 app_graphics = cast(Any, app_graphics_module)
 app_menus = cast(Any, app_menus_module)
 app_support = cast(Any, app_support_module)
+app_telemetry = cast(Any, app_telemetry_module)
 cache = cast(Any, cache_module)
 engine_module: Any = engine_module_impl
+telemetry_summary = cast(Any, telemetry_summary_module)
 
 VARIABLE_ANALYSES: VariableAnalysisMap = app_analysis.VARIABLE_ANALYSES
 HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS: tuple[str, ...] = app_analysis.HIGH_CONFIDENCE_VARIABLE_ANALYSIS_KEYS
@@ -257,6 +262,22 @@ def run_docgen_command(
         cfg,
         use_cache=use_cache,
         output_dir=output_dir,
+        output_path=output_path,
+        app_module=_APP_MODULE,
+    )
+
+
+def run_telemetry_summary_command(
+    cfg: ConfigDict,
+    *,
+    config_path: Path,
+    output_format: str,
+    output_path: str | None,
+) -> int:
+    return app_startup_module.run_telemetry_summary_command_from_app(
+        cfg,
+        config_path=config_path,
+        output_format=output_format,
         output_path=output_path,
         app_module=_APP_MODULE,
     )
@@ -849,8 +870,7 @@ def main(argv: list[str] | None = None) -> int:
     return app_startup_module.main_from_app(argv, app_module=_APP_MODULE)
 
 
-def cli() -> int:
-    return main(sys.argv[1:])
+cli = cast(Callable[[], int], partial(app_startup_module.cli_from_app, app_module=_APP_MODULE))
 
 
 if __name__ == "__main__":

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sattline_parser.models.ast_model import Variable
+
+
+def _empty_resolve_cache() -> dict[str, tuple[Variable | None, str, list[str], list[str]]]:
+    return {}
 
 
 @dataclass
@@ -16,6 +20,11 @@ class ScopeContext:
     display_module_path: list[str]
     current_library: str | None = None
     parent_context: ScopeContext | None = None
+    _resolve_cache: dict[str, tuple[Variable | None, str, list[str], list[str]]] = field(
+        default_factory=_empty_resolve_cache,
+        init=False,
+        repr=False,
+    )
 
     def resolve_variable(self, var_ref: str) -> tuple[Variable | None, str, list[str], list[str]]:
         """
@@ -27,6 +36,11 @@ class ScopeContext:
         - "Dv.I.WT001.Comp_signal.value" in parent scope
           returns (Dv_variable, "I.WT001.Comp_signal.value")
         """
+        cache_key = var_ref.casefold()
+        cached = self._resolve_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         base = var_ref.split(".", 1)[0].lower()
         field_path = var_ref.split(".", 1)[1] if "." in var_ref else ""
 
@@ -40,18 +54,26 @@ class ScopeContext:
                 full_field_path = prefix
             else:
                 full_field_path = field_path
-            return source_var, full_field_path, source_decl_path, source_decl_display_path
+            result = source_var, full_field_path, source_decl_path, source_decl_display_path
+            self._resolve_cache[cache_key] = result
+            return result
 
         # Fall back to variables declared in the current scope.
         var = self.env.get(base)
         if var:
-            return var, field_path, self.module_path, self.display_module_path
+            result = var, field_path, self.module_path, self.display_module_path
+            self._resolve_cache[cache_key] = result
+            return result
 
         # Walk up to the parent scope if still unresolved.
         if self.parent_context:
-            return self.parent_context.resolve_variable(var_ref)
+            result = self.parent_context.resolve_variable(var_ref)
+            self._resolve_cache[cache_key] = result
+            return result
 
-        return None, field_path, self.module_path, self.display_module_path
+        result = None, field_path, self.module_path, self.display_module_path
+        self._resolve_cache[cache_key] = result
+        return result
 
     def resolve_global_name(self, base_name: str) -> tuple[Variable | None, list[str], list[str]]:
         """Resolve a GLOBAL-mapped name by walking up scopes (env only).

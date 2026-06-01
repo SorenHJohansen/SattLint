@@ -86,6 +86,7 @@ class SattLineSemanticsReport:
 
 def analyze_sattline_semantics(
     base_picture: BasePicture,
+    analysis_context: AnalysisContext | None = None,
     debug: bool = False,
     unavailable_libraries: set[str] | None = None,
     analyzed_target_is_library: bool = False,
@@ -97,7 +98,7 @@ def analyze_sattline_semantics(
 
     from . import registry as registry_module
 
-    context = AnalysisContext(
+    context = analysis_context or AnalysisContext(
         base_picture=base_picture,
         graph=SimpleNamespace(unavailable_libraries=set(unavailable_libraries or ())),
         debug=debug,
@@ -120,12 +121,21 @@ def analyze_sattline_semantics(
         if spec.key == registry_module.SEMANTIC_LAYER_ANALYZER_KEY:
             continue
 
-        analyzer_fn = getattr(registry_module, spec.analyzer_attr)
-        if spec.direct_context:
-            report = analyzer_fn(context)
-        else:
-            kwargs = build_context_kwargs(spec, registry_module, context, overrides=overrides)
-            report = analyzer_fn(base_picture, **kwargs)
+        report = None
+        if context.shared_artifacts is not None:
+            report = context.shared_artifacts.reports_by_analyzer_key.get(spec.key)
+            if report is not None:
+                context.shared_artifacts.counters.semantic_precomputed_reports_used += 1
+
+        if report is None:
+            analyzer_fn = getattr(registry_module, spec.analyzer_attr)
+            if spec.direct_context:
+                report = analyzer_fn(context)
+            else:
+                kwargs = build_context_kwargs(spec, registry_module, context, overrides=overrides)
+                report = analyzer_fn(base_picture, **kwargs)
+            if context.shared_artifacts is not None:
+                context.shared_artifacts.counters.semantic_analyzer_reruns += 1
 
         report_issues = getattr(report, "issues", None)
         if not isinstance(report_issues, list):

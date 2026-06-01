@@ -12,6 +12,7 @@ type ContextValueProvider = Callable[[Any, AnalysisContext], object]
 
 
 _CONTEXT_VALUE_PROVIDERS: dict[str, ContextValueProvider] = {
+    "analysis_context": lambda _registry_module, context: context,
     "analyzed_target_is_library": lambda _registry_module, context: context.target_is_library,
     "config": lambda _registry_module, context: context.config,
     "debug": lambda _registry_module, context: context.debug,

@@ -1,4 +1,6 @@
 # ruff: noqa: F403, F405
+import json
+
 from ._app_analysis_test_support import *
 
 
@@ -33,7 +35,7 @@ def test_advanced_datatype_analysis_choices(noop_screen, monkeypatch, real_conte
         "_iter_loaded_projects",
         lambda *_args, **_kwargs: iter([("TargetA", "project", SimpleNamespace(unavailable_libraries=set()))]),
     )
-    monkeypatch.setattr(variables_reporting_module, "analyze_datatype_usage", lambda *_, **__: "report")
+    monkeypatch.setattr(variables_reporting_module, "report_datatype_usage", lambda *_, **__: "report")
     monkeypatch.setattr(variables_reporting_module, "debug_variable_usage", lambda *_, **__: "report")
 
     monkeypatch.setattr(builtins, "input", make_input(["1", "VarName"]))
@@ -198,6 +200,70 @@ def test_run_variable_analysis_includes_version_and_last_changed(noop_screen, mo
     out = capsys.readouterr().out
     assert "Version: draft" in out
     assert "Last changed: 2024-05-17" in out
+
+
+def test_run_variable_analysis_writes_telemetry_summary(tmp_path, noop_screen, monkeypatch):
+    telemetry_path = tmp_path / "telemetry.jsonl"
+    graph = SimpleNamespace(
+        load_stage_timings={"load_or_parse": 0.4, "validate": 0.2},
+        graphics_load_timings={"validate-graphics-file": 0.05},
+        unavailable_libraries=set(),
+        warnings=[],
+        source_files=set(),
+    )
+    monkeypatch.setattr(app_analysis.telemetry_module, "get_config_path", lambda: tmp_path / "config.toml")
+    monkeypatch.setattr(
+        app_analysis,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("ProgramA", "bp-a", graph)]),
+    )
+    monkeypatch.setattr(
+        app_analysis,
+        "analyze_variables",
+        lambda *_, **__: VariablesReport(
+            basepicture_name="ProgramA",
+            issues=[],
+            visible_kinds=frozenset(DEFAULT_VARIABLE_ANALYSIS_KINDS),
+            include_empty_sections=True,
+            phase_timings=[
+                {"phase": "collector", "duration_ms": 5.5},
+                {"phase": "report", "duration_ms": 8.25},
+            ],
+        ),
+    )
+    monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report("ProgramA"))
+
+    cfg = app.DEFAULT_CONFIG.copy()
+    cfg["telemetry"] = {"enabled": True}
+
+    app_analysis.run_variable_analysis(cfg, None)
+
+    events = [json.loads(line) for line in telemetry_path.read_text(encoding="utf-8").splitlines()]
+
+    assert len(events) == 1
+    assert events[0]["kind"] == "sattlint.app.telemetry"
+    assert events[0]["operation"] == "variable-analysis"
+    assert events[0]["target_name"] == "ProgramA"
+    assert events[0]["success"] is True
+    assert events[0]["payload"]["shadowing_requested"] is True
+    assert "unused" in events[0]["payload"]["requested_issue_kinds"]
+    assert events[0]["payload"]["phase_timings_ms"] == [
+        {"phase": "collector", "duration_ms": 5.5},
+        {"phase": "report", "duration_ms": 8.25},
+    ]
+    assert events[0]["payload"]["phase_bottleneck"] == {
+        "kind": "phase",
+        "name": "report",
+        "duration_ms": 8.25,
+    }
+    assert events[0]["payload"]["bottleneck_kind"] == "phase"
+    assert events[0]["payload"]["stage_timings_ms"] == {
+        "load_or_parse": 400.0,
+        "validate": 200.0,
+    }
+    assert events[0]["payload"]["graphics_timings_ms"] == {
+        "validate-graphics-file": 50.0,
+    }
 
 
 def test_run_variable_analysis_all_analyses_executes_real_analyzers(noop_screen, monkeypatch, capsys):
@@ -742,7 +808,7 @@ def test_run_datatype_usage_analysis_reports_errors_and_pauses(monkeypatch):
     )
     monkeypatch.setattr(
         variables_reporting_module,
-        "analyze_datatype_usage",
+        "report_datatype_usage",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 
@@ -770,7 +836,7 @@ def test_run_datatype_usage_analysis_updates_live_status(monkeypatch):
             [("TargetA", "bp-a", SimpleNamespace(unavailable_libraries=set(), warnings=[]))]
         ),
     )
-    monkeypatch.setattr(variables_reporting_module, "analyze_datatype_usage", lambda *_args, **_kwargs: "report")
+    monkeypatch.setattr(variables_reporting_module, "report_datatype_usage", lambda *_args, **_kwargs: "report")
     monkeypatch.setattr(app_analysis.console_module, "live_status_line", lambda: FakeLiveStatusLine())
     monkeypatch.setattr(app_analysis, "emit_output", lambda *_args, **_kwargs: None)
 

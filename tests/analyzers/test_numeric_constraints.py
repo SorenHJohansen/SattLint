@@ -54,5 +54,5 @@ def test_numeric_constraints_flags_assignments_outside_visible_bounds():
 def test_numeric_constraints_analyzer_is_enabled_by_default():
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
-    assert "numeric_constraints" in specs
-    assert specs["numeric_constraints"].enabled is True
+    assert "numeric-constraints" in specs
+    assert specs["numeric-constraints"].enabled is True

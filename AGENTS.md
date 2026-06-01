@@ -15,6 +15,7 @@
 ## Repo Map
 
 - Start routing from `docs/repo-map.md` when you need the owning surface for CLI, editor facade, LSP, devtools, or the preview VS Code client.
+- Route analyzer package structure, registry naming, and helper-boundary work through `.github/instructions/analyzer-architecture.instructions.md`.
 
 ## Key Docs
 
