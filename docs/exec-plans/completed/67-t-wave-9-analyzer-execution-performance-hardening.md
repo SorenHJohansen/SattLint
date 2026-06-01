@@ -37,7 +37,7 @@ The observable proof is partly behavioral and partly performance-oriented. Behav
 - Observation: after the external HA dependency fix, the representative `KaHAMPCSøjleLib` smoke now runs through analyzer execution and emits the reuse counters needed for this milestone.
   Evidence: `artifacts/tmp/profile-kahampcsoejlelib_measure.json` records `Analyzer reuse profile for KaHAMPCSøjleLib: shared-artifact-holders=1, variable-foundation-builds=1, semantic-precomputed-reports=0, semantic-reruns=0, local-env-builds=3`.
 - Observation: `graphics_validation` already benefits from an effective parser-factory cache and is not a material standalone hotspot on the representative graphics file.
-  Evidence: `artifacts/tmp/plan67_standalone_subsystem_measurements.json` records `13.2 ms` cold and `1.7 ms` warm medians for `src/sattlint/graphics_validation.py` on `/home/sqhj/Projects/Libs/HA/ProjectLib/KaHAMPCSøjleLib.g`.
+  Evidence: `artifacts/tmp/plan67_standalone_subsystem_measurements.json` records `13.2 ms` cold and `1.7 ms` warm medians for `src/sattlint/graphics_validation.py` on the representative `KaHAMPCSøjleLib.g` graphics file.
 - Observation: `graphics_rules` cost is dominated by layout-entry collection, not by rule matching or mismatch comparison.
   Evidence: `artifacts/tmp/plan67_standalone_subsystem_measurements.json` records `25.2 s` median for `app_graphics.collect_graphics_layout_entries_for_target(...)` over `31,537` entries, versus `8.9 ms` with the current empty `graphics_rules.json` and `549.3 ms` for a synthetic 32-rule validation sample.
 - Observation: `layout_geometry` and ICF validation are real but comparatively modest on representative inputs and do not justify widening this plan.

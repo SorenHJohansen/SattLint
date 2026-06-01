@@ -104,7 +104,7 @@ Avoid introducing cross-run caches or workspace-global mutable state unless the 
 Baseline artifacts captured before this plan opened:
 
     - `artifacts/tmp/plan67_standalone_subsystem_measurements.json` records `25,206.55 ms` median for graphics layout-entry collection over `31,537` entries on `KaHAMPCSøjleLib`.
-    - `/home/sqhj/.config/sattlint/graphics_rules.json` currently contains zero rules, so the live graphics-rules runtime is dominated by entry collection rather than rule comparison.
+    - the local SattLint graphics-rules user config currently contains zero rules, so the live graphics-rules runtime is dominated by entry collection rather than rule comparison.
     - `src/sattlint/app_graphics.py` wraps the structural graphics report path and then annotates entries with structure paths.
     - `src/sattlint/devtools/_structural_report_graphics.py` owns snapshot accumulation and graphics layout report building.
 
