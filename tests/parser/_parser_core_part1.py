@@ -397,9 +397,10 @@ def test_sfc_mixin_builds_modulecode_sequences_and_equations():
         branches=[[init_step, transition], [SFCBreak()]]
     )
     assert mixin.seqparallel(
-        [Token("PAR", "PAR"), body_tree, mixin.sequence_body([SFCFork(target="Other")])]
-    ) == SFCParallel(branches=[[init_step, transition], [SFCFork(target="Other")]])
-    assert mixin.seqfork([Token("SEQFORK", "SEQFORK"), "NextStep"]) == SFCFork(target="NextStep")
+        [Token("PAR", "PAR"), body_tree, mixin.sequence_body([SFCFork(targets=("Other",))])]
+    ) == SFCParallel(branches=[[init_step, transition], [SFCFork(targets=("Other",))]])
+    assert mixin.seqfork([Token("SEQFORK", "SEQFORK"), "NextStep"]) == SFCFork(targets=("NextStep",))
+    assert mixin.seqfork([Token("SEQFORK", "SEQFORK"), "PathA", "PathB"]) == SFCFork(targets=("PathA", "PathB"))
     assert isinstance(mixin.seqbreak([]), SFCBreak)
     assert mixin.seq_element([step]) is step
     assert mixin.seq_element([]) is None

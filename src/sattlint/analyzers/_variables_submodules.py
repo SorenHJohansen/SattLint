@@ -27,6 +27,12 @@ if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
 
 
+def _maybe_update_status(self: object, detail: str) -> None:
+    update_status = getattr(self, "_update_status", None)
+    if callable(update_status):
+        update_status(detail)
+
+
 def _mapping_target_name(mapping: ParameterMapping) -> str | None:
     return varname_base(cast(Any, mapping).target)
 
@@ -291,10 +297,11 @@ def _walk_submodules(
         if not _should_walk_submodule_path(self, child_path):
             continue
 
-        display_path = " > ".join(child_path[-4:])
-        if len(child_path) > 4:
-            display_path = f"... > {display_path}"
-        self._update_status(f"walking module path {display_path}")
+        if getattr(self, "debug", False):
+            display_path = " > ".join(child_path[-4:])
+            if len(child_path) > 4:
+                display_path = f"... > {display_path}"
+            _maybe_update_status(self, f"walking module path {display_path}")
 
         child_display_path = _display_path_for_child(self, child, parent_context)
         inst_context = self.repath_context(

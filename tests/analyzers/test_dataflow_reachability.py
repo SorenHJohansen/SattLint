@@ -43,7 +43,7 @@ def test_sequence_nodes_after_fork_are_reported_unreachable_with_target_metadata
         position=(0.0, 0.0),
         size=(1.0, 1.0),
         code=[
-            SFCFork(target="Done"),
+            SFCFork(targets=("Done",)),
             SFCStep(kind="step", name="AfterFork", code=SFCCodeBlocks()),
         ],
     )
@@ -61,7 +61,7 @@ def test_sequence_nodes_after_fork_are_reported_unreachable_with_target_metadata
         "branch_path": [],
         "node_index": 1,
         "node_label": "SFCStep:AfterFork",
-        "terminated_by": {"kind": "SFCFork", "target": "Done"},
+        "terminated_by": {"kind": "SFCFork", "targets": ["Done"]},
         "site": "SEQ:SeqMain",
     }
 

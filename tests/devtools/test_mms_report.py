@@ -7,6 +7,7 @@ def test_mms_report_summary_handles_empty_hits_and_issues():
 
     summary = report.summary()
 
+    assert report.name == "BasePicture"
     assert "Report: MMS interface mappings" in summary
     assert "Target: BasePicture" in summary
     assert "Status: ok" in summary

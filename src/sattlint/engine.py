@@ -1,11 +1,13 @@
 """Parsing and project-loading engine for SattLine sources."""
 
 import contextlib
+import inspect
 import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
+from time import perf_counter
 from typing import cast
 
 from lark import Lark
@@ -53,6 +55,7 @@ from .validation import (
 log = logging.getLogger("SattLint")
 
 ContextualFileLookup = Callable[[str, list[str], Path | None, str], Path | None]
+LoadStageTimingSink = Callable[[str, str, float], None]
 _EXPECTED_UNAVAILABLE_LIBRARY_REASONS: dict[str, str] = {
     "controllib": "expected proprietary dependency",
 }
@@ -469,6 +472,8 @@ class SattLineProjectLoader(DebugMixin):
         contextual_lookup: ContextualFileLookup | None = None,
         use_file_ast_cache: bool = True,
         status_update_fn: Callable[[str], None] | None = None,
+        refresh_mode: str = "full",
+        stage_timing_sink: LoadStageTimingSink | None = None,
     ):
         self.program_dir = program_dir
         self.other_lib_dirs = list(other_lib_dirs)
@@ -479,6 +484,10 @@ class SattLineProjectLoader(DebugMixin):
         self.contextual_lookup = contextual_lookup
         self.use_file_ast_cache = use_file_ast_cache
         self._status_update_fn = status_update_fn
+        self.refresh_mode = str(refresh_mode).strip().lower() or "full"
+        if self.refresh_mode not in {"full", "ast-only"}:
+            raise ValueError(f"Unsupported refresh mode: {refresh_mode!r}")
+        self._stage_timing_sink = stage_timing_sink
         self._last_status_message: str | None = None
         self.parser = create_sl_parser()  # reuse your grammar setup
         self.transformer = SLTransformer()  # reuse your transformer
@@ -494,6 +503,11 @@ class SattLineProjectLoader(DebugMixin):
         for i, ld in enumerate(self.other_lib_dirs, start=1):
             self.dbg(f"Lib {i}: {ld}")
         self.dbg(f"ABB lib dir: {self.abb_lib_dir}")
+
+    def _record_stage_timing(self, owner_name: str, stage: str, started_at: float) -> None:
+        if self._stage_timing_sink is None:
+            return
+        self._stage_timing_sink(owner_name, stage, perf_counter() - started_at)
 
     def _update_status(self, message: str) -> None:
         if self._status_update_fn is None:
@@ -784,18 +798,38 @@ class SattLineProjectLoader(DebugMixin):
             debug=self.dbg,
         )
 
-    def _load_or_parse(self, code_path: Path) -> BasePicture | None:
+    def _load_or_parse(self, code_path: Path, *, owner_name: str | None = None) -> BasePicture | None:
+        resolved_owner_name = owner_name or code_path.stem
+        started_at = perf_counter()
         if self.use_file_ast_cache:
             cached = self._ast_cache.load(code_path, self.mode.value)
             if isinstance(cached, BasePicture):
                 self._update_status(f"Loading {code_path.stem}: using cached AST from {code_path.name}")
                 self.dbg(f"Using cached AST for: {code_path}")
+                self._record_stage_timing(resolved_owner_name, "load_or_parse", started_at)
                 return cached
 
         self._update_status(f"Loading {code_path.stem}: parsing {code_path.name}")
         bp = self._parse_one(code_path)
+        cache_save_started_at = perf_counter()
         self._ast_cache.save(code_path, self.mode.value, bp)
+        self._record_stage_timing(resolved_owner_name, "ast_cache_save", cache_save_started_at)
+        self._record_stage_timing(resolved_owner_name, "load_or_parse", started_at)
         return bp
+
+    def _load_or_parse_for_owner(self, code_path: Path, *, owner_name: str) -> BasePicture | None:
+        load_or_parse = self._load_or_parse
+        try:
+            signature = inspect.signature(load_or_parse)
+        except (TypeError, ValueError):
+            return load_or_parse(code_path, owner_name=owner_name)
+
+        accepts_owner_name = "owner_name" in signature.parameters or any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()
+        )
+        if accepts_owner_name:
+            return load_or_parse(code_path, owner_name=owner_name)
+        return load_or_parse(code_path)
 
     def _flush_lookup_cache(self) -> None:
         flush = getattr(self._lookup_cache, "flush", None)
@@ -835,7 +869,7 @@ class SattLineProjectLoader(DebugMixin):
                 return graph
 
             validation_warnings: list[ValidationWarning] = []
-            bp = self._load_or_parse(code_path)
+            bp = self._load_or_parse_for_owner(code_path, owner_name=root_name)
             if bp is None:
                 message = f"{root_name} transformed to no BasePicture (parse/transform issue?)"
                 if strict:
@@ -843,19 +877,25 @@ class SattLineProjectLoader(DebugMixin):
                 graph.missing.append(message)
                 return graph
             self._update_status(f"Loading {root_name}: validating {code_path.name}")
+            validation_started_at = perf_counter()
             validate_transformed_basepicture(
                 bp,
-                allow_unresolved_external_datatypes=not strict,
+                allow_unresolved_external_datatypes=True if self.refresh_mode == "ast-only" else not strict,
                 enforce_unique_submodule_names=False,
                 allow_parameterless_module_mappings=True,
-                warn_unknown_parameter_targets=True,
-                warn_incompatible_parameter_mappings=True,
+                warn_unknown_parameter_targets=self.refresh_mode != "ast-only",
+                warn_incompatible_parameter_mappings=self.refresh_mode != "ast-only",
                 warning_sink=validation_warnings.append,
             )
+            self._record_stage_timing(root_name, "validate", validation_started_at)
             for warning in validation_warnings:
                 _record_project_warning(graph, root_name, warning)
+            graph.ast_by_name[root_name] = bp
+            if self.refresh_mode == "ast-only":
+                return graph
             if _graphics_companion_needs_refresh(bp, code_path=code_path, mode=self.mode):
                 self._update_status(f"Loading {root_name}: checking graphics companion")
+            graphics_started_at = perf_counter()
             if _attach_graphics_companion(
                 bp,
                 code_path=code_path,
@@ -864,12 +904,14 @@ class SattLineProjectLoader(DebugMixin):
                 owner_name=root_name,
             ):
                 self._ast_cache.save(code_path, self.mode.value, bp)
-            graph.ast_by_name[root_name] = bp
+            self._record_stage_timing(root_name, "attach_graphics", graphics_started_at)
             lib_name = self._library_name_for_path(code_path)
             self._update_status(f"Loading {root_name}: indexing definitions")
+            index_started_at = perf_counter()
             graph.index_from_basepic(
                 bp, source_path=code_path, library_name=lib_name
             )  # collect any defs emitted in this files
+            self._record_stage_timing(root_name, "index", index_started_at)
             return graph
         except Exception as ex:
             for warning in locals().get("validation_warnings", []):
@@ -944,7 +986,7 @@ class SattLineProjectLoader(DebugMixin):
             if code_path is not None:
                 try:
                     validation_warnings: list[ValidationWarning] = []
-                    bp = self._load_or_parse(code_path)
+                    bp = self._load_or_parse_for_owner(code_path, owner_name=name)
                     if bp is None:
                         message = f"{name} transform produced no BasePicture (skipped)"
                         if strict:
@@ -953,25 +995,35 @@ class SattLineProjectLoader(DebugMixin):
                         return
                     try:
                         self._update_status(f"Loading {name}: validating {code_path.name}")
+                        validation_started_at = perf_counter()
                         validate_transformed_basepicture(
                             bp,
-                            external_datatypes=tuple(graph.datatype_defs.values()),
-                            external_moduletype_defs=tuple(graph.moduletype_defs.values()),
-                            allow_unresolved_external_datatypes=not strict,
+                            external_datatypes=()
+                            if self.refresh_mode == "ast-only"
+                            else tuple(graph.datatype_defs.values()),
+                            external_moduletype_defs=()
+                            if self.refresh_mode == "ast-only"
+                            else tuple(graph.moduletype_defs.values()),
+                            allow_unresolved_external_datatypes=True if self.refresh_mode == "ast-only" else not strict,
                             enforce_unique_submodule_names=False,
                             allow_parameterless_module_mappings=True,
-                            warn_unknown_parameter_targets=True,
-                            warn_incompatible_parameter_mappings=True,
+                            warn_unknown_parameter_targets=self.refresh_mode != "ast-only",
+                            warn_incompatible_parameter_mappings=self.refresh_mode != "ast-only",
                             warning_sink=validation_warnings.append,
                         )
+                        self._record_stage_timing(name, "validate", validation_started_at)
                     except StructuralValidationError as ex:
                         if key == root_key:
                             raise
                         _record_project_warning(graph, name, f"validation warning: {ex}")
                     for warning in validation_warnings:
                         _record_project_warning(graph, name, warning)
+                    graph.ast_by_name[name] = bp
+                    if self.refresh_mode == "ast-only":
+                        return
                     if _graphics_companion_needs_refresh(bp, code_path=code_path, mode=self.mode):
                         self._update_status(f"Loading {name}: checking graphics companion")
+                    graphics_started_at = perf_counter()
                     if _attach_graphics_companion(
                         bp,
                         code_path=code_path,
@@ -980,7 +1032,7 @@ class SattLineProjectLoader(DebugMixin):
                         owner_name=name,
                     ):
                         self._ast_cache.save(code_path, self.mode.value, bp)
-                    graph.ast_by_name[name] = bp
+                    self._record_stage_timing(name, "attach_graphics", graphics_started_at)
                     lib_name = self._record_library_name(name, code_path)
                     version_conflicts = _collect_dependency_version_conflicts(
                         graph,
@@ -999,9 +1051,11 @@ class SattLineProjectLoader(DebugMixin):
                             )
                     graph.add_library_dependencies(lib_name, dep_libs)
                     self._update_status(f"Loading {name}: indexing definitions")
+                    index_started_at = perf_counter()
                     graph.index_from_basepic(
                         bp, source_path=code_path, library_name=lib_name
                     )  # aggregate defs for global analysis [2]
+                    self._record_stage_timing(name, "index", index_started_at)
                 except Exception as ex:
                     for warning in locals().get("validation_warnings", []):
                         _record_project_warning(graph, name, warning)

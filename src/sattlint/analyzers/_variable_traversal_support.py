@@ -243,6 +243,56 @@ def _append_record_component_order_issue(
     )
 
 
+def _unwrap_legacy_proc_atom(value: Any) -> Any:
+    children = _children_of(value)
+    if children is None or len(children) != 1:
+        return value
+    child = children[0]
+    if hasattr(child, "data") and getattr(child, "data", None) == "plain_value":
+        plain_children = _children_of(child)
+        if plain_children and len(plain_children) == 1:
+            return plain_children[0]
+    return child
+
+
+def _normalize_legacy_interact_call(
+    self: VariablesAnalyzer,
+    fn_name: str | None,
+    args: list[Any],
+    context: ScopeContext,
+) -> tuple[str | None, list[Any]]:
+    if fn_name or len(args) != 2 or not isinstance(args[0], str):
+        return fn_name, args
+
+    raw_args_tree = args[1]
+    if getattr(raw_args_tree, "data", None) != "procedure_args":
+        return fn_name, args
+
+    flat_values = [_unwrap_legacy_proc_atom(atom) for atom in _children_of(raw_args_tree) or []]
+    if not flat_values:
+        return args[0], []
+
+    normalized_args: list[Any] = []
+    index = 0
+    while index < len(flat_values):
+        current = flat_values[index]
+        next_value = flat_values[index + 1] if index + 1 < len(flat_values) else None
+
+        if isinstance(next_value, str):
+            next_name = next_value.strip()
+            if next_name:
+                resolved_var, _field_path, _decl_path, _decl_display = context.resolve_variable(next_name)
+                if resolved_var is not None:
+                    normalized_args.append({const.KEY_VAR_NAME: next_name})
+                    index += 2
+                    continue
+
+        normalized_args.append(current)
+        index += 1
+
+    return args[0], normalized_args
+
+
 def _handle_function_call(
     self: VariablesAnalyzer,
     fn_name: str | None,
@@ -253,6 +303,8 @@ def _handle_function_call(
     is_ui_read: bool = False,
 ) -> None:
     """Handle function calls with proper parameter direction tracking."""
+    fn_name, args = _normalize_legacy_interact_call(self, fn_name, args or [], context)
+
     if not fn_name:
         for argument in args or []:
             self._walk_stmt_or_expr(argument, context, path, is_ui_read=is_ui_read)

@@ -1,10 +1,12 @@
+import json
 from pathlib import Path
 
 import pytest
 
-from sattlint.contracts import FindingCollection, FindingRecord
+from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
+from sattlint.devtools import finding_exports
 from sattlint.devtools.artifact_registry import PIPELINE_ARTIFACTS, build_artifact_registry_report
-from sattlint.devtools.baselines import build_analysis_diff_report
+from sattlint.devtools.baselines import build_analysis_diff_report, load_finding_collection
 from sattlint.devtools.corpus import (
     CorpusCaseManifest,
     CorpusEvaluation,
@@ -85,6 +87,117 @@ def _build_sample_findings_payload(repo_root: Path) -> dict[str, object]:
             }
         ],
     ).to_dict()
+
+
+def test_finding_export_private_helpers_cover_fallback_paths(tmp_path):
+    assert finding_exports._coerce_mapping_list("not-a-list") == []
+    assert finding_exports._coerce_mapping_list([1, {"ok": 2}]) == [{"ok": 2}]
+
+    assert finding_exports._ruff_severity("SIM117") == "medium"
+    assert finding_exports._ruff_severity("PLR999") == "low"
+
+    assert finding_exports._vulture_confidence("oops") == "medium"
+    assert finding_exports._vulture_confidence(85) == "medium"
+    assert finding_exports._vulture_confidence(10) == "low"
+    assert finding_exports._vulture_severity(85) == "medium"
+    assert finding_exports._vulture_severity(10) == "low"
+    assert finding_exports._vulture_metadata("not a dead-code message", None) == {}
+
+    assert finding_exports._normalized_severity("warning", default="low") == "medium"
+    assert finding_exports._normalized_severity("note", default="medium") == "low"
+    assert finding_exports._normalized_severity("unexpected", default="medium") == "medium"
+    assert finding_exports._int_or_none("oops") is None
+
+    assert finding_exports._pytest_failure_location(None, repo_root=tmp_path) == (None, None)
+    assert finding_exports._pytest_failure_location("no traceback here", repo_root=tmp_path) == (None, None)
+    assert finding_exports._pytest_nodeid({"name": "test_case"}, sanitized_file="tests/test_sample.py") == (
+        "tests/test_sample.py::test_case"
+    )
+    assert (
+        finding_exports._pytest_nodeid(
+            {"classname": "tests.test_sample.TestSuite", "name": "test_case"},
+            sanitized_file=None,
+        )
+        == "tests.test_sample.TestSuite::test_case"
+    )
+    assert finding_exports._pytest_nodeid({}, sanitized_file=None) is None
+
+
+def test_finding_export_builders_cover_tool_and_pytest_fallbacks(tmp_path):
+    mypy_records = finding_exports._build_mypy_findings(
+        [{"message": "Missing type information"}],
+        repo_root=tmp_path,
+    )
+    assert mypy_records[0].rule_id == "mypy.unknown.unknown"
+    assert mypy_records[0].minimal_reproducer == "mypy src tests"
+
+    pyright_records = finding_exports._build_pyright_findings(
+        [{"severity": "warning", "message": "Type issue", "range": {}, "rule": "reportGeneralTypeIssues"}],
+        repo_root=tmp_path,
+    )
+    assert pyright_records[0].rule_id == "pyright.reportGeneralTypeIssues"
+    assert pyright_records[0].minimal_reproducer == "pyright src tests"
+    assert pyright_records[0].location.path is None
+
+    bandit_records = finding_exports._build_bandit_findings(
+        [{"issue_text": "Use of assert detected.", "issue_severity": "warning", "issue_confidence": "note"}],
+        repo_root=tmp_path,
+    )
+    assert bandit_records[0].severity == "medium"
+    assert bandit_records[0].confidence == "low"
+
+    pytest_records = finding_exports._build_pytest_findings(
+        {
+            "summary": {"failures": 2, "errors": 1},
+            "testcases": [
+                {
+                    "name": "test_parsed",
+                    "outcome": "failed",
+                    "detail": "tests/test_sample.py:23: AssertionError",
+                },
+                {
+                    "classname": "tests.test_sample.TestSuite",
+                    "name": "test_error",
+                    "outcome": "error",
+                    "detail": "no traceback",
+                },
+                {
+                    "outcome": "failed",
+                    "detail": "no traceback",
+                },
+            ],
+        },
+        repo_root=tmp_path,
+    )
+
+    assert pytest_records[0].location.path == "tests/test_sample.py"
+    assert pytest_records[0].location.line == 23
+    assert pytest_records[0].location.symbol == "tests/test_sample.py::test_parsed"
+    assert pytest_records[1].rule_id == "pytest.errors"
+    assert pytest_records[1].location.symbol == "tests.test_sample.TestSuite::test_error"
+    assert (
+        pytest_records[1].minimal_reproducer
+        == "python -m pytest tests.test_sample.TestSuite::test_error -x -q --tb=short"
+    )
+    assert pytest_records[2].minimal_reproducer == "python -m pytest -x -q --tb=short"
+
+    explicit_pytest_records = finding_exports._build_pytest_findings(
+        {
+            "summary": {"failures": 1, "errors": 0},
+            "testcases": [
+                {
+                    "file": str(tmp_path / "tests" / "explicit.py"),
+                    "line": 11,
+                    "name": "test_explicit",
+                    "outcome": "failed",
+                }
+            ],
+        },
+        repo_root=tmp_path,
+    )
+
+    assert explicit_pytest_records[0].location.line == 11
+    assert explicit_pytest_records[0].location.symbol == "tests/explicit.py::test_explicit"
 
 
 def _build_sample_analysis_diff_payload() -> dict[str, object]:
@@ -240,6 +353,68 @@ def test_analysis_diff_payload_matches_golden():
         },
     )
     assert_matches_golden(payload, GOLDEN_DIR / "analysis_diff.json")
+
+
+def test_load_finding_collection_round_trips_payload(tmp_path: Path):
+    payload = FindingCollection(
+        (
+            FindingRecord(
+                id="demo-id",
+                rule_id="demo.rule",
+                category="demo",
+                severity="medium",
+                confidence="high",
+                message="Demo finding",
+                source="tests",
+            ),
+        )
+    ).to_dict()
+    findings_path = tmp_path / "findings.json"
+    findings_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = load_finding_collection(findings_path)
+
+    assert loaded.to_dict() == payload
+
+
+def test_analysis_diff_payload_includes_location_and_data_changes():
+    baseline = FindingCollection(
+        (
+            FindingRecord(
+                id="same-id",
+                rule_id="demo.rule",
+                category="demo",
+                severity="medium",
+                confidence="high",
+                message="Same message",
+                source="tests",
+                fingerprint="baseline-fp",
+                location=FindingLocation(path="src/demo.py", line=4, column=1, symbol="Var"),
+                data={"value": "old"},
+            ),
+        )
+    )
+    current = FindingCollection(
+        (
+            FindingRecord(
+                id="same-id",
+                rule_id="demo.rule",
+                category="demo",
+                severity="medium",
+                confidence="high",
+                message="Same message",
+                source="tests",
+                fingerprint="current-fp",
+                location=FindingLocation(path="src/demo.py", line=4, column=2, symbol="Var"),
+                data={"value": "new"},
+            ),
+        )
+    )
+
+    payload = build_analysis_diff_report(baseline=baseline, current=current)
+
+    assert payload["summary"]["changed_count"] == 1
+    assert payload["findings"]["changed"][0]["change"]["changed_fields"] == ["location", "data"]
 
 
 def test_artifact_registry_payload_matches_golden():

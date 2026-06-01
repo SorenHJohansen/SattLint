@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections import defaultdict
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any, cast
 
@@ -11,6 +12,44 @@ from .models.project_graph import ProjectGraph
 
 ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
+_STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index", "ast_cache_save")
+
+
+def _cached_manifest_paths(payload: object) -> frozenset[Path]:
+    payload_map = cast(Mapping[str, object], payload) if isinstance(payload, Mapping) else None
+    if payload_map is None:
+        return frozenset()
+
+    files = payload_map.get("files")
+    if not isinstance(files, dict):
+        return frozenset()
+
+    manifest_entries = cast(dict[object, object], files)
+    return frozenset(Path(path_str) for path_str in manifest_entries if isinstance(path_str, str))
+
+
+def _attach_analysis_cache_metadata(graph: ProjectGraph, *, cache_key: str, manifest_files: Iterable[Path]) -> None:
+    graph.analysis_cache_key = cache_key
+    graph.analysis_manifest_files = frozenset(manifest_files)
+
+
+def _format_refresh_stage_timings(stage_timings: dict[str, float], *, refresh_mode: str) -> str:
+    labels = {
+        "load_or_parse": "load_or_parse",
+        "validate": "validate",
+        "attach_graphics": "graphics",
+        "index": "index",
+        "ast_cache_save": "ast_cache_save",
+    }
+    parts: list[str] = []
+    for stage_name in _STAGE_ORDER:
+        duration = stage_timings.get(stage_name)
+        if duration is None:
+            if refresh_mode == "ast-only" and stage_name in {"attach_graphics", "index"}:
+                parts.append(f"{labels[stage_name]}=skipped")
+            continue
+        parts.append(f"{labels[stage_name]}={duration:.4f}s")
+    return "AST refresh stage totals: " + ", ".join(parts)
 
 
 def _workspace_dependency_suffixes(mode: str) -> tuple[str, ...]:
@@ -186,12 +225,52 @@ def target_is_library(
     return all(not is_within_directory_fn(path, program_path) for path in source_paths)
 
 
+def cache_manifest_files(
+    cfg: ConfigDict,
+    graph: ProjectGraph,
+    *,
+    find_dependency_path_fn: Callable[[str, Path | None], Path | None],
+    resolve_graphics_companion_path_fn: Callable[..., Path | None],
+    casefold_equal_fn: Callable[[str, str], bool],
+    casefold_key_fn: Callable[[str], str],
+) -> set[Path]:
+    manifest_files: set[Path] = set(getattr(graph, "source_files", set()))
+
+    for source_path in tuple(manifest_files):
+        companion_path = resolve_graphics_companion_path_fn(source_path, mode=cfg.get("mode"))
+        if companion_path is not None and companion_path != source_path:
+            manifest_files.add(companion_path)
+
+    ast_by_name = cast(dict[str, BasePicture], getattr(graph, "ast_by_name", {}))
+    for target_name, project_bp in ast_by_name.items():
+        source_paths = source_paths_for_current_target(
+            project_bp,
+            graph,
+            casefold_equal_fn=casefold_equal_fn,
+            casefold_key_fn=casefold_key_fn,
+        )
+        requester_dirs = {path.parent for path in source_paths}
+        if not requester_dirs:
+            origin_file = getattr(project_bp, "origin_file", None)
+            if isinstance(origin_file, str) and origin_file.strip():
+                requester_dirs = {Path(cfg["program_dir"])}
+
+        for requester_dir in requester_dirs or {None}:
+            deps_path = find_dependency_path_fn(target_name, requester_dir)
+            if deps_path is not None:
+                manifest_files.add(deps_path)
+
+    return manifest_files
+
+
 def load_project(
     cfg: ConfigDict,
     target_name: str | None = None,
     *,
     use_cache: bool,
     use_file_ast_cache: bool,
+    refresh_mode: str = "full",
+    collect_stage_timings: bool = False,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
     cache_key_for_target_fn: Callable[[ConfigDict, str], str],
     target_load_error_factory: Callable[..., Exception] | None,
@@ -209,7 +288,21 @@ def load_project(
     cached = cache.load(key) if use_cache else None
 
     if cached and cast(bool, cache.validate(cached, fast=False)):
-        return cast(tuple[BasePicture, ProjectGraph], cached["project"])
+        project_bp, graph = cast(tuple[BasePicture, ProjectGraph], cached["project"])
+        _attach_analysis_cache_metadata(
+            graph,
+            cache_key=key,
+            manifest_files=_cached_manifest_paths(cached),
+        )
+        return project_bp, graph
+
+    stage_timings: dict[str, float] = {}
+    stage_timings_by_program: dict[str, dict[str, float]] = defaultdict(dict)
+
+    def record_stage_timing(owner_name: str, stage_name: str, duration: float) -> None:
+        stage_timings[stage_name] = stage_timings.get(stage_name, 0.0) + duration
+        owner_timings = stage_timings_by_program.setdefault(owner_name, {})
+        owner_timings[stage_name] = owner_timings.get(stage_name, 0.0) + duration
 
     loader = engine_module.SattLineProjectLoader(
         program_dir=Path(cfg["program_dir"]),
@@ -220,6 +313,8 @@ def load_project(
         debug=cfg["debug"],
         use_file_ast_cache=use_file_ast_cache,
         status_update_fn=status_update_fn,
+        refresh_mode=refresh_mode,
+        stage_timing_sink=record_stage_timing if collect_stage_timings else None,
     )
 
     graph = loader.resolve(selected_target, strict=False)
@@ -246,6 +341,15 @@ def load_project(
             direct_dependencies=direct_dependencies,
         )
 
+    if collect_stage_timings:
+        graph.load_stage_timings = dict(stage_timings)
+        graph.load_stage_timings_by_program = {
+            name: dict(program_timings) for name, program_timings in stage_timings_by_program.items()
+        }
+
+    if refresh_mode == "ast-only":
+        return root_bp, graph
+
     _include_reverse_library_consumers(
         cfg,
         selected_target=selected_target,
@@ -257,10 +361,26 @@ def load_project(
     )
 
     project_bp = engine_module.merge_project_basepicture(root_bp, graph)
+    manifest_files = cache_manifest_files(
+        cfg,
+        graph,
+        find_dependency_path_fn=lambda name, requester_dir: loader._find_deps_with_context(
+            name,
+            requester_dir=requester_dir,
+        ),
+        resolve_graphics_companion_path_fn=engine_module.resolve_graphics_companion_path,
+        casefold_equal_fn=casefold_equal,
+        casefold_key_fn=casefold_key,
+    )
+    _attach_analysis_cache_metadata(
+        graph,
+        cache_key=key,
+        manifest_files=manifest_files,
+    )
     cache.save(
         key,
         project=(project_bp, graph),
-        files=set(graph.source_files),
+        files=manifest_files,
     )
     return project_bp, graph
 
@@ -308,6 +428,7 @@ def force_refresh_ast(
     cache = ast_cache_cls(get_cache_dir_fn())
     result = None
     total_targets = len(targets)
+    collect_stage_timings = bool(cfg.get("debug", False))
     emit_output_fn(f"Refreshing AST caches for {total_targets} target(s)...")
     for index, target_name in enumerate(targets, start=1):
         emit_output_fn(f"\nRefreshing AST cache for {target_name}... ({index}/{total_targets})")
@@ -317,7 +438,19 @@ def force_refresh_ast(
             target_name=target_name,
             use_cache=False,
             use_file_ast_cache=False,
+            refresh_mode="ast-only",
+            collect_stage_timings=collect_stage_timings,
         )
+        if collect_stage_timings:
+            _bp, graph = result
+            stage_timings = getattr(graph, "load_stage_timings", None)
+            if isinstance(stage_timings, dict):
+                emit_output_fn(
+                    _format_refresh_stage_timings(
+                        cast(dict[str, float], stage_timings),
+                        refresh_mode="ast-only",
+                    )
+                )
         emit_output_fn("OK AST cache refreshed")
     return result
 

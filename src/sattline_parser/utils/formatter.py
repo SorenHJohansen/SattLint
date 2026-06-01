@@ -309,7 +309,7 @@ def format_seq_nodes(nodes: list[object], indent: str = _DEFAULT_INDENT) -> str:
             lines.append("EndTransitionSub")
 
         elif isinstance(node, ast_model.SFCFork):
-            lines.append(f"Fork to {node.target}")
+            lines.append(f"Fork to {', '.join(node.targets)}")
 
         elif isinstance(node, ast_model.SFCBreak):
             lines.append("Break")

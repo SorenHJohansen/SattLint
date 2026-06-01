@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -165,6 +166,39 @@ def test_collect_ast_summary_counts_frame_module_and_moduletype_instance():
     assert summary["moduletype_instance_count"] == 1
 
 
+def test_collect_ast_summary_counts_root_modulecode_and_moduletype_content():
+    base_picture = SimpleNamespace(
+        header=SimpleNamespace(name="Root"),
+        datatype_defs=[object()],
+        moduletype_defs=[
+            SimpleNamespace(
+                moduleparameters=[object(), object()],
+                localvariables=[object()],
+                modulecode=SimpleNamespace(sequences=[object()], equations=[object(), object()]),
+            )
+        ],
+        localvariables=[object(), object()],
+        modulecode=SimpleNamespace(sequences=[object(), object()], equations=[object()]),
+        submodules=[],
+    )
+
+    summary = collect_ast_summary(base_picture)
+
+    assert summary == {
+        "datatype_definition_count": 1,
+        "moduletype_definition_count": 1,
+        "root_localvariable_count": 2,
+        "submodule_count": 0,
+        "single_module_count": 0,
+        "frame_module_count": 0,
+        "moduletype_instance_count": 0,
+        "moduleparameter_count": 2,
+        "module_localvariable_count": 1,
+        "sequence_count": 3,
+        "equation_count": 3,
+    }
+
+
 def test_detect_transform_invariant_violations_flags_unexpected_type():
     class _UnknownNode:
         pass
@@ -184,6 +218,62 @@ def test_detect_transform_invariant_violations_flags_duplicate_sibling_names():
     violations = detect_transform_invariant_violations(bp)
 
     assert any(v["kind"] == "duplicate_sibling_name" and v["module_name"] == "Dup" for v in violations)
+
+
+def test_detect_transform_invariant_violations_uses_node_label_when_parent_name_is_missing():
+    unnamed_frame = FrameModule(
+        header=ModuleHeader(name=None, invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
+        submodules=[_make_single("Dup"), _make_single("Dup")],
+    )
+    bp = _make_bp(submodules=[unnamed_frame])
+
+    violations = detect_transform_invariant_violations(bp)
+
+    assert any(
+        violation["kind"] == "duplicate_sibling_name"
+        and violation["module_name"] == "Dup"
+        and violation["module_path"] == ["Root", "FrameModule:None"]
+        for violation in violations
+    )
+
+
+def test_build_timing_summary_handles_unknown_phase_single_event():
+    summary = tracing._build_timing_summary(
+        [{"phase": None, "action": "event", "time_offset_ms": 5.0}],
+    )
+
+    assert summary == {"unknown": {"event_count": 1, "span_ms": 0.0}}
+
+
+def test_module_node_label_covers_supported_module_types():
+    assert tracing._module_node_label(_make_single("Single")) == "SingleModule:Single"
+    assert tracing._module_node_label(_make_frame("Frame")) == "FrameModule:Frame"
+    assert tracing._module_node_label(_make_mti("Instance", "SomeType")) == "ModuleTypeInstance:Instance"
+
+
+def test_trace_source_file_analysis_returns_syntax_only_payload_for_invalid_source(tmp_path):
+    source_file = tmp_path / "InvalidProgram.s"
+    source_file.write_text("BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION Broken_ 1\n", encoding="utf-8")
+
+    payload = trace_source_file_analysis(source_file)
+
+    assert payload["source_file"] == "<external>/InvalidProgram.s"
+    assert payload["syntax_validation"]["ok"] is False
+    assert "variable_analysis" not in payload
+    assert payload["events"] == [
+        {
+            "phase": "syntax",
+            "action": "validated",
+            "time_offset_ms": payload["events"][0]["time_offset_ms"],
+            "data": {
+                "ok": False,
+                "stage": payload["syntax_validation"]["stage"],
+                "line": payload["syntax_validation"]["line"],
+                "column": payload["syntax_validation"]["column"],
+                "message": payload["syntax_validation"]["message"],
+            },
+        }
+    ]
 
 
 def test_tracing_cli_writes_json_to_stdout(capsys):

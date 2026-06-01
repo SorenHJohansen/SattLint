@@ -1113,6 +1113,14 @@ def test_icf_report_formats_extra_entries_and_ordering_guidance():
     assert "        action: reorder current unit entries to match reference unit order" in lines
 
 
+def test_icf_report_formats_unstructured_drift_parts_and_skips_empty_segments():
+    lines = _format_drift_detail("entry ordering differs (current order is unstable); ; trailing note for operators")
+
+    assert "        current order is unstable" in lines
+    assert "        action: reorder current unit entries to match reference unit order" in lines
+    assert "      - trailing note for operators" in lines
+
+
 def test_icf_report_summary_uses_section_fallback_and_skipped_context_details():
     report = ICFValidationReport(
         icf_file=Path("Program.icf"),
@@ -1175,3 +1183,55 @@ def test_icf_report_summary_uses_section_fallback_and_skipped_context_details():
     )
     assert "(matches placeholder pattern X::.)" in summary
     assert "Program.icf:3 [SectionOnly] Tag3 => Program:Unit.Tag3: ignored entry" in summary
+
+
+def test_icf_report_name_and_defaults_use_empty_detail_lists():
+    report = ICFValidationReport(
+        icf_file=Path("Program.icf"),
+        program_name="Program",
+        total_entries=0,
+        validated_entries=0,
+        valid_entries=0,
+        skipped_entries=0,
+        issues=[],
+    )
+
+    assert report.name == "Program.icf (Program)"
+    assert report.resolved_entries == []
+    assert report.skipped_details == []
+
+
+def test_icf_report_summary_includes_operation_context_for_aggregated_issue():
+    report = ICFValidationReport(
+        icf_file=Path("Program.icf"),
+        program_name="Program",
+        total_entries=1,
+        validated_entries=0,
+        valid_entries=0,
+        skipped_entries=0,
+        issues=[
+            ICFValidationIssue(
+                entry=ICFEntry(
+                    file_path=Path("Program.icf"),
+                    line_no=9,
+                    section=None,
+                    key="Tag9",
+                    value="Program:Unit.Tag9",
+                    unit="UnitA",
+                    operation="Transfer",
+                    journal="JournalA",
+                    group="GroupA",
+                ),
+                reason="mixed ICF value prefix letters",
+                detail="prefixes disagree across grouped values",
+            )
+        ],
+    )
+
+    summary = report.summary()
+
+    assert (
+        "Program.icf:9 [Unit UnitA | Operation Transfer | Journal JournalA | Group GroupA]: mixed ICF value prefix letters"
+        in summary
+    )
+    assert "detail: prefixes disagree across grouped values" in summary

@@ -98,6 +98,7 @@ def analyze_interface_contracts(
         debug=debug,
         unavailable_libraries=unavailable_libraries,
         analyzed_target_is_library=analyzed_target_is_library,
+        selected_issue_kinds=INTERFACE_CONTRACT_ISSUE_KINDS,
     )
     return InterfaceContractsReport(
         name=base_picture.header.name,

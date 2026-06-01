@@ -165,6 +165,132 @@ def test_finding_collection_to_dict_and_from_dict():
     assert restored.findings[0].rule_id == "r1"
 
 
+def test_finding_record_defaults_cover_explicit_and_fallback_paths():
+    from sattlint.contracts.findings import FindingCollection, FindingLocation, FindingRecord
+
+    explicit_owner = FindingRecord(
+        id="owner",
+        rule_id="owner.rule",
+        category="unknown",
+        severity="low",
+        confidence="high",
+        message="owner",
+        source="manual",
+        data={"owner_surface": "custom-surface"},
+    )
+    unknown_owner = FindingRecord(
+        id="unknown",
+        rule_id="unknown.rule",
+        category="unknown",
+        severity="low",
+        confidence="high",
+        message="unknown",
+        source="manual",
+    )
+    explicit_reproducer = FindingRecord(
+        id="explicit-reproducer",
+        rule_id="manual.rule",
+        category="unknown",
+        severity="low",
+        confidence="high",
+        message="manual",
+        source="manual",
+        data={"minimal_reproducer": "python -m pytest tests/test_sample.py -q"},
+    )
+    pyright_default = FindingRecord(
+        id="pyright",
+        rule_id="pyright.assignment",
+        category="types",
+        severity="high",
+        confidence="high",
+        message="Typed mismatch",
+        source="manual",
+        analyzer="pyright",
+    )
+    pytest_nodeid = FindingRecord(
+        id="pytest-nodeid",
+        rule_id="pytest.failures",
+        category="correctness",
+        severity="high",
+        confidence="high",
+        message="failed",
+        source="pytest",
+        data={"nodeid": "tests/test_sample.py::test_failure"},
+    )
+    pytest_default = FindingRecord(
+        id="pytest-default",
+        rule_id="pytest.failures",
+        category="correctness",
+        severity="high",
+        confidence="high",
+        message="failed",
+        source="pytest",
+    )
+    pytest_path = FindingRecord(
+        id="pytest-path",
+        rule_id="pytest.failures",
+        category="correctness",
+        severity="high",
+        confidence="high",
+        message="failed",
+        source="pytest",
+        location=FindingLocation(path="tests/test_sample.py"),
+    )
+    repo_audit_default = FindingRecord(
+        id="repo-audit",
+        rule_id="repo-audit.sample",
+        category="correctness",
+        severity="high",
+        confidence="high",
+        message="audit",
+        source="pipeline",
+        analyzer="repo-audit",
+    )
+    explicit_next_command = FindingRecord(
+        id="explicit-next",
+        rule_id="next.rule",
+        category="unknown",
+        severity="low",
+        confidence="high",
+        message="next",
+        source="manual",
+        data={"suggested_next_command": "pyright src tests"},
+    )
+    suggested_command = FindingRecord(
+        id="suggestion",
+        rule_id="suggestion.rule",
+        category="unknown",
+        severity="low",
+        confidence="high",
+        message="suggestion",
+        source="manual",
+        suggestion="  python -m pytest tests/test_sample.py -q",
+    )
+
+    assert explicit_owner.owner_surface == "custom-surface"
+    assert unknown_owner.owner_surface is None
+    assert explicit_reproducer.minimal_reproducer == "python -m pytest tests/test_sample.py -q"
+    assert pyright_default.minimal_reproducer == "pyright src tests"
+    assert pytest_nodeid.minimal_reproducer == "python -m pytest tests/test_sample.py::test_failure -x -q --tb=short"
+    assert pytest_default.minimal_reproducer == "python -m pytest -x -q --tb=short"
+    assert pytest_path.minimal_reproducer == "python -m pytest tests/test_sample.py -x -q --tb=short"
+    assert repo_audit_default.minimal_reproducer == "sattlint-repo-audit --profile full --output-dir artifacts/audit"
+    assert explicit_next_command.suggested_next_command == "pyright src tests"
+    assert suggested_command.suggested_next_command == "python -m pytest tests/test_sample.py -q"
+    assert FindingCollection(findings=()).schema_metadata == {"kind": "sattlint.findings", "schema_version": 1}
+
+
+def test_findings_private_coercion_helpers_cover_edge_cases():
+    from sattlint.contracts import findings as findings_module
+
+    assert findings_module._coerce_int(True) == 1
+    assert findings_module._coerce_int("abc") is None
+    assert findings_module._coerce_str(42) == "42"
+    assert findings_module._coerce_data_dict([("bad", "input")]) == {}
+    assert findings_module._coerce_mapping_sequence("bad") == ()
+    assert findings_module._coerce_module_path("Main.Child") == ("Main.Child",)
+
+
 # --- path_sanitizer.py ---
 def test_sanitize_path_for_report_returns_relative_for_repo_subpath(tmp_path):
     from sattlint.path_sanitizer import sanitize_path_for_report
@@ -380,6 +506,22 @@ def test_type_graph_iter_leaf_field_paths_unknown_type():
     assert paths == [()]
 
 
+def test_type_graph_from_basepicture_builds_records():
+    from types import SimpleNamespace
+
+    from sattlint.resolution.type_graph import TypeGraph
+
+    datatype = SimpleNamespace(
+        name="RecordType",
+        var_list=[SimpleNamespace(name="Value", datatype="Integer", state=False)],
+    )
+    base_picture = SimpleNamespace(datatype_defs=[datatype])
+
+    graph = TypeGraph.from_basepicture(base_picture)
+
+    assert graph.has_record("recordtype") is True
+
+
 def test_type_graph_iter_leaf_field_paths_nested_record():
     from types import SimpleNamespace
 
@@ -394,6 +536,41 @@ def test_type_graph_iter_leaf_field_paths_nested_record():
     graph = TypeGraph.from_datatypes([dt])
     paths = list(graph.iter_leaf_field_paths("RecordA"))
     assert ("FieldA",) in paths
+
+
+def test_type_graph_iter_leaf_field_paths_follows_nested_record_fields():
+    from types import SimpleNamespace
+
+    from sattline_parser.models.ast_model import Simple_DataType
+    from sattlint.resolution.type_graph import TypeGraph
+
+    inner = SimpleNamespace(
+        name="RecordB",
+        var_list=[SimpleNamespace(name="Leaf", datatype=Simple_DataType.INTEGER, state=False)],
+    )
+    outer = SimpleNamespace(
+        name="RecordA",
+        var_list=[SimpleNamespace(name="Child", datatype="RecordB", state=False)],
+    )
+
+    graph = TypeGraph.from_datatypes([outer, inner])
+
+    assert list(graph.iter_leaf_field_paths("RecordA")) == [("Child", "Leaf")]
+
+
+def test_type_graph_iter_leaf_field_paths_stops_on_cycles():
+    from types import SimpleNamespace
+
+    from sattlint.resolution.type_graph import TypeGraph
+
+    cyclic = SimpleNamespace(
+        name="Loop",
+        var_list=[SimpleNamespace(name="Next", datatype="Loop", state=False)],
+    )
+
+    graph = TypeGraph.from_datatypes([cyclic])
+
+    assert list(graph.iter_leaf_field_paths("Loop")) == [("Next",)]
 
 
 def test_type_graph_iter_all_addressable_paths():

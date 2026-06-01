@@ -482,6 +482,8 @@ def load_project(
     *,
     use_cache: bool = True,
     use_file_ast_cache: bool = True,
+    refresh_mode: str = "full",
+    collect_stage_timings: bool = False,
 ) -> tuple[BasePicture, ProjectGraph]:
     return cast(
         tuple[BasePicture, ProjectGraph],
@@ -490,6 +492,8 @@ def load_project(
             target_name=target_name,
             use_cache=use_cache,
             use_file_ast_cache=use_file_ast_cache,
+            refresh_mode=refresh_mode,
+            collect_stage_timings=collect_stage_timings,
             require_analyzed_targets_fn=_require_analyzed_targets,
             cache_key_for_target_fn=_cache_key_for_target,
             target_load_error_factory=TargetLoadError,

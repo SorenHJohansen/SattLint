@@ -9,12 +9,14 @@ from sattline_parser.models.ast_model import BasePicture
 
 from ._picture_display_path_runtime import (
     RuntimeModuleNode,
+    RuntimeTree,
     build_runtime_tree,
     collect_concrete_composite_placeholders,
     consume_name,
     find_best_suffix_node,
     find_nearest_descendant,
     find_node,
+    find_parent_node,
     find_suffix_nodes,
 )
 from .graphics_validation import (
@@ -99,7 +101,7 @@ def diagnose_picture_display_paths(
     graph: ProjectGraph | None = None,
 ) -> tuple[PictureDisplayPathDiagnostic, ...]:
     diagnostics: list[PictureDisplayPathDiagnostic] = []
-    runtime_trees: dict[str, RuntimeModuleNode] = {}
+    runtime_trees: dict[str, RuntimeTree] = {}
     for occurrence in occurrences:
         for path_row in occurrence.record.path_rows:
             if path_row.kind != "literal":
@@ -144,7 +146,7 @@ def resolve_picture_display_path(
     declaring_module_path: tuple[str, ...] | list[str],
     graph: ProjectGraph | None = None,
     parent_step_adjustment: int = 0,
-    _runtime_trees: dict[str, RuntimeModuleNode] | None = None,
+    _runtime_trees: dict[str, RuntimeTree] | None = None,
 ) -> PictureDisplayPathResolution:
     stripped = path_text.strip()
     module_path = tuple(str(segment) for segment in declaring_module_path)
@@ -179,23 +181,23 @@ def resolve_picture_display_path(
         )
 
     runtime_tree_key = program_name.casefold()
-    root = _runtime_trees.get(runtime_tree_key) if _runtime_trees is not None else None
-    if root is None:
-        root = build_runtime_tree(target_picture, graph=graph)
+    runtime_tree = _runtime_trees.get(runtime_tree_key) if _runtime_trees is not None else None
+    if runtime_tree is None:
+        runtime_tree = build_runtime_tree(target_picture, graph=graph)
         if _runtime_trees is not None:
-            _runtime_trees[runtime_tree_key] = root
+            _runtime_trees[runtime_tree_key] = runtime_tree
     same_program = program_name.casefold() == base_picture.header.name.casefold()
-    exact_current = root if not same_program else find_node(root, module_path)
+    exact_current = runtime_tree.root if not same_program else find_node(runtime_tree, module_path)
     suffix_current = None
     suffix_candidates: tuple[RuntimeModuleNode, ...] = ()
     if same_program:
         suffix_candidates = find_suffix_nodes(
-            root,
+            runtime_tree,
             module_path,
             exclude_path=module_path if exact_current is not None else None,
         )
         suffix_current = find_best_suffix_node(
-            root,
+            runtime_tree,
             module_path,
             exclude_path=module_path if exact_current is not None else None,
         )
@@ -216,7 +218,7 @@ def resolve_picture_display_path(
         )
 
     resolution = _resolve_picture_display_path_from_current(
-        root,
+        runtime_tree,
         current,
         raw_path,
         path_text=path_text,
@@ -243,7 +245,7 @@ def resolve_picture_display_path(
 
     for retry_candidate in retry_candidates:
         retry_resolution = _resolve_picture_display_path_from_current(
-            root,
+            runtime_tree,
             retry_candidate,
             raw_path,
             path_text=path_text,
@@ -259,7 +261,7 @@ def resolve_picture_display_path(
 
 
 def _resolve_picture_display_path_from_current(
-    root: RuntimeModuleNode,
+    runtime_tree: RuntimeTree,
     current: RuntimeModuleNode,
     raw_path: str,
     *,
@@ -281,7 +283,7 @@ def _resolve_picture_display_path_from_current(
             effective_parent_step_adjustment = 0
         extra_parent_step = 0 if raw_path.startswith("+") and effective_parent_step_adjustment >= 0 else 1
         parent_result = _ascend_parent_steps(
-            root,
+            runtime_tree,
             current,
             steps=max(parent_steps + extra_parent_step + effective_parent_step_adjustment, 0),
             path_text=path_text,
@@ -293,7 +295,7 @@ def _resolve_picture_display_path_from_current(
         current = parent_result
 
     if raw_path.startswith("0"):
-        current = root
+        current = runtime_tree.root
         raw_path = raw_path[1:]
 
     if not raw_path:
@@ -395,7 +397,7 @@ def _descend_implicit_steps(
 
 
 def _ascend_parent_steps(
-    root: RuntimeModuleNode,
+    runtime_tree: RuntimeTree,
     current: RuntimeModuleNode,
     *,
     steps: int,
@@ -413,7 +415,7 @@ def _ascend_parent_steps(
                 failure_reason="missing_parent",
                 detail="path stepped above BasePicture",
             )
-        parent = find_node(root, current.path[:-1])
+        parent = find_parent_node(runtime_tree, current.path)
         if parent is None:
             return PictureDisplayPathResolution(
                 path_text=path_text,

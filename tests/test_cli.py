@@ -615,3 +615,56 @@ def test_cli_entry_prints_usage_when_no_command_selected():
 
     assert exit_code == cli_entry.EXIT_USAGE_ERROR
     assert parser.usage_stream is not None
+
+
+def test_cli_entry_repo_audit_without_token_uses_empty_remaining_args(monkeypatch):
+    seen: dict[str, Any] = {}
+    parser = _FakeParser(
+        args=SimpleNamespace(command="repo-audit", checks=[], config=None, no_cache=False, quiet=False),
+    )
+    monkeypatch.setattr("sattlint.devtools.repo_audit.main", lambda argv=None: seen.update({"argv": argv}) or 0)
+
+    exit_code = cli_entry.run_cli(
+        [],
+        config_path=Path("config.toml"),
+        build_cli_parser_fn=lambda: parser,
+    )
+
+    assert exit_code == cli_entry.EXIT_SUCCESS
+    assert seen["argv"] == []
+
+
+def test_cli_entry_source_diff_without_token_uses_empty_remaining_args(monkeypatch):
+    seen: dict[str, Any] = {}
+    parser = _FakeParser(
+        args=SimpleNamespace(command="source-diff", checks=[], config=None, no_cache=False, quiet=False),
+    )
+    monkeypatch.setattr(
+        "sattlint.devtools.source_diff_report.main",
+        lambda argv=None: seen.update({"argv": argv}) or 0,
+    )
+
+    exit_code = cli_entry.run_cli(
+        [],
+        config_path=Path("config.toml"),
+        build_cli_parser_fn=lambda: parser,
+    )
+
+    assert exit_code == cli_entry.EXIT_SUCCESS
+    assert seen["argv"] == []
+
+
+def test_cli_entry_returns_usage_error_when_config_handlers_are_missing(capsys):
+    parser = _FakeParser(
+        args=SimpleNamespace(command="analyze", checks=[], list_checks=False, config=None, no_cache=False, quiet=False),
+    )
+
+    exit_code = cli_entry.run_cli(
+        ["analyze"],
+        config_path=Path("config.toml"),
+        build_cli_parser_fn=lambda: parser,
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == cli_entry.EXIT_USAGE_ERROR
+    assert "CLI config handlers are required for this command" in captured.err

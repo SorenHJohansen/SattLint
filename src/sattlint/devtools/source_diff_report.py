@@ -65,6 +65,18 @@ def _stable_signature_text(value: object) -> str:
     return re.sub(r"SourceSpan\([^)]*\)", "SourceSpan()", repr(value))
 
 
+def _stable_signature_value(value: object) -> object:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, tuple):
+        return tuple(_stable_signature_value(item) for item in value)
+    if isinstance(value, list):
+        return tuple(_stable_signature_value(item) for item in value)
+    if isinstance(value, dict):
+        return tuple(sorted((str(key), _stable_signature_value(item)) for key, item in value.items()))
+    return _stable_signature_text(value)
+
+
 def _variable_signature(variable: Variable) -> tuple[object, ...]:
     return (
         variable.datatype_text,
@@ -73,7 +85,7 @@ def _variable_signature(variable: Variable) -> tuple[object, ...]:
         bool(variable.state),
         bool(variable.opsave),
         bool(variable.secure),
-        repr(variable.init_value),
+        _stable_signature_value(variable.init_value),
         variable.description or "",
         variable.init_is_duration,
     )
@@ -92,13 +104,13 @@ def _module_header_signature(header: object | None) -> tuple[object, ...] | None
         return None
     return (
         getattr(header, "name", ""),
-        getattr(header, "invoke_coord", None),
-        getattr(header, "invocation_arguments", ()),
-        getattr(header, "layer_info", None),
+        _stable_signature_value(getattr(header, "invoke_coord", None)),
+        _stable_signature_value(getattr(header, "invocation_arguments", ())),
+        _stable_signature_value(getattr(header, "layer_info", None)),
         bool(getattr(header, "enable", True)),
-        getattr(header, "zoom_limits", None),
+        _stable_signature_value(getattr(header, "zoom_limits", None)),
         bool(getattr(header, "zoomable", False)),
-        getattr(header, "enable_tail", None),
+        _stable_signature_value(getattr(header, "enable_tail", None)),
     )
 
 
@@ -439,6 +451,30 @@ def _diff_modulecode_detail(draft: dict[str, Any], official: dict[str, Any]) -> 
     return sequence_details + equation_details, sequence_diffs + equation_diffs
 
 
+def _diff_nested_inline_module_code_diffs(
+    draft: Mapping[tuple[str, ...], dict[str, Any]],
+    official: Mapping[tuple[str, ...], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    code_diffs: list[dict[str, Any]] = []
+
+    for key in sorted(draft.keys() & official.keys()):
+        draft_detail = draft[key]
+        official_detail = official[key]
+        _, nested_code_diffs = _diff_modulecode_detail(
+            cast(dict[str, Any], draft_detail["modulecode"]),
+            cast(dict[str, Any], official_detail["modulecode"]),
+        )
+        for nested_code_diff in nested_code_diffs:
+            code_diffs.append(
+                {
+                    "label": f"{draft_detail['name']} / {nested_code_diff['label']}",
+                    "diff_lines": cast(list[str], nested_code_diff["diff_lines"]),
+                }
+            )
+
+    return code_diffs
+
+
 def _moduledef_detail(moduledef: ModuleDef | None) -> dict[str, Any]:
     if moduledef is None:
         return {
@@ -505,10 +541,16 @@ def _moduletype_detail(moduletype: ModuleTypeDef) -> dict[str, Any]:
         "submodules": _submodule_details(moduletype.submodules),
         "moduledef": _moduledef_detail(moduletype.moduledef),
         "modulecode": _modulecode_detail(moduletype.modulecode),
+        "inline_modules": _collect_inline_module_details(moduletype.submodules),
     }
 
 
-def _inline_module_detail(path: tuple[str, ...], module: SingleModule | FrameModule) -> dict[str, Any]:
+def _inline_module_detail(
+    path: tuple[str, ...],
+    module: SingleModule | FrameModule,
+    *,
+    inline_modules: Mapping[tuple[str, ...], dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     return {
         "name": " > ".join(path),
         "module_kind": _submodule_kind(module),
@@ -517,6 +559,7 @@ def _inline_module_detail(path: tuple[str, ...], module: SingleModule | FrameMod
         "submodules": _submodule_details(module.submodules),
         "moduledef": _moduledef_detail(module.moduledef),
         "modulecode": _modulecode_detail(module.modulecode),
+        "inline_modules": dict(inline_modules or {}),
     }
 
 
@@ -532,8 +575,17 @@ def _collect_inline_module_details(
         module_name = module.header.name or f"<unnamed-{index}>"
         path = (*parent_path, module_name)
         key = tuple(segment.casefold() for segment in path)
-        collected[key] = _inline_module_detail(path, module)
-        collected.update(_collect_inline_module_details(module.submodules, parent_path=path))
+        child_collected = _collect_inline_module_details(module.submodules, parent_path=path)
+        collected[key] = _inline_module_detail(
+            path,
+            module,
+            inline_modules={
+                child_key[len(key) :]: child_detail
+                for child_key, child_detail in child_collected.items()
+                if _path_has_prefix(child_key, key)
+            },
+        )
+        collected.update(child_collected)
     return collected
 
 
@@ -739,6 +791,13 @@ def _build_module_entry(
         cast(dict[str, Any], official["modulecode"]),
     )
     details.extend(modulecode_details)
+    if draft["module_kind"] == "moduletype":
+        code_diffs.extend(
+            _diff_nested_inline_module_code_diffs(
+                cast(dict[tuple[str, ...], dict[str, Any]], draft.get("inline_modules", {})),
+                cast(dict[tuple[str, ...], dict[str, Any]], official.get("inline_modules", {})),
+            )
+        )
     return {
         "name": name,
         "module_kind": draft["module_kind"],

@@ -23,6 +23,12 @@ from .picture_display_paths import (
 from .validation import validate_transformed_basepicture
 
 _GraphicsCompanionSignature = tuple[str, int, int]
+_GraphicsWarningContextFileSignature = tuple[str, int | None, int | None]
+_GraphicsWarningContextSignature = tuple[
+    tuple[_GraphicsWarningContextFileSignature, ...],
+    tuple[str, ...],
+    tuple[str, ...],
+]
 
 
 def _normalized_mode_value(mode: object | None) -> str | None:
@@ -77,6 +83,51 @@ def _cached_graphics_companion_signature(bp: BasePicture) -> _GraphicsCompanionS
     return (path_text, mtime_ns, size)
 
 
+def _cached_graphics_warning_notices(bp: BasePicture) -> tuple[ValidationNotice, ...] | None:
+    raw_notices = getattr(bp, "graphics_warning_notices", None)
+    if isinstance(raw_notices, tuple):
+        notices = cast(tuple[object, ...], raw_notices)
+    elif isinstance(raw_notices, list):
+        notices = tuple(cast(list[object], raw_notices))
+    else:
+        return None
+    if not all(isinstance(notice, ValidationNotice) for notice in notices):
+        return None
+    return cast(tuple[ValidationNotice, ...], notices)
+
+
+def _cached_graphics_warning_context_signature(bp: BasePicture) -> _GraphicsWarningContextSignature | None:
+    raw_signature = getattr(bp, "graphics_warning_context_signature", None)
+    if not isinstance(raw_signature, tuple):
+        return None
+    signature = cast(tuple[object, ...], raw_signature)
+    if len(signature) != 3:
+        return None
+    source_files, ast_names, unavailable_libraries = signature
+    if not isinstance(source_files, tuple):
+        return None
+    if not isinstance(ast_names, tuple):
+        return None
+    if not isinstance(unavailable_libraries, tuple):
+        return None
+    return cast(_GraphicsWarningContextSignature, (source_files, ast_names, unavailable_libraries))
+
+
+def _graphics_warning_context_file_signature(path: Path) -> _GraphicsWarningContextFileSignature:
+    try:
+        stat_result = path.stat()
+    except OSError:
+        return (str(path), None, None)
+    return (str(path), stat_result.st_mtime_ns, stat_result.st_size)
+
+
+def _graphics_warning_context_signature(graph: ProjectGraph) -> _GraphicsWarningContextSignature:
+    source_files = tuple(sorted(_graphics_warning_context_file_signature(path) for path in graph.source_files))
+    ast_names = tuple(sorted(name.casefold() for name in graph.ast_by_name))
+    unavailable_libraries = tuple(sorted(name.casefold() for name in graph.unavailable_libraries))
+    return (source_files, ast_names, unavailable_libraries)
+
+
 def _has_attached_graphics_companion(bp: BasePicture) -> bool:
     return (
         getattr(bp, "graphics_file", None) is not None
@@ -84,7 +135,9 @@ def _has_attached_graphics_companion(bp: BasePicture) -> bool:
         or bool(getattr(bp, "graphics_composite_records", ()))
         or bool(getattr(bp, "graphics_picture_display_records", ()))
         or bool(getattr(bp, "graphics_picture_display_occurrences", ()))
+        or bool(getattr(bp, "graphics_warning_notices", ()))
         or _cached_graphics_companion_signature(bp) is not None
+        or _cached_graphics_warning_context_signature(bp) is not None
     )
 
 
@@ -98,6 +151,8 @@ def _clear_attached_graphics_companion(bp: BasePicture) -> bool:
         ("graphics_composite_occurrences", []),
         ("graphics_picture_display_records", []),
         ("graphics_picture_display_occurrences", []),
+        ("graphics_warning_notices", ()),
+        ("graphics_warning_context_signature", None),
         ("graphics_companion_signature", None),
     )
     for attribute, default in defaults:
@@ -195,11 +250,18 @@ def attach_graphics_companion(
         cast(Any, bp).graphics_companion_signature = signature
         refreshed = True
 
-    for warning in picture_display_path_warnings(
-        bp,
-        tuple(getattr(bp, "graphics_picture_display_occurrences", ())),
-        graph=graph,
-    ):
+    warning_context_signature = _graphics_warning_context_signature(graph)
+    warning_notices = None if refreshed else _cached_graphics_warning_notices(bp)
+    if warning_notices is None or _cached_graphics_warning_context_signature(bp) != warning_context_signature:
+        warning_notices = picture_display_path_warnings(
+            bp,
+            tuple(getattr(bp, "graphics_picture_display_occurrences", ())),
+            graph=graph,
+        )
+        cast(Any, bp).graphics_warning_notices = warning_notices
+        cast(Any, bp).graphics_warning_context_signature = warning_context_signature
+
+    for warning in warning_notices:
         record_project_warning(graph, owner_name, warning)
 
     for message in getattr(bp, "graphics_messages", ()):

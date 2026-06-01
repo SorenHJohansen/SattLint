@@ -11,7 +11,7 @@ The observable proof is simple. A focused analyzer test that models `GetRecordCo
 ## Progress
 
 - [x] (2026-05-27 11:58Z) Created this ExecPlan and captured the owning seams: builtin traversal in `src/sattlint/analyzers/_variable_traversal_support.py`, variable issue/report plumbing in `src/sattlint/analyzers/variable_issue_collection.py` and `src/sattlint/reporting/variables_report.py`, and editor diagnostic projection in `src/sattlint/core/diagnostics.py`.
-- [x] (2026-05-27 12:02Z) Verified the live motivating example through the workstation SattLint config. The default config at `~/.config/sattlint/config.toml` includes `KaHASoejleLib` under `/home/sqhj/Projects/Libs/HA/ProjectLib`, and that library reaches `KaHARecipePicklist` in `KaHASøjleSupportLib.s`.
+- [x] (2026-05-27 12:02Z) Verified the live motivating example through the workstation SattLint config. The default config at `~/.config/sattlint/config.toml` includes `KaHASoejleLib` under `${HOME}/Projects/Libs/HA/ProjectLib`, and that library reaches `KaHARecipePicklist` in `KaHASøjleSupportLib.s`.
 - [x] (2026-05-27 12:05Z) Confirmed the dangerous implementation pattern in the live source: `KaHARecipePicklist` builds an array by calling `GetRecordComponent(RecipeRecord, EmptyElementNo, ...)` and `GetRecordComponent(RecipeRecord, GetComponentIndex, ...)`, then `PutArray(...)`, so changing datatype field order changes the picklist contents.
 - [x] (2026-05-28 06:48Z) Added `IssueKind.RECORD_COMPONENT_ORDER_DEPENDENCE`, made it default-visible in variable reports, added the section title `Positional record component access`, added editor diagnostic guidance, and exposed the check in the interactive variable-analysis menu.
 - [x] (2026-05-28 06:48Z) Added traversal handling for `GetRecordComponent`, `GetRecordCompNoSort`, `PutRecordComponent`, and `PutRecordCompNoSort`. The analyzer now emits an additive variable issue on the affected record variable, preserves the existing signature-based read/write accounting, and includes the ordinal index plus resolved field name when the index is a literal on a concrete record type.
@@ -180,17 +180,17 @@ If diagnostics anchoring becomes awkward because the current variable issue stru
 
 Captured live-config evidence at plan creation time:
 
-    ~/.config/sattlint/config.toml
+    ${HOME}/.config/sattlint/config.toml
     analyzed_programs_and_libraries = [..., "KaHASoejleLib", ...]
-    program_dir = "/home/sqhj/Projects/Libs/HA/UnitLib"
-    other_lib_dirs = ["/home/sqhj/Projects/Libs/HA/ProjectLib", "/home/sqhj/Projects/Libs/HA/NNELib"]
+    program_dir = "${HOME}/Projects/Libs/HA/UnitLib"
+    other_lib_dirs = ["${HOME}/Projects/Libs/HA/ProjectLib", "${HOME}/Projects/Libs/HA/NNELib"]
 
 Resolved live library files through that config:
 
-    /home/sqhj/Projects/Libs/HA/ProjectLib/KaHASoejleLib.l
-    /home/sqhj/Projects/Libs/HA/ProjectLib/KaHASoejleLib.s
-    /home/sqhj/Projects/Libs/HA/ProjectLib/KaHASoejleLib.x
-    /home/sqhj/Projects/Libs/HA/ProjectLib/KaHASoejleLib.z
+    ${HOME}/Projects/Libs/HA/ProjectLib/KaHASoejleLib.l
+    ${HOME}/Projects/Libs/HA/ProjectLib/KaHASoejleLib.s
+    ${HOME}/Projects/Libs/HA/ProjectLib/KaHASoejleLib.x
+    ${HOME}/Projects/Libs/HA/ProjectLib/KaHASoejleLib.z
 
 Relevant lines from the live support-library owner:
 

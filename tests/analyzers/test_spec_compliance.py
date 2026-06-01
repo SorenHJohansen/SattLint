@@ -7,15 +7,21 @@ from sattline_parser.models.ast_model import (
     ModuleTypeInstance,
     ParameterMapping,
     Sequence,
+    SFCAlternative,
     SFCCodeBlocks,
+    SFCParallel,
     SFCStep,
+    SFCSubsequence,
     SFCTransition,
+    SFCTransitionSub,
     Simple_DataType,
+    SingleModule,
     Variable,
 )
 from sattlint import constants as const
+from sattlint.analyzers import spec_compliance as spec_compliance_module
 from sattlint.analyzers.registry import get_default_analyzers
-from sattlint.analyzers.spec_compliance import analyze_spec_compliance
+from sattlint.analyzers.spec_compliance import SpecComplianceAnalyzer, analyze_spec_compliance
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -297,6 +303,121 @@ def test_external_moduletype_sequence_rules_are_skipped_for_program_target():
     report = analyze_spec_compliance(bp)
 
     assert not any(issue.kind == "spec.sequence_step_prefix" for issue in report.issues)
+
+
+def test_single_module_sequences_cover_nested_branch_nodes():
+    bp = BasePicture(
+        header=_hdr("Root"),
+        submodules=[
+            SingleModule(
+                header=_hdr("Unit"),
+                moduledef=None,
+                moduleparameters=[],
+                localvariables=[],
+                submodules=[],
+                modulecode=ModuleCode(
+                    sequences=[
+                        _sequence(
+                            SFCAlternative(branches=[[SFCStep(kind="init", name="AltStart", code=SFCCodeBlocks())]]),
+                            SFCParallel(branches=[[SFCTransition(name="ParallelGate", condition=True)]]),
+                            SFCSubsequence(
+                                name="NestedSeq",
+                                body=[SFCStep(kind="step", name="NestedStep", code=SFCCodeBlocks())],
+                            ),
+                            SFCTransitionSub(
+                                name="NestedGate",
+                                body=[SFCTransition(name=None, condition=True)],
+                            ),
+                        )
+                    ]
+                ),
+            )
+        ],
+    )
+
+    report = analyze_spec_compliance(bp)
+
+    kinds = {issue.kind for issue in report.issues}
+    assert "spec.sequence_step_prefix" in kinds
+    assert "spec.transition_prefix" in kinds
+    assert "spec.transition_name_missing" in kinds
+
+
+def test_spec_compliance_helper_origin_and_resolution_fallbacks(monkeypatch):
+    analyzer = SpecComplianceAnalyzer(BasePicture(header=_hdr("Root"), localvariables=[]))
+    instance = ModuleTypeInstance(header=_hdr("Prompt"), moduletype_name="OPMessage", parametermappings=[])
+
+    assert analyzer._is_from_root_origin(None) is True
+    assert analyzer._is_from_root_origin("OtherLib.s") is False
+    assert analyzer._matches_moduletype(instance, None, "OPMessage", "NNESystem") is True
+
+    def _raise_value_error(*_args, **_kwargs):
+        raise ValueError("missing moduletype")
+
+    monkeypatch.setattr(spec_compliance_module, "resolve_moduletype_def_strict", _raise_value_error)
+
+    assert analyzer._resolve_moduletype(instance, current_library=None) is None
+    assert analyzer._find_variable([], "Missing") is None
+
+
+def test_spec_compliance_parameter_helpers_cover_unknown_and_mapping_fallbacks():
+    analyzer = SpecComplianceAnalyzer(BasePicture(header=_hdr("Root"), localvariables=[]))
+    instance = ModuleTypeInstance(
+        header=_hdr("MES_BatchControl"),
+        moduletype_name="MES_BatchControl",
+        parametermappings=[],
+    )
+    moduletype = ModuleTypeDef(name="MES_BatchControl", moduleparameters=[])
+
+    assert analyzer._get_parameter_value(instance, None, {}, "Max_TRY").status == "unknown"
+    assert analyzer._get_parameter_value(instance, moduletype, {}, "Max_TRY").status == "unknown"
+
+    analyzer._check_required_parameter(
+        instance,
+        None,
+        {},
+        ["Root", "MES_BatchControl"],
+        parameter_name="Max_TRY",
+        expected_value=10,
+        issue_kind="spec.mes_batch_control_max_try",
+    )
+
+    assert analyzer.issues[-1].data == {
+        "instance": "MES_BatchControl",
+        "parameter": "Max_TRY",
+        "expected": 10,
+        "status": "unknown",
+    }
+    assert "could not be verified" in analyzer.issues[-1].message
+
+    global_mapping = ParameterMapping(
+        target=_varref("Max_TRY"),
+        source_type=const.TREE_TAG_VARIABLE_NAME,
+        is_duration=False,
+        is_source_global=True,
+        source=_varref("GlobalValue"),
+        source_literal=None,
+    )
+    missing_source_mapping = ParameterMapping(
+        target=_varref("Max_TRY"),
+        source_type=const.TREE_TAG_VARIABLE_NAME,
+        is_duration=False,
+        is_source_global=False,
+        source=None,
+        source_literal=None,
+    )
+    dotted_source_mapping = ParameterMapping(
+        target=_varref("Max_TRY"),
+        source_type=const.TREE_TAG_VARIABLE_NAME,
+        is_duration=False,
+        is_source_global=False,
+        source=_varref("Config.MaxTry"),
+        source_literal=None,
+    )
+
+    assert analyzer._resolve_mapping_value(global_mapping, {}) is None
+    assert analyzer._resolve_mapping_value(missing_source_mapping, {}) is None
+    assert analyzer._resolve_mapping_value(dotted_source_mapping, {}) is None
 
 
 def test_spec_compliance_analyzer_is_enabled_by_default():

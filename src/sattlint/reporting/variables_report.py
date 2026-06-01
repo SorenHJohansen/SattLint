@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from sattline_parser.models.ast_model import Simple_DataType, SourceSpan, Variable
@@ -84,6 +84,11 @@ SUMMARY_SECTION_ORDER: tuple[IssueKind, ...] = (
     IssueKind.SHADOWING,
 )
 
+
+def _empty_phase_timings() -> list[dict[str, str | float]]:
+    return []
+
+
 SECTION_TITLES: dict[IssueKind, str] = {
     IssueKind.UNUSED: "Unused variables",
     IssueKind.UNUSED_DATATYPE_FIELD: "Unused fields in datatypes",
@@ -160,6 +165,7 @@ class VariablesReport:
     include_empty_sections: bool = False
     analyzed_version: str | None = None
     last_changed: str | None = None
+    phase_timings: list[dict[str, str | float]] = field(default_factory=_empty_phase_timings)
 
     def __post_init__(self) -> None:
         if self.visible_kinds is not None and not isinstance(self.visible_kinds, frozenset):

@@ -495,7 +495,7 @@ class SFCTransitionSub:
 
 @dataclass
 class SFCFork:
-    target: str
+    targets: tuple[str, ...]
 
 
 @dataclass

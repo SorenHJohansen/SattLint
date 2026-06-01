@@ -275,7 +275,7 @@ def test_sequence_render_rows_cover_branching_nested_and_fallback_nodes():
             SFCParallel(
                 branches=[
                     [SFCTransition(name="ParallelGate", condition=True)],
-                    [SFCFork(target="ParallelDone")],
+                    [SFCFork(targets=("ParallelDone",))],
                 ]
             ),
             SFCSubsequence(
@@ -286,7 +286,7 @@ def test_sequence_render_rows_cover_branching_nested_and_fallback_nodes():
                 name="TransitionBranch",
                 body=[SFCTransition(name="NestedTransition", condition=False)],
             ),
-            SFCFork(target="Elsewhere"),
+            SFCFork(targets=("Elsewhere",)),
             SFCBreak(),
             (const.KEY_ASSIGN, {"var_name": "Output"}, True),
         ],

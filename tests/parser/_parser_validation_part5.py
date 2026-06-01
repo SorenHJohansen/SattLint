@@ -167,6 +167,22 @@ def test_validation_internal_datatypes_reject_single_field_record():
         )
 
 
+def test_validation_internal_datatypes_allow_zero_field_record():
+    datatype = DataType(
+        name="ZeroFieldType",
+        description=None,
+        datecode=1,
+        var_list=[],
+    )
+
+    validation_module._validate_datatypes(
+        [datatype],
+        "test module",
+        type_graph=TypeGraph.from_datatypes([]),
+        known_datatypes=(),
+    )
+
+
 def test_validate_single_file_syntax_rejects_old_on_non_state_record_field(tmp_path):
     code = """
 "SyntaxVersion"

@@ -297,6 +297,97 @@ ENDDEF (*BasePicture*);
     assert "ambiguous SEQFORK target 'Run'" in result.message
 
 
+def test_validate_single_file_syntax_accepts_multiple_seqfork_targets(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Init
+        SEQTRANSITION TrStart WAIT_FOR True
+        SEQSTEP PathA
+        SEQTRANSITION TrNext WAIT_FOR True
+        SEQSTEP PathB
+        SEQTRANSITION TrFork WAIT_FOR True
+            SEQFORK PathA, pathb
+    ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "ValidMultiForkTarget.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is True
+    assert result.stage == "ok"
+
+
+def test_validate_single_file_syntax_rejects_unknown_multi_seqfork_target(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Init
+        SEQTRANSITION TrStart WAIT_FOR True
+        SEQSTEP PathA
+        SEQTRANSITION TrNext WAIT_FOR True
+        SEQSTEP PathB
+        SEQTRANSITION TrFork WAIT_FOR True
+            SEQFORK PathA, MissingTarget
+    ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "UnknownMultiForkTarget.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert "SEQFORK target 'MissingTarget'" in result.message
+
+
+def test_validate_single_file_syntax_rejects_ambiguous_multi_seqfork_target(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ModuleCode
+    SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0
+        SEQINITSTEP Init
+        SEQTRANSITION TrStart WAIT_FOR True
+        SEQSTEP PathA
+        SEQTRANSITION Run WAIT_FOR True
+        SEQSTEP Run
+        SEQTRANSITION TrFork WAIT_FOR True
+            SEQFORK PathA, Run
+    ENDSEQUENCE
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "AmbiguousMultiForkTarget.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is False
+    assert result.stage == "validation"
+    assert result.message is not None
+    assert "ambiguous SEQFORK target 'Run'" in result.message
+
+
 def test_validate_single_file_syntax_accepts_seqfork_after_step_without_seqbreak(tmp_path):
     code = """
 "SyntaxVersion"

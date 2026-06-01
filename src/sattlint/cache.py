@@ -10,7 +10,8 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import cast
 
-CACHE_VERSION = 13  # Bump when cached AST semantics or warning content changes.
+CACHE_VERSION = 14  # Bump when cached AST semantics or warning content changes.
+ANALYSIS_REPORT_CACHE_VERSION = 1
 LOOKUP_CACHE_VERSION = 1
 
 
@@ -25,6 +26,43 @@ def _safe_stat(path: Path) -> os.stat_result | None:
         return path.stat()
     except OSError:
         return None
+
+
+def _snapshot_manifest(files: Iterable[Path]) -> dict[str, tuple[int, int]] | None:
+    manifest: dict[str, tuple[int, int]] = {}
+    for path in files:
+        stat_result = _safe_stat(path)
+        if stat_result is None:
+            return None
+        manifest[str(path)] = (stat_result.st_mtime_ns, stat_result.st_size)
+    return manifest
+
+
+def _validate_manifest(files: object) -> bool:
+    if not isinstance(files, dict):
+        return False
+    for path_str, manifest in cast(dict[object, object], files).items():
+        if not isinstance(path_str, str):
+            return False
+        if not isinstance(manifest, tuple):
+            return False
+        manifest_tuple = cast(tuple[object, ...], manifest)
+        if len(manifest_tuple) != 2:
+            return False
+        mtime, size = manifest_tuple
+        if not isinstance(mtime, int) or not isinstance(size, int):
+            return False
+        p = Path(path_str)
+        if not p.exists():
+            return False
+
+        st = _safe_stat(p)
+        if st is None:
+            return False
+        if st.st_mtime_ns != mtime or st.st_size != size:
+            return False
+
+    return True
 
 
 def get_cache_dir() -> Path:
@@ -185,6 +223,7 @@ class FileASTCache:
 
 
 PROJECT_CACHE_SCHEMA_VERSION = "2026-05-28-library-reverse-consumer-scan"
+ANALYSIS_REPORT_CACHE_SCHEMA_VERSION = "2026-05-29-analysis-report-cache"
 
 
 def compute_cache_key(cfg: Mapping[str, object]) -> str:
@@ -198,6 +237,7 @@ def compute_cache_key(cfg: Mapping[str, object]) -> str:
     for k in (
         "analysis_target",
         "analyzed_programs_and_libraries",
+        "include_reverse_library_consumers",
         "mode",
         "scan_root_only",
         "fast_cache_validation",
@@ -208,6 +248,14 @@ def compute_cache_key(cfg: Mapping[str, object]) -> str:
     ):
         h.update(repr(cfg.get(k)).encode())
 
+    return h.hexdigest()
+
+
+def compute_analysis_report_cache_key(project_cache_key: str, analyzer_key: str) -> str:
+    h = hashlib.sha256()
+    h.update(ANALYSIS_REPORT_CACHE_SCHEMA_VERSION.encode())
+    h.update(project_cache_key.encode("utf-8", errors="ignore"))
+    h.update(analyzer_key.encode("utf-8", errors="ignore"))
     return h.hexdigest()
 
 
@@ -236,12 +284,9 @@ class ASTCache:
         project: object,
         files: Iterable[Path],
     ) -> None:
-        manifest: dict[str, tuple[int, int]] = {}
-        for path in files:
-            stat_result = _safe_stat(path)
-            if stat_result is None:
-                return
-            manifest[str(path)] = (stat_result.st_mtime_ns, stat_result.st_size)
+        manifest = _snapshot_manifest(files)
+        if manifest is None:
+            return
 
         payload: dict[str, object] = {
             "version": CACHE_VERSION,
@@ -260,34 +305,69 @@ class ASTCache:
         if fast:
             return "project" in payload_map
 
-        files = payload_map.get("files")
-        if not isinstance(files, dict):
-            return False
-        for path_str, manifest in cast(dict[object, object], files).items():
-            if not isinstance(path_str, str):
-                return False
-            if not isinstance(manifest, tuple):
-                return False
-            manifest_tuple = cast(tuple[object, ...], manifest)
-            if len(manifest_tuple) != 2:
-                return False
-            mtime, size = manifest_tuple
-            if not isinstance(mtime, int) or not isinstance(size, int):
-                return False
-            p = Path(path_str)
-            if not p.exists():
-                return False
-
-            st = _safe_stat(p)
-            if st is None:
-                return False
-            if st.st_mtime_ns != mtime or st.st_size != size:
-                return False
-
-        return True
+        return _validate_manifest(payload_map.get("files"))
 
     def clear(self, key: str) -> None:
         """Remove cache file for the given key."""
+        p = self._path(key)
+        if p.exists():
+            p.unlink()
+
+
+class AnalysisReportCache:
+    def __init__(self, cache_dir: Path):
+        self.cache_dir = cache_dir / "analysis_reports"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def _path(self, key: str) -> Path:
+        return self.cache_dir / f"{key}.pickle"
+
+    def load(self, key: str) -> object | None:
+        p = self._path(key)
+        if not p.exists():
+            return None
+        try:
+            with p.open("rb") as f:
+                return pickle.load(f)  # nosec B301 - loading SattLint-owned local cache files only
+        except (OSError, pickle.UnpicklingError, TypeError, AttributeError, EOFError):
+            return None
+
+    def save(
+        self,
+        key: str,
+        *,
+        report: object,
+        files: Iterable[Path],
+    ) -> bool:
+        manifest = _snapshot_manifest(files)
+        if manifest is None:
+            return False
+
+        payload: dict[str, object] = {
+            "version": ANALYSIS_REPORT_CACHE_VERSION,
+            "report": report,
+            "files": manifest,
+        }
+
+        try:
+            with self._path(key).open("wb") as f:
+                pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
+        except (OSError, pickle.PicklingError, TypeError, AttributeError, ValueError):
+            return False
+
+        return True
+
+    def validate(self, payload: object, *, fast: bool = False) -> bool:
+        payload_map = _as_mapping(payload)
+        if payload_map is None or payload_map.get("version") != ANALYSIS_REPORT_CACHE_VERSION:
+            return False
+
+        if fast:
+            return "report" in payload_map
+
+        return _validate_manifest(payload_map.get("files"))
+
+    def clear(self, key: str) -> None:
         p = self._path(key)
         if p.exists():
             p.unlink()

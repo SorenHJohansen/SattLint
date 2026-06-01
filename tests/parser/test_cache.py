@@ -232,7 +232,9 @@ def test_cache_helpers_cover_persistence_and_hash_edge_paths(tmp_path: Path) -> 
     }
     first_key = cache_mod.compute_cache_key(cfg)
     second_key = cache_mod.compute_cache_key({**cfg, "mode": "official"})
+    third_key = cache_mod.compute_cache_key({**cfg, "include_reverse_library_consumers": False})
     assert first_key != second_key
+    assert first_key != third_key
 
     ast_cache = ASTCache(tmp_path / "project-cache-extra")
     manifest_path = tmp_path / "manifest-extra.s"

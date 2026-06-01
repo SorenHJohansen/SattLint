@@ -849,17 +849,32 @@ def _file_debt_runtime_errors(
     repo_root: Path,
     context: ChangeContext,
     file_debt_state: dict[str, dict[str, dict[str, Any]]],
+    structural_exceptions: Mapping[str, dict[str, Any]],
     typing_state: TypingRatchetState,
 ) -> list[str]:
     touched_paths = tuple(path for path in context.changed_files if path in file_debt_state)
-    if not touched_paths:
+    unlisted_touched_paths = tuple(path for path in context.changed_files if path not in file_debt_state)
+    if not touched_paths and not unlisted_touched_paths:
         return []
 
     errors: list[str] = []
     debt_allowlist = set(typing_state.debt_allowlist)
-    current_text_by_path = _load_current_texts(repo_root, touched_paths)
+    structural_runtime_paths = tuple(
+        path
+        for path in dict.fromkeys(
+            [
+                *(path for path in touched_paths if "structural" in file_debt_state[path]),
+                *(path for path in unlisted_touched_paths if path in structural_exceptions),
+            ]
+        )
+    )
+    current_text_by_path = _load_current_texts(
+        repo_root, tuple(dict.fromkeys((*touched_paths, *structural_runtime_paths)))
+    )
     base_text_by_path = _load_base_texts(repo_root, context.base_ref, touched_paths)
-    needs_coverage = any("coverage" in file_debt_state[path] for path in touched_paths)
+    needs_coverage = any("coverage" in file_debt_state[path] for path in touched_paths) or any(
+        path.startswith("src/") and path.endswith(".py") for path in unlisted_touched_paths
+    )
     coverage_by_path = _coverage_basis_points_by_path(repo_root) if needs_coverage else {}
 
     for rel_path in touched_paths:
@@ -918,6 +933,31 @@ def _file_debt_runtime_errors(
                 errors.append(
                     f"Touched coverage debt file must reach target: {rel_path} is {basis_points / 100:.2f}% "
                     f"but target is {coverage_entry['target'] / 100:.2f}%."
+                )
+
+    for rel_path in unlisted_touched_paths:
+        if rel_path.startswith("src/") and rel_path.endswith(".py"):
+            basis_points = coverage_by_path.get(rel_path)
+            if basis_points is None:
+                errors.append(
+                    f"Touched source file missing per-file coverage debt entry is missing from coverage.xml: {rel_path}. "
+                    "Unlisted touched source files must already meet the 100.00% coverage target."
+                )
+            elif basis_points < NEW_SOURCE_FILE_COVERAGE_BASIS_POINTS:
+                errors.append(
+                    "Touched source file missing per-file coverage debt entry does not meet the 100.00% coverage target: "
+                    f"{rel_path} is {basis_points / 100:.2f}%."
+                )
+
+        if rel_path in structural_exceptions:
+            current_text = current_text_by_path.get(rel_path)
+            if current_text is None:
+                continue
+            current_lines = _line_count(current_text)
+            if current_lines > NEW_PYTHON_FILE_LINE_LIMIT:
+                errors.append(
+                    "Touched structural exception file missing per-file debt entry does not meet the "
+                    f"{NEW_PYTHON_FILE_LINE_LIMIT}-line target: {rel_path} is {current_lines} lines."
                 )
 
     return errors
@@ -1251,6 +1291,15 @@ def run_policy_check(repo_root: Path = REPO_ROOT, env: Mapping[str, str] | None 
     current_file_debt_state = (
         _file_debt_ratchet_state(file_debt_text, FILE_DEBT_RATCHET_PATH) if file_debt_text is not None else {}
     )
+    structural_text = current_text_by_path.get(STRUCTURAL_RATCHET_PATH)
+    current_structural_exceptions = (
+        _structural_file_line_exception_mapping(
+            _parse_json_payload(structural_text, STRUCTURAL_RATCHET_PATH),
+            STRUCTURAL_RATCHET_PATH,
+        )
+        if structural_text is not None
+        else {}
+    )
     errors.extend(_file_debt_surface_errors(current_file_debt_state))
     errors.extend(
         _file_debt_stale_entry_errors(
@@ -1278,6 +1327,7 @@ def run_policy_check(repo_root: Path = REPO_ROOT, env: Mapping[str, str] | None 
             repo_root=repo_root,
             context=context,
             file_debt_state=current_file_debt_state,
+            structural_exceptions=current_structural_exceptions,
             typing_state=current_typing_state,
         )
     )

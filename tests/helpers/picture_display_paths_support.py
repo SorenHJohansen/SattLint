@@ -39,6 +39,14 @@ def module(
     )
 
 
+def picture_display_path_text(*segments: str) -> str:
+    return "-----------+" + "+".join(segments)
+
+
+def picture_display_jump_node_path_text() -> str:
+    return picture_display_path_text("Opmessage", "l1", "l2", "COLUMNJUMPNODE")
+
+
 def base_picture_with_leading_dash_paths() -> BasePicture:
     return BasePicture(
         header=ModuleHeader(name="BasePicture", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
@@ -165,7 +173,7 @@ def base_picture_with_leading_dash_paths() -> BasePicture:
 
 
 def base_picture_with_moduletype_form_picture_display() -> BasePicture:
-    opmessage = module("Opmessage", [module("L1", [module("L2", [module("COLUMNJUMPOUTLET")])])])
+    opmessage = module("Opmessage", [module("L1", [module("L2", [module("COLUMNJUMPNODE")])])])
     ud_disp = ModuleTypeDef(
         name="UdDisp",
         submodules=[

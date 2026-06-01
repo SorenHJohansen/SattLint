@@ -13,6 +13,32 @@ if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
 
 
+_MODULE_VARIABLE_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
+    {
+        IssueKind.UNUSED,
+        IssueKind.READ_ONLY_NON_CONST,
+        IssueKind.UI_ONLY,
+        IssueKind.PROCEDURE_STATUS,
+        IssueKind.NEVER_READ,
+        IssueKind.WRITE_WITHOUT_EFFECT,
+    }
+)
+
+
+def _selected_issue_kinds(self: object) -> frozenset[IssueKind] | set[IssueKind] | None:
+    return getattr(self, "_selected_issue_kinds", None)
+
+
+def _should_collect_issue_kind(self: object, kind: IssueKind) -> bool:
+    selected_kinds = _selected_issue_kinds(self)
+    return selected_kinds is None or kind in selected_kinds
+
+
+def _should_collect_any_issue_kinds(self: object, kinds: frozenset[IssueKind]) -> bool:
+    selected_kinds = _selected_issue_kinds(self)
+    return selected_kinds is None or bool(selected_kinds & kinds)
+
+
 def _append_issue(
     self: VariablesAnalyzer,
     kind: IssueKind,
@@ -39,14 +65,31 @@ def _collect_variable_issues(
     *,
     role: str,
 ) -> None:
+    collect_unused = _should_collect_issue_kind(self, IssueKind.UNUSED)
+    collect_procedure_status = _should_collect_issue_kind(self, IssueKind.PROCEDURE_STATUS)
+    collect_ui_only = _should_collect_issue_kind(self, IssueKind.UI_ONLY)
+    collect_read_only_non_const = _should_collect_issue_kind(self, IssueKind.READ_ONLY_NON_CONST)
+    collect_never_read = _should_collect_issue_kind(self, IssueKind.NEVER_READ)
+    collect_write_without_effect = _should_collect_issue_kind(self, IssueKind.WRITE_WITHOUT_EFFECT)
+
+    if not (
+        collect_unused
+        or collect_procedure_status
+        or collect_ui_only
+        or collect_read_only_non_const
+        or collect_never_read
+        or collect_write_without_effect
+    ):
+        return
+
     for variable in variables or []:
         usage = self.get_usage(variable)
-        if usage.is_unused:
+        if collect_unused and usage.is_unused:
             _append_issue(self, IssueKind.UNUSED, path, variable, role=role)
             continue
 
-        procedure_status = self.procedure_status_issue(variable, usage)
-        if procedure_status is not None:
+        procedure_status = self.procedure_status_issue(variable, usage) if collect_procedure_status else None
+        if collect_procedure_status and procedure_status is not None:
             status_role, field_path = procedure_status
             _append_issue(
                 self,
@@ -58,12 +101,13 @@ def _collect_variable_issues(
             )
             continue
 
-        if usage.is_display_only:
+        if collect_ui_only and usage.is_display_only:
             _append_issue(self, IssueKind.UI_ONLY, path, variable, role=role)
             continue
 
         if (
-            role == "localvariable"
+            collect_read_only_non_const
+            and role == "localvariable"
             and usage.is_read_only
             and not bool(variable.const)
             and self.is_const_candidate(variable)
@@ -72,7 +116,8 @@ def _collect_variable_issues(
             continue
 
         if (
-            role == "localvariable"
+            collect_never_read
+            and role == "localvariable"
             and usage.written
             and not usage.read
             and not self.has_ignorable_output_binding(variable)
@@ -81,7 +126,8 @@ def _collect_variable_issues(
             continue
 
         if (
-            usage.read
+            collect_write_without_effect
+            and usage.read
             and usage.written
             and not self.has_output_effect(variable, path)
             and not self.has_procedure_status_binding(variable)
@@ -97,6 +143,9 @@ def collect_issues_from_module(
     *,
     resolve_moduletype_def: Callable[..., ModuleTypeDef],
 ) -> None:
+    if not _should_collect_any_issue_kinds(self, _MODULE_VARIABLE_ISSUE_KINDS):
+        return
+
     my_path = [*path, mod.header.name]
     if isinstance(mod, SingleModule):
         _collect_variable_issues(self, mod.moduleparameters, my_path, role="moduleparameter")

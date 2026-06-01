@@ -17,8 +17,13 @@ from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, analy
 from sattlint.contracts import FindingCollection, FindingLocation, FindingRecord
 from sattlint.devtools._corpus_artifacts import (
     CorpusExecutionArtifacts,
+    as_json_array,
+    as_json_object,
     build_execution_error_artifacts,
+    coerce_artifact_fragments,
+    coerce_optional_str,
     collect_artifact_fragment_failures,
+    load_json_object,
     write_case_artifacts,
     write_json,
 )
@@ -158,26 +163,28 @@ class CorpusSuiteResult:
 
 
 def load_corpus_manifest(path: Path) -> CorpusCaseManifest:
-    payload = _load_json_object(path)
-    expectation_payload = _as_json_object(payload.get("expectation")) or {}
+    payload = load_json_object(path)
+    expectation_payload = as_json_object(payload.get("expectation")) or {}
     return CorpusCaseManifest(
         case_id=str(payload["case_id"]),
         target_file=str(payload["target_file"]),
         mode=str(payload.get("mode") or "workspace"),
         expectation=CorpusExpectation(
             expected_finding_ids=tuple(
-                str(item) for item in _as_json_array(expectation_payload.get("expected_finding_ids"))
+                str(item) for item in as_json_array(expectation_payload.get("expected_finding_ids"))
             ),
             forbidden_finding_ids=tuple(
-                str(item) for item in _as_json_array(expectation_payload.get("forbidden_finding_ids"))
+                str(item) for item in as_json_array(expectation_payload.get("forbidden_finding_ids"))
             ),
-            artifact_fragments=_coerce_artifact_fragments(expectation_payload.get("artifact_fragments")),
+            artifact_fragments=cast(
+                JsonObject, coerce_artifact_fragments(expectation_payload.get("artifact_fragments"))
+            ),
         ),
-        required_artifacts=tuple(str(item) for item in _as_json_array(payload.get("required_artifacts"))),
-        workspace_root=_coerce_optional_str(payload.get("workspace_root")),
-        program_dir=_coerce_optional_str(payload.get("program_dir")),
-        abb_lib_dir=_coerce_optional_str(payload.get("abb_lib_dir")),
-        other_lib_dirs=tuple(str(item) for item in _as_json_array(payload.get("other_lib_dirs"))),
+        required_artifacts=tuple(str(item) for item in as_json_array(payload.get("required_artifacts"))),
+        workspace_root=coerce_optional_str(payload.get("workspace_root")),
+        program_dir=coerce_optional_str(payload.get("program_dir")),
+        abb_lib_dir=coerce_optional_str(payload.get("abb_lib_dir")),
+        other_lib_dirs=tuple(str(item) for item in as_json_array(payload.get("other_lib_dirs"))),
     )
 
 
@@ -436,38 +443,6 @@ def main(argv: list[str] | None = None) -> int:
 
 def _print_cli_summary(status_report: dict[str, Any]) -> None:  # pyright: ignore[reportUnusedFunction]
     print(format_cli_summary(status_report))
-
-
-def _coerce_optional_str(value: Any) -> str | None:
-    if value in (None, ""):
-        return None
-    return str(value)
-
-
-def _as_json_object(value: object) -> JsonObject | None:
-    if not isinstance(value, dict):
-        return None
-    return cast(JsonObject, value)
-
-
-def _as_json_array(value: object) -> list[JsonValue]:
-    if not isinstance(value, list):
-        return []
-    return cast(list[JsonValue], value)
-
-
-def _load_json_object(path: Path) -> JsonObject:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"Expected JSON object in {path}")
-    return cast(JsonObject, payload)
-
-
-def _coerce_artifact_fragments(value: object) -> JsonObject:
-    payload = _as_json_object(value)
-    if payload is None:
-        return {}
-    return {str(key): expected_fragment for key, expected_fragment in payload.items()}
 
 
 def _normalize_severity(value: str) -> str:

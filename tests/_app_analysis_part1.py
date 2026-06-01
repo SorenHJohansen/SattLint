@@ -71,6 +71,35 @@ def test_run_variable_analysis_runs_all_analyzed_targets(noop_screen, monkeypatc
     assert out.count("Issues: 0") == 2
 
 
+@pytest.mark.parametrize(
+    ("kinds", "expect_reverse_consumers"),
+    [
+        ({app_analysis.IssueKind.UNUSED}, False),
+        ({app_analysis.IssueKind.UNUSED_DATATYPE_FIELD}, True),
+    ],
+)
+def test_run_variable_analysis_scopes_reverse_consumer_loading(
+    noop_screen,
+    capsys,
+    kinds,
+    expect_reverse_consumers,
+):
+    seen_flags: list[bool] = []
+
+    def _fake_iter_loaded_projects(cfg, **_kwargs):
+        seen_flags.append(bool(cfg["include_reverse_library_consumers"]))
+        return iter(())
+
+    app_analysis.run_variable_analysis(
+        app.DEFAULT_CONFIG.copy(),
+        kinds,
+        iter_loaded_projects_fn=_fake_iter_loaded_projects,
+    )
+
+    assert seen_flags == [expect_reverse_consumers]
+    assert "No variable analysis output was produced because no target loaded successfully." in capsys.readouterr().out
+
+
 def test_run_variable_analysis_updates_live_status(monkeypatch):
     updates: list[str] = []
 
@@ -109,7 +138,7 @@ def test_run_variable_analysis_updates_live_status(monkeypatch):
     ]
 
 
-def test_run_variable_analysis_real_analyzer_emits_detailed_status_updates(monkeypatch):
+def test_run_variable_analysis_real_analyzer_keeps_default_status_updates_coarse(monkeypatch):
     updates: list[str] = []
 
     class FakeLiveStatusLine:
@@ -137,6 +166,7 @@ def test_run_variable_analysis_real_analyzer_emits_detailed_status_updates(monke
     assert updates[0] == "Analyzing variable issues for SmokeTarget"
     assert any("building root scope" in update for update in updates)
     assert any("finalizing findings" in update for update in updates)
+    assert not any("walking module path" in update for update in updates)
 
 
 def test_run_variable_analysis_includes_version_and_last_changed(noop_screen, monkeypatch, capsys, tmp_path):
@@ -301,6 +331,171 @@ def test_run_variable_analysis_can_render_low_confidence_category_on_request(noo
 
     out = capsys.readouterr().out
     assert "UI/display-only variables" in out
+
+
+def test_run_variable_analysis_passes_selected_issue_kinds_to_analyzer(noop_screen, monkeypatch, capsys):
+    graph = SimpleNamespace(unavailable_libraries=set(), warnings=[])
+    seen_selected_kinds: list[set[IssueKind] | frozenset[IssueKind] | None] = []
+
+    monkeypatch.setattr(
+        app_analysis,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("ProgramA", "bp-a", graph)]),
+    )
+
+    def _fake_analyze_variables(*_args, **kwargs):
+        seen_selected_kinds.append(kwargs.get("selected_issue_kinds"))
+        return VariablesReport(
+            basepicture_name="ProgramA",
+            issues=[],
+            visible_kinds=frozenset({IssueKind.UNUSED}),
+            include_empty_sections=True,
+        )
+
+    monkeypatch.setattr(app_analysis, "analyze_variables", _fake_analyze_variables)
+    monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report("ProgramA"))
+
+    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), {IssueKind.UNUSED})
+
+    assert seen_selected_kinds == [{IssueKind.UNUSED}]
+    assert "=== Target: ProgramA ===" in capsys.readouterr().out
+
+
+def test_run_variable_analysis_uses_cached_report_for_selected_issue_kinds(noop_screen, monkeypatch, capsys):
+    analyze_calls: list[set[IssueKind] | frozenset[IssueKind] | None] = []
+    load_keys: list[str] = []
+
+    class FakeReportCache:
+        def __init__(self, cache_dir):
+            assert cache_dir == Path("report-cache-dir")
+
+        def load(self, key):
+            load_keys.append(key)
+            if key == "project-key:variables:unused":
+                return {"report": make_variable_report("BasePicture")}
+            return None
+
+        def validate(self, payload, *, fast=False):
+            del fast
+            return payload is not None
+
+        def save(self, key, *, report, files):
+            pytest.fail(f"cache should not save on hit: {key}, {report}, {files}")
+
+    graph = SimpleNamespace(
+        unavailable_libraries=set(),
+        warnings=[],
+        analysis_cache_key="project-key",
+        analysis_manifest_files=frozenset({Path("programs/ProgramA.s")}),
+    )
+
+    monkeypatch.setattr(
+        app_analysis,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("ProgramA", "bp-a", graph)]),
+    )
+    monkeypatch.setattr(app_analysis, "AnalysisReportCache", FakeReportCache)
+    monkeypatch.setattr(app_analysis, "get_cache_dir", lambda: Path("report-cache-dir"))
+    monkeypatch.setattr(
+        app_analysis,
+        "compute_analysis_report_cache_key",
+        lambda project_key, analyzer_key: f"{project_key}:{analyzer_key}",
+    )
+
+    def _fake_analyze_variables(*_args, **kwargs):
+        analyze_calls.append(kwargs.get("selected_issue_kinds"))
+        return make_variable_report("Live")
+
+    monkeypatch.setattr(app_analysis, "analyze_variables", _fake_analyze_variables)
+
+    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), {IssueKind.UNUSED})
+
+    assert analyze_calls == []
+    assert load_keys == ["project-key:variables:unused"]
+    assert "=== Target: ProgramA ===" in capsys.readouterr().out
+
+
+def test_run_variable_analysis_cache_keys_selected_issue_kinds_separately(noop_screen, monkeypatch):
+    save_keys: list[str] = []
+
+    class FakeReportCache:
+        def __init__(self, cache_dir):
+            assert cache_dir == Path("report-cache-dir")
+
+        def load(self, key):
+            return None
+
+        def validate(self, payload, *, fast=False):
+            del payload, fast
+            return False
+
+        def save(self, key, *, report, files):
+            del report, files
+            save_keys.append(key)
+            return True
+
+    graph = SimpleNamespace(
+        unavailable_libraries=set(),
+        warnings=[],
+        analysis_cache_key="project-key",
+        analysis_manifest_files=frozenset({Path("programs/ProgramA.s")}),
+    )
+
+    monkeypatch.setattr(
+        app_analysis,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("ProgramA", "bp-a", graph)]),
+    )
+    monkeypatch.setattr(app_analysis, "AnalysisReportCache", FakeReportCache)
+    monkeypatch.setattr(app_analysis, "get_cache_dir", lambda: Path("report-cache-dir"))
+    monkeypatch.setattr(
+        app_analysis,
+        "compute_analysis_report_cache_key",
+        lambda project_key, analyzer_key: f"{project_key}:{analyzer_key}",
+    )
+    monkeypatch.setattr(app_analysis, "analyze_variables", lambda *_, **__: make_variable_report("ProgramA"))
+    monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report("ProgramA"))
+
+    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), {IssueKind.UNUSED})
+    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy(), None)
+
+    default_kinds_key = ",".join(sorted(kind.name.casefold() for kind in DEFAULT_VARIABLE_ANALYSIS_KINDS))
+    assert save_keys == [
+        "project-key:variables:unused",
+        f"project-key:variables:{default_kinds_key}",
+        "project-key:variables:shadowing",
+    ]
+
+
+def test_run_variable_analysis_bypasses_report_cache_when_use_cache_disabled(noop_screen, monkeypatch):
+    analyze_calls: list[str] = []
+
+    class ForbiddenReportCache:
+        def __init__(self, _cache_dir):
+            pytest.fail("report cache should be bypassed when use_cache is false")
+
+    graph = SimpleNamespace(
+        unavailable_libraries=set(),
+        warnings=[],
+        analysis_cache_key="project-key",
+        analysis_manifest_files=frozenset({Path("programs/ProgramA.s")}),
+    )
+
+    monkeypatch.setattr(
+        app_analysis,
+        "_iter_loaded_projects",
+        lambda *_args, **_kwargs: iter([("ProgramA", "bp-a", graph)]),
+    )
+    monkeypatch.setattr(app_analysis, "AnalysisReportCache", ForbiddenReportCache)
+    monkeypatch.setattr(
+        app_analysis,
+        "analyze_variables",
+        lambda *_, **__: analyze_calls.append("run") or make_variable_report("ProgramA"),
+    )
+
+    app_analysis.run_variable_analysis(app.DEFAULT_CONFIG.copy() | {"use_cache": False}, {IssueKind.UNUSED})
+
+    assert analyze_calls == ["run"]
 
 
 def test_iter_loaded_projects_skips_failed_targets(noop_screen, monkeypatch, capsys):

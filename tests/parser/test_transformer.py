@@ -59,4 +59,15 @@ def test_seqsub_uses_name_token(transformer):
 
 def test_seqfork_uses_name_token(transformer):
     fork = transformer.seqfork([_tok("SEQFORK", "SEQFORK"), _tok("NAME", "NextStep")])
-    assert fork.target == "NextStep"
+    assert fork.targets == ("NextStep",)
+
+
+def test_seqfork_collects_multiple_name_tokens(transformer):
+    fork = transformer.seqfork(
+        [
+            _tok("SEQFORK", "SEQFORK"),
+            _tok("NAME", "PathA"),
+            _tok("NAME", "PathB"),
+        ]
+    )
+    assert fork.targets == ("PathA", "PathB")

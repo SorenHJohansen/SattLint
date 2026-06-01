@@ -11,6 +11,18 @@ import pytest
 from sattlint.devtools import observability, review_tool
 
 
+def test_observability_run_command_success(monkeypatch):
+    monkeypatch.setattr(
+        observability.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="ok", stderr=""),
+    )
+
+    code, stdout, stderr = observability.run_command(["python", "-V"])
+
+    assert (code, stdout, stderr) == (0, "ok", "")
+
+
 def test_observability_run_command_handles_exception(monkeypatch):
     def _boom(*_args, **_kwargs):
         raise RuntimeError("boom")
@@ -34,6 +46,22 @@ def test_observability_get_coverage_metrics_parses_xml(tmp_path, monkeypatch):
     assert metrics == {"line_coverage": 25.0, "branch_coverage": 50.0}
 
 
+def test_observability_get_coverage_metrics_defaults_when_missing_root_or_parse_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(observability, "ARTIFACTS_DIR", tmp_path)
+    assert observability.get_coverage_metrics() == {"line_coverage": 0.0, "branch_coverage": 0.0}
+
+    coverage_xml = tmp_path / "coverage.xml"
+    coverage_xml.write_text("<coverage />", encoding="utf-8")
+    monkeypatch.setattr(observability.ElementTree, "parse", lambda _path: SimpleNamespace(getroot=lambda: None))
+    assert observability.get_coverage_metrics() == {"line_coverage": 0.0, "branch_coverage": 0.0}
+
+    def _parse_boom(_path):
+        raise observability.ElementTree.ParseError("bad xml")
+
+    monkeypatch.setattr(observability.ElementTree, "parse", _parse_boom)
+    assert observability.get_coverage_metrics() == {"line_coverage": 0.0, "branch_coverage": 0.0}
+
+
 def test_observability_get_lint_metrics_counts_warning_and_error(monkeypatch):
     calls = []
 
@@ -53,6 +81,51 @@ def test_observability_get_lint_metrics_counts_warning_and_error(monkeypatch):
     assert len(calls) == 2
 
 
+def test_observability_get_test_metrics_and_build_metrics(monkeypatch):
+    assert observability.get_test_metrics() == {
+        "test_count": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "duration": 0.0,
+    }
+
+    monkeypatch.setattr(observability, "run_command", lambda _cmd: (0, "", ""))
+    assert observability.get_build_metrics() == {
+        "install_success": True,
+        "lint_success": False,
+        "test_success": False,
+    }
+
+    monkeypatch.setattr(observability, "run_command", lambda _cmd: (1, "", ""))
+    assert observability.get_build_metrics() == {
+        "install_success": False,
+        "lint_success": False,
+        "test_success": False,
+    }
+
+
+def test_observability_collect_all_metrics(monkeypatch):
+    class _FakeDateTime:
+        @staticmethod
+        def now(_tz):
+            return SimpleNamespace(isoformat=lambda: "2026-05-28T16:00:00+00:00")
+
+    monkeypatch.setattr(observability, "datetime", _FakeDateTime)
+    monkeypatch.setattr(observability, "get_test_metrics", lambda: {"tests": 1})
+    monkeypatch.setattr(observability, "get_coverage_metrics", lambda: {"line_coverage": 50.0})
+    monkeypatch.setattr(observability, "get_lint_metrics", lambda: {"ruff_errors": 0})
+    monkeypatch.setattr(observability, "get_build_metrics", lambda: {"install_success": True})
+
+    assert observability.collect_all_metrics() == {
+        "timestamp": "2026-05-28T16:00:00Z",
+        "test": {"tests": 1},
+        "coverage": {"line_coverage": 50.0},
+        "lint": {"ruff_errors": 0},
+        "build": {"install_success": True},
+    }
+
+
 def test_observability_write_and_read_metrics(tmp_path, monkeypatch):
     monkeypatch.setattr(observability, "ARTIFACTS_DIR", tmp_path)
     monkeypatch.setattr(observability, "OBSERVABILITY_FILE", tmp_path / "observability.json")
@@ -62,6 +135,26 @@ def test_observability_write_and_read_metrics(tmp_path, monkeypatch):
 
     loaded = observability.read_metrics()
     assert loaded == payload
+
+
+def test_observability_read_metrics_returns_empty_when_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(observability, "ARTIFACTS_DIR", tmp_path)
+    monkeypatch.setattr(observability, "OBSERVABILITY_FILE", tmp_path / "observability.json")
+
+    assert observability.read_metrics() == {}
+
+
+def test_observability_module_main_guard(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    runpy.run_module("sattlint.devtools.observability", run_name="__main__")
+
+    assert (tmp_path / "artifacts" / "observability.json").exists()
 
 
 def test_observability_main_writes_and_prints(monkeypatch, capsys):

@@ -130,6 +130,37 @@ def test_publish_closed_document_diagnostics_loads_snapshot_when_cache_is_empty(
     assert ls.published_workspace_diagnostics[path][0].message == "Variable is written but never read"
 
 
+def test_publish_closed_document_diagnostics_drops_stale_cache_when_snapshot_load_fails(monkeypatch, tmp_path):
+    path = (tmp_path / "Program" / "Main.s").resolve()
+    stale_diagnostic = cast(
+        Any,
+        SimpleNamespace(
+            range=Range(start=Position(line=0, character=0), end=Position(line=0, character=1)),
+            message="Stale",
+            severity=1,
+            source="sattlint",
+        ),
+    )
+    published = []
+
+    ls = SattLineLanguageServer()
+    ls.settings = LspSettings(enable_variable_diagnostics=True, workspace_diagnostics_mode="background")
+    ls.text_document_publish_diagnostics = lambda params: published.append(params)
+    ls.published_workspace_diagnostics = {path: (stale_diagnostic,)}
+
+    monkeypatch.setattr(
+        "sattlint_lsp._server_document._load_snapshot_bundle",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("workspace unavailable")),
+    )
+
+    _publish_closed_document_diagnostics(ls, path)
+
+    assert len(published) == 1
+    assert published[0].uri.casefold() == path.as_uri().casefold()
+    assert published[0].diagnostics == []
+    assert path not in ls.published_workspace_diagnostics
+
+
 def test_semantic_diagnostics_for_path_reuses_bundle_cache(monkeypatch, tmp_path):
     path = (tmp_path / "Program" / "Main.s").resolve()
     diagnostic = cast(

@@ -2,7 +2,7 @@
 
 Living document of known technical debt in SattLint.
 Updated by doc-gardening agent and human developers.
-Last updated: 2026-05-20
+Last updated: 2026-06-01
 
 Active work now lives in:
 
@@ -74,9 +74,10 @@ Active follow-on plan from the 2026-05-19 security review:
 
 - `docs/exec-plans/active/61-t-wave-8-repo-security-and-supply-chain-hardening.md` covers release trust-boundary tightening, workflow-security policy enforcement, legacy helper-script removal, and complete Python-plus-Node dependency monitoring.
 
-Active follow-on plan from the 2026-05-19 performance and scalability review:
+Active follow-on plans from the 2026-05-19 performance and scalability review:
 
-- `docs/exec-plans/active/62-t-wave-8-performance-and-scalability-hardening.md` covers the inverted fast-cache-validation path, project-loader cache persistence churn, workspace-discovery and LSP refresh bounding, structural-report snapshot reuse, and repo-audit plus pipeline scan pruning for large repositories.
+- `docs/exec-plans/active/67-t-wave-9-analyzer-execution-performance-hardening.md` covers analyzer batch execution reuse, semantic rerun elimination, shared per-target artifacts for the variable-family analyzers, and the follow-on measurement path for standalone performance-adjacent subsystems such as graphics, layout, and ICF validation.
+- `docs/exec-plans/active/68-t-wave-9-project-loading-pipeline-performance-hardening.md` covers project-cache manifest separation, file-AST validation de-duplication, project-payload size reduction, and safe parallelization of sibling dependency loading in the project-loader hot path.
 
 Active follow-on plan from the 2026-05-19 CLI UX review:
 
@@ -86,6 +87,10 @@ Active follow-on plan from the 2026-05-19 maintainability blind-spot review:
 
 - `docs/exec-plans/completed/64-t-wave-8-maintainer-blind-spot-reconciliation.md` turns the broad review into one durable routing artifact, closes the remaining retired-TODO source-ledger seam in doc-gardener, records which existing active plans own the other suspicious paths, and names the active owners for duplicate abstractions, unused sophistication, disconnected systems, architecture entropy, hallucination residue, and runtime-architecture mapping.
 - Use that plan as the canonical routing artifact for the 2026-05-19 blind-spot review so suspicious maintainability findings map to an owning active plan instead of chat-only history.
+
+Active follow-on plan from the 2026-06-01 analyzer architecture-drift review:
+
+- `docs/exec-plans/active/66-t-wave-9-analyzer-architecture-drift-hardening.md` covers analyzer registry key normalization, analyzer-specific drift-prevention guardrails, private helper-module naming, import-style consistency, and the first shared traversal plus origin-helper consolidation inside `src/sattlint/analyzers/`.
 
 ---
 

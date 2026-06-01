@@ -13,6 +13,8 @@ from sattline_parser.models.ast_model import BasePicture
 from sattlint import app_docs
 from sattlint.models.project_graph import ProjectGraph
 
+from ._app_menus_support import make_input
+
 
 def test_preview_documentation_candidates_for_target_handles_empty_candidates(monkeypatch, capsys):
     monkeypatch.setattr(app_docs, "classify_documentation_structure", lambda *_args, **_kwargs: object())
@@ -256,6 +258,24 @@ def test_configure_documentation_scope_by_instance_path_updates_selection(monkey
     assert pauses == ["pause"]
 
 
+def test_configure_documentation_scope_by_moduletype_updates_selection(monkeypatch):
+    monkeypatch.setattr(builtins, "input", lambda _prompt="": "ApplTank, XDilute")
+    pauses: list[str] = []
+
+    try:
+        changed = app_docs.configure_documentation_scope_by_moduletype(
+            split_csv_values_fn=lambda raw: [item.strip() for item in raw.split(",") if item.strip()],
+            pause_fn=lambda: pauses.append("pause"),
+        )
+        selection = app_docs.get_documentation_unit_selection()
+    finally:
+        app_docs.set_documentation_unit_selection(mode="all")
+
+    assert changed is True
+    assert selection == {"mode": "moduletype_names", "instance_paths": [], "moduletype_names": ["ApplTank", "XDilute"]}
+    assert pauses == ["pause"]
+
+
 def test_reset_documentation_scope_resets_selection():
     pauses: list[str] = []
     app_docs.set_documentation_unit_selection(mode="instance_paths", instance_paths=["UnitA"])
@@ -269,3 +289,114 @@ def test_reset_documentation_scope_resets_selection():
     assert changed is True
     assert selection == {"mode": "all", "instance_paths": [], "moduletype_names": []}
     assert pauses == ["pause"]
+
+
+def test_documentation_menu_routes_actions_tracks_dirty_and_handles_invalid_choice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    actions: list[str] = []
+    clears: list[str] = []
+    pauses: list[str] = []
+    menus: list[tuple[str, int, str | None]] = []
+
+    monkeypatch.setattr(
+        app_docs,
+        "run_generate_documentation",
+        lambda *_args, **_kwargs: actions.append("generate"),
+    )
+    monkeypatch.setattr(
+        app_docs,
+        "preview_documentation_unit_candidates",
+        lambda *_args, **_kwargs: actions.append("preview"),
+    )
+    monkeypatch.setattr(
+        app_docs,
+        "reset_documentation_scope",
+        lambda *, pause_fn: actions.append("reset") or True,
+    )
+    monkeypatch.setattr(
+        app_docs,
+        "configure_documentation_scope_by_moduletype",
+        lambda *, split_csv_values_fn, pause_fn: actions.append("moduletype") or True,
+    )
+    monkeypatch.setattr(
+        app_docs,
+        "configure_documentation_scope_by_instance_path",
+        lambda *, split_csv_values_fn, pause_fn: actions.append("instance_path") or False,
+    )
+    monkeypatch.setattr(builtins, "input", make_input(["1", "2", "3", "4", "5", "x", "b"]))
+
+    app_docs.set_documentation_unit_selection(mode="instance_paths", instance_paths=["UnitA"])
+    try:
+        dirty = app_docs.documentation_menu(
+            {"documentation": {}},
+            clear_screen_fn=lambda: clears.append("clear"),
+            print_menu_fn=lambda title, options, intro=None: menus.append((title, len(options), intro)),
+            menu_option_factory=lambda key, label, description: {
+                "key": key,
+                "label": label,
+                "description": description,
+            },
+            quit_app_fn=lambda: pytest.fail("quit_app_fn should not be called"),
+            pause_fn=lambda: pauses.append("pause"),
+            split_csv_values_fn=lambda raw: [item.strip() for item in raw.split(",") if item.strip()],
+            iter_loaded_projects_fn=lambda _cfg: iter(()),
+            prompt_fn=lambda message, default: default or message,
+        )
+    finally:
+        app_docs.set_documentation_unit_selection(mode="all")
+
+    assert dirty is True
+    assert actions == ["generate", "preview", "reset", "moduletype", "instance_path"]
+    assert clears == ["clear"] * 7
+    assert pauses == ["pause"]
+    assert menus and menus[0] == ("Documentation", 7, menus[0][2])
+
+
+def test_documentation_menu_quit_branch_calls_quit_handler(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _QuitSignalError(Exception):
+        pass
+
+    monkeypatch.setattr(builtins, "input", make_input(["q"]))
+
+    with pytest.raises(_QuitSignalError):
+        app_docs.documentation_menu(
+            {"documentation": {}},
+            clear_screen_fn=lambda: None,
+            print_menu_fn=lambda *args, **kwargs: None,
+            menu_option_factory=lambda key, label, description: (key, label, description),
+            quit_app_fn=lambda: (_ for _ in ()).throw(_QuitSignalError()),
+            pause_fn=lambda: None,
+            split_csv_values_fn=lambda raw: [item.strip() for item in raw.split(",") if item.strip()],
+            iter_loaded_projects_fn=lambda _cfg: iter(()),
+            prompt_fn=lambda message, default: default or message,
+        )
+
+
+def test_documentation_menu_handles_keyboard_interrupt_and_returns_default_false(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    pauses: list[str] = []
+    monkeypatch.setattr(builtins, "input", make_input(["4", "b"]))
+    monkeypatch.setattr(
+        app_docs,
+        "configure_documentation_scope_by_moduletype",
+        lambda *, split_csv_values_fn, pause_fn: (_ for _ in ()).throw(KeyboardInterrupt()),
+    )
+
+    dirty = app_docs.documentation_menu(
+        {"documentation": {}},
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *args, **kwargs: None,
+        menu_option_factory=lambda key, label, description: (key, label, description),
+        quit_app_fn=lambda: pytest.fail("quit_app_fn should not be called"),
+        pause_fn=lambda: pauses.append("pause"),
+        split_csv_values_fn=lambda raw: [item.strip() for item in raw.split(",") if item.strip()],
+        iter_loaded_projects_fn=lambda _cfg: iter(()),
+        prompt_fn=lambda message, default: default or message,
+    )
+
+    assert dirty is False
+    assert pauses == ["pause"]
+    assert "Operation canceled. Returning to the menu." in capsys.readouterr().out

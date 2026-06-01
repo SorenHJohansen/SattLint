@@ -1,8 +1,12 @@
 import json
 import logging
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, SemanticIssue, SemanticRule
+from sattlint.devtools import corpus as corpus_module
 from sattlint.devtools.corpus import (
     CORPUS_RESULTS_FILENAME,
     evaluate_finding_ids,
@@ -309,6 +313,155 @@ def test_run_corpus_case_reports_artifact_fragment_failures(tmp_path):
     assert result.passed is False
     assert result.evaluation.passed is False
     assert result.evaluation.artifact_fragment_failures == ("summary.json.stage: expected 'semantic', got 'parse'",)
+
+
+def test_discover_corpus_manifests_and_run_corpus_case_missing_findings(tmp_path):
+    missing_dir = tmp_path / "missing"
+    assert corpus_module.discover_corpus_manifests(missing_dir) == ()
+
+    manifest_dir = tmp_path / "manifests"
+    manifest_dir.mkdir()
+    nested_dir = manifest_dir / "nested"
+    nested_dir.mkdir()
+    first_manifest = manifest_dir / "a.json"
+    second_manifest = nested_dir / "b.json"
+    first_manifest.write_text("{}", encoding="utf-8")
+    second_manifest.write_text("{}", encoding="utf-8")
+    (manifest_dir / "ignore.txt").write_text("ignore", encoding="utf-8")
+
+    assert corpus_module.discover_corpus_manifests(manifest_dir) == (first_manifest, second_manifest)
+
+    manifest_path = tmp_path / "manifest.json"
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "case_id": "missing-findings",
+                "target_file": "tests/fixtures/corpus/valid/UnusedVariable.s",
+                "mode": "workspace",
+                "expectation": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(FileNotFoundError, match="Corpus findings artifact does not exist"):
+        run_corpus_case(manifest_path, artifact_dir)
+
+
+def test_corpus_helper_paths_severity_mode_and_summary(tmp_path):
+    manifest_path = tmp_path / "manifests" / "case.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text("{}", encoding="utf-8")
+    manifest_relative = manifest_path.parent / "relative.s"
+    manifest_relative.write_text("relative", encoding="utf-8")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    assert corpus_module._normalize_severity("HIGH") == "high"
+    assert corpus_module._normalize_severity("warning") == "medium"
+    assert corpus_module._normalize_severity("note") == "low"
+
+    assert (
+        corpus_module._resolve_manifest_target_path(manifest_path, str(manifest_relative), repo_root)
+        == manifest_relative.resolve()
+    )
+    assert (
+        corpus_module._resolve_manifest_target_path(manifest_path, "fallback.s", repo_root)
+        == (repo_root / "fallback.s").resolve()
+    )
+    assert corpus_module._resolve_optional_directory(None, manifest_path=manifest_path, repo_root=repo_root) is None
+    assert (
+        corpus_module._resolve_optional_directory("relative.s", manifest_path=manifest_path, repo_root=repo_root)
+        == manifest_relative.resolve()
+    )
+    assert corpus_module._infer_code_mode(Path("demo.x")) == corpus_module.engine_module.CodeMode.OFFICIAL
+    assert corpus_module._infer_code_mode(Path("demo.s")) == corpus_module.engine_module.CodeMode.DRAFT
+
+    summary_text = corpus_module.format_cli_summary(
+        {
+            "case_count": 2,
+            "failed_count": 1,
+            "findings_schema": {"kind": "sattlint.findings", "schema_version": 1},
+            "corpus_results_report": "reports/corpus_results.json",
+        }
+    )
+    assert "Findings schema: sattlint.findings v1" in summary_text
+    assert "Corpus cases: 2" in summary_text
+
+
+def test_corpus_main_prints_summary_and_returns_failure_for_failed_suite(monkeypatch, tmp_path, capsys):
+    suite = SimpleNamespace(
+        passed=False,
+        to_dict=lambda: {
+            "summary": {"case_count": 2, "failed_count": 1},
+            "findings_schema": {"kind": "sattlint.findings", "schema_version": 1},
+        },
+    )
+    monkeypatch.setattr(corpus_module, "run_corpus_suite", lambda *args, **kwargs: suite)
+    monkeypatch.setattr(corpus_module, "_write_json", lambda *_args, **_kwargs: None)
+
+    exit_code = corpus_module.main(["--output-dir", str(tmp_path)])
+
+    assert exit_code == 1
+    assert "Corpus cases: 2" in capsys.readouterr().out
+
+    corpus_module._print_cli_summary(
+        {
+            "case_count": 1,
+            "failed_count": 0,
+            "corpus_results_report": "reports/corpus_results.json",
+        }
+    )
+    assert "Corpus results: reports/corpus_results.json" in capsys.readouterr().out
+
+
+def test_build_strict_finding_collection_returns_empty_when_validation_succeeds():
+    findings = corpus_module._build_strict_finding_collection(SimpleNamespace(ok=True), repo_root=Path.cwd())
+
+    assert findings.findings == ()
+
+
+def test_execute_corpus_case_unsupported_mode_and_workspace_missing_root(tmp_path, monkeypatch):
+    target_path = tmp_path / "Program.s"
+    target_path.write_text("program", encoding="utf-8")
+    manifest_path = tmp_path / "manifest.json"
+    artifact_dir = tmp_path / "artifacts"
+    unsupported_manifest = corpus_module.CorpusCaseManifest(
+        case_id="unsupported",
+        target_file=str(target_path),
+        mode="unsupported",
+        expectation=corpus_module.CorpusExpectation(),
+    )
+
+    result = execute_corpus_case(manifest_path, artifact_dir, repo_root=tmp_path, manifest=unsupported_manifest)
+    assert result.execution_error is not None
+    assert "Unsupported corpus mode" in result.execution_error
+
+    class _FakeLoader:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def resolve(self, *_args, **_kwargs):
+            return SimpleNamespace(ast_by_name={}, missing=["Dependency"], unavailable_libraries=set())
+
+    monkeypatch.setattr(corpus_module.engine_module, "SattLineProjectLoader", _FakeLoader)
+
+    workspace_manifest = corpus_module.CorpusCaseManifest(
+        case_id="workspace",
+        target_file=str(target_path),
+        mode="workspace",
+        expectation=corpus_module.CorpusExpectation(),
+    )
+
+    with pytest.raises(RuntimeError, match="was not parsed"):
+        corpus_module._execute_workspace_case(
+            workspace_manifest,
+            manifest_path=manifest_path,
+            target_path=target_path,
+            repo_root=tmp_path,
+        )
 
 
 def test_execute_corpus_case_strict_writes_case_artifacts(tmp_path, caplog):

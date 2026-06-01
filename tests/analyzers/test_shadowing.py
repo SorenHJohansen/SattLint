@@ -1,5 +1,6 @@
 from sattline_parser.models.ast_model import (
     BasePicture,
+    FrameModule,
     ModuleHeader,
     ModuleTypeDef,
     ModuleTypeInstance,
@@ -8,7 +9,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint.analyzers.registry import get_default_analyzers
-from sattlint.analyzers.shadowing import analyze_shadowing
+from sattlint.analyzers.shadowing import ShadowingAnalyzer, analyze_shadowing
 from sattlint.reporting.variables_report import IssueKind
 
 
@@ -115,3 +116,127 @@ def test_shadowing_analyzer_is_enabled_by_default() -> None:
 
     assert "shadowing" in specs
     assert specs["shadowing"].enabled is True
+
+
+def test_shadowing_traverses_frames_and_nested_single_modules() -> None:
+    grandchild = SingleModule(
+        header=_hdr("Grandchild"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[Variable(name="VALUE", datatype=Simple_DataType.INTEGER)],
+        submodules=[],
+        modulecode=None,
+        parametermappings=[],
+    )
+    child = SingleModule(
+        header=_hdr("Child"),
+        moduledef=None,
+        moduleparameters=[],
+        localvariables=[Variable(name="Other", datatype=Simple_DataType.INTEGER)],
+        submodules=[grandchild],
+        modulecode=None,
+        parametermappings=[],
+    )
+    frame = FrameModule(header=_hdr("Frame"), submodules=[child])
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[Variable(name="Value", datatype=Simple_DataType.INTEGER)],
+        submodules=[frame],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    report = analyze_shadowing(bp)
+
+    assert [issue.module_path for issue in report.issues] == [["Root", "Frame", "Child", "Grandchild"]]
+
+
+def test_shadowing_ignores_moduletype_instances_when_root_origin_is_unknown() -> None:
+    mt = ModuleTypeDef(
+        name="TypeA",
+        moduleparameters=[],
+        localvariables=[Variable(name="Setting", datatype=Simple_DataType.INTEGER)],
+        submodules=[],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+        origin_file="TypeA.x",
+    )
+    instance = ModuleTypeInstance(
+        header=_hdr("InstanceA"),
+        moduletype_name="TypeA",
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[mt],
+        localvariables=[Variable(name="setting", datatype=Simple_DataType.INTEGER)],
+        submodules=[instance],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    assert analyze_shadowing(bp).issues == []
+
+
+def test_shadowing_ignores_unresolvable_moduletype_instances() -> None:
+    instance = ModuleTypeInstance(
+        header=_hdr("MissingType"),
+        moduletype_name="DoesNotExist",
+        parametermappings=[],
+    )
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[Variable(name="setting", datatype=Simple_DataType.INTEGER)],
+        submodules=[instance],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    assert analyze_shadowing(bp).issues == []
+
+
+def test_shadowing_report_is_empty_without_collisions() -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[Variable(name="RootValue", datatype=Simple_DataType.INTEGER)],
+        submodules=[
+            SingleModule(
+                header=_hdr("Child"),
+                moduledef=None,
+                moduleparameters=[],
+                localvariables=[Variable(name="ChildValue", datatype=Simple_DataType.INTEGER)],
+                submodules=[],
+                modulecode=None,
+                parametermappings=[],
+            )
+        ],
+        modulecode=None,
+        moduledef=None,
+    )
+
+    assert analyze_shadowing(bp).issues == []
+
+
+def test_shadowing_analyzer_exposes_empty_issue_property() -> None:
+    analyzer = ShadowingAnalyzer(
+        BasePicture(
+            header=_hdr("Root"),
+            datatype_defs=[],
+            moduletype_defs=[],
+            localvariables=[],
+            submodules=[],
+            modulecode=None,
+            moduledef=None,
+        )
+    )
+
+    assert analyzer.issues == []
+    assert ShadowingAnalyzer.issues.fget(analyzer) == []

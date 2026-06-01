@@ -8,7 +8,7 @@ from sattline_parser.models.ast_model import (
     ModuleHeader,
 )
 from sattlint.devtools import _portable_command_text as portable_command_text
-from sattlint.devtools import corpus, mutation_engine, pipeline
+from sattlint.devtools import corpus, mutation_engine, pipeline, pipeline_artifacts
 from sattlint.devtools.artifact_registry import ArtifactDefinition
 from sattlint.devtools.pipeline_artifacts import (
     PipelineArtifactContext,
@@ -1292,6 +1292,130 @@ def test_write_pipeline_artifacts_skips_artifact_with_none_payload(tmp_path):
 
     assert artifact_ids == ()
     assert written == []
+
+
+def test_pipeline_artifact_helpers_cover_manifest_and_import_fallbacks(tmp_path, monkeypatch):
+    assert pipeline_artifacts._build_none_payload(PipelineArtifactContext(payloads={})) is None
+    assert pipeline_artifacts.artifact_source_manifest_path(tmp_path / "status") == tmp_path / "status.sources.json"
+
+    monkeypatch.setattr(
+        pipeline_artifacts.importlib.util, "find_spec", lambda _name: (_ for _ in ()).throw(ValueError("bad spec"))
+    )
+    assert pipeline_artifacts._resolve_generated_by_source_path("demo.module") is None
+
+    monkeypatch.setattr(
+        pipeline_artifacts.importlib.util, "find_spec", lambda _name: SimpleNamespace(origin="built-in")
+    )
+    assert pipeline_artifacts._resolve_generated_by_source_path("demo.module") is None
+
+    class _FlakySpec:
+        def __init__(self):
+            self.calls = 0
+
+        @property
+        def origin(self):
+            self.calls += 1
+            return "demo.py" if self.calls == 1 else None
+
+    monkeypatch.setattr(pipeline_artifacts.importlib.util, "find_spec", lambda _name: _FlakySpec())
+    assert pipeline_artifacts._resolve_generated_by_source_path("demo.module") is None
+
+
+def test_write_json_content_retries_permission_errors_then_raises(tmp_path, monkeypatch):
+    target_path = tmp_path / "status.json"
+
+    monkeypatch.setattr(
+        pipeline_artifacts.os, "replace", lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("busy"))
+    )
+    monkeypatch.setattr(pipeline_artifacts.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(PermissionError, match="busy"):
+        pipeline_artifacts._write_json_content(target_path, "{}")
+
+    assert not target_path.exists()
+
+
+def test_write_json_content_handles_permission_errors_before_temp_path_assignment(tmp_path, monkeypatch):
+    target_path = tmp_path / "status.json"
+
+    monkeypatch.setattr(
+        pipeline_artifacts.tempfile,
+        "NamedTemporaryFile",
+        lambda **_kwargs: (_ for _ in ()).throw(PermissionError("denied before temp")),
+    )
+    monkeypatch.setattr(pipeline_artifacts.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(PermissionError, match="denied before temp"):
+        pipeline_artifacts._write_json_content(target_path, "{}")
+
+
+def test_write_json_content_raises_runtime_error_when_retry_loop_never_runs(tmp_path, monkeypatch):
+    import builtins
+
+    target_path = tmp_path / "status.json"
+    original_range = builtins.range
+
+    builtins.range = lambda *args: [] if args == (5,) else original_range(*args)
+    try:
+        with pytest.raises(RuntimeError, match="Failed to write"):
+            pipeline_artifacts._write_json_content(target_path, "{}")
+    finally:
+        builtins.range = original_range
+
+
+def test_validate_pipeline_artifact_producers_rejects_duplicates_and_missing_entries():
+    artifact = ArtifactDefinition(
+        "status",
+        "status.json",
+        "status_payload",
+        "sattlint.pipeline.status",
+        1,
+        profiles=("quick",),
+    )
+
+    with pytest.raises(ValueError, match="Duplicate pipeline artifact producers"):
+        pipeline_artifacts.validate_pipeline_artifact_producers(
+            (artifact,),
+            profile="quick",
+            producers=(
+                PipelineArtifactProducer("status_payload", lambda _context: {}),
+                PipelineArtifactProducer("status_payload", lambda _context: {}),
+            ),
+        )
+
+    with pytest.raises(ValueError, match="missing producers"):
+        pipeline_artifacts.validate_pipeline_artifact_producers(
+            (artifact,),
+            profile="quick",
+            producers=(),
+        )
+
+
+def test_write_pipeline_artifacts_raises_when_validation_is_bypassed_and_producer_missing(tmp_path, monkeypatch):
+    artifact = ArtifactDefinition(
+        "status",
+        "status.json",
+        "status_payload",
+        "sattlint.pipeline.status",
+        1,
+        profiles=("quick",),
+    )
+    monkeypatch.setattr(
+        pipeline_artifacts,
+        "validate_pipeline_artifact_producers",
+        lambda *args, **kwargs: ("status",),
+    )
+
+    with pytest.raises(ValueError, match="No pipeline artifact producer registered"):
+        pipeline_artifacts.write_pipeline_artifacts(
+            tmp_path,
+            artifacts=(artifact,),
+            profile="quick",
+            enabled_artifact_ids={"status"},
+            context=PipelineArtifactContext(payloads={}),
+            write_json=lambda _path, _payload: None,
+            producers=(),
+        )
 
 
 # ---------------------------------------------------------------------------

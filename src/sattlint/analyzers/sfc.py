@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from collections.abc import Sequence as SequenceABC
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from itertools import product
 from typing import Any, cast
@@ -36,6 +37,24 @@ from .framework import Issue, SimpleReport
 
 type StepSet = frozenset[str]
 type ExclusiveStepGroup = tuple[str, ...]
+
+_SFC_PARALLEL_WRITE_RACE_ISSUE_KINDS = frozenset({"sfc_parallel_write_race"})
+_SFC_REACHABILITY_ISSUE_KINDS = frozenset({"sfc_unreachable_transition", "sfc_unreachable_sequence_node"})
+_SFC_TRANSITION_LOGIC_ISSUE_KINDS = frozenset(
+    {
+        "sfc_transition_always_true",
+        "sfc_transition_always_false",
+        "sfc_duplicate_transition_guard",
+    }
+)
+_SFC_ILLEGAL_STATE_COMBINATION_ISSUE_KINDS = frozenset({"sfc_illegal_state_combination"})
+_SFC_STEP_CONTRACT_ISSUE_KINDS = frozenset(
+    {
+        "sfc_missing_step_enter_contract",
+        "sfc_step_state_leakage",
+        "sfc_missing_step_exit_contract",
+    }
+)
 
 
 def _mapping_value(mapping: Mapping[str, object], key: str) -> object:
@@ -176,7 +195,7 @@ def _sequence_node_label(node: object) -> str:
     if node_name:
         return f"{type(node).__name__}:{node_name}"
     if isinstance(node, SFCFork):
-        return f"SFCFork:{node.target}"
+        return f"SFCFork:{','.join(node.targets)}"
     return type(node).__name__
 
 
@@ -208,7 +227,7 @@ def _inspect_sfc_linear_nodes(
             continue
 
         if isinstance(node, SFCFork):
-            terminated_by = {"kind": "SFCFork", "target": node.target}
+            terminated_by = {"kind": "SFCFork", "targets": list(node.targets)}
             continue
 
         if isinstance(node, SFCAlternative | SFCParallel):
@@ -335,9 +354,15 @@ def _collect_illegal_state_combination_issues(
 
 def _format_terminator(terminated_by: dict[str, Any]) -> str:
     terminator = str(terminated_by.get("kind", "an earlier terminating node"))
-    target = terminated_by.get("target")
-    if target:
-        return f"{terminator} targeting {target!r}"
+    targets = terminated_by.get("targets")
+    if isinstance(targets, list | tuple) and targets:
+        target_texts: list[str] = []
+        for raw_target in cast(list[object] | tuple[object, ...], targets):
+            if isinstance(raw_target, str):
+                target_texts.append(repr(raw_target))
+        rendered_targets = ", ".join(target_texts)
+        if rendered_targets:
+            return f"{terminator} targeting {rendered_targets}"
     return terminator
 
 
@@ -345,86 +370,107 @@ def analyze_sfc(
     base_picture: BasePicture,
     mutually_exclusive_steps: Iterable[Iterable[str]] | None = None,
     step_contracts: Mapping[str, object] | None = None,
+    selected_issue_kinds: AbstractSet[str] | None = None,
 ) -> SimpleReport:
-    collector = _SfcAccessCollector(base_picture)
-    collector.run()
-    normalized_groups = _normalize_step_groups(mutually_exclusive_steps)
-    normalized_step_contracts = normalize_step_contracts(step_contracts)
+    normalized_selected_issue_kinds = frozenset(selected_issue_kinds) if selected_issue_kinds is not None else None
+
+    def _should_collect_any_issue_kinds(issue_kinds: frozenset[str]) -> bool:
+        return normalized_selected_issue_kinds is None or bool(normalized_selected_issue_kinds & issue_kinds)
+
+    collector: _SfcAccessCollector | None = None
+    if _should_collect_any_issue_kinds(_SFC_PARALLEL_WRITE_RACE_ISSUE_KINDS):
+        collector = _SfcAccessCollector(base_picture)
+        collector.run()
+
+    normalized_groups = (
+        _normalize_step_groups(mutually_exclusive_steps)
+        if _should_collect_any_issue_kinds(_SFC_ILLEGAL_STATE_COMBINATION_ISSUE_KINDS)
+        else ()
+    )
+    normalized_step_contracts = (
+        normalize_step_contracts(step_contracts)
+        if _should_collect_any_issue_kinds(_SFC_STEP_CONTRACT_ISSUE_KINDS)
+        else {}
+    )
 
     issues: list[Issue] = []
-    for key, branch_writes in collector.parallel_writes.items():
-        conflicts: dict[tuple[str, ...], CanonicalPath] = {}
-        branch_ids = sorted(branch_writes.keys())
-        for index, left in enumerate(branch_ids):
-            for right in branch_ids[index + 1 :]:
-                for left_path in branch_writes[left]:
-                    for right_path in branch_writes[right]:
-                        if _paths_conflict(left_path, right_path):
-                            rep = _conflict_rep(left_path, right_path)
-                            conflicts.setdefault(rep.key(), rep)
+    if collector is not None:
+        for key, branch_writes in collector.parallel_writes.items():
+            conflicts: dict[tuple[str, ...], CanonicalPath] = {}
+            branch_ids = sorted(branch_writes.keys())
+            for index, left in enumerate(branch_ids):
+                for right in branch_ids[index + 1 :]:
+                    for left_path in branch_writes[left]:
+                        for right_path in branch_writes[right]:
+                            if _paths_conflict(left_path, right_path):
+                                rep = _conflict_rep(left_path, right_path)
+                                conflicts.setdefault(rep.key(), rep)
 
-        if not conflicts:
-            continue
+            if not conflicts:
+                continue
 
-        meta = collector.parallel_meta.get(key)
-        seq_name = meta.sequence_name if meta else "<unnamed>"
-        conflict_list = sorted(str(path) for path in conflicts.values())
-        preview = ", ".join(conflict_list[:6])
-        if len(conflict_list) > 6:
-            preview = f"{preview}, ... (+{len(conflict_list) - 6} more)"
+            meta = collector.parallel_meta.get(key)
+            seq_name = meta.sequence_name if meta else "<unnamed>"
+            conflict_list = sorted(str(path) for path in conflicts.values())
+            preview = ", ".join(conflict_list[:6])
+            if len(conflict_list) > 6:
+                preview = f"{preview}, ... (+{len(conflict_list) - 6} more)"
 
-        issues.append(
-            Issue(
-                kind="sfc_parallel_write_race",
-                message=(f"Parallel branches in sequence {seq_name!r} write to the same variable(s): {preview}"),
-                module_path=meta.module_path if meta else None,
-                data={
-                    "sequence": seq_name,
-                    "parallel_id": meta.parallel_id if meta else None,
-                    "conflicts": conflict_list,
-                },
-            )
-        )
-
-    for finding in collect_sfc_reachability_findings(base_picture):
-        branch_context = _format_branch_path(finding.branch_path)
-        terminator = _format_terminator(finding.terminated_by)
-        data = {
-            "sequence": finding.sequence_name,
-            "branch_path": list(finding.branch_path),
-            "node_index": finding.node_index,
-            "node_label": finding.node_label,
-            "node_type": finding.node_type,
-            "terminated_by": dict(finding.terminated_by),
-        }
-        if finding.node_type in {"SFCTransition", "SFCTransitionSub"}:
             issues.append(
                 Issue(
-                    kind="sfc_unreachable_transition",
-                    message=(
-                        f"Transition {finding.node_label!r} in sequence {finding.sequence_name!r}{branch_context} "
-                        f"can never fire because {terminator} terminates that path earlier."
-                    ),
-                    module_path=list(finding.module_path),
-                    data=data,
-                )
-            )
-        else:
-            issues.append(
-                Issue(
-                    kind="sfc_unreachable_sequence_node",
-                    message=(
-                        f"Sequence {finding.sequence_name!r}{branch_context} contains unreachable node "
-                        f"{finding.node_label!r} because {terminator} terminates that path earlier."
-                    ),
-                    module_path=list(finding.module_path),
-                    data=data,
+                    kind="sfc_parallel_write_race",
+                    message=(f"Parallel branches in sequence {seq_name!r} write to the same variable(s): {preview}"),
+                    module_path=meta.module_path if meta else None,
+                    data={
+                        "sequence": seq_name,
+                        "parallel_id": meta.parallel_id if meta else None,
+                        "conflicts": conflict_list,
+                    },
                 )
             )
 
-    issues.extend(_collect_transition_logic_issues(base_picture))
+    if _should_collect_any_issue_kinds(_SFC_REACHABILITY_ISSUE_KINDS):
+        for finding in collect_sfc_reachability_findings(base_picture):
+            branch_context = _format_branch_path(finding.branch_path)
+            terminator = _format_terminator(finding.terminated_by)
+            data = {
+                "sequence": finding.sequence_name,
+                "branch_path": list(finding.branch_path),
+                "node_index": finding.node_index,
+                "node_label": finding.node_label,
+                "node_type": finding.node_type,
+                "terminated_by": dict(finding.terminated_by),
+            }
+            if finding.node_type in {"SFCTransition", "SFCTransitionSub"}:
+                issues.append(
+                    Issue(
+                        kind="sfc_unreachable_transition",
+                        message=(
+                            f"Transition {finding.node_label!r} in sequence {finding.sequence_name!r}{branch_context} "
+                            f"can never fire because {terminator} terminates that path earlier."
+                        ),
+                        module_path=list(finding.module_path),
+                        data=data,
+                    )
+                )
+            else:
+                issues.append(
+                    Issue(
+                        kind="sfc_unreachable_sequence_node",
+                        message=(
+                            f"Sequence {finding.sequence_name!r}{branch_context} contains unreachable node "
+                            f"{finding.node_label!r} because {terminator} terminates that path earlier."
+                        ),
+                        module_path=list(finding.module_path),
+                        data=data,
+                    )
+                )
 
-    issues.extend(_collect_illegal_state_combination_issues(base_picture, normalized_groups))
+    if _should_collect_any_issue_kinds(_SFC_TRANSITION_LOGIC_ISSUE_KINDS):
+        issues.extend(_collect_transition_logic_issues(base_picture))
+
+    if normalized_groups:
+        issues.extend(_collect_illegal_state_combination_issues(base_picture, normalized_groups))
 
     if normalized_step_contracts:
         contract_collector = _SfcStepContractCollector(

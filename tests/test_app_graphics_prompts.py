@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import builtins
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -224,3 +226,350 @@ def test_prompt_graphics_rule_definition_builds_expected_payload(monkeypatch):
             },
         },
     }
+
+
+def test_app_graphics_wrappers_delegate_rule_io_and_reports(monkeypatch, tmp_path):
+    outputs: list[str] = []
+    cfg = app.DEFAULT_CONFIG.copy()
+    config_path = tmp_path / "config.json"
+    rules_path = tmp_path / "graphics_rules.json"
+    rows = [("alpha", 1)]
+    items = ["item"]
+    rule = {"selector_value": "Area.UnitControl"}
+    captured: dict[str, Any] = {}
+
+    monkeypatch.setattr(app.app_graphics_module, "emit_output", outputs.append)
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_rules_module, "get_graphics_rules_path", lambda _path: rules_path
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_rules_module,
+        "load_graphics_rules",
+        lambda _path: ({"rules": [rule]}, True),
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_rules_module,
+        "save_graphics_rules",
+        lambda path, rules: captured.setdefault("save", (path, rules)),
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_reports_module,
+        "format_config_scalar",
+        lambda value: f"fmt:{value}",
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_reports_module,
+        "print_config_section",
+        lambda title, rows, **kwargs: captured.setdefault("section", (title, rows, kwargs)),
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_reports_module,
+        "print_config_list",
+        lambda title, items, **kwargs: captured.setdefault("list", (title, items, kwargs)),
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_reports_module,
+        "show_config",
+        lambda passed_cfg, **kwargs: captured.setdefault("show", (passed_cfg, kwargs)),
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_reports_module,
+        "flatten_graphics_expected_fields",
+        lambda payload, prefix="": [f"{prefix}field"],
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_reports_module, "truncate_table_cell", lambda value, width: "trim"
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_reports_module,
+        "graphics_rule_selector_text",
+        lambda passed_rule: f"selector:{passed_rule['selector_value']}",
+    )
+    monkeypatch.setattr(app.app_graphics_module.graphics_reports_module, "graphics_rule_label", lambda _rule: "label")
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_reports_module, "graphics_rule_scope_text", lambda _rule: "scope"
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_reports_module, "graphics_rule_config_line", lambda _rule: "config"
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_reports_module,
+        "print_graphics_rules_summary",
+        lambda path, rules, **kwargs: captured.setdefault("summary", (path, rules, kwargs)),
+    )
+
+    assert app.app_graphics_module.get_graphics_rules_path(config_path) == rules_path
+    assert app.app_graphics_module.load_graphics_rules(config_path) == ({"rules": [rule]}, True)
+    app.app_graphics_module.save_graphics_rules(rules_path, {"rules": [rule]})
+    assert captured["save"] == (rules_path, {"rules": [rule]})
+
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_rules_module,
+        "load_graphics_rules",
+        lambda _path: (_ for _ in ()).throw(ValueError("bad rules")),
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_rules_module, "normalize_graphics_rules", lambda _value: {"rules": []}
+    )
+    assert app.app_graphics_module.load_graphics_rules(config_path) == ({"rules": []}, False)
+    assert any("Using defaults" in output for output in outputs)
+
+    assert app.app_graphics_module._format_config_scalar(3) == "fmt:3"
+    app.app_graphics_module._print_config_section("Section", rows)
+    app.app_graphics_module._print_config_list("List", items)
+    app.app_graphics_module.show_config(
+        cfg,
+        get_graphics_rules_path_fn=lambda: rules_path,
+        load_graphics_rules_fn=lambda *_args, **_kwargs: ({"rules": [rule]}, True),
+        graphics_rule_config_line_fn=lambda _rule: "rule-config",
+    )
+    assert app.app_graphics_module.flatten_graphics_expected_fields({"expected": {}}, prefix="pre.") == ["pre.field"]
+    assert app.app_graphics_module.truncate_table_cell("demo", 4) == "trim"
+    assert app.app_graphics_module.graphics_rule_selector_text(rule) == "selector:Area.UnitControl"
+    assert app.app_graphics_module.graphics_rule_label(rule) == "label"
+    assert app.app_graphics_module.graphics_rule_scope_text(rule) == "scope"
+    assert app.app_graphics_module.graphics_rule_config_line(rule) == "config"
+    app.app_graphics_module.print_graphics_rules_summary(rules_path, {"rules": [rule]}, dirty=True)
+
+    assert captured["section"][0] == "Section"
+    assert captured["list"][0] == "List"
+    assert captured["show"][0] == cfg
+    assert captured["summary"][0] == rules_path
+
+
+def test_app_graphics_optional_prompt_helpers(monkeypatch):
+    outputs: list[str] = []
+    pauses: list[str] = []
+
+    monkeypatch.setattr(app.app_graphics_module, "emit_output", outputs.append)
+
+    monkeypatch.setattr(builtins, "input", make_input(["1, 2"]))
+    assert app.app_graphics_module.prompt_optional_float_list("Coords", 2, pause_fn=lambda: pauses.append("pause")) == [
+        1.0,
+        2.0,
+    ]
+
+    monkeypatch.setattr(builtins, "input", make_input([""]))
+    with pytest.raises(app.app_graphics_module.OptionalPromptSkipped):
+        app.app_graphics_module.prompt_optional_float_list("Coords", 2, pause_fn=lambda: pauses.append("pause"))
+
+    monkeypatch.setattr(builtins, "input", make_input(["a, b"]))
+    with pytest.raises(app.app_graphics_module.OptionalPromptValidationError, match="Must be numeric"):
+        app.app_graphics_module.prompt_optional_float_list("Coords", 2, pause_fn=lambda: pauses.append("pause"))
+
+    monkeypatch.setattr(builtins, "input", make_input(["1"]))
+    with pytest.raises(app.app_graphics_module.OptionalPromptValidationError, match="Expected 2 values"):
+        app.app_graphics_module.prompt_optional_float_list("Coords", 2, pause_fn=lambda: pauses.append("pause"))
+
+    monkeypatch.setattr(builtins, "input", make_input(["Alpha, Beta", "", "yes", "no", "maybe", ""]))
+    assert app.app_graphics_module.prompt_optional_text_list("Tags") == ["Alpha", "Beta"]
+    with pytest.raises(app.app_graphics_module.OptionalPromptSkipped):
+        app.app_graphics_module.prompt_optional_text_list("Tags")
+    assert app.app_graphics_module.prompt_optional_bool("Zoomable") is True
+    assert app.app_graphics_module.prompt_optional_bool("Zoomable") is False
+    with pytest.raises(app.app_graphics_module.OptionalPromptValidationError, match="Enter y or n"):
+        app.app_graphics_module.prompt_optional_bool("Zoomable")
+    with pytest.raises(app.app_graphics_module.OptionalPromptSkipped):
+        app.app_graphics_module.prompt_optional_bool("Zoomable")
+
+    assert outputs.count("? Must be numeric") == 1
+    assert outputs.count("? Enter y or n") == 1
+    assert any(output == "? Expected 2 values" for output in outputs)
+    assert pauses == ["pause", "pause"]
+
+
+def test_app_graphics_collect_layout_entries_and_menu_wrapper(monkeypatch, tmp_path):
+    from sattlint.devtools import structural_reports
+
+    cfg = app.DEFAULT_CONFIG.copy()
+    project_bp = SimpleNamespace(name="BP")
+    graph = SimpleNamespace(name="graph")
+    captured: dict[str, Any] = {}
+
+    monkeypatch.chdir(tmp_path)
+
+    def _collect_graphics_layout_report(**kwargs):
+        captured["report"] = kwargs
+        return {"entries": [{"selector_value": "Area.Unit"}]}
+
+    monkeypatch.setattr(structural_reports, "collect_graphics_layout_report", _collect_graphics_layout_report)
+
+    def _annotate(items, passed_bp, passed_graph):
+        captured["annotate"] = (items, passed_bp, passed_graph)
+        return items
+
+    entries = app.app_graphics_module.collect_graphics_layout_entries_for_target(
+        "TargetA",
+        project_bp,
+        graph,
+        annotate_graphics_entries_with_structure_paths_fn=_annotate,
+    )
+
+    assert entries == [{"selector_value": "Area.Unit"}]
+    assert captured["annotate"][1:] == (project_bp, graph)
+
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_menus_module,
+        "graphics_rules_menu",
+        lambda passed_cfg, **kwargs: captured.setdefault("menu", (passed_cfg, kwargs)),
+    )
+    app.app_graphics_module.graphics_rules_menu(
+        cfg,
+        get_graphics_rules_path_fn=lambda: tmp_path / "rules.json",
+        load_graphics_rules_fn=lambda *_args, **_kwargs: ({"rules": []}, False),
+        save_graphics_rules_fn=lambda *_args, **_kwargs: None,
+        prompt_graphics_rule_definition_with_config_fn=lambda *_args, **_kwargs: None,
+        graphics_rule_label_fn=lambda _rule: "label",
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda *_args, **_kwargs: object(),
+        confirm_fn=lambda _label: True,
+        prompt_fn=lambda *_args, **_kwargs: "1",
+        quit_app_fn=lambda: None,
+        pause_fn=lambda: None,
+    )
+    assert captured["menu"][0] == cfg
+    assert callable(captured["menu"][1]["print_graphics_rules_summary_fn"])
+
+
+def test_app_graphics_validation_and_selector_wrappers(monkeypatch):
+    outputs: list[str] = []
+    pauses: list[str] = []
+    status_updates: list[str] = []
+    cfg = app.DEFAULT_CONFIG.copy()
+    rule = {"selector_value": "Area.UnitControl"}
+
+    class _LiveStatusLine:
+        def __enter__(self):
+            return status_updates.append
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(app.app_graphics_module, "emit_output", outputs.append)
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_menus_module, "prompt_graphics_rule_kind", lambda **kwargs: "single"
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_menus_module, "selector_prompt_text", lambda field: f"Prompt:{field}"
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_menus_module,
+        "graphics_rule_target_kind_matches",
+        lambda kind, entry: kind == entry["kind"],
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_menus_module,
+        "discover_graphics_rule_selector_options",
+        lambda *_args, **_kwargs: [rule],
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_menus_module,
+        "pick_or_prompt_graphics_rule_selector_value",
+        lambda *_args, **_kwargs: "Area.UnitControl",
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_menus_module,
+        "prompt_graphics_rule_selector",
+        lambda *_args, **_kwargs: ("unit_structure_path", "Area.UnitControl"),
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_menus_module,
+        "path_startswith_casefold",
+        lambda path, prefix: [part.casefold() for part in path[: len(prefix)]] == [part.casefold() for part in prefix],
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_menus_module,
+        "graphics_entry_canonical_segment",
+        lambda entry: entry["segment"],
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_menus_module, "looks_like_graphics_unit_root", lambda *_args, **_kwargs: True
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_menus_module,
+        "annotate_graphics_entries_with_structure_paths",
+        lambda entries, *_args, **_kwargs: [*entries, {"selector_value": "Annotated"}],
+    )
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_menus_module,
+        "prompt_graphics_rule_definition",
+        lambda **kwargs: kwargs["prompt_graphics_rule_definition_with_config_fn"](cfg),
+    )
+    monkeypatch.setattr(app.app_graphics_module.console_module, "live_status_line", _LiveStatusLine)
+
+    assert app.app_graphics_module.prompt_graphics_rule_kind() == "single"
+    assert app.app_graphics_module.selector_prompt_text("unit_structure_path") == "Prompt:unit_structure_path"
+    assert app.app_graphics_module.graphics_rule_target_kind_matches("single", {"kind": "single"}) is True
+    assert app.app_graphics_module.discover_graphics_rule_selector_options(
+        cfg,
+        selector_field="unit_structure_path",
+        module_kind="single",
+        has_analyzed_targets_fn=lambda _cfg: True,
+        iter_loaded_projects_fn=lambda _cfg: iter(()),
+        collect_graphics_layout_entries_for_target_fn=lambda *_args: [],
+    ) == [rule]
+    assert (
+        app.app_graphics_module.pick_or_prompt_graphics_rule_selector_value(
+            "unit_structure_path",
+            "single",
+            cfg=cfg,
+            discover_graphics_rule_selector_options_fn=lambda *_args, **_kwargs: [rule],
+        )
+        == "Area.UnitControl"
+    )
+    assert app.app_graphics_module.prompt_graphics_rule_selector(
+        "single",
+        cfg=cfg,
+        pick_or_prompt_graphics_rule_selector_value_fn=lambda *_args, **_kwargs: "Area.UnitControl",
+    ) == ("unit_structure_path", "Area.UnitControl")
+    assert app.app_graphics_module.path_startswith_casefold(["Area", "Unit"], ["area"]) is True
+    assert app.app_graphics_module.graphics_entry_canonical_segment({"segment": "Unit"}) == "Unit"
+    assert app.app_graphics_module.looks_like_graphics_unit_root(["Area"], [{"selector_value": "Area.Unit"}]) is True
+    assert app.app_graphics_module.annotate_graphics_entries_with_structure_paths(
+        [], SimpleNamespace(), SimpleNamespace()
+    ) == [{"selector_value": "Annotated"}]
+    assert app.app_graphics_module.prompt_graphics_rule_definition(
+        prompt_graphics_rule_definition_with_config_fn=lambda passed_cfg: {"cfg": passed_cfg}
+    ) == {"cfg": cfg}
+
+    app.app_graphics_module.run_graphics_rules_validation(
+        cfg,
+        get_graphics_rules_path_fn=lambda: Path("graphics_rules.json"),
+        load_graphics_rules_fn=lambda _path: ({"rules": []}, False),
+        iter_loaded_projects_fn=lambda _cfg: iter(()),
+        collect_graphics_layout_entries_for_target_fn=lambda *_args: [],
+        pause_fn=lambda: pauses.append("pause"),
+    )
+    assert any("No graphics rules configured" in output for output in outputs)
+
+    outputs.clear()
+    monkeypatch.setattr(app.app_graphics_module.console_module, "live_status_line", _LiveStatusLine)
+    monkeypatch.setattr(
+        app.app_graphics_module.graphics_rules_module,
+        "validate_graphics_layout_entries",
+        lambda entries, rules, **kwargs: SimpleNamespace(
+            summary=lambda: f"validated:{kwargs['target_name']}:{len(entries)}"
+        ),
+    )
+    app.app_graphics_module.run_graphics_rules_validation(
+        cfg,
+        get_graphics_rules_path_fn=lambda: Path("graphics_rules.json"),
+        load_graphics_rules_fn=lambda _path: ({"rules": [rule]}, False),
+        iter_loaded_projects_fn=lambda _cfg: iter(
+            [
+                ("TargetA", SimpleNamespace(name="bp"), SimpleNamespace(name="graph")),
+                ("TargetB", SimpleNamespace(name="bp"), SimpleNamespace(name="graph")),
+            ]
+        ),
+        collect_graphics_layout_entries_for_target_fn=lambda target_name, *_args: (
+            (_ for _ in ()).throw(RuntimeError("boom"))
+            if target_name == "TargetB"
+            else [{"selector_value": "Area.UnitControl"}]
+        ),
+        pause_fn=lambda: pauses.append("pause"),
+    )
+
+    assert any("validated:TargetA:1" in output for output in outputs)
+    assert any("Error during graphics rules validation for TargetB: boom" in output for output in outputs)
+    assert pauses == ["pause", "pause"]
