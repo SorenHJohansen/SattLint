@@ -63,6 +63,30 @@ ENDDEF (*BasePicture*);
     assert "datatype 'SensorType' must declare at least 2 fields" in result.message
 
 
+def test_validate_single_file_syntax_allows_zero_field_datatype(tmp_path):
+    code = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
+TYPEDEFINITIONS
+    EmptyType = RECORD DateCode_ 1
+    ENDDEF (*EmptyType*);
+LOCALVARIABLES
+    EmptyValue: EmptyType;
+ModuleDef
+ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )
+ENDDEF (*BasePicture*);
+"""
+    source_file = tmp_path / "ZeroFieldDatatype.s"
+    source_file.write_text(code, encoding="utf-8")
+
+    result = validate_single_file_syntax(source_file)
+
+    assert result.ok is True
+    assert result.stage == "ok"
+
+
 def test_validate_single_file_syntax_allows_comment_inside_equation_block(tmp_path):
     code = """
 "SyntaxVersion"

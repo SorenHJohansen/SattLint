@@ -267,6 +267,250 @@ def test_run_checks_updates_live_status_for_active_analyzer(monkeypatch):
     assert updates == ["Analyzing TargetA: State inference (state_inference)"]
 
 
+def test_run_checks_uses_cached_report_when_available(monkeypatch):
+    lines: list[str] = []
+    run_calls: list[str] = []
+    load_keys: list[str] = []
+    validate_calls: list[tuple[object, bool]] = []
+    save_calls: list[tuple[str, object, frozenset[Path]]] = []
+
+    class MutableReport:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.issues: list[object] = []
+
+        def summary(self) -> str:
+            return f"state inference summary for {self.name}"
+
+    cached_report = MutableReport("BasePicture")
+
+    class FakeReportCache:
+        def __init__(self, cache_dir):
+            assert cache_dir == Path("report-cache-dir")
+
+        def load(self, key):
+            load_keys.append(key)
+            return {"report": cached_report}
+
+        def validate(self, payload, *, fast=False):
+            validate_calls.append((payload, fast))
+            return True
+
+        def save(self, key, *, report, files):
+            save_calls.append((key, report, frozenset(files)))
+            return True
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(app_analysis, "AnalysisReportCache", FakeReportCache)
+    monkeypatch.setattr(app_analysis, "get_cache_dir", lambda: Path("report-cache-dir"))
+    monkeypatch.setattr(
+        app_analysis,
+        "compute_analysis_report_cache_key",
+        lambda project_key, analyzer_key: f"{project_key}:{analyzer_key}",
+    )
+
+    app_analysis.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["state_inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
+                        SimpleNamespace(
+                            unavailable_libraries=set(),
+                            analysis_cache_key="project-key",
+                            analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state_inference",
+                name="State inference",
+                run=lambda _context: run_calls.append("run") or MutableReport("Live"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert run_calls == []
+    assert load_keys == ["project-key:state_inference"]
+    assert validate_calls == [({"report": cached_report}, False)]
+    assert save_calls == []
+    assert any("state inference summary for TargetA" in line for line in lines)
+
+
+def test_run_checks_rebuilds_report_cache_when_cached_payload_is_stale(monkeypatch):
+    lines: list[str] = []
+    run_calls: list[str] = []
+    load_keys: list[str] = []
+    save_calls: list[tuple[str, object, frozenset[Path]]] = []
+
+    class MutableReport:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.issues: list[object] = []
+
+        def summary(self) -> str:
+            return f"state inference summary for {self.name}"
+
+    class FakeReportCache:
+        def __init__(self, cache_dir):
+            assert cache_dir == Path("report-cache-dir")
+
+        def load(self, key):
+            load_keys.append(key)
+            return {"report": MutableReport("Stale")}
+
+        def validate(self, payload, *, fast=False):
+            del payload, fast
+            return False
+
+        def save(self, key, *, report, files):
+            save_calls.append((key, report, frozenset(files)))
+            return True
+
+    monkeypatch.setattr(app_analysis, "emit_output", lambda message: lines.append(message))
+    monkeypatch.setattr(app_analysis, "AnalysisReportCache", FakeReportCache)
+    monkeypatch.setattr(app_analysis, "get_cache_dir", lambda: Path("report-cache-dir"))
+    monkeypatch.setattr(
+        app_analysis,
+        "compute_analysis_report_cache_key",
+        lambda project_key, analyzer_key: f"{project_key}:{analyzer_key}",
+    )
+
+    app_analysis.run_checks(
+        app.DEFAULT_CONFIG.copy(),
+        ["state_inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
+                        SimpleNamespace(
+                            unavailable_libraries=set(),
+                            analysis_cache_key="project-key",
+                            analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state_inference",
+                name="State inference",
+                run=lambda _context: run_calls.append("run") or MutableReport("Live"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert run_calls == ["run"]
+    assert load_keys == ["project-key:state_inference"]
+    assert save_calls == [
+        (
+            "project-key:state_inference",
+            save_calls[0][1],
+            frozenset({Path("programs/TargetA.s")}),
+        )
+    ]
+    assert any("state inference summary for TargetA" in line for line in lines)
+
+
+def test_run_checks_bypasses_report_cache_when_use_cache_disabled(monkeypatch):
+    run_calls: list[str] = []
+
+    class ForbiddenReportCache:
+        def __init__(self, _cache_dir):
+            pytest.fail("report cache should be bypassed when use_cache is false")
+
+    monkeypatch.setattr(app_analysis, "AnalysisReportCache", ForbiddenReportCache)
+
+    app_analysis.run_checks(
+        app.DEFAULT_CONFIG.copy() | {"use_cache": False},
+        ["state_inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
+                        SimpleNamespace(
+                            unavailable_libraries=set(),
+                            analysis_cache_key="project-key",
+                            analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state_inference",
+                name="State inference",
+                run=lambda _context: run_calls.append("run") or SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert run_calls == ["run"]
+
+
+def test_run_checks_bypasses_report_cache_when_debug_enabled(monkeypatch):
+    run_calls: list[str] = []
+
+    class ForbiddenReportCache:
+        def __init__(self, _cache_dir):
+            pytest.fail("report cache should be bypassed when debug is true")
+
+    monkeypatch.setattr(app_analysis, "AnalysisReportCache", ForbiddenReportCache)
+
+    app_analysis.run_checks(
+        app.DEFAULT_CONFIG.copy() | {"debug": True},
+        ["state_inference"],
+        iter_loaded_projects_fn=cast(
+            Any,
+            lambda *_args, **_kwargs: iter(
+                [
+                    (
+                        "TargetA",
+                        SimpleNamespace(header=SimpleNamespace(name="TargetA")),
+                        SimpleNamespace(
+                            unavailable_libraries=set(),
+                            analysis_cache_key="project-key",
+                            analysis_manifest_files=frozenset({Path("programs/TargetA.s")}),
+                        ),
+                    )
+                ]
+            ),
+        ),
+        get_enabled_analyzers_fn=lambda: [
+            SimpleNamespace(
+                key="state_inference",
+                name="State inference",
+                run=lambda _context: run_calls.append("run") or SimpleNamespace(issues=[], summary=lambda: "summary"),
+            )
+        ],
+        target_is_library_fn=lambda *_args, **_kwargs: False,
+        pause_fn=None,
+    )
+
+    assert run_calls == ["run"]
+
+
 def test_run_checks_handles_keyboard_interrupt_and_pauses(monkeypatch):
     lines: list[str] = []
     pauses: list[str] = []

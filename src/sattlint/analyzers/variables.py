@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections import defaultdict
 from collections.abc import Callable
+from collections.abc import Set as AbstractSet
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from sattline_parser.models.ast_model import BasePicture, ModuleTypeDef, ParameterMapping, Variable
@@ -69,6 +71,7 @@ from ._variables_execution import (
     is_external_typename,
     run,
     run_post_traversal_analyses,
+    run_timed_phase,
 )
 from ._variables_status import (
     ProcedureStatusBinding,
@@ -144,6 +147,7 @@ def analyze_variables(
     unavailable_libraries: set[str] | None = None,
     analyzed_target_is_library: bool = False,
     include_dependency_moduletype_usage: bool | None = None,
+    selected_issue_kinds: AbstractSet[IssueKind] | None = None,
     trace_recorder: AnalysisTraceRecorder | None = None,
     config: dict[str, Any] | None = None,
     status_update_fn: Callable[[str], None] | None = None,
@@ -153,6 +157,8 @@ def analyze_variables(
         if include_dependency_moduletype_usage is None
         else include_dependency_moduletype_usage
     )
+    normalized_selected_issue_kinds = frozenset(selected_issue_kinds) if selected_issue_kinds is not None else None
+    init_started_at = time.perf_counter()
     analyzer = VariablesAnalyzer(
         base_picture,
         debug=debug,
@@ -160,16 +166,26 @@ def analyze_variables(
         unavailable_libraries=unavailable_libraries,
         analyzed_target_is_library=analyzed_target_is_library,
         include_dependency_moduletype_usage=effective_include_dependency_moduletype_usage,
+        selected_issue_kinds=normalized_selected_issue_kinds,
         trace_recorder=trace_recorder,
         config=config,
         status_update_fn=status_update_fn,
     )
+    init_duration_ms = round((time.perf_counter() - init_started_at) * 1000, 3)
     issues = analyzer.run()
     return VariablesReport(
         basepicture_name=base_picture.header.name,
         issues=issues,
-        visible_kinds=frozenset(DEFAULT_VARIABLE_ANALYSIS_KINDS),
+        visible_kinds=(
+            normalized_selected_issue_kinds
+            if normalized_selected_issue_kinds is not None
+            else frozenset(DEFAULT_VARIABLE_ANALYSIS_KINDS)
+        ),
         include_empty_sections=True,
+        phase_timings=[
+            {"phase": "analyzer-init", "duration_ms": init_duration_ms},
+            *analyzer.phase_timings,
+        ],
     )
 
 
@@ -216,6 +232,7 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         unavailable_libraries: set[str] | None = None,
         analyzed_target_is_library: bool = False,
         include_dependency_moduletype_usage: bool = False,
+        selected_issue_kinds: AbstractSet[IssueKind] | None = None,
         trace_recorder: AnalysisTraceRecorder | None = None,
         build_anytype_contracts: bool = True,
         config: dict[str, Any] | None = None,
@@ -227,11 +244,13 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         self._unavailable_libraries = unavailable_libraries or set()
         self._analyzed_target_is_library = analyzed_target_is_library
         self._include_dependency_moduletype_usage = include_dependency_moduletype_usage
+        self._selected_issue_kinds = frozenset(selected_issue_kinds) if selected_issue_kinds is not None else None
         self._analysis_warnings: list[str] = []
         self._trace_recorder = trace_recorder
         self._status_update_fn = status_update_fn
         self._last_status_message: str | None = None
         self._limit_to_module_path: list[str] | None = None
+        self._phase_timings: list[dict[str, str | float]] = []
         self._naming_role_patterns = configured_naming_role_patterns(config)
 
         self._issues: list[VariableIssue] = []
@@ -299,7 +318,10 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         self._analyzing_typedefs: set[str] = set()
         self._anytype_field_contracts_by_owner: dict[int, dict[str, AnyTypeFieldContract]] = {}
         self._required_parameter_names_by_owner: dict[int, dict[str, str]] = {}
-        if build_anytype_contracts:
+        should_build_anytype_contracts = build_anytype_contracts and (
+            self._selected_issue_kinds is None or IssueKind.CONTRACT_MISMATCH in self._selected_issue_kinds
+        )
+        if should_build_anytype_contracts:
             self._anytype_field_contracts_by_owner = self._build_anytype_field_contracts()
 
         self._contract_validator = ContractMappingValidator(
@@ -388,6 +410,7 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
     _run_post_traversal_analyses = run_post_traversal_analyses
     _collect_basepicture_issues = collect_basepicture_issues
     _collect_typedef_issues = collect_typedef_issues
+    _run_timed_phase = run_timed_phase
     run = run
     _is_external_typename = is_external_typename
     _analyze_typedef = analyze_typedef
@@ -422,6 +445,16 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         if self._trace_recorder is None:
             return
         self._trace_recorder.event("variables", action, **data)
+
+    @property
+    def phase_timings(self) -> list[dict[str, str | float]]:
+        return [dict(phase) for phase in self._phase_timings]
+
+    def _record_phase_timing(self, phase: str, started_at: float, ended_at: float | None = None) -> None:
+        completed_at = time.perf_counter() if ended_at is None else ended_at
+        duration_ms = round((completed_at - started_at) * 1000, 3)
+        self._phase_timings.append({"phase": phase, "duration_ms": duration_ms})
+        self._trace("phase-complete", phase_name=phase, duration_ms=duration_ms)
 
     def _update_status(self, detail: str) -> None:
         if self._status_update_fn is None:

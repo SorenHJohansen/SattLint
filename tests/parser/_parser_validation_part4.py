@@ -490,7 +490,7 @@ def test_validation_internal_step_auto_variable_refs_reports_missing_and_step_ho
 
 def test_validation_internal_parallel_branch_trailer_recognizes_all_branch_markers():
     assert validation_module._parallel_branch_trailer(SFCTransitionSub(name="Tr", body=[])) == "SUBSEQTRANSITION"
-    assert validation_module._parallel_branch_trailer(SFCFork(target="Target")) == "SEQFORK"
+    assert validation_module._parallel_branch_trailer(SFCFork(targets=("Target",))) == "SEQFORK"
     assert validation_module._parallel_branch_trailer(SFCBreak()) == "SEQBREAK"
 
 

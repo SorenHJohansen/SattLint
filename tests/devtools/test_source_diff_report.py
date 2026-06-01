@@ -4,6 +4,7 @@ from typing import Any
 
 from pytest import CaptureFixture, MonkeyPatch
 
+from sattline_parser.models.ast_model import ModuleDef, ModuleHeader, ModuleTypeDef, SingleModule, SourceSpan
 from sattlint.devtools import source_diff_report
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "source_diff"
@@ -372,6 +373,216 @@ def test_build_source_diff_report_groups_changed_singlemodules_separately(tmp_pa
             ],
         }
     ]
+
+
+def test_build_source_diff_report_surfaces_nested_moduletype_code_diffs(tmp_path: Path) -> None:
+    draft_file = tmp_path / "NestedTypeReview.s"
+    official_file = tmp_path / "NestedTypeReview.x"
+    draft_file.write_text(
+        '"SyntaxVersion"\n'
+        '"OriginalFileDate"\n'
+        '"ProgramDate"\n'
+        "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1\n"
+        "TYPEDEFINITIONS\n"
+        "    ParentType = MODULEDEFINITION DateCode_ 2\n"
+        "    SUBMODULES\n"
+        "        L1 Invocation\n"
+        "            ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0 ) : MODULEDEFINITION DateCode_ 3\n"
+        "        LOCALVARIABLES\n"
+        "            Counter: integer := 0;\n"
+        "        ModuleDef\n"
+        "        ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "        ModuleCode\n"
+        "        EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :\n"
+        "            Counter = Counter + 1;\n"
+        "        ENDDEF (*L1*);\n"
+        "    ModuleDef\n"
+        "    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "    ENDDEF (*ParentType*);\n"
+        "SUBMODULES\n"
+        "    Root Invocation ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0 ) : ParentType;\n"
+        "ModuleDef\n"
+        "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "ENDDEF (*BasePicture*);\n",
+        encoding="utf-8",
+    )
+    official_file.write_text(
+        '"SyntaxVersion"\n'
+        '"OriginalFileDate"\n'
+        '"ProgramDate"\n'
+        "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1\n"
+        "TYPEDEFINITIONS\n"
+        "    ParentType = MODULEDEFINITION DateCode_ 2\n"
+        "    SUBMODULES\n"
+        "        L1 Invocation\n"
+        "            ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0 ) : MODULEDEFINITION DateCode_ 3\n"
+        "        LOCALVARIABLES\n"
+        "            Counter: integer := 0;\n"
+        "        ModuleDef\n"
+        "        ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "        ModuleCode\n"
+        "        EQUATIONBLOCK Main COORD 0.0, 0.0 OBJSIZE 1.0, 1.0 :\n"
+        "            Counter = Counter + 2;\n"
+        "        ENDDEF (*L1*);\n"
+        "    ModuleDef\n"
+        "    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "    ENDDEF (*ParentType*);\n"
+        "SUBMODULES\n"
+        "    Root Invocation ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0 ) : ParentType;\n"
+        "ModuleDef\n"
+        "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "ENDDEF (*BasePicture*);\n",
+        encoding="utf-8",
+    )
+
+    report = source_diff_report.build_source_diff_report(
+        tmp_path,
+        draft_file="NestedTypeReview.s",
+        official_file="NestedTypeReview.x",
+    )
+
+    sections = _sections_by_kind(report["pairs"][0])
+    assert sections["changed-moduletypes"]["changed"] is True
+    assert sections["changed-moduletypes"]["items"] == ["Changed moduletype ParentType"]
+    assert sections["changed-moduletypes"]["entries"] == [
+        {
+            "name": "ParentType",
+            "module_kind": "moduletype",
+            "change_kind": "changed",
+            "details": ["Changed submodule L1 (definition changed)"],
+            "code_diffs": [
+                {
+                    "label": "L1 / Equation Main",
+                    "diff_lines": [
+                        "--- previous equation Main",
+                        "+++ draft equation Main",
+                        "@@ -1 +1 @@",
+                        "-Counter = (Counter + 2)",
+                        "+Counter = (Counter + 1)",
+                    ],
+                }
+            ],
+        }
+    ]
+
+
+def test_build_source_diff_report_surfaces_nested_moduletype_sequence_transition_diffs(tmp_path: Path) -> None:
+    draft_file = tmp_path / "NestedTypeSequenceReview.s"
+    official_file = tmp_path / "NestedTypeSequenceReview.x"
+    draft_file.write_text(
+        '"SyntaxVersion"\n'
+        '"OriginalFileDate"\n'
+        '"ProgramDate"\n'
+        "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1\n"
+        "TYPEDEFINITIONS\n"
+        "    ParentType = MODULEDEFINITION DateCode_ 2\n"
+        "    SUBMODULES\n"
+        "        L1 Invocation\n"
+        "            ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0 ) : MODULEDEFINITION DateCode_ 3\n"
+        "        LOCALVARIABLES\n"
+        "            Ready: boolean := False;\n"
+        "        ModuleDef\n"
+        "        ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "        ModuleCode\n"
+        "            SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0\n"
+        "                SEQINITSTEP Start\n"
+        "                SEQTRANSITION Tr1 WAIT_FOR Ready\n"
+        "                SEQSTEP Running\n"
+        "            ENDSEQUENCE\n"
+        "        ENDDEF (*L1*);\n"
+        "    ModuleDef\n"
+        "    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "    ENDDEF (*ParentType*);\n"
+        "SUBMODULES\n"
+        "    Root Invocation ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0 ) : ParentType;\n"
+        "ModuleDef\n"
+        "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "ENDDEF (*BasePicture*);\n",
+        encoding="utf-8",
+    )
+    official_file.write_text(
+        '"SyntaxVersion"\n'
+        '"OriginalFileDate"\n'
+        '"ProgramDate"\n'
+        "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1\n"
+        "TYPEDEFINITIONS\n"
+        "    ParentType = MODULEDEFINITION DateCode_ 2\n"
+        "    SUBMODULES\n"
+        "        L1 Invocation\n"
+        "            ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0 ) : MODULEDEFINITION DateCode_ 3\n"
+        "        LOCALVARIABLES\n"
+        "            Ready: boolean := False;\n"
+        "        ModuleDef\n"
+        "        ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "        ModuleCode\n"
+        "            SEQUENCE MainSeq COORD 0.0, 0.0 OBJSIZE 1.0, 1.0\n"
+        "                SEQINITSTEP Start\n"
+        "                SEQTRANSITION Tr1 WAIT_FOR False\n"
+        "                SEQSTEP Running\n"
+        "            ENDSEQUENCE\n"
+        "        ENDDEF (*L1*);\n"
+        "    ModuleDef\n"
+        "    ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "    ENDDEF (*ParentType*);\n"
+        "SUBMODULES\n"
+        "    Root Invocation ( 0.0 , 0.0 , 0.0 , 1.0 , 1.0 ) : ParentType;\n"
+        "ModuleDef\n"
+        "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )\n"
+        "ENDDEF (*BasePicture*);\n",
+        encoding="utf-8",
+    )
+
+    report = source_diff_report.build_source_diff_report(
+        tmp_path,
+        draft_file="NestedTypeSequenceReview.s",
+        official_file="NestedTypeSequenceReview.x",
+    )
+
+    sections = _sections_by_kind(report["pairs"][0])
+    assert sections["changed-moduletypes"]["entries"] == [
+        {
+            "name": "ParentType",
+            "module_kind": "moduletype",
+            "change_kind": "changed",
+            "details": ["Changed submodule L1 (definition changed)"],
+            "code_diffs": [
+                {
+                    "label": "L1 / Sequence MainSeq",
+                    "diff_lines": [
+                        "--- previous sequence MainSeq",
+                        "+++ draft sequence MainSeq",
+                        "@@ -1,3 +1,3 @@",
+                        " InitStep Start",
+                        "-Transition Tr1 WAIT_FOR False",
+                        "+Transition Tr1 WAIT_FOR Ready",
+                        " Step Running",
+                    ],
+                }
+            ],
+        }
+    ]
+
+
+def test_moduletype_detail_ignores_nested_source_span_only_header_changes() -> None:
+    def build_moduletype(line: int) -> ModuleTypeDef:
+        return ModuleTypeDef(
+            name="ParentType",
+            submodules=[
+                SingleModule(
+                    header=ModuleHeader(
+                        name="L1",
+                        invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0),
+                        enable_tail={"expr": "Ready", "span": SourceSpan(line=line, column=2)},
+                    ),
+                    moduledef=ModuleDef(clipping_bounds=((0.0, 0.0), (1.0, 1.0))),
+                )
+            ],
+            moduledef=ModuleDef(clipping_bounds=((0.0, 0.0), (1.0, 1.0))),
+        )
+
+    assert source_diff_report._moduletype_detail(build_moduletype(10)) == source_diff_report._moduletype_detail(
+        build_moduletype(20)
+    )
 
 
 def test_build_source_diff_report_collapses_singlemodule_promotions_to_moduletype(tmp_path: Path) -> None:

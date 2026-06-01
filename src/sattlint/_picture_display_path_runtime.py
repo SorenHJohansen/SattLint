@@ -16,6 +16,9 @@ if TYPE_CHECKING:
     from .models.project_graph import ProjectGraph
 
 
+_LoweredPath = tuple[str, ...]
+
+
 @dataclass(frozen=True, slots=True)
 class _CompositePlaceholder:
     record_index: int
@@ -35,6 +38,14 @@ class RuntimeModuleNode:
     current_file: str | None
     resolved_moduletype_name: str | None = None
     children: tuple[RuntimeModuleNode, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeTree:
+    root: RuntimeModuleNode
+    nodes_by_path: dict[_LoweredPath, RuntimeModuleNode]
+    parents_by_path: dict[_LoweredPath, RuntimeModuleNode]
+    suffix_buckets: dict[_LoweredPath, tuple[RuntimeModuleNode, ...]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +87,7 @@ def collect_concrete_composite_placeholders(
 ) -> tuple[_CompositePlaceholder, ...]:
     placeholders: list[_CompositePlaceholder] = []
     local_instance_resolution_paths: dict[tuple[str, tuple[str, ...]], tuple[tuple[str, ...], int]] = {}
+    candidate_moduletype_index = _candidate_moduletype_index(base_picture, graph)
     record_index = 0
     root_path = (base_picture.header.name,)
 
@@ -197,22 +209,14 @@ def collect_concrete_composite_placeholders(
             visit_moduledef(child.moduledef, path, parent_step_adjustment=parent_step_adjustment)
             return
 
-        matches = [
-            moduletype
-            for moduletype in _candidate_moduletype_defs(base_picture, graph)
-            if moduletype.name.casefold() == child.moduletype_name.casefold()
-        ]
-        try:
-            resolved_moduletype = select_moduletype_def_strict(
-                base_picture,
-                child.moduletype_name,
-                matches,
-                current_library=current_library,
-                current_file=current_file,
-                unavailable_libraries=(graph.unavailable_libraries if graph is not None else None),
-            )
-        except Exception:
-            resolved_moduletype = None
+        resolved_moduletype = _resolve_runtime_moduletype(
+            base_picture,
+            child,
+            current_library=current_library,
+            current_file=current_file,
+            graph=graph,
+            candidate_moduletype_index=candidate_moduletype_index,
+        )
 
         if resolved_moduletype is None:
             return
@@ -361,10 +365,11 @@ def _file_stem_casefold(file_name: str | None) -> str | None:
         return file_name.rsplit(".", 1)[0].casefold()
 
 
-def build_runtime_tree(base_picture: BasePicture, *, graph: ProjectGraph | None) -> RuntimeModuleNode:
+def build_runtime_tree(base_picture: BasePicture, *, graph: ProjectGraph | None) -> RuntimeTree:
     root_path = (base_picture.header.name,)
     current_library = getattr(base_picture, "origin_lib", None)
     current_file = getattr(base_picture, "origin_file", None)
+    candidate_moduletype_index = _candidate_moduletype_index(base_picture, graph)
     children = [
         *[
             _build_moduletype_node(
@@ -373,6 +378,7 @@ def build_runtime_tree(base_picture: BasePicture, *, graph: ProjectGraph | None)
                 path=(*root_path, moduletype.name),
                 graph=graph,
                 active_moduletype_keys=set(),
+                candidate_moduletype_index=candidate_moduletype_index,
             )
             for moduletype in _local_moduletype_defs(base_picture)
         ],
@@ -385,17 +391,20 @@ def build_runtime_tree(base_picture: BasePicture, *, graph: ProjectGraph | None)
                 current_library=current_library,
                 current_file=current_file,
                 active_moduletype_keys=set(),
+                candidate_moduletype_index=candidate_moduletype_index,
             )
             for child in base_picture.submodules or []
         ],
     ]
-    return RuntimeModuleNode(
-        name=base_picture.header.name,
-        path=root_path,
-        current_library=current_library,
-        current_file=current_file,
-        resolved_moduletype_name=None,
-        children=tuple(children),
+    return _index_runtime_tree(
+        RuntimeModuleNode(
+            name=base_picture.header.name,
+            path=root_path,
+            current_library=current_library,
+            current_file=current_file,
+            resolved_moduletype_name=None,
+            children=tuple(children),
+        )
     )
 
 
@@ -406,6 +415,7 @@ def _build_moduletype_node(
     path: tuple[str, ...],
     graph: ProjectGraph | None,
     active_moduletype_keys: set[tuple[str, str, str]],
+    candidate_moduletype_index: dict[str, tuple[ModuleTypeDef, ...]],
 ) -> RuntimeModuleNode:
     children = tuple(
         _build_runtime_child(
@@ -416,6 +426,7 @@ def _build_moduletype_node(
             current_library=moduletype.origin_lib or base_picture.origin_lib,
             current_file=moduletype.origin_file or base_picture.origin_file,
             active_moduletype_keys=active_moduletype_keys.copy(),
+            candidate_moduletype_index=candidate_moduletype_index,
         )
         for child in moduletype.submodules or []
     )
@@ -438,6 +449,7 @@ def _build_runtime_child(
     current_library: str | None,
     current_file: str | None,
     active_moduletype_keys: set[tuple[str, str, str]],
+    candidate_moduletype_index: dict[str, tuple[ModuleTypeDef, ...]],
 ) -> RuntimeModuleNode:
     if isinstance(child, SingleModule | FrameModule):
         children = tuple(
@@ -449,6 +461,7 @@ def _build_runtime_child(
                 current_library=current_library,
                 current_file=current_file,
                 active_moduletype_keys=active_moduletype_keys.copy(),
+                candidate_moduletype_index=candidate_moduletype_index,
             )
             for nested in child.submodules or []
         )
@@ -461,22 +474,14 @@ def _build_runtime_child(
             children=children,
         )
 
-    matches = [
-        moduletype
-        for moduletype in _candidate_moduletype_defs(base_picture, graph)
-        if moduletype.name.casefold() == child.moduletype_name.casefold()
-    ]
-    try:
-        resolved_moduletype = select_moduletype_def_strict(
-            base_picture,
-            child.moduletype_name,
-            matches,
-            current_library=current_library,
-            current_file=current_file,
-            unavailable_libraries=(graph.unavailable_libraries if graph is not None else None),
-        )
-    except Exception:
-        resolved_moduletype = None
+    resolved_moduletype = _resolve_runtime_moduletype(
+        base_picture,
+        child,
+        current_library=current_library,
+        current_file=current_file,
+        graph=graph,
+        candidate_moduletype_index=candidate_moduletype_index,
+    )
 
     if resolved_moduletype is None:
         return RuntimeModuleNode(
@@ -514,6 +519,7 @@ def _build_runtime_child(
             current_library=resolved_moduletype.origin_lib or current_library,
             current_file=resolved_moduletype.origin_file or current_file,
             active_moduletype_keys=nested_keys.copy(),
+            candidate_moduletype_index=candidate_moduletype_index,
         )
         for nested in resolved_moduletype.submodules or []
     )
@@ -533,82 +539,119 @@ def _candidate_moduletype_defs(base_picture: BasePicture, graph: ProjectGraph | 
     return tuple(base_picture.moduletype_defs or [])
 
 
-def find_node(root: RuntimeModuleNode, path: tuple[str, ...]) -> RuntimeModuleNode | None:
-    lowered_path = tuple(segment.casefold() for segment in path)
-    if tuple(segment.casefold() for segment in root.path) == lowered_path:
-        return root
-    for child in root.children:
-        match = find_node(child, path)
-        if match is not None:
-            return match
-    return None
+def _candidate_moduletype_index(
+    base_picture: BasePicture,
+    graph: ProjectGraph | None,
+) -> dict[str, tuple[ModuleTypeDef, ...]]:
+    index: dict[str, list[ModuleTypeDef]] = {}
+    for moduletype in _candidate_moduletype_defs(base_picture, graph):
+        index.setdefault(moduletype.name.casefold(), []).append(moduletype)
+    return {name: tuple(matches) for name, matches in index.items()}
+
+
+def _resolve_runtime_moduletype(
+    base_picture: BasePicture,
+    child: ModuleTypeInstance,
+    *,
+    current_library: str | None,
+    current_file: str | None,
+    graph: ProjectGraph | None,
+    candidate_moduletype_index: dict[str, tuple[ModuleTypeDef, ...]],
+) -> ModuleTypeDef | None:
+    matches = list(candidate_moduletype_index.get(child.moduletype_name.casefold(), ()))
+    try:
+        return select_moduletype_def_strict(
+            base_picture,
+            child.moduletype_name,
+            matches,
+            current_library=current_library,
+            current_file=current_file,
+            unavailable_libraries=(graph.unavailable_libraries if graph is not None else None),
+        )
+    except Exception:
+        return None
+
+
+def _lowered_path(path: tuple[str, ...]) -> _LoweredPath:
+    return tuple(segment.casefold() for segment in path)
+
+
+def _index_runtime_tree(root: RuntimeModuleNode) -> RuntimeTree:
+    nodes_by_path: dict[_LoweredPath, RuntimeModuleNode] = {}
+    parents_by_path: dict[_LoweredPath, RuntimeModuleNode] = {}
+    suffix_buckets: dict[_LoweredPath, list[RuntimeModuleNode]] = {}
+
+    def visit(node: RuntimeModuleNode, parent: RuntimeModuleNode | None) -> None:
+        lowered_path = _lowered_path(node.path)
+        nodes_by_path[lowered_path] = node
+        if parent is not None:
+            parents_by_path[lowered_path] = parent
+        for suffix_length in range(2, len(lowered_path) + 1):
+            suffix_buckets.setdefault(lowered_path[-suffix_length:], []).append(node)
+        for child in node.children:
+            visit(child, node)
+
+    visit(root, None)
+    return RuntimeTree(
+        root=root,
+        nodes_by_path=nodes_by_path,
+        parents_by_path=parents_by_path,
+        suffix_buckets={
+            suffix: tuple(sorted(nodes, key=lambda node: (len(node.path), _lowered_path(node.path))))
+            for suffix, nodes in suffix_buckets.items()
+        },
+    )
+
+
+def find_node(runtime_tree: RuntimeTree, path: tuple[str, ...]) -> RuntimeModuleNode | None:
+    return runtime_tree.nodes_by_path.get(_lowered_path(path))
+
+
+def find_parent_node(runtime_tree: RuntimeTree, path: tuple[str, ...]) -> RuntimeModuleNode | None:
+    return runtime_tree.parents_by_path.get(_lowered_path(path))
 
 
 def find_best_suffix_node(
-    root: RuntimeModuleNode,
+    runtime_tree: RuntimeTree,
     path: tuple[str, ...],
     *,
     exclude_path: tuple[str, ...] | None = None,
 ) -> RuntimeModuleNode | None:
-    best_match: RuntimeModuleNode | None = None
-    best_suffix_length = 0
-    best_path_length = 0
-    ambiguous = False
-    lowered_exclude_path = tuple(segment.casefold() for segment in exclude_path) if exclude_path is not None else None
-    for candidate in _iter_runtime_nodes(root):
-        if (
-            lowered_exclude_path is not None
-            and tuple(segment.casefold() for segment in candidate.path) == lowered_exclude_path
-        ):
-            continue
-        suffix_length = _common_suffix_length(candidate.path, path)
-        if suffix_length < 2:
-            continue
-        if suffix_length > best_suffix_length:
-            best_match = candidate
-            best_suffix_length = suffix_length
-            best_path_length = len(candidate.path)
-            ambiguous = False
-            continue
-        if suffix_length == best_suffix_length:
-            if best_match is not None and len(candidate.path) < best_path_length:
-                best_match = candidate
-                best_path_length = len(candidate.path)
-                ambiguous = False
-                continue
-            if best_match is not None and len(candidate.path) > best_path_length:
-                continue
-            ambiguous = True
-    if ambiguous:
+    matches = find_suffix_nodes(runtime_tree, path, exclude_path=exclude_path)
+    if not matches:
         return None
+    best_match = matches[0]
+    best_suffix_length = _common_suffix_length(best_match.path, path)
+    best_path_length = len(best_match.path)
+    for candidate in matches[1:]:
+        candidate_suffix_length = _common_suffix_length(candidate.path, path)
+        if candidate_suffix_length < best_suffix_length:
+            break
+        if len(candidate.path) == best_path_length:
+            return None
     return best_match
 
 
 def find_suffix_nodes(
-    root: RuntimeModuleNode,
+    runtime_tree: RuntimeTree,
     path: tuple[str, ...],
     *,
     exclude_path: tuple[str, ...] | None = None,
 ) -> tuple[RuntimeModuleNode, ...]:
-    lowered_exclude_path = tuple(segment.casefold() for segment in exclude_path) if exclude_path is not None else None
-    matches: list[tuple[int, int, tuple[str, ...], RuntimeModuleNode]] = []
-    for candidate in _iter_runtime_nodes(root):
-        lowered_candidate_path = tuple(segment.casefold() for segment in candidate.path)
-        if lowered_exclude_path is not None and lowered_candidate_path == lowered_exclude_path:
-            continue
-        suffix_length = _common_suffix_length(candidate.path, path)
-        if suffix_length < 2:
-            continue
-        matches.append((suffix_length, len(candidate.path), lowered_candidate_path, candidate))
-    matches.sort(key=lambda item: (-item[0], item[1], item[2]))
-    return tuple(candidate for *_rest, candidate in matches)
-
-
-def _iter_runtime_nodes(root: RuntimeModuleNode) -> tuple[RuntimeModuleNode, ...]:
-    nodes = [root]
-    for child in root.children:
-        nodes.extend(_iter_runtime_nodes(child))
-    return tuple(nodes)
+    lowered_path = _lowered_path(path)
+    lowered_exclude_path = _lowered_path(exclude_path) if exclude_path is not None else None
+    matches: list[RuntimeModuleNode] = []
+    seen_paths: set[_LoweredPath] = set()
+    for suffix_length in range(len(lowered_path), 1, -1):
+        for candidate in runtime_tree.suffix_buckets.get(lowered_path[-suffix_length:], ()):
+            lowered_candidate_path = _lowered_path(candidate.path)
+            if lowered_exclude_path is not None and lowered_candidate_path == lowered_exclude_path:
+                continue
+            if lowered_candidate_path in seen_paths:
+                continue
+            seen_paths.add(lowered_candidate_path)
+            matches.append(candidate)
+    return tuple(matches)
 
 
 def _common_suffix_length(left: tuple[str, ...], right: tuple[str, ...]) -> int:

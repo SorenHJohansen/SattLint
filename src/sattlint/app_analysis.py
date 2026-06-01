@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -25,7 +25,7 @@ from .analyzers.rule_profiles import apply_rule_profile_to_report
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variable_usage_reporting import debug_variable_usage
 from .analyzers.variables import IssueKind, analyze_variables, filter_variable_report
-from .cache import ASTCache
+from .cache import AnalysisReportCache, ASTCache
 from .casefolding import casefold_equal, casefold_key
 from .models.project_graph import ProjectGraph
 from .reporting.variables_report import DEFAULT_VARIABLE_ANALYSIS_KINDS, VariablesReport
@@ -42,6 +42,7 @@ cache = cast(Any, cache_module)
 engine = cast(Any, engine_module)
 emit_output: Callable[..., None] = console_module.print_output  # type: ignore[assignment]
 compute_cache_key: Callable[[ConfigDict], str] = cache.compute_cache_key
+compute_analysis_report_cache_key: Callable[[str, str], str] = cache.compute_analysis_report_cache_key
 get_cache_dir: Callable[[], Path] = cache.get_cache_dir
 
 _DRAFT_SOURCE_SUFFIXES = frozenset({".s", ".l"})
@@ -204,6 +205,8 @@ def load_project(
     *,
     use_cache: bool = True,
     use_file_ast_cache: bool = True,
+    refresh_mode: str = "full",
+    collect_stage_timings: bool = False,
     require_analyzed_targets_fn: Callable[[ConfigDict], list[str]] = _require_analyzed_targets,
     cache_key_for_target_fn: Callable[[ConfigDict, str], str] = _cache_key_for_target,
     target_load_error_factory: Callable[..., Exception] | None = None,
@@ -215,6 +218,8 @@ def load_project(
             target_name=target_name,
             use_cache=use_cache,
             use_file_ast_cache=use_file_ast_cache,
+            refresh_mode=refresh_mode,
+            collect_stage_timings=collect_stage_timings,
             require_analyzed_targets_fn=require_analyzed_targets_fn,
             cache_key_for_target_fn=cache_key_for_target_fn,
             target_load_error_factory=target_load_error_factory,
@@ -285,6 +290,61 @@ def _debug_enabled(cfg: ConfigDict) -> bool:
     return bool(cfg.get("debug", False))
 
 
+def _use_cache_enabled(cfg: ConfigDict) -> bool:
+    return bool(cfg.get("use_cache", True))
+
+
+def _create_analysis_report_cache(cfg: ConfigDict) -> AnalysisReportCache | None:
+    if not _use_cache_enabled(cfg) or _debug_enabled(cfg):
+        return None
+    return AnalysisReportCache(get_cache_dir())
+
+
+def _graph_analysis_cache_metadata(graph: ProjectGraph) -> tuple[str, frozenset[Path]] | None:
+    cache_key = getattr(graph, "analysis_cache_key", None)
+    if not isinstance(cache_key, str) or not cache_key:
+        return None
+
+    manifest_files_obj = getattr(graph, "analysis_manifest_files", None)
+    if not isinstance(manifest_files_obj, (set, frozenset)):
+        return None
+
+    manifest_entries = cast(set[object] | frozenset[object], manifest_files_obj)
+    manifest_files = frozenset(path for path in manifest_entries if isinstance(path, Path))
+    if len(manifest_files) != len(manifest_entries) or not manifest_files:
+        return None
+
+    return cache_key, manifest_files
+
+
+def _run_with_analysis_report_cache(
+    graph: ProjectGraph,
+    *,
+    report_cache: AnalysisReportCache | None,
+    analyzer_cache_key: str,
+    run_fn: Callable[[], Any],
+) -> Any:
+    metadata = _graph_analysis_cache_metadata(graph)
+    if report_cache is None or metadata is None:
+        return run_fn()
+
+    project_cache_key, manifest_files = metadata
+    cache_key = compute_analysis_report_cache_key(project_cache_key, analyzer_cache_key)
+    cached = report_cache.load(cache_key)
+    if cached and report_cache.validate(cached, fast=False):
+        cached_map = cast(Mapping[str, object], cached) if isinstance(cached, Mapping) else None
+        if cached_map is not None and "report" in cached_map:
+            return cast(Any, cached_map["report"])
+
+    report = run_fn()
+    report_cache.save(cache_key, report=report, files=manifest_files)
+    return report
+
+
+def _variable_issue_kinds_cache_key(kinds: set[IssueKind]) -> str:
+    return ",".join(sorted(kind.name.casefold() for kind in kinds))
+
+
 def _unavailable_libraries(graph: ProjectGraph) -> set[str]:
     return cast(set[str], getattr(graph, "unavailable_libraries", set[str]()))
 
@@ -343,42 +403,58 @@ def run_variable_analysis(
         )
 
     requested_kinds = set(DEFAULT_VARIABLE_ANALYSIS_KINDS) | {IssueKind.SHADOWING} if kinds is None else set(kinds)
+    cfg = cfg | {"include_reverse_library_consumers": IssueKind.UNUSED_DATATYPE_FIELD in requested_kinds}
+    report_cache = _create_analysis_report_cache(cfg)
 
     produced_output = False
     for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
         produced_output = True
         target_is_library = target_is_library_fn(cfg, project_bp, graph)
-        with console_module.live_status_line() as status_update_fn:
-            status_update_fn(f"Analyzing variable issues for {target_name}")
-            report = analyze_variables_fn(
-                project_bp,
-                debug=_debug_enabled(cfg),
-                unavailable_libraries=_unavailable_libraries(graph),
-                analyzed_target_is_library=target_is_library,
-                config=cfg,
-                status_update_fn=status_update_fn,
-            )
-
         include_shadowing = IssueKind.SHADOWING in requested_kinds
         standard_kinds = requested_kinds - {IssueKind.SHADOWING}
 
         if standard_kinds:
-            report = filter_variable_report_fn(report, standard_kinds)
+            with console_module.live_status_line() as status_update_fn:
+                status_update_fn(f"Analyzing variable issues for {target_name}")
+                report = _run_with_analysis_report_cache(
+                    graph,
+                    report_cache=report_cache,
+                    analyzer_cache_key=f"variables:{_variable_issue_kinds_cache_key(standard_kinds)}",
+                    run_fn=lambda project_bp=project_bp, graph=graph, status_update_fn=status_update_fn, target_is_library=target_is_library, standard_kinds=standard_kinds: (
+                        analyze_variables_fn(
+                            project_bp,
+                            debug=_debug_enabled(cfg),
+                            unavailable_libraries=_unavailable_libraries(graph),
+                            analyzed_target_is_library=target_is_library,
+                            selected_issue_kinds=standard_kinds,
+                            config=cfg,
+                            status_update_fn=status_update_fn,
+                        )
+                    ),
+                )
         else:
             report = VariablesReport(
-                basepicture_name=report.basepicture_name,
+                basepicture_name=getattr(getattr(project_bp, "header", None), "name", target_name),
                 issues=[],
                 visible_kinds=frozenset(),
                 include_empty_sections=False,
             )
 
+        if standard_kinds:
+            report = filter_variable_report_fn(report, standard_kinds)
+
         if include_shadowing:
             shadowing_report = _run_with_live_status(
                 f"Analyzing variable shadowing for {target_name}",
-                lambda project_bp=project_bp, graph=graph: analyze_shadowing_fn(
-                    project_bp,
-                    debug=_debug_enabled(cfg),
-                    unavailable_libraries=_unavailable_libraries(graph),
+                lambda project_bp=project_bp, graph=graph: _run_with_analysis_report_cache(
+                    graph,
+                    report_cache=report_cache,
+                    analyzer_cache_key="variables:shadowing",
+                    run_fn=lambda project_bp=project_bp, graph=graph: analyze_shadowing_fn(
+                        project_bp,
+                        debug=_debug_enabled(cfg),
+                        unavailable_libraries=_unavailable_libraries(graph),
+                    ),
                 ),
             )
             if requested_kinds == {IssueKind.SHADOWING}:
@@ -864,6 +940,7 @@ def _run_checks(
         return
 
     emit_output("\n--- Running checks ---")
+    report_cache = _create_analysis_report_cache(cfg)
     try:
         for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
             context = AnalysisContext(
@@ -878,7 +955,12 @@ def _run_checks(
                 emit_output(f"\n=== {spec.name} ({spec.key}) ===")
                 report = _run_with_live_status(
                     _analysis_status_text(target_name, spec),
-                    lambda spec=spec, context=context: spec.run(context),
+                    lambda spec=spec, context=context, graph=graph: _run_with_analysis_report_cache(
+                        graph,
+                        report_cache=report_cache,
+                        analyzer_cache_key=spec.key,
+                        run_fn=lambda spec=spec, context=context: spec.run(context),
+                    ),
                 )
                 report = apply_rule_profile_to_report(spec.key, report, cfg)
                 report = _normalize_report_target_name(report, target_name)

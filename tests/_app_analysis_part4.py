@@ -132,12 +132,18 @@ def test_ensure_ast_cache_returns_true_without_targets():
 
 
 def test_run_variable_analysis_shadowing_only_uses_shadowing_report_and_pauses(monkeypatch, capsys):
+    analyze_variables_calls: list[str] = []
+
     monkeypatch.setattr(
         app_analysis,
         "_iter_loaded_projects",
         lambda *_args, **_kwargs: iter([("ProgramA", "bp", SimpleNamespace(unavailable_libraries=set(), warnings=[]))]),
     )
-    monkeypatch.setattr(app_analysis, "analyze_variables", lambda *_, **__: make_variable_report())
+    monkeypatch.setattr(
+        app_analysis,
+        "analyze_variables",
+        lambda *_, **__: analyze_variables_calls.append("called") or make_variable_report(),
+    )
     monkeypatch.setattr(app_analysis, "analyze_shadowing", lambda *_, **__: make_shadowing_report("ShadowOnly"))
 
     pauses: list[str] = []
@@ -148,6 +154,7 @@ def test_run_variable_analysis_shadowing_only_uses_shadowing_report_and_pauses(m
     )
 
     out = capsys.readouterr().out
+    assert analyze_variables_calls == []
     assert "=== Target: ProgramA ===" in out
     assert pauses == ["pause"]
 

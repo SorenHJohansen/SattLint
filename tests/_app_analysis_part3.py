@@ -41,7 +41,7 @@ def test_variable_usage_submenu_exposes_min_max_report(noop_screen, monkeypatch)
 def test_variable_usage_submenu_exposes_ui_only_report(noop_screen, monkeypatch):
     captured: list[object] = []
     monkeypatch.setattr(app, "run_variable_analysis", lambda _cfg, kinds: captured.append(kinds))
-    monkeypatch.setattr(builtins, "input", make_input(["14", "b"]))
+    monkeypatch.setattr(builtins, "input", make_input(["15", "b"]))
 
     app.variable_usage_submenu(app.DEFAULT_CONFIG.copy())
 

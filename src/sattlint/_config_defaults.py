@@ -50,6 +50,7 @@ NAMING_RULE_TARGETS = (
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "analyzed_programs_and_libraries": [],
+    "include_reverse_library_consumers": False,
     "mode": "official",
     "scan_root_only": False,
     "fast_cache_validation": True,

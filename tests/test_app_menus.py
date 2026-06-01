@@ -1161,7 +1161,7 @@ def test_force_refresh_ast_bypasses_file_ast_cache(monkeypatch):
     cfg = deepcopy(app.DEFAULT_CONFIG)
     cfg["analyzed_programs_and_libraries"] = ["TargetA", "TargetB"]
     cleared: list[str] = []
-    load_calls: list[tuple[str | None, bool, bool]] = []
+    load_calls: list[tuple[str | None, bool, bool, str, bool]] = []
 
     class _FakeCache:
         def __init__(self, *_args, **_kwargs):
@@ -1176,8 +1176,10 @@ def test_force_refresh_ast_bypasses_file_ast_cache(monkeypatch):
         *,
         use_cache=True,
         use_file_ast_cache=True,
+        refresh_mode="full",
+        collect_stage_timings=False,
     ):
-        load_calls.append((target_name, use_cache, use_file_ast_cache))
+        load_calls.append((target_name, use_cache, use_file_ast_cache, refresh_mode, collect_stage_timings))
         return ("bp", "graph")
 
     monkeypatch.setattr(app, "ASTCache", _FakeCache)
@@ -1188,8 +1190,8 @@ def test_force_refresh_ast_bypasses_file_ast_cache(monkeypatch):
 
     assert len(cleared) == 2
     assert load_calls == [
-        ("TargetA", False, False),
-        ("TargetB", False, False),
+        ("TargetA", False, False, "ast-only", False),
+        ("TargetB", False, False, "ast-only", False),
     ]
     assert result == ("bp", "graph")
 

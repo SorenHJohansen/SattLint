@@ -1,4 +1,5 @@
 # ruff: noqa: F401, F403
+# pyright: reportUnusedImport=false
 from tests._analyzers_variables_adjacent_analyzers import (
     test_cyclomatic_complexity_flags_high_complexity_program_modulecode,
     test_cyclomatic_complexity_flags_high_complexity_sfc_step,

@@ -92,11 +92,11 @@ def test_format_seq_nodes_renders_all_node_types():
     nodes = [
         step,
         ast_model.SFCTransition(name="T1", condition=True),
-        ast_model.SFCAlternative(branches=[[ast_model.SFCFork(target="X")]]),
+        ast_model.SFCAlternative(branches=[[ast_model.SFCFork(targets=("X",))]]),
         ast_model.SFCParallel(branches=[[ast_model.SFCBreak()]]),
-        ast_model.SFCSubsequence(name="Sub", body=[ast_model.SFCFork(target="Y")]),
+        ast_model.SFCSubsequence(name="Sub", body=[ast_model.SFCFork(targets=("Y",))]),
         ast_model.SFCTransitionSub(name="TS", body=[ast_model.SFCBreak()]),
-        ast_model.SFCFork(target="Z"),
+        ast_model.SFCFork(targets=("Z",)),
         ast_model.SFCBreak(),
         SimpleNamespace(__str__=lambda self: "FallbackNode"),
     ]

@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
@@ -11,6 +13,7 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
+from sattlint.analyzers import interface_contracts as interface_contracts_module
 from sattlint.analyzers.interface_contracts import analyze_interface_contracts
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
 from sattlint.reporting.variables_report import IssueKind
@@ -154,3 +157,27 @@ def test_interface_contracts_reports_anytype_missing_required_field() -> None:
     assert issues[0].module_path == ["Root", "Consumer"]
     assert issues[0].field_path == "Inner.Value"
     assert "missing required field 'Inner.Value'" in (issues[0].role or "")
+
+
+def test_interface_contracts_requests_only_contract_issue_kinds(monkeypatch) -> None:
+    bp = BasePicture(
+        header=_hdr("Root"),
+        datatype_defs=[],
+        moduletype_defs=[],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+    )
+    seen_selected_kinds: list[object] = []
+
+    def _fake_analyze_variables(*_args, **kwargs):
+        seen_selected_kinds.append(kwargs.get("selected_issue_kinds"))
+        return SimpleNamespace(issues=[])
+
+    monkeypatch.setattr(interface_contracts_module, "analyze_variables", _fake_analyze_variables)
+
+    report = interface_contracts_module.analyze_interface_contracts(bp)
+
+    assert report.issues == []
+    assert seen_selected_kinds == [interface_contracts_module.INTERFACE_CONTRACT_ISSUE_KINDS]

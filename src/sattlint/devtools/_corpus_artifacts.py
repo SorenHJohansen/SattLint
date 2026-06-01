@@ -22,6 +22,38 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def coerce_optional_str(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
+def as_json_object(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return cast(dict[str, Any], value)
+
+
+def as_json_array(value: object) -> list[Any]:
+    if not isinstance(value, list):
+        return []
+    return cast(list[Any], value)
+
+
+def load_json_object(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Expected JSON object in {path}")
+    return cast(dict[str, Any], payload)
+
+
+def coerce_artifact_fragments(value: object) -> dict[str, Any]:
+    payload = as_json_object(value)
+    if payload is None:
+        return {}
+    return {str(key): expected_fragment for key, expected_fragment in payload.items()}
+
+
 def collect_artifact_fragment_failures(
     expected_fragments: Mapping[str, object],
     artifact_dir: Path,
@@ -51,8 +83,9 @@ def _collect_fragment_mismatches(
         if not isinstance(actual, Mapping):
             return (f"{path}: expected object, got {type(actual).__name__}",)
         failures: list[str] = []
+        expected_mapping = cast(Mapping[object, object], expected)
         actual_mapping = cast(Mapping[str, object], actual)
-        for key, expected_value in expected.items():
+        for key, expected_value in expected_mapping.items():
             key_str = str(key)
             if key_str not in actual_mapping:
                 failures.append(f"{path}.{key_str}: missing key")

@@ -251,6 +251,87 @@ def test_root_only_loader_strict_none_basepicture_reraises(monkeypatch: pytest.M
         loader.resolve("Root", strict=True)
 
 
+def test_root_only_loader_full_mode_records_stage_timings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    timings: list[tuple[str, str, float]] = []
+    loader = _make_loader(monkeypatch, tmp_path)
+    cast(Any, loader)._stage_timing_sink = lambda owner, stage, duration: timings.append((owner, stage, duration))
+    code_path = tmp_path / "Root.s"
+    basepicture = _make_basepicture(origin_file=code_path.name, origin_lib=tmp_path.name)
+
+    class _AstCache:
+        def load(self, *_args, **_kwargs):
+            return None
+
+        def save(self, *_args, **_kwargs):
+            return None
+
+    cast(Any, loader)._ast_cache = _AstCache()
+    monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
+    monkeypatch.setattr(loader, "_parse_one", lambda _path: basepicture)
+    monkeypatch.setattr(engine, "validate_transformed_basepicture", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(engine, "_graphics_companion_needs_refresh", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(engine, "_attach_graphics_companion", lambda *_args, **_kwargs: False)
+
+    graph = loader.resolve("Root")
+
+    assert graph.ast_by_name["Root"] is basepicture
+    assert {stage for _owner, stage, _duration in timings} == {
+        "load_or_parse",
+        "validate",
+        "attach_graphics",
+        "index",
+        "ast_cache_save",
+    }
+
+
+def test_root_only_loader_ast_only_refresh_skips_enrichment_but_records_core_stage_timings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    timings: list[tuple[str, str, float]] = []
+    loader = _make_loader(monkeypatch, tmp_path)
+    loader.refresh_mode = "ast-only"
+    cast(Any, loader)._stage_timing_sink = lambda owner, stage, duration: timings.append((owner, stage, duration))
+    code_path = tmp_path / "Root.s"
+    basepicture = _make_basepicture(origin_file=code_path.name, origin_lib=tmp_path.name)
+
+    class _AstCache:
+        def load(self, *_args, **_kwargs):
+            return None
+
+        def save(self, *_args, **_kwargs):
+            return None
+
+    cast(Any, loader)._ast_cache = _AstCache()
+    monkeypatch.setattr(loader, "_find_code", lambda _name: code_path)
+    monkeypatch.setattr(loader, "_parse_one", lambda _path: basepicture)
+    monkeypatch.setattr(engine, "validate_transformed_basepicture", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        engine,
+        "_graphics_companion_needs_refresh",
+        lambda *_args, **_kwargs: pytest.fail("graphics companion checks should be skipped during ast-only refresh"),
+    )
+    monkeypatch.setattr(
+        engine,
+        "_attach_graphics_companion",
+        lambda *_args, **_kwargs: pytest.fail(
+            "graphics companion attachment should be skipped during ast-only refresh"
+        ),
+    )
+
+    graph = loader.resolve("Root")
+
+    assert graph.ast_by_name["Root"] is basepicture
+    assert {stage for _owner, stage, _duration in timings} == {
+        "load_or_parse",
+        "validate",
+        "ast_cache_save",
+    }
+
+
 def test_loader_lookup_skips_ignored_base_before_finding_other_matches(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

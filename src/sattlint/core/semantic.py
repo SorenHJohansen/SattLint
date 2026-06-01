@@ -178,6 +178,31 @@ def build_source_snapshot_from_basepicture(
     )
 
 
+def build_snapshot_from_loaded_project(
+    base_picture: BasePicture,
+    project_graph: ProjectGraph,
+    *,
+    entry_file: Path,
+    workspace_root: Path,
+    collect_variable_diagnostics: bool = False,
+    debug: bool = False,
+    _analysis_provider: SemanticAnalysisProvider | None = None,
+) -> SemanticSnapshot:
+    resolved_entry_path = Path(entry_file).resolve()
+    resolved_workspace_root = Path(workspace_root).resolve()
+    discovery = single_entry_discovery(resolved_entry_path, resolved_workspace_root)
+    return _build_semantic_snapshot(
+        base_picture,
+        entry_path=resolved_entry_path,
+        workspace_root=resolved_workspace_root,
+        discovery=discovery,
+        project_graph=project_graph,
+        collect_variable_diagnostics=collect_variable_diagnostics,
+        debug=debug,
+        analysis_provider=_analysis_provider,
+    )
+
+
 def load_workspace_snapshot(
     entry_file: Path,
     *,

@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from sattline_parser.models.ast_model import (
     BasePicture,
     ModuleCode,
@@ -10,6 +12,8 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
+from sattlint.analyzers import scan_concurrency as scan_concurrency_module
+from sattlint.analyzers.framework import Issue
 from sattlint.analyzers.registry import get_actual_cli_analyzer_keys, get_default_analyzers
 from sattlint.analyzers.scan_concurrency import analyze_scan_concurrency
 
@@ -75,3 +79,24 @@ def test_scan_concurrency_reports_parallel_write_race() -> None:
     assert report.issues[0].kind == "sfc_parallel_write_race"
     assert "SeqMain" in report.issues[0].message
     assert report.summary().startswith("Report: Scan concurrency")
+
+
+def test_scan_concurrency_requests_only_parallel_write_race(monkeypatch) -> None:
+    bp = BasePicture(header=_hdr("Root"), localvariables=[], modulecode=ModuleCode(sequences=[], equations=[]))
+    seen_selected_kinds: list[object] = []
+
+    def _fake_analyze_sfc(*_args, **kwargs):
+        seen_selected_kinds.append(kwargs.get("selected_issue_kinds"))
+        return SimpleNamespace(
+            issues=[
+                Issue(kind="sfc_parallel_write_race", message="race", module_path=["Root"], data=None),
+                Issue(kind="sfc_unreachable_transition", message="other", module_path=["Root"], data=None),
+            ]
+        )
+
+    monkeypatch.setattr(scan_concurrency_module, "analyze_sfc", _fake_analyze_sfc)
+
+    report = scan_concurrency_module.analyze_scan_concurrency(bp)
+
+    assert seen_selected_kinds == [scan_concurrency_module._SCAN_CONCURRENCY_ISSUE_KINDS]
+    assert [issue.kind for issue in report.issues] == ["sfc_parallel_write_race"]

@@ -64,6 +64,27 @@ def _run_targeted_status_action(
             action_fn(target_name, project_bp, graph, status_update_fn)
 
 
+def _print_variable_report(
+    target_name: str,
+    project_bp: BasePicture,
+    graph: ProjectGraph,
+    status_update_fn: Callable[[str], None],
+    *,
+    cfg: ConfigDict,
+    analyze_variables_fn: Callable[..., Any],
+) -> None:
+    emit_output(f"\n=== Target: {target_name} ===")
+    emit_output(
+        analyze_variables_fn(
+            project_bp,
+            debug=cfg.get("debug", False),
+            unavailable_libraries=cast(set[str], getattr(graph, "unavailable_libraries", cast(set[str], set()))),
+            config=cfg,
+            status_update_fn=status_update_fn,
+        ).summary()
+    )
+
+
 def _add_analysis_target(
     cfg: ConfigDict,
     *,
@@ -286,19 +307,13 @@ def dump_menu(
                     cfg,
                     status_prefix="Dump variable report",
                     iter_loaded_projects_fn=iter_loaded_projects_fn,
-                    action_fn=lambda target_name, project_bp, graph, status_update_fn: (
-                        emit_output(f"\n=== Target: {target_name} ==="),
-                        emit_output(
-                            analyze_variables_fn(
-                                project_bp,
-                                debug=cfg.get("debug", False),
-                                unavailable_libraries=cast(
-                                    set[str], getattr(graph, "unavailable_libraries", cast(set[str], set()))
-                                ),
-                                config=cfg,
-                                status_update_fn=status_update_fn,
-                            ).summary()
-                        ),
+                    action_fn=lambda target_name, project_bp, graph, status_update_fn: _print_variable_report(
+                        target_name,
+                        project_bp,
+                        graph,
+                        status_update_fn,
+                        cfg=cfg,
+                        analyze_variables_fn=analyze_variables_fn,
                     ),
                 ),
                 pause_fn=lambda: None,

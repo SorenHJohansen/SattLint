@@ -348,7 +348,7 @@ class DataflowAnalyzer(DataflowIssueReportingMixin, DataflowTraversalMixin, Data
         if node_name:
             return f"{type(node).__name__}:{node_name}"
         if isinstance(node, SFCFork):
-            return f"SFCFork:{node.target}"
+            return f"SFCFork:{','.join(node.targets)}"
         return type(node).__name__
 
     def _is_from_root_origin(

@@ -5,8 +5,10 @@ from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from sattline_parser.fuzz_harness import TimeoutError
-from sattlint.devtools import fuzzer, property_tests
+from sattlint.devtools import fuzzer, parser_properties, property_tests
 from sattlint.devtools.parser_properties import (
     assert_parser_deterministic,
     assert_valid_program_has_no_crash,
@@ -50,6 +52,77 @@ def test_generated_modules_support_parser_properties() -> None:
 
     assert_parser_deterministic(source)
     assert assert_valid_program_has_no_crash(source) is True
+
+
+def test_assert_parser_deterministic_reports_header_and_submodule_mismatches(monkeypatch) -> None:
+    header_mismatch = deque(
+        [
+            SimpleNamespace(header=SimpleNamespace(name="First"), submodules=[]),
+            SimpleNamespace(header=SimpleNamespace(name="Second"), submodules=[]),
+        ]
+    )
+    monkeypatch.setattr(parser_properties, "parser_core_parse_source_text", lambda _source: header_mismatch.popleft())
+
+    with pytest.raises(AssertionError, match="header name"):
+        assert_parser_deterministic("program")
+
+    submodule_mismatch = deque(
+        [
+            SimpleNamespace(header=SimpleNamespace(name="Same"), submodules=[1]),
+            SimpleNamespace(header=SimpleNamespace(name="Same"), submodules=[1, 2]),
+        ]
+    )
+    monkeypatch.setattr(
+        parser_properties, "parser_core_parse_source_text", lambda _source: submodule_mismatch.popleft()
+    )
+
+    with pytest.raises(AssertionError, match="submodule count"):
+        assert_parser_deterministic("program")
+
+
+def test_assert_valid_program_has_no_crash_returns_false_for_parser_errors(monkeypatch) -> None:
+    def _raise_syntax_error(_source: str):
+        raise SyntaxError("bad source")
+
+    monkeypatch.setattr(parser_properties, "parser_core_parse_source_text", _raise_syntax_error)
+
+    assert assert_valid_program_has_no_crash("broken") is False
+
+
+def test_iter_generated_programs_and_modules_seed_and_count(monkeypatch) -> None:
+    seed_calls: list[int] = []
+    generated_programs = deque(["program-1", "program-2"])
+    generated_modules = deque(["module-1", "module-2", "module-3"])
+
+    monkeypatch.setattr(parser_properties.random, "seed", lambda value: seed_calls.append(value))
+    monkeypatch.setattr(parser_properties, "generate_simple_program", lambda: generated_programs.popleft())
+    monkeypatch.setattr(parser_properties, "generate_simple_module", lambda: generated_modules.popleft())
+
+    assert list(parser_properties.iter_generated_programs(count=2, seed=7)) == ["program-1", "program-2"]
+    assert list(parser_properties.iter_generated_modules(count=3, seed=11)) == ["module-1", "module-2", "module-3"]
+    assert seed_calls == [7, 11]
+
+
+def test_check_parser_property_records_false_results_and_exceptions(monkeypatch) -> None:
+    seed_calls: list[int] = []
+    generated_sources = deque(["A" * 80, "B" * 80, "C" * 80])
+
+    monkeypatch.setattr(parser_properties.random, "seed", lambda value: seed_calls.append(value))
+    monkeypatch.setattr(parser_properties, "generate_simple_program", lambda: generated_sources.popleft())
+
+    def _property_fn(source: str) -> bool:
+        if source.startswith("B"):
+            return False
+        if source.startswith("C"):
+            raise RuntimeError("boom")
+        return True
+
+    failures = parser_properties.check_parser_property(_property_fn, count=3, seed=19)
+
+    assert seed_calls == [19]
+    assert failures[0] == ("B" * 60, None)
+    assert failures[1][0] == "C" * 60
+    assert isinstance(failures[1][1], RuntimeError)
 
 
 def test_generate_seeded_property_inputs_is_deterministic() -> None:

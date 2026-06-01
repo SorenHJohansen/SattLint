@@ -419,6 +419,7 @@ BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1
 TYPEDEFINITIONS
     MyRec = RECORD DateCode_ 2
         Value: integer;
+        Mirror: integer;
     ENDDEF (*MyRec*);
 LOCALVARIABLES
     Dv: integer := 0;
@@ -451,7 +452,7 @@ ENDDEF (*BasePicture*);
     assert len(dv_defs) == 1
     assert dv_defs[0].canonical_path == "BasePicture.Dv"
     assert dv_defs[0].declaration_span is not None
-    assert dv_defs[0].declaration_span.line == 10
+    assert dv_defs[0].declaration_span.line == 11
 
     assert len(rec_defs) == 1
     assert rec_defs[0].canonical_path == "BasePicture.Rec"

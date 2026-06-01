@@ -164,10 +164,19 @@ class _SFCMixin:
         return SFCParallel(branches=branches)
 
     def seqfork(self, items: list[TransformerItem]) -> SFCFork:
-        """Grammar seqfork -> SEQFORK NAME."""
-        if len(items) != 2 or not isinstance(items[1], str):
-            raise ValueError(f"seqfork expected (SEQFORK, NAME); got: {items!r}")
-        return SFCFork(target=items[1])
+        """Grammar seqfork -> SEQFORK NAME ("," NAME)*."""
+        targets: list[str] = []
+        for item in items:
+            if isinstance(item, Token):
+                if item.type == "NAME":
+                    targets.append(str(item))
+                continue
+            if type(item) is str:
+                targets.append(item)
+        targets_tuple = tuple(targets)
+        if not targets_tuple:
+            raise ValueError(f"seqfork expected at least one NAME target; got: {items!r}")
+        return SFCFork(targets=targets_tuple)
 
     def seqbreak(self, _items: list[TransformerItem]) -> SFCBreak:
         """Grammar seqbreak -> SEQBREAK."""

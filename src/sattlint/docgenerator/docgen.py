@@ -256,8 +256,8 @@ def _append_sequence_rows(
             rows.append(
                 SequenceRenderRow(
                     node_type="Fork",
-                    name=node.target,
-                    detail=detail_prefix + "Fork target",
+                    name=", ".join(node.targets),
+                    detail=detail_prefix + ("Fork targets" if len(node.targets) > 1 else "Fork target"),
                 )
             )
             continue

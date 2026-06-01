@@ -53,6 +53,10 @@ def _source_files_factory() -> set[Path]:
     return set()
 
 
+def _analysis_manifest_files_factory() -> frozenset[Path]:
+    return frozenset()
+
+
 @dataclass(frozen=True)
 class ProjectFailure:
     name: str
@@ -79,6 +83,8 @@ class ProjectGraph:
     # Track libraries that couldn't be loaded (e.g., proprietary ABB libraries)
     unavailable_libraries: set[str] = field(default_factory=_unavailable_libraries_factory)
     source_files: set[Path] = field(default_factory=_source_files_factory)
+    analysis_cache_key: str | None = None
+    analysis_manifest_files: frozenset[Path] = field(default_factory=_analysis_manifest_files_factory)
 
     def add_library_dependencies(self, library_name: str | None, dep_libs: list[str]) -> None:
         if not library_name:

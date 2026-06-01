@@ -68,10 +68,12 @@ artifacts/health/
 artifacts/impact-analysis/
 artifacts/audit-ai-gc-current/
 artifacts/audit-ai-gc-recheck/
+artifacts/audit-ci-local*/
 artifacts/audit-full-current/
 artifacts/audit-full-current.tmp-*/
 artifacts/audit-full-*.log
 artifacts/audit-full-[0-9]*/
+artifacts/audit-nightly/
 artifacts/audit-pre-push-*/
 artifacts/pipeline-repro-full/
 artifacts/pytest-stage-probe/

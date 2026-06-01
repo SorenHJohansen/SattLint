@@ -104,7 +104,7 @@ def run_analyze_command(
             return iter_loaded_projects_fn(nested_cfg, use_cache=local_use_cache)
 
         run_checks_owner_fn(
-            local_cfg,
+            local_cfg | {"use_cache": local_use_cache},
             local_selected_keys,
             iter_loaded_projects_fn=_iter_nested_projects,
             get_enabled_analyzers_fn=get_selectable_analyzers_fn if local_selected_keys else get_enabled_analyzers_fn,

@@ -1,4 +1,8 @@
 # ruff: noqa: F403, F405
+from typing import cast
+
+from lark import Tree
+
 from sattline_parser.models.ast_model import FrameModule, GraphicsBinding
 from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
 from sattlint.picture_display_paths import PictureDisplayOccurrence
@@ -184,6 +188,103 @@ def test_library_typedef_local_used_via_child_combutproc_togglewindow_arg_is_not
                                 0,
                                 False,
                                 0,
+                            ],
+                        },
+                    },
+                )
+            ]
+        ),
+        modulecode=None,
+        parametermappings=[],
+        origin_file="LibraryRoot.x",
+        origin_lib="ProjectLib",
+    )
+
+    x_size = Variable(name="XSize", datatype=Simple_DataType.REAL)
+    parent_type = ModuleTypeDef(
+        name="EluMasterLinie",
+        moduleparameters=[],
+        localvariables=[x_size],
+        submodules=[
+            ModuleTypeInstance(
+                header=_hdr("Picklist"),
+                moduletype_name="RecipePicklistSecond",
+                parametermappings=[
+                    ParameterMapping(
+                        target=_varref("xSize"),
+                        source_type=const.TREE_TAG_VARIABLE_NAME,
+                        is_duration=False,
+                        is_source_global=False,
+                        source=_varref("XSize"),
+                        source_literal=None,
+                    )
+                ],
+            )
+        ],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+        origin_file="LibraryRoot.x",
+        origin_lib="ProjectLib",
+    )
+
+    bp = BasePicture(
+        header=_hdr("BasePicture"),
+        datatype_defs=[],
+        moduletype_defs=[parent_type, child_type],
+        localvariables=[],
+        submodules=[],
+        modulecode=None,
+        moduledef=None,
+        origin_file="LibraryRoot.x",
+        origin_lib="ProjectLib",
+    )
+
+    analyzer = VariablesAnalyzer(bp, analyzed_target_is_library=True)
+    analyzer.run()
+
+    assert not any(
+        issue.kind is IssueKind.UNUSED
+        and issue.variable is x_size
+        and issue.module_path == ["BasePicture", "TypeDef:EluMasterLinie"]
+        for issue in analyzer.issues
+    )
+
+
+def test_library_typedef_local_used_via_child_legacy_combutproc_togglewindow_tree_is_not_unused():
+    legacy_procedure_args = Tree(
+        "procedure_args",
+        cast(
+            list[object],
+            [
+                Tree("proc_atom", cast(list[object], [""])),
+                Tree("proc_atom", cast(list[object], ["Picklist"])),
+                Tree("proc_atom", cast(list[object], [False])),
+                Tree("proc_atom", cast(list[object], [0.0])),
+                Tree("proc_atom", cast(list[object], [0.0])),
+                Tree("proc_atom", cast(list[object], [0.0])),
+                Tree("proc_atom", cast(list[object], ["xSize"])),
+            ],
+        ),
+    )
+
+    child_param = Variable(name="xSize", datatype=Simple_DataType.REAL)
+    child_type = ModuleTypeDef(
+        name="RecipePicklistSecond",
+        moduleparameters=[child_param],
+        localvariables=[],
+        submodules=[],
+        moduledef=ModuleDef(
+            interact_objects=[
+                InteractObject(
+                    type=const.GRAMMAR_VALUE_COMBUTPROC,
+                    properties={
+                        const.KEY_COORDS: [((0.0, 0.0), (1.0, 1.0))],
+                        const.KEY_PROCEDURE: {
+                            const.KEY_NAME: None,
+                            const.KEY_ARGS: [
+                                "ToggleWindow",
+                                legacy_procedure_args,
                             ],
                         },
                     },

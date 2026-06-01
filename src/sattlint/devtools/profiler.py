@@ -8,11 +8,18 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
+from sattlint import app as app_module
+from sattlint import config as config_module
 from sattlint.analyzers.framework import AnalysisContext
 from sattlint.analyzers.registry import get_default_analyzer_catalog
-from sattlint.core.semantic import discover_workspace_sources, load_workspace_snapshot
+from sattlint.app_analysis import source_paths_for_current_target
+from sattlint.core.semantic import (
+    discover_workspace_sources,
+    load_workspace_snapshot,
+)
 from sattlint.path_sanitizer import sanitize_path_for_report
 from sattlint.semantic_analysis import build_variable_semantic_artifacts
 
@@ -44,6 +51,20 @@ def _phase_sort_key(entry: dict[str, Any]) -> tuple[float, str]:
     return (-float(entry.get("duration_ms") or 0.0), str(entry.get("phase") or "").casefold())
 
 
+def _choose_target_entry_file(source_paths: set[Path], *, target_name: str) -> Path | None:
+    if not source_paths:
+        return None
+
+    target_key = target_name.casefold()
+    stem_matches = sorted(
+        (path for path in source_paths if path.stem.casefold() == target_key), key=lambda path: path.as_posix()
+    )
+    if stem_matches:
+        return stem_matches[0]
+
+    return sorted(source_paths, key=lambda path: path.as_posix())[0]
+
+
 def _selected_analyzer_specs(analyzer_keys: Sequence[str] | None) -> list[Any]:
     catalog = get_default_analyzer_catalog()
     enabled = [analyzer.spec for analyzer in catalog.analyzers if analyzer.spec.enabled]
@@ -52,6 +73,168 @@ def _selected_analyzer_specs(analyzer_keys: Sequence[str] | None) -> list[Any]:
 
     requested = {key.casefold() for key in analyzer_keys if key.strip()}
     return [spec for spec in enabled if spec.key.casefold() in requested]
+
+
+def _profile_definition_count(base_picture: Any) -> int:
+    return len(getattr(base_picture, "datatype_defs", ()) or ()) + len(
+        getattr(base_picture, "moduletype_defs", ()) or ()
+    )
+
+
+def _build_profile_report(
+    *,
+    workspace_root: Path,
+    program_files: Sequence[Path],
+    dependency_file_count: int,
+    entry_records: list[dict[str, Any]],
+    failures: list[dict[str, Any]],
+    phase_timings: list[dict[str, Any]],
+    analyzer_keys: Sequence[str] | None,
+    configured_target: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    total_duration_ms = round(sum(float(phase["duration_ms"]) for phase in phase_timings), 3)
+    status = "ok"
+    if failures and not entry_records:
+        status = "error"
+    elif failures:
+        status = "partial"
+
+    report = {
+        "generated_by": "sattlint.devtools.profiler",
+        "report_kind": "workspace-profile",
+        "status": status,
+        "workspace_root": _sanitize_repo_path(workspace_root, workspace_root=workspace_root),
+        "summary": {
+            "program_file_count": len(program_files),
+            "profiled_entry_count": len(program_files),
+            "successful_entry_count": len(entry_records),
+            "snapshot_failure_count": len(failures),
+            "analyzer_count": len(_selected_analyzer_specs(analyzer_keys)),
+            "total_duration_ms": total_duration_ms,
+        },
+        "source_files": {
+            "program_files": [_sanitize_repo_path(path, workspace_root=workspace_root) for path in program_files],
+            "dependency_file_count": dependency_file_count,
+        },
+        "phase_timings": phase_timings,
+        "entries": sorted(entry_records, key=lambda item: str(item["entry_file"]).casefold()),
+        "bottlenecks": {
+            "slowest_entries": sorted(entry_records, key=_entry_sort_key)[:10],
+            "slowest_analyzers": _aggregate_analyzer_bottlenecks(entry_records)[:10],
+            "slowest_phases": sorted(phase_timings, key=_phase_sort_key),
+        },
+        "snapshot_failures": failures,
+    }
+    if configured_target is not None:
+        report["configured_target"] = configured_target
+    return report
+
+
+def _profile_configured_target(
+    *,
+    config_path: Path | None,
+    target_name: str | None,
+    timer: Callable[[], float],
+    analyzer_keys: Sequence[str] | None,
+    progress_callback: Callable[[str], None] | None,
+) -> dict[str, Any]:
+    resolved_config_path = (config_path or config_module.get_config_path()).resolve()
+    cfg, _created_default = config_module.load_config(resolved_config_path)
+    selected_target_name = target_name or str(cfg.get("analyzed_targets", [""])[0] or "")
+    workspace_root = Path(str(cfg["program_dir"]))
+
+    if progress_callback is not None:
+        progress_callback(f"Profiler: loading configured target {selected_target_name or '<default>'}")
+
+    load_start = timer()
+    try:
+        project_bp, graph = app_module.load_project(
+            cfg,
+            target_name=target_name,
+        )
+        resolved_target_name = str(getattr(project_bp.header, "name", selected_target_name or ""))
+        entry_file = _choose_target_entry_file(
+            source_paths_for_current_target(project_bp, graph),
+            target_name=resolved_target_name,
+        )
+        if entry_file is None:
+            raise RuntimeError(f"Could not resolve a source file for target {resolved_target_name!r}")
+        resolved_workspace_root = workspace_root.resolve()
+        resolved_entry_file = entry_file.resolve()
+        profiled_target = SimpleNamespace(
+            entry_file=resolved_entry_file,
+            base_picture=project_bp,
+            project_graph=graph,
+            definitions_count=_profile_definition_count(project_bp),
+        )
+    except Exception as exc:
+        load_end = timer()
+        entry_label = target_name or selected_target_name or "<configured-target>"
+        phase_timings = [
+            {"phase": "configured-target-loading", "duration_ms": _duration_ms(load_start, load_end)},
+            {"phase": "analyzer-run", "duration_ms": 0.0},
+        ]
+        return _build_profile_report(
+            workspace_root=workspace_root.resolve(),
+            program_files=[],
+            dependency_file_count=0,
+            entry_records=[],
+            failures=[
+                {
+                    "entry_file": entry_label,
+                    "duration_ms": _duration_ms(load_start, load_end),
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                }
+            ],
+            phase_timings=phase_timings,
+            analyzer_keys=analyzer_keys,
+            configured_target={
+                "target": entry_label,
+                "config_path": sanitize_path_for_report(resolved_config_path, repo_root=REPO_ROOT)
+                or resolved_config_path.as_posix(),
+            },
+        )
+
+    load_end = timer()
+    load_duration_ms = _duration_ms(load_start, load_end)
+    sanitized_entry = _sanitize_repo_path(profiled_target.entry_file, workspace_root=resolved_workspace_root)
+
+    if progress_callback is not None:
+        progress_callback(f"Profiler: analyzing configured target {resolved_target_name}")
+    analyzer_records, analyzer_duration_ms = _profile_snapshot_analyzers(
+        profiled_target,
+        timer=timer,
+        analyzer_keys=analyzer_keys,
+    )
+
+    phase_timings = [
+        {"phase": "configured-target-loading", "duration_ms": load_duration_ms},
+        {"phase": "analyzer-run", "duration_ms": analyzer_duration_ms},
+    ]
+    return _build_profile_report(
+        workspace_root=resolved_workspace_root,
+        program_files=[profiled_target.entry_file],
+        dependency_file_count=0,
+        entry_records=[
+            {
+                "entry_file": sanitized_entry,
+                "definition_count": profiled_target.definitions_count,
+                "analyzers": analyzer_records,
+                "load_duration_ms": load_duration_ms,
+                "analysis_duration_ms": analyzer_duration_ms,
+                "total_duration_ms": round(load_duration_ms + analyzer_duration_ms, 3),
+            }
+        ],
+        failures=[],
+        phase_timings=phase_timings,
+        analyzer_keys=analyzer_keys,
+        configured_target={
+            "target": resolved_target_name,
+            "config_path": sanitize_path_for_report(resolved_config_path, repo_root=REPO_ROOT)
+            or resolved_config_path.as_posix(),
+        },
+    )
 
 
 def _profile_snapshot_analyzers(
@@ -74,14 +257,41 @@ def _profile_snapshot_analyzers(
         total_duration_ms = round(total_duration_ms + duration_ms, 3)
         issues: object = getattr(report, "issues", None)
         issue_count = len(cast(list[object], issues)) if isinstance(issues, list) else 0
-        records.append(
-            {
-                "key": spec.key,
-                "name": spec.name,
-                "issue_count": issue_count,
-                "duration_ms": duration_ms,
-            }
-        )
+        record: dict[str, Any] = {
+            "key": spec.key,
+            "name": spec.name,
+            "issue_count": issue_count,
+            "duration_ms": duration_ms,
+        }
+        phase_timings = getattr(report, "phase_timings", None)
+        if isinstance(phase_timings, list):
+            normalized_phase_timings: list[dict[str, Any]] = []
+            for raw_phase in cast(list[object], phase_timings):
+                if not isinstance(raw_phase, dict):
+                    continue
+                phase_mapping = cast(dict[str, object], raw_phase)
+                phase_name = str(phase_mapping.get("phase") or "")
+                if not phase_name:
+                    continue
+                raw_duration = phase_mapping.get("duration_ms")
+                if isinstance(raw_duration, (int, float)):
+                    duration_value = float(raw_duration)
+                elif isinstance(raw_duration, str):
+                    try:
+                        duration_value = float(raw_duration)
+                    except ValueError:
+                        duration_value = 0.0
+                else:
+                    duration_value = 0.0
+                normalized_phase_timings.append(
+                    {
+                        "phase": phase_name,
+                        "duration_ms": round(duration_value, 3),
+                    }
+                )
+            if normalized_phase_timings:
+                record["phase_timings"] = normalized_phase_timings
+        records.append(record)
     return records, total_duration_ms
 
 
@@ -121,11 +331,22 @@ def profile_workspace(
     *,
     max_files: int | None = None,
     analyzer_keys: Sequence[str] | None = None,
+    config_path: Path | None = None,
+    target_name: str | None = None,
     timer: Callable[[], float] | None = None,
     progress_callback: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     resolved_workspace_root = workspace_root.resolve()
     clock = timer or time.perf_counter
+
+    if config_path is not None or target_name is not None:
+        return _profile_configured_target(
+            config_path=config_path,
+            target_name=target_name,
+            timer=clock,
+            analyzer_keys=analyzer_keys,
+            progress_callback=progress_callback,
+        )
 
     if progress_callback is not None:
         progress_callback("Profiler: discovering workspace sources")
@@ -203,46 +424,15 @@ def profile_workspace(
         {"phase": "snapshot-loading", "duration_ms": load_total_ms},
         {"phase": "analyzer-run", "duration_ms": analyzer_total_ms},
     ]
-    total_duration_ms = round(sum(float(phase["duration_ms"]) for phase in phase_timings), 3)
-
-    status = "ok"
-    if failures and not entry_records:
-        status = "error"
-    elif failures:
-        status = "partial"
-
-    slowest_entries = sorted(entry_records, key=_entry_sort_key)[:10]
-    slowest_analyzers = _aggregate_analyzer_bottlenecks(entry_records)[:10]
-    slowest_phases = sorted(phase_timings, key=_phase_sort_key)
-
-    return {
-        "generated_by": "sattlint.devtools.profiler",
-        "report_kind": "workspace-profile",
-        "status": status,
-        "workspace_root": _sanitize_repo_path(resolved_workspace_root, workspace_root=resolved_workspace_root),
-        "summary": {
-            "program_file_count": len(discovery.program_files),
-            "profiled_entry_count": len(selected_program_files),
-            "successful_entry_count": len(entry_records),
-            "snapshot_failure_count": len(failures),
-            "analyzer_count": len(_selected_analyzer_specs(analyzer_keys)),
-            "total_duration_ms": total_duration_ms,
-        },
-        "source_files": {
-            "program_files": [
-                _sanitize_repo_path(path, workspace_root=resolved_workspace_root) for path in selected_program_files
-            ],
-            "dependency_file_count": len(discovery.dependency_files),
-        },
-        "phase_timings": phase_timings,
-        "entries": sorted(entry_records, key=lambda item: str(item["entry_file"]).casefold()),
-        "bottlenecks": {
-            "slowest_entries": slowest_entries,
-            "slowest_analyzers": slowest_analyzers,
-            "slowest_phases": slowest_phases,
-        },
-        "snapshot_failures": failures,
-    }
+    return _build_profile_report(
+        workspace_root=resolved_workspace_root,
+        program_files=selected_program_files,
+        dependency_file_count=len(discovery.dependency_files),
+        entry_records=entry_records,
+        failures=failures,
+        phase_timings=phase_timings,
+        analyzer_keys=analyzer_keys,
+    )
 
 
 def _render_text_report(report: dict[str, Any]) -> str:
@@ -254,8 +444,21 @@ def _render_text_report(report: dict[str, Any]) -> str:
         f"Profiled entries: {report['summary']['profiled_entry_count']}",
         f"Total duration: {report['summary']['total_duration_ms']} ms",
         "",
-        "Phase timings:",
     ]
+    configured_target = report.get("configured_target")
+    if isinstance(configured_target, dict):
+        configured_target_info = cast(dict[str, str], configured_target)
+        lines.extend(
+            [
+                f"Configured target: {configured_target_info.get('target', '')}",
+                f"Config path: {configured_target_info.get('config_path', '')}",
+            ]
+        )
+    lines.extend(
+        [
+            "Phase timings:",
+        ]
+    )
     for phase in report.get("phase_timings", []):
         lines.append(f"- {phase['phase']}: {phase['duration_ms']} ms")
 
@@ -266,6 +469,13 @@ def _render_text_report(report: dict[str, Any]) -> str:
         lines.append("- none")
     for entry in slowest_entries:
         lines.append(f"- {entry['entry_file']}: {entry['total_duration_ms']} ms")
+        for analyzer in entry.get("analyzers", []):
+            phase_timings = analyzer.get("phase_timings", [])
+            if not phase_timings:
+                continue
+            lines.append(f"  - {analyzer['key']} phases:")
+            for phase in phase_timings:
+                lines.append(f"    - {phase['phase']}: {phase['duration_ms']} ms")
 
     lines.append("")
     lines.append("Slowest analyzers:")
@@ -295,6 +505,16 @@ def _parse_profiler_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "--workspace-root",
         default=str(REPO_ROOT),
         help="Workspace root to scan for entry files.",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Optional SattLint config path. When provided, profile one configured target instead of scanning a workspace.",
+    )
+    parser.add_argument(
+        "--target",
+        default=None,
+        help="Optional configured target name to profile from the selected config.",
     )
     parser.add_argument(
         "--max-files",
@@ -334,6 +554,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         Path(args.workspace_root).resolve(),
         max_files=args.max_files,
         analyzer_keys=list(args.analyzer),
+        config_path=Path(args.config).resolve() if args.config else None,
+        target_name=args.target,
         progress_callback=progress_callback,
     )
     output_error: OSError | None = None

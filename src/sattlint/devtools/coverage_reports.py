@@ -28,7 +28,9 @@ _GIT_DIFF_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
 def _normalize_coverage_filename(filename: str) -> str:
-    normalized = filename.replace("\\", "/").lstrip("./")
+    normalized = filename.replace("\\", "/")
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
     if not normalized:
         return ""
     if normalized.startswith(("src/", "tests/")):
@@ -216,7 +218,8 @@ def _collect_modules(root_xml: Any) -> tuple[list[dict[str, Any]], dict[str, dic
             continue
         line_rate = float(class_node.attrib.get("line-rate", "0"))
         lines_valid = int(class_node.attrib.get("lines-valid", "0") or 0)
-        lines_covered = int(class_node.attrib.get("lines-covered", "0") or round(line_rate * lines_valid))
+        lines_covered_text = class_node.attrib.get("lines-covered")
+        lines_covered = round(line_rate * lines_valid) if lines_covered_text is None else int(lines_covered_text or 0)
         line_hits: dict[int, int] = {}
         for line_node in class_node.findall("lines/line"):
             line_number = int(line_node.attrib.get("number", "0") or 0)
@@ -391,6 +394,7 @@ def build_coverage_summary_report(
 ) -> dict[str, Any]:
     """Build a machine-readable coverage summary from coverage.xml."""
     resolved_coverage_path = coverage_path or (root / "coverage.xml")
+    coverage_report_name = resolved_coverage_path.name
     ratchet_state = _load_coverage_ratchet(root)
 
     def skipped_report(skip_reason: str, error_type: str) -> dict[str, Any]:
@@ -499,7 +503,7 @@ def build_coverage_summary_report(
         findings.append(
             {
                 "id": "coverage-ratchet-regression",
-                "path": "coverage.xml",
+                "path": coverage_report_name,
                 "line_rate": total_line_rate,
                 "severity": "medium",
                 "message": "Overall test coverage regressed below the checked-in ratchet baseline.",
@@ -511,7 +515,7 @@ def build_coverage_summary_report(
         findings.append(
             {
                 "id": "change-scoped-coverage-ratchet-regression",
-                "path": change_scoped["changed_files"][0] if change_scoped["changed_files"] else "coverage.xml",
+                "path": change_scoped["changed_files"][0] if change_scoped["changed_files"] else coverage_report_name,
                 "severity": "medium",
                 "message": "Changed source coverage proof fell below the checked-in diff-scoped ratchet.",
                 "suggestion": "Run focused owner tests with coverage and raise changed-line coverage first; fall back to touched-file proof only when no executable changed lines exist.",

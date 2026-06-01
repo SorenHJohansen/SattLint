@@ -22,6 +22,37 @@ if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
 
 
+_PARAM_MAPPING_VALIDATION_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
+    {
+        IssueKind.REQUIRED_PARAMETER_CONNECTION,
+        IssueKind.CONTRACT_MISMATCH,
+        IssueKind.STRING_MAPPING_MISMATCH,
+        IssueKind.MIN_MAX_MAPPING_MISMATCH,
+    }
+)
+_PARAM_MAPPING_CHECK_ISSUE_KINDS: frozenset[IssueKind] = frozenset(
+    {
+        IssueKind.CONTRACT_MISMATCH,
+        IssueKind.STRING_MAPPING_MISMATCH,
+        IssueKind.MIN_MAX_MAPPING_MISMATCH,
+    }
+)
+
+
+def _selected_issue_kinds(self: object) -> frozenset[IssueKind] | set[IssueKind] | None:
+    return getattr(self, "_selected_issue_kinds", None)
+
+
+def _should_collect_issue_kind(self: object, kind: IssueKind) -> bool:
+    selected_kinds = _selected_issue_kinds(self)
+    return selected_kinds is None or kind in selected_kinds
+
+
+def _should_collect_any_issue_kinds(self: object, kinds: frozenset[IssueKind]) -> bool:
+    selected_kinds = _selected_issue_kinds(self)
+    return selected_kinds is None or bool(selected_kinds & kinds)
+
+
 def _collect_module_vars(
     mods: list[SingleModule | FrameModule | ModuleTypeInstance],
     index: dict[str, list[Variable]],
@@ -129,6 +160,7 @@ def _make_nested_contract_extractor(self: VariablesAnalyzer) -> VariablesAnalyze
         unavailable_libraries=self.unavailable_libraries,
         analyzed_target_is_library=self.analyzed_target_is_library,
         include_dependency_moduletype_usage=self.include_dependency_moduletype_usage,
+        selected_issue_kinds=None,
         trace_recorder=None,
         build_anytype_contracts=False,
     )
@@ -144,30 +176,37 @@ def _check_param_mappings_for_single(
     parent_env: dict[str, Variable],
     parent_path: list[str],
 ) -> None:
-    params_by_name = {v.name.casefold(): v for v in (mod.moduleparameters or [])}
-    mapped_target_keys = {
-        target_name.casefold()
-        for pm in mod.parametermappings or []
-        for target_name in [varname_base(cast(Any, pm).target)]
-        if target_name and target_name.casefold() in params_by_name
-    }
+    if not _should_collect_any_issue_kinds(self, _PARAM_MAPPING_VALIDATION_ISSUE_KINDS):
+        return
 
-    for parameter in mod.moduleparameters or []:
-        if parameter.name.casefold() in mapped_target_keys:
-            continue
-        usage = self.get_usage(parameter)
-        if not (usage.read or usage.written):
-            continue
-        if usage.is_display_only:
-            continue
-        self.append_issue(
-            VariableIssue(
-                kind=IssueKind.REQUIRED_PARAMETER_CONNECTION,
-                module_path=list(parent_path),
-                variable=parameter,
-                role=(f"required parameter connection missing for {parameter.name!r}"),
+    params_by_name = {v.name.casefold(): v for v in (mod.moduleparameters or [])}
+    if _should_collect_issue_kind(self, IssueKind.REQUIRED_PARAMETER_CONNECTION):
+        mapped_target_keys = {
+            target_name.casefold()
+            for pm in mod.parametermappings or []
+            for target_name in [varname_base(cast(Any, pm).target)]
+            if target_name and target_name.casefold() in params_by_name
+        }
+
+        for parameter in mod.moduleparameters or []:
+            if parameter.name.casefold() in mapped_target_keys:
+                continue
+            usage = self.get_usage(parameter)
+            if not (usage.read or usage.written):
+                continue
+            if usage.is_display_only:
+                continue
+            self.append_issue(
+                VariableIssue(
+                    kind=IssueKind.REQUIRED_PARAMETER_CONNECTION,
+                    module_path=list(parent_path),
+                    variable=parameter,
+                    role=(f"required parameter connection missing for {parameter.name!r}"),
+                )
             )
-        )
+
+    if not _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
+        return
 
     for pm in mod.parametermappings or []:
         tgt_name = varname_base(cast(Any, pm).target)
@@ -182,6 +221,9 @@ def _check_param_mappings_for_type_instance(
     parent_path: list[str],
     current_library: str | None = None,
 ) -> None:
+    if not _should_collect_any_issue_kinds(self, _PARAM_MAPPING_VALIDATION_ISSUE_KINDS):
+        return
+
     try:
         mt = resolve_moduletype_def_strict(
             self.bp,
@@ -192,27 +234,32 @@ def _check_param_mappings_for_type_instance(
     except ValueError:
         return
     params_by_name = {v.name.casefold(): v for v in (mt.moduleparameters or [])}
-    mapped_target_keys = {
-        target_name.casefold()
-        for pm in inst.parametermappings or []
-        for target_name in [varname_base(cast(Any, pm).target)]
-        if target_name and target_name.casefold() in params_by_name
-    }
-    required_parameter_names = self.get_required_parameter_names_for_typedef(mt)
-    for required_key in sorted(required_parameter_names):
-        if required_key in mapped_target_keys:
-            continue
-        required_variable = params_by_name.get(required_key)
-        if required_variable is None:
-            continue
-        self.append_issue(
-            VariableIssue(
-                kind=IssueKind.REQUIRED_PARAMETER_CONNECTION,
-                module_path=list(parent_path),
-                variable=required_variable,
-                role=(f"required parameter connection missing for {required_variable.name!r}"),
+    if _should_collect_issue_kind(self, IssueKind.REQUIRED_PARAMETER_CONNECTION):
+        mapped_target_keys = {
+            target_name.casefold()
+            for pm in inst.parametermappings or []
+            for target_name in [varname_base(cast(Any, pm).target)]
+            if target_name and target_name.casefold() in params_by_name
+        }
+        required_parameter_names = self.get_required_parameter_names_for_typedef(mt)
+        for required_key in sorted(required_parameter_names):
+            if required_key in mapped_target_keys:
+                continue
+            required_variable = params_by_name.get(required_key)
+            if required_variable is None:
+                continue
+            self.append_issue(
+                VariableIssue(
+                    kind=IssueKind.REQUIRED_PARAMETER_CONNECTION,
+                    module_path=list(parent_path),
+                    variable=required_variable,
+                    role=(f"required parameter connection missing for {required_variable.name!r}"),
+                )
             )
-        )
+
+    if not _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
+        return
+
     for pm in inst.parametermappings or []:
         tgt_name = varname_base(cast(Any, pm).target)
         tgt_var = params_by_name.get(tgt_name) if tgt_name else None
@@ -234,6 +281,9 @@ def _check_param_mapping(
     *,
     owner_contract_id: int | None = None,
 ) -> None:
+    if not _should_collect_any_issue_kinds(self, _PARAM_MAPPING_CHECK_ISSUE_KINDS):
+        return
+
     if tgt_var is None:
         return
     if pm.is_source_global:

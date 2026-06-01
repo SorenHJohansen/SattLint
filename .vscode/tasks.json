@@ -607,6 +607,14 @@
 			"isBackground": false,
 			"problemMatcher": [],
 			"group": "test"
+		},
+		{
+			"label": "AI: Profile real config AST regen",
+			"type": "shell",
+			"command": "profile_xdg=\"$(mktemp -d)\" && mkdir -p \"$profile_xdg/sattlint\" && cp ${env:HOME}/.config/sattlint/config.toml \"$profile_xdg/sattlint/config.toml\" && set +e && XDG_CONFIG_HOME=\"$profile_xdg\" SATTLINT_REAL_CONFIG_PATH=${env:HOME}/.config/sattlint/config.toml SATTLINT_PROFILE_OUTPUT=${workspaceFolder}/artifacts/tmp/profile_real_config_ast_regen_summary_20260529.json ${workspaceFolder}/scripts/run_repo_python.sh ${workspaceFolder}/artifacts/tmp/profile_real_config_ast_regen.py > ${workspaceFolder}/artifacts/tmp/profile_real_config_ast_regen_summary_20260529.stdout 2> ${workspaceFolder}/artifacts/tmp/profile_real_config_ast_regen_summary_20260529.stderr; task_exit=$?; printf '%s\\n' \"$task_exit\" > ${workspaceFolder}/artifacts/tmp/profile_real_config_ast_regen_summary_20260529.exit; exit \"$task_exit\"",
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
 		}
 	],
 	"inputs": [

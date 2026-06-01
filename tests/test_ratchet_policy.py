@@ -330,8 +330,15 @@ def test_evaluate_policy_change_allows_approved_migration_of_existing_coverage_d
     assert errors == []
 
 
-def test_evaluate_policy_change_allows_approved_migration_of_existing_structural_and_typing_debt():
+def test_evaluate_policy_change_allows_approved_migration_of_existing_structural_and_typing_debt(tmp_path):
     approval_path = ".github/approvals/ratchet-rebaseline-2026-05-04.md"
+    (tmp_path / "coverage.xml").write_text(
+        """<?xml version=\"1.0\" ?>
+<coverage>
+    <packages><package><classes /></package></packages>
+</coverage>""",
+        encoding="utf-8",
+    )
     head_payload = _file_debt_ratchet_payload(
         {
             "src/sattlint/app.py": {
@@ -367,6 +374,7 @@ def test_evaluate_policy_change_allows_approved_migration_of_existing_structural
     )
 
     errors = ratchet_policy.evaluate_policy_change(
+        repo_root=tmp_path,
         changed_files=(ratchet_policy.FILE_DEBT_RATCHET_PATH, approval_path),
         current_text_by_path={
             ratchet_policy.FILE_DEBT_RATCHET_PATH: head_payload,
@@ -383,8 +391,15 @@ def test_evaluate_policy_change_allows_approved_migration_of_existing_structural
     assert errors == []
 
 
-def test_evaluate_policy_change_rejects_markdown_structural_debt_entry():
+def test_evaluate_policy_change_rejects_markdown_structural_debt_entry(tmp_path):
     approval_path = ".github/approvals/ratchet-rebaseline-2026-05-04.md"
+    (tmp_path / "coverage.xml").write_text(
+        """<?xml version=\"1.0\" ?>
+<coverage>
+    <packages><package><classes /></package></packages>
+</coverage>""",
+        encoding="utf-8",
+    )
     head_payload = _file_debt_ratchet_payload(
         {
             "docs/exec-plans/feature-roadmap.md": {
@@ -399,6 +414,7 @@ def test_evaluate_policy_change_rejects_markdown_structural_debt_entry():
     )
 
     errors = ratchet_policy.evaluate_policy_change(
+        repo_root=tmp_path,
         changed_files=(ratchet_policy.FILE_DEBT_RATCHET_PATH, approval_path),
         current_text_by_path={
             ratchet_policy.FILE_DEBT_RATCHET_PATH: head_payload,
@@ -455,3 +471,94 @@ def test_file_debt_stale_entry_errors_flags_structural_and_coverage_entries(tmp_
 
     assert any("stale for src/pkg/stale_structural.py" in error for error in errors)
     assert any("stale for src/pkg/stale_coverage.py" in error for error in errors)
+
+
+def test_file_debt_runtime_errors_flags_unlisted_touched_files_below_targets(tmp_path):
+    undercovered = tmp_path / "src" / "pkg" / "undercovered.py"
+    undercovered.parent.mkdir(parents=True)
+    undercovered.write_text("value = 1\n", encoding="utf-8")
+
+    oversized = tmp_path / "src" / "pkg" / "oversized.py"
+    oversized.write_text("\n".join(f"line_{index} = {index}" for index in range(501)), encoding="utf-8")
+
+    (tmp_path / "coverage.xml").write_text(
+        """<?xml version=\"1.0\" ?>
+<coverage>
+    <packages><package><classes>
+        <class filename=\"src/pkg/undercovered.py\" line-rate=\"0.90\" lines-valid=\"10\" lines-covered=\"9\">
+            <lines/>
+        </class>
+        <class filename=\"src/pkg/oversized.py\" line-rate=\"1.0\" lines-valid=\"10\" lines-covered=\"10\">
+            <lines/>
+        </class>
+    </classes></package></packages>
+</coverage>""",
+        encoding="utf-8",
+    )
+
+    errors = ratchet_policy._file_debt_runtime_errors(
+        repo_root=tmp_path,
+        context=ratchet_policy.ChangeContext(
+            changed_files=("src/pkg/undercovered.py", "src/pkg/oversized.py"),
+            added_files=(),
+            base_ref=None,
+            source="test",
+        ),
+        file_debt_state={},
+        structural_exceptions={
+            "src/pkg/oversized.py": {
+                "max_lines": 700,
+                "reason": "Existing structural exception still needs convergence.",
+            }
+        },
+        typing_state=ratchet_policy.TypingRatchetState(strict_paths=(), strict_roots=(), debt_allowlist=()),
+    )
+
+    assert any(
+        "missing per-file coverage debt entry" in error and "src/pkg/undercovered.py" in error for error in errors
+    )
+    assert any("missing per-file debt entry" in error and "src/pkg/oversized.py" in error for error in errors)
+
+
+def test_file_debt_runtime_errors_accepts_unlisted_touched_files_at_targets(tmp_path):
+    covered = tmp_path / "src" / "pkg" / "covered.py"
+    covered.parent.mkdir(parents=True)
+    covered.write_text("value = 1\n", encoding="utf-8")
+
+    within_target = tmp_path / "src" / "pkg" / "within_target.py"
+    within_target.write_text("line = 1\n", encoding="utf-8")
+
+    (tmp_path / "coverage.xml").write_text(
+        """<?xml version=\"1.0\" ?>
+<coverage>
+    <packages><package><classes>
+        <class filename=\"src/pkg/covered.py\" line-rate=\"1.0\" lines-valid=\"10\" lines-covered=\"10\">
+            <lines/>
+        </class>
+        <class filename=\"src/pkg/within_target.py\" line-rate=\"1.0\" lines-valid=\"10\" lines-covered=\"10\">
+            <lines/>
+        </class>
+    </classes></package></packages>
+</coverage>""",
+        encoding="utf-8",
+    )
+
+    errors = ratchet_policy._file_debt_runtime_errors(
+        repo_root=tmp_path,
+        context=ratchet_policy.ChangeContext(
+            changed_files=("src/pkg/covered.py", "src/pkg/within_target.py"),
+            added_files=(),
+            base_ref=None,
+            source="test",
+        ),
+        file_debt_state={},
+        structural_exceptions={
+            "src/pkg/within_target.py": {
+                "max_lines": 700,
+                "reason": "Existing structural exception still needs convergence.",
+            }
+        },
+        typing_state=ratchet_policy.TypingRatchetState(strict_paths=(), strict_roots=(), debt_allowlist=()),
+    )
+
+    assert errors == []

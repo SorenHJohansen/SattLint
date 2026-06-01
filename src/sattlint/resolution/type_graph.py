@@ -85,11 +85,10 @@ class TypeGraph:
             return
 
         start = root_type
-        stack: list[tuple[str, tuple[str, ...]]] = [(start, ())]
-        visiting: set[str] = set()
+        stack: list[tuple[str, tuple[str, ...], frozenset[str]]] = [(start, (), frozenset())]
 
         while stack:
-            tname, prefix = stack.pop()
+            tname, prefix, ancestors = stack.pop()
             tkey = _cf(tname)
             rec = self._records_by_key.get(tkey)
             if rec is None:
@@ -97,19 +96,18 @@ class TypeGraph:
                 yield prefix
                 continue
 
-            if tkey in visiting:
+            if tkey in ancestors:
                 # Cycle; stop expanding.
                 yield prefix
                 continue
 
-            visiting.add(tkey)
+            next_ancestors = ancestors | {tkey}
             for field in rec.fields_by_key.values():
                 new_prefix = (*prefix, field.name)
                 if isinstance(field.datatype, Simple_DataType):
                     yield new_prefix
                 else:
-                    stack.append((str(field.datatype), new_prefix))
-            visiting.remove(tkey)
+                    stack.append((str(field.datatype), new_prefix, next_ancestors))
 
     def iter_all_addressable_paths(self, root_var: Variable) -> Iterable[tuple[str, ...]]:
         """Convenience: expand leaf paths for a variable's datatype."""

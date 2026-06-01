@@ -19,6 +19,7 @@ from tests.helpers.picture_display_paths_support import (
     base_picture_with_leading_dash_paths,
     base_picture_with_moduletype_form_picture_display,
     module,
+    picture_display_jump_node_path_text,
 )
 
 
@@ -136,12 +137,12 @@ def test_correlate_picture_display_records_maps_local_moduletype_record_to_templ
         record_end_line=5,
         path_rows=(
             PictureDisplayPathRow(
-                record_index=1,
-                index_token="0",
-                index_value=0,
-                kind="literal",
-                raw_text="-----------+Opmessage+l1+l2+COLUMNJUMPOUTLET",
-                span=SourceSpan(line=1, column=1),
+                1,
+                "0",
+                0,
+                "literal",
+                picture_display_jump_node_path_text(),
+                SourceSpan(line=1, column=1),
             ),
         ),
     )
@@ -201,12 +202,12 @@ def test_correlate_picture_display_records_treats_same_library_typedef_as_local(
         record_end_line=5,
         path_rows=(
             PictureDisplayPathRow(
-                record_index=1,
-                index_token="0",
-                index_value=0,
-                kind="literal",
-                raw_text="-----------+Opmessage+l1+l2+COLUMNJUMPOUTLET",
-                span=SourceSpan(line=1, column=1),
+                1,
+                "0",
+                0,
+                "literal",
+                picture_display_jump_node_path_text(),
+                SourceSpan(line=1, column=1),
             ),
         ),
     )

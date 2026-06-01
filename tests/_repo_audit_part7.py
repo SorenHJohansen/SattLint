@@ -1,4 +1,6 @@
 # ruff: noqa: F403, F405
+from sattlint.devtools import ai_gc
+
 from ._repo_audit_test_support import *
 
 
@@ -420,6 +422,184 @@ def test_apply_ai_gc_deletes_stale_artifacts_and_writes_report(tmp_path):
     assert not artifact_dir.exists()
     assert not manifest_path.exists()
     assert (output_dir / "ai_gc.json").exists()
+
+
+def test_ai_gc_list_tracked_paths_handles_missing_git_and_subprocess_failures(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai_gc.shutil, "which", lambda _name: None)
+    assert ai_gc._list_tracked_paths(tmp_path) == ()
+
+    monkeypatch.setattr(ai_gc.shutil, "which", lambda _name: "git")
+
+    def _raise_oserror(*_args, **_kwargs):
+        raise OSError("git unavailable")
+
+    monkeypatch.setattr(ai_gc.subprocess, "run", _raise_oserror)
+    assert ai_gc._list_tracked_paths(tmp_path) == ()
+
+
+def test_ai_gc_path_mtime_ignores_child_stat_failures(tmp_path, monkeypatch):
+    artifact_dir = tmp_path / "artifacts" / "audit-review"
+    artifact_dir.mkdir(parents=True)
+    base_mtime = artifact_dir.stat().st_mtime
+    original_rglob = Path.rglob
+
+    class _BrokenChild:
+        def stat(self):
+            raise OSError("stat failed")
+
+    def _fake_rglob(self, pattern):
+        if self == artifact_dir:
+            return [_BrokenChild()]
+        return list(original_rglob(self, pattern))
+
+    monkeypatch.setattr(Path, "rglob", _fake_rglob)
+
+    assert ai_gc._path_mtime(artifact_dir) == base_mtime
+
+
+def test_build_ai_gc_report_collects_missing_manifest_sources_and_ignores_manifest_siblings(tmp_path):
+    generated_dir = tmp_path / "docs" / "generated"
+    generated_dir.mkdir(parents=True)
+    (generated_dir / "ignored.sources.json").write_text("{}", encoding="utf-8")
+
+    artifact_file = generated_dir / "fresh.json"
+    artifact_file.write_text("{}", encoding="utf-8")
+    artifact_source_manifest_path(artifact_file).write_text(
+        json.dumps({"sources": [{"path": ""}, {"path": "missing.py"}]}),
+        encoding="utf-8",
+    )
+
+    report = ai_gc.build_ai_gc_report(
+        tmp_path,
+        tracked_paths=(),
+        stale_after_days=14,
+    )
+
+    assert report["summary"]["candidate_count"] == 1
+    candidate = report["candidates"][0]
+    assert candidate["path"] == "docs/generated/fresh.json"
+    assert candidate["missing_sources"] == ["missing.py"]
+    assert "missing sources: missing.py" in candidate["reason"]
+
+
+def test_build_ai_gc_report_reports_invalid_manifest_payloads(tmp_path):
+    artifact_dir = tmp_path / "artifacts" / "audit-review-invalid"
+    artifact_dir.mkdir(parents=True)
+    artifact_file = artifact_dir / "status.json"
+    artifact_file.write_text("{}", encoding="utf-8")
+    invalid_manifest = artifact_source_manifest_path(artifact_file)
+    invalid_manifest.write_text("{", encoding="utf-8")
+
+    report = ai_gc.build_ai_gc_report(
+        tmp_path,
+        tracked_paths=(),
+        stale_after_days=14,
+    )
+
+    candidate = report["candidates"][0]
+    assert candidate["path"] == "artifacts/audit-review-invalid"
+    assert candidate["invalid_manifests"] == [invalid_manifest.as_posix()]
+    assert "invalid manifests" in candidate["reason"]
+
+
+def test_build_ai_gc_report_apply_deletes_stale_file_candidates(tmp_path):
+    artifact_file = tmp_path / "docs" / "generated" / "orphan.json"
+    artifact_file.parent.mkdir(parents=True)
+    artifact_file.write_text("{}", encoding="utf-8")
+    manifest_path = artifact_source_manifest_path(artifact_file)
+    manifest_path.write_text("{}", encoding="utf-8")
+
+    now_ts = time.time()
+    stale_ts = now_ts - (20 * 24 * 60 * 60)
+    os.utime(artifact_file, (stale_ts, stale_ts))
+    os.utime(manifest_path, (stale_ts, stale_ts))
+
+    report = ai_gc.build_ai_gc_report(
+        tmp_path,
+        tracked_paths=(),
+        now_ts=now_ts,
+        stale_after_days=14,
+        apply=True,
+    )
+
+    assert report["status"] == "pass"
+    assert report["summary"]["applied_count"] == 1
+    assert not artifact_file.exists()
+    assert not manifest_path.exists()
+
+
+def test_build_ai_gc_report_apply_records_delete_failures(tmp_path, monkeypatch):
+    artifact_file = tmp_path / "docs" / "generated" / "blocked.json"
+    artifact_file.parent.mkdir(parents=True)
+    artifact_file.write_text("{}", encoding="utf-8")
+
+    now_ts = time.time()
+    stale_ts = now_ts - (20 * 24 * 60 * 60)
+    os.utime(artifact_file, (stale_ts, stale_ts))
+
+    original_unlink = Path.unlink
+
+    def _failing_unlink(self, *args, **kwargs):
+        if self == artifact_file:
+            raise OSError("permission denied")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", _failing_unlink)
+
+    report = ai_gc.build_ai_gc_report(
+        tmp_path,
+        tracked_paths=(),
+        now_ts=now_ts,
+        stale_after_days=14,
+        apply=True,
+    )
+
+    assert report["status"] == "fail"
+    assert report["summary"]["failure_count"] == 1
+    assert report["failures"][0]["path"] == "docs/generated/blocked.json"
+    assert report["failures"][0]["error_type"] == "OSError"
+
+
+def test_build_ai_gc_report_apply_handles_non_delete_actions_and_missing_targets(monkeypatch, tmp_path):
+    root = tmp_path.resolve()
+    monkeypatch.setattr(
+        ai_gc,
+        "_iter_allowlisted_candidates",
+        lambda _root, _tracked_paths: [
+            {
+                "path_obj": root / "docs" / "generated" / "virtual.json",
+                "path": "docs/generated/virtual.json",
+                "kind": "file",
+                "action": "keep",
+                "safe_to_apply": True,
+            },
+            {
+                "path_obj": root / "docs" / "generated" / "missing.json",
+                "path": "docs/generated/missing.json",
+                "kind": "file",
+                "action": "delete",
+                "safe_to_apply": True,
+            },
+        ],
+    )
+    monkeypatch.setattr(ai_gc, "_manifest_drift_details", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ai_gc, "_path_mtime", lambda *_args, **_kwargs: 0.0)
+    monkeypatch.setattr(ai_gc, "_path_size_bytes", lambda *_args, **_kwargs: 0)
+
+    report = ai_gc.build_ai_gc_report(
+        tmp_path,
+        tracked_paths=(),
+        now_ts=20 * 24 * 60 * 60,
+        stale_after_days=14,
+        apply=True,
+    )
+
+    assert report["status"] == "pass"
+    assert report["summary"]["applied_count"] == 2
+    assert {entry["path"] for entry in report["applied_actions"]} == {
+        "docs/generated/virtual.json",
+        "docs/generated/missing.json",
+    }
 
 
 def test_build_repo_audit_check_catalog_lists_pipeline_and_custom_checks(tmp_path):

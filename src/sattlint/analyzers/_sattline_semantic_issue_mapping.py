@@ -160,8 +160,15 @@ def describe_trace_finding(finding: dict[str, Any]) -> str:
             terminated_by_dict = {}
         raw_terminator = terminated_by_dict.get("kind")
         terminator = raw_terminator if isinstance(raw_terminator, str) else "an earlier terminating node"
-        if terminated_by_dict.get("target"):
-            terminator = f"{terminator} targeting {terminated_by_dict['target']!r}"
+        targets = terminated_by_dict.get("targets")
+        if isinstance(targets, list | tuple) and targets:
+            target_texts: list[str] = []
+            for raw_target in cast(list[object] | tuple[object, ...], targets):
+                if isinstance(raw_target, str):
+                    target_texts.append(repr(raw_target))
+            rendered_targets = ", ".join(target_texts)
+            if rendered_targets:
+                terminator = f"{terminator} targeting {rendered_targets}"
         node_label = finding.get("node_label", "<unknown node>")
         sequence_name = finding.get("sequence_name", "<unnamed>")
         return f"Sequence {sequence_name!r} contains unreachable node {node_label!r} after {terminator}."

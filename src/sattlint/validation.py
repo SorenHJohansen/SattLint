@@ -733,17 +733,18 @@ def _validate_sequence_nodes(
             previous_unit_name = "ENDPARALLEL"
             previous_unit_kind = "parallel block"
         elif isinstance(node, SFCFork):
-            _validate_identifier(node.target, f"{context} fork target")
-            target_key = node.target.casefold()
-            if target_key not in labels and target_key not in module_labels:
-                raise StructuralValidationError(
-                    f"{context} has SEQFORK target {node.target!r} that does not exist in the sequence or module"
-                )
-            if label_counts.get(target_key, 0) > 1 or (module_label_counts or {}).get(target_key, 0) > 1:
-                raise StructuralValidationError(
-                    f"{context} has ambiguous SEQFORK target {node.target!r}; "
-                    "that label is declared multiple times in the sequence or module"
-                )
+            for target in node.targets:
+                _validate_identifier(target, f"{context} fork target")
+                target_key = target.casefold()
+                if target_key not in labels and target_key not in module_labels:
+                    raise StructuralValidationError(
+                        f"{context} has SEQFORK target {target!r} that does not exist in the sequence or module"
+                    )
+                if label_counts.get(target_key, 0) > 1 or (module_label_counts or {}).get(target_key, 0) > 1:
+                    raise StructuralValidationError(
+                        f"{context} has ambiguous SEQFORK target {target!r}; "
+                        "that label is declared multiple times in the sequence or module"
+                    )
         elif isinstance(node, SFCBreak):
             continue
 
@@ -848,7 +849,7 @@ def _validate_datatypes(
     _ensure_unique_names([datatype.name for datatype in datatypes or []], context, "datatype")
     for datatype in datatypes or []:
         _validate_identifier(datatype.name, f"{context} datatype")
-        if len(datatype.var_list or []) < 2:
+        if len(datatype.var_list or []) == 1:
             raise StructuralValidationError(
                 f"{context} datatype {datatype.name!r} must declare at least 2 fields",
                 **_span_kwargs(datatype.declaration_span),

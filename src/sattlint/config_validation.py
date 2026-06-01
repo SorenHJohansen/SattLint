@@ -37,6 +37,7 @@ type ConfigDict = dict[str, object]
 VALID_TOP_LEVEL_KEYS = frozenset(
     {
         "analyzed_programs_and_libraries",
+        "include_reverse_library_consumers",
         "mode",
         "scan_root_only",
         "fast_cache_validation",

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from lark.exceptions import UnexpectedInput
+
 from sattlint.analyzers.comment_code import analyze_comment_code_files
 from sattlint.utils import text_processing
 from sattlint.utils.text_processing import find_comments_with_code, find_disallowed_comments
@@ -399,8 +401,29 @@ def test_text_processing_is_at_keyword_honors_boundaries():
 
 def test_text_processing_advance_position_handles_crlf_and_lf():
     assert text_processing._advance_position("\r", "\n", 1, 1) == (2, 1, 1)
+    assert text_processing._advance_position("\r", None, 1, 1) == (2, 1, 0)
     assert text_processing._advance_position("\n", None, 1, 5) == (2, 1, 0)
     assert text_processing._advance_position("A", None, 3, 4) == (3, 5, 0)
+
+
+def test_text_processing_is_valid_code_via_grammar_handles_blank_and_expression_fallback(monkeypatch):
+    class _FakeUnexpectedInput(UnexpectedInput):
+        def __init__(self) -> None:
+            pass
+
+    class _FailParser:
+        def parse(self, _text: str) -> None:
+            raise _FakeUnexpectedInput()
+
+    class _PassParser:
+        def parse(self, _text: str) -> None:
+            return None
+
+    monkeypatch.setattr(text_processing, "_get_statement_parser", lambda: _FailParser())
+    monkeypatch.setattr(text_processing, "_get_expression_parser", lambda: _PassParser())
+
+    assert text_processing._is_valid_code_via_grammar("   ") is False
+    assert text_processing._is_valid_code_via_grammar("(Counter)") is True
 
 
 def test_text_processing_extract_code_candidates_splits_semicolon_sequences():
@@ -409,6 +432,14 @@ def test_text_processing_extract_code_candidates_splits_semicolon_sequences():
     assert "Counter := Counter + 1; CallSomething(A);" in candidates
     assert "Counter := Counter + 1;" in candidates
     assert "CallSomething(A);" in candidates
+
+
+def test_text_processing_extract_code_candidates_handles_empty_and_trailing_fragment():
+    assert text_processing._extract_code_candidates("   ") == []
+
+    candidates = text_processing._extract_code_candidates("Counter := Counter + 1; trailing branch")
+
+    assert "trailing branch" in candidates
 
 
 def test_text_processing_comment_code_indicators_returns_empty_when_no_valid_code(monkeypatch):
@@ -442,6 +473,38 @@ Picture*);
 
     assert len(violations) == 1
     assert violations[0].start_line == 6
+
+
+def test_find_disallowed_comments_resets_enddef_label_when_non_comment_token_appears():
+    text = """BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
+ModuleCode
+EQUATIONBLOCK
+x = 1;
+ENDEQUATIONBLOCK;
+ENDDEF; (* not an ENDDEF label comment *)
+"""
+
+    violations = find_disallowed_comments(text)
+
+    assert violations == []
+
+
+def test_find_disallowed_comments_handles_strings_and_nested_comments_before_first_block():
+    text = """BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
+ModuleCode
+Message = "A ""quoted"" path \\tmp";
+Broken = "unterminated
+(* Outer (* inner *) still outer *)
+EQUATIONBLOCK
+x = 1;
+ENDEQUATIONBLOCK;
+ENDDEF (*BasePicture*);
+"""
+
+    violations = find_disallowed_comments(text)
+
+    assert len(violations) == 1
+    assert violations[0].start_line == 5
 
 
 def test_find_comments_with_code_handles_nested_comments_inside_modulecode(monkeypatch):
@@ -487,6 +550,44 @@ ENDDEF (*BasePicture*);
     assert hits == []
 
 
+def test_find_comments_with_code_tracks_private_typedef_module_paths():
+    text = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
+TYPEDEFINITIONS
+    WorkerType = Private_ MODULEDEFINITION DateCode_ 456
+    ModuleCode
+        (* Result = InputValue + 1; *)
+    ENDDEF (*WorkerType*);
+ENDDEF (*BasePicture*);
+"""
+
+    hits = find_comments_with_code(text)
+
+    assert len(hits) == 1
+    assert hits[0].module_path == ("BasePicture", "TypeDef:WorkerType")
+
+
+def test_find_comments_with_code_treats_newline_as_end_of_unterminated_string():
+    text = """
+"SyntaxVersion"
+"OriginalFileDate"
+"ProgramDate"
+BasePicture Invocation (0,0,0,1,1) : MODULEDEFINITION DateCode_ 123
+ModuleCode
+Message = "unterminated
+(* Counter = Counter + 1; *)
+ENDDEF (*BasePicture*);
+"""
+
+    hits = find_comments_with_code(text)
+
+    assert len(hits) == 1
+    assert hits[0].start_line == 8
+
+
 def test_strip_sl_comments_removes_nested_comments_and_optional_semicolon():
     stripped = text_processing.strip_sl_comments("Value = 1; (* outer\n(* inner *)\ncomment *)\n   ;\nNext = 2;\n")
 
@@ -504,11 +605,22 @@ def test_strip_sl_comments_preserves_strings_with_comment_tokens_and_backslashes
     assert stripped.endswith(" \n")
 
 
+def test_strip_sl_comments_ends_unterminated_string_at_newline_before_comment():
+    stripped = text_processing.strip_sl_comments('Message = "unterminated\n(* remove me *)\nNext = 2;\n')
+
+    assert stripped == 'Message = "unterminated\n\nNext = 2;\n'
+
+
+def test_strip_sl_comments_preserves_terminal_backslash_inside_string():
+    assert text_processing.strip_sl_comments('"abc\\') == '"abc\\'
+
+
 # --- comment_code_report.py CommentCodeReport.summary() ---
 def test_comment_code_report_summary_no_hits_returns_ok():
     from sattlint.reporting.comment_code_report import CommentCodeReport
 
     report = CommentCodeReport(basepicture_name="Main", hits=[], issues=[], files_scanned=3)
+    assert report.name == "Main"
     result = report.summary()
     assert "Report: Commented-out code" in result
     assert "No code-like comments found" in result
@@ -567,3 +679,24 @@ def test_comment_code_report_summary_with_read_error():
     result = report.summary()
     assert "Read errors:" in result
     assert "Could not read Foo.s" in result
+
+
+def test_comment_code_report_summary_without_module_path_uses_source_location_only():
+    from pathlib import Path
+
+    from sattlint.reporting.comment_code_report import CommentCodeHit, CommentCodeReport
+
+    hit = CommentCodeHit(
+        file_path=Path("Main.s"),
+        start_line=12,
+        end_line=12,
+        start_col=1,
+        end_col=8,
+        indicators=("assignment",),
+        preview="Value := 1;",
+    )
+    report = CommentCodeReport(basepicture_name="Main", hits=[hit], issues=[], files_scanned=1)
+
+    result = report.summary()
+
+    assert "Main.s:12 [assignment] Value := 1;" in result

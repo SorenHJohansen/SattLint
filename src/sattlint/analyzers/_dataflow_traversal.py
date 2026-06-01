@@ -310,7 +310,7 @@ class _DataflowTraversalMixin(_DataflowScopeSupportMixin):
                 continue
 
             if isinstance(node, SFCFork):
-                terminated_by = {"kind": "SFCFork", "target": node.target}
+                terminated_by = {"kind": "SFCFork", "targets": list(node.targets)}
                 continue
 
         return current_state

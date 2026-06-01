@@ -10,6 +10,7 @@ import pytest
 from lark.exceptions import VisitError
 
 from sattline_parser.models.ast_model import GraphObject, ModuleDef, ModuleHeader, SingleModule, SourceSpan
+from sattlint import _engine_graphics_helpers as engine_graphics_helpers
 from sattlint import engine
 from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
 from sattlint.picture_display_paths import PictureDisplayOccurrence
@@ -571,12 +572,25 @@ def test_attach_graphics_companion_reuses_cached_signature_after_pickle_roundtri
     graphics_file.write_text("graphics", encoding="utf-8")
 
     graphics_calls: list[Path] = []
+    warning_calls: list[str] = []
+    warning_notice = engine.ValidationNotice(message="picture warning", line=4, column=2, length=7)
+
     monkeypatch.setattr(
         engine,
         "validate_graphics_file",
         lambda path: (
             graphics_calls.append(path) or SimpleNamespace(messages=(), bindings=(), picture_display_records=())
         ),
+    )
+
+    def fake_picture_display_path_warnings(*_args, **_kwargs):
+        warning_calls.append("called")
+        return (warning_notice,)
+
+    monkeypatch.setattr(
+        engine_graphics_helpers,
+        "picture_display_path_warnings",
+        fake_picture_display_path_warnings,
     )
 
     first_bp = _make_basepicture(origin_file=root_file.name)
@@ -602,9 +616,13 @@ def test_attach_graphics_companion_reuses_cached_signature_after_pickle_roundtri
     assert first_refreshed is True
     assert second_refreshed is False
     assert graphics_calls == [graphics_file]
+    assert warning_calls == ["called"]
     assert first_bp.graphics_file == "Root.g"
     assert cached_bp.graphics_file == "Root.g"
+    assert getattr(cached_bp, "graphics_warning_notices", ()) == (warning_notice,)
     assert getattr(cached_bp, "graphics_companion_signature", None) is not None
+    assert first_graph.warnings == ["Root: picture warning"]
+    assert second_graph.warnings == ["Root: picture warning"]
 
 
 def test_loader_strict_syntax_check_validates_root_before_reading_dependencies(monkeypatch, tmp_path) -> None:
