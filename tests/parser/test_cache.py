@@ -298,10 +298,10 @@ def test_file_ast_cache_load_tolerates_stat_race(tmp_path: Path, monkeypatch) ->
             return True
         return original_exists(self)
 
-    def fake_stat(self: Path) -> os.stat_result:
+    def fake_stat(self: Path, *args: object, **kwargs: object) -> os.stat_result:
         if self == source_path:
             raise PermissionError("simulated stat race")
-        return original_stat(self)
+        return original_stat(self, *args, **kwargs)
 
     monkeypatch.setattr(path_type, "exists", fake_exists)
     monkeypatch.setattr(path_type, "stat", fake_stat)
@@ -334,10 +334,10 @@ def test_ast_cache_validate_tolerates_stat_race(tmp_path: Path, monkeypatch) -> 
             return True
         return original_exists(self)
 
-    def fake_stat(self: Path):
+    def fake_stat(self: Path, *args: object, **kwargs: object):
         if self == manifest_path:
             raise PermissionError("simulated stat race")
-        return original_stat(self)
+        return original_stat(self, *args, **kwargs)
 
     monkeypatch.setattr(path_type, "exists", fake_exists)
     monkeypatch.setattr(path_type, "stat", fake_stat)
