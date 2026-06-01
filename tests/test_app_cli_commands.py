@@ -172,6 +172,58 @@ def test_run_docgen_command_delegates_to_cli_owner(monkeypatch):
     assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
 
 
+def test_run_telemetry_summary_command_delegates_to_cli_owner(monkeypatch):
+    seen: dict[str, object] = {}
+
+    def fake_run_telemetry_summary_command(
+        cfg: dict,
+        *,
+        config_path: Path,
+        output_format: str,
+        output_path: str | None,
+        telemetry_output_path_fn,
+        summarize_telemetry_fn,
+        render_text_summary_fn,
+        exit_success: int,
+        exit_usage_error: int,
+    ) -> int:
+        seen["cfg"] = cfg
+        seen["config_path"] = config_path
+        seen["output_format"] = output_format
+        seen["output_path"] = output_path
+        seen["telemetry_output_path_fn"] = telemetry_output_path_fn
+        seen["summarize_telemetry_fn"] = summarize_telemetry_fn
+        seen["render_text_summary_fn"] = render_text_summary_fn
+        seen["exit_success"] = exit_success
+        seen["exit_usage_error"] = exit_usage_error
+        return 81
+
+    monkeypatch.setattr(
+        app.app_cli_commands_module,
+        "run_telemetry_summary_command",
+        fake_run_telemetry_summary_command,
+    )
+
+    cfg = {"debug": False}
+    result = app.run_telemetry_summary_command(
+        cfg,
+        config_path=Path("custom.toml"),
+        output_format="json",
+        output_path="summary.json",
+    )
+
+    assert result == 81
+    assert seen["cfg"] is cfg
+    assert seen["config_path"] == Path("custom.toml")
+    assert seen["output_format"] == "json"
+    assert seen["output_path"] == "summary.json"
+    assert callable(seen["telemetry_output_path_fn"])
+    assert callable(seen["summarize_telemetry_fn"])
+    assert callable(seen["render_text_summary_fn"])
+    assert seen["exit_success"] == app.EXIT_SUCCESS
+    assert seen["exit_usage_error"] == app.EXIT_USAGE_ERROR
+
+
 def test_run_simulate_command_delegates_to_cli_owner(monkeypatch):
     seen: dict[str, object] = {}
 
@@ -279,6 +331,103 @@ def test_cli_owner_run_validate_config_command_warns_on_default_config(capsys):
     assert exit_code == app.EXIT_USAGE_ERROR
     assert "Warning: default config loaded from default.toml" in out
     assert "MissingTarget (not found)" in out
+
+
+def test_cli_owner_run_telemetry_summary_command_prints_text(capsys):
+    exit_code = app.app_cli_commands_module.run_telemetry_summary_command(
+        {"debug": False},
+        config_path=Path("config.toml"),
+        output_format="text",
+        output_path=None,
+        telemetry_output_path_fn=lambda config_path: config_path.with_suffix(".telemetry.json"),
+        summarize_telemetry_fn=lambda path: {"path": str(path), "events": 2},
+        render_text_summary_fn=lambda summary: f"events={summary['events']}",
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_SUCCESS
+    assert "events=2" in out
+
+
+def test_cli_owner_run_telemetry_summary_command_writes_json_output(tmp_path):
+    output_path = tmp_path / "reports" / "telemetry.json"
+
+    exit_code = app.app_cli_commands_module.run_telemetry_summary_command(
+        {"debug": False},
+        config_path=Path("config.toml"),
+        output_format="json",
+        output_path=str(output_path),
+        telemetry_output_path_fn=lambda config_path: config_path.with_suffix(".telemetry.json"),
+        summarize_telemetry_fn=lambda _path: {"events": 3},
+        render_text_summary_fn=lambda summary: f"events={summary['events']}",
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    assert '"events": 3' in output_path.read_text(encoding="utf-8")
+
+
+def test_cli_owner_run_telemetry_summary_command_reports_missing_file(capsys):
+    exit_code = app.app_cli_commands_module.run_telemetry_summary_command(
+        {"debug": False},
+        config_path=Path("config.toml"),
+        output_format="text",
+        output_path=None,
+        telemetry_output_path_fn=lambda config_path: config_path.with_suffix(".telemetry.json"),
+        summarize_telemetry_fn=lambda _path: (_ for _ in ()).throw(FileNotFoundError()),
+        render_text_summary_fn=lambda summary: str(summary),
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert "Telemetry file not found:" in out
+
+
+def test_cli_owner_run_telemetry_summary_command_reports_write_failures(capsys, tmp_path):
+    output_path = tmp_path / "telemetry"
+    output_path.mkdir()
+
+    exit_code = app.app_cli_commands_module.run_telemetry_summary_command(
+        {"debug": False},
+        config_path=Path("config.toml"),
+        output_format="text",
+        output_path=str(output_path),
+        telemetry_output_path_fn=lambda config_path: config_path.with_suffix(".telemetry.json"),
+        summarize_telemetry_fn=lambda _path: {"events": 4},
+        render_text_summary_fn=lambda summary: f"events={summary['events']}",
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert "Failed to write telemetry summary" in out
+
+
+def test_cli_owner_run_telemetry_summary_command_reports_summary_errors(capsys):
+    def fail_summary(_path: Path) -> dict[str, Any]:
+        raise ValueError("bad telemetry")
+
+    exit_code = app.app_cli_commands_module.run_telemetry_summary_command(
+        {"debug": False},
+        config_path=Path("config.toml"),
+        output_format="text",
+        output_path=None,
+        telemetry_output_path_fn=lambda config_path: config_path.with_suffix(".telemetry.json"),
+        summarize_telemetry_fn=fail_summary,
+        render_text_summary_fn=lambda summary: str(summary),
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert "Telemetry summary failed: bad telemetry" in out
 
 
 def test_cli_owner_run_analyze_command_delegates_and_returns_success():
@@ -575,6 +724,141 @@ def test_cli_owner_run_simulate_command_writes_json_output(tmp_path):
     payload = output_path.read_text(encoding="utf-8")
     assert '"target": "Main"' in payload
     assert '"steady_state_reached": true' in payload
+
+
+def test_cli_owner_run_simulate_command_prints_text_summary(capsys):
+    class _FakeResult:
+        def to_dict(self):
+            return {"ignored": True}
+
+        def render_summary(self):
+            return "steady state reached after 2 scans"
+
+    exit_code = app.app_cli_commands_module.run_simulate_command(
+        {"debug": False},
+        target_path="program.s",
+        module_name="Main",
+        mode="steady-state",
+        max_scans=25,
+        output_format="text",
+        output_path=None,
+        use_cache=False,
+        simulate_fn=lambda cfg, **kwargs: _FakeResult(),
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_SUCCESS
+    assert "steady state reached after 2 scans" in out
+
+
+def test_cli_owner_run_simulate_command_prints_json_output(capsys):
+    class _FakeResult:
+        def to_dict(self):
+            return {"target": "Main", "steady_state_reached": True}
+
+        def render_summary(self):
+            return "ignored"
+
+    exit_code = app.app_cli_commands_module.run_simulate_command(
+        {"debug": False},
+        target_path="program.s",
+        module_name="Main",
+        mode="steady-state",
+        max_scans=25,
+        output_format="json",
+        output_path=None,
+        use_cache=False,
+        simulate_fn=lambda cfg, **kwargs: _FakeResult(),
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_SUCCESS
+    assert '"target": "Main"' in out
+
+
+def test_cli_owner_run_simulate_command_reports_unexpected_failures(capsys):
+    def fail_simulation(cfg: dict[str, Any], **kwargs: object) -> object:
+        raise RuntimeError("boom")
+
+    exit_code = app.app_cli_commands_module.run_simulate_command(
+        {"debug": False},
+        target_path="program.s",
+        module_name="Main",
+        mode="steady-state",
+        max_scans=25,
+        output_format="text",
+        output_path=None,
+        use_cache=False,
+        simulate_fn=fail_simulation,
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert "Simulation failed: boom" in out
+
+
+def test_cli_owner_run_simulate_command_writes_text_output(tmp_path):
+    output_path = tmp_path / "simulation.txt"
+
+    class _FakeResult:
+        def to_dict(self):
+            return {"ignored": True}
+
+        def render_summary(self):
+            return "steady state reached after 2 scans"
+
+    exit_code = app.app_cli_commands_module.run_simulate_command(
+        {"debug": False},
+        target_path="program.s",
+        module_name="Main",
+        mode="steady-state",
+        max_scans=25,
+        output_format="text",
+        output_path=str(output_path),
+        use_cache=False,
+        simulate_fn=lambda cfg, **kwargs: _FakeResult(),
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    assert exit_code == app.EXIT_SUCCESS
+    assert output_path.read_text(encoding="utf-8") == "steady state reached after 2 scans\n"
+
+
+def test_cli_owner_run_simulate_command_reports_text_write_failures(capsys, tmp_path):
+    output_path = tmp_path / "simulation-dir"
+    output_path.mkdir()
+
+    class _FakeResult:
+        def to_dict(self):
+            return {"ignored": True}
+
+        def render_summary(self):
+            return "steady state reached after 2 scans"
+
+    exit_code = app.app_cli_commands_module.run_simulate_command(
+        {"debug": False},
+        target_path="program.s",
+        module_name="Main",
+        mode="steady-state",
+        max_scans=25,
+        output_format="text",
+        output_path=str(output_path),
+        use_cache=False,
+        simulate_fn=lambda cfg, **kwargs: _FakeResult(),
+        exit_success=app.EXIT_SUCCESS,
+        exit_usage_error=app.EXIT_USAGE_ERROR,
+    )
+
+    out = capsys.readouterr().out
+    assert exit_code == app.EXIT_USAGE_ERROR
+    assert "Failed to write simulation output" in out
 
 
 def test_cli_owner_run_simulate_command_updates_live_status(monkeypatch):

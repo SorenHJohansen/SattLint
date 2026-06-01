@@ -25,11 +25,14 @@ from sattline_parser.models.ast_model import (
 from sattlint import constants as const
 from sattlint.analyzers import _sfc_collectors as sfc_collectors_module
 from sattlint.analyzers import sfc as sfc_module
+from sattlint.analyzers import variables as variables_module
 from sattlint.analyzers._sfc_collectors import _SfcAccessCollector
 from sattlint.analyzers._sfc_module_walk import iter_sfc_modulecodes
 from sattlint.analyzers._sfc_step_contracts import StepContract
+from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts
 from sattlint.analyzers.issue import Issue
 from sattlint.analyzers.sfc import analyze_sfc
+from sattlint.analyzers.variables import analyze_variables
 from sattlint.resolution import AccessKind
 from sattlint.resolution.paths import CanonicalPath
 
@@ -605,3 +608,42 @@ def test_analyze_sfc_covers_selected_collectors_reachability_messages_and_step_c
     assert "... (+1 more)" in report.issues[0].message
     assert report.issues[1].data["branch_path"] == [1]
     assert "targeting 'Done'" in report.issues[2].message
+
+
+def test_analyze_sfc_reuses_variable_artifacts_when_available(monkeypatch):
+    build_calls: list[str] = []
+    original_builder = variables_module._build_variable_analysis_artifacts
+
+    def _recording_builder(base_picture):
+        build_calls.append(base_picture.header.name)
+        return original_builder(base_picture)
+
+    monkeypatch.setattr(variables_module, "_build_variable_analysis_artifacts", _recording_builder)
+
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="Output", datatype=Simple_DataType.INTEGER)],
+        modulecode=ModuleCode(
+            sequences=[
+                _sequence(
+                    [
+                        SFCParallel(
+                            branches=[
+                                [_step("Left", [_assign("Output", 1)])],
+                                [_step("Right", [_assign("Output", 2)])],
+                            ]
+                        )
+                    ]
+                )
+            ],
+            equations=[],
+        ),
+    )
+    shared_artifacts = AnalysisSharedArtifacts()
+    context = AnalysisContext(base_picture=bp, shared_artifacts=shared_artifacts)
+
+    analyze_variables(bp, analysis_context=context)
+    analyze_sfc(bp, analysis_context=context, selected_issue_kinds={"sfc_parallel_write_race"})
+
+    assert build_calls == ["Root"]
+    assert shared_artifacts.counters.variable_foundation_builds == 1

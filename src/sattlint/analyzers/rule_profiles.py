@@ -179,7 +179,7 @@ _EXTRA_RULES_BY_KIND: dict[str, SemanticRule] = {
     ),
     "data_dependency.path": SemanticRule(
         id="semantic.data-dependency-path",
-        source="data_dependency",
+        source="data-dependency",
         category="control-flow",
         severity="warning",
         applies_to="assignment-chain",
@@ -190,7 +190,7 @@ _EXTRA_RULES_BY_KIND: dict[str, SemanticRule] = {
     ),
     "data_dependency.initialization_order": SemanticRule(
         id="semantic.data-dependency-initialization-order",
-        source="data_dependency",
+        source="data-dependency",
         category="control-flow",
         severity="error",
         applies_to="assignment-order",
@@ -201,7 +201,7 @@ _EXTRA_RULES_BY_KIND: dict[str, SemanticRule] = {
     ),
     "resource_usage.acquire_without_release": SemanticRule(
         id="semantic.resource-reacquire-before-release",
-        source="resource_usage",
+        source="resource-usage",
         category="control-flow",
         severity="warning",
         applies_to="resource-handle",
@@ -212,7 +212,7 @@ _EXTRA_RULES_BY_KIND: dict[str, SemanticRule] = {
     ),
     "resource_usage.release_without_acquire": SemanticRule(
         id="semantic.resource-release-without-acquire",
-        source="resource_usage",
+        source="resource-usage",
         category="control-flow",
         severity="warning",
         applies_to="resource-handle",
@@ -223,7 +223,7 @@ _EXTRA_RULES_BY_KIND: dict[str, SemanticRule] = {
     ),
     "resource_usage.leaked_resource": SemanticRule(
         id="semantic.resource-leak",
-        source="resource_usage",
+        source="resource-usage",
         category="control-flow",
         severity="warning",
         applies_to="resource-handle",

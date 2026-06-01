@@ -8,46 +8,45 @@ from functools import lru_cache
 from pathlib import Path
 from typing import cast
 
-from sattlint.analyzers.alarm_integrity import analyze_alarm_integrity
-from sattlint.analyzers.config_drift import analyze_config_drift
-from sattlint.analyzers.cyclomatic_complexity import analyze_cyclomatic_complexity
-from sattlint.analyzers.data_dependency import analyze_data_dependency
-from sattlint.analyzers.fault_handling import analyze_fault_handling
-from sattlint.analyzers.initial_values import analyze_initial_values
-from sattlint.analyzers.interface_contracts import analyze_interface_contracts
-from sattlint.analyzers.loop_output_refactor import analyze_loop_output_refactor
-from sattlint.analyzers.loop_stability import analyze_loop_stability
-from sattlint.analyzers.modules import analyze_version_drift
-from sattlint.analyzers.naming import analyze_naming_consistency, get_configured_naming_rules
-from sattlint.analyzers.numeric_constraints import analyze_numeric_constraints
-from sattlint.analyzers.parameter_drift import analyze_parameter_drift
-from sattlint.analyzers.picture_display_paths import analyze_picture_display_paths
-from sattlint.analyzers.powerup import analyze_powerup
-from sattlint.analyzers.resource_usage import analyze_resource_usage
-from sattlint.analyzers.safety_paths import analyze_safety_paths
-from sattlint.analyzers.scan_concurrency import analyze_scan_concurrency
-from sattlint.analyzers.scan_loop_resource_usage import analyze_scan_loop_resource_usage
-from sattlint.analyzers.signal_lifecycle import analyze_signal_lifecycle
-from sattlint.analyzers.spec_compliance import analyze_spec_compliance
-from sattlint.analyzers.state_inference import analyze_state_inference
-from sattlint.analyzers.taint_paths import analyze_taint_paths
-from sattlint.analyzers.timing import analyze_timing
-
 from ._registry_delivery import AnalyzerDeliveryMetadata, build_delivery_metadata, summary_output_for_analyzer
 from ._registry_specs import build_default_analyzers
+from .alarm_integrity import analyze_alarm_integrity
 from .comment_code import analyze_comment_code
+from .config_drift import analyze_config_drift
+from .cyclomatic_complexity import analyze_cyclomatic_complexity
+from .data_dependency import analyze_data_dependency
 from .dataflow import analyze_dataflow
+from .fault_handling import analyze_fault_handling
 from .framework import AnalyzerSpec
+from .initial_values import analyze_initial_values
+from .interface_contracts import analyze_interface_contracts
+from .loop_output_refactor import analyze_loop_output_refactor
+from .loop_stability import analyze_loop_stability
 from .mms import analyze_mms_interface_variables
+from .modules import analyze_version_drift
+from .naming import analyze_naming_consistency, get_configured_naming_rules
+from .numeric_constraints import analyze_numeric_constraints
+from .parameter_drift import analyze_parameter_drift
+from .picture_display_paths import analyze_picture_display_paths
+from .powerup import analyze_powerup
+from .resource_usage import analyze_resource_usage
 from .rule_profiles import get_default_rule_profile_report
+from .safety_paths import analyze_safety_paths
 from .sattline_semantics import (
     SemanticRule,
     SemanticRuleGroup,
     analyze_sattline_semantics,
     get_sattline_semantic_rule_groups,
 )
+from .scan_concurrency import analyze_scan_concurrency
+from .scan_loop_resource_usage import analyze_scan_loop_resource_usage
 from .sfc import analyze_sfc, get_configured_mutually_exclusive_step_sets, get_configured_step_contracts
 from .shadowing import analyze_shadowing
+from .signal_lifecycle import analyze_signal_lifecycle
+from .spec_compliance import analyze_spec_compliance
+from .state_inference import analyze_state_inference
+from .taint_paths import analyze_taint_paths
+from .timing import analyze_timing
 from .unsafe_defaults import analyze_unsafe_defaults
 from .variables import analyze_variables
 
@@ -67,14 +66,27 @@ DEFAULT_CLI_ANALYZER_KEYS: tuple[str, ...] = (
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CORPUS_MANIFEST_DIR = REPO_ROOT / "tests" / "fixtures" / "corpus" / "manifests"
 
+LEGACY_ANALYZER_KEY_ALIASES: dict[str, str] = {
+    "config_drift": "config-drift",
+    "data_dependency": "data-dependency",
+    "fault_handling": "fault-handling",
+    "interface_contracts": "interface-contracts",
+    "loop_stability": "loop-stability",
+    "numeric_constraints": "numeric-constraints",
+    "resource_usage": "resource-usage",
+    "scan_concurrency": "scan-concurrency",
+    "signal_lifecycle": "signal-lifecycle",
+    "state_inference": "state-inference",
+}
+
 _RULE_ANALYZER_ALIASES: dict[str, tuple[str, ...]] = {
-    "semantic.unknown-parameter-target": ("interface_contracts",),
-    "semantic.required-parameter-connection": ("interface_contracts",),
-    "semantic.cross-module-contract-mismatch": ("interface_contracts",),
-    "semantic.string-mapping-mismatch": ("interface_contracts",),
+    "semantic.unknown-parameter-target": ("interface-contracts",),
+    "semantic.required-parameter-connection": ("interface-contracts",),
+    "semantic.cross-module-contract-mismatch": ("interface-contracts",),
+    "semantic.string-mapping-mismatch": ("interface-contracts",),
     "semantic.missing-parameter-initial-value": ("powerup",),
     "semantic.unsafe-default-true": ("powerup",),
-    "semantic.parallel-write-race": ("scan_concurrency",),
+    "semantic.parallel-write-race": ("scan-concurrency",),
     "semantic.scan-cycle-stale-read": ("timing",),
     "semantic.scan-cycle-implicit-new": ("timing",),
     "semantic.scan-cycle-temporal-misuse": ("timing",),
@@ -202,17 +214,28 @@ class AnalyzerCatalog:
         return tuple(analyzer.spec for analyzer in self.analyzers if analyzer.spec.enabled)
 
     def to_report(self, *, generated_by: str) -> dict[str, object]:
+        semantic_sources = tuple(canonicalize_analyzer_key(group.source) for group in self.semantic_rule_groups)
         return {
             "generated_by": generated_by,
             "analyzers": [analyzer.to_dict() for analyzer in self.analyzers],
             "semantic_layer": {
                 "analyzer_key": self.semantic_layer_analyzer_key,
-                "sources": [group.source for group in self.semantic_rule_groups],
-                "source_rule_counts": {group.source: len(group.rules) for group in self.semantic_rule_groups},
+                "sources": list(semantic_sources),
+                "source_rule_counts": {
+                    canonicalize_analyzer_key(group.source): len(group.rules) for group in self.semantic_rule_groups
+                },
             },
             "rule_profiles": get_default_rule_profile_report(),
             "rules": [rule.to_dict() for rule in self.rules],
         }
+
+
+def canonicalize_analyzer_key(key: str) -> str:
+    return LEGACY_ANALYZER_KEY_ALIASES.get(key.casefold(), key.casefold())
+
+
+def canonicalize_analyzer_keys(keys: tuple[str, ...] | list[str] | set[str]) -> tuple[str, ...]:
+    return tuple(canonicalize_analyzer_key(key) for key in keys if key.strip())
 
 
 def get_declared_cli_analyzer_keys() -> tuple[str, ...]:
@@ -240,7 +263,10 @@ def get_actual_lsp_analyzer_keys() -> tuple[str, ...]:
     registry_keys = {analyzer.spec.key for analyzer in catalog.analyzers}
     return tuple(
         sorted(
-            ({catalog.semantic_layer_analyzer_key} | {group.source for group in catalog.semantic_rule_groups})
+            (
+                {catalog.semantic_layer_analyzer_key}
+                | {canonicalize_analyzer_key(group.source) for group in catalog.semantic_rule_groups}
+            )
             & registry_keys
         )
     )
@@ -289,7 +315,7 @@ def _build_rule_metadata(
     corpus_cases = tuple(sorted(set(rule.corpus_cases) | set(_rule_corpus_cases_by_rule_id().get(rule.id, ()))))
     return RuleMetadata(
         id=rule.id,
-        source=rule.source,
+        source=canonicalize_analyzer_key(rule.source),
         category=rule.category,
         severity=rule.severity,
         confidence=rule.confidence,
@@ -326,8 +352,9 @@ def _mapped_analyzers_for_rule(
     registered_keys: set[str],
 ) -> tuple[str, ...]:
     mapped_analyzers: list[str] = [SEMANTIC_LAYER_ANALYZER_KEY]
-    if rule.source in registered_keys and rule.source not in mapped_analyzers:
-        mapped_analyzers.append(rule.source)
+    canonical_rule_source = canonicalize_analyzer_key(rule.source)
+    if canonical_rule_source in registered_keys and canonical_rule_source not in mapped_analyzers:
+        mapped_analyzers.append(canonical_rule_source)
 
     for analyzer_key in _RULE_ANALYZER_ALIASES.get(rule.id, ()):
         if analyzer_key in registered_keys and analyzer_key not in mapped_analyzers:
@@ -382,7 +409,9 @@ def get_enabled_analyzers() -> list[AnalyzerSpec]:
 
 def get_default_cli_analyzers() -> list[AnalyzerSpec]:
     enabled_by_key = {spec.key.casefold(): spec for spec in get_enabled_analyzers()}
-    return [enabled_by_key[key] for key in DEFAULT_CLI_ANALYZER_KEYS if key in enabled_by_key]
+    return [
+        enabled_by_key[key] for key in canonicalize_analyzer_keys(DEFAULT_CLI_ANALYZER_KEYS) if key in enabled_by_key
+    ]
 
 
 def get_default_analyzers() -> list[AnalyzerSpec]:

@@ -141,6 +141,61 @@ def test_variables_execution_collect_typedef_issues_returns_early_for_scoped_run
     assert variables_execution_module._collect_typedef_issues(helper) is None
 
 
+def test_variables_execution_dependency_and_typedef_early_returns_cover_remaining_paths() -> None:
+    dependency_helper: Any = SimpleNamespace(
+        _limit_to_module_path=["Root", "Scoped"],
+        analyzed_target_is_library=True,
+        include_dependency_moduletype_usage=True,
+        bp=SimpleNamespace(moduletype_defs=[object()]),
+        _analyze_typedef=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not run")),
+    )
+
+    assert variables_execution_module._analyze_library_dependency_typedef_usage(dependency_helper) is None
+
+    no_issue_helper: Any = SimpleNamespace(
+        _limit_to_module_path=None,
+        _selected_issue_kinds=frozenset(),
+        bp=SimpleNamespace(moduletype_defs=[object()]),
+        _analyze_typedef=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not run")),
+    )
+
+    assert variables_execution_module._collect_typedef_issues(no_issue_helper) is None
+
+    moduletype = ModuleTypeDef(
+        name="WorkerType",
+        moduleparameters=[Variable(name="Param", datatype=Simple_DataType.INTEGER)],
+        localvariables=[],
+        submodules=[object()],
+        moduledef=None,
+        modulecode=None,
+        parametermappings=[],
+    )
+    analyze_calls: list[str] = []
+    collected_modules: list[object] = []
+    name_collision_only_helper: Any = SimpleNamespace(
+        _limit_to_module_path=None,
+        _selected_issue_kinds=frozenset({IssueKind.NAME_COLLISION}),
+        bp=BasePicture(
+            header=_hdr("Root"),
+            datatype_defs=[],
+            moduletype_defs=[moduletype],
+            localvariables=[],
+            submodules=[],
+            modulecode=None,
+            moduledef=None,
+        ),
+        _update_status=lambda *args, **kwargs: None,
+        _analyze_typedef=lambda current, path: analyze_calls.append(path[-1]),
+        _compute_effective_output_keys=lambda: set(),
+        _is_from_root_origin=lambda origin, origin_lib=None: True,
+        _collect_issues_from_module=lambda module, **kwargs: collected_modules.append(module),
+    )
+
+    assert variables_execution_module._collect_typedef_issues(name_collision_only_helper) is None
+    assert analyze_calls == ["TypeDef:WorkerType"]
+    assert collected_modules == []
+
+
 def test_variables_execution_run_records_phase_timings() -> None:
     helper: Any = SimpleNamespace(
         _issues=[],

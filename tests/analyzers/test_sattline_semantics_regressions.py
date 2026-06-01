@@ -5,6 +5,7 @@ from sattline_parser.models.ast_model import BasePicture, Equation, ModuleCode, 
 from sattlint import constants as const
 from sattlint.analyzers import registry as registry_module
 from sattlint.analyzers import sattline_semantics as semantics_module
+from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts
 from sattlint.analyzers.sattline_semantics import SattLineSemanticsReport, analyze_sattline_semantics
 
 
@@ -90,6 +91,8 @@ def test_sattline_semantics_helpers_cover_rule_lookup_and_empty_summary():
 def test_analyze_sattline_semantics_handles_overrides_direct_context_and_skipped_reports(monkeypatch):
     bp = BasePicture(header=_hdr("Root"))
     captured: dict[str, object] = {}
+    shared_artifacts = AnalysisSharedArtifacts()
+    context = AnalysisContext(base_picture=bp, shared_artifacts=shared_artifacts)
 
     analyzers = [
         SimpleNamespace(
@@ -149,11 +152,13 @@ def test_analyze_sattline_semantics_handles_overrides_direct_context_and_skipped
 
     report = analyze_sattline_semantics(
         bp,
+        analysis_context=context,
         sfc_mutually_exclusive_steps=[("A", "B")],
         sfc_step_contracts={"Step": object()},
     )
 
     assert report.issues == []
+    assert shared_artifacts.counters.semantic_analyzer_reruns == 2
     assert captured["overrides"] == {
         "mutually_exclusive_steps": (("A", "B"),),
         "sfc_mutually_exclusive_steps": (("A", "B"),),

@@ -3,54 +3,31 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
 from collections.abc import Sequence as AbcSequence
 from dataclasses import dataclass
-from typing import Any, cast
-
-from lark import Tree
+from functools import partial
+from typing import cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
     DataType,
-    Equation,
     FrameModule,
-    ModuleCode,
     ModuleTypeDef,
     ModuleTypeInstance,
     ParameterMapping,
-    Sequence,
-    SFCAlternative,
-    SFCBreak,
-    SFCFork,
-    SFCParallel,
-    SFCStep,
-    SFCSubsequence,
-    SFCTransition,
-    SFCTransitionSub,
     Simple_DataType,
     SingleModule,
     Variable,
 )
 
-from ._validation_expression import (
-    infer_expression_datatype as _infer_expression_datatype,
-)
+from . import _validation_sequences as validation_sequences_module
 from ._validation_expression import (
     is_variable_ref_node as _is_variable_ref_node,
-)
-from ._validation_expression import (
-    validate_builtin_call_types as _validate_builtin_call_types,
-)
-from ._validation_expression import (
-    validate_expression_semantics as _validate_expression_semantics,
-)
-from ._validation_expression import (
-    validate_no_string_literals_in_calls as _validate_no_string_literals_in_calls,
 )
 from ._validation_shared import (
     RawSourceValidationError,
     StructuralValidationError,
+    ValidationWarning,
     ValidationWarningSink,
     _ref_span,
     _span_kwargs,
@@ -78,9 +55,6 @@ from ._validation_type_helpers import (
     is_anytype_datatype as _is_anytype_datatype,
 )
 from ._validation_type_helpers import (
-    is_string_simple_type as _is_string_simple_type,
-)
-from ._validation_type_helpers import (
     is_valid_duration_literal as _is_valid_duration_literal,
 )
 from ._validation_type_helpers import (
@@ -93,9 +67,6 @@ from ._validation_type_helpers import (
     resolve_ref_datatype as _resolve_ref_datatype,
 )
 from ._validation_type_helpers import (
-    resolve_root_variable as _resolve_root_variable,
-)
-from ._validation_type_helpers import (
     resolve_variable_field_datatype as _resolve_variable_field_datatype,
 )
 from ._validation_type_helpers import (
@@ -106,6 +77,8 @@ from ._validation_type_helpers import (
 )
 from .grammar import constants as const
 from .resolution.type_graph import TypeGraph
+
+LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION = "2026-06-01-local-structure-v1"
 
 _PLAIN_DURATION_LITERAL_RE = re.compile(r"\d+(?:\.\d+)?")
 _DURATION_COMPONENT_PATTERNS = (
@@ -127,6 +100,10 @@ _ALLOWED_IDENTIFIER_KEYWORDS = frozenset(
 )
 
 type VariableRef = dict[str, object]
+
+
+def _discard_validation_warning(_warning: ValidationWarning) -> None:
+    return None
 
 
 def _build_reserved_identifier_keywords() -> frozenset[str]:
@@ -251,565 +228,27 @@ def _ensure_unique_names(names: list[str], context: str, kind: str) -> None:
         seen[folded] = name
 
 
-def _iter_nested_sequence_nodes(nodes: AbcSequence[object] | None) -> Iterator[object]:
-    for node in nodes or ():
-        yield node
-        if isinstance(node, SFCAlternative | SFCParallel):
-            for branch in node.branches or ():
-                yield from _iter_nested_sequence_nodes(branch)
-        elif isinstance(node, SFCSubsequence | SFCTransitionSub):
-            yield from _iter_nested_sequence_nodes(node.body)
-
-
-def _collect_sequence_labels(nodes: list[object], labels: dict[str, str], _context: str) -> None:
-    for node in _iter_nested_sequence_nodes(nodes):
-        label: str | None = None
-        if (
-            isinstance(node, SFCStep)
-            or (isinstance(node, SFCTransition) and node.name)
-            or isinstance(node, SFCSubsequence | SFCTransitionSub)
-        ):
-            label = node.name
-
-        if label:
-            folded = label.casefold()
-            labels.setdefault(folded, label)
-
-
-def _collect_sequence_label_counts(nodes: list[object], counts: dict[str, int]) -> None:
-    for node in _iter_nested_sequence_nodes(nodes):
-        if isinstance(node, SFCStep | SFCTransition | SFCSubsequence | SFCTransitionSub):
-            label_name = getattr(node, "name", None)
-            if isinstance(label_name, str) and label_name:
-                folded = label_name.casefold()
-                counts[folded] = counts.get(folded, 0) + 1
-
-
-def _collect_label_names(nodes: list[object], names: set[str]) -> None:
-    """Collect all step/transition/subsequence label names (case-folded) without duplicate checks."""
-    for node in _iter_nested_sequence_nodes(nodes):
-        if isinstance(node, SFCStep | SFCTransition | SFCSubsequence | SFCTransitionSub):
-            label_name = getattr(node, "name", None)
-            if isinstance(label_name, str) and label_name:
-                names.add(label_name.casefold())
-
-
-def _collect_sequence_step_features(
-    nodes: list[object],
-    *,
-    seqcontrol: bool,
-    seqtimer: bool,
-    known_steps: dict[str, str],
-    available_features: dict[str, set[str]],
-) -> None:
-    for node in _iter_nested_sequence_nodes(nodes):
-        if isinstance(node, SFCStep):
-            key = node.name.casefold()
-            known_steps.setdefault(key, node.name)
-            features = available_features.setdefault(key, set())
-            features.add("x")
-            if seqcontrol:
-                features.add("hold")
-                features.add("reset")
-            if seqtimer:
-                features.add("t")
-
-
-def _collect_sequence_scope_features(
-    sequence: Sequence,
-    *,
-    known_sequences: dict[str, str],
-    available_sequence_features: dict[str, set[str]],
-) -> None:
-    key = sequence.name.casefold()
-    known_sequences.setdefault(key, sequence.name)
-    features = available_sequence_features.setdefault(key, set())
-    if sequence.seqcontrol:
-        features.add("hold")
-        features.add("reset")
-
-
-def _iter_sequence_node_refs(nodes: list[object]) -> AbcSequence[dict[str, object]]:
-    refs: list[dict[str, object]] = []
-    for node in _iter_nested_sequence_nodes(nodes):
-        if isinstance(node, SFCStep):
-            for statements in (node.code.enter, node.code.active, node.code.exit):
-                for statement in statements or []:
-                    for ref in _iter_variable_refs(statement):
-                        refs.append(ref)
-            continue
-
-        if isinstance(node, SFCTransition):
-            for ref in _iter_variable_refs(node.condition):
-                refs.append(ref)
-
-    return refs
-
-
-def _validate_step_auto_variable_refs(
-    modulecode: ModuleCode | None,
-    env: dict[str, Variable],
-    context: str,
-) -> None:
-    if modulecode is None:
-        return
-
-    known_steps: dict[str, str] = {}
-    available_features: dict[str, set[str]] = {}
-    known_sequences: dict[str, str] = {}
-    available_sequence_features: dict[str, set[str]] = {}
-
-    for sequence in cast(list[object], modulecode.sequences or []):
-        if not isinstance(sequence, Sequence):
-            continue
-        _collect_sequence_scope_features(
-            sequence,
-            known_sequences=known_sequences,
-            available_sequence_features=available_sequence_features,
-        )
-        _collect_sequence_step_features(
-            sequence.code or [],
-            seqcontrol=bool(sequence.seqcontrol),
-            seqtimer=bool(sequence.seqtimer),
-            known_steps=known_steps,
-            available_features=available_features,
-        )
-
-    if not known_steps and not known_sequences:
-        return
-
-    refs: list[dict[str, object]] = []
-    for equation in cast(list[object], modulecode.equations or []):
-        if not isinstance(equation, Equation):
-            continue
-        for statement in equation.code or []:
-            for ref in _iter_variable_refs(statement):
-                refs.append(ref)
-    for sequence in cast(list[object], modulecode.sequences or []):
-        if not isinstance(sequence, Sequence):
-            continue
-        refs.extend(_iter_sequence_node_refs(sequence.code or []))
-
-    for ref in refs:
-        full_name = ref.get(const.KEY_VAR_NAME)
-        if not isinstance(full_name, str):
-            continue
-
-        base_name, field_path = _split_dotted_name(full_name)
-        if not base_name or len(field_path) != 1:
-            continue
-
-        suffix = field_path[0].casefold()
-        if suffix not in {"x", "hold", "reset", "t"}:
-            continue
-
-        if base_name.casefold() in env:
-            continue
-
-        base_key = base_name.casefold()
-        step_name = known_steps.get(base_key)
-        if step_name is None:
-            sequence_name = known_sequences.get(base_key)
-            if sequence_name is not None and suffix in {"hold", "reset"}:
-                sequence_features = available_sequence_features.get(base_key, set())
-                if suffix == "hold" and "hold" not in sequence_features:
-                    message = (
-                        f"{context} variable reference {full_name!r} is not available: "
-                        f"sequence {sequence_name!r} only exposes .Hold when it enables SeqControl"
-                    )
-                elif suffix == "reset" and "reset" not in sequence_features:
-                    message = (
-                        f"{context} variable reference {full_name!r} is not available: "
-                        f"sequence {sequence_name!r} only exposes .Reset when it enables SeqControl"
-                    )
-                else:
-                    continue
-            else:
-                message = (
-                    f"{context} variable reference {full_name!r} is not available: "
-                    f"no sequence step named {base_name!r} exists in this module"
-                )
-        else:
-            features = available_features.get(base_key, set())
-            if suffix == "hold" and "hold" not in features:
-                message = (
-                    f"{context} variable reference {full_name!r} is not available: "
-                    f"step {step_name!r} only exposes .Hold when its sequence enables SeqControl"
-                )
-            elif suffix == "reset" and "reset" not in features:
-                message = (
-                    f"{context} variable reference {full_name!r} is not available: "
-                    f"step {step_name!r} only exposes .Reset when its sequence enables SeqControl"
-                )
-            elif suffix == "t" and "t" not in features:
-                message = (
-                    f"{context} variable reference {full_name!r} is not available: "
-                    f"step {step_name!r} only exposes .T when its sequence enables SeqTimer"
-                )
-            else:
-                continue
-
-        raise StructuralValidationError(
-            message,
-            **_span_kwargs(_ref_span(ref)),
-            length=max(len(full_name), 1),
-        )
-
-
-def _parallel_branch_trailer(node: object) -> str | None:
-    if isinstance(node, SFCTransition):
-        return "SEQTRANSITION"
-    if isinstance(node, SFCTransitionSub):
-        return "SUBSEQTRANSITION"
-    if isinstance(node, SFCFork):
-        return "SEQFORK"
-    if isinstance(node, SFCBreak):
-        return "SEQBREAK"
-    return None
-
-
-def _iter_variable_refs(node: object) -> Iterator[VariableRef]:
-    if _is_variable_ref_node(node):
-        yield node
-        return
-
-    if isinstance(node, Tree):
-        for child in cast(list[object], cast(Any, node).children):
-            yield from _iter_variable_refs(child)
-        return
-
-    if isinstance(node, tuple):
-        for item in cast(tuple[object, ...], node):
-            yield from _iter_variable_refs(item)
-        return
-
-    if isinstance(node, list):
-        for item in cast(list[object], node):
-            yield from _iter_variable_refs(item)
-
-
-def _validate_variable_refs(
-    node: object,
-    env: dict[str, Variable],
-    type_graph: TypeGraph,
-    context: str,
-) -> None:
-    for ref in _iter_variable_refs(node):
-        state = ref.get("state")
-        if not isinstance(state, str) or not state:
-            continue
-
-        full_name = ref[const.KEY_VAR_NAME]
-        base_name, field_path = _split_dotted_name(str(full_name))
-        variable = env.get(base_name.casefold())
-        if variable is None:
-            continue
-
-        resolved_state = variable.state
-        current_datatype: Simple_DataType | str = variable.datatype
-        for field_name in field_path:
-            if isinstance(current_datatype, Simple_DataType):
-                resolved_state = None
-                break
-            field = type_graph.field(str(current_datatype), field_name)
-            if field is None:
-                resolved_state = None
-                break
-            current_datatype = field.datatype
-            resolved_state = field.state
-
-        if resolved_state is not None and not resolved_state:
-            raise StructuralValidationError(
-                f"{context} uses {state.upper()} on non-STATE variable {str(full_name)!r}",
-                **_span_kwargs(_ref_span(ref)),
-                length=max(len(str(full_name)), 1),
-            )
-
-
-def _validate_statement_list(
-    statements: list[object],
-    env: dict[str, Variable],
-    type_graph: TypeGraph,
-    context: str,
-    *,
-    allow_old_state_assignment: bool,
-) -> None:
-    for statement in statements:
-        _validate_expression_semantics(statement, env, type_graph, context)
-        if isinstance(statement, tuple):
-            tuple_statement = cast(tuple[object, ...], statement)
-            if (
-                len(tuple_statement) == 3
-                and tuple_statement[0] == const.KEY_ASSIGN
-                and _is_variable_ref_node(tuple_statement[1])
-            ):
-                assign_statement = cast(tuple[str, VariableRef, object], tuple_statement)
-                target_ref = assign_statement[1]
-                target_name = str(target_ref.get(const.KEY_VAR_NAME, "<unknown>"))
-                target_state = target_ref.get("state")
-                if (
-                    not allow_old_state_assignment
-                    and isinstance(target_state, str)
-                    and target_state.casefold() == const.GRAMMAR_VALUE_OLD.casefold()
-                ):
-                    raise StructuralValidationError(
-                        f"{context} assignment target {target_name!r} must not use OLD state access",
-                        **_span_kwargs(_ref_span(target_ref)),
-                        length=max(len(target_name), 1),
-                    )
-                variable = _resolve_root_variable(target_ref, env)
-                if variable is not None and variable.const:
-                    raise StructuralValidationError(
-                        f"{context} assignment writes to CONST variable {variable.name!r}",
-                        **_span_kwargs(_ref_span(target_ref)),
-                    )
-                if variable is not None and _is_string_simple_type(variable.datatype):
-                    raise StructuralValidationError(
-                        f"{context} assignment to string variable {variable.name!r} is not allowed;"
-                        " use CopyString() or CopyVar() to copy strings",
-                        **_span_kwargs(_ref_span(target_ref)),
-                    )
-                target_datatype = _resolve_ref_datatype(target_ref, env, type_graph)
-                actual_datatype = _infer_expression_datatype(assign_statement[2], env, type_graph)
-                if (
-                    target_datatype is not None
-                    and actual_datatype is not None
-                    and not _assignment_type_matches(actual_datatype, target_datatype)
-                ):
-                    source_description = "expression"
-                    if _is_variable_ref_node(assign_statement[2]):
-                        source_description = str(assign_statement[2][const.KEY_VAR_NAME])
-                    raise StructuralValidationError(
-                        f"{context} assigns {source_description!r} with datatype {_format_datatype(actual_datatype)!r} "
-                        f"to target {str(target_ref[const.KEY_VAR_NAME])!r} with datatype {_format_datatype(target_datatype)!r}",
-                        **_span_kwargs(_ref_span(target_ref)),
-                    )
-        statement_node = cast(object, statement)
-        _validate_variable_refs(statement_node, env, type_graph, context)
-        _validate_no_string_literals_in_calls(statement_node, context)
-        _validate_builtin_call_types(statement_node, env, type_graph, context)
-
-
-def _validate_code_blocks(
-    code: Any,
-    env: dict[str, Variable],
-    type_graph: TypeGraph,
-    context: str,
-    *,
-    allow_old_state_assignment: bool,
-) -> None:
-    _validate_statement_list(
-        code.enter,
-        env,
-        type_graph,
-        f"{context} ENTERCODE",
-        allow_old_state_assignment=allow_old_state_assignment,
-    )
-    _validate_statement_list(
-        code.active,
-        env,
-        type_graph,
-        f"{context} ACTIVECODE",
-        allow_old_state_assignment=allow_old_state_assignment,
-    )
-    _validate_statement_list(
-        code.exit,
-        env,
-        type_graph,
-        f"{context} EXITCODE",
-        allow_old_state_assignment=allow_old_state_assignment,
-    )
-
-
-def _validate_sequence_nodes(
-    nodes: list[object],
-    context: str,
-    *,
-    labels: dict[str, str],
-    label_counts: dict[str, int],
-    module_labels: frozenset[str] = frozenset(),
-    module_label_counts: dict[str, int] | None = None,
-    env: dict[str, Variable],
-    type_graph: TypeGraph,
-    require_init_step: bool,
-    warning_sink: ValidationWarningSink | None = None,
-    allow_old_state_assignment: bool = True,
-) -> None:
-    previous_unit_name: str | None = None
-    previous_unit_kind: str | None = None
-    previous_transition_name: str | None = None
-    init_steps = 0
-    missing_initial_init_step = False
-
-    if require_init_step and (not nodes or not isinstance(nodes[0], SFCStep) or nodes[0].kind != "init"):
-        missing_initial_init_step = True
-        _warn_or_raise(
-            f"{context} must start with exactly one SEQINITSTEP",
-            warning_sink=warning_sink,
-        )
-
-    def recurse(branch_nodes: list[object] | None, nested_context: str) -> None:
-        _validate_sequence_nodes(
-            branch_nodes or [],
-            nested_context,
-            labels=labels,
-            label_counts=label_counts,
-            module_labels=module_labels,
-            module_label_counts=module_label_counts,
-            env=env,
-            type_graph=type_graph,
-            require_init_step=False,
-            warning_sink=warning_sink,
-            allow_old_state_assignment=allow_old_state_assignment,
-        )
-
-    for index, node in enumerate(nodes):
-        if isinstance(node, SFCStep):
-            _validate_identifier(node.name, f"{context} step")
-            if node.kind == "init":
-                init_steps += 1
-                if index != 0:
-                    _warn_or_raise(
-                        f"{context} has SEQINITSTEP {node.name!r} outside the first position",
-                        warning_sink=warning_sink,
-                    )
-            if previous_unit_name is not None:
-                raise StructuralValidationError(
-                    f"{context} has step {node.name!r} immediately after "
-                    f"{previous_unit_kind} {previous_unit_name!r} without an intervening transition"
-                )
-            _validate_code_blocks(
-                node.code,
-                env,
-                type_graph,
-                f"{context} step {node.name!r}",
-                allow_old_state_assignment=allow_old_state_assignment,
-            )
-            previous_unit_name = node.name
-            previous_unit_kind = "step"
-            previous_transition_name = None
-            continue
-
-        previous_unit_name = None
-        previous_unit_kind = None
-
-        if isinstance(node, SFCTransition | SFCTransitionSub):
-            transition_name = node.name if isinstance(node.name, str) and node.name else "<unnamed>"
-            if previous_transition_name is not None:
-                raise StructuralValidationError(
-                    f"{context} has transition {transition_name!r} immediately after transition "
-                    f"{previous_transition_name!r}; only one transition may execute per cycle in the same sequence path"
-                )
-            previous_transition_name = transition_name
-        else:
-            previous_transition_name = None
-
-        if isinstance(node, SFCTransition):
-            _validate_identifier(node.name, f"{context} transition")
-        elif isinstance(node, SFCTransitionSub):
-            _validate_identifier(node.name, f"{context} transition-sub")
-            if node.body and isinstance(node.body[0], SFCStep):
-                raise StructuralValidationError(
-                    f"{context} transition-sub {node.name!r} must not start with SEQSTEP; "
-                    f"SUBSEQTRANSITION bodies must enter through a transition"
-                )
-            recurse(node.body, f"{context} transition-sub {node.name!r}")
-        elif isinstance(node, SFCSubsequence):
-            _validate_identifier(node.name, f"{context} subsequence")
-            recurse(node.body, f"{context} subsequence {node.name!r}")
-        elif isinstance(node, SFCAlternative):
-            for index, branch in enumerate(node.branches, start=1):
-                recurse(branch, f"{context} alternative branch {index}")
-        elif isinstance(node, SFCParallel):
-            for index, branch in enumerate(node.branches, start=1):
-                recurse(branch, f"{context} parallel branch {index}")
-                if branch:
-                    trailer = _parallel_branch_trailer(branch[-1])
-                    if trailer is not None:
-                        raise StructuralValidationError(
-                            f"{context} parallel branch {index} ends with {trailer}; "
-                            f"PARALLELBRANCH/ENDPARALLEL must follow a completed sequence unit"
-                        )
-            previous_unit_name = "ENDPARALLEL"
-            previous_unit_kind = "parallel block"
-        elif isinstance(node, SFCFork):
-            for target in node.targets:
-                _validate_identifier(target, f"{context} fork target")
-                target_key = target.casefold()
-                if target_key not in labels and target_key not in module_labels:
-                    raise StructuralValidationError(
-                        f"{context} has SEQFORK target {target!r} that does not exist in the sequence or module"
-                    )
-                if label_counts.get(target_key, 0) > 1 or (module_label_counts or {}).get(target_key, 0) > 1:
-                    raise StructuralValidationError(
-                        f"{context} has ambiguous SEQFORK target {target!r}; "
-                        "that label is declared multiple times in the sequence or module"
-                    )
-        elif isinstance(node, SFCBreak):
-            continue
-
-    if require_init_step and init_steps != 1 and not (missing_initial_init_step and init_steps == 0):
-        _warn_or_raise(
-            f"{context} must contain exactly one SEQINITSTEP",
-            warning_sink=warning_sink,
-        )
-
-
-def _validate_module_code(
-    modulecode: ModuleCode | None,
-    context: str,
-    env: dict[str, Variable],
-    type_graph: TypeGraph,
-    warning_sink: ValidationWarningSink | None = None,
-    allow_old_state_assignment: bool = True,
-) -> None:
-    if modulecode is None:
-        return
-
-    _validate_step_auto_variable_refs(modulecode, env, context)
-
-    for equation in cast(list[object], modulecode.equations or []):
-        if not isinstance(equation, Equation):
-            continue
-        _validate_identifier(equation.name, f"{context} equation")
-        _validate_statement_list(
-            equation.code or [],
-            env,
-            type_graph,
-            f"{context} equation {equation.name!r}",
-            allow_old_state_assignment=allow_old_state_assignment,
-        )
-
-    module_label_set: set[str] = set()
-    module_label_counts: dict[str, int] = {}
-    for sequence in cast(list[object], modulecode.sequences or []):
-        if not isinstance(sequence, Sequence):
-            continue
-        _collect_label_names(sequence.code or [], module_label_set)
-        _collect_sequence_label_counts(sequence.code or [], module_label_counts)
-    module_labels = frozenset(module_label_set)
-
-    for sequence in cast(list[object], modulecode.sequences or []):
-        if not isinstance(sequence, Sequence):
-            continue
-        _validate_identifier(sequence.name, f"{context} sequence")
-        labels: dict[str, str] = {}
-        label_counts: dict[str, int] = {}
-        _collect_sequence_labels(sequence.code or [], labels, f"{context} sequence {sequence.name!r}")
-        _collect_sequence_label_counts(sequence.code or [], label_counts)
-        _validate_sequence_nodes(
-            sequence.code or [],
-            f"{context} sequence {sequence.name!r}",
-            labels=labels,
-            label_counts=label_counts,
-            module_labels=module_labels,
-            module_label_counts=module_label_counts,
-            env=env,
-            type_graph=type_graph,
-            require_init_step=True,
-            warning_sink=warning_sink,
-            allow_old_state_assignment=allow_old_state_assignment,
-        )
+_iter_nested_sequence_nodes = validation_sequences_module.iter_nested_sequence_nodes
+_collect_sequence_labels = validation_sequences_module.collect_sequence_labels
+_collect_sequence_label_counts = validation_sequences_module.collect_sequence_label_counts
+_collect_label_names = validation_sequences_module.collect_label_names
+_collect_sequence_step_features = validation_sequences_module.collect_sequence_step_features
+_collect_sequence_scope_features = validation_sequences_module.collect_sequence_scope_features
+_iter_sequence_node_refs = validation_sequences_module.iter_sequence_node_refs
+_validate_step_auto_variable_refs = validation_sequences_module.validate_step_auto_variable_refs
+_parallel_branch_trailer = validation_sequences_module.parallel_branch_trailer
+_iter_variable_refs = validation_sequences_module.iter_variable_refs
+_validate_variable_refs = validation_sequences_module.validate_variable_refs
+_validate_statement_list = validation_sequences_module.validate_statement_list
+_validate_code_blocks = validation_sequences_module.validate_code_blocks
+_validate_sequence_nodes = partial(
+    validation_sequences_module.validate_sequence_nodes,
+    validate_identifier=_validate_identifier,
+)
+_validate_module_code = partial(
+    validation_sequences_module.validate_module_code,
+    validate_identifier=_validate_identifier,
+)
 
 
 def _validate_variable_list(
@@ -893,6 +332,7 @@ class _ModuleValidationPolicy:
     warn_incompatible_parameter_mappings: bool = False
     warning_sink: ValidationWarningSink | None = None
     allow_old_state_assignment: bool = True
+    suppress_module_code_semantic_errors: bool = False
 
 
 def _validate_parameter_mappings(
@@ -1120,6 +560,152 @@ def _validate_module(
         return
 
 
+def _validate_module_dependency_context(
+    module: object,
+    context: str,
+    parent_env: dict[str, Variable],
+    type_graph: TypeGraph,
+    moduletype_index: dict[str, list[ModuleTypeDef]],
+    *,
+    policy: _ModuleValidationPolicy | None = None,
+) -> None:
+    active_policy = policy or _ModuleValidationPolicy()
+
+    if isinstance(module, SingleModule):
+        module_context = f"{context} module {module.header.name!r}"
+        env = _merge_env(parent_env, module.moduleparameters)
+        env = _merge_env(env, module.localvariables)
+        _validate_parameter_mappings(
+            module.parametermappings,
+            module_context,
+            type_graph=type_graph,
+            expected_parameters={variable.name.casefold(): variable for variable in module.moduleparameters or []},
+            source_env=parent_env,
+            policy=active_policy,
+        )
+        for submodule in module.submodules or []:
+            _validate_module_dependency_context(
+                submodule,
+                module_context,
+                env,
+                type_graph,
+                moduletype_index,
+                policy=active_policy,
+            )
+        return
+
+    if isinstance(module, FrameModule):
+        module_context = f"{context} frame {module.header.name!r}"
+        for submodule in module.submodules or []:
+            _validate_module_dependency_context(
+                submodule,
+                module_context,
+                parent_env,
+                type_graph,
+                moduletype_index,
+                policy=active_policy,
+            )
+        return
+
+    if isinstance(module, ModuleTypeInstance):
+        matches = moduletype_index.get(module.moduletype_name.casefold(), [])
+        expected_parameters = None
+        if len(matches) == 1:
+            expected_parameters = {variable.name.casefold(): variable for variable in matches[0].moduleparameters or []}
+        _validate_parameter_mappings(
+            module.parametermappings,
+            f"{context} module instance {module.header.name!r}",
+            type_graph=type_graph,
+            expected_parameters=expected_parameters,
+            source_env=parent_env,
+            policy=active_policy,
+        )
+
+
+def validate_transformed_basepicture_locally(
+    basepic: BasePicture,
+    *,
+    allow_unresolved_external_datatypes: bool = True,
+    enforce_unique_submodule_names: bool = True,
+    allow_parameterless_module_mappings: bool = False,
+    allow_old_state_assignment: bool = True,
+    warning_sink: ValidationWarningSink | None = None,
+) -> None:
+    effective_warning_sink: ValidationWarningSink = warning_sink or _discard_validation_warning
+
+    validate_transformed_basepicture(
+        basepic,
+        allow_unresolved_external_datatypes=allow_unresolved_external_datatypes,
+        enforce_unique_submodule_names=enforce_unique_submodule_names,
+        allow_parameterless_module_mappings=allow_parameterless_module_mappings,
+        allow_old_state_assignment=allow_old_state_assignment,
+        warn_incompatible_parameter_mappings=True,
+        suppress_module_code_semantic_errors=True,
+        warning_sink=effective_warning_sink,
+    )
+
+
+def validate_transformed_basepicture_dependency_context(
+    basepic: BasePicture,
+    *,
+    external_datatypes: AbcSequence[DataType] | None = None,
+    external_moduletype_defs: AbcSequence[ModuleTypeDef] | None = None,
+    allow_parameterless_module_mappings: bool = False,
+    warn_unknown_parameter_targets: bool = False,
+    warn_incompatible_parameter_mappings: bool = False,
+    warning_sink: ValidationWarningSink | None = None,
+) -> None:
+    base_moduletype_defs = [
+        moduletype
+        for moduletype in cast(AbcSequence[object], basepic.moduletype_defs or [])
+        if isinstance(moduletype, ModuleTypeDef)
+    ]
+    available_external_moduletype_defs = [
+        moduletype
+        for moduletype in cast(AbcSequence[object], external_moduletype_defs or [])
+        if isinstance(moduletype, ModuleTypeDef)
+    ]
+    available_datatypes = [*(basepic.datatype_defs or []), *(external_datatypes or [])]
+    available_moduletype_defs = [*base_moduletype_defs, *available_external_moduletype_defs]
+    type_graph = TypeGraph.from_datatypes(available_datatypes)
+    moduletype_index: dict[str, list[ModuleTypeDef]] = {}
+    for moduletype in available_moduletype_defs:
+        moduletype_index.setdefault(moduletype.name.casefold(), []).append(moduletype)
+
+    policy = _ModuleValidationPolicy(
+        allow_parameterless_module_mappings=allow_parameterless_module_mappings,
+        warn_unknown_parameter_targets=warn_unknown_parameter_targets,
+        warn_incompatible_parameter_mappings=warn_incompatible_parameter_mappings,
+        warning_sink=warning_sink,
+    )
+
+    base_env = _merge_env({}, basepic.localvariables)
+
+    for moduletype in base_moduletype_defs:
+        moduletype_context = f"BasePicture moduletype {moduletype.name!r}"
+        env = _merge_env(base_env, moduletype.moduleparameters)
+        env = _merge_env(env, moduletype.localvariables)
+        for submodule in moduletype.submodules or []:
+            _validate_module_dependency_context(
+                submodule,
+                moduletype_context,
+                env,
+                type_graph,
+                moduletype_index,
+                policy=policy,
+            )
+
+    for submodule in basepic.submodules or []:
+        _validate_module_dependency_context(
+            submodule,
+            "BasePicture",
+            base_env,
+            type_graph,
+            moduletype_index,
+            policy=policy,
+        )
+
+
 def validate_transformed_basepicture(
     basepic: BasePicture,
     *,
@@ -1131,6 +717,7 @@ def validate_transformed_basepicture(
     allow_old_state_assignment: bool = True,
     warn_unknown_parameter_targets: bool = False,
     warn_incompatible_parameter_mappings: bool = False,
+    suppress_module_code_semantic_errors: bool = False,
     warning_sink: ValidationWarningSink | None = None,
 ) -> None:
     _validate_identifier(basepic.header.name, "BasePicture", check_reserved_keywords=False)
@@ -1164,6 +751,7 @@ def validate_transformed_basepicture(
         warn_incompatible_parameter_mappings=warn_incompatible_parameter_mappings,
         warning_sink=warning_sink,
         allow_old_state_assignment=allow_old_state_assignment,
+        suppress_module_code_semantic_errors=suppress_module_code_semantic_errors,
     )
 
     _validate_variable_list(
@@ -1210,6 +798,7 @@ def validate_transformed_basepicture(
             type_graph,
             warning_sink=policy.warning_sink,
             allow_old_state_assignment=policy.allow_old_state_assignment,
+            suppress_semantic_errors=policy.suppress_module_code_semantic_errors,
         )
         _validate_unique_submodule_names(
             moduletype.submodules,
@@ -1236,6 +825,7 @@ def validate_transformed_basepicture(
         type_graph,
         warning_sink=policy.warning_sink,
         allow_old_state_assignment=policy.allow_old_state_assignment,
+        suppress_semantic_errors=policy.suppress_module_code_semantic_errors,
     )
     _validate_unique_submodule_names(
         basepic.submodules,

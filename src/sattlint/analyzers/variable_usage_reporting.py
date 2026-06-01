@@ -22,6 +22,7 @@ from ..resolution.common import (
     resolve_module_by_strict_path,
     resolve_moduletype_def_strict,
 )
+from ._walk_utils import iter_nested_modules
 from .variables import VariablesAnalyzer
 
 log = logging.getLogger("SattLint")
@@ -51,24 +52,19 @@ def _find_module_instances(
     target_name = moduletype_name.casefold()
     matches: list[tuple[ModuleTypeInstance, list[str]]] = []
 
-    def walk_modules(
-        modules: list[SingleModule | FrameModule | ModuleTypeInstance] | None,
-        path: list[str],
-    ) -> None:
-        for module in modules or []:
-            next_path = [*path, module.header.name]
-            if isinstance(module, ModuleTypeInstance):
-                if module.moduletype_name.casefold() == target_name:
-                    matches.append((module, next_path))
-                try:
-                    moduletype_def = resolve_moduletype_def_strict(base_picture, module.moduletype_name)
-                except ValueError:
-                    continue
-                walk_modules(moduletype_def.submodules, next_path)
-                continue
-            walk_modules(module.submodules, next_path)
+    def _resolve_instance_submodules(
+        instance: ModuleTypeInstance,
+    ) -> list[SingleModule | FrameModule | ModuleTypeInstance] | None:
+        return resolve_moduletype_def_strict(base_picture, instance.moduletype_name).submodules
 
-    walk_modules(base_picture.submodules, [base_picture.header.name])
+    for module, module_path in iter_nested_modules(
+        base_picture.submodules,
+        parent_path=[base_picture.header.name],
+        resolve_instance_submodules=_resolve_instance_submodules,
+    ):
+        if isinstance(module, ModuleTypeInstance) and module.moduletype_name.casefold() == target_name:
+            matches.append((module, module_path))
+
     return matches
 
 
@@ -159,7 +155,7 @@ def debug_variable_usage(
     return "\n".join(lines)
 
 
-def analyze_datatype_usage(
+def report_datatype_usage(
     base_picture: BasePicture,
     var_name: str,
     debug: bool = False,
@@ -212,7 +208,7 @@ def analyze_datatype_usage(
     return "\n".join(lines)
 
 
-def analyze_module_localvar_fields(
+def report_module_localvar_fields(
     base_picture: BasePicture,
     module_path: str,
     var_name: str,

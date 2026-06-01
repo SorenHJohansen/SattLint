@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, cast
 
 from sattline_parser.models.ast_model import (
     FrameModule,
@@ -15,7 +15,7 @@ from sattline_parser.models.ast_model import (
 )
 
 from ..reporting.variables_report import IssueKind, VariableIssue
-from ..resolution import AccessKind
+from ..resolution import AccessEvent, AccessKind
 from ..resolution.common import resolve_moduletype_def_strict
 from ._variable_module_issue_scan import collect_issues_from_module
 
@@ -29,11 +29,93 @@ __all__ = [
     "_add_issue",
     "_add_magic_number_issue",
     "_add_unused_datatype_field_issues",
+    "_build_root_variable_access_summaries",
     "_collect_issues_from_module",
     "_iter_variables_for_datatype_field_analysis",
 ]
 
 _HIGH_FAN_IN_OUT_THRESHOLD = 3
+
+
+def _empty_access_by_module() -> dict[tuple[str, ...], set[AccessKind]]:
+    return {}
+
+
+def _empty_display_paths() -> dict[tuple[str, ...], tuple[str, ...]]:
+    return {}
+
+
+def _empty_module_key_set() -> set[tuple[str, ...]]:
+    return set()
+
+
+@dataclass
+class _RootVariableAccessSummary:
+    access_by_module: dict[tuple[str, ...], set[AccessKind]] = field(default_factory=_empty_access_by_module)
+    display_paths: dict[tuple[str, ...], tuple[str, ...]] = field(default_factory=_empty_display_paths)
+    reader_modules: set[tuple[str, ...]] = field(default_factory=_empty_module_key_set)
+    writer_modules: set[tuple[str, ...]] = field(default_factory=_empty_module_key_set)
+    access_module_keys: set[tuple[str, ...]] = field(default_factory=_empty_module_key_set)
+    has_root_level_access: bool = False
+
+
+def _iter_access_graph_by_path_items(
+    self: VariablesAnalyzer,
+) -> list[tuple[tuple[str, ...], list[AccessEvent]]]:
+    indexed_events = getattr(self.access_graph, "by_path_key", None)
+    if isinstance(indexed_events, dict):
+        return list(cast(dict[tuple[str, ...], list[AccessEvent]], indexed_events).items())
+
+    fallback_index: dict[tuple[str, ...], list[AccessEvent]] = {}
+    for event in getattr(self.access_graph, "events", ()):
+        typed_event = cast(AccessEvent, event)
+        fallback_index.setdefault(typed_event.canonical_path.key(), []).append(typed_event)
+    return list(fallback_index.items())
+
+
+def _build_root_variable_access_summaries(
+    self: VariablesAnalyzer,
+) -> dict[str, _RootVariableAccessSummary]:
+    state = cast(Any, self)
+    cache_token = (id(self.access_graph), len(getattr(self.access_graph, "events", ())))
+    cached_token = cast(tuple[int, int] | None, getattr(state, "_root_variable_access_summary_cache_token", None))
+    cached_summaries = cast(
+        dict[str, _RootVariableAccessSummary],
+        getattr(state, "_root_variable_access_summary_cache", {}),
+    )
+    if cached_token == cache_token:
+        return cached_summaries
+
+    root_key = self.bp.header.name.casefold()
+    root_variables = {variable.name.casefold() for variable in self.bp.localvariables or []}
+    summaries: dict[str, _RootVariableAccessSummary] = {}
+
+    for path_key, events in _iter_access_graph_by_path_items(self):
+        if len(path_key) < 2 or path_key[0] != root_key:
+            continue
+
+        variable_key = path_key[1]
+        if variable_key not in root_variables:
+            continue
+
+        summary = summaries.setdefault(variable_key, _RootVariableAccessSummary())
+        for event in events:
+            module_key = tuple(str(segment).casefold() for segment in event.use_module_path)
+            if len(module_key) <= 1:
+                summary.has_root_level_access = True
+                continue
+
+            summary.access_module_keys.add(module_key)
+            summary.display_paths.setdefault(module_key, tuple(str(segment) for segment in event.use_module_path))
+            summary.access_by_module.setdefault(module_key, set()).add(event.kind)
+            if event.kind is AccessKind.READ:
+                summary.reader_modules.add(module_key)
+            elif event.kind is AccessKind.WRITE:
+                summary.writer_modules.add(module_key)
+
+    state._root_variable_access_summary_cache_token = cache_token
+    state._root_variable_access_summary_cache = summaries
+    return summaries
 
 
 def _record_nested_datatype_access(
@@ -246,38 +328,25 @@ def _add_hidden_global_coupling_issues(self: VariablesAnalyzer) -> None:
         self.trace("hidden-global-coupling-scan", added_issue_count=0)
         return
 
-    root_prefix = (self.bp.header.name.casefold(),)
     added_issue_count = 0
+    summaries = _build_root_variable_access_summaries(self)
 
     for variable in self.bp.localvariables or []:
-        variable_prefix = (*root_prefix, variable.name.casefold())
-        access_by_module: dict[tuple[str, ...], set[AccessKind]] = defaultdict(set)
-        display_paths: dict[tuple[str, ...], tuple[str, ...]] = {}
-
-        for event in self.access_graph.events:
-            path_key = event.canonical_path.key()
-            if len(path_key) < len(variable_prefix):
-                continue
-            if path_key[: len(variable_prefix)] != variable_prefix:
-                continue
-            if len(event.use_module_path) <= 1:
-                continue
-
-            module_key = tuple(segment.casefold() for segment in event.use_module_path)
-            access_by_module[module_key].add(event.kind)
-            display_paths.setdefault(module_key, tuple(event.use_module_path))
-
-        if len(access_by_module) < 2:
+        summary = summaries.get(variable.name.casefold())
+        if summary is None:
             continue
 
-        if not any(AccessKind.WRITE in kinds for kinds in access_by_module.values()):
+        if len(summary.access_by_module) < 2:
+            continue
+
+        if not any(AccessKind.WRITE in kinds for kinds in summary.access_by_module.values()):
             continue
 
         module_summaries: list[str] = []
-        for module_key in sorted(access_by_module):
-            kinds = access_by_module[module_key]
+        for module_key in sorted(summary.access_by_module):
+            kinds = summary.access_by_module[module_key]
             labels = "/".join(kind.value for kind in sorted(kinds, key=lambda kind: kind.value))
-            display_path = display_paths.get(module_key, module_key)
+            display_path = summary.display_paths.get(module_key, module_key)
             module_summaries.append(f"{'.'.join(display_path[1:])} ({labels})")
 
         self.append_issue(
@@ -298,45 +367,33 @@ def _add_high_fan_in_out_issues(self: VariablesAnalyzer) -> None:
         self.trace("high-fan-in-out-scan", added_issue_count=0)
         return
 
-    root_prefix = (self.bp.header.name.casefold(),)
     added_issue_count = 0
+    summaries = _build_root_variable_access_summaries(self)
 
     for variable in self.bp.localvariables or []:
-        variable_prefix = (*root_prefix, variable.name.casefold())
-        reader_modules: set[tuple[str, ...]] = set()
-        writer_modules: set[tuple[str, ...]] = set()
-        display_paths: dict[tuple[str, ...], tuple[str, ...]] = {}
+        summary = summaries.get(variable.name.casefold())
+        if summary is None:
+            continue
 
-        for event in self.access_graph.events:
-            path_key = event.canonical_path.key()
-            if len(path_key) < len(variable_prefix):
-                continue
-            if path_key[: len(variable_prefix)] != variable_prefix:
-                continue
-            if len(event.use_module_path) <= 1:
-                continue
-
-            module_key = tuple(segment.casefold() for segment in event.use_module_path)
-            display_paths.setdefault(module_key, tuple(event.use_module_path))
-            if event.kind is AccessKind.READ:
-                reader_modules.add(module_key)
-            elif event.kind is AccessKind.WRITE:
-                writer_modules.add(module_key)
-
-        if len(reader_modules) < _HIGH_FAN_IN_OUT_THRESHOLD and len(writer_modules) < _HIGH_FAN_IN_OUT_THRESHOLD:
+        if (
+            len(summary.reader_modules) < _HIGH_FAN_IN_OUT_THRESHOLD
+            and len(summary.writer_modules) < _HIGH_FAN_IN_OUT_THRESHOLD
+        ):
             continue
 
         role_parts: list[str] = []
-        if len(reader_modules) >= _HIGH_FAN_IN_OUT_THRESHOLD:
+        if len(summary.reader_modules) >= _HIGH_FAN_IN_OUT_THRESHOLD:
             reader_labels = [
-                ".".join(display_paths.get(module_key, module_key)[1:]) for module_key in sorted(reader_modules)
+                ".".join(summary.display_paths.get(module_key, module_key)[1:])
+                for module_key in sorted(summary.reader_modules)
             ]
-            role_parts.append(f"high fan-in with {len(reader_modules)} readers: " + ", ".join(reader_labels))
-        if len(writer_modules) >= _HIGH_FAN_IN_OUT_THRESHOLD:
+            role_parts.append(f"high fan-in with {len(summary.reader_modules)} readers: " + ", ".join(reader_labels))
+        if len(summary.writer_modules) >= _HIGH_FAN_IN_OUT_THRESHOLD:
             writer_labels = [
-                ".".join(display_paths.get(module_key, module_key)[1:]) for module_key in sorted(writer_modules)
+                ".".join(summary.display_paths.get(module_key, module_key)[1:])
+                for module_key in sorted(summary.writer_modules)
             ]
-            role_parts.append(f"high fan-out with {len(writer_modules)} writers: " + ", ".join(writer_labels))
+            role_parts.append(f"high fan-out with {len(summary.writer_modules)} writers: " + ", ".join(writer_labels))
 
         self.append_issue(
             VariableIssue(
@@ -356,39 +413,19 @@ def _add_global_scope_minimization_issues(self: VariablesAnalyzer) -> None:
         self.trace("global-scope-minimization-scan", added_issue_count=0)
         return
 
-    root_prefix = (self.bp.header.name.casefold(),)
     added_issue_count = 0
+    summaries = _build_root_variable_access_summaries(self)
 
     for variable in self.bp.localvariables or []:
-        variable_prefix = (*root_prefix, variable.name.casefold())
-        access_module_keys: set[tuple[str, ...]] = set()
-        display_paths: dict[tuple[str, ...], tuple[str, ...]] = {}
-
-        for event in self.access_graph.events:
-            path_key = event.canonical_path.key()
-            if len(path_key) < len(variable_prefix):
-                continue
-            if path_key[: len(variable_prefix)] != variable_prefix:
-                continue
-
-            module_key_parts = [str(segment).casefold() for segment in event.use_module_path]
-            module_key: tuple[str, ...] = tuple(module_key_parts)
-            if len(module_key) <= 1:
-                access_module_keys = set()
-                break
-
-            access_module_keys.add(module_key)
-            display_path: tuple[str, ...] = tuple(str(segment) for segment in event.use_module_path)
-            display_paths.setdefault(
-                module_key,
-                display_path,
-            )
-
-        if not access_module_keys:
+        summary = summaries.get(variable.name.casefold())
+        if summary is None or summary.has_root_level_access:
             continue
 
-        common_prefix = list(next(iter(access_module_keys)))
-        for module_key in access_module_keys:
+        if not summary.access_module_keys:
+            continue
+
+        common_prefix = list(next(iter(summary.access_module_keys)))
+        for module_key in summary.access_module_keys:
             shared_len = 0
             while (
                 shared_len < len(common_prefix)
@@ -403,9 +440,10 @@ def _add_global_scope_minimization_issues(self: VariablesAnalyzer) -> None:
         if len(common_prefix) <= 1:
             continue
 
-        candidate_scope = ".".join(display_paths.get(tuple(common_prefix), tuple(common_prefix))[1:])
+        candidate_scope = ".".join(summary.display_paths.get(tuple(common_prefix), tuple(common_prefix))[1:])
         access_summaries = [
-            ".".join(display_paths.get(module_key, module_key)[1:]) for module_key in sorted(access_module_keys)
+            ".".join(summary.display_paths.get(module_key, module_key)[1:])
+            for module_key in sorted(summary.access_module_keys)
         ]
 
         self.append_issue(

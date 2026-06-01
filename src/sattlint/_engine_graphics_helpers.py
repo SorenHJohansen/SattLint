@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from time import perf_counter
 from typing import Any, cast
 
 from sattline_parser import parse_source_text as parser_core_parse_source_text
@@ -212,6 +213,7 @@ def attach_graphics_companion(
     mode: object,
     graph: ProjectGraph,
     owner_name: str,
+    timing_sink: Callable[[str, str, float], None] | None = None,
 ) -> bool:
     from . import engine as engine_module
 
@@ -220,26 +222,40 @@ def attach_graphics_companion(
         cast(Any, engine_module)._record_project_warning,
     )
 
+    def _record_timing(phase_name: str, started_at: float) -> None:
+        if timing_sink is None:
+            return
+        timing_sink(owner_name, phase_name, perf_counter() - started_at)
+
+    resolve_started_at = perf_counter()
     companion_path = engine_module.resolve_graphics_companion_path(code_path, mode=mode)
+    _record_timing("resolve-companion-path", resolve_started_at)
     if companion_path is None or companion_path == code_path:
         return _clear_attached_graphics_companion(bp)
 
+    signature_started_at = perf_counter()
     signature = _graphics_companion_signature(companion_path)
+    _record_timing("graphics-signature", signature_started_at)
     refreshed = False
     if not (
         signature is not None
         and getattr(bp, "graphics_file", None) == companion_path.name
         and _cached_graphics_companion_signature(bp) == signature
     ):
+        validate_started_at = perf_counter()
         result = engine_module.validate_graphics_file(companion_path)
+        _record_timing("validate-graphics-file", validate_started_at)
         bp.graphics_file = companion_path.name
         bp.graphics_bindings = list(getattr(result, "bindings", ()))
         bp.graphics_messages = list(result.messages)
         bp.graphics_composite_records = list(getattr(result, "composite_records", ()))
+        composite_started_at = perf_counter()
         bp.graphics_composite_occurrences = list(
             correlate_composite_records(bp, tuple(getattr(result, "composite_records", ())), graph=graph)
         )
+        _record_timing("correlate-composites", composite_started_at)
         bp.graphics_picture_display_records = list(getattr(result, "picture_display_records", ()))
+        picture_display_started_at = perf_counter()
         bp.graphics_picture_display_occurrences = list(
             correlate_picture_display_records(
                 bp,
@@ -247,17 +263,20 @@ def attach_graphics_companion(
                 graph=graph,
             )
         )
+        _record_timing("correlate-picture-display", picture_display_started_at)
         cast(Any, bp).graphics_companion_signature = signature
         refreshed = True
 
     warning_context_signature = _graphics_warning_context_signature(graph)
     warning_notices = None if refreshed else _cached_graphics_warning_notices(bp)
     if warning_notices is None or _cached_graphics_warning_context_signature(bp) != warning_context_signature:
+        warnings_started_at = perf_counter()
         warning_notices = picture_display_path_warnings(
             bp,
             tuple(getattr(bp, "graphics_picture_display_occurrences", ())),
             graph=graph,
         )
+        _record_timing("picture-display-warnings", warnings_started_at)
         cast(Any, bp).graphics_warning_notices = warning_notices
         cast(Any, bp).graphics_warning_context_signature = warning_context_signature
 

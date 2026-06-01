@@ -168,7 +168,7 @@ def default_delivery_templates(
             min_fixture_set=shared_fixtures,
         ),
         AnalyzerDeliveryTemplate(
-            key="interface_contracts",
+            key="interface-contracts",
             scope="workspace",
             implementation_bucket="interface-mapping",
             acceptance_tests=("tests/analyzers/test_interface_contracts.py",),
@@ -209,7 +209,7 @@ def default_delivery_templates(
             exposed_via=("pipeline",),
         ),
         AnalyzerDeliveryTemplate(
-            key="signal_lifecycle",
+            key="signal-lifecycle",
             scope="workspace",
             implementation_bucket="engineering-rules",
             lsp_exposed=True,
@@ -218,7 +218,7 @@ def default_delivery_templates(
             exposed_via=("cli",),
         ),
         AnalyzerDeliveryTemplate(
-            key="loop_stability",
+            key="loop-stability",
             scope="single-file",
             implementation_bucket="engineering-rules",
             lsp_exposed=True,
@@ -227,7 +227,7 @@ def default_delivery_templates(
             exposed_via=("cli",),
         ),
         AnalyzerDeliveryTemplate(
-            key="fault_handling",
+            key="fault-handling",
             scope="workspace",
             implementation_bucket="engineering-rules",
             lsp_exposed=True,
@@ -236,7 +236,7 @@ def default_delivery_templates(
             exposed_via=("cli",),
         ),
         AnalyzerDeliveryTemplate(
-            key="numeric_constraints",
+            key="numeric-constraints",
             scope="workspace",
             implementation_bucket="engineering-rules",
             lsp_exposed=True,
@@ -245,7 +245,7 @@ def default_delivery_templates(
             exposed_via=("cli",),
         ),
         AnalyzerDeliveryTemplate(
-            key="data_dependency",
+            key="data-dependency",
             scope="workspace",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=("tests/analyzers/test_data_dependency.py",),
@@ -253,7 +253,7 @@ def default_delivery_templates(
             exposed_via=("cli",),
         ),
         AnalyzerDeliveryTemplate(
-            key="config_drift",
+            key="config-drift",
             scope="cross-module",
             implementation_bucket="engineering-rules",
             lsp_exposed=True,
@@ -270,7 +270,7 @@ def default_delivery_templates(
             exposed_via=("pipeline",),
         ),
         AnalyzerDeliveryTemplate(
-            key="resource_usage",
+            key="resource-usage",
             scope="workspace",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=("tests/analyzers/test_resource_usage.py",),
@@ -278,7 +278,7 @@ def default_delivery_templates(
             exposed_via=("cli",),
         ),
         AnalyzerDeliveryTemplate(
-            key="scan_concurrency",
+            key="scan-concurrency",
             scope="single-file",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=("tests/analyzers/test_scan_concurrency.py",),
@@ -359,7 +359,7 @@ def default_delivery_templates(
             exposed_via=(semantic_layer_analyzer_key,),
         ),
         AnalyzerDeliveryTemplate(
-            key="state_inference",
+            key="state-inference",
             scope="workspace",
             implementation_bucket="shared-semantic-core",
             acceptance_tests=(

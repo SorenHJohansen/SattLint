@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from collections.abc import Sequence as SequenceABC
+from typing import cast
 
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -11,6 +12,8 @@ from sattline_parser.models.ast_model import (
     ModuleCode,
     SingleModule,
 )
+
+from ._walk_utils import iter_nested_modules
 
 
 def iter_sfc_modulecodes(base_picture: BasePicture) -> Iterator[tuple[list[str], ModuleCode | None]]:
@@ -29,12 +32,10 @@ def _iter_nested_modulecodes(
     modules: SequenceABC[object] | None,
     module_path: list[str],
 ) -> Iterator[tuple[list[str], ModuleCode | None]]:
-    for module in modules or ():
+    for module, child_path in iter_nested_modules(
+        cast(SequenceABC[SingleModule | FrameModule], modules), parent_path=module_path
+    ):
         if isinstance(module, SingleModule):
-            child_path = [*module_path, module.header.name]
             yield child_path, module.modulecode
-            yield from _iter_nested_modulecodes(module.submodules, child_path)
         elif isinstance(module, FrameModule):
-            child_path = [*module_path, module.header.name]
             yield child_path, getattr(module, "modulecode", None)
-            yield from _iter_nested_modulecodes(module.submodules, child_path)

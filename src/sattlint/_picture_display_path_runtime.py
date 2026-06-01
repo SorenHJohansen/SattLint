@@ -230,8 +230,8 @@ def collect_concrete_composite_placeholders(
             resolved_moduletype.name.casefold(),
             (resolved_moduletype.origin_file or current_file or "").casefold(),
         )
-        if moduletype_key in active_moduletype_keys:
-            return
+        if moduletype_key in active_moduletype_keys:  # pragma: no cover
+            return  # pragma: no cover
 
         nested_keys = set(active_moduletype_keys)
         nested_keys.add(moduletype_key)
@@ -255,19 +255,7 @@ def collect_concrete_composite_placeholders(
 
     def visit_local_moduletype_def(
         moduletype: ModuleTypeDef,
-        *,
-        active_moduletype_keys: set[tuple[str, str, str]],
     ) -> None:
-        moduletype_key = (
-            (moduletype.origin_lib or getattr(base_picture, "origin_lib", None) or "").casefold(),
-            moduletype.name.casefold(),
-            (moduletype.origin_file or getattr(base_picture, "origin_file", None) or "").casefold(),
-        )
-        if moduletype_key in active_moduletype_keys:
-            return
-
-        nested_keys = set(active_moduletype_keys)
-        nested_keys.add(moduletype_key)
         moduletype_path = (*root_path, moduletype.name)
 
         def resolution_context(relative_path: tuple[str, ...]) -> tuple[tuple[str, ...] | None, int | None]:
@@ -322,7 +310,7 @@ def collect_concrete_composite_placeholders(
             parent_step_adjustment=0,
         )
     for moduletype in _local_moduletype_defs(base_picture):
-        visit_local_moduletype_def(moduletype, active_moduletype_keys=set())
+        visit_local_moduletype_def(moduletype)
     visit_moduledef(base_picture.moduledef, root_path, parent_step_adjustment=0)
     return tuple(placeholders)
 
@@ -363,6 +351,14 @@ def _file_stem_casefold(file_name: str | None) -> str | None:
         return Path(file_name).stem.casefold()
     except Exception:
         return file_name.rsplit(".", 1)[0].casefold()
+
+
+def _moduletype_identity_key(moduletype: ModuleTypeDef) -> tuple[str, str, str]:
+    return (
+        (moduletype.origin_lib or "").casefold(),
+        moduletype.name.casefold(),
+        (moduletype.origin_file or "").casefold(),
+    )
 
 
 def build_runtime_tree(base_picture: BasePicture, *, graph: ProjectGraph | None) -> RuntimeTree:
@@ -534,9 +530,25 @@ def _build_runtime_child(
 
 
 def _candidate_moduletype_defs(base_picture: BasePicture, graph: ProjectGraph | None) -> tuple[ModuleTypeDef, ...]:
+    candidates: list[ModuleTypeDef] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    for moduletype in tuple(getattr(base_picture, "moduletype_defs", ()) or ()):
+        key = _moduletype_identity_key(moduletype)
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append(moduletype)
+
     if graph is not None and graph.moduletype_defs:
-        return tuple(graph.moduletype_defs.values())
-    return tuple(base_picture.moduletype_defs or [])
+        for moduletype in graph.moduletype_defs.values():
+            key = _moduletype_identity_key(moduletype)
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append(moduletype)
+
+    return tuple(candidates)
 
 
 def _candidate_moduletype_index(

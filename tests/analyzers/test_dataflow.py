@@ -402,5 +402,5 @@ def test_dataflow_analyzer_is_enabled_by_default():
 def test_state_inference_analyzer_is_registered():
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
-    assert "state_inference" in specs
-    assert specs["state_inference"].enabled is True
+    assert "state-inference" in specs
+    assert specs["state-inference"].enabled is True

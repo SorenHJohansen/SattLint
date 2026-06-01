@@ -1,31 +1,21 @@
 from __future__ import annotations
 
+import inspect
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
+from time import perf_counter
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
+from . import app_telemetry as telemetry_module
 from .casefolding import casefold_equal, casefold_key
 from .models.project_graph import ProjectGraph
 
 ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 _STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index", "ast_cache_save")
-
-
-def _cached_manifest_paths(payload: object) -> frozenset[Path]:
-    payload_map = cast(Mapping[str, object], payload) if isinstance(payload, Mapping) else None
-    if payload_map is None:
-        return frozenset()
-
-    files = payload_map.get("files")
-    if not isinstance(files, dict):
-        return frozenset()
-
-    manifest_entries = cast(dict[object, object], files)
-    return frozenset(Path(path_str) for path_str in manifest_entries if isinstance(path_str, str))
 
 
 def _attach_analysis_cache_metadata(graph: ProjectGraph, *, cache_key: str, manifest_files: Iterable[Path]) -> None:
@@ -54,6 +44,39 @@ def _format_refresh_stage_timings(stage_timings: dict[str, float], *, refresh_mo
 
 def _workspace_dependency_suffixes(mode: str) -> tuple[str, ...]:
     return (".l", ".z") if casefold_equal(mode, "draft") else (".z",)
+
+
+def _collect_analysis_timings(cfg: ConfigDict) -> bool:
+    return bool(cfg.get("debug", False)) or telemetry_module.create_app_telemetry(cfg).enabled
+
+
+def _with_status_line(
+    *,
+    live_status_line_factory: Callable[[], Any],
+    run_fn: Callable[[Callable[[str], None]], tuple[BasePicture, ProjectGraph]],
+) -> tuple[BasePicture, ProjectGraph]:
+    with live_status_line_factory() as status_update_fn:
+        return run_fn(cast(Callable[[str], None], status_update_fn))
+
+
+def _call_load_project_compat(
+    load_project_fn: Callable[..., tuple[BasePicture, ProjectGraph]],
+    cfg: ConfigDict,
+    *,
+    target_name: str,
+    **kwargs: object,
+) -> tuple[BasePicture, ProjectGraph]:
+    try:
+        signature = inspect.signature(load_project_fn)
+    except (TypeError, ValueError):
+        return load_project_fn(cfg, target_name=target_name, **kwargs)
+
+    accepts_kwargs = any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values())
+    if accepts_kwargs:
+        return load_project_fn(cfg, target_name=target_name, **kwargs)
+
+    supported_kwargs = {name: value for name, value in kwargs.items() if name in signature.parameters}
+    return load_project_fn(cfg, target_name=target_name, **supported_kwargs)
 
 
 def _iter_workspace_reverse_library_consumer_dependency_files(
@@ -174,10 +197,12 @@ def iter_loaded_projects(
 ) -> Iterator[LoadedProject]:
     for target_name in require_analyzed_targets_fn(cfg):
         try:
-            project_bp, graph = load_project_fn(
+            project_bp, graph = _call_load_project_compat(
+                load_project_fn,
                 cfg,
                 target_name=target_name,
                 use_cache=use_cache,
+                collect_stage_timings=_collect_analysis_timings(cfg),
             )
         except Exception as exc:
             emit_output_fn(f"\n=== Target: {target_name} ===")
@@ -284,25 +309,40 @@ def load_project(
     cache_dir = get_cache_dir_fn()
     cache = ast_cache_cls(cache_dir)
 
-    key = cache_key_for_target_fn(cfg, selected_target)
-    cached = cache.load(key) if use_cache else None
+    def build_project_view(root_bp: BasePicture, graph: ProjectGraph) -> BasePicture:
+        if refresh_mode == "ast-only":
+            return root_bp
+        return cast(BasePicture, engine_module.merge_project_basepicture(root_bp, graph))
 
-    if cached and cast(bool, cache.validate(cached, fast=False)):
-        project_bp, graph = cast(tuple[BasePicture, ProjectGraph], cached["project"])
-        _attach_analysis_cache_metadata(
-            graph,
-            cache_key=key,
-            manifest_files=_cached_manifest_paths(cached),
-        )
-        return project_bp, graph
+    key = cache_key_for_target_fn(cfg, selected_target)
+    if use_cache and cast(bool, cache.validate(key, fast=False)):
+        cached = cache.load(key)
+        payload_map = cast(Mapping[str, object], cached) if isinstance(cached, Mapping) else None
+        cached_project = payload_map.get("project") if payload_map is not None else None
+        cached_project_tuple = cast(tuple[object, ...], cached_project) if isinstance(cached_project, tuple) else None
+        if cached_project_tuple is not None and len(cached_project_tuple) == 2:
+            root_bp, graph = cast(tuple[BasePicture, ProjectGraph], cached_project_tuple)
+            _attach_analysis_cache_metadata(
+                graph,
+                cache_key=key,
+                manifest_files=cache.manifest_paths(key),
+            )
+            return build_project_view(root_bp, graph), graph
 
     stage_timings: dict[str, float] = {}
     stage_timings_by_program: dict[str, dict[str, float]] = defaultdict(dict)
+    graphics_timings: dict[str, float] = {}
+    graphics_timings_by_program: dict[str, dict[str, float]] = defaultdict(dict)
 
     def record_stage_timing(owner_name: str, stage_name: str, duration: float) -> None:
         stage_timings[stage_name] = stage_timings.get(stage_name, 0.0) + duration
         owner_timings = stage_timings_by_program.setdefault(owner_name, {})
         owner_timings[stage_name] = owner_timings.get(stage_name, 0.0) + duration
+
+    def record_graphics_timing(owner_name: str, phase_name: str, duration: float) -> None:
+        graphics_timings[phase_name] = graphics_timings.get(phase_name, 0.0) + duration
+        owner_timings = graphics_timings_by_program.setdefault(owner_name, {})
+        owner_timings[phase_name] = owner_timings.get(phase_name, 0.0) + duration
 
     loader = engine_module.SattLineProjectLoader(
         program_dir=Path(cfg["program_dir"]),
@@ -315,6 +355,7 @@ def load_project(
         status_update_fn=status_update_fn,
         refresh_mode=refresh_mode,
         stage_timing_sink=record_stage_timing if collect_stage_timings else None,
+        graphics_timing_sink=record_graphics_timing if collect_stage_timings else None,
     )
 
     graph = loader.resolve(selected_target, strict=False)
@@ -346,6 +387,10 @@ def load_project(
         graph.load_stage_timings_by_program = {
             name: dict(program_timings) for name, program_timings in stage_timings_by_program.items()
         }
+        graph.graphics_load_timings = dict(graphics_timings)
+        graph.graphics_load_timings_by_program = {
+            name: dict(program_timings) for name, program_timings in graphics_timings_by_program.items()
+        }
 
     if refresh_mode == "ast-only":
         return root_bp, graph
@@ -360,7 +405,7 @@ def load_project(
         engine_module=engine_module,
     )
 
-    project_bp = engine_module.merge_project_basepicture(root_bp, graph)
+    project_bp = build_project_view(root_bp, graph)
     manifest_files = cache_manifest_files(
         cfg,
         graph,
@@ -379,10 +424,46 @@ def load_project(
     )
     cache.save(
         key,
-        project=(project_bp, graph),
+        project=(root_bp, graph),
         files=manifest_files,
     )
     return project_bp, graph
+
+
+def load_project_with_live_status(
+    cfg: ConfigDict,
+    target_name: str | None = None,
+    *,
+    use_cache: bool,
+    use_file_ast_cache: bool,
+    refresh_mode: str,
+    collect_stage_timings: bool,
+    require_analyzed_targets_fn: Callable[[ConfigDict], list[str]],
+    cache_key_for_target_fn: Callable[[ConfigDict, str], str],
+    target_load_error_factory: Callable[..., Exception] | None,
+    get_cache_dir_fn: Callable[[], Path],
+    ast_cache_cls: type[Any],
+    engine_module: Any,
+    live_status_line_factory: Callable[[], Any],
+) -> tuple[BasePicture, ProjectGraph]:
+    return _with_status_line(
+        live_status_line_factory=live_status_line_factory,
+        run_fn=lambda status_update_fn: load_project(
+            cfg,
+            target_name=target_name,
+            use_cache=use_cache,
+            use_file_ast_cache=use_file_ast_cache,
+            refresh_mode=refresh_mode,
+            collect_stage_timings=collect_stage_timings,
+            require_analyzed_targets_fn=require_analyzed_targets_fn,
+            cache_key_for_target_fn=cache_key_for_target_fn,
+            target_load_error_factory=target_load_error_factory,
+            get_cache_dir_fn=get_cache_dir_fn,
+            ast_cache_cls=ast_cache_cls,
+            engine_module=engine_module,
+            status_update_fn=status_update_fn,
+        ),
+    )
 
 
 def load_program_ast(
@@ -411,6 +492,26 @@ def load_program_ast(
     return root_bp, graph
 
 
+def load_program_ast_with_live_status(
+    cfg: ConfigDict,
+    program_name: str,
+    *,
+    force_dependency_resolution: bool,
+    engine_module: Any,
+    live_status_line_factory: Callable[[], Any],
+) -> tuple[BasePicture, ProjectGraph]:
+    return _with_status_line(
+        live_status_line_factory=live_status_line_factory,
+        run_fn=lambda status_update_fn: load_program_ast(
+            cfg,
+            program_name,
+            force_dependency_resolution=force_dependency_resolution,
+            engine_module=engine_module,
+            status_update_fn=status_update_fn,
+        ),
+    )
+
+
 def force_refresh_ast(
     cfg: ConfigDict,
     *,
@@ -426,14 +527,17 @@ def force_refresh_ast(
         return None
 
     cache = ast_cache_cls(get_cache_dir_fn())
+    telemetry = telemetry_module.create_app_telemetry(cfg)
     result = None
     total_targets = len(targets)
-    collect_stage_timings = bool(cfg.get("debug", False))
+    collect_stage_timings = bool(cfg.get("debug", False)) or telemetry.enabled
     emit_output_fn(f"Refreshing AST caches for {total_targets} target(s)...")
     for index, target_name in enumerate(targets, start=1):
         emit_output_fn(f"\nRefreshing AST cache for {target_name}... ({index}/{total_targets})")
         cache.clear(cache_key_for_target_fn(cfg, target_name))
-        result = load_project_fn(
+        started_at = perf_counter()
+        result = _call_load_project_compat(
+            load_project_fn,
             cfg,
             target_name=target_name,
             use_cache=False,
@@ -441,16 +545,72 @@ def force_refresh_ast(
             refresh_mode="ast-only",
             collect_stage_timings=collect_stage_timings,
         )
+        duration_ms = (perf_counter() - started_at) * 1000
         if collect_stage_timings:
             _bp, graph = result
             stage_timings = getattr(graph, "load_stage_timings", None)
             if isinstance(stage_timings, dict):
+                stage_timings_s = dict(cast(dict[str, float], stage_timings))
+                stage_timings_ms = telemetry_module.normalize_named_timings_ms(stage_timings_s, scale=1000.0)
+                stage_bottleneck = telemetry_module.bottleneck_from_named_timings(stage_timings_ms, kind="stage")
+                graphics_timings_ms = telemetry_module.normalize_named_timings_ms(
+                    getattr(graph, "graphics_load_timings", None),
+                    scale=1000.0,
+                )
+                graphics_bottleneck = telemetry_module.bottleneck_from_named_timings(
+                    graphics_timings_ms,
+                    kind="graphics-phase",
+                )
                 emit_output_fn(
                     _format_refresh_stage_timings(
-                        cast(dict[str, float], stage_timings),
+                        stage_timings_s,
                         refresh_mode="ast-only",
                     )
                 )
+                payload: dict[str, object] = {
+                    "refresh_mode": "ast-only",
+                    "stage_timings_s": stage_timings_s,
+                }
+                if stage_timings_ms:
+                    payload["stage_timings_ms"] = stage_timings_ms
+                if stage_bottleneck is not None:
+                    payload["stage_bottleneck"] = stage_bottleneck
+                    payload["bottleneck_kind"] = "stage"
+                    payload["bottleneck"] = stage_bottleneck
+                if graphics_timings_ms:
+                    payload["graphics_timings_ms"] = graphics_timings_ms
+                if graphics_bottleneck is not None:
+                    payload["graphics_bottleneck"] = graphics_bottleneck
+                    current_bottleneck = cast(dict[str, object] | None, payload.get("bottleneck"))
+                    if current_bottleneck is None or cast(float, graphics_bottleneck["duration_ms"]) > cast(
+                        float,
+                        current_bottleneck["duration_ms"],
+                    ):
+                        payload["bottleneck_kind"] = "graphics-phase"
+                        payload["bottleneck"] = graphics_bottleneck
+                telemetry.emit(
+                    operation="ast-refresh",
+                    target_name=target_name,
+                    duration_ms=duration_ms,
+                    success=True,
+                    payload=payload,
+                )
+            else:
+                telemetry.emit(
+                    operation="ast-refresh",
+                    target_name=target_name,
+                    duration_ms=duration_ms,
+                    success=True,
+                    payload={"refresh_mode": "ast-only"},
+                )
+        else:
+            telemetry.emit(
+                operation="ast-refresh",
+                target_name=target_name,
+                duration_ms=duration_ms,
+                success=True,
+                payload={"refresh_mode": "ast-only"},
+            )
         emit_output_fn("OK AST cache refreshed")
     return result
 
@@ -476,13 +636,11 @@ def ensure_ast_cache(
     emit_output_fn(f"Refreshing AST caches for {total_targets} target(s)...")
     for index, target_name in enumerate(targets, start=1):
         emit_output_fn(f"\nChecking AST cache for {target_name}... ({index}/{total_targets})")
-        cached = cache.load(cache_key_for_target_fn(cfg, target_name))
-        if cached:
-            has_manifest = bool(cached.get("files"))
-            if fast and has_manifest:
-                is_valid = cast(bool, cache.validate(cached, fast=True))
-            else:
-                is_valid = cast(bool, cache.validate(cached, fast=fast))
+        key = cache_key_for_target_fn(cfg, target_name)
+        has_payload = cast(bool, cache.has_payload(key))
+        has_manifest = cast(bool, cache.has_manifest(key))
+        if has_payload:
+            is_valid = cast(bool, cache.validate(key, fast=fast))
             if is_valid:
                 emit_output_fn("✔ AST cache OK")
                 continue

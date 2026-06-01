@@ -59,6 +59,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ABB_lib_dir": "",
     "icf_dir": "",
     "other_lib_dirs": [],
+    "telemetry": {
+        "enabled": False,
+    },
     "analysis": {
         "sfc": {
             "mutually_exclusive_steps": [],

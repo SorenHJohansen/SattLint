@@ -96,7 +96,7 @@ DATAFLOW_RULES: dict[str, SemanticRule] = {
 SIGNAL_LIFECYCLE_RULES: dict[str, SemanticRule] = {
     "signal_lifecycle.read_before_write": SemanticRule(
         id="semantic.signal-lifecycle-read-before-write",
-        source="signal_lifecycle",
+        source="signal-lifecycle",
         category="variable-lifecycle",
         severity="warning",
         applies_to="signal",
@@ -104,7 +104,7 @@ SIGNAL_LIFECYCLE_RULES: dict[str, SemanticRule] = {
     ),
     "signal_lifecycle.unconsumed_write": SemanticRule(
         id="semantic.signal-lifecycle-unconsumed-write",
-        source="signal_lifecycle",
+        source="signal-lifecycle",
         category="variable-lifecycle",
         severity="warning",
         applies_to="signal",
@@ -115,7 +115,7 @@ SIGNAL_LIFECYCLE_RULES: dict[str, SemanticRule] = {
 LOOP_STABILITY_RULES: dict[str, SemanticRule] = {
     "loop_stability.conflicting_setpoint": SemanticRule(
         id="semantic.loop-conflicting-setpoint",
-        source="loop_stability",
+        source="loop-stability",
         category="control-flow",
         severity="warning",
         applies_to="setpoint",
@@ -126,7 +126,7 @@ LOOP_STABILITY_RULES: dict[str, SemanticRule] = {
 FAULT_HANDLING_RULES: dict[str, SemanticRule] = {
     "fault_handling.missing_recovery": SemanticRule(
         id="semantic.fault-missing-recovery",
-        source="fault_handling",
+        source="fault-handling",
         category="control-flow",
         severity="warning",
         applies_to="fault-path",
@@ -134,7 +134,7 @@ FAULT_HANDLING_RULES: dict[str, SemanticRule] = {
     ),
     "fault_handling.unhandled_fault": SemanticRule(
         id="semantic.fault-unhandled-path",
-        source="fault_handling",
+        source="fault-handling",
         category="control-flow",
         severity="warning",
         applies_to="fault-path",
@@ -145,7 +145,7 @@ FAULT_HANDLING_RULES: dict[str, SemanticRule] = {
 NUMERIC_CONSTRAINT_RULES: dict[str, SemanticRule] = {
     "numeric_constraints.limit_violation": SemanticRule(
         id="semantic.numeric-limit-violation",
-        source="numeric_constraints",
+        source="numeric-constraints",
         category="engineering-spec",
         severity="warning",
         applies_to="numeric-variable",
@@ -156,7 +156,7 @@ NUMERIC_CONSTRAINT_RULES: dict[str, SemanticRule] = {
 CONFIG_DRIFT_RULES: dict[str, SemanticRule] = {
     "config_drift.instance_configuration": SemanticRule(
         id="semantic.instance-configuration-drift",
-        source="config_drift",
+        source="config-drift",
         category="interface-contracts",
         severity="warning",
         applies_to="module-instance-group",

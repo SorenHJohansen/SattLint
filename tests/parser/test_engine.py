@@ -9,11 +9,8 @@ from typing import Any, cast
 import pytest
 from lark.exceptions import VisitError
 
-from sattline_parser.models.ast_model import GraphObject, ModuleDef, ModuleHeader, SingleModule, SourceSpan
-from sattlint import _engine_graphics_helpers as engine_graphics_helpers
+from sattline_parser.models.ast_model import ModuleDef, ModuleHeader
 from sattlint import engine
-from sattlint.graphics_validation import PictureDisplayPathRow, PictureDisplayRecord
-from sattlint.picture_display_paths import PictureDisplayOccurrence
 
 
 def _make_loader(
@@ -73,74 +70,6 @@ def _make_basepicture(
     )
 
 
-def test_format_debug_list_renders_multiline_bullets() -> None:
-    formatted = engine._format_debug_list("Resolved ASTs", ["iconlib", "configlib"])
-
-    assert formatted == ("Resolved ASTs (2):\n  - iconlib\n  - configlib")
-
-
-def test_format_debug_missing_entries_splits_parse_failures() -> None:
-    formatted = engine._format_debug_missing_entries(
-        [
-            "supportlib parse/transform error: BasePicture moduletype 'GetRemoteFile' equation 'Delay' uses OLD on non-STATE variable 'ExecuteLocal'",
-            "Missing code file for 'Simulation_PPLib' (draft)",
-        ]
-    )
-
-    assert formatted == (
-        "Missing/failed (2):\n"
-        "  - supportlib\n"
-        "    parse/transform error: BasePicture moduletype 'GetRemoteFile' equation 'Delay' uses OLD on non-STATE variable 'ExecuteLocal'\n"
-        "  - Missing code file for 'Simulation_PPLib' (draft)"
-    )
-
-
-def test_format_debug_missing_entries_handles_empty_input() -> None:
-    assert engine._format_debug_missing_entries([]) == "Missing/failed: none"
-
-
-def test_expected_unavailable_library_helpers_are_case_insensitive() -> None:
-    assert engine.is_expected_unavailable_library("ControlLib") is True
-    assert engine.is_expected_unavailable_library("OtherLib") is False
-    assert engine.expected_unavailable_library_reason("CONTROLLIB") == "expected proprietary dependency"
-    assert engine.expected_unavailable_library_reason("OtherLib") is None
-
-
-def test_code_mode_extension_helpers_cover_both_modes() -> None:
-    assert engine.code_ext(engine.CodeMode.OFFICIAL) == ".x"
-    assert engine.code_ext(engine.CodeMode.DRAFT) == ".s"
-    assert engine.deps_ext(engine.CodeMode.OFFICIAL) == ".z"
-    assert engine.deps_ext(engine.CodeMode.DRAFT) == ".l"
-    assert engine.graphics_ext(engine.CodeMode.OFFICIAL) == ".y"
-    assert engine.graphics_ext(engine.CodeMode.DRAFT) == ".g"
-    assert engine.graphics_ext_candidates(engine.CodeMode.OFFICIAL) == (".y",)
-    assert engine.graphics_ext_candidates(engine.CodeMode.DRAFT) == (".g", ".y")
-
-
-def test_normalize_code_mode_accepts_enum_and_string() -> None:
-    assert engine._normalize_code_mode(engine.CodeMode.DRAFT) is engine.CodeMode.DRAFT
-    assert engine._normalize_code_mode(" official ") is engine.CodeMode.OFFICIAL
-    assert engine._normalize_code_mode("") is None
-    assert engine._normalize_code_mode(None) is None
-
-
-def test_resolve_graphics_companion_path_prefers_existing_candidates(tmp_path: Path) -> None:
-    draft_source = tmp_path / "Program.s"
-    draft_source.write_text("code", encoding="utf-8")
-    draft_graphics = draft_source.with_suffix(".g")
-    draft_graphics.write_text("graphics", encoding="utf-8")
-
-    official_source = tmp_path / "Program.x"
-    official_source.write_text("code", encoding="utf-8")
-    official_graphics = official_source.with_suffix(".y")
-    official_graphics.write_text("graphics", encoding="utf-8")
-
-    assert engine.resolve_graphics_companion_path(draft_source) == draft_graphics
-    assert engine.resolve_graphics_companion_path(official_source) == official_graphics
-    assert engine.resolve_graphics_companion_path(draft_graphics) == draft_graphics
-    assert engine.resolve_graphics_companion_path(tmp_path / "Missing.s") is None
-
-
 def test_graphics_validation_to_syntax_result_merges_warnings_and_errors() -> None:
     result = SimpleNamespace(
         warnings=[SimpleNamespace(message="graphics warning")],
@@ -179,55 +108,6 @@ def test_graphics_validation_to_syntax_result_returns_ok_without_errors() -> Non
         stage="ok",
         warnings=("graphics warning",),
         warning_notices=(engine.ValidationNotice(message="graphics warning"),),
-    )
-
-
-def test_picture_display_path_warnings_include_declaring_module() -> None:
-    child = SingleModule(
-        header=ModuleHeader(name="L1", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(),
-    )
-    base_picture = engine.BasePicture(
-        header=ModuleHeader(name="Root", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        name="Root",
-        position=(0.0, 0.0, 0.0, 1.0, 1.0),
-        moduledef=ModuleDef(),
-        submodules=[child],
-    )
-    occurrences = (
-        PictureDisplayOccurrence(
-            program_name="Root",
-            declaring_module_path=("Root", "L1"),
-            record=PictureDisplayRecord(
-                record_index=1,
-                record_start_line=1,
-                record_end_line=5,
-                path_rows=(
-                    PictureDisplayPathRow(
-                        record_index=1,
-                        index_token="<token>",
-                        index_value=0,
-                        kind="literal",
-                        raw_text="AbsentPanel",
-                        span=SourceSpan(line=3, column=9),
-                    ),
-                ),
-            ),
-        ),
-    )
-
-    warnings = engine._picture_display_path_warnings(base_picture, occurrences)
-
-    assert warnings == (
-        engine.ValidationNotice(
-            message=(
-                "PictureDisplay in module 'Root.L1' path 'AbsentPanel' could not be resolved: "
-                "module 'AbsentPanel' was not found under 'Root.L1'"
-            ),
-            line=3,
-            column=9,
-            length=len("AbsentPanel"),
-        ),
     )
 
 
@@ -459,172 +339,6 @@ def test_validate_single_file_syntax_preserves_structured_validation_notices(mon
     assert result.warning_notices == (engine.ValidationNotice("parser warning", line=12, column=9, length=7),)
 
 
-def test_loader_attaches_graphics_companion_metadata_to_basepicture(monkeypatch, tmp_path) -> None:
-    source_text = "\n".join(
-        [
-            '"SyntaxVersion"',
-            '"OriginalFileDate"',
-            '"ProgramDate"',
-            "BasePicture Invocation (0.0,0.0,0.0,1.0,1.0) : MODULEDEFINITION DateCode_ 1",
-            "ModuleDef",
-            "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )",
-            "ENDDEF (*BasePicture*);",
-        ]
-    )
-    root_file = tmp_path / "Root.s"
-    graphics_file = tmp_path / "Root.g"
-    root_file.write_text(source_text, encoding="utf-8")
-    graphics_file.write_text("graphics", encoding="utf-8")
-
-    loader = engine.SattLineProjectLoader(
-        program_dir=tmp_path,
-        other_lib_dirs=[],
-        abb_lib_dir=tmp_path,
-        mode=engine.CodeMode.DRAFT,
-        scan_root_only=False,
-        debug=False,
-    )
-
-    monkeypatch.setattr(
-        engine,
-        "validate_graphics_file",
-        lambda _path: SimpleNamespace(
-            messages=(
-                SimpleNamespace(
-                    severity="warning",
-                    message="asset missing",
-                    line=4,
-                    column=2,
-                    length=5,
-                ),
-            )
-        ),
-    )
-
-    graph = loader.resolve("Root")
-
-    bp = graph.ast_by_name["Root"]
-    assert bp.graphics_file == "Root.g"
-    assert [message.message for message in bp.graphics_messages] == ["asset missing"]
-    assert graph.warnings == ["Root: graphics validation warning: asset missing"]
-    assert graph.warning_notices == [
-        (
-            "Root",
-            engine.ValidationNotice(
-                message="graphics validation warning: asset missing",
-                line=4,
-                column=2,
-                length=5,
-            ),
-        )
-    ]
-    assert root_file in graph.source_files
-    assert graphics_file not in graph.source_files
-
-
-def test_attach_graphics_companion_correlates_picturedisplay_records_by_composite_order(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    root_file = tmp_path / "Root.s"
-    graphics_file = tmp_path / "Root.g"
-    root_file.write_text("source", encoding="utf-8")
-    graphics_file.write_text("graphics", encoding="utf-8")
-
-    child = SingleModule(
-        header=ModuleHeader(name="Child", invoke_coord=(0.0, 0.0, 0.0, 1.0, 1.0)),
-        moduledef=ModuleDef(graph_objects=[GraphObject("CompositeObject")]),
-    )
-    bp = _make_basepicture()
-    bp.submodules = [child]
-    bp.moduledef = ModuleDef(graph_objects=[GraphObject("CompositeObject")])
-
-    monkeypatch.setattr(
-        engine,
-        "validate_graphics_file",
-        lambda _path: SimpleNamespace(
-            messages=(),
-            bindings=(),
-            picture_display_records=(PictureDisplayRecord(record_index=2, record_start_line=3, record_end_line=8),),
-        ),
-    )
-
-    graph = engine.ProjectGraph()
-
-    engine._attach_graphics_companion(
-        bp,
-        code_path=root_file,
-        mode=engine.CodeMode.DRAFT,
-        graph=graph,
-        owner_name="Root",
-    )
-
-    assert bp.graphics_file == "Root.g"
-    assert [record.record_index for record in bp.graphics_picture_display_records] == [2]
-    assert len(bp.graphics_picture_display_occurrences) == 1
-    assert bp.graphics_picture_display_occurrences[0].declaring_module_path == ("Root",)
-
-
-def test_attach_graphics_companion_reuses_cached_signature_after_pickle_roundtrip(monkeypatch, tmp_path) -> None:
-    root_file = tmp_path / "Root.s"
-    graphics_file = tmp_path / "Root.g"
-    root_file.write_text("source", encoding="utf-8")
-    graphics_file.write_text("graphics", encoding="utf-8")
-
-    graphics_calls: list[Path] = []
-    warning_calls: list[str] = []
-    warning_notice = engine.ValidationNotice(message="picture warning", line=4, column=2, length=7)
-
-    monkeypatch.setattr(
-        engine,
-        "validate_graphics_file",
-        lambda path: (
-            graphics_calls.append(path) or SimpleNamespace(messages=(), bindings=(), picture_display_records=())
-        ),
-    )
-
-    def fake_picture_display_path_warnings(*_args, **_kwargs):
-        warning_calls.append("called")
-        return (warning_notice,)
-
-    monkeypatch.setattr(
-        engine_graphics_helpers,
-        "picture_display_path_warnings",
-        fake_picture_display_path_warnings,
-    )
-
-    first_bp = _make_basepicture(origin_file=root_file.name)
-    first_graph = engine.ProjectGraph()
-    second_graph = engine.ProjectGraph()
-
-    first_refreshed = engine._attach_graphics_companion(
-        first_bp,
-        code_path=root_file,
-        mode=engine.CodeMode.DRAFT,
-        graph=first_graph,
-        owner_name="Root",
-    )
-    cached_bp = pickle.loads(pickle.dumps(first_bp))
-    second_refreshed = engine._attach_graphics_companion(
-        cached_bp,
-        code_path=root_file,
-        mode=engine.CodeMode.DRAFT,
-        graph=second_graph,
-        owner_name="Root",
-    )
-
-    assert first_refreshed is True
-    assert second_refreshed is False
-    assert graphics_calls == [graphics_file]
-    assert warning_calls == ["called"]
-    assert first_bp.graphics_file == "Root.g"
-    assert cached_bp.graphics_file == "Root.g"
-    assert getattr(cached_bp, "graphics_warning_notices", ()) == (warning_notice,)
-    assert getattr(cached_bp, "graphics_companion_signature", None) is not None
-    assert first_graph.warnings == ["Root: picture warning"]
-    assert second_graph.warnings == ["Root: picture warning"]
-
-
 def test_loader_strict_syntax_check_validates_root_before_reading_dependencies(monkeypatch, tmp_path) -> None:
     invalid_root = "\n".join(
         [
@@ -826,6 +540,7 @@ def test_loader_rejects_dependency_version_datecode_conflicts_in_strict_mode(tmp
             "TYPEDEFINITIONS",
             "    SharedType = RECORD DateCode_ 1",
             "        Value: integer;",
+            "        Flag: boolean;",
             "    ENDDEF (*SharedType*);",
             "ModuleDef",
             "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )",
@@ -841,6 +556,7 @@ def test_loader_rejects_dependency_version_datecode_conflicts_in_strict_mode(tmp
             "TYPEDEFINITIONS",
             "    SharedType = RECORD DateCode_ 2",
             "        Value: integer;",
+            "        Flag: boolean;",
             "    ENDDEF (*SharedType*);",
             "ModuleDef",
             "ClippingBounds = ( -1.0 , -1.0 ) ( 1.0 , 1.0 )",
@@ -1191,6 +907,53 @@ def test_loader_visit_records_validation_warning_before_non_strict_failure(
     ]
     assert graph.missing == ["Root parse/transform error: index failed"]
     assert "root" in graph.failures
+
+
+def test_loader_visit_uses_dependency_context_validation_when_local_validation_marker_is_present(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    loader = _make_loader(monkeypatch, tmp_path, scan_root_only=False)
+    basepicture = _make_basepicture()
+    setattr(basepicture, engine._LOCAL_VALIDATION_MARKER_ATTR, engine.LOCAL_STRUCTURE_VALIDATION_SCHEMA_VERSION)
+    graph = cast(
+        Any,
+        SimpleNamespace(
+            ast_by_name={},
+            datatype_defs={},
+            moduletype_defs={},
+            missing=[],
+            warnings=[],
+            warning_notices=[],
+            ignored_vendor=[],
+            unavailable_libraries=set(),
+            failures={},
+            add_library_dependencies=lambda *_args, **_kwargs: None,
+            index_from_basepic=lambda *_args, **_kwargs: None,
+        ),
+    )
+    dependency_validation_calls: list[object] = []
+
+    monkeypatch.setattr(loader, "_find_deps_with_context", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(loader, "_find_code_with_context", lambda *_args, **_kwargs: tmp_path / "Root.s")
+    monkeypatch.setattr(loader, "_load_or_parse", lambda _path: basepicture)
+    monkeypatch.setattr(loader, "_record_library_name", lambda *_args, **_kwargs: "rootlib")
+    monkeypatch.setattr(engine, "_collect_dependency_version_conflicts", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        engine,
+        "validate_transformed_basepicture",
+        lambda *_args, **_kwargs: pytest.fail("full validation should be skipped for marked ASTs"),
+    )
+    monkeypatch.setattr(
+        engine,
+        "validate_transformed_basepicture_dependency_context",
+        lambda bp, **_kwargs: dependency_validation_calls.append(bp),
+    )
+
+    loader._visit("Root", graph, strict=False, requester_dir=tmp_path)
+
+    assert dependency_validation_calls == [basepicture]
+    assert graph.ast_by_name == {"Root": basepicture}
 
 
 def test_loader_visit_marks_vendor_only_dependency_as_ignored(

@@ -4,6 +4,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
+from .app_telemetry import telemetry_output_path
+
 ConfigDict = dict[str, Any]
 GraphicsRule = dict[str, Any]
 GraphicsRulesConfig = dict[str, Any]
@@ -79,6 +81,11 @@ def show_config(
         ("fast_cache_validation", cfg["fast_cache_validation"]),
         ("debug", cfg["debug"]),
     ]
+    telemetry_cfg = cast(dict[str, object], cfg.get("telemetry", {}))
+    telemetry_rows = [
+        ("enabled", telemetry_cfg.get("enabled", False)),
+        ("path", telemetry_output_path()),
+    ]
     directory_rows = [
         ("program_dir", cfg["program_dir"]),
         ("ABB_lib_dir", cfg["ABB_lib_dir"]),
@@ -91,6 +98,8 @@ def show_config(
     print_config_list_fn("Analyzed Programs And Libraries", list(cfg["analyzed_programs_and_libraries"]))
     emit_output_fn()
     print_config_section_fn("General", general_rows)
+    emit_output_fn()
+    print_config_section_fn("Telemetry", telemetry_rows)
     emit_output_fn()
     print_config_section_fn("Directories", directory_rows)
     emit_output_fn()

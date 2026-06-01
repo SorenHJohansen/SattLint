@@ -9,11 +9,13 @@ from typing import Any, Protocol, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
+from ._shared_analysis import AnalysisSharedArtifacts
 from .issue import Issue, format_report_header
 
 __all__ = [
     "AnalysisContext",
     "AnalysisResult",
+    "AnalysisSharedArtifacts",
     "Analyzer",
     "AnalyzerSpec",
     "Issue",
@@ -98,6 +100,7 @@ class AnalysisContext:
     debug: bool = False
     target_is_library: bool = False
     config: dict[str, Any] | None = None
+    shared_artifacts: AnalysisSharedArtifacts | None = None
 
     @property
     def unavailable_libraries(self) -> set[str]:

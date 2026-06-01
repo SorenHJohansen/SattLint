@@ -316,6 +316,21 @@
     },
     {
       "apply_to": [
+        "src/sattlint/analyzers/**",
+        "tests/test_analyzer_architecture.py",
+        "tests/analyzers/**",
+        "tests/_analyzers_*.py",
+        "tests/test_analyzers_*.py",
+        "tests/test_variables_*.py",
+        "tests/test_reset_contamination*.py",
+        "src/sattlint/app_analysis.py"
+      ],
+      "description": "Use when changing analyzer registry wiring, analyzer entry points, helper ownership, or analyzer architecture tests in SattLint.",
+      "file_path": ".github/instructions/analyzer-architecture.instructions.md",
+      "name": "Analyzer Architecture"
+    },
+    {
+      "apply_to": [
         "src/sattlint/app.py",
         "src/sattlint/config.py",
         "tests/test_cli.py",

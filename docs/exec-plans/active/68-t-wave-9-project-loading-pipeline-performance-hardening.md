@@ -12,13 +12,14 @@ The user-visible proof is practical. A maintainer should be able to warm the pro
 
 - [x] (2026-06-01 00:00Z) Created this ExecPlan from the current loading-pipeline review and anchored the work to the owning seams in `src/sattlint/cache.py`, `src/sattlint/_app_analysis_loading.py`, `src/sattlint/engine.py`, and `src/sattlint/validation.py`.
 - [x] (2026-06-01 00:00Z) Confirmed the current baseline contract: project-cache validation in `ASTCache` still requires a loaded payload, `load_project()` and `ensure_ast_cache()` still call `cache.load()` before `cache.validate()`, and the previous active `62` path conflicted with an already completed `62` plan.
-- [ ] Split project-cache manifest metadata from the serialized project payload so full validation can stat files without deserializing the project pickle.
-- [ ] Update app-side project-cache call sites to validate by key or manifest sidecar before loading the cached project tuple.
-- [ ] Separate local structural validation from dependency-sensitive validation so file-AST cache hits can skip only the safe subset of repeated validation work.
-- [ ] Add a versioned file-AST validation marker and use it to bypass duplicate local validation on cache hits while preserving dependency-sensitive checks in project resolution.
-- [ ] Restructure dependency walking so sibling discovery and parse work can run in parallel without corrupting shared loader state or graph mutation.
-- [ ] Reduce serialized project size by moving eager merged-definition materialization away from the canonical cached project object.
-- [ ] Re-measure the stage timings and document the before/after effects for cache-hit validation, AST-hit validation, and cold-cache dependency resolution.
+- [x] (2026-06-01 00:00Z) Split project-cache manifest metadata from the serialized project payload by writing a JSON sidecar manifest and validating cache entries by key before payload load.
+- [x] (2026-06-01 00:00Z) Updated app-side project-cache call sites to validate by key or manifest sidecar before loading the cached project tuple and to treat missing or malformed sidecars as safe cache misses.
+- [x] (2026-06-01 00:00Z) Separated loader-local validation from dependency-context validation so AST cache hits can reuse local validation proof while `_visit()` still performs dependency-aware parameter and moduletype checks.
+- [x] (2026-06-01 00:00Z) Added a versioned file-AST local-validation marker and upgraded cached AST entries in place when they predated the new schema.
+- [x] (2026-06-01 00:00Z) Restructured sibling dependency loading so prefetch stays on the safe side of the measurement evidence: it now pre-resolves dependency candidates and opportunistically preloads cached AST hits, while graph mutation, warnings, indexing, and uncached parsing stay on the main thread.
+- [x] (2026-06-01 00:00Z) Reduced serialized project size by caching `root BasePicture + ProjectGraph` and deriving merged analyzer views only when `load_project()` returns.
+- [x] (2026-06-01 00:00Z) Captured cold/warm timing evidence on a synthetic dependency-heavy workspace (32 sibling dependencies, 512 total datatypes) and recorded concrete cache-validation, AST-hit, and dependency-resolution results in `artifacts/tmp/plan68_measurements.json`.
+- [ ] Rework the current sibling dependency prefetch path so cold dependency-heavy wall time improves relative to the serial control and so that prefetched parse work is represented in stage timing totals.
 
 ## Surprises & Discoveries
 
@@ -36,6 +37,12 @@ Evidence: `SattLineProjectLoader` mutates `_visited`, `_visit_stack`, `_lookup_c
 
 Observation: the current merged project object likely amplifies both disk and memory cost by copying dependency definitions into the root `BasePicture`.
 Evidence: `merge_project_basepicture()` in `src/sattlint/engine.py` uses `replace()` to build a synthetic `BasePicture` with full `datatype_defs` and `moduletype_defs` lists sourced from the project graph.
+
+Observation: moving local validation earlier in the loader surfaced an existing test fixture that had been relying on delayed validation rather than truly valid datatype structure.
+Evidence: the strict dependency-conflict fixture in `tests/parser/test_engine.py` used one-field record datatypes, which started failing once `_load_or_parse()` began applying local structural validation before dependency conflict handling.
+
+Observation: narrowing prefetch to dependency discovery plus cached-AST preload removed the earlier timing blind spot and catastrophic cold-path regression, but the current cold dependency-heavy measurement still lands at parity rather than a clear win over serial resolution.
+Evidence: `artifacts/tmp/plan68_measurements.json` now shows `parallel_prefetch.wall_ms = 337.295` ms versus `serial_control.wall_ms = 336.818` ms on the same 32-dependency target, and the recorded `load_or_parse` stage totals are correspondingly close (`165.769 ms` versus `157.783 ms`) because uncached parse work is no longer hidden outside `_load_or_parse()` timing.
 
 ## Decision Log
 
@@ -61,9 +68,9 @@ Evidence: `merge_project_basepicture()` in `src/sattlint/engine.py` uses `replac
 
 ## Outcomes & Retrospective
 
-This plan has not been implemented yet. Its immediate outcome is to convert the loading-pipeline analysis into an executable, repo-native plan with explicit owning files, acceptance criteria, and phased sequencing. The main risk to watch during implementation is accidental broadening: this plan should stay focused on measurable loading-path cost in the project cache, file-AST cache, dependency walker, and merged-project representation.
+This plan is partially implemented. The cache-manifest split, app-side validate-before-load contract, loader validation split, file-AST validation marker, narrowed sibling dependency prefetch, cached-project payload reduction, and measurement capture are all in place. The remaining open item is narrower and more concrete now: the measured cache wins are real, the dependency-prefetch timing blind spot is gone, but the current discovery-plus-cache-hit prefetch path still does not beat the serial control on the synthetic dependency-heavy cold run.
 
-The largest technical caution is that some of the proposed speedups sound simple at the symptom level but cross abstraction boundaries in the current implementation. The plan therefore intentionally spends a full slice on separating local versus dependency-sensitive validation before any skip path is introduced, and it treats parallel dependency resolution as a loader redesign rather than a one-line thread-pool patch.
+The main technical caution remains the same: these speedups cross abstraction boundaries. The shipped loader change keeps shared graph mutation, warning collection, indexing, and uncached parsing on the main thread, and limits speculative work to dependency discovery plus opportunistic cached-AST preload so the behavior surface stays deterministic. The latest measurement pass confirmed the second caution too: stage timing evidence must include any prefetched work, otherwise timing totals become optimistic and the measured wall-clock tradeoff is misleading.
 
 ## Context and Orientation
 
@@ -162,6 +169,14 @@ Current baseline observations captured before implementation:
     - `src/sattlint/engine.py`: `_load_or_parse()` returns cached `BasePicture` objects, but `_visit()` performs broad validation later with external definition context
     - `src/sattlint/engine.py`: `merge_project_basepicture()` eagerly copies project graph definitions into a synthetic root `BasePicture`
 
+  Implementation updates captured after the landing slices:
+
+    - `src/sattlint/cache.py`: project cache entries now store payload and manifest separately, and `ASTCache.validate(key, ...)` can validate a warm cache hit without loading the project pickle
+    - `src/sattlint/validation.py`: local structural validation and dependency-context validation now have separate entry points, with a versioned local-validation schema marker
+    - `src/sattlint/engine.py`: `_load_or_parse()` locally validates parsed or legacy-cached ASTs once, then `_visit()` reuses the marker to run only dependency-context validation on cache hits
+    - `src/sattlint/engine.py`: sibling dependency prefetch now resolves dependency candidates ahead of traversal and opportunistically preloads cached AST hits, but leaves uncached parsing on the main thread
+    - `src/sattlint/_app_analysis_loading.py`: the project cache persists `root_bp + graph` and derives merged analyzer views only when returning from `load_project()`
+
 Current owner-suite anchors for implementation:
 
     - `tests/parser/test_cache.py`
@@ -169,9 +184,28 @@ Current owner-suite anchors for implementation:
     - `tests/parser/test_engine_loader_helpers.py`
     - `tests/parser/test_engine.py`
 
+  Focused validation evidence captured during implementation:
+
+    - `./scripts/run_repo_python.sh -m pytest --no-cov tests/parser/test_engine_loader_helpers.py tests/parser/test_engine.py -k 'load_or_parse or validation_warning_before_non_strict_failure or dependency_context_validation_when_local_validation_marker_is_present or root_only_loader_full_mode_records_stage_timings or visit_uses_cached_dependency_library' -x -q --tb=short`
+    - `./scripts/run_repo_python.sh -m pytest --no-cov tests/test_app_analysis_project_cache.py -k 'load_project and (cached_project or invalid or ast_only_refresh or full_mode_file_family)' -x -q --tb=short`
+    - `./scripts/run_repo_python.sh -m pytest --no-cov tests/parser/test_cache.py tests/test_app_analysis_project_cache.py tests/parser/test_engine_loader_helpers.py tests/parser/test_engine.py -k 'load_project or cache or load_or_parse or dependency or merge_project_basepicture or prefetch_dependency_candidates' -x -q --tb=short`
+    - `python scripts/run_repo_python.py -m ruff check src/sattlint/cache.py src/sattlint/_app_analysis_loading.py src/sattlint/engine.py src/sattlint/validation.py tests/parser/test_cache.py tests/test_app_analysis_project_cache.py tests/parser/test_engine.py tests/parser/test_engine_loader_helpers.py`
+    - `python scripts/run_repo_python.py -m pyright src/sattlint/cache.py src/sattlint/_app_analysis_loading.py src/sattlint/engine.py src/sattlint/validation.py`
+
+  Measurement artifact captured after the implementation pass:
+
+    - `artifacts/tmp/plan68_measurements.json`
+
+  Concrete timing snippets from that artifact:
+
+    - Warm project-cache validation versus payload load on the same cached entry: `validate(key)` mean `0.412 ms` versus `load(key)` mean `5.691 ms` for a `132,514` byte payload with a `4,588` byte manifest sidecar.
+    - End-to-end project load on the same dependency-heavy target: cold cached build `294.020 ms` versus warm project-cache hit `5.592 ms`.
+    - File-AST cache effect with project cache disabled: cold load `314.902 ms` versus warm AST-hit load `138.620 ms`; recorded validation stage total dropped from `54.699 ms` to `44.666 ms`, and recorded `load_or_parse` total dropped from `154.907 ms` to `6.594 ms`.
+    - Synthetic cold dependency-resolution comparison after the prefetch rework: serial control `336.818 ms` wall-clock versus narrowed prefetch `337.295 ms` wall-clock for the same 33-program graph, so the dependency-prefetch acceptance bar is still open even though the earlier catastrophic regression is gone.
+
 Implementation note for future updates to this plan:
 
-    When a slice lands, add one short before/after timing snippet here. Keep the snippet focused on one observable change such as "warm cache validation avoided project pickle load" or "cold-cache dependency walk dropped from Xs to Ys on target Z".
+    Preserve the measurement artifact and update it after any further dependency-resolution experiment lands. The next successful timing snippet should replace the current parity result with a real cold-cache improvement for the dependency-heavy target.
 
 ## Interfaces and Dependencies
 

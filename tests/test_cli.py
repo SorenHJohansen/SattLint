@@ -8,8 +8,9 @@ from typing import Any, cast
 import pytest
 
 import sattlint
-from sattlint import app, app_base, engine
+from sattlint import _app_startup, app, app_base, engine
 from sattlint.cli import entry as cli_entry
+from sattlint.models.project_graph import ProjectGraph
 
 
 def _run_base_cli(argv: list[str], **overrides) -> int:
@@ -25,6 +26,9 @@ def _run_base_cli(argv: list[str], **overrides) -> int:
             )
         ),
         "run_docgen_command_fn": lambda cfg, *, use_cache, output_dir, output_path: app_base.EXIT_SUCCESS,
+        "run_telemetry_summary_command_fn": (
+            lambda cfg, *, config_path, output_format, output_path: app_base.EXIT_SUCCESS
+        ),
         "run_format_icf_command_fn": lambda cfg, *, check: app_base.EXIT_SUCCESS,
     }
     kwargs.update(overrides)
@@ -43,6 +47,7 @@ def test_build_cli_parser_has_descriptions():
         "analyze",
         "simulate",
         "docgen",
+        "telemetry-summary",
         "validate-config",
         "format-icf",
         "source-diff",
@@ -68,6 +73,418 @@ def test_build_cli_parser_repo_audit_includes_dedicated_options():
 
 def test_run_cli_without_command_returns_usage_error():
     assert _run_base_cli([]) == app_base.EXIT_USAGE_ERROR
+
+
+def test_startup_main_routes_cli_argv_to_run_cli() -> None:
+    seen: dict[str, object] = {}
+
+    exit_code = _app_startup.main(
+        ["analyze", "--check", "variables"],
+        run_cli_fn=lambda argv: seen.update({"argv": argv}) or 13,
+        load_config_fn=lambda _path: pytest.fail("load_config should not run for CLI argv"),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda _cfg: None,
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: None,
+        self_check_fn=lambda _cfg: True,
+        confirm_fn=lambda _message: True,
+        has_analyzed_targets_fn=lambda _cfg: False,
+        ensure_ast_cache_fn=lambda _cfg: True,
+        run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail("interactive loop should not run for CLI argv"),
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda key, label, description: (key, label, description),
+        summarize_targets_fn=lambda _cfg: "targets",
+        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
+        analysis_menu_fn=lambda _cfg: None,
+        documentation_menu_fn=lambda _cfg: True,
+        config_menu_fn=lambda _cfg: True,
+        tools_menu_fn=lambda _cfg: None,
+        show_help_fn=lambda _cfg: None,
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_fn=lambda: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 13
+    assert seen == {"argv": ["analyze", "--check", "variables"]}
+
+
+def test_startup_main_warns_and_pauses_for_default_config() -> None:
+    seen: dict[str, object] = {"paused": 0}
+    cfg = {"debug": False}
+
+    exit_code = _app_startup.main(
+        None,
+        run_cli_fn=lambda _argv: 99,
+        load_config_fn=lambda _path: (cfg, True),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda local_cfg: seen.update({"debug_cfg": local_cfg}),
+        emit_output_fn=lambda message: seen.update({"message": message}),
+        pause_fn=lambda: seen.update({"paused": cast(int, seen["paused"]) + 1}),
+        self_check_fn=lambda _cfg: pytest.fail("self-check should not run for default config"),
+        confirm_fn=lambda _message: True,
+        has_analyzed_targets_fn=lambda _cfg: False,
+        ensure_ast_cache_fn=lambda _cfg: True,
+        run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
+            {"main_loop_cfg": local_cfg, "main_loop_kwargs": kwargs}
+        ),
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda key, label, description: (key, label, description),
+        summarize_targets_fn=lambda _cfg: "targets",
+        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
+        analysis_menu_fn=lambda _cfg: None,
+        documentation_menu_fn=lambda _cfg: True,
+        config_menu_fn=lambda _cfg: True,
+        tools_menu_fn=lambda _cfg: None,
+        show_help_fn=lambda _cfg: None,
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_fn=lambda: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 0
+    assert seen["debug_cfg"] is cfg
+    assert seen["message"] == "Warning: Default config created. Open Setup before running analysis."
+    assert seen["paused"] == 1
+    assert seen["main_loop_cfg"] is cfg
+
+
+def test_startup_main_aborts_when_self_check_is_rejected() -> None:
+    seen: dict[str, object] = {"confirmed": None}
+
+    exit_code = _app_startup.main(
+        None,
+        run_cli_fn=lambda _argv: 99,
+        load_config_fn=lambda _path: ({"debug": False}, False),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda _cfg: None,
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: None,
+        self_check_fn=lambda _cfg: False,
+        confirm_fn=lambda message: seen.update({"confirmed": message}) or False,
+        has_analyzed_targets_fn=lambda _cfg: False,
+        ensure_ast_cache_fn=lambda _cfg: True,
+        run_main_loop_fn=lambda *_args, **_kwargs: pytest.fail(
+            "interactive loop should not run after rejected self-check"
+        ),
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda key, label, description: (key, label, description),
+        summarize_targets_fn=lambda _cfg: "targets",
+        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
+        analysis_menu_fn=lambda _cfg: None,
+        documentation_menu_fn=lambda _cfg: True,
+        config_menu_fn=lambda _cfg: True,
+        tools_menu_fn=lambda _cfg: None,
+        show_help_fn=lambda _cfg: None,
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_fn=lambda: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 0
+    assert seen["confirmed"] == "Self-check failed. Continue?"
+
+
+def test_startup_main_pauses_when_ast_cache_setup_fails() -> None:
+    seen: dict[str, object] = {"paused": 0}
+    cfg = {"debug": False}
+
+    exit_code = _app_startup.main(
+        None,
+        run_cli_fn=lambda _argv: 99,
+        load_config_fn=lambda _path: (cfg, False),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda _cfg: None,
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: seen.update({"paused": cast(int, seen["paused"]) + 1}),
+        self_check_fn=lambda _cfg: True,
+        confirm_fn=lambda _message: True,
+        has_analyzed_targets_fn=lambda _cfg: True,
+        ensure_ast_cache_fn=lambda _cfg: False,
+        run_main_loop_fn=lambda local_cfg, **kwargs: seen.update(
+            {"main_loop_cfg": local_cfg, "main_loop_kwargs": kwargs}
+        ),
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda key, label, description: (key, label, description),
+        summarize_targets_fn=lambda _cfg: "targets",
+        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
+        analysis_menu_fn=lambda _cfg: None,
+        documentation_menu_fn=lambda _cfg: True,
+        config_menu_fn=lambda _cfg: True,
+        tools_menu_fn=lambda _cfg: None,
+        show_help_fn=lambda _cfg: None,
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_fn=lambda: None,
+        quit_app_error=RuntimeError,
+    )
+
+    assert exit_code == 0
+    assert seen["paused"] == 1
+    assert seen["main_loop_cfg"] is cfg
+
+
+def test_startup_main_handles_quit_app_error() -> None:
+    class QuitSignalError(Exception):
+        pass
+
+    exit_code = _app_startup.main(
+        None,
+        run_cli_fn=lambda _argv: 99,
+        load_config_fn=lambda _path: ({"debug": False}, False),
+        config_path=Path("config.toml"),
+        apply_debug_fn=lambda _cfg: None,
+        emit_output_fn=lambda *_args: None,
+        pause_fn=lambda: None,
+        self_check_fn=lambda _cfg: True,
+        confirm_fn=lambda _message: True,
+        has_analyzed_targets_fn=lambda _cfg: False,
+        ensure_ast_cache_fn=lambda _cfg: True,
+        run_main_loop_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(QuitSignalError()),
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda key, label, description: (key, label, description),
+        summarize_targets_fn=lambda _cfg: "targets",
+        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
+        analysis_menu_fn=lambda _cfg: None,
+        documentation_menu_fn=lambda _cfg: True,
+        config_menu_fn=lambda _cfg: True,
+        tools_menu_fn=lambda _cfg: None,
+        show_help_fn=lambda _cfg: None,
+        save_config_fn=lambda _path, _cfg: None,
+        quit_app_fn=lambda: None,
+        quit_app_error=QuitSignalError,
+    )
+
+    assert exit_code == 0
+
+
+def test_startup_wrapper_helpers_delegate_to_owner_functions() -> None:
+    run_cli_seen: dict[str, object] = {}
+    telemetry_seen: dict[str, object] = {}
+    validate_seen: dict[str, object] = {}
+    analyze_seen: dict[str, object] = {}
+    simulate_seen: dict[str, object] = {}
+    docgen_seen: dict[str, object] = {}
+    misc_seen: dict[str, object] = {}
+    cfg = {"debug": False}
+    project = ("Root", cast(Any, object()), ProjectGraph())
+
+    assert (
+        _app_startup.run_cli(
+            ["analyze"],
+            run_cli_owner_fn=lambda argv, **kwargs: run_cli_seen.update({"argv": argv, **kwargs}) or 17,
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: object(),
+            run_syntax_check_command_fn=lambda _path: 0,
+            load_config_fn=lambda _path: (cfg, False),
+            apply_debug_fn=lambda _cfg: None,
+            run_validate_config_command_fn=lambda *_args, **_kwargs: 0,
+            run_analyze_command_fn=lambda *_args, **_kwargs: 0,
+            run_simulate_command_fn=lambda *_args, **_kwargs: 0,
+            run_docgen_command_fn=lambda *_args, **_kwargs: 0,
+            run_telemetry_summary_command_fn=lambda *_args, **_kwargs: 0,
+            run_format_icf_command_fn=lambda *_args, **_kwargs: 0,
+            exit_success=0,
+            exit_usage_error=2,
+        )
+        == 17
+    )
+    assert run_cli_seen["argv"] == ["analyze"]
+
+    assert (
+        _app_startup.run_telemetry_summary_command(
+            cfg,
+            config_path=Path("config.toml"),
+            output_format="json",
+            output_path="summary.json",
+            run_telemetry_summary_command_fn=lambda local_cfg, **kwargs: (
+                telemetry_seen.update({"cfg": local_cfg, **kwargs}) or 19
+            ),
+            telemetry_output_path_fn=lambda path: path.with_suffix(".telemetry.json"),
+            summarize_telemetry_fn=lambda _path: {"events": 1},
+            render_text_summary_fn=lambda summary: str(summary),
+            exit_success=0,
+            exit_usage_error=2,
+        )
+        == 19
+    )
+    assert telemetry_seen["cfg"] is cfg
+
+    assert (
+        _app_startup.run_validate_config_command(
+            cfg,
+            config_path=Path("config.toml"),
+            default_used=True,
+            run_validate_config_command_fn=lambda local_cfg, **kwargs: (
+                validate_seen.update({"cfg": local_cfg, **kwargs}) or 23
+            ),
+            validate_config_fn=lambda _cfg: SimpleNamespace(passed=True),
+            exit_success=0,
+            exit_usage_error=2,
+        )
+        == 23
+    )
+    assert validate_seen["cfg"] is cfg
+
+    assert (
+        _app_startup.run_analyze_command(
+            cfg,
+            selected_keys=["variables"],
+            use_cache=False,
+            run_analyze_command_fn=lambda local_cfg, **kwargs: analyze_seen.update({"cfg": local_cfg, **kwargs}) or 29,
+            run_checks_owner_fn=lambda local_cfg, selected_keys, **kwargs: analyze_seen.update(
+                {
+                    "run_checks_cfg": local_cfg,
+                    "run_checks_selected_keys": selected_keys,
+                    "nested_projects": list(kwargs["iter_loaded_projects_fn"]({"debug": False})),
+                    "enabled_keys": kwargs["get_enabled_analyzers_fn"](),
+                }
+            ),
+            iter_loaded_projects_fn=lambda _cfg, use_cache: iter([project] if not use_cache else []),
+            get_selectable_analyzers_fn=lambda: ["selected"],
+            get_enabled_analyzers_fn=lambda: ["enabled"],
+            target_is_library_fn=lambda _cfg, _bp, _graph: False,
+            exit_success=0,
+        )
+        == 29
+    )
+    cast(Any, analyze_seen["run_checks_fn"])(cfg, ["variables"], False)
+    assert analyze_seen["run_checks_selected_keys"] == ["variables"]
+    assert analyze_seen["nested_projects"] == [project]
+    assert analyze_seen["enabled_keys"] == ["selected"]
+
+    assert (
+        _app_startup.run_simulate_command(
+            cfg,
+            target_path="program.s",
+            module_name="Main",
+            mode="steady-state",
+            max_scans=5,
+            output_format="json",
+            output_path="simulation.json",
+            use_cache=True,
+            run_simulate_command_fn=lambda local_cfg, **kwargs: (
+                simulate_seen.update({"cfg": local_cfg, **kwargs}) or 31
+            ),
+            simulate_fn=lambda *_args, **_kwargs: object(),
+            exit_success=0,
+            exit_usage_error=2,
+        )
+        == 31
+    )
+    assert simulate_seen["module_name"] == "Main"
+
+    assert (
+        _app_startup.run_docgen_command(
+            cfg,
+            use_cache=False,
+            output_dir="docs",
+            output_path=None,
+            run_docgen_command_fn=lambda local_cfg, **kwargs: docgen_seen.update({"cfg": local_cfg, **kwargs}) or 37,
+            iter_loaded_projects_fn=lambda _cfg, use_cache: iter([project] if not use_cache else []),
+            documentation_unit_selection_fn=lambda: {"mode": "all"},
+            exit_success=0,
+            exit_usage_error=2,
+        )
+        == 37
+    )
+    assert list(cast(Any, docgen_seen["iter_loaded_projects_fn"])(cfg, False)) == [project]
+
+    _app_startup.run_icf_formatter(
+        cfg,
+        run_format_icf_command_fn=lambda local_cfg: misc_seen.update({"icf_cfg": local_cfg}) or 0,
+        pause_fn=lambda: misc_seen.update({"paused": True}),
+    )
+    _app_startup.show_config(
+        cfg,
+        show_config_fn=lambda local_cfg, **kwargs: misc_seen.update({"show_config_cfg": local_cfg, **kwargs}),
+        get_graphics_rules_path_fn=lambda: Path("graphics.json"),
+        load_graphics_rules_fn=lambda path=None: ({"rules": []}, False),
+        graphics_rule_config_line_fn=lambda _rule: "line",
+    )
+    _app_startup.print_menu(
+        "Menu",
+        [("1", "One")],
+        intro="Intro",
+        note="Note",
+        print_menu_owner_fn=lambda title, options, **kwargs: misc_seen.update(
+            {"menu_title": title, "menu_options": options, **kwargs}
+        ),
+        print_fn=lambda *_args: None,
+    )
+    assert (
+        _app_startup.summarize_targets(
+            cfg,
+            summarize_targets_fn=lambda local_cfg, **kwargs: (
+                misc_seen.update({"summarize_cfg": local_cfg, **kwargs}) or "targets"
+            ),
+            get_analyzed_targets_fn=lambda _cfg: ["Root"],
+        )
+        == "targets"
+    )
+    _app_startup.show_help(
+        cfg,
+        show_help_fn=lambda local_cfg, **kwargs: misc_seen.update({"show_help_cfg": local_cfg, **kwargs}),
+        clear_screen_fn=lambda: None,
+        get_analyzed_targets_fn=lambda _cfg: ["Root"],
+        summarize_targets_fn=lambda _cfg: "targets",
+        print_fn=lambda *_args: None,
+        pause_fn=lambda: None,
+    )
+    _app_startup.dump_menu(
+        cfg,
+        dump_menu_fn=lambda local_cfg, **kwargs: misc_seen.update({"dump_cfg": local_cfg, **kwargs}),
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda key, label, description: (key, label, description),
+        quit_app_fn=lambda: None,
+        confirm_fn=lambda _message: True,
+        iter_loaded_projects_fn=lambda *_args, **_kwargs: iter([project]),
+        analyze_variables_fn=lambda *_args, **_kwargs: None,
+    )
+    assert (
+        _app_startup.config_menu(
+            cfg,
+            config_menu_fn=lambda local_cfg, **kwargs: misc_seen.update({"config_cfg": local_cfg, **kwargs}) or True,
+            config_path=Path("config.toml"),
+            clear_screen_fn=lambda: None,
+            show_config_fn=lambda _cfg: None,
+            print_menu_fn=lambda *_args, **_kwargs: None,
+            menu_option_factory=lambda key, label, description: (key, label, description),
+            prompt_fn=lambda _message, default=None: default or "value",
+            pause_fn=lambda: None,
+            confirm_fn=lambda _message: True,
+            target_exists_fn=lambda _target, _cfg: True,
+            save_config_fn=lambda _path, _cfg: None,
+            apply_debug_fn=lambda _cfg: None,
+            graphics_rules_menu_fn=lambda _cfg: None,
+            quit_app_fn=lambda: None,
+        )
+        is True
+    )
+    _app_startup.tools_menu(
+        cfg,
+        tools_menu_fn=lambda local_cfg, **kwargs: misc_seen.update({"tools_cfg": local_cfg, **kwargs}),
+        clear_screen_fn=lambda: None,
+        print_menu_fn=lambda *_args, **_kwargs: None,
+        menu_option_factory=lambda key, label, description: (key, label, description),
+        quit_app_fn=lambda: None,
+        self_check_fn=lambda _cfg: True,
+        pause_fn=lambda: None,
+        require_targets_for_menu_action_fn=lambda _cfg, _action: True,
+        dump_menu_fn=lambda _cfg: None,
+        confirm_fn=lambda _message: True,
+        force_refresh_ast_fn=lambda _cfg: None,
+    )
+
+    assert misc_seen["icf_cfg"] is cfg
+    assert misc_seen["paused"] is True
+    assert misc_seen["menu_title"] == "Menu"
+    assert misc_seen["summarize_cfg"] is cfg
 
 
 def test_package_exports_version():
@@ -176,7 +593,7 @@ def test_run_cli_analyze_passes_opt_in_state_inference_key():
     seen = {}
 
     exit_code = cli_entry.run_cli(
-        ["analyze", "--check", "state_inference"],
+        ["analyze", "--check", "state-inference"],
         config_path=app.CONFIG_PATH,
         load_config_fn=lambda path: ({"debug": False}, False),
         apply_debug_fn=lambda _cfg: None,
@@ -189,7 +606,7 @@ def test_run_cli_analyze_passes_opt_in_state_inference_key():
     )
 
     assert exit_code == app_base.EXIT_SUCCESS
-    assert seen["selected_keys"] == ["state_inference"]
+    assert seen["selected_keys"] == ["state-inference"]
     assert seen["use_cache"] is True
 
 
@@ -298,6 +715,32 @@ def test_run_cli_docgen_passes_output_flags():
     assert seen["use_cache"] is True
     assert seen["output_dir"] == "docs-out"
     assert seen["output_path"] == "report.docx"
+
+
+def test_run_cli_telemetry_summary_passes_output_flags():
+    seen = {}
+
+    exit_code = _run_base_cli(
+        ["--config", "custom.toml", "telemetry-summary", "--format", "json", "--output", "summary.json"],
+        load_config_fn=lambda path: ({"debug": False}, False),
+        apply_debug_fn=lambda _cfg: None,
+        run_telemetry_summary_command_fn=lambda cfg, *, config_path, output_format, output_path: (
+            seen.update(
+                {
+                    "cfg": cfg,
+                    "config_path": config_path,
+                    "output_format": output_format,
+                    "output_path": output_path,
+                }
+            )
+            or app_base.EXIT_SUCCESS
+        ),
+    )
+
+    assert exit_code == app_base.EXIT_SUCCESS
+    assert str(seen["config_path"]).endswith("custom.toml")
+    assert seen["output_format"] == "json"
+    assert seen["output_path"] == "summary.json"
 
 
 def test_run_cli_repo_audit_passes_through_args(monkeypatch):
@@ -554,6 +997,29 @@ def test_cli_entry_docgen_requires_handler():
     with pytest.raises(RuntimeError, match="docgen handler is required"):
         cli_entry.run_cli(
             ["docgen"],
+            config_path=Path("config.toml"),
+            build_cli_parser_fn=lambda: parser,
+            load_config_fn=lambda _path: ({"debug": False}, False),
+            apply_debug_fn=lambda _cfg: None,
+        )
+
+
+def test_cli_entry_telemetry_summary_requires_handler():
+    parser = _FakeParser(
+        args=SimpleNamespace(
+            command="telemetry-summary",
+            checks=[],
+            config=None,
+            no_cache=False,
+            quiet=False,
+            format="text",
+            output=None,
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="telemetry-summary handler is required"):
+        cli_entry.run_cli(
+            ["telemetry-summary"],
             config_path=Path("config.toml"),
             build_cli_parser_fn=lambda: parser,
             load_config_fn=lambda _path: ({"debug": False}, False),

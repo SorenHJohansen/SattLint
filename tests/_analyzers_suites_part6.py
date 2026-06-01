@@ -79,7 +79,7 @@ def test_module_localvar_field_report_includes_filtered_summary_sections():
         moduledef=None,
     )
 
-    report = analyze_module_localvar_fields(bp, "Unit", "Dv")
+    report = report_module_localvar_fields(bp, "Unit", "Dv")
 
     assert "Field usage analysis for local variable 'Dv' in module path 'Root.Unit'" in report
     assert "FIELD-LEVEL ACCESSES:" in report

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import difflib
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from sattline_parser.models.ast_model import ParameterMapping, Simple_DataType, Variable
@@ -12,7 +11,7 @@ from ..casefolding import is_anytype_name
 from ..grammar import constants as const
 from ..resolution import AccessKind, CanonicalPath
 from ..resolution.scope import ScopeContext
-from .variable_utils import same_origin_file_stem
+from .variable_utils import matches_root_origin
 
 if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
@@ -420,24 +419,13 @@ def is_from_root_origin(
     origin_file: str | None,
     origin_lib: str | None = None,
 ) -> bool:
-    if self.analyzed_target_is_library:
-        root_origin_lib = getattr(self.bp, "origin_lib", None)
-        root_origin_file = getattr(self.bp, "origin_file", None)
-        if root_origin_lib and origin_lib:
-            try:
-                root_stem = Path(root_origin_file).stem.casefold() if root_origin_file else None
-            except Exception:
-                root_stem = root_origin_file.rsplit(".", 1)[0].casefold() if root_origin_file else None
-
-            # Some real loads stamp origin_lib with the containing directory (for example
-            # ProjectLib) rather than the specific library file stem. Only use library-name
-            # equality when it is specific enough to identify the root library itself.
-            if root_stem and root_origin_lib.casefold() == root_stem:
-                return origin_lib.casefold() == root_origin_lib.casefold()
-
-    if not origin_file:
-        return True
-    return same_origin_file_stem(origin_file, getattr(self.bp, "origin_file", None))
+    return matches_root_origin(
+        origin_file,
+        getattr(self.bp, "origin_file", None),
+        analyzed_target_is_library=self.analyzed_target_is_library,
+        origin_lib=origin_lib,
+        root_origin_lib=getattr(self.bp, "origin_lib", None),
+    )
 
 
 def _extract_field_path(self: VariablesAnalyzer, var_dict: dict[str, Any]) -> tuple[str | None, str | None]:

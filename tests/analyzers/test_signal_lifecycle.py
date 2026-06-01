@@ -52,5 +52,5 @@ def test_signal_lifecycle_reports_reads_before_writes_and_unconsumed_writes():
 def test_signal_lifecycle_analyzer_is_enabled_by_default():
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
-    assert "signal_lifecycle" in specs
-    assert specs["signal_lifecycle"].enabled is True
+    assert "signal-lifecycle" in specs
+    assert specs["signal-lifecycle"].enabled is True

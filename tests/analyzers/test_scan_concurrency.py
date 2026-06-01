@@ -47,9 +47,9 @@ def _sequence(nodes: list[object]) -> Sequence:
 def test_scan_concurrency_analyzer_is_registered_and_opt_in_for_cli() -> None:
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
-    assert "scan_concurrency" in specs
-    assert specs["scan_concurrency"].enabled is True
-    assert "scan_concurrency" not in get_actual_cli_analyzer_keys()
+    assert "scan-concurrency" in specs
+    assert specs["scan-concurrency"].enabled is True
+    assert "scan-concurrency" not in get_actual_cli_analyzer_keys()
 
 
 def test_scan_concurrency_reports_parallel_write_race() -> None:

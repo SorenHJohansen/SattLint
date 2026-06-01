@@ -13,7 +13,7 @@ from ..grammar import constants as const
 from ..models.usage import VariableUsage
 from ..reporting.variables_report import IssueKind
 from ..resolution.scope import ScopeContext
-from .variable_issue_collection import _iter_variables_for_datatype_field_analysis
+from ._variable_issue_collection import _iter_variables_for_datatype_field_analysis
 
 if TYPE_CHECKING:
     from .variables import VariablesAnalyzer

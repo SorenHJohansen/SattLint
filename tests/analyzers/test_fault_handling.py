@@ -52,5 +52,5 @@ def test_fault_handling_flags_unhandled_and_never_cleared_faults():
 def test_fault_handling_analyzer_is_enabled_by_default():
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
-    assert "fault_handling" in specs
-    assert specs["fault_handling"].enabled is True
+    assert "fault-handling" in specs
+    assert specs["fault-handling"].enabled is True

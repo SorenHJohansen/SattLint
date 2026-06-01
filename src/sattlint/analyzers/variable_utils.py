@@ -51,4 +51,27 @@ def same_origin_file_stem(origin_file: str | None, root_origin: str | None) -> b
         return origin_file.rsplit(".", 1)[0].casefold() == root_origin.rsplit(".", 1)[0].casefold()
 
 
-__all__ = ["external_mapping_usage", "is_const_candidate", "same_origin_file_stem"]
+def matches_root_origin(
+    origin_file: str | None,
+    root_origin: str | None,
+    *,
+    analyzed_target_is_library: bool = False,
+    origin_lib: str | None = None,
+    root_origin_lib: str | None = None,
+) -> bool:
+    if analyzed_target_is_library and root_origin_lib and origin_lib:
+        try:
+            root_stem = Path(root_origin).stem.casefold() if root_origin else None
+        except Exception:
+            root_stem = root_origin.rsplit(".", 1)[0].casefold() if root_origin else None
+
+        # Only treat the library name as authoritative when it identifies the root file itself.
+        if root_stem and root_origin_lib.casefold() == root_stem:
+            return origin_lib.casefold() == root_origin_lib.casefold()
+
+    if not origin_file:
+        return True
+    return same_origin_file_stem(origin_file, root_origin)
+
+
+__all__ = ["external_mapping_usage", "is_const_candidate", "matches_root_origin", "same_origin_file_stem"]

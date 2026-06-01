@@ -45,7 +45,8 @@ def _build_config_menu_options(menu_option_factory: Callable[[str, str, str], An
         menu_option_factory("9", "Save configuration", "Write the current configuration to disk"),
         menu_option_factory("10", "Change icf_dir", "Set the directory used for ICF validation"),
         menu_option_factory("11", "Toggle debug", "Show extra debugging output while running"),
-        menu_option_factory("12", "Edit graphics rules", "Manage the JSON graphics rules used by the graphics check"),
+        menu_option_factory("12", "Toggle telemetry", "Enable or disable local telemetry logging"),
+        menu_option_factory("13", "Edit graphics rules", "Manage the JSON graphics rules used by the graphics check"),
         menu_option_factory("b", "Back", ""),
         menu_option_factory("q", "Quit", ""),
     ]
@@ -169,6 +170,26 @@ def _update_config_value(
     if not confirm_fn(confirm_message):
         return False
     cfg[key] = new_value
+    return True
+
+
+def _telemetry_config(cfg: ConfigDict) -> dict[str, Any]:
+    telemetry = cfg.get("telemetry")
+    if isinstance(telemetry, dict):
+        return cast(dict[str, Any], telemetry)
+    cfg["telemetry"] = {"enabled": False}
+    return cast(dict[str, Any], cfg["telemetry"])
+
+
+def _toggle_telemetry_enabled(
+    cfg: ConfigDict,
+    *,
+    confirm_fn: Callable[[str], bool],
+) -> bool:
+    telemetry = _telemetry_config(cfg)
+    if not confirm_fn("Toggle telemetry?"):
+        return False
+    telemetry["enabled"] = not bool(telemetry.get("enabled", False))
     return True
 
 
@@ -535,6 +556,12 @@ def config_menu(
                 default=dirty,
             )
         elif choice == "12":
+            dirty = _run_menu_action(
+                lambda dirty=dirty: _toggle_telemetry_enabled(cfg, confirm_fn=confirm_fn) or dirty,
+                pause_fn=pause_fn,
+                default=dirty,
+            )
+        elif choice == "13":
             _run_menu_action(lambda: graphics_rules_menu_fn(cfg), pause_fn=pause_fn)
         else:
             emit_output("Invalid choice.", flush=True)

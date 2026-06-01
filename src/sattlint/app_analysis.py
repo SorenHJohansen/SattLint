@@ -1,26 +1,33 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping
-from datetime import datetime
+import os
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from time import perf_counter
 from typing import Any, cast
 
 from sattline_parser.models.ast_model import BasePicture
 
 from . import _app_analysis_loading as analysis_loading_module
 from . import _app_analysis_menus as analysis_menus_module
+from . import _app_analysis_reporting as analysis_reporting_module
 from . import _app_analysis_variable_analyses as analysis_variable_analyses_module
 from . import app_support as app_support_module
+from . import app_telemetry as telemetry_module
 from . import cache as cache_module
 from . import console as console_module
 from . import engine as engine_module
 from .analyzers import variable_usage_reporting as variables_reporting_module
 from .analyzers.comment_code import analyze_comment_code_files
-from .analyzers.framework import AnalysisContext
+from .analyzers.framework import AnalysisContext, AnalysisSharedArtifacts
 from .analyzers.icf import parse_icf_file, validate_icf_entries_against_program
 from .analyzers.mms import analyze_mms_interface_variables
 from .analyzers.modules import analyze_module_duplicates, compare_modules, debug_module_structure, find_modules_by_name
-from .analyzers.registry import get_default_cli_analyzers
+from .analyzers.registry import (
+    SEMANTIC_LAYER_ANALYZER_KEY,
+    canonicalize_analyzer_key,
+    get_default_cli_analyzers,
+)
 from .analyzers.rule_profiles import apply_rule_profile_to_report
 from .analyzers.shadowing import analyze_shadowing
 from .analyzers.variable_usage_reporting import debug_variable_usage
@@ -55,74 +62,6 @@ def _target_validation_warnings(target_name: str, warnings: list[str]) -> list[s
 
 def _print_validation_warnings(warnings: list[str], *, limit: int = 12) -> None:
     app_support.print_validation_warnings(warnings, print_fn=emit_output, limit=limit)
-
-
-def _normalize_report_target_name(report: Any, target_name: str) -> Any:
-    if not target_name:
-        return report
-
-    for attr_name in ("basepicture_name", "name"):
-        if not hasattr(report, attr_name):
-            continue
-        try:
-            setattr(report, attr_name, target_name)
-        except AttributeError:
-            continue
-    return report
-
-
-def _select_report_source_path(project_bp: Any, graph: Any) -> Path | None:
-    try:
-        source_paths = _source_paths_for_current_target(project_bp, graph)
-    except Exception:
-        return None
-
-    if not source_paths:
-        return None
-
-    origin_file = getattr(project_bp, "origin_file", None)
-    candidates = [path for path in source_paths if origin_file and casefold_equal(path.name, origin_file)]
-    if not candidates:
-        candidates = list(source_paths)
-
-    def _candidate_key(path: Path) -> tuple[float, str]:
-        try:
-            return (path.stat().st_mtime, str(path))
-        except OSError:
-            return (float("-inf"), str(path))
-
-    return max(candidates, key=_candidate_key)
-
-
-def _source_version_label(project_bp: Any, source_path: Path | None) -> str | None:
-    if source_path is not None:
-        suffix = source_path.suffix.casefold()
-    else:
-        origin_file = getattr(project_bp, "origin_file", None)
-        suffix = Path(origin_file).suffix.casefold() if origin_file else ""
-
-    if suffix in _DRAFT_SOURCE_SUFFIXES:
-        return "draft"
-    if suffix in _OFFICIAL_SOURCE_SUFFIXES:
-        return "official"
-    return None
-
-
-def _source_last_changed(source_path: Path | None) -> str | None:
-    if source_path is None:
-        return None
-
-    try:
-        return datetime.fromtimestamp(source_path.stat().st_mtime).strftime("%Y-%m-%d")
-    except OSError:
-        return None
-
-
-def _attach_variable_report_metadata(report: VariablesReport, project_bp: Any, graph: Any) -> VariablesReport:
-    source_path = _select_report_source_path(project_bp, graph)
-    report.analyzed_version = _source_version_label(project_bp, source_path)
-    report.last_changed = _source_last_changed(source_path)
-    return report
 
 
 def _get_analyzed_targets(cfg: ConfigDict) -> list[str]:
@@ -212,22 +151,21 @@ def load_project(
     target_load_error_factory: Callable[..., Exception] | None = None,
     get_cache_dir_fn: Callable[[], Path] = get_cache_dir,
 ) -> tuple[BasePicture, ProjectGraph]:
-    with console_module.live_status_line() as status_update_fn:
-        return analysis_loading_module.load_project(
-            cfg,
-            target_name=target_name,
-            use_cache=use_cache,
-            use_file_ast_cache=use_file_ast_cache,
-            refresh_mode=refresh_mode,
-            collect_stage_timings=collect_stage_timings,
-            require_analyzed_targets_fn=require_analyzed_targets_fn,
-            cache_key_for_target_fn=cache_key_for_target_fn,
-            target_load_error_factory=target_load_error_factory,
-            get_cache_dir_fn=get_cache_dir_fn,
-            ast_cache_cls=ASTCache,
-            engine_module=engine,
-            status_update_fn=status_update_fn,
-        )
+    return analysis_loading_module.load_project_with_live_status(
+        cfg,
+        target_name=target_name,
+        use_cache=use_cache,
+        use_file_ast_cache=use_file_ast_cache,
+        refresh_mode=refresh_mode,
+        collect_stage_timings=collect_stage_timings,
+        require_analyzed_targets_fn=require_analyzed_targets_fn,
+        cache_key_for_target_fn=cache_key_for_target_fn,
+        target_load_error_factory=target_load_error_factory,
+        get_cache_dir_fn=get_cache_dir_fn,
+        ast_cache_cls=ASTCache,
+        engine_module=engine,
+        live_status_line_factory=console_module.live_status_line,
+    )
 
 
 def load_program_ast(
@@ -236,14 +174,13 @@ def load_program_ast(
     *,
     force_dependency_resolution: bool = False,
 ) -> tuple[BasePicture, ProjectGraph]:
-    with console_module.live_status_line() as status_update_fn:
-        return analysis_loading_module.load_program_ast(
-            cfg,
-            program_name,
-            force_dependency_resolution=force_dependency_resolution,
-            engine_module=engine,
-            status_update_fn=status_update_fn,
-        )
+    return analysis_loading_module.load_program_ast_with_live_status(
+        cfg,
+        program_name,
+        force_dependency_resolution=force_dependency_resolution,
+        engine_module=engine,
+        live_status_line_factory=console_module.live_status_line,
+    )
 
 
 def force_refresh_ast(
@@ -294,61 +231,6 @@ def _use_cache_enabled(cfg: ConfigDict) -> bool:
     return bool(cfg.get("use_cache", True))
 
 
-def _create_analysis_report_cache(cfg: ConfigDict) -> AnalysisReportCache | None:
-    if not _use_cache_enabled(cfg) or _debug_enabled(cfg):
-        return None
-    return AnalysisReportCache(get_cache_dir())
-
-
-def _graph_analysis_cache_metadata(graph: ProjectGraph) -> tuple[str, frozenset[Path]] | None:
-    cache_key = getattr(graph, "analysis_cache_key", None)
-    if not isinstance(cache_key, str) or not cache_key:
-        return None
-
-    manifest_files_obj = getattr(graph, "analysis_manifest_files", None)
-    if not isinstance(manifest_files_obj, (set, frozenset)):
-        return None
-
-    manifest_entries = cast(set[object] | frozenset[object], manifest_files_obj)
-    manifest_files = frozenset(path for path in manifest_entries if isinstance(path, Path))
-    if len(manifest_files) != len(manifest_entries) or not manifest_files:
-        return None
-
-    return cache_key, manifest_files
-
-
-def _run_with_analysis_report_cache(
-    graph: ProjectGraph,
-    *,
-    report_cache: AnalysisReportCache | None,
-    analyzer_cache_key: str,
-    run_fn: Callable[[], Any],
-) -> Any:
-    metadata = _graph_analysis_cache_metadata(graph)
-    if report_cache is None or metadata is None:
-        return run_fn()
-
-    project_cache_key, manifest_files = metadata
-    cache_key = compute_analysis_report_cache_key(project_cache_key, analyzer_cache_key)
-    cached = report_cache.load(cache_key)
-    if cached and report_cache.validate(cached, fast=False):
-        cached_map = cast(Mapping[str, object], cached) if isinstance(cached, Mapping) else None
-        if cached_map is not None and "report" in cached_map:
-            return cast(Any, cached_map["report"])
-
-    report = run_fn()
-    report_cache.save(cache_key, report=report, files=manifest_files)
-    return report
-
-
-def _variable_issue_kinds_cache_key(kinds: set[IssueKind]) -> str:
-    return ",".join(sorted(kind.name.casefold() for kind in kinds))
-
-
-def _unavailable_libraries(graph: ProjectGraph) -> set[str]:
-    return cast(set[str], getattr(graph, "unavailable_libraries", set[str]()))
-
-
 def _run_with_live_status(status_text: str, run_fn: Callable[[], Any]) -> Any:
     with console_module.live_status_line() as status_update_fn:
         status_update_fn(status_text)
@@ -388,85 +270,154 @@ def run_variable_analysis(
         issues: list[Any] = []
         visible_kinds: set[IssueKind] = set()
         include_empty_sections = False
+        phase_timings: list[dict[str, str | float]] = []
 
         for report in reports:
             issues.extend(report.issues)
             if report.visible_kinds is not None:
                 visible_kinds.update(report.visible_kinds)
             include_empty_sections = include_empty_sections or report.include_empty_sections
+            phase_timings.extend(getattr(report, "phase_timings", []))
 
         return VariablesReport(
             basepicture_name=basepicture_name,
             issues=issues,
             visible_kinds=frozenset(visible_kinds) if visible_kinds else None,
             include_empty_sections=include_empty_sections,
+            phase_timings=phase_timings,
         )
 
     requested_kinds = set(DEFAULT_VARIABLE_ANALYSIS_KINDS) | {IssueKind.SHADOWING} if kinds is None else set(kinds)
     cfg = cfg | {"include_reverse_library_consumers": IssueKind.UNUSED_DATATYPE_FIELD in requested_kinds}
-    report_cache = _create_analysis_report_cache(cfg)
+    report_cache = analysis_reporting_module.create_analysis_report_cache(
+        cfg,
+        use_cache_enabled_fn=_use_cache_enabled,
+        debug_enabled_fn=_debug_enabled,
+        analysis_report_cache_cls=AnalysisReportCache,
+        get_cache_dir_fn=get_cache_dir,
+    )
+    telemetry = telemetry_module.create_app_telemetry(cfg)
 
     produced_output = False
-    for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
-        produced_output = True
-        target_is_library = target_is_library_fn(cfg, project_bp, graph)
-        include_shadowing = IssueKind.SHADOWING in requested_kinds
-        standard_kinds = requested_kinds - {IssueKind.SHADOWING}
+    try:
+        for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
+            produced_output = True
+            started_at = perf_counter()
+            target_is_library = target_is_library_fn(cfg, project_bp, graph)
+            include_shadowing = IssueKind.SHADOWING in requested_kinds
+            standard_kinds = requested_kinds - {IssueKind.SHADOWING}
 
-        if standard_kinds:
-            with console_module.live_status_line() as status_update_fn:
-                status_update_fn(f"Analyzing variable issues for {target_name}")
-                report = _run_with_analysis_report_cache(
-                    graph,
-                    report_cache=report_cache,
-                    analyzer_cache_key=f"variables:{_variable_issue_kinds_cache_key(standard_kinds)}",
-                    run_fn=lambda project_bp=project_bp, graph=graph, status_update_fn=status_update_fn, target_is_library=target_is_library, standard_kinds=standard_kinds: (
-                        analyze_variables_fn(
+            if standard_kinds:
+                with console_module.live_status_line() as status_update_fn:
+                    status_update_fn(f"Analyzing variable issues for {target_name}")
+                    report = analysis_reporting_module.run_with_analysis_report_cache(
+                        graph,
+                        report_cache=report_cache,
+                        analyzer_cache_key=(
+                            f"variables:{analysis_reporting_module.variable_issue_kinds_cache_key(standard_kinds)}"
+                        ),
+                        run_fn=lambda project_bp=project_bp, graph=graph, status_update_fn=status_update_fn, target_is_library=target_is_library, standard_kinds=standard_kinds: (
+                            analyze_variables_fn(
+                                project_bp,
+                                debug=_debug_enabled(cfg),
+                                unavailable_libraries=analysis_reporting_module.unavailable_libraries(graph),
+                                analyzed_target_is_library=target_is_library,
+                                selected_issue_kinds=standard_kinds,
+                                config=cfg,
+                                status_update_fn=status_update_fn,
+                            )
+                        ),
+                        compute_analysis_report_cache_key_fn=compute_analysis_report_cache_key,
+                    )
+            else:
+                report = VariablesReport(
+                    basepicture_name=getattr(getattr(project_bp, "header", None), "name", target_name),
+                    issues=[],
+                    visible_kinds=frozenset(),
+                    include_empty_sections=False,
+                )
+
+            if standard_kinds:
+                report = filter_variable_report_fn(report, standard_kinds)
+
+            if include_shadowing:
+                shadowing_report = _run_with_live_status(
+                    f"Analyzing variable shadowing for {target_name}",
+                    lambda project_bp=project_bp, graph=graph: analysis_reporting_module.run_with_analysis_report_cache(
+                        graph,
+                        report_cache=report_cache,
+                        analyzer_cache_key="variables:shadowing",
+                        run_fn=lambda project_bp=project_bp, graph=graph: analyze_shadowing_fn(
                             project_bp,
                             debug=_debug_enabled(cfg),
-                            unavailable_libraries=_unavailable_libraries(graph),
-                            analyzed_target_is_library=target_is_library,
-                            selected_issue_kinds=standard_kinds,
-                            config=cfg,
-                            status_update_fn=status_update_fn,
-                        )
+                            unavailable_libraries=analysis_reporting_module.unavailable_libraries(graph),
+                        ),
+                        compute_analysis_report_cache_key_fn=compute_analysis_report_cache_key,
                     ),
                 )
-        else:
-            report = VariablesReport(
-                basepicture_name=getattr(getattr(project_bp, "header", None), "name", target_name),
-                issues=[],
-                visible_kinds=frozenset(),
-                include_empty_sections=False,
-            )
+                if requested_kinds == {IssueKind.SHADOWING}:
+                    report = shadowing_report
+                elif standard_kinds:
+                    report = _merge_reports(report, shadowing_report)
 
-        if standard_kinds:
-            report = filter_variable_report_fn(report, standard_kinds)
-
-        if include_shadowing:
-            shadowing_report = _run_with_live_status(
-                f"Analyzing variable shadowing for {target_name}",
-                lambda project_bp=project_bp, graph=graph: _run_with_analysis_report_cache(
-                    graph,
-                    report_cache=report_cache,
-                    analyzer_cache_key="variables:shadowing",
-                    run_fn=lambda project_bp=project_bp, graph=graph: analyze_shadowing_fn(
+            report = analysis_reporting_module.normalize_report_target_name(report, target_name)
+            report = analysis_reporting_module.attach_variable_report_metadata(
+                report,
+                project_bp,
+                graph,
+                select_report_source_path_fn=lambda project_bp, graph: (
+                    analysis_reporting_module.select_report_source_path(
                         project_bp,
-                        debug=_debug_enabled(cfg),
-                        unavailable_libraries=_unavailable_libraries(graph),
-                    ),
+                        graph,
+                        source_paths_for_current_target_fn=_source_paths_for_current_target,
+                        casefold_equal_fn=casefold_equal,
+                    )
                 ),
+                source_version_label_fn=lambda project_bp, source_path: analysis_reporting_module.source_version_label(
+                    project_bp,
+                    source_path,
+                    draft_source_suffixes=_DRAFT_SOURCE_SUFFIXES,
+                    official_source_suffixes=_OFFICIAL_SOURCE_SUFFIXES,
+                ),
+                source_last_changed_fn=analysis_reporting_module.source_last_changed,
             )
-            if requested_kinds == {IssueKind.SHADOWING}:
-                report = shadowing_report
-            elif standard_kinds:
-                report = _merge_reports(report, shadowing_report)
-
-        report = _normalize_report_target_name(report, target_name)
-        report = _attach_variable_report_metadata(report, project_bp, graph)
-        emit_output(f"\n=== Target: {target_name} ===")
-        print_validation_warnings_fn(target_validation_warnings_fn(target_name, getattr(graph, "warnings", [])))
-        emit_output(report.summary())
+            emit_output(f"\n=== Target: {target_name} ===")
+            print_validation_warnings_fn(target_validation_warnings_fn(target_name, getattr(graph, "warnings", [])))
+            emit_output(report.summary())
+            phase_timings_ms = telemetry_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
+            phase_bottleneck = telemetry_module.bottleneck_from_phase_timings(phase_timings_ms, kind="phase")
+            stage_timings_ms = telemetry_module.normalize_named_timings_ms(
+                getattr(graph, "load_stage_timings", None), scale=1000.0
+            )
+            graphics_timings_ms = telemetry_module.normalize_named_timings_ms(
+                getattr(graph, "graphics_load_timings", None),
+                scale=1000.0,
+            )
+            payload: dict[str, object] = {
+                "requested_issue_kinds": sorted(kind.value for kind in requested_kinds),
+                "issue_count": len(getattr(report, "issues", [])),
+                "shadowing_requested": include_shadowing,
+            }
+            if stage_timings_ms:
+                payload["stage_timings_ms"] = stage_timings_ms
+            if graphics_timings_ms:
+                payload["graphics_timings_ms"] = graphics_timings_ms
+            if phase_timings_ms:
+                payload["phase_timings_ms"] = phase_timings_ms
+            if phase_bottleneck is not None:
+                payload["phase_bottleneck"] = phase_bottleneck
+                payload["bottleneck_kind"] = "phase"
+                payload["bottleneck"] = phase_bottleneck
+            telemetry.emit(
+                operation="variable-analysis",
+                target_name=target_name,
+                duration_ms=(perf_counter() - started_at) * 1000,
+                success=True,
+                payload=payload,
+            )
+    except KeyboardInterrupt:
+        _handle_analysis_cancellation(pause_fn=pause_fn)
+        return
     if not produced_output:
         emit_output("\nNo variable analysis output was produced because no target loaded successfully.")
 
@@ -497,11 +448,11 @@ def run_datatype_usage_analysis(
         try:
             report = _run_with_live_status(
                 f"Analyzing datatype usage for {target_name}: {var_name}",
-                lambda project_bp=project_bp, graph=graph: variables_reporting_module.analyze_datatype_usage(
+                lambda project_bp=project_bp, graph=graph: variables_reporting_module.report_datatype_usage(
                     project_bp,
                     var_name,
                     debug=_debug_enabled(cfg),
-                    unavailable_libraries=_unavailable_libraries(graph),
+                    unavailable_libraries=analysis_reporting_module.unavailable_libraries(graph),
                 ),
             )
             emit_output(f"\n=== Target: {target_name} ===")
@@ -883,13 +834,13 @@ def run_module_localvar_analysis(
             pause_fn()
         return
 
-    from .analyzers.variable_usage_reporting import analyze_module_localvar_fields
+    from .analyzers.variable_usage_reporting import report_module_localvar_fields
 
     for target_name, project_bp, _graph in iter_loaded_projects_fn(cfg):
         try:
             report = _run_with_live_status(
                 f"Analyzing module local variable in {target_name}: {module_path}.{var_name}",
-                lambda project_bp=project_bp: analyze_module_localvar_fields(
+                lambda project_bp=project_bp: report_module_localvar_fields(
                     project_bp,
                     module_path,
                     var_name,
@@ -919,6 +870,31 @@ def _handle_analysis_cancellation(*, pause_fn: Callable[[], None] | None) -> Non
         pause_fn()
 
 
+def _profile_analyzers_enabled() -> bool:
+    return os.environ.get("SATTLINT_PROFILE_ANALYZERS", "").strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _order_analyzers_for_batch(analyzers: list[Any]) -> list[Any]:
+    semantic_analyzers = [spec for spec in analyzers if getattr(spec, "key", None) == SEMANTIC_LAYER_ANALYZER_KEY]
+    if not semantic_analyzers:
+        return analyzers
+    return [
+        spec for spec in analyzers if getattr(spec, "key", None) != SEMANTIC_LAYER_ANALYZER_KEY
+    ] + semantic_analyzers
+
+
+def _emit_shared_artifact_profile(target_name: str, shared_artifacts: AnalysisSharedArtifacts) -> None:
+    counters = shared_artifacts.counters
+    emit_output(
+        "Analyzer reuse profile for "
+        f"{target_name}: shared-artifact-holders={counters.shared_artifact_holders_created}, "
+        f"variable-foundation-builds={counters.variable_foundation_builds}, "
+        f"semantic-precomputed-reports={counters.semantic_precomputed_reports_used}, "
+        f"semantic-reruns={counters.semantic_analyzer_reruns}, "
+        f"local-env-builds={counters.local_env_builds}"
+    )
+
+
 def _run_checks(
     cfg: ConfigDict,
     selected_keys: list[str] | None,
@@ -930,8 +906,9 @@ def _run_checks(
 ) -> None:
     analyzers = get_enabled_analyzers_fn()
     if selected_keys:
-        selected = {key.casefold() for key in selected_keys}
+        selected = {canonicalize_analyzer_key(key) for key in selected_keys}
         analyzers = [spec for spec in analyzers if spec.key.casefold() in selected]
+    analyzers = _order_analyzers_for_batch(analyzers)
 
     if not analyzers:
         emit_output("❌ No matching checks found")
@@ -940,31 +917,116 @@ def _run_checks(
         return
 
     emit_output("\n--- Running checks ---")
-    report_cache = _create_analysis_report_cache(cfg)
+    report_cache = analysis_reporting_module.create_analysis_report_cache(
+        cfg,
+        use_cache_enabled_fn=_use_cache_enabled,
+        debug_enabled_fn=_debug_enabled,
+        analysis_report_cache_cls=AnalysisReportCache,
+        get_cache_dir_fn=get_cache_dir,
+    )
+    telemetry = telemetry_module.create_app_telemetry(cfg)
     try:
         for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
+            target_started_at = perf_counter()
+            analyzer_timings_ms: dict[str, float] = {}
+            analyzer_phase_timings_ms: dict[str, list[dict[str, object]]] = {}
+            stage_timings_ms = telemetry_module.normalize_named_timings_ms(
+                getattr(graph, "load_stage_timings", None), scale=1000.0
+            )
+            graphics_timings_ms = telemetry_module.normalize_named_timings_ms(
+                getattr(graph, "graphics_load_timings", None),
+                scale=1000.0,
+            )
+            shared_artifacts = AnalysisSharedArtifacts()
+            shared_artifacts.counters.shared_artifact_holders_created += 1
             context = AnalysisContext(
                 base_picture=project_bp,
                 graph=graph,
                 debug=_debug_enabled(cfg),
                 target_is_library=target_is_library_fn(cfg, project_bp, graph),
                 config=cfg,
+                shared_artifacts=shared_artifacts,
             )
             emit_output(f"\n=== Target: {target_name} ===")
             for spec in analyzers:
                 emit_output(f"\n=== {spec.name} ({spec.key}) ===")
-                report = _run_with_live_status(
-                    _analysis_status_text(target_name, spec),
-                    lambda spec=spec, context=context, graph=graph: _run_with_analysis_report_cache(
-                        graph,
-                        report_cache=report_cache,
-                        analyzer_cache_key=spec.key,
-                        run_fn=lambda spec=spec, context=context: spec.run(context),
-                    ),
-                )
+                analyzer_started_at = perf_counter()
+                try:
+                    report = _run_with_live_status(
+                        _analysis_status_text(target_name, spec),
+                        lambda spec=spec, context=context, graph=graph: (
+                            analysis_reporting_module.run_with_analysis_report_cache(
+                                graph,
+                                report_cache=report_cache,
+                                analyzer_cache_key=spec.key,
+                                run_fn=lambda spec=spec, context=context: spec.run(context),
+                                compute_analysis_report_cache_key_fn=compute_analysis_report_cache_key,
+                            )
+                        ),
+                    )
+                except KeyboardInterrupt:
+                    analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
+                    telemetry.emit(
+                        operation="checks",
+                        target_name=target_name,
+                        duration_ms=(perf_counter() - target_started_at) * 1000,
+                        cancelled=True,
+                        payload={
+                            "selected_analyzers": [selected.key for selected in analyzers],
+                            "analyzer_timings_ms": dict(analyzer_timings_ms),
+                        },
+                    )
+                    raise
+                analyzer_timings_ms[spec.key] = round((perf_counter() - analyzer_started_at) * 1000, 3)
+                if context.shared_artifacts is not None:
+                    context.shared_artifacts.reports_by_analyzer_key[spec.key] = report
+                phase_timings_ms = telemetry_module.normalize_phase_timings_ms(getattr(report, "phase_timings", None))
+                if phase_timings_ms:
+                    analyzer_phase_timings_ms[spec.key] = phase_timings_ms
                 report = apply_rule_profile_to_report(spec.key, report, cfg)
-                report = _normalize_report_target_name(report, target_name)
+                report = analysis_reporting_module.normalize_report_target_name(report, target_name)
                 emit_output(report.summary())
+            analyzer_bottleneck = telemetry_module.bottleneck_from_named_timings(analyzer_timings_ms, kind="analyzer")
+            analyzer_phase_bottleneck: dict[str, object] | None = None
+            for analyzer_key, phase_timings in analyzer_phase_timings_ms.items():
+                candidate = telemetry_module.bottleneck_from_phase_timings(
+                    phase_timings,
+                    kind="analyzer-phase",
+                    extra_fields={"analyzer_key": analyzer_key},
+                )
+                if candidate is None:
+                    continue
+                if analyzer_phase_bottleneck is None or (
+                    cast(float, candidate["duration_ms"]) > cast(float, analyzer_phase_bottleneck["duration_ms"])
+                ):
+                    analyzer_phase_bottleneck = candidate
+            payload: dict[str, object] = {
+                "selected_analyzers": [spec.key for spec in analyzers],
+                "analyzer_timings_ms": dict(analyzer_timings_ms),
+            }
+            if stage_timings_ms:
+                payload["stage_timings_ms"] = stage_timings_ms
+            if graphics_timings_ms:
+                payload["graphics_timings_ms"] = graphics_timings_ms
+            if analyzer_phase_timings_ms:
+                payload["analyzer_phase_timings_ms"] = dict(analyzer_phase_timings_ms)
+            if analyzer_bottleneck is not None:
+                payload["analyzer_bottleneck"] = analyzer_bottleneck
+                payload["bottleneck_kind"] = "analyzer"
+                payload["bottleneck"] = analyzer_bottleneck
+            if analyzer_phase_bottleneck is not None:
+                payload["analyzer_phase_bottleneck"] = analyzer_phase_bottleneck
+                payload["bottleneck_kind"] = "analyzer-phase"
+                payload["bottleneck"] = analyzer_phase_bottleneck
+            telemetry.emit(
+                operation="checks",
+                target_name=target_name,
+                duration_ms=(perf_counter() - target_started_at) * 1000,
+                success=True,
+                payload=payload,
+            )
+            if _profile_analyzers_enabled():
+                _emit_shared_artifact_profile(target_name, shared_artifacts)
     except KeyboardInterrupt:
         _handle_analysis_cancellation(pause_fn=pause_fn)
         return
@@ -1018,7 +1080,7 @@ def run_mms_interface_analysis(
                     config=cfg,
                 ),
             )
-            report = _normalize_report_target_name(report, target_name)
+            report = analysis_reporting_module.normalize_report_target_name(report, target_name)
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report.summary())
         except Exception as exc:
@@ -1163,7 +1225,7 @@ def run_comment_code_analysis(
             f"Analyzing commented-out code for {target_name}",
             lambda paths=paths, target_name=target_name: analyze_comment_code_files(paths, target_name),
         )
-        report = _normalize_report_target_name(report, target_name)
+        report = analysis_reporting_module.normalize_report_target_name(report, target_name)
         emit_output(f"\n=== Target: {target_name} ===")
         emit_output(report.summary())
 
@@ -1194,11 +1256,11 @@ def run_advanced_datatype_analysis(
             for target_name, project_bp, graph in iter_loaded_projects_fn(cfg):
                 report = _run_with_live_status(
                     f"Analyzing datatype usage for {target_name}: {var_name}",
-                    lambda project_bp=project_bp, graph=graph: variables_reporting_module.analyze_datatype_usage(
+                    lambda project_bp=project_bp, graph=graph: variables_reporting_module.report_datatype_usage(
                         project_bp,
                         var_name,
                         debug=_debug_enabled(cfg),
-                        unavailable_libraries=_unavailable_libraries(graph),
+                        unavailable_libraries=analysis_reporting_module.unavailable_libraries(graph),
                     ),
                 )
                 emit_output(f"\n=== Target: {target_name} ===")

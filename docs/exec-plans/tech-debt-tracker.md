@@ -76,7 +76,8 @@ Active follow-on plan from the 2026-05-19 security review:
 
 Active follow-on plans from the 2026-05-19 performance and scalability review:
 
-- `docs/exec-plans/active/67-t-wave-9-analyzer-execution-performance-hardening.md` covers analyzer batch execution reuse, semantic rerun elimination, shared per-target artifacts for the variable-family analyzers, and the follow-on measurement path for standalone performance-adjacent subsystems such as graphics, layout, and ICF validation.
+- `docs/exec-plans/completed/67-t-wave-9-analyzer-execution-performance-hardening.md` records the analyzer batch execution reuse closeout, including the standalone measurement result that `graphics_validation`, `layout_geometry`, and ICF validation stayed modest on representative inputs while graphics-rules layout-entry collection remains the separate follow-on candidate.
+- `docs/exec-plans/active/69-t-wave-9-graphics-layout-entry-collection-performance-hardening.md` covers the measured `collect_graphics_layout_entries_for_target(...)` hotspot on the graphics or structural-reporting surface, including stage-level timing, output-stability proof, and targeted reduction of the current `25,206.55 ms` representative median.
 - `docs/exec-plans/active/68-t-wave-9-project-loading-pipeline-performance-hardening.md` covers project-cache manifest separation, file-AST validation de-duplication, project-payload size reduction, and safe parallelization of sibling dependency loading in the project-loader hot path.
 
 Active follow-on plan from the 2026-05-19 CLI UX review:

@@ -78,5 +78,5 @@ def test_config_drift_reports_drifting_instance_configuration():
 def test_config_drift_analyzer_is_enabled_by_default():
     specs = {spec.key: spec for spec in get_default_analyzers()}
 
-    assert "config_drift" in specs
-    assert specs["config_drift"].enabled is True
+    assert "config-drift" in specs
+    assert specs["config-drift"].enabled is True

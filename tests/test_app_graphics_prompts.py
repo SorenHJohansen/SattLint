@@ -573,3 +573,280 @@ def test_app_graphics_validation_and_selector_wrappers(monkeypatch):
     assert any("validated:TargetA:1" in output for output in outputs)
     assert any("Error during graphics rules validation for TargetB: boom" in output for output in outputs)
     assert pauses == ["pause", "pause"]
+
+
+def test_graphics_reports_formatting_and_show_config_without_rules(monkeypatch, tmp_path):
+    reports = app.app_graphics_module.graphics_reports_module
+    outputs: list[str] = []
+
+    def emit(*args):
+        outputs.append(args[0] if args else "")
+
+    cfg = {
+        "mode": "single",
+        "scan_root_only": True,
+        "fast_cache_validation": False,
+        "debug": True,
+        "telemetry": {"enabled": True},
+        "program_dir": tmp_path / "programs",
+        "ABB_lib_dir": tmp_path / "abb",
+        "icf_dir": tmp_path / "icf",
+        "analyzed_programs_and_libraries": ["MainA", "LibB"],
+        "other_lib_dirs": [tmp_path / "other"],
+    }
+
+    monkeypatch.setattr(reports, "telemetry_output_path", lambda: tmp_path / "telemetry.jsonl")
+
+    reports.print_config_section(
+        "Empty Section",
+        [],
+        emit_output_fn=emit,
+        format_config_scalar_fn=reports.format_config_scalar,
+    )
+    reports.print_config_section(
+        "Filled Section",
+        [("alpha", True), ("beta", "")],
+        emit_output_fn=emit,
+        format_config_scalar_fn=reports.format_config_scalar,
+    )
+    reports.print_config_list(
+        "Empty List",
+        [],
+        emit_output_fn=emit,
+        format_config_scalar_fn=reports.format_config_scalar,
+    )
+    reports.print_config_list(
+        "Filled List",
+        [1, None],
+        emit_output_fn=emit,
+        format_config_scalar_fn=reports.format_config_scalar,
+    )
+    reports.show_config(
+        cfg,
+        get_documentation_config_fn=lambda _cfg: {
+            "classifications": {
+                "empty": {},
+                "active": {"module_types": ["Frame", "Single"], "paths": []},
+            }
+        },
+        get_graphics_rules_path_fn=lambda: tmp_path / "missing-rules.json",
+        load_graphics_rules_fn=lambda *_args, **_kwargs: pytest.fail("rules should not load when path is missing"),
+        graphics_rule_config_line_fn=lambda _rule: "unused",
+        emit_output_fn=emit,
+        print_config_list_fn=lambda title, items: reports.print_config_list(
+            title,
+            items,
+            emit_output_fn=emit,
+            format_config_scalar_fn=reports.format_config_scalar,
+        ),
+        print_config_section_fn=lambda title, rows: reports.print_config_section(
+            title,
+            rows,
+            emit_output_fn=emit,
+            format_config_scalar_fn=reports.format_config_scalar,
+        ),
+    )
+
+    assert reports.format_config_scalar(True) == "yes"
+    assert reports.format_config_scalar(False) == "no"
+    assert reports.format_config_scalar(None) == "(not set)"
+    assert reports.format_config_scalar("") == "(not set)"
+    assert reports.format_config_scalar(3.5) == "3.5"
+    assert "  (none)" in outputs
+    assert "  alpha  yes" in outputs
+    assert "  beta   (not set)" in outputs
+    assert "  [1] 1" in outputs
+    assert "  [2] (not set)" in outputs
+    assert "\nCurrent Configuration" in outputs
+    assert "Analyzed Programs And Libraries" in outputs
+    assert "  graphics_rule_count  0" in outputs
+    assert "Documentation Classifications" in outputs
+    assert "  empty" in outputs
+    assert "    (none)" in outputs
+    assert "    module_types  Frame, Single" in outputs
+
+
+def test_graphics_reports_show_config_covers_invalid_and_configured_rules(tmp_path):
+    reports = app.app_graphics_module.graphics_reports_module
+    cfg = {
+        "mode": "single",
+        "scan_root_only": False,
+        "fast_cache_validation": True,
+        "debug": False,
+        "telemetry": {},
+        "program_dir": tmp_path / "programs",
+        "ABB_lib_dir": tmp_path / "abb",
+        "icf_dir": tmp_path / "icf",
+        "analyzed_programs_and_libraries": [],
+        "other_lib_dirs": [],
+    }
+    rules_path = tmp_path / "graphics_rules.json"
+    rules_path.write_text("{}", encoding="utf-8")
+    sections: list[tuple[str, list[tuple[str, object]]]] = []
+    emitted: list[str] = []
+
+    def emit(*args):
+        emitted.append(args[0] if args else "")
+
+    reports.show_config(
+        cfg,
+        get_documentation_config_fn=lambda _cfg: {"classifications": {}},
+        get_graphics_rules_path_fn=lambda: rules_path,
+        load_graphics_rules_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("bad rules")),
+        graphics_rule_config_line_fn=lambda _rule: "unused",
+        emit_output_fn=emit,
+        print_config_list_fn=lambda _title, _items: None,
+        print_config_section_fn=lambda title, rows: sections.append((title, rows)),
+    )
+
+    assert (
+        "Graphics Rules",
+        [("graphics_rules_path", rules_path), ("graphics_rule_count", "invalid (bad rules)")],
+    ) in sections
+
+    sections.clear()
+    emitted.clear()
+    reports.show_config(
+        cfg,
+        get_documentation_config_fn=lambda _cfg: {"classifications": {}},
+        get_graphics_rules_path_fn=lambda: rules_path,
+        load_graphics_rules_fn=lambda *_args, **_kwargs: (
+            {
+                "rules": [
+                    {
+                        "module_kind": "single",
+                        "unit_structure_path": "Area.UnitControl",
+                    }
+                ]
+            },
+            False,
+        ),
+        graphics_rule_config_line_fn=lambda _rule: "single | scope=unit | unit_structure_path=Area.UnitControl",
+        emit_output_fn=emit,
+        print_config_list_fn=lambda _title, _items: None,
+        print_config_section_fn=lambda title, rows: sections.append((title, rows)),
+    )
+
+    assert ("Graphics Rules", [("graphics_rules_path", rules_path), ("graphics_rule_count", 1)]) in sections
+    assert "Configured Graphics Rule Selectors" in emitted
+    assert "  [1] single | scope=unit | unit_structure_path=Area.UnitControl" in emitted
+
+
+def test_graphics_reports_selector_scope_and_flatten_helpers():
+    reports = app.app_graphics_module.graphics_reports_module
+
+    assert reports.flatten_graphics_expected_fields(
+        {
+            "invocation": {"coords": [1, 2], "flags": {"zoomable": True}},
+            "moduledef": {"grid": 0.5},
+        }
+    ) == ["invocation.coords", "invocation.flags.zoomable", "moduledef.grid"]
+    assert reports.truncate_table_cell("abc", 3) == "abc"
+    assert reports.truncate_table_cell("abcdef", 3) == "abc"
+    assert reports.truncate_table_cell("abcdef", 5) == "ab..."
+    assert reports.graphics_rule_selector_text({"unit_structure_path": "Area.Unit"}) == "unit:Area.Unit"
+    assert (
+        reports.graphics_rule_selector_text({"equipment_module_structure_path": "Equip.Stop"}) == "equipment:Equip.Stop"
+    )
+    assert (
+        reports.graphics_rule_selector_text(
+            {
+                "module_kind": "moduletype",
+                "moduletype_name": "ValveType",
+                "relative_module_path": "LineA/Valve1",
+            }
+        )
+        == "ValveType @ path:LineA/Valve1"
+    )
+    assert reports.graphics_rule_selector_text({"module_kind": "moduletype"}) == "(missing moduletype name)"
+    assert reports.graphics_rule_selector_text({"relative_module_path": "A/B/C"}) == "path:A/B/C"
+    assert reports.graphics_rule_selector_text({"module_name": "Standalone"}) == "Standalone"
+    assert reports.graphics_rule_selector_text({}) == "(missing module name)"
+    assert reports.graphics_rule_label({"module_kind": "single", "module_name": "Standalone"}) == "single:Standalone"
+    assert reports.graphics_rule_scope_text({"unit_structure_path": "Area.Unit"}) == "unit"
+    assert reports.graphics_rule_scope_text({"equipment_module_structure_path": "Equip.Stop"}) == "equipment"
+    assert reports.graphics_rule_scope_text({"relative_module_path": "A/B/C"}) == "path"
+    assert reports.graphics_rule_scope_text({"moduletype_name": "ValveType"}) == "moduletype"
+    assert reports.graphics_rule_scope_text({"module_name": "Standalone"}) == "name"
+    assert (
+        reports.graphics_rule_config_line(
+            {
+                "module_kind": "single",
+                "unit_structure_path": "Area.Unit",
+                "equipment_module_structure_path": "",
+                "relative_module_path": "",
+                "moduletype_name": "",
+                "description": "Shown in reports",
+            }
+        )
+        == "single | scope=unit | unit_structure_path=Area.Unit | description=Shown in reports"
+    )
+    assert (
+        reports.graphics_rule_config_line(
+            {
+                "module_kind": "moduletype",
+                "equipment_module_structure_path": "Equip.Stop",
+                "relative_module_path": "LineA/Valve1",
+                "moduletype_name": "ValveType",
+            }
+        )
+        == "moduletype | scope=equipment | equipment_module_structure_path=Equip.Stop | relative_module_path=LineA/Valve1 | moduletype_name=ValveType"
+    )
+    assert reports.graphics_rule_config_line({"module_kind": "frame"}) == "frame | scope=name"
+
+
+def test_graphics_reports_summary_covers_empty_and_table_rows(tmp_path):
+    reports = app.app_graphics_module.graphics_reports_module
+    outputs: list[str] = []
+
+    def emit(*args):
+        outputs.append(args[0] if args else "")
+
+    rules_path = tmp_path / "graphics_rules.json"
+
+    reports.print_graphics_rules_summary(
+        rules_path,
+        {"rules": []},
+        dirty=True,
+        emit_output_fn=emit,
+    )
+
+    assert "Graphics Rules" in outputs
+    assert f"Path: {rules_path}" in outputs
+    assert "Status: unsaved changes" in outputs
+    assert "No graphics rules configured yet." in outputs
+
+    outputs.clear()
+    reports.print_graphics_rules_summary(
+        rules_path,
+        {
+            "rules": [
+                {
+                    "module_kind": "single",
+                    "unit_structure_path": "Area.Unit.With.An.Extra.Long.Selector.Path.For.Truncation",
+                    "description": "Description that is intentionally longer than the table width limit",
+                    "expected": {
+                        "invocation": {
+                            "coords": [1.43, 1.35, 0.0, 0.56, 0.56],
+                            "arguments": ["ArgA", "ArgB"],
+                        },
+                        "moduledef": {
+                            "clipping_origin": [0.0, 0.0],
+                            "clipping_size": [1.0, 0.21429],
+                        },
+                    },
+                }
+            ]
+        },
+        dirty=False,
+        emit_output_fn=emit,
+    )
+
+    assert "Status: saved" in outputs
+    assert any(line.startswith("#") is False and "Selector" in line and "Description" in line for line in outputs)
+    assert any("----" in line for line in outputs)
+    assert any(
+        "single" in line and "unit" in line and "unit:Area.Unit.With.An.Extra.Long.Selector.Path"[:10] in line
+        for line in outputs
+    )
+    assert any("..." in line for line in outputs if "single" in line)

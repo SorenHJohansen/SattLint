@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # pyright: reportPrivateUsage=false
-from pathlib import Path
 from typing import Protocol
 
 from sattline_parser.models.ast_model import (
@@ -19,7 +18,7 @@ from ..casefolding import casefold_key
 from ..grammar import constants as const
 from ..resolution.common import resolve_moduletype_def_strict, varname_base
 from ..resolution.scope import ScopeContext
-from .variable_utils import same_origin_file_stem
+from .variable_utils import matches_root_origin
 
 
 class _DependencyUsageScopeState(Protocol):
@@ -216,19 +215,13 @@ class _DependencyUsageScopeSupportMixin:
         origin_file: str | None,
         origin_lib: str | None = None,
     ) -> bool:
-        if self._analyzed_target_is_library:
-            root_origin_lib = getattr(self.bp, "origin_lib", None)
-            root_origin_file = getattr(self.bp, "origin_file", None)
-            if root_origin_lib and origin_lib:
-                try:
-                    root_stem = Path(root_origin_file).stem.casefold() if root_origin_file else None
-                except Exception:
-                    root_stem = root_origin_file.rsplit(".", 1)[0].casefold() if root_origin_file else None
-
-                if root_stem and root_origin_lib.casefold() == root_stem:
-                    return origin_lib.casefold() == root_origin_lib.casefold()
-
-        return same_origin_file_stem(origin_file, getattr(self.bp, "origin_file", None))
+        return matches_root_origin(
+            origin_file,
+            getattr(self.bp, "origin_file", None),
+            analyzed_target_is_library=self._analyzed_target_is_library,
+            origin_lib=origin_lib,
+            root_origin_lib=getattr(self.bp, "origin_lib", None),
+        )
 
 
 __all__ = ["_DependencyUsageScopeSupportMixin"]

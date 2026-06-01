@@ -20,6 +20,39 @@ from ..reporting.variables_report import (
 from ..resolution import CanonicalSymbolTable, TypeGraph
 from ..resolution.context_builder import ContextBuilder
 from ..resolution.scope import ScopeContext
+from ._shared_analysis import AnalysisSharedArtifacts, VariableAnalysisArtifacts
+from ._usage_tracker import UsageTracker
+from ._validators import AnyTypeFieldContract, ContractMappingValidator, MinMaxValidator, StringMappingValidator
+from ._variable_issue_collection import (
+    _add_global_scope_minimization_issues,
+    _add_hidden_global_coupling_issues,
+    _add_high_fan_in_out_issues,
+    _add_issue,
+    _add_magic_number_issue,
+    _add_unused_datatype_field_issues,
+    _build_root_variable_access_summaries,
+    _collect_issues_from_module,
+    _iter_variables_for_datatype_field_analysis,
+)
+from ._variable_traversal import (
+    _extract_var_basenames_from_tree,
+    _handle_function_call,
+    _mark_var_by_basename,
+    _repath_context,
+    _scan_for_varrefs,
+    _walk_graph_object,
+    _walk_header_enable,
+    _walk_header_groupconn,
+    _walk_header_invoke_tails,
+    _walk_interact_object,
+    _walk_module_code,
+    _walk_moduledef,
+    _walk_seq_nodes,
+    _walk_sequence,
+    _walk_stmt_or_expr,
+    _walk_tail,
+    _walk_typedef_groupconn,
+)
 from ._variables_access import (
     canonical_path,
     collect_effect_sink_keys,
@@ -69,6 +102,7 @@ from ._variables_execution import (
     collect_basepicture_issues,
     collect_typedef_issues,
     is_external_typename,
+    reset_analysis_state,
     run,
     run_post_traversal_analyses,
     run_timed_phase,
@@ -100,37 +134,7 @@ from ._variables_submodules import (
     walk_submodule_headers,
     walk_submodules,
 )
-from .usage_tracker import UsageTracker
-from .validators import AnyTypeFieldContract, ContractMappingValidator, MinMaxValidator, StringMappingValidator
-from .variable_issue_collection import (
-    _add_global_scope_minimization_issues,
-    _add_hidden_global_coupling_issues,
-    _add_high_fan_in_out_issues,
-    _add_issue,
-    _add_magic_number_issue,
-    _add_unused_datatype_field_issues,
-    _collect_issues_from_module,
-    _iter_variables_for_datatype_field_analysis,
-)
-from .variable_traversal import (
-    _extract_var_basenames_from_tree,
-    _handle_function_call,
-    _mark_var_by_basename,
-    _repath_context,
-    _scan_for_varrefs,
-    _walk_graph_object,
-    _walk_header_enable,
-    _walk_header_groupconn,
-    _walk_header_invoke_tails,
-    _walk_interact_object,
-    _walk_module_code,
-    _walk_moduledef,
-    _walk_seq_nodes,
-    _walk_sequence,
-    _walk_stmt_or_expr,
-    _walk_tail,
-    _walk_typedef_groupconn,
-)
+from .framework import AnalysisContext
 from .variable_utils import is_const_candidate
 
 if TYPE_CHECKING:
@@ -141,8 +145,67 @@ log = logging.getLogger("SattLint")
 __all__ = ["ScopeContext", "VariablesAnalyzer", "analyze_variables", "filter_variable_report"]
 
 
+def _collect_module_vars_for_artifacts(module: object, any_var_index: dict[str, list[Variable]]) -> None:
+    from sattline_parser.models.ast_model import FrameModule, ModuleTypeInstance, SingleModule
+
+    if isinstance(module, SingleModule):
+        for variable in module.moduleparameters or []:
+            any_var_index.setdefault(variable.name.lower(), []).append(variable)
+        for variable in module.localvariables or []:
+            any_var_index.setdefault(variable.name.lower(), []).append(variable)
+        for child in module.submodules or []:
+            _collect_module_vars_for_artifacts(child, any_var_index)
+        return
+    if isinstance(module, FrameModule):
+        for child in module.submodules or []:
+            _collect_module_vars_for_artifacts(child, any_var_index)
+        return
+    if isinstance(module, ModuleTypeInstance):
+        return
+
+
+def _build_variable_analysis_artifacts(base_picture: BasePicture) -> VariableAnalysisArtifacts:
+    typedef_index: dict[str, list[ModuleTypeDef]] = {}
+    dependency_library_display_names: dict[str, str] = {}
+
+    root_origin_lib = getattr(base_picture, "origin_lib", None)
+    if root_origin_lib:
+        dependency_library_display_names[root_origin_lib.casefold()] = root_origin_lib
+
+    for moduletype in base_picture.moduletype_defs or []:
+        typedef_index.setdefault(moduletype.name.lower(), []).append(moduletype)
+        if moduletype.origin_lib:
+            dependency_library_display_names.setdefault(moduletype.origin_lib.casefold(), moduletype.origin_lib)
+
+    for datatype in base_picture.datatype_defs or []:
+        origin_lib = getattr(datatype, "origin_lib", None)
+        if origin_lib:
+            dependency_library_display_names.setdefault(origin_lib.casefold(), origin_lib)
+
+    root_env = {variable.name.lower(): variable for variable in (base_picture.localvariables or [])}
+    any_var_index: dict[str, list[Variable]] = {}
+    for variable in base_picture.localvariables or []:
+        any_var_index.setdefault(variable.name.lower(), []).append(variable)
+    for module in base_picture.submodules or []:
+        _collect_module_vars_for_artifacts(module, any_var_index)
+    for moduletype in base_picture.moduletype_defs or []:
+        for variable in moduletype.moduleparameters or []:
+            any_var_index.setdefault(variable.name.lower(), []).append(variable)
+        for variable in moduletype.localvariables or []:
+            any_var_index.setdefault(variable.name.lower(), []).append(variable)
+
+    return VariableAnalysisArtifacts(
+        type_graph=TypeGraph.from_basepicture(base_picture),
+        typedef_index={key: tuple(values) for key, values in typedef_index.items()},
+        dependency_library_display_names=dict(dependency_library_display_names),
+        root_env=dict(root_env),
+        any_var_index={key: tuple(values) for key, values in any_var_index.items()},
+    )
+
+
 def analyze_variables(
     base_picture: BasePicture,
+    analysis_context: AnalysisContext | None = None,
     debug: bool = False,
     unavailable_libraries: set[str] | None = None,
     analyzed_target_is_library: bool = False,
@@ -170,6 +233,7 @@ def analyze_variables(
         trace_recorder=trace_recorder,
         config=config,
         status_update_fn=status_update_fn,
+        shared_artifacts=(analysis_context.shared_artifacts if analysis_context is not None else None),
     )
     init_duration_ms = round((time.perf_counter() - init_started_at) * 1000, 3)
     issues = analyzer.run()
@@ -203,6 +267,7 @@ def filter_variable_report(
         issues=filtered,
         visible_kinds=frozenset(kinds),
         include_empty_sections=True,
+        phase_timings=list(report.phase_timings),
     )
 
 
@@ -237,6 +302,7 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         build_anytype_contracts: bool = True,
         config: dict[str, Any] | None = None,
         status_update_fn: Callable[[str], None] | None = None,
+        shared_artifacts: AnalysisSharedArtifacts | None = None,
     ):
         self.bp = base_picture
         self.debug = debug
@@ -248,10 +314,13 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         self._analysis_warnings: list[str] = []
         self._trace_recorder = trace_recorder
         self._status_update_fn = status_update_fn
+        self._shared_artifacts = shared_artifacts
         self._last_status_message: str | None = None
         self._limit_to_module_path: list[str] | None = None
         self._phase_timings: list[dict[str, str | float]] = []
         self._naming_role_patterns = configured_naming_role_patterns(config)
+        self._root_variable_access_summary_cache_token: tuple[int, int] | None = None
+        self._root_variable_access_summary_cache: dict[str, Any] = {}
 
         self._issues: list[VariableIssue] = []
         self._param_mapping_issue_indexes: dict[tuple[IssueKind, int], int] = {}
@@ -259,7 +328,14 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         self.usage_tracker = UsageTracker()
         self._site_stack: list[str] = []
 
-        self.type_graph = TypeGraph.from_basepicture(self.bp)
+        variable_artifacts = shared_artifacts.variable_analysis if shared_artifacts is not None else None
+        if variable_artifacts is None:
+            variable_artifacts = _build_variable_analysis_artifacts(self.bp)
+            if shared_artifacts is not None:
+                shared_artifacts.variable_analysis = variable_artifacts
+                shared_artifacts.counters.variable_foundation_builds += 1
+
+        self.type_graph = variable_artifacts.type_graph
         self.symbol_table = CanonicalSymbolTable()
         self.context_builder = ContextBuilder(
             base_picture=self.bp,
@@ -269,22 +345,9 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
             global_lookup_fn=self._lookup_global_variable,
         )
 
-        self.typedef_index: dict[str, list[ModuleTypeDef]] = {}
+        self.typedef_index = {key: list(values) for key, values in variable_artifacts.typedef_index.items()}
         self._used_dependency_libraries: set[str] = set()
-        self._dependency_library_display_names: dict[str, str] = {}
-        root_origin_lib = getattr(self.bp, "origin_lib", None)
-        if root_origin_lib:
-            self._dependency_library_display_names[root_origin_lib.casefold()] = root_origin_lib
-        for moduletype in self.bp.moduletype_defs or []:
-            self.typedef_index.setdefault(moduletype.name.lower(), []).append(moduletype)
-            if moduletype.origin_lib:
-                self._dependency_library_display_names.setdefault(
-                    moduletype.origin_lib.casefold(), moduletype.origin_lib
-                )
-        for datatype in self.bp.datatype_defs or []:
-            origin_lib = getattr(datatype, "origin_lib", None)
-            if origin_lib:
-                self._dependency_library_display_names.setdefault(origin_lib.casefold(), origin_lib)
+        self._dependency_library_display_names = dict(variable_artifacts.dependency_library_display_names)
         self.used_params_by_typedef: dict[str, set[str]] = {}
         self.param_reads_by_typedef: dict[str, set[str]] = {}
         self.param_ui_reads_by_typedef: dict[str, set[str]] = {}
@@ -310,11 +373,8 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
         )
         self._contexts_by_module_path: dict[tuple[str, ...], ScopeContext] = {}
 
-        self._root_env: dict[str, Variable] = {
-            variable.name.lower(): variable for variable in (self.bp.localvariables or [])
-        }
-        self._any_var_index: dict[str, list[Variable]] = {}
-        self._index_all_variables()
+        self._root_env = dict(variable_artifacts.root_env)
+        self._any_var_index = {key: list(values) for key, values in variable_artifacts.any_var_index.items()}
         self._analyzing_typedefs: set[str] = set()
         self._anytype_field_contracts_by_owner: dict[int, dict[str, AnyTypeFieldContract]] = {}
         self._required_parameter_names_by_owner: dict[int, dict[str, str]] = {}
@@ -350,6 +410,7 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
     _walk_stmt_or_expr = _walk_stmt_or_expr
     _add_issue = _add_issue
     _iter_variables_for_datatype_field_analysis = _iter_variables_for_datatype_field_analysis
+    _build_root_variable_access_summaries = _build_root_variable_access_summaries
     _add_unused_datatype_field_issues = _add_unused_datatype_field_issues
     _add_hidden_global_coupling_issues = _add_hidden_global_coupling_issues
     _add_high_fan_in_out_issues = _add_high_fan_in_out_issues
@@ -410,6 +471,7 @@ class VariablesAnalyzer(VariablesAnalyzerFacadeMixin):
     _run_post_traversal_analyses = run_post_traversal_analyses
     _collect_basepicture_issues = collect_basepicture_issues
     _collect_typedef_issues = collect_typedef_issues
+    _reset_analysis_state = reset_analysis_state
     _run_timed_phase = run_timed_phase
     run = run
     _is_external_typename = is_external_typename

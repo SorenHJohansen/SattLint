@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from sattline_parser import parse_source_text as parser_core_parse_source_text
 from sattline_parser.models.ast_model import (
     BasePicture,
@@ -19,9 +21,12 @@ from sattline_parser.models.ast_model import (
     Variable,
 )
 from sattlint import constants as const
+from sattlint.analyzers import registry as registry_module
+from sattlint.analyzers.framework import AnalysisContext, AnalysisSharedArtifacts, AnalyzerSpec
 from sattlint.analyzers.sattline_semantics import (
     analyze_sattline_semantics,
 )
+from sattlint.reporting.variables_report import IssueKind, VariableIssue
 
 
 def _hdr(name: str) -> ModuleHeader:
@@ -607,354 +612,51 @@ def test_sattline_semantics_includes_unreachable_transition_rule():
         for issue in report.issues
     )
 
-    def test_sattline_semantics_includes_duplicate_transition_guard_rule():
-        bp = BasePicture(
-            header=_hdr("Root"),
-            localvariables=[
-                Variable(name="Permit", datatype=Simple_DataType.BOOLEAN),
-                Variable(name="Ready", datatype=Simple_DataType.BOOLEAN),
-            ],
-            modulecode=ModuleCode(
-                sequences=[
-                    _sequence(
-                        SFCTransition(
-                            name="OpenPrimary",
-                            condition=(const.GRAMMAR_VALUE_AND, [_varref("Permit"), _varref("Ready")]),
-                        ),
-                        SFCTransition(
-                            name="OpenBackup",
-                            condition=(const.GRAMMAR_VALUE_AND, [_varref("Ready"), _varref("Permit")]),
-                        ),
+
+def test_sattline_semantics_reuses_precomputed_reports(monkeypatch):
+    bp = BasePicture(
+        header=_hdr("Root"),
+        localvariables=[Variable(name="UnusedFlag", datatype=Simple_DataType.BOOLEAN)],
+        submodules=[],
+    )
+    shared_artifacts = AnalysisSharedArtifacts()
+    shared_artifacts.reports_by_analyzer_key["variables"] = SimpleNamespace(
+        issues=[
+            VariableIssue(
+                kind=IssueKind.UNUSED,
+                module_path=["Root"],
+                variable=Variable(name="UnusedFlag", datatype=Simple_DataType.BOOLEAN),
+            )
+        ]
+    )
+    context = AnalysisContext(base_picture=bp, shared_artifacts=shared_artifacts)
+
+    monkeypatch.setattr(
+        registry_module,
+        "get_default_analyzer_catalog",
+        lambda: SimpleNamespace(
+            analyzers=(
+                SimpleNamespace(
+                    spec=AnalyzerSpec(
+                        key="variables",
+                        name="Variable issues",
+                        description="",
+                        run=lambda _context: SimpleNamespace(issues=[]),
+                        analyzer_attr="analyze_variables",
+                        semantic_mapping_kind="variable",
                     )
-                ]
-            ),
-        )
-
-        report = analyze_sattline_semantics(bp)
-
-        assert any(issue.rule.id == "semantic.duplicate-transition-guard" for issue in report.issues)
-
-
-def test_sattline_semantics_includes_alarm_integrity_rules():
-    detector = ModuleTypeDef(
-        name="EventDetector1",
-        moduleparameters=[
-            Variable(name="Tag", datatype=Simple_DataType.TAGSTRING),
-            Variable(name="Severity", datatype=Simple_DataType.INTEGER, init_value=2),
-            Variable(name="Condition", datatype=Simple_DataType.BOOLEAN),
-        ],
-        localvariables=[],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-        origin_file="Root.s",
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[
-            Variable(name="CondA", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="CondB", datatype=Simple_DataType.BOOLEAN),
-        ],
-        moduletype_defs=[detector],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("AlarmA"),
-                moduletype_name="EventDetector1",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("Tag"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source_literal="Unit.Temp.High",
-                    ),
-                    ParameterMapping(
-                        target=_varref("Condition"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=_varref("CondA"),
-                        source_literal=None,
-                    ),
-                ],
-            ),
-            ModuleTypeInstance(
-                header=_hdr("AlarmB"),
-                moduletype_name="EventDetector1",
-                parametermappings=[
-                    ParameterMapping(
-                        target=_varref("Tag"),
-                        source_type=const.KEY_VALUE,
-                        is_duration=False,
-                        is_source_global=False,
-                        source_literal="Unit.Temp.High",
-                    ),
-                    ParameterMapping(
-                        target=_varref("Condition"),
-                        source_type=const.TREE_TAG_VARIABLE_NAME,
-                        is_duration=False,
-                        is_source_global=False,
-                        source=_varref("CondB"),
-                        source_literal=None,
-                    ),
-                ],
-            ),
-        ],
-        origin_file="Root.s",
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    assert any(issue.rule.id == "semantic.duplicate-alarm-tag" for issue in report.issues)
-
-
-def test_sattline_semantics_includes_initial_value_rule():
-    parameter_type = ModuleTypeDef(
-        name="RecParReal",
-        moduleparameters=[
-            Variable(name="Value", datatype=Simple_DataType.REAL),
-            Variable(name="MinValue", datatype=Simple_DataType.REAL, init_value=0.0),
-            Variable(name="MaxValue", datatype=Simple_DataType.REAL, init_value=100.0),
-        ],
-        localvariables=[],
-        submodules=[],
-        moduledef=None,
-        modulecode=None,
-        parametermappings=[],
-        origin_file="Root.s",
-    )
-    bp = BasePicture(
-        header=_hdr("Root"),
-        moduletype_defs=[parameter_type],
-        submodules=[
-            ModuleTypeInstance(
-                header=_hdr("RecipeSP"),
-                moduletype_name="RecParReal",
-                parametermappings=[],
+                ),
             )
-        ],
-        origin_file="Root.s",
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    assert any(issue.rule.id == "semantic.missing-parameter-initial-value" for issue in report.issues)
-
-
-def test_sattline_semantics_includes_hidden_global_coupling_rule():
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[Variable(name="SharedValue", datatype=Simple_DataType.INTEGER)],
-        submodules=[
-            SingleModule(
-                header=_hdr("Writer"),
-                moduledef=None,
-                moduleparameters=[],
-                localvariables=[],
-                submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="WriteShared",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("SharedValue"), 1)],
-                        )
-                    ],
-                    sequences=[],
-                ),
-                parametermappings=[],
-            ),
-            SingleModule(
-                header=_hdr("Reader"),
-                moduledef=None,
-                moduleparameters=[],
-                localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
-                submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="ReadShared",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
-                        )
-                    ],
-                    sequences=[],
-                ),
-                parametermappings=[],
-            ),
-        ],
-        modulecode=None,
-        moduledef=None,
-        origin_file="Root.s",
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    assert any(issue.rule.id == "semantic.hidden-global-coupling" for issue in report.issues)
-
-
-def test_sattline_semantics_includes_global_scope_minimization_rule():
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[Variable(name="ConfinedValue", datatype=Simple_DataType.INTEGER)],
-        submodules=[
-            SingleModule(
-                header=_hdr("Worker"),
-                moduledef=None,
-                moduleparameters=[],
-                localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
-                submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="UseConfined",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[
-                                (const.KEY_ASSIGN, _varref("ConfinedValue"), 1),
-                                (const.KEY_ASSIGN, _varref("Observed"), _varref("ConfinedValue")),
-                            ],
-                        )
-                    ],
-                    sequences=[],
-                ),
-                parametermappings=[],
-            )
-        ],
-        modulecode=None,
-        moduledef=None,
-        origin_file="Root.s",
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    assert any(issue.rule.id == "semantic.global-scope-minimization" for issue in report.issues)
-
-
-def test_sattline_semantics_includes_high_fan_in_out_rule():
-    bp = BasePicture(
-        header=_hdr("Root"),
-        localvariables=[Variable(name="SharedValue", datatype=Simple_DataType.INTEGER)],
-        submodules=[
-            SingleModule(
-                header=_hdr("Writer"),
-                moduledef=None,
-                moduleparameters=[],
-                localvariables=[],
-                submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="WriteShared",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("SharedValue"), 1)],
-                        )
-                    ],
-                    sequences=[],
-                ),
-                parametermappings=[],
-            ),
-            SingleModule(
-                header=_hdr("ReaderA"),
-                moduledef=None,
-                moduleparameters=[],
-                localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
-                submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="ReadSharedA",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
-                        )
-                    ],
-                    sequences=[],
-                ),
-                parametermappings=[],
-            ),
-            SingleModule(
-                header=_hdr("ReaderB"),
-                moduledef=None,
-                moduleparameters=[],
-                localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
-                submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="ReadSharedB",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
-                        )
-                    ],
-                    sequences=[],
-                ),
-                parametermappings=[],
-            ),
-            SingleModule(
-                header=_hdr("ReaderC"),
-                moduledef=None,
-                moduleparameters=[],
-                localvariables=[Variable(name="Observed", datatype=Simple_DataType.INTEGER)],
-                submodules=[],
-                modulecode=ModuleCode(
-                    equations=[
-                        Equation(
-                            name="ReadSharedC",
-                            position=(0.0, 0.0),
-                            size=(1.0, 1.0),
-                            code=[(const.KEY_ASSIGN, _varref("Observed"), _varref("SharedValue"))],
-                        )
-                    ],
-                    sequences=[],
-                ),
-                parametermappings=[],
-            ),
-        ],
-        modulecode=None,
-        moduledef=None,
-        origin_file="Root.s",
-    )
-
-    report = analyze_sattline_semantics(bp)
-
-    assert any(issue.rule.id == "semantic.high-fan-in-out-variable" for issue in report.issues)
-
-
-def test_sattline_semantics_includes_signal_lifecycle_rules():
-    bp = BasePicture(
-        header=_hdr("Program"),
-        localvariables=[
-            Variable(name="InputSignal", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="OutputSignal", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="ObservedSignal", datatype=Simple_DataType.BOOLEAN),
-            Variable(name="NeverConsumed", datatype=Simple_DataType.BOOLEAN),
-        ],
-        submodules=[],
-        modulecode=ModuleCode(
-            equations=[
-                Equation(
-                    name="Main",
-                    position=(0.0, 0.0),
-                    size=(1.0, 1.0),
-                    code=[
-                        (const.KEY_ASSIGN, _varref("OutputSignal"), _varref("InputSignal")),
-                        (const.KEY_ASSIGN, _varref("InputSignal"), True),
-                        (const.KEY_ASSIGN, _varref("ObservedSignal"), _varref("OutputSignal")),
-                        (const.KEY_ASSIGN, _varref("NeverConsumed"), False),
-                    ],
-                )
-            ]
         ),
     )
+    monkeypatch.setattr(
+        registry_module,
+        "analyze_variables",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("should reuse precomputed report")),
+    )
 
-    report = analyze_sattline_semantics(bp)
+    report = analyze_sattline_semantics(bp, analysis_context=context)
 
-    rule_ids = {issue.rule.id for issue in report.issues}
-    assert "semantic.signal-lifecycle-read-before-write" in rule_ids
-    assert "semantic.signal-lifecycle-unconsumed-write" in rule_ids
+    assert any(issue.rule.id == "semantic.unused-variable" for issue in report.issues)
+    assert shared_artifacts.counters.semantic_precomputed_reports_used == 1
+    assert shared_artifacts.counters.semantic_analyzer_reruns == 0

@@ -68,7 +68,7 @@ _ANALYZER_EXAMPLE_FIXTURES: dict[str, list[dict[str, t.Any]]] = {
             "expected_rule_ids": ["semantic.read-before-write"],
         },
     ],
-    "signal_lifecycle": [
+    "signal-lifecycle": [
         {
             "fixture": "corpus/semantic/SignalLifecycle.s",
             "description": "Signals consumed before a definite write and writes that are never consumed",
@@ -78,28 +78,28 @@ _ANALYZER_EXAMPLE_FIXTURES: dict[str, list[dict[str, t.Any]]] = {
             ],
         },
     ],
-    "loop_stability": [
+    "loop-stability": [
         {
             "fixture": "corpus/semantic/LoopStability.s",
             "description": "Conflicting literal setpoint assignments in the same control scope",
             "expected_rule_ids": ["semantic.loop-conflicting-setpoint"],
         },
     ],
-    "fault_handling": [
+    "fault-handling": [
         {
             "fixture": "corpus/semantic/FaultHandling.s",
             "description": "Fault paths that are raised without clear recovery or handling logic",
             "expected_rule_ids": ["semantic.fault-missing-recovery", "semantic.fault-unhandled-path"],
         },
     ],
-    "numeric_constraints": [
+    "numeric-constraints": [
         {
             "fixture": "corpus/semantic/NumericConstraints.s",
             "description": "Assignments that exceed visible Min_/Max_ bounds",
             "expected_rule_ids": ["semantic.numeric-limit-violation"],
         },
     ],
-    "config_drift": [
+    "config-drift": [
         {
             "fixture": "corpus/semantic/ConfigDrift.s",
             "description": "Instances of the same moduletype drifting on mapped parameter values",

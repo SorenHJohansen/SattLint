@@ -46,6 +46,7 @@ VALID_TOP_LEVEL_KEYS = frozenset(
         "ABB_lib_dir",
         "icf_dir",
         "other_lib_dirs",
+        "telemetry",
         "analysis",
         "documentation",
         "ignore_ABB_lib",
@@ -53,6 +54,7 @@ VALID_TOP_LEVEL_KEYS = frozenset(
 )
 
 VALID_ANALYSIS_KEYS = frozenset({"sfc", "naming", "rule_profiles"})
+VALID_TELEMETRY_KEYS = frozenset({"enabled"})
 VALID_NAMING_TARGETS = frozenset({"variables", "modules", "instances"})
 VALID_NAMING_STYLES = frozenset({"infer", "pascal", "camel", "snake", "upper_snake", "lower", "upper"})
 
@@ -223,6 +225,34 @@ def validate_config(cfg: dict[str, Any]) -> ConfigValidationResult:
                 message=f"Invalid mode '{mode}'. Expected 'official' or 'draft'.",
             )
         )
+
+    telemetry_value = typed_cfg.get("telemetry")
+    telemetry = _config_dict(telemetry_value)
+    if telemetry_value is not None and telemetry is None:
+        errors.append(
+            ConfigValidationError(
+                key_path="telemetry",
+                message="telemetry must be a table/object.",
+            )
+        )
+    elif telemetry is not None:
+        for key in telemetry:
+            if key not in VALID_TELEMETRY_KEYS:
+                errors.append(
+                    ConfigValidationError(
+                        key_path=f"telemetry.{key}",
+                        message=f"Unknown telemetry key '{key}'. Expected one of: {', '.join(sorted(VALID_TELEMETRY_KEYS))}",
+                    )
+                )
+
+        enabled = telemetry.get("enabled", False)
+        if not isinstance(enabled, bool):
+            errors.append(
+                ConfigValidationError(
+                    key_path="telemetry.enabled",
+                    message="telemetry.enabled must be a boolean",
+                )
+            )
 
     analysis_value = typed_cfg.get("analysis")
     analysis = _config_dict(analysis_value)

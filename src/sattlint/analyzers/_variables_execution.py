@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
@@ -17,18 +17,19 @@ from sattline_parser.models.ast_model import (
     SingleModule,
     Variable,
 )
-from sattlint.analyzers.layout_geometry import collect_layout_overlap_issues
 
 from ..grammar import constants as const
 from ..reporting.variables_report import IssueKind, VariableIssue
 from ..resolution.common import varname_base
 from ..resolution.scope import ScopeContext
+from ._reset_contamination import detect_implicit_latching, detect_reset_contamination
+from ._usage_tracker import UsageTracker
 from ._variables_picture_display_support import (
     build_typedef_root_context,
     record_graphics_binding_occurrences,
     record_picture_display_variable_occurrences,
 )
-from .reset_contamination import detect_implicit_latching, detect_reset_contamination
+from .layout_geometry import collect_layout_overlap_issues
 
 if TYPE_CHECKING:
     from .variables import VariablesAnalyzer
@@ -142,6 +143,46 @@ def _run_timed_phase(self: VariablesAnalyzer, phase: str, callback: Callable[[],
         record_phase_timing(phase, started_at)
 
 
+def _reset_analysis_state(self: VariablesAnalyzer) -> None:
+    def _clear_or_set(attr_name: str, default: object) -> None:
+        current = getattr(self, attr_name, None)
+        clear_method = getattr(current, "clear", None)
+        if callable(clear_method):
+            clear_method()
+            return
+        setattr(self, attr_name, default)
+
+    self._issues = []
+    self._param_mapping_issue_indexes = {}
+    context_builder = getattr(self, "context_builder", None)
+    if context_builder is not None:
+        context_builder.issues = self._issues
+    _clear_or_set("_analysis_warnings", [])
+    self._last_status_message = None
+    self._limit_to_module_path = None
+    self._phase_timings = []
+    _clear_or_set("_record_component_order_datatypes_seen", set[str]())
+    self.usage_tracker = UsageTracker()
+    _clear_or_set("_site_stack", [])
+    _clear_or_set("_used_dependency_libraries", set[str]())
+    _clear_or_set("used_params_by_typedef", {})
+    _clear_or_set("param_reads_by_typedef", {})
+    _clear_or_set("param_ui_reads_by_typedef", {})
+    _clear_or_set("param_non_ui_reads_by_typedef", {})
+    _clear_or_set("param_writes_by_typedef", {})
+    _clear_or_set("_alias_links", [])
+    _clear_or_set("_effect_flow_edges", defaultdict[tuple[str, ...], set[tuple[str, ...]]](set))
+    _clear_or_set("_effect_flow_display_names", {})
+    _clear_or_set("_external_effect_sinks", set[tuple[str, ...]]())
+    _clear_or_set("_effective_output_keys", set[tuple[str, ...]]())
+    _clear_or_set("_procedure_status_bindings", {})
+    _clear_or_set("_ignorable_output_variable_ids", set[int]())
+    _clear_or_set("_contexts_by_module_path", {})
+    _clear_or_set("_analyzing_typedefs", set[str]())
+    self._root_variable_access_summary_cache_token = None
+    self._root_variable_access_summary_cache = {}
+
+
 def _analyze_root_scope(self: VariablesAnalyzer) -> ScopeContext:
     root_context = self.context_builder.build_for_basepicture()
     self._trace("root-context-built", root_symbols=len(root_context.env))
@@ -169,6 +210,7 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
             self._limit_to_module_path,
             debug=self.debug,
             trace_fn=self._trace,
+            shared_artifacts=getattr(self, "_shared_artifacts", None),
         )
         self._trace(
             "reset-contamination-scan",
@@ -177,7 +219,12 @@ def _run_post_traversal_analyses(self: VariablesAnalyzer) -> None:
 
     if _should_collect_issue_kind(self, IssueKind.IMPLICIT_LATCH):
         issue_count_before_latch = len(self._issues)
-        detect_implicit_latching(self.bp, self._issues, self._limit_to_module_path)
+        detect_implicit_latching(
+            self.bp,
+            self._issues,
+            self._limit_to_module_path,
+            shared_artifacts=getattr(self, "_shared_artifacts", None),
+        )
         self._trace(
             "implicit-latch-scan",
             added_issue_count=len(self._issues) - issue_count_before_latch,
@@ -390,11 +437,8 @@ def run(
     apply_alias_back_propagation: bool = True,
     limit_to_module_path: list[str] | None = None,
 ) -> list[VariableIssue]:
-    self._issues = []
-    self._param_mapping_issue_indexes = {}
-    self.context_builder.issues = self._issues
+    _reset_analysis_state(self)
     self._limit_to_module_path = limit_to_module_path
-    self._phase_timings = []
     self._trace(
         "start",
         basepicture_name=self.bp.header.name,
@@ -424,6 +468,23 @@ def run(
         self._propagate_procedure_status_bindings()
 
     def _finalize_issues() -> None:
+        if _should_collect_any_issue_kinds(
+            self,
+            frozenset(
+                {
+                    IssueKind.GLOBAL_SCOPE_MINIMIZATION,
+                    IssueKind.HIDDEN_GLOBAL_COUPLING,
+                    IssueKind.HIGH_FAN_IN_OUT,
+                }
+            ),
+        ):
+            build_root_variable_access_summaries = getattr(self, "_build_root_variable_access_summaries", None)
+            if callable(build_root_variable_access_summaries):
+                _run_timed_phase(
+                    self,
+                    "root-variable-access-summary-build",
+                    build_root_variable_access_summaries,
+                )
         if _should_collect_issue_kind(self, IssueKind.NAMING_ROLE_MISMATCH):
             self._add_naming_role_mismatch_issues()
         if _should_collect_issue_kind(self, IssueKind.GLOBAL_SCOPE_MINIMIZATION):
@@ -495,6 +556,9 @@ def run(
         log.debug("Variables analysis complete. Issues=%d", len(self._issues))
 
     return self._issues
+
+
+reset_analysis_state = _reset_analysis_state
 
 
 def _is_external_typename(self: VariablesAnalyzer, typename: str) -> bool:
