@@ -11,6 +11,7 @@ from typing import Any, cast
 from sattline_parser.models.ast_model import BasePicture
 
 from . import app_telemetry as telemetry_module
+from ._app_debug import debug_enabled, log_debug_exception
 from .casefolding import casefold_equal, casefold_key
 from .models.project_graph import ProjectGraph
 
@@ -18,15 +19,6 @@ ConfigDict = dict[str, Any]
 LoadedProject = tuple[str, BasePicture, ProjectGraph]
 _STAGE_ORDER = ("load_or_parse", "validate", "attach_graphics", "index", "ast_cache_save")
 log = logging.getLogger("SattLint")
-
-
-def _debug_enabled(cfg: ConfigDict) -> bool:
-    return bool(cfg.get("debug", False))
-
-
-def _log_debug_exception(cfg: ConfigDict, message: str) -> None:
-    if _debug_enabled(cfg):
-        log.exception(message)
 
 
 def _safe_count(value: object) -> int:
@@ -48,7 +40,7 @@ def _emit_debug_load_summary(
     graph: ProjectGraph,
     emit_output_fn: Callable[..., None],
 ) -> None:
-    if not _debug_enabled(cfg):
+    if not debug_enabled(cfg):
         return
 
     emit_output_fn(
@@ -256,7 +248,7 @@ def iter_loaded_projects(
                 collect_stage_timings=_collect_analysis_timings(cfg),
             )
         except Exception as exc:
-            _log_debug_exception(cfg, f"Failed to load analysis target {target_name!r}")
+            log_debug_exception(cfg, f"Failed to load analysis target {target_name!r}", logger=log)
             emit_output_fn(f"\n=== Target: {target_name} ===")
             emit_output_fn("? Failed to load target:")
             emit_output_fn(exc)
@@ -709,7 +701,7 @@ def ensure_ast_cache(
             load_project_fn(cfg, target_name=target_name, use_cache=False)
             emit_output_fn("✔ AST cache updated")
         except Exception as exc:
-            _log_debug_exception(cfg, f"Failed to rebuild AST cache for {target_name!r}")
+            log_debug_exception(cfg, f"Failed to rebuild AST cache for {target_name!r}", logger=log)
             emit_output_fn(f"❌ Failed to build AST cache for {target_name}: {exc}")
             ok = False
 

@@ -27,7 +27,7 @@ def _string_value(mapping: dict[str, Any], key: str, default: str = "") -> str:
     return str(value)
 
 
-def _string_list(value: Any) -> list[str]:
+def _session_id_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     sequence = cast(list[Any], value)
@@ -58,7 +58,7 @@ def _known_failure_pattern_update(finding: dict[str, Any]) -> KnownFailurePatter
     data = finding.get("data")
     if finding_id == "repeated-tool-retries" and isinstance(data, dict):
         data_mapping = cast(dict[str, Any], data)
-        session_ids = _string_list(data_mapping.get("session_ids"))
+        session_ids = _session_id_list(data_mapping.get("session_ids"))
         if len(session_ids) < 2:
             return None
         return KnownFailurePatternUpdate(

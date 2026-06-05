@@ -15,6 +15,7 @@ from . import _app_graphics_reports as graphics_reports_module
 from . import config as config_module
 from . import console as console_module
 from . import graphics_rules as graphics_rules_module
+from ._app_debug import log_debug_exception
 from .app_interaction import MenuInteraction
 from .docgenerator import classification as documentation_classification_module
 from .models.project_graph import ProjectGraph
@@ -39,15 +40,6 @@ DEFAULT_DISCOVER_DOCUMENTATION_UNIT_CANDIDATES_FN = cast(
     DiscoverDocumentationUnitCandidatesFn,
     cast(Any, documentation_classification_module).discover_documentation_unit_candidates,
 )
-
-
-def _debug_enabled(cfg: ConfigDict) -> bool:
-    return bool(cfg.get("debug", False))
-
-
-def _log_debug_exception(cfg: ConfigDict, message: str) -> None:
-    if _debug_enabled(cfg):
-        log.exception(message)
 
 
 def get_graphics_rules_path(config_path: Path) -> Path:
@@ -463,7 +455,7 @@ def run_graphics_rules_validation(
                 emit_output(f"\n=== Target: {target_name} ===")
                 emit_output(report.summary())
             except Exception as exc:
-                _log_debug_exception(cfg, f"Graphics rules validation failed for {target_name!r}")
+                log_debug_exception(cfg, f"Graphics rules validation failed for {target_name!r}", logger=log)
                 emit_output(f"? Error during graphics rules validation for {target_name}: {exc}")
 
     pause_fn()

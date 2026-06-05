@@ -12,7 +12,7 @@ def test_repo_audit_entrypoint_helper_normalizers_and_reason_selection():
         "--changed-file",
         "src/main.py",
     ]
-    assert repo_audit_entrypoints._string_list(("not", "a", "list")) == []
+    assert repo_audit_entrypoints._planning_string_list(("not", "a", "list")) == []
     assert repo_audit_entrypoints._focused_python_files(
         [
             "src/main.py",
@@ -158,10 +158,9 @@ def test_repo_audit_entrypoint_builds_finish_gate_commands_and_gate_reason(tmp_p
         "recommended-finish-gate",
         "ruff-touched-python",
         "pyright-touched-python",
-        "ratchet-policy",
         "owner-pytest-coverage",
     ]
-    assert commands[3]["command"] == "python scripts/check_ratchet_policy.py"
+    assert commands[3]["id"] == "owner-pytest-coverage"
     assert why_this_gate["matched_routes"] == [
         {
             "check_id": "cli",

@@ -20,6 +20,7 @@ from . import app_telemetry as telemetry_module
 from . import cache as cache_module
 from . import console as console_module
 from . import engine as engine_module
+from ._app_debug import debug_enabled, log_debug_exception
 from .analyzers import variable_usage_reporting as variables_reporting_module
 from .analyzers.comment_code import analyze_comment_code_files
 from .analyzers.framework import AnalysisContext, AnalysisSharedArtifacts
@@ -240,15 +241,6 @@ def ensure_ast_cache(
     )
 
 
-def _debug_enabled(cfg: ConfigDict) -> bool:
-    return bool(cfg.get("debug", False))
-
-
-def _log_debug_exception(cfg: ConfigDict, message: str) -> None:
-    if _debug_enabled(cfg):
-        log.exception(message)
-
-
 def _use_cache_enabled(cfg: ConfigDict) -> bool:
     return bool(cfg.get("use_cache", True))
 
@@ -315,7 +307,7 @@ def run_variable_analysis(
     report_cache = analysis_reporting_module.create_analysis_report_cache(
         cfg,
         use_cache_enabled_fn=_use_cache_enabled,
-        debug_enabled_fn=_debug_enabled,
+        debug_enabled_fn=debug_enabled,
         analysis_report_cache_cls=AnalysisReportCache,
         get_cache_dir_fn=get_cache_dir,
     )
@@ -342,7 +334,7 @@ def run_variable_analysis(
                         run_fn=lambda project_bp=project_bp, graph=graph, status_update_fn=status_update_fn, target_is_library=target_is_library, standard_kinds=standard_kinds: (
                             analyze_variables_fn(
                                 project_bp,
-                                debug=_debug_enabled(cfg),
+                                debug=debug_enabled(cfg),
                                 unavailable_libraries=analysis_reporting_module.unavailable_libraries(graph),
                                 analyzed_target_is_library=target_is_library,
                                 selected_issue_kinds=standard_kinds,
@@ -373,7 +365,7 @@ def run_variable_analysis(
                         analyzer_cache_key="variables:shadowing",
                         run_fn=lambda project_bp=project_bp, graph=graph: analyze_shadowing_fn(
                             project_bp,
-                            debug=_debug_enabled(cfg),
+                            debug=debug_enabled(cfg),
                             unavailable_libraries=analysis_reporting_module.unavailable_libraries(graph),
                         ),
                         compute_analysis_report_cache_key_fn=compute_analysis_report_cache_key,
@@ -476,16 +468,17 @@ def run_datatype_usage_analysis(
                 lambda project_bp=project_bp, graph=graph: variables_reporting_module.report_datatype_usage(
                     project_bp,
                     var_name,
-                    debug=_debug_enabled(cfg),
+                    debug=debug_enabled(cfg),
                     unavailable_libraries=analysis_reporting_module.unavailable_libraries(graph),
                 ),
             )
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report)
         except Exception as exc:
-            _log_debug_exception(
+            log_debug_exception(
                 cfg,
                 f"Datatype usage analysis failed for target {target_name!r} and variable {var_name!r}",
+                logger=log,
             )
             emit_output(f"❌ Error during analysis for {target_name}: {exc}")
 
@@ -710,7 +703,7 @@ def run_module_duplicates_analysis(
                     lambda project_bp=project_bp, module_name=module_name: find_modules_by_name(
                         project_bp,
                         module_name,
-                        debug=_debug_enabled(cfg),
+                        debug=debug_enabled(cfg),
                     ),
                 )
                 if not matches:
@@ -747,15 +740,16 @@ def run_module_duplicates_analysis(
                         lambda project_bp=project_bp, module_name=module_name: analyze_module_duplicates(
                             project_bp,
                             module_name,
-                            debug=_debug_enabled(cfg),
+                            debug=debug_enabled(cfg),
                         ),
                     )
 
                 emit_output("\n" + result.summary())
             except Exception as exc:
-                _log_debug_exception(
+                log_debug_exception(
                     cfg,
                     f"Module duplicate analysis failed for target {target_name!r} and module {module_name!r}",
+                    logger=log,
                 )
                 emit_output(f"❌ Error during analysis for {module_name!r}: {exc}")
 
@@ -790,7 +784,7 @@ def run_module_find_by_name(
                     lambda project_bp=project_bp, module_name=module_name: find_modules_by_name(
                         project_bp,
                         module_name,
-                        debug=_debug_enabled(cfg),
+                        debug=debug_enabled(cfg),
                     ),
                 )
                 if not matches:
@@ -802,7 +796,7 @@ def run_module_find_by_name(
                     datecode_txt = f" (DateCode: {datecode})" if datecode else ""
                     emit_output(f"  - {' -> '.join(path)}{datecode_txt}")
     except Exception as exc:
-        _log_debug_exception(cfg, f"Module search failed for names {module_names!r}")
+        log_debug_exception(cfg, f"Module search failed for names {module_names!r}", logger=log)
         emit_output(f"❌ Error during search: {exc}")
 
     if pause_fn is not None:
@@ -832,7 +826,7 @@ def run_module_tree_debug(
                 lambda project_bp=project_bp: debug_module_structure(project_bp, max_depth=max_depth),
             )
     except Exception as exc:
-        _log_debug_exception(cfg, f"Module tree debug failed with max_depth={max_depth}")
+        log_debug_exception(cfg, f"Module tree debug failed with max_depth={max_depth}", logger=log)
         emit_output(f"❌ Error during debug: {exc}")
 
     if pause_fn is not None:
@@ -890,18 +884,19 @@ def run_module_localvar_analysis(
                     project_bp,
                     module_path,
                     var_name,
-                    debug=_debug_enabled(cfg),
+                    debug=debug_enabled(cfg),
                 ),
             )
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report)
         except Exception as exc:
-            _log_debug_exception(
+            log_debug_exception(
                 cfg,
                 (
                     f"Module local variable analysis failed for target {target_name!r}, "
                     f"module {module_path!r}, variable {var_name!r}"
                 ),
+                logger=log,
             )
             emit_output(f"❌ Error during analysis for {target_name}: {exc}")
 
@@ -980,7 +975,7 @@ def _run_checks(
     report_cache = analysis_reporting_module.create_analysis_report_cache(
         cfg,
         use_cache_enabled_fn=_use_cache_enabled,
-        debug_enabled_fn=_debug_enabled,
+        debug_enabled_fn=debug_enabled,
         analysis_report_cache_cls=AnalysisReportCache,
         get_cache_dir_fn=get_cache_dir,
     )
@@ -1002,7 +997,7 @@ def _run_checks(
             context = AnalysisContext(
                 base_picture=project_bp,
                 graph=graph,
-                debug=_debug_enabled(cfg),
+                debug=debug_enabled(cfg),
                 target_is_library=target_is_library_fn(cfg, project_bp, graph),
                 selected_issue_kinds=normalized_selected_issue_kinds,
                 config=cfg,
@@ -1146,7 +1141,7 @@ def run_mms_interface_analysis(
                 f"Analyzing MMS interface variables for {target_name}",
                 lambda project_bp=project_bp: analyze_mms_interface_variables(
                     project_bp,
-                    debug=_debug_enabled(cfg),
+                    debug=debug_enabled(cfg),
                     config=cfg,
                 ),
             )
@@ -1154,7 +1149,7 @@ def run_mms_interface_analysis(
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report.summary())
         except Exception as exc:
-            _log_debug_exception(cfg, f"MMS interface analysis failed for target {target_name!r}")
+            log_debug_exception(cfg, f"MMS interface analysis failed for target {target_name!r}", logger=log)
             emit_output(f"❌ Error during analysis for {target_name}: {exc}")
 
     if pause_fn is not None:
@@ -1207,9 +1202,10 @@ def run_icf_validation(
             program_bp, graph = load_program_ast_fn(cfg, program_name)
             program_bp = engine_module.merge_project_basepicture(program_bp, graph)
         except Exception as exc:
-            _log_debug_exception(
+            log_debug_exception(
                 cfg,
                 f"ICF validation failed while loading program {program_name!r} from {icf_file}",
+                logger=log,
             )
             emit_output(f"❌ {icf_file.name}: failed to load program {program_name!r}: {exc}")
             files_failed += 1
@@ -1274,14 +1270,15 @@ def run_debug_variable_usage(
         try:
             report = _run_with_live_status(
                 f"Tracing variable usage for {target_name}: {var_name}",
-                lambda project_bp=project_bp: debug_variable_usage(project_bp, var_name, debug=_debug_enabled(cfg)),
+                lambda project_bp=project_bp: debug_variable_usage(project_bp, var_name, debug=debug_enabled(cfg)),
             )
             emit_output(f"\n=== Target: {target_name} ===")
             emit_output(report)
         except Exception as exc:
-            _log_debug_exception(
+            log_debug_exception(
                 cfg,
                 f"Variable usage debug failed for target {target_name!r} and variable {var_name!r}",
+                logger=log,
             )
             emit_output(f"❌ Error during debug for {target_name}: {exc}")
 
@@ -1367,7 +1364,7 @@ def run_advanced_datatype_analysis(
                     lambda project_bp=project_bp, graph=graph: variables_reporting_module.report_datatype_usage(
                         project_bp,
                         var_name,
-                        debug=_debug_enabled(cfg),
+                        debug=debug_enabled(cfg),
                         unavailable_libraries=analysis_reporting_module.unavailable_libraries(graph),
                     ),
                 )
@@ -1396,7 +1393,7 @@ def run_advanced_datatype_analysis(
                     lambda project_bp=project_bp: variables_reporting_module.debug_variable_usage(
                         project_bp,
                         var_name,
-                        debug=_debug_enabled(cfg),
+                        debug=debug_enabled(cfg),
                     ),
                 )
                 emit_output(f"\n=== Target: {target_name} ===")
